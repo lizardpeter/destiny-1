@@ -4,8 +4,6 @@ on:
   push:
     paths:
       - '.github/workflows/recover-oodle3-runtime.yml'
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -32,10 +30,24 @@ jobs:
             --output runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
+      - name: Fetch current Tiger animation parser
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          rm -rf tiger-animation-parser/.git
+
       - name: Upload verified runtime bundle
         uses: actions/upload-artifact@v4
         with:
           name: verified-oodle3-runtime-bundle
           path: runtime/
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload animation parser source
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiger-animation-parser-source
+          path: tiger-animation-parser/
           retention-days: 1
           if-no-files-found: error
