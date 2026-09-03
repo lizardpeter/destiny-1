@@ -153,8 +153,90 @@ Therefore original material/texture reconstruction is now blocked only on acquir
 3. Parse D1 material fields and shader texture bindings.
 4. Recursively resolve texture TagHashes to owning packages.
 5. Decode PS4 texture metadata/mips/swizzle as necessary.
-6. Map D1 channels to glTF PBR approximately while retaining original hashes/semantics in extras.
+6. Map D1 channels to glTF PBR approximately (base color, normal, emissive, roughness/metalness/specular as appropriate), while retaining original hashes/semantics in extras.
 7. Replace placeholder materials in the already-working GLB.
 8. Add any additional compatible clips found for the same runtime-rig component.
 
 At this point, the first asset is fully rigged and animated. The main missing fidelity layer is original materials/textures.
+
+## Texture decoding breakthrough (2026-09-03 later pass)
+
+The D1 ROI PS4 texture pipeline itself is now validated end-to-end on retail bytes from `0767`.
+
+### Resident texture census
+
+`ps4_arch_vex_com01_0767_0.pkg` contains **23 resident Texture2D headers** (`file_type=32`, `file_subtype=1`). All 23 were reconstructed to linear DDS and decoded to viewable PNG successfully.
+
+Observed format census:
+
+- BC1 / GCN `0x23`: 6 textures
+- BC3 / GCN `0x25`: 8 textures
+- BC4 / GCN `0x26`: 1 texture
+- BC5 / GCN `0x27`: 7 textures
+- RGBA8 / GCN `0x0A`: 1 texture
+
+Largest validated image is `816CE138`, a 4096x4096 BC1 texture. Multiple 2048x2048 BC3/BC5 color/normal pairs also decode coherently.
+
+### Exact observed backing chain
+
+The resident ROI textures follow the package chain:
+
+`32:1 texture header -> 65:1 streamed/mip record -> 5:1 full-resolution backing data`
+
+Examples:
+
+- `816CE05C -> 816CE05E -> 816CE19A`, 256x512 BC1, 65,536-byte full-resolution backing
+- `816CE0B6 -> 816CE0BB -> 816CE19E`, 1024x1024 BC3, 1,048,576-byte backing
+- `816CE0B7 -> 816CE0BC -> 816CE19F`, 1024x1024 BC5, 1,048,576-byte backing
+- `816CE138 -> 816CE139 -> 816CE18A`, 4096x4096 BC1, 8,388,608-byte backing
+
+### PS4 texture semantics now implemented
+
+For D1 ROI PS4 texture headers:
+
+- GCN format is `(ROIFormat >> 4) & 0x3f`
+- width/height/depth/array are stored at `+0x28`
+- `flags1` is at `+0x30`
+- image data is PS4 Morton/8x8-block unswizzled when `(flags1 & 0xC00) != 0x400` (or cubemap)
+- block-compressed formats use 4x4 BC blocks
+- decoded BC1/BC3/BC4/BC5 and RGBA8 images visually validate the reconstruction
+
+A reusable exporter now exists at `tools/d1_texture_export.py` and was validated against all 23 resident textures.
+
+Local validation artifacts:
+
+- `/mnt/data/0767_resident_textures.zip`
+- `/mnt/data/0767_textures/contact_sheet.jpg`
+- `/mnt/data/0767_textures/texture_manifest.json`
+- `/mnt/data/d1_texture_export.py`
+
+Resident texture archive SHA-256:
+
+`97bf079b8b63cd022f6ad2146e1374ab127a2d0966698889a3eecde6fc7a2855`
+
+### Important model-material distinction
+
+The successful resident texture extraction does **not** justify arbitrarily attaching those textures to articulated model `816CE09A`.
+
+The model's retail part records explicitly reference external material tags:
+
+- `80AAE10B`
+- `80AAE10C`
+
+and the first geometry range also uses `VariantShaderIndex = 1`, requiring the model parent's external-material table rather than a guessed material.
+
+Both direct material hashes resolve to package ID `0x0157`:
+
+- `ps4_globals_0157_0.pkg`
+- `ps4_globals_0157_1.pkg`
+
+The correct evidence-driven path is therefore:
+
+1. acquire/decode package 0157;
+2. parse `80AAE10B` and `80AAE10C` using the already-existing D1 material decoder (`VSTextures` at `0x38`, `PSTextures` at `0x2B8`);
+3. follow each returned texture TagHash to its owning package;
+4. use `d1_texture_export.py` to reconstruct the exact retail image;
+5. classify albedo/normal/mask/emissive from the material slots/shader use;
+6. bind those proven textures to the already-valid rigged + multi-animation GLB.
+
+Thus the **texture file format and PS4 swizzle are solved**. The remaining blocker for a faithfully textured `816CE09A` is acquisition of the external material package `0157`, not texture decoding.
