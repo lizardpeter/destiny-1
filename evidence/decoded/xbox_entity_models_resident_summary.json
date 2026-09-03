@@ -1,0 +1,26 @@
+{
+  "package": "xboxone_arch_cabal_0059_1.pkg",
+  "platform": "XboxOne",
+  "class_hash": "80801AB5",
+  "resident_model_count": 16,
+  "mesh_count": 23,
+  "part_count": 284,
+  "invariants": {
+    "all_stage_offsets_count_20": true,
+    "all_stage_offsets_monotonic": true,
+    "all_stage_offsets_start_0": true,
+    "all_stage_offsets_end_part_count": true,
+    "all_stage_codes_19_chars": true,
+    "all_tail_94_a0_zero": true
+  },
+  "stage_code_counts": {
+    "000-00000000-000000": 12,
+    "111-11111111-111111": 1,
+    "fffdffffffffdffffff": 1,
+    "gggdggggggggdgggggg": 1,
+    "DDDDDDDDDDDDDDDDDDD": 4,
+    "EEEEEEEEEEEEEEEEEEE": 1,
+    "uuuuuuuuuuuuuuuuuuu": 1,
+    "///-////////-//////": 2
+  }
+}
