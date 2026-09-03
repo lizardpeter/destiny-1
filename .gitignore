@@ -1,0 +1,34 @@
+# Proprietary / game binaries
+*.pkg
+*.pkg.bin
+*.dll
+*.so
+*.dylib
+
+# Raw/package working data
+raw/
+packages/
+input/
+
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local runtime builds
+build/
+tools/runtime/
+
+# Generated bulk exports (commit selected regression fixtures intentionally with -f)
+exports/textures/all_ps4/
+*.dds
+
+# Archives / local snapshots
+*.tar.gz
+*.zip
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
