@@ -1,0 +1,28 @@
+{
+  "package": "xboxone_arch_cabal_0059_1.pkg",
+  "summary": {
+    "resident_materials_selected": 411,
+    "pixel_shader_unavailable": 400,
+    "pixel_shader_compared": 11,
+    "texture_register_exact": 11,
+    "texture_register_mismatch": 0,
+    "sampler_count_exact": 11,
+    "sampler_count_mismatch": 0,
+    "b0_compared": 11,
+    "b0_count_exact": 11,
+    "b0_count_mismatch": 0
+  },
+  "compared": [
+    {"material":"808B39C0","pixel_shader":"808B39FA","material_texture_indices":[0],"shader_texture_registers":[0],"material_sampler_count":1,"shader_sampler_registers":[1],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":5,"shader_b0_vec4_count":5,"non_b0_cbuffers":[]},
+    {"material":"808B3A25","pixel_shader":"808B3B77","material_texture_indices":[0,1,2,3],"shader_texture_registers":[0,1,2,3],"material_sampler_count":4,"shader_sampler_registers":[1,2,3,4],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":9,"shader_b0_vec4_count":9,"non_b0_cbuffers":[{"register":12,"vec4_count":8}]},
+    {"material":"808B3A28","pixel_shader":"808B3A59","material_texture_indices":[0],"shader_texture_registers":[0],"material_sampler_count":1,"shader_sampler_registers":[1],"material_b0_source":"inline_ps_cbuffers","material_b0_vec4_count":0,"shader_b0_vec4_count":null,"non_b0_cbuffers":[]},
+    {"material":"808B3A2A","pixel_shader":"808B3A34","material_texture_indices":[0,1],"shader_texture_registers":[0,1],"material_sampler_count":2,"shader_sampler_registers":[1,2],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":3,"shader_b0_vec4_count":3,"non_b0_cbuffers":[]},
+    {"material":"808B3A48","pixel_shader":"808B3A51","material_texture_indices":[0,1],"shader_texture_registers":[0,1],"material_sampler_count":2,"shader_sampler_registers":[1,2],"material_b0_source":"inline_ps_cbuffers","material_b0_vec4_count":7,"shader_b0_vec4_count":7,"non_b0_cbuffers":[{"register":13,"vec4_count":2}]},
+    {"material":"808B3A49","pixel_shader":"808B3A52","material_texture_indices":[0,1],"shader_texture_registers":[0,1],"material_sampler_count":2,"shader_sampler_registers":[1,2],"material_b0_source":"inline_ps_cbuffers","material_b0_vec4_count":5,"shader_b0_vec4_count":5,"non_b0_cbuffers":[]},
+    {"material":"808B3C80","pixel_shader":"808B3E22","material_texture_indices":[0,1,2,3,4,5,6],"shader_texture_registers":[0,1,2,3,4,5,6],"material_sampler_count":7,"shader_sampler_registers":[1,2,3,4,5,6,7],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":10,"shader_b0_vec4_count":10,"non_b0_cbuffers":[{"register":12,"vec4_count":8}]},
+    {"material":"808B3C96","pixel_shader":"808B3DE2","material_texture_indices":[0,1,2],"shader_texture_registers":[0,1,2],"material_sampler_count":3,"shader_sampler_registers":[1,2,3],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":15,"shader_b0_vec4_count":15,"non_b0_cbuffers":[]},
+    {"material":"808B3C9B","pixel_shader":"808B3C9D","material_texture_indices":[0,1,2],"shader_texture_registers":[0,1,2],"material_sampler_count":3,"shader_sampler_registers":[1,2,3],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":4,"shader_b0_vec4_count":4,"non_b0_cbuffers":[]},
+    {"material":"808B3D48","pixel_shader":"808B3DE3","material_texture_indices":[0,1,2,3,4],"shader_texture_registers":[0,1,2,3,4],"material_sampler_count":5,"shader_sampler_registers":[1,2,3,4,5],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":15,"shader_b0_vec4_count":15,"non_b0_cbuffers":[{"register":12,"vec4_count":8}]},
+    {"material":"808B3D77","pixel_shader":"808B3DE0","material_texture_indices":[0,1],"shader_texture_registers":[0,1],"material_sampler_count":2,"shader_sampler_registers":[1,2],"material_b0_source":"external_ps_vector4_container","material_b0_vec4_count":2,"shader_b0_vec4_count":2,"non_b0_cbuffers":[]}
+  ]
+}

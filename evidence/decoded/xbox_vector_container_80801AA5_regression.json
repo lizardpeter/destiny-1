@@ -1,0 +1,18 @@
+{
+  "package": "xboxone_arch_cabal_0059_1.pkg",
+  "class_hash": "80801AA5",
+  "total_entries": 595,
+  "resident_entries": 276,
+  "all_resident_invariants": {
+    "declared_file_size_exact": true,
+    "payload_size_exact": true,
+    "stride_vec4": true,
+    "zero18": true,
+    "array_class_80800184": true,
+    "repeated_payload_size_exact": true,
+    "element_class_80800009": true,
+    "zero2c": true,
+    "payload_vec4_aligned": true
+  },
+  "vector_count_distribution": {"2":1,"3":4,"4":3,"5":18,"7":6,"9":12,"10":5,"12":1,"13":5,"14":15,"15":86,"16":20,"17":33,"18":13,"21":30,"23":6,"24":16,"25":1,"46":1}
+}

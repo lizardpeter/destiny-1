@@ -1,176 +1,162 @@
-# Current Status — 2026-09-03
+# Destiny 1 Reversal — Current Status
 
+Updated: 2026-09-03
 
 ## Canonical storage
 
-- Durable source of truth: private GitHub repository `lizardpeter/destiny-1`.
-- Runtime working mirror: `/mnt/data/Destiny1_Reversal/`.
-- Never commit raw Destiny package bytes or proprietary `oo2core_*` binaries.
-- Commit confirmed docs/specs/tools/tests/lightweight evidence after each material finding.
+- Durable source of truth: private GitHub repo `lizardpeter/destiny-1`.
+- Runtime analysis mirror: `/mnt/data/Destiny1_Reversal/`.
+- Raw Destiny `.pkg` files, proprietary `oo2core_*` binaries, compiled bridge binaries and other proprietary/native runtime dependencies are never committed.
+- Confirmed specs, tools, tests and lightweight evidence are committed after material findings.
 
 ## Executive state
 
-The project has crossed the main payload barrier: **D1 ROI Oodle 3 decompression is working on real PS4 and Xbox One Tiger blocks** using the user's Oodle 3 DLL and the project-local experimental Linux bridge. We can now reconstruct logical entries and have successfully exported all 30 Texture2D assets in the canonical PS4 sample to visually validated DDS/PNG previews. Vertex/index topology proofs and native PS4 shader parsing are also working.
+The package/container and compression barriers are crossed. Real final-era D1 PS4 and Xbox One Tiger v24 packages are parsed; Oodle 3 decompression works; logical entries reconstruct; PS4 textures export; vertex/index geometry exports; Xbox entity-model metadata is decoded; and material-to-native-shader register binding is now proven.
 
-## Real corpus acquired
+The active frontier is no longer archive extraction. It is **complete semantic asset assembly**: model/material selection, platform texture layout, skeleton/skin binding, and animation clips.
 
-### Canonical PS4 sample
-- `ps4_arch_cabal_005b_1.pkg`
-- PS4, D1 ROI Tiger v24, package `0x005B`, patch 1
+## Real corpus
+
+### PS4 canonical sample
+
+`ps4_arch_cabal_005b_1.pkg`
+
+- PS4 / Tiger v24 / package `0x005B` / patch 1
 - 89,044,992 bytes
 - SHA-256 `d44f2dcbaef32743da9657e38691bcd91372fd9550e96ea3d99a9ce9440c24e0`
 - 667 entries / 626 blocks
-- all 626 blocks resident in patch 1, compressed, and stored-payload SHA-1 verified
+- all blocks resident and stored-payload SHA-1 verified
+- 30/30 Texture2D assets exported through real Oodle + reference-chain + GCN deswizzle path
+- useful renderer/material corpus but no resident entity-model/skeleton resource in the eight `0x80800861` EntityResource tags
 
 ### Xbox One secondary corpus
-- `xboxone_arch_cabal_0059_1.pkg`
-- Xbox One, D1 ROI Tiger v24, package `0x0059`, patch 1
+
+`xboxone_arch_cabal_0059_1.pkg`
+
+- Xbox One / Tiger v24 / package `0x0059` / patch 1
 - 119,173,120 bytes
 - SHA-256 `8836546ecbbbf6ba31fd50035a180c80c7bcb6407780f4b61be7a8217d24fde8`
 - 8,111 entries / 2,228 block records
-- 796 resident patch-1 blocks: **796/796 SHA-1 verified**
-- 1,432 block records point to missing sibling `xboxone_arch_cabal_0059_0.pkg`
-- Not the semantic counterpart of PS4 `005B`; retained as a high-value independent Cabal/GPU/resource corpus.
+- 796 resident patch-1 blocks: 796/796 SHA-1 verified
+- 1,432 records belong to missing patch 0
+- 16 resident entity models -> 23 meshes / 284 parts
+- 11 resident EntityResource model parents
+- 411 resident material tags
+- 27 resident inline-DXBC pixel shaders
+- 276 resident vector/constant containers
+- 22 animation clips exist, but all require patch 0
 
-## Oodle 3 decompression — WORKING
+## Oodle 3
 
-User-supplied validation runtime:
-- `oo2core_3_win64.dll`
-- size 894,752 bytes
-- SHA-256 `682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62`
-- PE32+ x86-64; exports `OodleLZ_Decompress`
+Working with user-supplied `oo2core_3_win64.dll` via the project experimental Linux PE bridge. The current runtime DLL hash is recorded in `notes/OODLE_RUNTIME.md`; the DLL itself is not committed.
 
-Project components:
-- `tools/d1_oodle_probe.py`
-- `tools/linoodle_min.cpp`
-- `tools/build_linoodle_min.sh`
-- `tools/runtime/linux-x86_64/liblinoodle3_min.so`
+Representative validation:
 
-The custom Linux bridge is **experimental** and currently runs with `LINOODLE_SKIP_DLLMAIN=1` because this DLL's Microsoft CRT attach path crashes under the minimal Windows compatibility shim. Direct decoder invocation after PE map/relocation/import resolution succeeds.
+- PS4: 12/12 compressed blocks -> exact `0x40000` logical bytes.
+- Xbox resident patch 1: 12/12 -> exact `0x40000`.
 
-Validation:
-- PS4: 12/12 representative blocks → exactly `0x40000` decompressed bytes.
-- Xbox resident patch 1: 12/12 representative blocks → exactly `0x40000` bytes.
-- decoded outputs contain coherent Tiger structures and have driven successful asset extraction.
+## Package / resource layer
 
-Evidence:
-- `evidence/decompression/ps4_blocks_12.json`
-- `evidence/decompression/xbox_blocks_12.json`
-- `notes/OODLE_RUNTIME.md`
+Working:
 
-## Package layer solved / verified
-
-- Tiger v24 header layout and little-endian PS4/Xbox parsing.
-- 16-byte FileEntry bit packing.
-- 32-byte BlockEntry layout.
-- 68-byte NamedTagEntry source layout.
-- table SHA-1 semantics.
-- per-block stored-payload SHA-1 semantics.
-- patch-family block ownership via `BlockEntry.patch_id`.
+- Tiger v24 header, FileEntry and BlockEntry parsing.
+- table SHA-1 and stored-block SHA-1 verification.
+- patch-family ownership and `.pkg.bin` path handling.
 - D1 TagHash construction/decomposition.
-- zero named-tag table behavior.
-- `header_signature_offset` points to a dense 256-byte region on both real platforms; cryptographic algorithm/key still unresolved.
+- generic decompressed entry reader.
+- graph/reference analysis and cross-package comparison.
+- `entry_b[23:16]` preserved across every observed local edge: PS4 209/209; Xbox 3,171/3,171.
 
-## Cross-platform resource graph results
+## GPU/resource layer
 
-`entry_b[23:16]` is preserved across **every observed local reference edge**:
-- PS4: 209/209
-- Xbox One: 3,171/3,171
+### Vertex / index
 
-Strongly established relationships:
-- `32:4 -> 1:4` VertexBuffer header/data
-- `32:6 -> 1:6` IndexBuffer header/data
-- `32:1` Texture2D header with direct and two-hop payload modes
-- two-hop texture mode: `32:1 -> 65:1 -> 5:1`
-- `32:2 -> 1:2` TextureCube header/data
-- `32:16 -> 1:16` TextureSampler header/data
-- `32:8 -> 1:8` PixelShader header/data
-- `32:7 -> 1:7` fixed 16-byte GPU resource header/data family
-- `0:20` WwiseBank
-- `8:21` WwiseStream
-- `16:0` structured Tag
+- Vertex header `0x0C`; PS4 marker `BEEFCACE`, Xbox `BEEFDEAD`.
+- Index header `0x18`; index width and payload size validated.
+- real topology proof GLBs exist.
+- Xbox metadata-driven entity-model GLB export exists.
 
-## GPU resource payload results
+### PS4 textures
 
-See `spec/D1_GPU_RESOURCES.md` for the detailed field map.
+- Texture2D header `0x3C`.
+- BC1/BC3/BC4/BC5 validated visually.
+- 30/30 canonical textures exported.
 
-### VertexBuffer
-- header = `0x0C`.
-- PS4 marker `0xBEEFCACE` (11/11).
-- Xbox marker `0xBEEFDEAD` (144/144 currently decoded).
-- PS4 header data-size matches referenced payload 11/11.
-- all PS4 payloads are exactly divisible by stride.
+### Xbox textures
 
-### IndexBuffer
-- header = `0x18`.
-- marker `0xDEADBEEF` on PS4 and decoded Xbox sample.
-- PS4 data-size matches payload 9/9.
-- decoded u16/u32 index ranges match candidate position-buffer vertex counts for six resource groups.
+- header `0x44` with DXGI format/tile mode, dimensions and three flag words solved.
+- first model's actual bound textures are known, but use Durango tile mode 14.
+- active parallel target: replace/bridge the Windows XG address-computer dependency so tile-mode-14 textures can be detiled and attached to the metadata-driven model.
 
-Geometry proof GLBs are under `exports/geometry/`. They preserve real topology and signed-normalized position data but **do not yet contain final object/world scale, placement, materials or complete vertex semantics**.
+### PS4 shaders
 
-### Texture2D — PS4
-- exact ROI header = `0x3C`.
-- all 30 canonical Texture2D headers reconstructed.
-- all 30 exported through the actual reference chain + Oodle + GCN deswizzle pipeline.
-- successful formats: BC1, BC3, BC4, BC5.
-- DDS and PNG previews are under `exports/textures/all_ps4/`.
-- manifest: `evidence/decoded/ps4_texture_manifest.json`.
-- contact sheet: `exports/textures/ps4_005b_contact_sheet.jpg`.
+- native GCN framing and `OrbShdr` footer parsed.
+- PixelShader packed header word solved: low 24 bits payload size; high 8 bits input-usage-slot count.
 
-### Texture2D/Cube — Xbox One
-- exact observed ROI header = `0x44`.
-- previously unknown `0x38..0x43` tail is now solved as three u32 flag words: `flags1`, `flags2`, `flags3`.
-- resident decoded examples validate `BEEFCAFE` magic, dimensions, DXGI format and tile mode.
-- full Xbox texture export still needs Durango detiling implementation and, for many entries, missing patch 0.
+## Entity/model layer
 
-### Subtype 7
-Canonical PS4 header is 16 bytes. Across all 122/122 local pairs:
+D1 ROI `0x80800861` is treated as the EntityResource outer-container class by the real ROI entity consumer. ROI `s_pattern_component` is `0x80800715`; do not reuse the older TTK mapping.
 
-`payload_size == u32(header + 0x08) * 16`
+Xbox real-byte results:
 
-All headers share marker `0x20077FAC`; word `0x04` is `0x00100000` in this corpus. 88 `s_technique` tags reference a subtype-7 header at exact tag offset `0x32C`.
+- model discriminator `0x80801A80`.
+- model parent class `0x80801A9C`.
+- Xbox embedded EntityModel field in parent at `+0x1C4`.
+- 16 resident model tags / 23 meshes / 284 parts.
+- model `808B3A16` is fully resident and is the first clean end-to-end model target.
 
-QuickTag maps subtype 7 to ConstantBuffer in later Tiger generations but intentionally comments the D1 mapping out. The new binary evidence makes a D1 constant-buffer role **strongly supported**, but the project still uses neutral `GpuSubtype7` terminology pending D1-specific semantic confirmation.
+## Materials / shader binding
 
-### PS4 PixelShader
-Seven header/data pairs are fully reconstructed.
+See `spec/D1_MATERIALS_SHADERS.md`.
 
-Tiger header word 0 is solved:
+Confirmed:
 
-`(num_input_usage_slots << 24) | shader_payload_size`
+- PS4 ROI material class is Charm's `SMaterial_ROI` at numeric `0x80801AD7`.
+- Xbox material family observed as `0x80801C32`.
+- Xbox `STextureTag.TextureIndex` is the actual DXBC `t#` register: 11/11 exact.
+- material PS sampler count equals shader sampler count: 11/11; registers contiguous `s1..sN`.
+- Xbox vector container `0x80801AA5` has an exact `0x30 + N*16` layout across 276/276 resident examples.
+- material-provided pixel constants equal DXBC `b0` vec4 count: 11/11.
+- PS4 subtype 7 is therefore semantically confirmed cross-platform as material constant/vector-buffer data; original Bungie type name remains unclaimed.
 
-Validation:
-- low 24 bits = referenced shader payload byte size, 7/7.
-- high 8 bits = native PS4 `OrbShdr` footer's `num_input_usage_slots`, 7/7.
+Still unresolved:
 
-Each shader payload is:
-- u32 `0xBEEB03FF`
-- u32 qword count
-- `qword_count * 8` bytes GCN region
-- 28-byte `OrbShdr` ShaderBinaryInfo footer
+- sampler record tail fields.
+- shared sampler/vertex-shader package `0x156` dependencies.
+- non-material cbuffers such as `b12` / `b13`.
+- portable PBR semantic mapping for texture slots.
 
-All seven footer type fields independently identify pixel shader. Evidence: `evidence/decoded/ps4_pixel_shader_payloads.json`.
+## Skeleton / animation
 
-## Structured tags
+See `spec/D1_SKELETONS_ANIMATIONS.md`.
 
-Canonical PS4 `005B` contains 146 `16:0` tags:
-- 136 × `0x80801AD7` = ROI `s_technique`
-- 1 × `0x80801BD9` = ROI `s_expensive_light`
-- `0x80800861` (8) and `0x80801AF2` (1) remain unresolved for ROI
+Skeleton parser is implemented for D1 source-correlated layout:
 
-A raw aligned local-TagHash scan across the 136 technique payloads found:
-- 88 subtype-7 header references, all at byte offset `0x32C`.
-- six Texture2D-header references at offsets `0x4A4` / `0x4AC` in a small subset of techniques.
+- skeleton discriminator `0x808006BD`.
+- skeleton info `0x8080049A`.
+- node hierarchy, default object transforms, inverse transforms and index maps decoded by the parser.
+- current real corpus has no resident skeleton resource to binary-validate this layout yet.
 
-Evidence: `evidence/decoded/ps4_technique_local_ref_scan.json`.
+Animation:
 
-## Current highest-value missing data / work
+- final ROI `s_animation_clip = 0x808005A1`.
+- Xbox package contains 22 clips, all patch-0-backed.
+- animation track compression/layout remains a genuine active RE target.
 
-1. **Xbox `xboxone_arch_cabal_0059_0.pkg`** — required for the 1,432 patch-0 blocks referenced by the Xbox patch-1 package.
-2. Decode D1 model/static-map structured tags so buffer groups gain object transforms, LODs, part/material assignments and final GLB semantics.
-3. Implement Xbox One Durango detiling and bulk texture export.
-4. Continue D1 technique schema reversal and bind subtype-7 buffers, shaders and textures semantically.
-5. Parse/disassemble PS4 GCN shader resource usage using the now-confirmed `OrbShdr` metadata.
-6. Locate the actual Xbox semantic counterpart of PS4 `005B` using structural fingerprints rather than package-number assumptions.
-7. Expand from this Cabal package to map/entity/model packages to validate complete static and dynamic model export.
+Historical Destiny extractor source independently corroborates the node/transform shape and includes weapon-mechanism hash names (`GunBase`, `Trigger`, `Magazine`, etc.); retained as a source lead, not D1 binary fact.
+
+## Current highest-value inputs
+
+1. `xboxone_arch_cabal_0059_0.pkg` — unlocks the 22 known animation clips and likely skeleton resources.
+2. A PS4 model/entity/weapon package — enables canonical full textured/skinned PS4 validation.
+3. Xbox shared package ID `0x156` — contains observed shared sampler and likely vertex-shader dependencies.
+
+## Immediate engineering/reversal targets
+
+1. Finish Xbox Durango tile-mode-14 detiling and texture model `808B3A16`.
+2. Resolve sampler descriptors and shared vertex-shader dependencies.
+3. Trace non-`b0` constant buffers.
+4. Validate the D1 skeleton parser against real resident bytes as soon as an appropriate package is acquired.
+5. Reverse `s_animation_clip` once patch-0 clip bytes are available.
+6. Build a global TagHash/class/dependency index over acquired package sets so weapon extraction becomes recursive and package-independent.
+7. Produce a one-command loss-preserving asset export path: model + mesh parts + materials + textures + skin + animations + raw provenance metadata.
