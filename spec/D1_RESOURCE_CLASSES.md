@@ -31,7 +31,7 @@ A numeric type/subtype is not given an official semantic name unless the evidenc
 | 1 | 4 | VertexBuffer data | CONFIRMED_CROSS_SOURCE | sizes/strides validated |
 | 32 | 6 | IndexBuffer header | CONFIRMED_CROSS_SOURCE | PS4 + Xbox decoded headers |
 | 1 | 6 | IndexBuffer data | CONFIRMED_CROSS_SOURCE | u16/u32 topology validated |
-| 32 | 7 | `GpuSubtype7` header; likely D1 ConstantBuffer | STRONGLY_SUPPORTED | 122 PS4 headers; payload size = unit_count×16; 88 technique refs |
+| 32 | 7 | `GpuSubtype7` header; likely D1 ConstantBuffer | STRONGLY_SUPPORTED | 122 PS4 headers; payload size = unit_count×16; 88 ROI material PSVector4Container refs |
 | 1 | 7 | `GpuSubtype7` data | STRONGLY_SUPPORTED | linked payload family |
 | 32 | 8 | PixelShader header | CONFIRMED_CROSS_SOURCE | 7 PS4 headers; packed size/input-slot field solved |
 | 1 | 8 | PixelShader native data | CONFIRMED_CROSS_SOURCE | GCN + OrbShdr parsed |
@@ -95,15 +95,15 @@ Do not silently rename D1 subtype 7 to ConstantBuffer yet. However, the case is 
 - 122/122 PS4 headers are exactly 16 bytes.
 - 122/122 linked payloads satisfy `payload_size = header.unit_count * 16`.
 - all headers use marker `0x20077FAC` in the canonical sample.
-- 88 ROI `s_technique` tags reference a subtype-7 header at exact offset `0x32C`.
+- 88 ROI PS4 material tags (`0x80801AD7 = SMaterial_ROI`) reference a subtype-7 header at exact offset `0x32C`, which Charm identifies as `PSVector4Container`.
 - later Tiger generations map subtype 7 to ConstantBuffer, while QuickTag deliberately leaves the D1 mapping commented.
 
-Canonical project term remains `GpuSubtype7` until a D1-specific semantic consumer or shader-resource binding confirms it.
+Canonical project term remains `GpuSubtype7` until the exact official D1 semantic name is confirmed.
 
 ## Next validations
 
-1. Decode model/entity/static-map tags that bind GPU resources to actual objects, parts, LODs, transforms and materials.
+1. Continue model/entity/static-map tags that bind GPU resources to actual objects, parts, LODs, transforms and materials; metadata-driven entity-model export is now working on Xbox.
 2. Resolve official names/semantics for type `65:1` and `5:1` across a wider texture corpus.
-3. Promote or reject D1 subtype 7 as ConstantBuffer using shader/technique binding semantics.
+3. Promote the exact semantic name for D1 subtype 7 using material/shader binding semantics; `PSVector4Container` usage is now source-correlated.
 4. Validate VertexShader and additional shader classes from packages where they occur.
 5. Implement Xbox Durango detiling and validate full texture export.
