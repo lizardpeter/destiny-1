@@ -36,6 +36,17 @@ jobs:
           git clone --depth 1 https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
           rm -rf tiger-animation-parser/.git
 
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download parser dependency wheels
+        run: |
+          set -euo pipefail
+          mkdir -p wheelhouse
+          python -m pip download --only-binary=:all: -d wheelhouse pyglm pygltflib
+
       - name: Upload verified runtime bundle
         uses: actions/upload-artifact@v4
         with:
@@ -49,5 +60,13 @@ jobs:
         with:
           name: tiger-animation-parser-source
           path: tiger-animation-parser/
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload parser wheelhouse
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiger-animation-parser-wheelhouse
+          path: wheelhouse/
           retention-days: 1
           if-no-files-found: error
