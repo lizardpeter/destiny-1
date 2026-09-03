@@ -1,0 +1,68 @@
+{
+  "package": "xboxone_arch_cabal_0059_1.pkg",
+  "platform": "XboxOne",
+  "class_hash": "80801AB5",
+  "model": {
+    "tag_hash": "808B3A16",
+    "entry_index": 6678,
+    "mesh_count": 2,
+    "meshes": [
+      {
+        "model_scale": [1.1217105388641357,1.1217105388641357,1.1206140518188477,0.0],
+        "model_translation": [0.375,0.25,0.75,1.1217105388641357],
+        "texcoord_scale": [7.431646823883057,7.431646823883057],
+        "texcoord_translation": [-0.08248376846313477,6.286050796508789],
+        "vertices1": "808B3A19",
+        "vertices2": "808B3A1A",
+        "indices": "808B3A1B",
+        "part_count": 7,
+        "stage_part_offsets": [0,1,1,1,2,2,2,2,4,4,6,6,6,7,7,7,7,7,7,7],
+        "stage_code": "///-////////-//////",
+        "parts": [
+          {"material":"808B3A25","variant_shader_index":-1,"primitive_type":3,"index_offset":0,"index_count":612,"lod":7},
+          {"material":"80AAD3E7","variant_shader_index":-1,"primitive_type":3,"index_offset":0,"index_count":612,"lod":7},
+          {"material":"808B3A26","variant_shader_index":-1,"primitive_type":3,"index_offset":612,"index_count":126,"lod":2},
+          {"material":"808B3A27","variant_shader_index":-1,"primitive_type":3,"index_offset":738,"index_count":12,"lod":2},
+          {"material":"808B3A28","variant_shader_index":-1,"primitive_type":3,"index_offset":612,"index_count":126,"lod":2},
+          {"material":"80AAD3EE","variant_shader_index":-1,"primitive_type":3,"index_offset":738,"index_count":12,"lod":2},
+          {"material":"80AAD3E9","variant_shader_index":-1,"primitive_type":3,"index_offset":0,"index_count":612,"lod":7}
+        ],
+        "resources": {
+          "vertices1": {"tag_hash":"808B3A19","present":true,"entry_index":6681,"type":32,"subtype":4,"size":12,"reference":"808B3A1F","available":true,"payload_entry_index":6687,"payload_size":1944,"payload_available":true},
+          "vertices2": {"tag_hash":"808B3A1A","present":true,"entry_index":6682,"type":32,"subtype":4,"size":12,"reference":"808B3A20","available":true,"payload_entry_index":6688,"payload_size":2916,"payload_available":true},
+          "old_weights": {"tag_hash":"FFFFFFFF","present":false},
+          "indices": {"tag_hash":"808B3A1B","present":true,"entry_index":6683,"type":32,"subtype":6,"size":24,"reference":"808B3A21","available":true,"payload_entry_index":6689,"payload_size":1500,"payload_available":true}
+        }
+      },
+      {
+        "model_scale": [1.1217105388641357,1.1217105388641357,1.1206140518188477,0.0],
+        "model_translation": [0.375,0.25,0.75,1.1217105388641357],
+        "texcoord_scale": [7.431646823883057,7.431646823883057],
+        "texcoord_translation": [-0.08248376846313477,6.286050796508789],
+        "vertices1": "808B3A1C",
+        "vertices2": "808B3A1D",
+        "indices": "808B3A1E",
+        "part_count": 9,
+        "stage_part_offsets": [0,3,3,3,6,6,6,6,6,6,6,6,6,9,9,9,9,9,9,9],
+        "stage_code": "000-00000000-000000",
+        "parts": [
+          {"material":"808B3A29","variant_shader_index":-1,"primitive_type":3,"index_offset":0,"index_count":2049,"lod":1},
+          {"material":"808B3B6C","variant_shader_index":-1,"primitive_type":3,"index_offset":2049,"index_count":84,"lod":1},
+          {"material":"808B3A2A","variant_shader_index":-1,"primitive_type":3,"index_offset":2133,"index_count":18,"lod":1},
+          {"material":"80AAD3E7","variant_shader_index":-1,"primitive_type":3,"index_offset":0,"index_count":2049,"lod":1},
+          {"material":"80AAD3E7","variant_shader_index":-1,"primitive_type":3,"index_offset":2049,"index_count":84,"lod":1},
+          {"material":"80AAD3E7","variant_shader_index":-1,"primitive_type":3,"index_offset":2133,"index_count":18,"lod":1},
+          {"material":"80AAD3E9","variant_shader_index":-1,"primitive_type":3,"index_offset":0,"index_count":2049,"lod":1},
+          {"material":"80AAD3E9","variant_shader_index":-1,"primitive_type":3,"index_offset":2049,"index_count":84,"lod":1},
+          {"material":"80AAD3E9","variant_shader_index":-1,"primitive_type":3,"index_offset":2133,"index_count":18,"lod":1}
+        ],
+        "resources": {
+          "vertices1": {"tag_hash":"808B3A1C","present":true,"entry_index":6684,"type":32,"subtype":4,"size":12,"reference":"808B3A22","available":true,"payload_entry_index":6690,"payload_size":7288,"payload_available":true},
+          "vertices2": {"tag_hash":"808B3A1D","present":true,"entry_index":6685,"type":32,"subtype":4,"size":12,"reference":"808B3A23","available":true,"payload_entry_index":6691,"payload_size":18220,"payload_available":true},
+          "old_weights": {"tag_hash":"FFFFFFFF","present":false},
+          "indices": {"tag_hash":"808B3A1E","present":true,"entry_index":6686,"type":32,"subtype":6,"size":24,"reference":"808B3A24","available":true,"payload_entry_index":6692,"payload_size":4302,"payload_available":true}
+        }
+      }
+    ]
+  }
+}
