@@ -1,0 +1,25 @@
+{
+  "package": "xboxone_arch_cabal_0059_1.pkg",
+  "platform": "XboxOne",
+  "material_class_hash": "80801C32",
+  "total_entries": 805,
+  "resident_entries": 411,
+  "dominant_resident_sizes": {
+    "1200": 236,
+    "1216": 64,
+    "2096": 27,
+    "1104": 19,
+    "1136": 18,
+    "1248": 18
+  },
+  "reference_offsets": [
+    {"offset": 680, "offset_hex": "0x2A8", "matches": 396, "target_type": 16, "target_subtype": 0, "target_class_hash": "80801B7C", "observation": "targets contain literal DXBC shader containers"},
+    {"offset": 812, "offset_hex": "0x32C", "matches": 232, "target_type": 16, "target_subtype": 0, "target_class_hash": "80801AA5", "observation": "targets are packed float/vector containers"},
+    {"offset": 1028, "offset_hex": "0x404", "matches": 370, "target_type_counts": {"32:1": 370}},
+    {"offset": 1036, "offset_hex": "0x40C", "matches": 347, "target_type_counts": {"32:1": 345, "32:2": 2}},
+    {"offset": 1044, "offset_hex": "0x414", "matches": 268, "target_type_counts": {"32:1": 266, "32:2": 2}},
+    {"offset": 1052, "offset_hex": "0x41C", "matches": 92, "target_type_counts": {"32:1": 86, "32:2": 6}},
+    {"offset": 1060, "offset_hex": "0x424", "matches": 3, "target_type_counts": {"32:1": 3}},
+    {"offset": 1068, "offset_hex": "0x42C", "matches": 3, "target_type_counts": {"32:1": 3}}
+  ]
+}
