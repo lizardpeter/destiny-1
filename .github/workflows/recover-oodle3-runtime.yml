@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - '.github/workflows/recover-oodle3-runtime.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
