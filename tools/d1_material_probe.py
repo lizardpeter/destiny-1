@@ -21,7 +21,7 @@ def local_refs(r,b,by):
         v=u32(b,o)
         t=by.get(v)
         if t:
-            out.append({'offset':o,'tag_hash':t['tag_hash'],'entry_index':t['index'],'type':t['type'],'subtype':t['subtype'],'class_hash':t['reference'],'size':t['file_size'],'available':r.available(t['index'])})
+            out.append({'offset':o,'tag_hash':t['tag_hash'],'entry_index':t['index'],'type':t['type'],'subtype':t['subtype'],'reference':t['reference'],'size':t['file_size'],'available':r.available(t['index'])})
     return out
 
 def summarize(r,class_hash):
@@ -36,13 +36,13 @@ def summarize(r,class_hash):
         b=r.entry(e['index'])
         refs=local_refs(r,b,by)
         for x in refs:
-            key=(x['type'],x['subtype'],x['class_hash'],x['size'])
+            key=(x['type'],x['subtype'],x['reference'],x['size'])
             offsets[x['offset']][key]+=1
         examples[e['tag_hash']]={'entry_index':e['index'],'size':len(b),'references':refs}
     common=[]
     for off,c in sorted(offsets.items(),key=lambda kv:(-sum(kv[1].values()),kv[0])):
         total=sum(c.values())
-        common.append({'offset':off,'count':total,'targets':[{'type':k[0],'subtype':k[1],'class_hash':k[2],'size':k[3],'count':n} for k,n in c.most_common()]})
+        common.append({'offset':off,'count':total,'targets':[{'type':k[0],'subtype':k[1],'reference':k[2],'size':k[3],'count':n} for k,n in c.most_common()]})
     return {'class_hash':cls,'total_entries':len(allm),'resident_entries':len(resident),'resident_size_counts':dict(sorted(size_counts.items())),'common_reference_offsets':common,'materials':examples}
 
 def main():
