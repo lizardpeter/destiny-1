@@ -1,0 +1,30 @@
+name: Recover verified Oodle 3 runtime
+
+on:
+  push:
+    paths:
+      - '.github/workflows/recover-oodle3-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download public Oodle 2.3 runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            --output oo2core_3_win64.dll
+          test "$(stat -c '%s' oo2core_3_win64.dll)" = '894752'
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Upload verified runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-oodle3-runtime
+          path: oo2core_3_win64.dll
+          retention-days: 1
+          if-no-files-found: error
