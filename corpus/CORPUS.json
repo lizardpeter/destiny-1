@@ -1,0 +1,34 @@
+{
+  "project": "Destiny 1 Reversal",
+  "updated_utc": "2026-09-03T17:38:00Z",
+  "samples": [
+    {
+      "id": "ps4_arch_cabal_005b_1",
+      "status": "ANALYZED",
+      "platform": "PS4",
+      "package_id": "0x005B",
+      "patch_id": 1,
+      "source_name": "ps4_arch_cabal_005b_1.pkg",
+      "runtime_path": "/mnt/data/ps4_arch_cabal_005b_1.pkg.bin",
+      "size_bytes": 89044992,
+      "sha256": "d44f2dcbaef32743da9657e38691bcd91372fd9550e96ea3d99a9ce9440c24e0",
+      "probe": "evidence/packages/ps4_arch_cabal_005b_1.probe.json"
+    },
+    {
+      "id": "xboxone_arch_cabal_0059_1",
+      "status": "ANALYZED_PARTIAL_PATCH_FAMILY",
+      "platform": "XboxOne",
+      "package_id": "0x0059",
+      "patch_id": 1,
+      "source_name": "xboxone_arch_cabal_0059_1.pkg",
+      "size_bytes": 119173120,
+      "sha256": "8836546ecbbbf6ba31fd50035a180c80c7bcb6407780f4b61be7a8217d24fde8",
+      "entries": 8111,
+      "block_records": 2228,
+      "resident_patch1_blocks": 796,
+      "missing_patch0_blocks": 1432,
+      "probe": "evidence/packages/xboxone_arch_cabal_0059_1.probe.json",
+      "note": "Patch 1 is not self-contained; 1432 referenced blocks require xboxone_arch_cabal_0059_0.pkg."
+    }
+  ]
+}
