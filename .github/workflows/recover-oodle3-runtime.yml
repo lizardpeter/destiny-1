@@ -12,25 +12,22 @@ jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve PS4 package 0157
+      - name: Fetch PS4 global package 0157 pair
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 \
-            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
-            --output packages.txt
-          python - <<'PY'
-          import re
-          text=open('packages.txt','r',encoding='utf-8',errors='replace').read()
-          # Package IDs appear as the four hex digits immediately before patch suffix _0/_1.pkg.
-          matches=sorted(set(re.findall(r'[^\s"\'<>]*_0157_[01]\.pkg[^\s"\'<>]*', text, flags=re.I)))
-          open('package_0157_matches.txt','w').write('\n'.join(matches)+'\n')
-          print('\n'.join(matches) if matches else 'NO_MATCH')
-          PY
+          mkdir -p pkg0157
+          for f in ps4_globals_0157_0.pkg ps4_globals_0157_1.pkg; do
+            curl --fail --location --retry 3 \
+              "https://crypt.cohae.dev/destiny/ps4/packages/latest/$f" \
+              --output "pkg0157/$f"
+            stat -c '%n %s bytes' "pkg0157/$f"
+            sha256sum "pkg0157/$f"
+          done
 
-      - name: Upload package mapping
+      - name: Upload package pair
         uses: actions/upload-artifact@v4
         with:
-          name: d1-ps4-package-0157-mapping
-          path: package_0157_matches.txt
+          name: d1-ps4-globals-0157
+          path: pkg0157/
           retention-days: 1
           if-no-files-found: error
