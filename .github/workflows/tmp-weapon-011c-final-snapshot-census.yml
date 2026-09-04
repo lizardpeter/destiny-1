@@ -1,16 +1,17 @@
-name: Temporary census final weapon 011c snapshot
+name: Temporary diagnose weapon 011c geometry
 
 on:
   push:
     paths:
       - '.github/workflows/tmp-weapon-011c-final-snapshot-census.yml'
+      - 'tools/d1_weapon_geometry_diagnostic.py'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  census:
+  geometry:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,102 +35,116 @@ jobs:
             --target ps4_gear_weapons_011c_3.pkg \
             --target ps4_gear_weapons_011c_5.pkg \
             --out recovered --manifest reports/011c_extract.json
-      - name: Compare all model entries across physical snapshots
+
+      - name: Diagnose target entity and model in patch 0 and patch 5 snapshots
         run: |
           set -euo pipefail
-          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_package_family_probe.py \
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_weapon_geometry_diagnostic.py \
             recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime \
-            --reference 80801AB5 --include-payload-hashes -o reports/model_family_census.json
-      - name: Decode model and ownership census from every snapshot
+            -o reports/weapon_geometry_patch0.json
+          python tools/d1_weapon_geometry_diagnostic.py \
+            recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
+            -o reports/weapon_geometry_patch5.json
+          python tools/d1_entity_resource_probe.py \
+            recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
+            -o reports/entity_resources_patch5.json
+          python tools/d1_entity_model_probe.py \
+            recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
+            --tag-hash 80A39E12 -o reports/model_80A39E12_patch5.json
+
+      - name: Summarize geometry evidence
         run: |
           set -euo pipefail
-          LINOODLE_SKIP_DLLMAIN=1 python - <<'PY'
-          import json, struct, hashlib
-          from pathlib import Path
-          import sys
-          sys.path.insert(0,'tools')
-          from d1_entry_extract import EntryReader
-          from d1_entity_model_probe import parse_model
-
-          members=[0,1,2,3,5]
-          out={'members':[]}
-          for patch in members:
-              p=Path(f'recovered/ps4_gear_weapons_011c_{patch}.pkg')
-              r=EntryReader(p,Path('runtime'))
-              by={e['tag_hash'].upper():e for e in r.entries}
-              model_entries=[e for e in r.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80801AB5']
-              entity_entries=[e for e in r.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734']
-              resource_entries=[e for e in r.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800861']
-              model_hashes={e['tag_hash'].upper() for e in model_entries}
-              resource_hashes={e['tag_hash'].upper() for e in resource_entries}
-              rows=[]
-              for e in model_entries:
-                  row={'tag_hash':e['tag_hash'],'entry_index':e['index'],'size':e['file_size'],'available':r.available(e['index'])}
-                  if row['available']:
-                      try:
-                          b=r.entry(e['index'])
-                          row['sha256']=hashlib.sha256(b).hexdigest()
-                          m=parse_model(b,r.h['platform'])
-                          row['mesh_count']=m['mesh_count']
-                          row['meshes']=[]
-                          for mi,x in enumerate(m['meshes']):
-                              rr={'mesh_index':mi,'vertices1':x.get('vertices1'),'vertices2':x.get('vertices2'),'indices':x.get('indices'),'part_count':len(x.get('parts',[]))}
-                              rr['parts']=[{'offset':q.get('index_offset'),'count':q.get('index_count'),'lod':q.get('lod'),'material':q.get('material'),'variant_shader_index':q.get('variant_shader_index'),'primitive_type':q.get('primitive_type')} for q in x.get('parts',[])]
-                              row['meshes'].append(rr)
-                      except Exception as ex:
-                          row['error']=repr(ex)
-                  rows.append(row)
-
-              def literal_refs(e, candidates):
-                  if not r.available(e['index']): return {'available':False}
-                  try: b=r.entry(e['index'])
-                  except Exception as ex: return {'available':True,'error':repr(ex)}
-                  hits=[]
-                  for h in candidates:
-                      needle=struct.pack('<I',int(h,16))
-                      pos=0
-                      while True:
-                          k=b.find(needle,pos)
-                          if k<0: break
-                          hits.append({'tag_hash':h,'offset':k})
-                          pos=k+1
-                  return {'available':True,'sha256':hashlib.sha256(b).hexdigest(),'hits':hits}
-
-              entities=[]
-              for e in entity_entries:
-                  rr={'tag_hash':e['tag_hash'],'entry_index':e['index'],'size':e['file_size']}
-                  rr.update(literal_refs(e,model_hashes|resource_hashes))
-                  entities.append(rr)
-              resources=[]
-              for e in resource_entries:
-                  rr={'tag_hash':e['tag_hash'],'entry_index':e['index'],'size':e['file_size']}
-                  rr.update(literal_refs(e,model_hashes))
-                  resources.append(rr)
-              out['members'].append({'patch':patch,'header':r.h,'entry_count':len(r.entries),'block_count':len(r.blocks),'model_count':len(model_entries),'entity_count':len(entity_entries),'resource_count':len(resource_entries),'models':rows,'entities_with_model_or_resource_literals':[x for x in entities if x.get('hits')],'resources_with_model_literals':[x for x in resources if x.get('hits')]})
-
-          Path('reports/final_snapshot_model_assembly.json').write_text(json.dumps(out,indent=2)+'\n')
-          for m in out['members']:
-              ok=[x for x in m['models'] if x.get('mesh_count') is not None]
-              err=[x for x in m['models'] if x.get('error')]
-              print(f"PATCH {m['patch']}: entries={m['entry_count']} blocks={m['block_count']} models={m['model_count']} decoded={len(ok)} errors={len(err)}")
-              for x in ok:
-                  parts=sum(sum(1 for _ in q.get('parts',[])) for q in x.get('meshes',[]))
-                  print(' MODEL',x['tag_hash'],'size',x['size'],'meshes',x['mesh_count'],'parts',parts,'sha',x['sha256'][:16])
-              print(' entity links',len(m['entities_with_model_or_resource_literals']),'resource->model',len(m['resources_with_model_literals']))
-          PY
           python - <<'PY'
           import json
-          r=json.load(open('reports/final_snapshot_model_assembly.json'))
-          for m in r['members']:
-              print('\n=== PATCH',m['patch'],'===')
-              for x in m['resources_with_model_literals']:
-                  print('RESOURCE',x['tag_hash'],'hits',x['hits'])
-              for x in m['entities_with_model_or_resource_literals']:
-                  print('ENTITY',x['tag_hash'],'hits',x['hits'])
+          p0=json.load(open('reports/weapon_geometry_patch0.json'))
+          p5=json.load(open('reports/weapon_geometry_patch5.json'))
+          for name,r in [('patch0',p0),('patch5',p5)]:
+              print('\n===',name,'===')
+              e=r['entity']
+              print('entity',e['tag_hash'],'resources',e['unique_entity_resources'])
+              for x in e['resources']:
+                  print(' resource',x['tag_hash'],'role',x.get('semantic_role'),'model',x.get('embedded_model_tag_hash'))
+              m=r['model']
+              print('model',m['tag_hash'],'entry',m['entry_index'],'size',m['size'],'meshes',m['mesh_count'])
+              for q in m['meshes']:
+                  ps=q['position_stream']
+                  print(' mesh',q['mesh_index'],
+                        'vtx',ps['vertex_count'],
+                        'stride/type',ps['header'].get('stride'),ps['header'].get('vertex_type'),
+                        'secondary',q['secondary_stream']['header'].get('stride'),q['secondary_stream']['header'].get('vertex_type'),
+                        'fourth',ps['fourth_i16_minmax'],'unique',ps['fourth_i16_unique_count'],
+                        'tris',q['lod1_triangle_count_deduplicated_ranges'],
+                        'components',q['connected_component_count'])
+                  print('  bbox used',ps['decoded_bbox_lod1_used_tiger_model_space'])
+                  for i,c in enumerate(q['connected_components'][:12]):
+                      print('  component',i,'tris',c['triangle_count'],'verts',c['vertex_count'],'bbox',c['bbox_tiger_model_space'])
+          print('\n=== patch differences ===')
+          print('model size',p0['model']['size'],p5['model']['size'])
+          for a,b in zip(p0['model']['meshes'],p5['model']['meshes']):
+              print('mesh',a['mesh_index'],
+                    'pos payload',a['position_stream']['payload_tag'],b['position_stream']['payload_tag'],
+                    'vtx',a['position_stream']['vertex_count'],b['position_stream']['vertex_count'],
+                    'bbox_equal',a['position_stream']['decoded_bbox_lod1_used_tiger_model_space']==b['position_stream']['decoded_bbox_lod1_used_tiger_model_space'],
+                    'range_materials0',[x['materials'] for x in a['lod1_ranges']],
+                    'range_materials5',[x['materials'] for x in b['lod1_ranges']])
           PY
+
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-011c-final-snapshot-census
+          name: weapon-011c-geometry-diagnostic
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
+
+  native-oodle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified Windows Oodle runtime and 011c family
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force runtime,recovered,reports | Out-Null
+          curl.exe -L --fail --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          $h=(Get-FileHash runtime/oo2core_3_win64.dll -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62') { throw "Oodle hash mismatch: $h" }
+          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg --out recovered --manifest reports/011c_extract_windows.json
+
+      - name: Probe historically failing blocks with native Windows Oodle 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_oodle_probe import read_pkg_blocks,Oodle3,probe_one
+          pkg=Path('recovered/ps4_gear_weapons_011c_5.pkg').resolve()
+          h,blocks=read_pkg_blocks(pkg)
+          oodle=Oodle3(Path('runtime'))
+          out={'package':str(pkg),'platform':h['platform'],'package_patch_id':h['patch_id'],'results':[]}
+          for i in (245,299):
+              b=blocks[i]
+              row={'block_index':i,'metadata':b}
+              try:
+                  row['probe']=probe_one(pkg,blocks,i,oodle)
+                  row['success']=True
+              except Exception as ex:
+                  row['success']=False
+                  row['error']=repr(ex)
+              out['results'].append(row)
+              print(i,'success' if row['success'] else 'FAIL',row.get('error',''))
+          Path('reports/native_windows_oodle_blocks_245_299.json').write_text(json.dumps(out,indent=2)+'\n')
+          '@ | python -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-native-windows-oodle
           path: reports/
           retention-days: 2
           if-no-files-found: error
