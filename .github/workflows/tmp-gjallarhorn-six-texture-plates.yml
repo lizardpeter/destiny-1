@@ -1,0 +1,125 @@
+name: Temporary decode Gjallarhorn six texture plates
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-six-texture-plates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and package snapshots
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+      - name: Decode six exact plate headers with generation-safe fallback
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,re,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_texture_plate_probe import parse_plate
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          HEADER_CLASS='80801C3C'; PLATE_CLASS='80800147'
+          owners={
+            '80A743A6':'80A39C90',
+            '80A73BAB':'80A398B5',
+            '80A72202':'80A38D5D',
+            '80A7317B':'80A39407',
+            '80A73256':'80A3947C',
+            '80A73D13':'80A7E1B4',
+          }
+          def patchnum(p):
+            m=re.search(r'_(\d+)\.pkg$',p.name);return int(m.group(1)) if m else -1
+          families={
+            0x011C:sorted(Path('recovered').glob('ps4_gear_weapons_011c_*.pkg'),key=patchnum,reverse=True),
+            0x013F:sorted(Path('recovered').glob('ps4_investment_assets_013f_*.pkg'),key=patchnum,reverse=True),
+          }
+          rows=[]
+          for model,header_tag in owners.items():
+            pkg,idx=filehash_pkg_index(int(header_tag,16)); attempts=[]; chosen=None
+            for p in families[pkg]:
+              rec={'snapshot':p.name}
+              try:
+                r=EntryReader(p,Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(header_tag)
+                rec['present']=bool(e)
+                if not e: attempts.append(rec); continue
+                rec.update({'entry_index':e['index'],'type':e['type'],'subtype':e['subtype'],'reference':e['reference'].upper(),'size':e['file_size']})
+                if e['reference'].upper()!=HEADER_CLASS:
+                  rec['reject']=f'expected header class {HEADER_CLASS}';attempts.append(rec);continue
+                b=r.entry(e['index'])
+                if len(b)<0x30: raise ValueError(f'short header {len(b)}')
+                albedo=f'{struct.unpack_from("<I",b,0x24)[0]:08X}'
+                normal=f'{struct.unpack_from("<I",b,0x28)[0]:08X}'
+                gstack=f'{struct.unpack_from("<I",b,0x2c)[0]:08X}'
+                plates={}
+                valid=True
+                for role,pt in [('albedo',albedo),('normal',normal),('gstack',gstack)]:
+                  pe=by.get(pt)
+                  if not pe or pe['reference'].upper()!=PLATE_CLASS:
+                    rec.setdefault('plate_rejects',[]).append({'role':role,'tag':pt,'entry':pe});valid=False;break
+                  pr=parse_plate(r,by,pt)
+                  if not pr.get('available') or not pr.get('transforms'):
+                    rec.setdefault('plate_rejects',[]).append({'role':role,'tag':pt,'plate':pr});valid=False;break
+                  plates[role]=pr
+                if not valid:
+                  attempts.append(rec);continue
+                chosen={
+                  'model_tag':model,'header_tag':header_tag,'package_id':pkg,'snapshot':p.name,
+                  'header_entry_index':e['index'],'header_sha256':hashlib.sha256(b).hexdigest(),
+                  'plate_tags':{'albedo':albedo,'normal':normal,'gstack':gstack},'plates':plates,
+                }
+                attempts.append({**rec,'accepted':True});break
+              except Exception as ex:
+                rec['error']=repr(ex);attempts.append(rec)
+            if chosen is None: raise SystemExit(f'could not decode complete plate set {header_tag}: {attempts}')
+            chosen['attempts']=attempts
+            rows.append(chosen)
+            print('GJ_PLATE',json.dumps({k:v for k,v in chosen.items() if k not in ('plates','attempts')},separators=(',',':')))
+            for role,plate in chosen['plates'].items():
+              print(' GJ_PLATE_ROLE',model,role,plate['tag_hash'],'dim',plate['plate_dimension_pow2'],'transforms',json.dumps(plate['transforms'],separators=(',',':')))
+
+          alltex=[]
+          for row in rows:
+            for role,p in row['plates'].items():
+              for t in p['transforms']:
+                h=t['texture']
+                if h not in alltex: alltex.append(h)
+          out={'arrangement':1229,'models':rows,'unique_source_texture_hashes':alltex,'unique_source_texture_count':len(alltex)}
+          Path('reports/gjallarhorn_1229_texture_plates.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('UNIQUE_SOURCE_TEXTURES',len(alltex),alltex)
+          assert len(rows)==6
+          assert all(set(r['plates'])=={'albedo','normal','gstack'} for r in rows)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-1229-texture-plates
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
