@@ -1,0 +1,104 @@
+name: Temporary trace PS4 weapon attachment
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-weapon-011c-attachment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install --quiet numpy scipy pyglm jsonpickle
+      - name: Recover runtime and 011c
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          args=(--tag-hash 80A39DF1 --tag-hash 80A39DF2)
+          for h in 80A39DF6 80A39DF7 80A39DF8 80A39DF9 80A39DFA 80A39DFB 80A39DFC 80A39DFD 80A39DFE 80A39DFF 80A39E00 80A39E01; do args+=(--tag-hash "$h"); done
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entry_extract.py "$pkg" --runtime runtime "${args[@]}" --dump-dir raw -o reports/raw_entries.json
+      - name: Decode exact runtime rig arrays and selected bone motion
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          python - <<'PY'
+          import dataclasses,json,sys,tempfile,math
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+          ver=Game_Version.D1_ROI
+          def raw(h): return next(Path('raw').glob(h+'_*')).read_bytes()
+          def parse(data,fn):
+              with tempfile.NamedTemporaryFile() as f:
+                  f.write(data);f.flush();f.seek(0);return fn(f)
+          sk=parse(raw('80A39DF2'),lambda f:read_skeleton(f,ver))
+          rig=parse(raw('80A39DF1'),lambda f:read_runtime_rig(f,ver))
+          def seq(x):
+              try:return list(x)
+              except Exception:return []
+          def simple(v):
+              if dataclasses.is_dataclass(v): return {f.name:simple(getattr(v,f.name)) for f in dataclasses.fields(v)}
+              if isinstance(v,np.ndarray): return v.tolist()
+              if isinstance(v,(list,tuple)): return [simple(x) for x in v]
+              if isinstance(v,(str,int,float,bool,type(None))): return v
+              try:
+                  a=np.asarray(v)
+                  if a.ndim and a.size<=32:return a.tolist()
+              except Exception:pass
+              return str(v)
+          rep={
+            'bone_to_control':[int(x) for x in seq(rig.bone_to_control)],
+            'control_to_bone':[int(x) for x in seq(rig.control_to_bone)],
+            'rig_components':[simple(x) for x in seq(rig.rig_components)],
+            'control_name_to_bone_index':[simple(x) for x in seq(rig.control_name_to_bone_index)],
+            'control_relations':[simple(x) for x in seq(rig.controls_relations)],
+            'control_transforms':[simple(x) for x in seq(rig.controls_transforms)],
+            'selected_bones':{'Grip.R':24,'WeaponPedestal':72},
+            'clips':[]
+          }
+          for h in ['80A39DF6','80A39DF7','80A39DF8','80A39DF9','80A39DFA','80A39DFB','80A39DFC','80A39DFD','80A39DFE','80A39DFF','80A39E00','80A39E01']:
+              anim=parse(raw(h),lambda f:read_animation(f,ver))
+              dec=decode_animation(anim); ret=rig_retarget(anim,dec,sk,rig); loc=convert_obj_to_local(anim,ret,sk)
+              # Capture serializable shape/data for only the two attachment candidates.
+              selected={}
+              for idx,name in [(24,'Grip.R'),(72,'WeaponPedestal')]:
+                  try:selected[name]=simple(loc[idx])
+                  except Exception as ex:selected[name]={'error':repr(ex)}
+              rep['clips'].append({'tag_hash':h,'frame_count':int(anim.animation_header.frame_count),'selected_local_tracks':selected})
+          Path('reports/attachment_trace.json').write_text(json.dumps(rep,indent=2,default=str)+'\n')
+          print('bone_to_control count',len(rep['bone_to_control']),'tail',rep['bone_to_control'][-10:])
+          print('control_to_bone count',len(rep['control_to_bone']),'tail',rep['control_to_bone'][-10:])
+          print(json.dumps(rep['clips'],indent=2,default=str)[:30000])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-attachment-trace
+          path: reports/
+          retention-days: 1
+          if-no-files-found: error
