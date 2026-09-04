@@ -1,0 +1,63 @@
+name: Temporary disassemble small weapon shader 80AA9D63
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-disasm-80AA9D63.yml'
+
+jobs:
+  disasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified runtime and 0154 family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports shader
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45B642200 \
+            --target ps4_globals_0154_0.pkg --target ps4_globals_0154_1.pkg --target ps4_globals_0154_2.pkg \
+            --target ps4_globals_0154_3.pkg --target ps4_globals_0154_4.pkg --target ps4_globals_0154_5.pkg \
+            --out recovered --manifest reports/0154_extract.json
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_ps4_shader_binary_probe.py \
+            recovered/ps4_globals_0154_0.pkg --runtime runtime --tag-hash 80AA9D63 \
+            --dump-dir shader -o reports/shader_80AA9D63.json
+      - name: Build pinned CLRX
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+          cmake -S clrx -B clrx/build \
+            -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
+          cmake --build clrx/build --target clrxdisasm -j2
+          find clrx/build -type f -name clrxdisasm -print
+      - name: Disassemble exact bounded GCN code
+        run: |
+          set -euo pipefail
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/80AA9D63_gcn_code.bin > reports/80AA9D63_gfx700.s 2> reports/80AA9D63_gfx700.stderr
+          "$exe" --raw --arch=GCN1.1 --hexcode shader/80AA9D63_gcn_code.bin > reports/80AA9D63_gcn11.s 2> reports/80AA9D63_gcn11.stderr
+          echo '=== GFX700 ==='
+          cat reports/80AA9D63_gfx700.s
+          echo '=== stderr ==='
+          cat reports/80AA9D63_gfx700.stderr
+          test ! -s reports/80AA9D63_gfx700.stderr
+          grep -q 's_endpgm' reports/80AA9D63_gfx700.s
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: 80AA9D63-clrx-disassembly
+          path: |
+            reports/
+            shader/
+          retention-days: 2
