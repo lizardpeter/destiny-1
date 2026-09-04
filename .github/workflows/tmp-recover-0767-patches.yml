@@ -1,4 +1,4 @@
-name: Temporary decode proven 09A material banks
+name: Temporary decode proven 09A texture set
 
 on:
   push:
@@ -13,23 +13,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Recover verified Oodle 3 runtime
+      - name: Runtime dependencies
         shell: bash
         run: |
           set -euo pipefail
+          python -m pip install --quiet pillow
           mkdir -p runtime
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
-          test "$(stat -c '%s' runtime/oo2core_3_win64.dll)" = '894752'
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Sparse-extract 0767 and 00E2 patch families
+      - name: Sparse-extract required package families
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p recovered reports
+          mkdir -p recovered reports textures/0156 textures/0767 shader_dump
           python - <<'PY'
           import bisect,re
           from pathlib import Path
@@ -38,33 +37,34 @@ jobs:
           urls=[f'{base}/packages.tar.{i:03d}' for i in range(1,11)]
           targets={
             'ps4_arch_vex_com01_0767_0.pkg','ps4_arch_vex_com01_0767_1.pkg','ps4_arch_vex_com01_0767_4.pkg',
-            'ps4_arch_vex_00e2_0.pkg','ps4_arch_vex_00e2_1.pkg','ps4_arch_vex_00e2_2.pkg','ps4_arch_vex_00e2_4.pkg',
+            'ps4_globals_0156_0.pkg','ps4_globals_0156_1.pkg',
+            'ps4_globals_0157_0.pkg','ps4_globals_0157_1.pkg',
           }
-          s=requests.Session(); s.headers.update({'User-Agent':'d1-research-range-probe/1.0'})
+          s=requests.Session();s.headers.update({'User-Agent':'d1-research-range-probe/1.0'})
           sizes=[]
           for url in urls:
             r=s.get(url,headers={'Range':'bytes=0-0'},stream=True,timeout=60)
-            if r.status_code!=206: raise RuntimeError((url,r.status_code))
+            if r.status_code!=206:raise RuntimeError((url,r.status_code))
             m=re.match(r'bytes 0-0/(\d+)$',r.headers.get('Content-Range',''))
-            if not m: raise RuntimeError((url,r.headers.get('Content-Range')))
-            sizes.append(int(m.group(1))); r.close()
+            if not m:raise RuntimeError((url,r.headers.get('Content-Range')))
+            sizes.append(int(m.group(1)));r.close()
           starts=[0]
-          for z in sizes: starts.append(starts[-1]+z)
+          for z in sizes:starts.append(starts[-1]+z)
           def get(off,n):
             out=bytearray()
             while n:
-              pi=bisect.bisect_right(starts,off)-1; local=off-starts[pi]; take=min(n,sizes[pi]-local)
+              pi=bisect.bisect_right(starts,off)-1;local=off-starts[pi];take=min(n,sizes[pi]-local)
               r=s.get(urls[pi],headers={'Range':f'bytes={local}-{local+take-1}'},timeout=60)
-              if r.status_code!=206 or len(r.content)!=take: raise RuntimeError(('range',pi,local,take,r.status_code,len(r.content)))
-              out+=r.content; off+=take; n-=take
+              if r.status_code!=206 or len(r.content)!=take:raise RuntimeError(('range',pi,local,take,r.status_code,len(r.content)))
+              out+=r.content;off+=take;n-=take
             return bytes(out)
-          def sz(field):
-            f=field.rstrip(b'\0 ').lstrip(b' ')
+          def tsz(f):
+            f=f.rstrip(b'\0 ').lstrip(b' ')
             if not f:return 0
             if f[0]&0x80:
               b=bytearray(f);b[0]&=0x7f;return int.from_bytes(b,'big')
             return int(f,8)
-          found={};off=0;count=0;zero=0
+          found={};off=0;zero=0;count=0
           while off+512<=starts[-1]:
             h=get(off,512)
             if h==b'\0'*512:
@@ -72,11 +72,10 @@ jobs:
               if zero>=2:break
               off+=512;continue
             zero=0
-            if h[257:262]!=b'ustar': raise RuntimeError(('bad tar',off,h[257:263]))
-            name=h[:100].split(b'\0',1)[0].decode('utf-8','replace')
-            prefix=h[345:500].split(b'\0',1)[0].decode('utf-8','replace')
+            if h[257:262]!=b'ustar':raise RuntimeError(('bad tar',off))
+            name=h[:100].split(b'\0',1)[0].decode('utf-8','replace');prefix=h[345:500].split(b'\0',1)[0].decode('utf-8','replace')
             if prefix:name=prefix+'/'+name
-            n=sz(h[124:136]);count+=1;base_name=name.rsplit('/',1)[-1]
+            n=tsz(h[124:136]);count+=1;base_name=name.rsplit('/',1)[-1]
             if base_name in targets:
               found[base_name]=(off+512,n,off);print('FOUND',base_name,n,hex(off),flush=True)
               if len(found)==len(targets):break
@@ -96,44 +95,44 @@ jobs:
                 r.close()
                 if wrote!=take:raise RuntimeError(('short',name,wrote,take))
                 off+=take;remain-=take
-            if dst.stat().st_size!=n:raise RuntimeError(('size',name,dst.stat().st_size,n))
+            if dst.stat().st_size!=n:raise RuntimeError(('size',name))
           with open('reports/package_locations.txt','w') as f:
             for name,(data_off,n,header_off) in sorted(found.items()):f.write(f'{name} header={header_off} data={data_off} size={n}\n')
           PY
-          ls -lh recovered
-          sha256sum recovered/*.pkg | tee reports/pkg_sha256.txt
+          sha256sum recovered/*.pkg > reports/pkg_sha256.txt
 
-      - name: Decode all proven 09A material-bank entries
+      - name: Export exact texture headers/backings
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_material_decode.py recovered/ps4_arch_vex_00e2_4.pkg --runtime runtime \
-            --tag-hash 809C475F --tag-hash 809C4760 \
-            -o reports/09A_00E2_materials.json
-          python tools/d1_material_decode.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
-            --tag-hash 816CE240 --tag-hash 816CE241 --tag-hash 816CE242 --tag-hash 816CE243 --tag-hash 816CE244 --tag-hash 816CE1A7 \
-            -o reports/09A_0767_materials.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          rows=[]
-          for p in [Path('reports/09A_00E2_materials.json'),Path('reports/09A_0767_materials.json')]:
-            d=json.loads(p.read_text())
-            for m in d['materials']:
-              row={'tag_hash':m['tag_hash'],'present':m.get('present',True),'available':m.get('available')}
-              if m.get('available'):
-                row.update(class_hash=m['class_hash'],vertex_shader=m['vertex_shader'],pixel_shader=m['pixel_shader'],
-                           vs_textures=[x['texture'] for x in m['vs_textures']['items']],
-                           ps_textures=[x['texture'] for x in m['ps_textures']['items']])
-              rows.append(row)
-          Path('reports/09A_material_summary.json').write_text(json.dumps(rows,indent=2)+'\n')
-          print(json.dumps(rows,indent=2))
-          PY
+          python tools/d1_texture_export.py recovered/ps4_globals_0156_1.pkg --runtime runtime \
+            --tag-hash 80AACCDD --tag-hash 80AACCDF --tag-hash 80AACC26 --tag-hash 80AACC28 --out textures/0156
+          python tools/d1_texture_export.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
+            --tag-hash 816CE1C5 --out textures/0767
+          cp textures/0156/texture_manifest.json reports/09A_0156_texture_manifest.json
+          cp textures/0767/texture_manifest.json reports/09A_0767_texture_manifest.json
+          echo '--- 0156 ---'; cat reports/09A_0156_texture_manifest.json
+          echo '--- 0767 ---'; cat reports/09A_0767_texture_manifest.json
+          find textures -type f -maxdepth 2 -printf '%p %s bytes\n' | sort | tee reports/texture_files.txt
+          sha256sum textures/*/* 2>/dev/null | tee reports/texture_sha256.txt || true
 
-      - name: Upload compact reports
+      - name: Dump the two proven pixel shader headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_entry_extract.py recovered/ps4_globals_0157_1.pkg --runtime runtime --entry 331 --dump-dir shader_dump -o reports/PS_80AAE14B.json
+          python tools/d1_entry_extract.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime --entry 168 --dump-dir shader_dump -o reports/PS_816CE0A8.json
+          cat reports/PS_80AAE14B.json
+          cat reports/PS_816CE0A8.json
+          sha256sum shader_dump/* > reports/shader_dump_sha256.txt
+
+      - name: Upload reports and decoded textures
         uses: actions/upload-artifact@v4
         with:
-          name: proven-09A-material-bank-reports
-          path: reports/
+          name: proven-09A-textures
+          path: |
+            reports/
+            textures/
+            shader_dump/
           retention-days: 1
           if-no-files-found: error
