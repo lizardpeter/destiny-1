@@ -1,0 +1,40 @@
+name: Temporary recover Vex 0767 patch siblings
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recover package siblings
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          found=0
+          for f in ps4_arch_vex_com01_0767_1.pkg ps4_arch_vex_com01_0767_4.pkg; do
+            echo "Trying $f"
+            if curl --fail --location --retry 2 --connect-timeout 20 "$base/$f" --output "out/$f"; then
+              stat -c '%n %s bytes' "out/$f"
+              sha256sum "out/$f"
+              found=1
+            else
+              rm -f "out/$f"
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo 'No requested package siblings recovered'
+            exit 1
+          fi
+      - name: Upload recovered packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: vex-0767-patch-siblings
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
