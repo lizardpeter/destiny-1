@@ -25,6 +25,7 @@ WRAP={0:'Wrap',1:'Mirror',2:'ClampLastTexel',3:'MirrorOnceLastTexel',4:'ClampHal
 FILTER={0:'Point',1:'Bilinear',2:'AnisoPoint',3:'AnisoBilinear'}
 ZFILTER={0:'None',1:'Point',2:'Linear'}
 MIPFILTER={0:'None',1:'Point',2:'Linear'}
+BORDER={0:'TransBlack',1:'OpaqueBlack',2:'OpaqueWhite',3:'FromTable'}
 
 def field(w,mask,shift): return (w&mask)>>shift
 
@@ -39,7 +40,7 @@ def decode_blob(b:bytes)->dict:
     w0,w1,w2,w3=struct.unpack_from('<4I',b,8)
     cx=field(w0,0x00000007,0); cy=field(w0,0x00000038,3); cz=field(w0,0x000001c0,6)
     mag=field(w2,0x00300000,20); minf=field(w2,0x00c00000,22); zf=field(w2,0x03000000,24); mip=field(w2,0x0c000000,26)
-    lod_bias_raw=field(w2,0x00003fff,0)
+    lod_bias_raw=field(w2,0x00003fff,0); border=field(w3,0xc0000000,30)
     return {
       'declared_file_size':declared,
       'descriptor_offset':8,
@@ -63,7 +64,7 @@ def decode_blob(b:bytes)->dict:
       'min_filter':{'value':minf,'gnm_name':FILTER.get(minf)},
       'z_filter':{'value':zf,'gnm_name':ZFILTER.get(zf)},
       'mip_filter':{'value':mip,'gnm_name':MIPFILTER.get(mip)},
-      'border_color_type_raw':field(w3,0xc0000000,30),
+      'border_color':{'value':border,'gnm_name':BORDER.get(border)},
       'border_color_ptr_raw':field(w3,0x00000fff,0),
     }
 
