@@ -12,23 +12,26 @@ jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch package 0156 pair and mirror index
+      - name: Resolve package IDs 0156 and 0735
         run: |
           set -euo pipefail
           mkdir -p deps
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          curl --fail --location --retry 3 "$base/" -o deps/index.html || true
-          grep -ioE '[A-Za-z0-9_]+_0735_[01]\.pkg' deps/index.html | sort -u > deps/package_0735_matches.txt || true
-          for f in ps4_globals_0156_0.pkg ps4_globals_0156_1.pkg; do
-            curl --fail --location --retry 3 "$base/$f" --output "deps/$f"
-            stat -c '%n %s bytes' "deps/$f"
-            sha256sum "deps/$f"
-          done
+          curl --fail --location --retry 3 "$base/packages.txt" --output deps/packages.txt
+          python - <<'PY'
+          import re
+          text=open('deps/packages.txt','r',encoding='utf-8',errors='replace').read()
+          for pkg in ('0156','0735'):
+              matches=sorted(set(re.findall(r'[^\s"\'<>]*_'+pkg+r'_[01]\.pkg[^\s"\'<>]*', text, flags=re.I)))
+              open(f'deps/package_{pkg}_matches.txt','w').write('\n'.join(matches)+'\n')
+              print(pkg+':')
+              print('\n'.join(matches) if matches else 'NO_MATCH')
+          PY
 
-      - name: Upload dependency bundle
+      - name: Upload package mappings
         uses: actions/upload-artifact@v4
         with:
-          name: d1-texture-deps-0156
-          path: deps/
+          name: d1-texture-dependency-mappings
+          path: deps/package_*_matches.txt
           retention-days: 1
           if-no-files-found: error
