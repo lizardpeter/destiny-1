@@ -5,8 +5,13 @@ This is the package-level companion to d1_remote_entity_child_find.py. It uses
 the exact same final-era ROI EntityChildren structure, but matches every child
 FileHash whose decoded package id equals --target-package-id. This is useful
 when the concrete child tag is not yet known but the component package family
-is known (for example, determining which Investment-facing visual entity owns
+is known (for example, determining which higher-level visual entity owns
 children in gear_weapons_011c).
+
+Important: candidate selection is by the proven EntityResource reference class
+0x80800861, not by package entry storage type.  Some D1 package families store
+that reference under different entry type/subtype values; treating type 16 as
+a universal requirement produces false-negative scans.
 """
 from __future__ import annotations
 
@@ -19,10 +24,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from d1_remote_entity_child_find import (
-    ENTITY_RESOURCE_REF,
-    parse_children_resource,
-)
+from d1_remote_entity_child_find import ENTITY_RESOURCE_REF, parse_children_resource
 from d1_remote_investment_parent_probe import RemoteLogicalPackage, parse_member
 from d1_split_tar_extract import SplitHttpTar
 
@@ -49,12 +51,13 @@ def main() -> int:
     )
     r = RemoteLogicalPackage(arc, {m.patch_id: m for m in a.member}, a.runtime)
 
+    # Reference class is the schema discriminator. Do not require a storage type.
     candidates = [
-        e for e in r.entries
-        if e["type"] == 16
-        and e["subtype"] == 0
-        and e["reference"].upper() == ENTITY_RESOURCE_REF
+        e for e in r.entries if e["reference"].upper() == ENTITY_RESOURCE_REF
     ]
+    candidate_storage_counts = collections.Counter(
+        (e["type"], e["subtype"]) for e in candidates
+    )
 
     child_resources = []
     hits = []
@@ -77,6 +80,8 @@ def main() -> int:
             row = {
                 "resource_tag": e["tag_hash"].upper(),
                 "entry_index": e["index"],
+                "entry_type": e["type"],
+                "entry_subtype": e["subtype"],
                 "size": e["file_size"],
                 "child_count": parsed["child_count"],
                 "children": parsed["children"],
@@ -88,6 +93,8 @@ def main() -> int:
                 hit = {
                     "resource_tag": row["resource_tag"],
                     "resource_entry_index": row["entry_index"],
+                    "entry_type": row["entry_type"],
+                    "entry_subtype": row["entry_subtype"],
                     "resource_size": row["size"],
                     "total_child_count": row["child_count"],
                     "matching_children": matching_children,
@@ -98,6 +105,8 @@ def main() -> int:
             errors.append({
                 "resource_tag": e["tag_hash"].upper(),
                 "entry_index": e["index"],
+                "entry_type": e["type"],
+                "entry_subtype": e["subtype"],
                 "error": repr(ex),
             })
         if n % 500 == 0:
@@ -113,7 +122,12 @@ def main() -> int:
         "logical_view": r.view.name,
         "entry_count": len(r.entries),
         "target_package_id": a.target_package_id,
+        "candidate_selection": "reference_80800861_all_storage_types",
         "entity_resource_candidates": len(candidates),
+        "entity_resource_storage_counts": {
+            f"type{t}_subtype{s}": v
+            for (t, s), v in sorted(candidate_storage_counts.items())
+        },
         "entity_children_resource_count": len(child_resources),
         "target_resource_hit_count": len(hits),
         "target_child_occurrence_count": sum(
