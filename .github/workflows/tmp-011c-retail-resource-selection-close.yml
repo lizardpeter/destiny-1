@@ -1,0 +1,127 @@
+name: Temporary close retail 011c imported resource selection
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-retail-resource-selection-close.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime and 011c logical family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+
+      - name: Trace imported resources, exact backlinks, and model-owner cluster
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader,decode_known
+          from d1_entity_resource_probe import parse_resource
+          from d1_entity_model_probe import parse_model
+
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          byint={int(k,16):e for k,e in by.items()}
+          roots=['80A39AA6','80A397EA']
+          watch=set(roots+['80A39E0E','80A39E0F','80A39E12','80A39E47','80A39E48','80A39E4B'])
+
+          # Global exact aligned backlinks to the two retail-imported roots plus known model cluster.
+          backlinks={h:[] for h in watch}
+          resident=0; errors=[]
+          for e in r.entries:
+              if e['type']!=16 or not r.available(e['index']): continue
+              try: b=r.entry(e['index']); resident+=1
+              except Exception as ex:
+                  errors.append({'tag':e['tag_hash'].upper(),'index':e['index'],'error':repr(ex)}); continue
+              for off in range(0,len(b)-3,4):
+                  h=f'{struct.unpack_from("<I",b,off)[0]:08X}'
+                  if h in backlinks:
+                      backlinks[h].append({'source':e['tag_hash'].upper(),'source_index':e['index'],'source_reference':e['reference'].upper(),'offset':off,'offset_hex':f'0x{off:X}','source_size':len(b)})
+
+          # Conservative local literal graph starting at the imported roots.
+          queue=[(h,0) for h in roots]; seen=set(); nodes={}; edges=[]
+          while queue:
+              tag,depth=queue.pop(0)
+              if tag in seen or depth>4: continue
+              seen.add(tag); e=by.get(tag)
+              if e is None:
+                  nodes[tag]={'present':False,'depth':depth}; continue
+              node={'present':True,'depth':depth,'index':e['index'],'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'file_size':e['file_size'],'available':r.available(e['index'])}
+              nodes[tag]=node
+              if not node['available']: continue
+              b=r.entry(e['index']); node['payload_sha256']=hashlib.sha256(b).hexdigest(); node['prefix_hex']=b[:512].hex()
+              try: node['decode_known']=decode_known(e,b,r.h['platform'])
+              except Exception as ex: node['decode_known_error']=repr(ex)
+              if node['reference']=='80800861':
+                  try: node['entity_resource']=parse_resource(b,r.h['platform'])
+                  except Exception as ex: node['entity_resource_error']=repr(ex)
+              if node['reference']=='80801AB5':
+                  try: node['entity_model']=parse_model(b,r.h['platform'])
+                  except Exception as ex: node['entity_model_error']=repr(ex)
+              local=[]
+              for off in range(0,len(b)-3,4):
+                  v=struct.unpack_from('<I',b,off)[0]; target=byint.get(v)
+                  if target is None: continue
+                  th=target['tag_hash'].upper()
+                  rec={'source':tag,'offset':off,'offset_hex':f'0x{off:X}','target':th,'target_reference':target['reference'].upper(),'target_type':target['type'],'target_subtype':target['subtype'],'target_size':target['file_size'],'target_available':r.available(target['index'])}
+                  local.append(rec); edges.append(rec)
+                  if depth<4 and th not in seen: queue.append((th,depth+1))
+              node['aligned_literal_edges']=local
+
+          # Explicitly decode known comparison model owners even if not reached from literal graph.
+          comparisons={}
+          for tag in ['80A39E0E','80A39E0F','80A39E12','80A39E47','80A39E48','80A39E4B']:
+              e=by.get(tag)
+              if not e: comparisons[tag]={'present':False}; continue
+              d={'present':True,'index':e['index'],'reference':e['reference'].upper(),'size':e['file_size'],'available':r.available(e['index'])}
+              if d['available']:
+                  b=r.entry(e['index']); d['sha256']=hashlib.sha256(b).hexdigest()
+                  if d['reference']=='80800861': d['entity_resource']=parse_resource(b,r.h['platform'])
+                  if d['reference']=='80801AB5': d['entity_model']=parse_model(b,r.h['platform'])
+              comparisons[tag]=d
+
+          report={'package':'011c','logical_view':str(r.pkg),'roots':roots,'resident_structured_scanned':resident,'backlinks':backlinks,'graph_nodes':nodes,'graph_edges':edges,'comparisons':comparisons,'scan_errors':errors[:200]}
+          Path('reports/011c_retail_resource_selection.json').write_text(json.dumps(report,indent=2)+'\n')
+          for h in roots:
+              n=nodes.get(h,{})
+              print('ROOT',h,'ref',n.get('reference'),'size',n.get('file_size'),'edges',len(n.get('aligned_literal_edges',[])))
+              if 'entity_resource' in n: print('ROOT_RESOURCE',h,json.dumps(n['entity_resource'],separators=(',',':')))
+              print('BACKLINKS',h,json.dumps(backlinks[h],separators=(',',':')))
+          for tag,d in comparisons.items():
+              print('COMPARE',tag,'ref',d.get('reference'),'size',d.get('size'))
+              if d.get('entity_resource'): print('COMPARE_RESOURCE',tag,json.dumps(d['entity_resource'],separators=(',',':')))
+              if d.get('entity_model'): print('COMPARE_MODEL',tag,json.dumps({'mesh_count':d['entity_model'].get('mesh_count'),'meshes':d['entity_model'].get('meshes')},separators=(',',':')))
+          print('GRAPH_NODES',len(nodes),'GRAPH_EDGES',len(edges),'SCAN_ERRORS',len(errors))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-011c-retail-resource-selection
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
