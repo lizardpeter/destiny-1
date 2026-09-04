@@ -53,7 +53,9 @@ def decode_known(e,b,platform):
             d.update(dxgi_format=u32(b,0),tile_mode=u32(b,4),magic=f'{u32(b,0x2c):08X}',width=u16(b,0x30),height=u16(b,0x32),depth=u16(b,0x34),array_size=u16(b,0x36),flags1=f'{u32(b,0x38):08X}' if len(b)>=0x3c else None,flags2=f'{u32(b,0x3c):08X}' if len(b)>=0x40 else None,flags3=f'{u32(b,0x40):08X}' if len(b)>=0x44 else None)
     elif (t,s)==(32,2):
         d['kind']='TextureCubeHeader'
-        if platform=='XboxOne' and len(b)>=0x38:
+        if platform=='PS4' and len(b)>=0x3c:
+            d.update(data_size=u32(b,0),unk4=b[4],unk5=b[5],surface_format_raw=u16(b,6),surface_format=(u16(b,6)>>4)&0x3f,magic=f'{u32(b,0x24):08X}',width=u16(b,0x28),height=u16(b,0x2a),depth=u16(b,0x2c),array_size=u16(b,0x2e),flags1=f'{u32(b,0x30):08X}',flags2=f'{u32(b,0x34):08X}',flags3=f'{u32(b,0x38):08X}')
+        elif platform=='XboxOne' and len(b)>=0x38:
             d.update(dxgi_format=u32(b,0),tile_mode=u32(b,4),magic=f'{u32(b,0x2c):08X}',width=u16(b,0x30),height=u16(b,0x32),depth=u16(b,0x34),array_size=u16(b,0x36),flags1=f'{u32(b,0x38):08X}' if len(b)>=0x3c else None,flags2=f'{u32(b,0x3c):08X}' if len(b)>=0x40 else None,flags3=f'{u32(b,0x40):08X}' if len(b)>=0x44 else None)
     elif (t,s)==(32,7) and len(b)>=16:
         d['kind']='GpuSubtype7Header'; d.update(word0=f'{u32(b,0):08X}',word1=f'{u32(b,4):08X}',unit_count=u32(b,8),derived_data_size=u32(b,8)*16,marker=f'{u32(b,12):08X}')
@@ -65,13 +67,26 @@ def decode_known(e,b,platform):
     return d
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('pkg',type=Path); ap.add_argument('--runtime',type=Path,required=True); ap.add_argument('--types',nargs='*'); ap.add_argument('--all-available',action='store_true'); ap.add_argument('--entry',type=int,action='append'); ap.add_argument('-o','--output',type=Path); ap.add_argument('--dump-dir',type=Path)
+    ap=argparse.ArgumentParser(); ap.add_argument('pkg',type=Path); ap.add_argument('--runtime',type=Path,required=True); ap.add_argument('--types',nargs='*'); ap.add_argument('--all-available',action='store_true'); ap.add_argument('--entry',type=int,action='append'); ap.add_argument('--tag-hash',action='append'); ap.add_argument('-o','--output',type=Path); ap.add_argument('--dump-dir',type=Path)
     a=ap.parse_args(); r=EntryReader(a.pkg,a.runtime); wanted=None
     if a.types:
         wanted=set()
         for x in a.types:
             t,s=x.split(':');wanted.add((int(t,0),int(s,0)))
-    inds=a.entry or [e['index'] for e in r.entries if (wanted is None or (e['type'],e['subtype']) in wanted)]
+    by_hash={e['tag_hash'].upper():e for e in r.entries}
+    if a.entry and a.tag_hash:
+        raise SystemExit('--entry and --tag-hash are mutually exclusive')
+    missing_hashes=[]
+    if a.entry:
+        inds=a.entry
+    elif a.tag_hash:
+        inds=[]
+        for raw in a.tag_hash:
+            h=raw.upper().removeprefix('0X'); e=by_hash.get(h)
+            if e is None: missing_hashes.append(h)
+            elif wanted is None or (e['type'],e['subtype']) in wanted: inds.append(e['index'])
+    else:
+        inds=[e['index'] for e in r.entries if (wanted is None or (e['type'],e['subtype']) in wanted)]
     out=[]; unavailable=[]; errors=[]
     for i in inds:
         if not r.available(i): unavailable.append(i); continue
@@ -80,7 +95,7 @@ def main():
             if a.dump_dir:
                 a.dump_dir.mkdir(parents=True,exist_ok=True); (a.dump_dir/f"{r.entries[i]['tag_hash']}_{i:04d}_{r.entries[i]['type']}_{r.entries[i]['subtype']}.bin").write_bytes(b)
         except Exception as ex: errors.append({'index':i,'error':repr(ex)})
-    rep={'package':str(r.pkg),'platform':r.h['platform'],'pkg_id':r.h['pkg_id'],'selected':len(inds),'decoded':len(out),'unavailable':unavailable,'errors':errors,'entries':out}
+    rep={'package':str(r.pkg),'platform':r.h['platform'],'pkg_id':r.h['pkg_id'],'selected':len(inds),'decoded':len(out),'missing_tag_hashes':missing_hashes,'unavailable':unavailable,'errors':errors,'entries':out}
     text=json.dumps(rep,indent=2)
     if a.output:a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(text+'\n');print('wrote',a.output)
     else:print(text)
