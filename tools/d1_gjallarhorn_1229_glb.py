@@ -7,9 +7,9 @@ The visual selection is retail-byte proven:
   each entity -> EntityResource(model) -> one s_entity_model.
 
 This exporter intentionally does not invent attachment transforms, skin weights,
-or material semantics.  Each model's own Tiger model scale/translation is applied
+or material semantics. Each model's own Tiger model scale/translation is applied
 and the six models are emitted together in their shared model coordinate space.
-Only LOD1 index ranges are exported.  Duplicate material-pass rows that address
+Only LOD1 index ranges are exported. Duplicate material-pass rows that address
 the same strip range are emitted once and retained as provenance in extras.
 """
 from __future__ import annotations
@@ -78,7 +78,7 @@ def append_accessor(g,a,ctype,atype,target=None,minmax=False):
     bvi=len(g.bufferViews); g.bufferViews.append(BufferView(buffer=bi,byteOffset=0,byteLength=len(payload),target=target))
     ai=len(g.accessors); acc=Accessor(bufferView=bvi,byteOffset=0,componentType=ctype,count=int(a.shape[0]),type=atype)
     if minmax:
-        q=a.reshape((a.shape[0],-1)); acc.min=[float(x) for x in q.min(axis=0)];acc.max=[float(x) for x in q.max(axis=0)]
+        q=a.reshape((a.shape[0],-1)); acc.min=[float(x) for x in q.min(axis=0)]; acc.max=[float(x) for x in q.max(axis=0)]
     g.accessors.append(acc); return ai
 
 
@@ -92,12 +92,15 @@ def entry_bytes(reader, table, tag):
 
 
 def linked_payload(readers,tables,tag):
-    pkg,_=filehash_pkg_index(int(tag,16)); r=readers[pkg]; t=tables[pkg]; e=t[tag]
+    pkg,_=filehash_pkg_index(int(tag,16))
+    if pkg not in readers:
+        raise KeyError(f'{tag} belongs to unprovided logical package {pkg:04X}')
+    r=readers[pkg]; t=tables[pkg]; e=t[tag]
     h=entry_bytes(r,t,tag); ref=e['reference'].upper()
     pe=t.get(ref)
     if pe is None: raise KeyError(f'{tag} -> payload {ref} absent in logical pkg {pkg:04X}')
     p=entry_bytes(r,t,ref)
-    return h,p,{'header_tag':tag,'payload_tag':ref,'header_reference':e['reference'].upper()}
+    return h,p,{'header_tag':tag,'payload_tag':ref,'header_reference':e['reference'].upper(),'package_id':f'{pkg:04X}'}
 
 
 def load_model(model_dir,tag):
@@ -152,6 +155,7 @@ def decode_mesh(readers,tables,mesh,model_tag,mesh_index):
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--pkg-011c',type=Path,required=True)
+    ap.add_argument('--pkg-011e',type=Path,required=True)
     ap.add_argument('--pkg-0139',type=Path,required=True)
     ap.add_argument('--runtime',type=Path,required=True)
     ap.add_argument('--model-dir',type=Path,required=True)
@@ -159,18 +163,22 @@ def main():
     ap.add_argument('--report',type=Path,required=True)
     a=ap.parse_args()
 
-    readers={0x011C:EntryReader(a.pkg_011c,a.runtime),0x0139:EntryReader(a.pkg_0139,a.runtime)}
+    readers={
+        0x011C:EntryReader(a.pkg_011c,a.runtime),
+        0x011E:EntryReader(a.pkg_011e,a.runtime),
+        0x0139:EntryReader(a.pkg_0139,a.runtime),
+    }
     tables={k:by_hash(v) for k,v in readers.items()}
     g=GLTF2(asset=Asset(version='2.0',generator='destiny-1 Gjallarhorn art arrangement 1229 proof exporter'))
     g.scenes=[Scene(nodes=[0])]; g.scene=0; g.nodes=[Node(name='Gjallarhorn_1229_PresentationRoot',children=[])]
-    g.meshes=[];g.materials=[];g.buffers=[];g.bufferViews=[];g.accessors=[]
+    g.meshes=[]; g.materials=[]; g.buffers=[]; g.bufferViews=[]; g.accessors=[]
     mat_index={}
     reports=[]; all_pos=[]
 
     def material_index(h,all_native):
         h=h.upper()
         if h not in mat_index:
-            i=len(g.materials);mat_index[h]=i
+            i=len(g.materials); mat_index[h]=i
             g.materials.append(Material(name=f'D1_{h}_PORTABLE_NEUTRAL',pbrMetallicRoughness=PbrMetallicRoughness(baseColorFactor=[0.72,0.72,0.72,1.0],metallicFactor=0.0,roughnessFactor=0.72),extras={'d1DisplayMaterial':h,'nativeMaterialCandidates':all_native,'policy':'neutral portable placeholder; native material textures/shader binding not yet mapped in this fixture'}))
         return mat_index[h]
 
@@ -178,24 +186,24 @@ def main():
         model,mb=load_model(a.model_dir,tag)
         native_mesh_nodes=[]; mrep={'model_tag':tag,'entity':entity,'model_size':len(mb),'mesh_count':model['mesh_count'],'meshes':[]}
         for mi,mesh in enumerate(model['meshes']):
-            dec,rep=decode_mesh(readers,tables,mesh,tag,mi);mrep['meshes'].append(rep);all_pos.append(dec['pos'])
-            pa=append_accessor(g,dec['pos'],FLOAT,'VEC3',ARRAY_BUFFER,True);na=append_accessor(g,dec['nor'],FLOAT,'VEC3',ARRAY_BUFFER);ua=append_accessor(g,dec['uv'],FLOAT,'VEC2',ARRAY_BUFFER)
+            dec,rep=decode_mesh(readers,tables,mesh,tag,mi); mrep['meshes'].append(rep); all_pos.append(dec['pos'])
+            pa=append_accessor(g,dec['pos'],FLOAT,'VEC3',ARRAY_BUFFER,True); na=append_accessor(g,dec['nor'],FLOAT,'VEC3',ARRAY_BUFFER); ua=append_accessor(g,dec['uv'],FLOAT,'VEC2',ARRAY_BUFFER)
             gps=[]
             for pr in dec['prims']:
                 ia=append_accessor(g,pr['tri'].reshape(-1),UNSIGNED_INT,'SCALAR',ELEMENT_ARRAY_BUFFER)
                 gps.append(Primitive(attributes=Attributes(POSITION=pa,NORMAL=na,TEXCOORD_0=ua),indices=ia,material=material_index(pr['display_material'],pr['materials']),mode=4,extras={'d1IndexOffset':pr['off'],'d1IndexCount':pr['count'],'nativeMaterialCandidates':pr['materials'],'nativeRealMaterialCandidates':pr['real_materials']}))
-            mesh_i=len(g.meshes);g.meshes.append(Mesh(name=f'{tag}_mesh{mi}',primitives=gps,extras={'d1Model':tag,'d1Entity':entity,'d1MeshIndex':mi}))
-            node_i=len(g.nodes);g.nodes.append(Node(name=f'{tag}_mesh{mi}',mesh=mesh_i,extras={'d1Model':tag,'d1Entity':entity}));native_mesh_nodes.append(node_i)
-        model_node=len(g.nodes);g.nodes.append(Node(name=f'{tag}_Entity_{entity}',children=native_mesh_nodes,extras={'d1Model':tag,'d1Entity':entity,'artArrangement':ARRANGEMENT}));g.nodes[0].children.append(model_node)
+            mesh_i=len(g.meshes); g.meshes.append(Mesh(name=f'{tag}_mesh{mi}',primitives=gps,extras={'d1Model':tag,'d1Entity':entity,'d1MeshIndex':mi}))
+            node_i=len(g.nodes); g.nodes.append(Node(name=f'{tag}_mesh{mi}',mesh=mesh_i,extras={'d1Model':tag,'d1Entity':entity})); native_mesh_nodes.append(node_i)
+        model_node=len(g.nodes); g.nodes.append(Node(name=f'{tag}_Entity_{entity}',children=native_mesh_nodes,extras={'d1Model':tag,'d1Entity':entity,'artArrangement':ARRANGEMENT})); g.nodes[0].children.append(model_node)
         reports.append(mrep)
 
-    P=np.vstack(all_pos); pmin=P.min(axis=0);pmax=P.max(axis=0);center=(pmin+pmax)/2
+    P=np.vstack(all_pos); pmin=P.min(axis=0); pmax=P.max(axis=0); center=(pmin+pmax)/2
     g.nodes[0].translation=[float(-x) for x in center]
     total_tri=sum(x['lod1_triangles'] for m in reports for x in m['meshes'])
-    g.extras={'d1Gjallarhorn':{'inventoryItemHashYear3':'D471D331','artArrangementIndex':1229,'weaponPatternIndex':39,'entityCount':6,'modelCount':6,'models':list(MODEL_TO_ENTITY),'presentationTranslation':[-float(x) for x in center],'nativeAssemblyPolicy':'six retail-selected models in their own shared model coordinates; no invented attachment transform','materialPolicy':'neutral placeholders retain exact native material hashes in extras'}}
-    a.out.parent.mkdir(parents=True,exist_ok=True);g.save_binary(str(a.out))
+    g.extras={'d1Gjallarhorn':{'inventoryItemHashYear3':'D471D331','artArrangementIndex':1229,'weaponPatternIndex':39,'entityCount':6,'modelCount':6,'models':list(MODEL_TO_ENTITY),'geometryPackageIds':['011C','011E','0139'],'presentationTranslation':[-float(x) for x in center],'nativeAssemblyPolicy':'six retail-selected models in their own shared model coordinates; no invented attachment transform','materialPolicy':'neutral placeholders retain exact native material hashes in extras'}}
+    a.out.parent.mkdir(parents=True,exist_ok=True); g.save_binary(str(a.out))
     report={'inventory_item':'D471D331','arrangement':1229,'weapon_pattern':39,'models':reports,'total_lod1_triangles':int(total_tri),'bbox_min':pmin.tolist(),'bbox_max':pmax.tolist(),'bbox_center':center.tolist(),'output':str(a.out),'output_bytes':a.out.stat().st_size}
-    a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(report,indent=2)+'\n')
-    print(json.dumps({'models':len(reports),'triangles':int(total_tri),'bbox_min':pmin.tolist(),'bbox_max':pmax.tolist(),'bytes':a.out.stat().st_size},indent=2))
+    a.report.parent.mkdir(parents=True,exist_ok=True); a.report.write_text(json.dumps(report,indent=2)+'\n')
+    print(json.dumps({'models':len(reports),'meshes':sum(x['mesh_count'] for x in reports),'triangles':int(total_tri),'bbox_min':pmin.tolist(),'bbox_max':pmax.tolist(),'bytes':a.out.stat().st_size},indent=2))
 
-if __name__=='__main__':main()
+if __name__=='__main__': main()
