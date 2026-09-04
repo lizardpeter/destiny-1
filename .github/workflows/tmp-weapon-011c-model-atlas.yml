@@ -1,0 +1,162 @@
+name: Temporary census 011c weapon model silhouettes
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-weapon-011c-model-atlas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  atlas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install --quiet matplotlib numpy
+      - name: Recover runtime and exact 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports atlas
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg \
+            --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg \
+            --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+      - name: Render every resident entity model silhouette
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json, math, struct, sys
+          from pathlib import Path
+          import numpy as np
+          import matplotlib.pyplot as plt
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader, decode_known
+          from d1_entity_model_probe import parse_model
+          from d1_entity_resource_probe import parse_resource
+
+          pkg=Path('recovered/ps4_gear_weapons_011c_5.pkg')
+          r=EntryReader(pkg,Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+
+          def snorm16(v): return max(-1.0,float(v)/32767.0)
+          def linked(tag):
+              e=by[tag]
+              h=r.entry(e['index'])
+              pe=by[e['reference'].upper()]
+              p=r.entry(pe['index'])
+              return e,h,pe,p
+
+          # map model -> EntityResource and s_entity owners by literal backlinks
+          model_parent={}
+          for e in r.entries:
+              if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800861' and r.available(e['index']):
+                  try: q=parse_resource(r.entry(e['index']),r.h['platform'])
+                  except Exception: continue
+                  mh=q.get('embedded_model_tag_hash')
+                  if mh: model_parent[mh.upper()]=e['tag_hash'].upper()
+          entities=[e for e in r.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734' and r.available(e['index'])]
+          owner_map={}
+          for mh,rh in model_parent.items():
+              needle=struct.pack('<I',int(rh,16))
+              owners=[]
+              for e in entities:
+                  try: b=r.entry(e['index'])
+                  except Exception: continue
+                  if needle in b: owners.append(e['tag_hash'].upper())
+              owner_map[mh]=owners
+
+          rows=[]
+          for mh,rh in sorted(model_parent.items()):
+              e=by.get(mh)
+              if not e or not r.available(e['index']): continue
+              try: m=parse_model(r.entry(e['index']),r.h['platform'])
+              except Exception as ex:
+                  rows.append({'model':mh,'parent':rh,'owners':owner_map.get(mh,[]),'error':repr(ex)}); continue
+              all_pts=[]; used_pts=[]; mesh_rows=[]
+              for mi,mesh in enumerate(m['meshes']):
+                  try:
+                      e0,h0,p0e,p0=linked(mesh['vertices1'].upper())
+                      dh0=decode_known(e0,h0,r.h['platform'])
+                      stride=int(dh0.get('stride',0))
+                      if stride<8 or len(p0)%stride: continue
+                      vals=[struct.unpack_from('<hhhh',p0,o) for o in range(0,len(p0),stride)]
+                      sc=mesh['model_scale']; tr=mesh['model_translation']
+                      pos=np.array([[snorm16(v[i])*float(sc[i])+float(tr[i]) for i in range(3)] for v in vals],dtype=float)
+                      all_pts.append(pos)
+                      # collect every unique physical index range, not just one LOD category
+                      eie,hi,pie,pi=linked(mesh['indices'].upper())
+                      dhi=decode_known(eie,hi,r.h['platform'])
+                      if dhi.get('is32bit'):
+                          idx=np.frombuffer(pi,dtype='<u4')
+                      else: idx=np.frombuffer(pi,dtype='<u2')
+                      used=set()
+                      ranges={}
+                      for p in mesh.get('parts',[]):
+                          k=(int(p['index_offset']),int(p['index_count']),int(p['primitive_type']),int(p['lod']))
+                          ranges[k]=1
+                      for off,count,prim,lod in ranges:
+                          for q in idx[off:off+count]:
+                              q=int(q)
+                              if q not in (0xffff,0xffffffff) and q<len(pos): used.add(q)
+                      if used: used_pts.append(pos[sorted(used)])
+                      mesh_rows.append({'mesh_index':mi,'vertices':len(pos),'unique_ranges':len(ranges),'used_vertices_all_ranges':len(used)})
+                  except Exception as ex:
+                      mesh_rows.append({'mesh_index':mi,'error':repr(ex)})
+              if all_pts:
+                  A=np.concatenate(all_pts,axis=0)
+                  U=np.concatenate(used_pts,axis=0) if used_pts else A
+                  mn=A.min(axis=0); mx=A.max(axis=0)
+                  row={'model':mh,'parent':rh,'owners':owner_map.get(mh,[]),'mesh_count':m['mesh_count'],'vertices':int(len(A)),'used_points':int(len(U)),'bbox_min':mn.tolist(),'bbox_max':mx.tolist(),'bbox_extent':(mx-mn).tolist(),'meshes':mesh_rows}
+                  rows.append(row)
+                  # Tiger side = x vs z; top = x vs y. Keep equal aspect so silhouette is meaningful.
+                  fig,ax=plt.subplots(figsize=(6,2.5))
+                  ax.scatter(U[:,0],U[:,2],s=0.6)
+                  ax.set_aspect('equal',adjustable='box')
+                  ax.set_title(f'{mh}  parent {rh}  owners {owner_map.get(mh,[])}  v={len(A)}')
+                  ax.set_xlabel('Tiger X'); ax.set_ylabel('Tiger Z')
+                  fig.tight_layout(); fig.savefig(f'atlas/{mh}_side.png',dpi=140); plt.close(fig)
+              else:
+                  rows.append({'model':mh,'parent':rh,'owners':owner_map.get(mh,[]),'mesh_count':m['mesh_count'],'vertices':0,'meshes':mesh_rows})
+
+          Path('reports/model_atlas.json').write_text(json.dumps(rows,indent=2)+'\n')
+          # Contact sheet
+          imgs=[]
+          from matplotlib.image import imread
+          for row in rows:
+              p=Path('atlas')/f"{row['model']}_side.png"
+              if p.exists(): imgs.append((row['model'],p))
+          cols=4; rowsn=math.ceil(len(imgs)/cols)
+          fig,axes=plt.subplots(rowsn,cols,figsize=(16,3*rowsn))
+          axes=np.array(axes).reshape(rowsn,cols)
+          for ax in axes.flat: ax.axis('off')
+          for ax,(name,p) in zip(axes.flat,imgs):
+              ax.imshow(imread(p)); ax.axis('off')
+          fig.tight_layout(); fig.savefig('atlas/CONTACT_SHEET.png',dpi=110); plt.close(fig)
+          print('MODELS',len(rows))
+          for row in rows:
+              print(row['model'],'parent',row.get('parent'),'owners',row.get('owners'),'verts',row.get('vertices'),'extent',row.get('bbox_extent'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-model-atlas
+          path: |
+            reports/
+            atlas/
+          retention-days: 2
+          if-no-files-found: error
