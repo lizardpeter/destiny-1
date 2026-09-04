@@ -22,6 +22,11 @@ D1_SKELETON_DISCRIMINATOR=0x808006BD # D2Class_DD818080 D1 schema "BD068080"
 D1_SKELETON_INFO=0x8080049A         # D2Class_DE818080 D1 schema "9A048080"
 D1_PHYSICS_DISCRIMINATOR=0x80801A79 # D2Class_5B6D8080 D1 schema "791A8080"
 D1_PHYSICS_PARENT=0x80801BF6         # D2Class_6C6D8080 D1 schema "F61B8080"
+# Charm's logical D2Class_12848080 maps to D1 schema string "63268080".
+# Tiger schema strings are serialized little-endian as u32, hence 0x80802663.
+D1_CHILDREN_DISCRIMINATOR=0x80802663
+# D2Class_0E848080 maps to D1 schema string "08278080" -> 0x80802708.
+D1_CHILDREN_DATA=0x80802708
 
 KNOWN={
  D1_MODEL_DISCRIMINATOR:'entity_model_discriminator',
@@ -30,6 +35,8 @@ KNOWN={
  D1_SKELETON_INFO:'entity_skeleton_info',
  D1_PHYSICS_DISCRIMINATOR:'entity_physics_discriminator',
  D1_PHYSICS_PARENT:'entity_physics_parent',
+ D1_CHILDREN_DISCRIMINATOR:'entity_children_discriminator',
+ D1_CHILDREN_DATA:'entity_children_data',
 }
 
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
@@ -50,7 +57,12 @@ def parse_resource(b, platform=None):
     d={'declared_file_size':struct.unpack_from('<Q',b,0)[0],'actual_file_size':len(b)}
     d['unk08']=resource_ptr(b,0x08);d['unk10']=resource_ptr(b,0x10);d['unk18']=resource_ptr(b,0x18)
     discr=d['unk10'].get('class_hash')
-    d['semantic_role']={f'{D1_MODEL_DISCRIMINATOR:08X}':'entity_model',f'{D1_SKELETON_DISCRIMINATOR:08X}':'entity_skeleton',f'{D1_PHYSICS_DISCRIMINATOR:08X}':'entity_physics'}.get(discr,'other_or_unknown')
+    d['semantic_role']={
+        f'{D1_MODEL_DISCRIMINATOR:08X}':'entity_model',
+        f'{D1_SKELETON_DISCRIMINATOR:08X}':'entity_skeleton',
+        f'{D1_PHYSICS_DISCRIMINATOR:08X}':'entity_physics',
+        f'{D1_CHILDREN_DISCRIMINATOR:08X}':'entity_children',
+    }.get(discr,'other_or_unknown')
     # Model parent embeds an EntityModel FileHash at +0x15C (Charm D1 schema).
     if d['semantic_role']=='entity_model':
         p=d['unk18'];t=p.get('target_offset')
