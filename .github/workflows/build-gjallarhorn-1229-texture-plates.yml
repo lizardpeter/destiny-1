@@ -1,0 +1,111 @@
+name: Build D1 Gjallarhorn arrangement 1229 texture plates
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-gjallarhorn-1229-texture-plates.yml'
+      - 'tools/d1_gjallarhorn_1229_compose_plates.py'
+      - 'tools/d1_texture_export.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  textures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install texture dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet pillow texture2ddecoder
+          mkdir -p runtime recovered textures/011e textures/0100 plates reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover source texture package families
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011e_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x3FEBBBE00 \
+            --target ps4_gear_player_0100_0.pkg --target ps4_gear_player_0100_1.pkg \
+            --target ps4_gear_player_0100_2.pkg --target ps4_gear_player_0100_5.pkg \
+            --out recovered --manifest reports/0100_extract.json --retries 6 --timeout 90
+      - name: Export all 24 byte-proven source textures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_texture_export.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
+            --tag-hash 80A3DB32 --tag-hash 80A3DB33 --tag-hash 80A3DB34 --tag-hash 80A3DB35 --tag-hash 80A3DB36 --tag-hash 80A3DB37 \
+            --tag-hash 80A3DB41 --tag-hash 80A3DB42 --tag-hash 80A3DB43 \
+            --tag-hash 80A3DB4D --tag-hash 80A3DB4E --tag-hash 80A3DB4F \
+            --tag-hash 80A3DB61 --tag-hash 80A3DB62 --tag-hash 80A3DB63 \
+            --tag-hash 80A3DB73 --tag-hash 80A3DB74 --tag-hash 80A3DB75 --tag-hash 80A3DB76 --tag-hash 80A3DB77 --tag-hash 80A3DB78 \
+            --tag-hash 80A3DB53 --tag-hash 80A3D8F6 \
+            --out textures/011e
+          python tools/d1_texture_export.py recovered/ps4_gear_player_0100_5.pkg --runtime runtime \
+            --tag-hash 80A019BE --out textures/0100
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('textures/011e/texture_manifest.json').read_text())
+          b=json.loads(Path('textures/0100/texture_manifest.json').read_text())
+          assert not a['missing_requested'],a['missing_requested']
+          assert not b['missing_requested'],b['missing_requested']
+          assert a['texture_count']==23,a['texture_count']
+          assert b['texture_count']==1,b['texture_count']
+          errs=[x for x in a['textures']+b['textures'] if not x.get('png') or x.get('png_error')]
+          assert not errs,errs
+          print('SOURCE_TEXTURES_OK',a['texture_count']+b['texture_count'])
+          PY
+      - name: Compose all six albedo normal GStack plate sets without resampling
+        run: |
+          set -euo pipefail
+          python tools/d1_gjallarhorn_1229_compose_plates.py \
+            --texture-dir textures/011e --texture-dir textures/0100 \
+            --out plates --report reports/gjallarhorn_1229_composed_plates.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+          r=json.loads(Path('reports/gjallarhorn_1229_composed_plates.json').read_text())
+          assert r['plate_header_count']==6 and r['plate_image_count']==18
+          for x in r['plates']:
+              p=Path(x['output']);assert p.is_file();assert Image.open(p).size==(x['dimension'],x['dimension'])
+          print('COMPOSED_PLATES_OK',r['plate_image_count'])
+          PY
+      - name: Bundle exact plate fixture
+        run: |
+          set -euo pipefail
+          cp reports/gjallarhorn_1229_composed_plates.json plates/
+          cp textures/011e/texture_manifest.json plates/source_manifest_011e.json
+          cp textures/0100/texture_manifest.json plates/source_manifest_0100.json
+          sha256sum plates/*.png > plates/plate_sha256.txt
+          cat > plates/README.txt <<'EOF'
+          Destiny 1 Rise of Iron Gjallarhorn Year 3 (art arrangement 1229)
+          Exact six-model texture-plate composition fixture.
+
+          6 model plate headers, 18 composed plate images, 24 retail source textures.
+          Every source image dimension is asserted equal to its serialized plate transform scale.
+          No image resampling is performed.
+
+          Albedo and normal are suitable for a portable glTF presentation layer.
+          GStack is preserved exactly as source imagery; its full native deferred-shader semantics
+          are not represented as generic glTF metallic/roughness.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-Gjallarhorn-Year3-arrangement-1229-texture-plates
+          path: plates/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
