@@ -113,6 +113,21 @@ jobs:
           p.write_text(s.replace(old,new))
           PY
 
+      - name: Adapt pygltflib sampler schema
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/d1_vex_09a_test_glb.py')
+          s=p.read_text()
+          s=s.replace('Sampler(name="D1_80AAE177_Wrap", magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT)',
+                      'Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT)')
+          s=s.replace('Sampler(name="D1_816CE0AA_ClampBorderPortable", magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE)',
+                      'Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE)')
+          if 'Sampler(name="D1_' in s: raise SystemExit('sampler name compatibility patch incomplete')
+          p.write_text(s)
+          PY
+
       - name: Build textured rigged animated GLB
         run: |
           set -euo pipefail
