@@ -18,7 +18,6 @@ import argparse
 import base64
 import io
 import json
-import math
 import struct
 import sys
 from pathlib import Path
@@ -43,7 +42,6 @@ OWNER = "816CE12B"
 MAIN_MATERIAL = "809C475F"
 CIRCUIT_MATERIAL = "816CE240"
 
-# glTF numeric constants, kept local to avoid pygltflib-version constant drift.
 FLOAT = 5126
 UNSIGNED_SHORT = 5123
 ARRAY_BUFFER = 34962
@@ -57,6 +55,16 @@ CLAMP_TO_EDGE = 33071
 def snorm16(a: np.ndarray) -> np.ndarray:
     x = np.asarray(a, dtype=np.float32) / 32767.0
     return np.maximum(x, -1.0)
+
+
+def tiger_to_gltf_xyz(a: np.ndarray) -> np.ndarray:
+    """Match tiger-animation-parser's D1 coordinate conversion.
+
+    Tiger: Z-up, X-forward, Y-right. Portable glTF path: Y-up, Z-forward,
+    X-right. The mapping [x,y,z] -> [y,z,x] has determinant +1, so triangle
+    winding is retained.
+    """
+    return np.ascontiguousarray(a[:, [1, 2, 0]])
 
 
 def data_uri(path: Path, mime: str = "image/png") -> str:
@@ -152,7 +160,7 @@ def decode_geometry(reader: EntryReader) -> tuple[dict, dict]:
 
     h0, p0 = linked_payload(reader, by_hash, mesh["vertices1"])
     h1, p1 = linked_payload(reader, by_hash, mesh["vertices2"])
-    hi, pi = linked_payload(reader, by_hash, mesh["indices"])
+    _, pi = linked_payload(reader, by_hash, mesh["indices"])
     stride0 = struct.unpack_from("<h", h0, 4)[0]
     stride1 = struct.unpack_from("<h", h1, 4)[0]
     if stride0 != 0x0C or stride1 != 0x10:
@@ -165,7 +173,8 @@ def decode_geometry(reader: EntryReader) -> tuple[dict, dict]:
 
     scale = np.asarray(mesh["model_scale"][:3], dtype=np.float32)
     trans = np.asarray(mesh["model_translation"][:3], dtype=np.float32)
-    positions = snorm16(r0[:, :3]) * scale + trans
+    positions_tiger = snorm16(r0[:, :3]) * scale + trans
+    positions = tiger_to_gltf_xyz(positions_tiger).astype(np.float32)
 
     rigid = r0[:, 3].astype(np.int32)
     if rigid.min() < 0 or rigid.max() >= 12:
@@ -183,9 +192,10 @@ def decode_geometry(reader: EntryReader) -> tuple[dict, dict]:
         uv0[:, 1] * (-uvscale[1]) + 1.0 - uvtrans[1],
     )).astype(np.float32)
 
-    normals = snorm16(r1[:, :3])
-    lengths = np.linalg.norm(normals, axis=1, keepdims=True)
-    normals = np.divide(normals, np.maximum(lengths, 1e-8)).astype(np.float32)
+    normals_tiger = snorm16(r1[:, :3])
+    lengths = np.linalg.norm(normals_tiger, axis=1, keepdims=True)
+    normals_tiger = np.divide(normals_tiger, np.maximum(lengths, 1e-8)).astype(np.float32)
+    normals = tiger_to_gltf_xyz(normals_tiger).astype(np.float32)
 
     source_indices = np.frombuffer(pi, dtype="<u2")
     groups: dict[tuple[int, int], list[dict]] = {}
@@ -222,6 +232,7 @@ def decode_geometry(reader: EntryReader) -> tuple[dict, dict]:
         "joint_histogram": {str(i): int(np.sum(rigid == i)) for i in sorted(set(rigid.tolist()))},
         "uv_min": [float(x) for x in uv.min(axis=0)],
         "uv_max": [float(x) for x in uv.max(axis=0)],
+        "coordinate_conversion": "Tiger [x,y,z] -> glTF/animation-oracle [y,z,x]",
         "source_resources": {
             "vertices0": mesh["vertices1"], "vertices1": mesh["vertices2"], "indices": mesh["indices"]
         },
@@ -230,7 +241,7 @@ def decode_geometry(reader: EntryReader) -> tuple[dict, dict]:
         ],
     }
     return {
-        "positions": positions.astype(np.float32),
+        "positions": positions,
         "normals": normals,
         "uv": uv,
         "joints": joints,
@@ -289,7 +300,6 @@ def add_images_and_materials(gltf: GLTF2, recipe_dir: Path, recipe: dict) -> dic
     n_i = add_image("80AACCDF_primary_normal_approx", "main_primary_normal_approx.png", {"d1TagHash": "80AACCDF", "nativeChannels": "rg", "zReconstructed": True})
     circuit_i = add_image("816CE1C5_palette_bake", "circuitry_palette_rgb.png", {"d1TagHash": "816CE1C5", "paletteMaterial": CIRCUIT_MATERIAL})
 
-    # Preserve native-only image sources inside the GLB even when core glTF cannot bind them faithfully.
     detail_src = recipe["portable_outputs"]["normal_detail_source"]["source_file"]
     detail_i = add_image("80AACC26_detail_normal_native_source", detail_src, {"d1TagHash": "80AACC26", "nativeOnly": True})
     cube_indices = []
@@ -427,7 +437,6 @@ def build(args) -> dict:
     if not args.out.exists() or args.out.stat().st_size < 1024:
         raise RuntimeError("GLB was not written correctly")
 
-    # Re-open with pygltflib as a structural sanity check.
     check = GLTF2().load_binary(str(args.out))
     report = {
         "output": str(args.out),
@@ -444,6 +453,7 @@ def build(args) -> dict:
         "native_owner": OWNER,
         "native_materials": [MAIN_MATERIAL, CIRCUIT_MATERIAL],
     }
+    args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     return report
 
