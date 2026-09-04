@@ -1,0 +1,168 @@
+name: Build first PS4 weapon proof test GLB
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-weapon-011c-test-glb.yml'
+      - 'tools/d1_weapon_011c_test_glb.py'
+      - 'tools/d1_texture_plate_probe.py'
+      - 'tools/d1_texture_plate_compose.py'
+      - 'tools/d1_texture_export.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm pillow jsonpickle texture2ddecoder
+
+      - name: Recover verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports textures/source textures/plates out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact 011c and 011e package families
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011e_extract.json
+
+      - name: Recover exact main material and texture plates
+        run: |
+          set -euo pipefail
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_material_decode.py \
+            recovered/ps4_gear_weapons_011e_0.pkg --runtime runtime --tag-hash 80A3CD9A \
+            -o reports/material_80A3CD9A.json
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_texture_plate_probe.py \
+            recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime --header-tag 80A39E17 \
+            -o reports/texture_plate_80A39E17.json
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_texture_export.py \
+            recovered/ps4_gear_weapons_011e_0.pkg --runtime runtime \
+            --tag-hash 80A3D844 --tag-hash 80A3D845 --tag-hash 80A3D846 \
+            --tag-hash 80A3D4CF --tag-hash 80A3D4D6 \
+            --out textures/source
+          python tools/d1_texture_plate_compose.py \
+            --plate-report reports/texture_plate_80A39E17.json \
+            --texture-dir textures/source --out textures/plates
+
+      - name: Recover pinned animation validation oracle
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C tiger-animation-parser rev-parse HEAD)" = 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+      - name: Build rigid textured multi-animation weapon GLB
+        run: |
+          set -euo pipefail
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_weapon_011c_test_glb.py \
+            recovered/ps4_gear_weapons_011c_0.pkg \
+            --runtime runtime \
+            --parser-root tiger-animation-parser \
+            --texture-root textures \
+            --material-report reports/material_80A3CD9A.json \
+            --plate-report reports/texture_plate_80A39E17.json \
+            --out out/80A39E12_WEAPON_RIGID_ANIMATED.glb \
+            --report reports/80A39E12_WEAPON_RIGID_ANIMATED.json
+          sha256sum out/80A39E12_WEAPON_RIGID_ANIMATED.glb | tee reports/weapon_glb_sha256.txt
+          cat reports/80A39E12_WEAPON_RIGID_ANIMATED.json
+
+      - name: Validate GLB structure and attachment
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          from pygltflib import GLTF2
+          p=Path('out/80A39E12_WEAPON_RIGID_ANIMATED.glb')
+          b=p.read_bytes()
+          assert b[:4]==b'glTF'
+          assert struct.unpack_from('<I',b,4)[0]==2
+          assert struct.unpack_from('<I',b,8)[0]==len(b)
+          g=GLTF2().load_binary(str(p))
+          assert len(g.meshes)==2
+          assert len(g.animations)==12
+          assert [x.name for x in g.animations]==[f'80A39{x:03X}' for x in range(0xDF6,0xE02)]
+          assert len(g.materials)==2
+          assert len(g.images)==10
+          assert len(g.skins)==1
+          # skeleton order is byte-proven; weapon Pedestal is joint/node 72.
+          children=g.nodes[72].children or []
+          assert len(children)==2
+          assert all(g.nodes[i].mesh is not None and g.nodes[i].skin is None for i in children)
+          r=json.loads(Path('reports/80A39E12_WEAPON_RIGID_ANIMATED.json').read_text())
+          assert r['geometry']['triangle_count_lod1']==2620
+          assert r['weapon_pedestal_node_index']==72
+          print(json.dumps({
+            'bytes':len(b),
+            'nodes':len(g.nodes),
+            'animations':[x.name for x in g.animations],
+            'weapon_pedestal_children':children,
+            'triangles_lod1':r['geometry']['triangle_count_lod1'],
+          },indent=2))
+          PY
+
+      - name: Bundle proof fixture
+        run: |
+          set -euo pipefail
+          cp reports/80A39E12_WEAPON_RIGID_ANIMATED.json out/80A39E12_WEAPON_RIGID_ANIMATED.report.json
+          cp reports/material_80A3CD9A.json out/material_80A3CD9A.json
+          cp reports/texture_plate_80A39E17.json out/texture_plate_80A39E17.json
+          cp reports/weapon_glb_sha256.txt out/SHA256SUMS.txt
+          cp textures/plates/80A39E17_albedo_plate.png out/
+          cp textures/plates/80A39E17_normal_plate.png out/
+          cp textures/plates/80A39E17_gstack_plate.png out/
+          cat > out/README.txt <<'EOF'
+          Destiny 1 ROI PS4 first weapon proof-oriented export fixture
+
+          owner     80A39E0F
+          model     80A39E12
+          skeleton  80A39DF2
+          rig       80A39DF1
+          clips     80A39DF6 through 80A39E01 (12)
+
+          The 73-node skeleton is the player skeleton plus weapon Pedestal C410084A.
+          The weapon geometry has no native skin weights.  In this GLB both weapon
+          mesh nodes are rigid children of weapon Pedestal (bone 72), which itself is
+          a child of player Grip.R.
+
+          Main LOD1 geometry uses the exact 2048 D1 entity albedo and normal texture
+          plates assembled from 1280x1280 retail textures at [0,768] without any
+          resampling.  The GStack plate and direct material shader textures are kept
+          as provenance/native-only images because their full D1 shader semantics are
+          not yet proven.  The small 28-vertex component still uses a neutral portable
+          fallback pending recovery of its 0154 texture dependency.
+
+          Core glTF PBR fields are a portable approximation, not a claim about native
+          Destiny rendering semantics.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 80A39E12-first-weapon-proof-glb
+          path: out/
+          retention-days: 2
+          if-no-files-found: error
+          compression-level: 0
