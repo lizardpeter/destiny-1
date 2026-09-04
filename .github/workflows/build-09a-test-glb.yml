@@ -33,20 +33,30 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Recover exact retail package members
+      - name: Recover exact retail package families
         run: |
           set -euo pipefail
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          # Tiger's logical namespace can reference blocks resident in lower patch
+          # siblings. Keep every required sibling beside the selected package view.
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
             --start-offset 0x105C6E000 \
-            --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_4.pkg \
+            --target ps4_arch_vex_com01_0767_0.pkg \
+            --target ps4_arch_vex_com01_0767_1.pkg \
+            --target ps4_arch_vex_com01_0767_4.pkg \
             --out recovered --manifest reports/0767_extract.json
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
-            --start-offset 0x46AF67200 \
+            --start-offset 0x46711B000 \
+            --target ps4_globals_0156_0.pkg \
+            --target ps4_globals_0156_1.pkg \
+            --target ps4_globals_0156_2.pkg \
+            --target ps4_globals_0156_3.pkg \
+            --target ps4_globals_0156_4.pkg \
             --target ps4_globals_0156_5.pkg \
             --out recovered --manifest reports/0156_extract.json
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
-            --start-offset 0x477435600 \
+            --start-offset 0x46AF91400 \
+            --target ps4_globals_0157_0.pkg \
             --target ps4_globals_0157_1.pkg \
             --out recovered --manifest reports/0157_extract.json
 
@@ -58,9 +68,12 @@ jobs:
             --dependency-pkg recovered/ps4_arch_vex_com01_0767_4.pkg \
             --tag-hash 80AACCDD --tag-hash 80AACCDF --tag-hash 80AACC26 --tag-hash 80AACC28 --tag-hash 816CE1C5 \
             --out exported
+          cat exported/texture_manifest.json
+          test -n "$(find exported -maxdepth 1 -name '*.dds' -print -quit)"
           # Host Pillow DDS support varies. Decode our already-linearized DDS files
           # explicitly so PNG generation is deterministic across runners.
-          python tools/d1_dds_to_png.py --overwrite exported/*.dds
+          mapfile -t dds_files < <(find exported -maxdepth 1 -name '*.dds' -print | sort)
+          python tools/d1_dds_to_png.py --overwrite "${dds_files[@]}"
           python tools/d1_gltf_material_recipe.py --texture-dir exported --out recipe
           # Core glTF cannot bind these native sources faithfully, but the proof GLB
           # embeds them in extras/provenance so future D1-native renderers retain them.
