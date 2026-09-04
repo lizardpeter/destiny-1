@@ -1,0 +1,122 @@
+name: Temporary resolve final 011c material binding and 0158 texture
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-material-final-binding.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports textures
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover 011c and 011e logical families
+        run: |
+          set -euo pipefail
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011c_011e_extract.json --retries 6 --timeout 90
+      - name: Decode and compare current and stale material candidates
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime --tag-hash 80A382A6 -o reports/material_80A382A6.json
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime --tag-hash 80A3CD9A -o reports/material_80A3CD9A.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          a=json.loads(Path('reports/material_80A382A6.json').read_text())
+          b=json.loads(Path('reports/material_80A3CD9A.json').read_text())
+          keys=['tag_hash','reference','size','vertex_shader','pixel_shader','vertex_vector4','pixel_vector4','pixel_tfx_bytecode','pixel_samplers','pixel_textures']
+          def pick(d): return {k:d.get(k) for k in keys}
+          pa,pb=pick(a),pick(b)
+          rep={
+            'proven_model_inline_material':'80A382A6',
+            'legacy_export_material':'80A3CD9A',
+            'current':pa,'legacy':pb,
+            'same_vs':a.get('vertex_shader')==b.get('vertex_shader'),
+            'same_ps':a.get('pixel_shader')==b.get('pixel_shader'),
+            'same_tfx':a.get('pixel_tfx_bytecode')==b.get('pixel_tfx_bytecode'),
+            'same_samplers':a.get('pixel_samplers')==b.get('pixel_samplers'),
+            'same_texture_records':a.get('pixel_textures')==b.get('pixel_textures'),
+          }
+          Path('reports/material_binding_comparison.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          PY
+      - name: Discover and recover package 0158 family
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          mapfile -t targets < <(grep -Ei '_0158_[0-9]+\.pkg$' reports/packages.txt | tr -d '\r')
+          printf '0158 manifest targets (%d):\n' "${#targets[@]}"
+          printf '%s\n' "${targets[@]}"
+          if [ "${#targets[@]}" -eq 0 ]; then
+            echo 'No package 0158 members in manifest' >&2
+            exit 1
+          fi
+          args=()
+          for t in "${targets[@]}"; do args+=(--target "$t"); done
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x46AF91400 \
+            "${args[@]}" --out recovered --manifest reports/0158_extract.json --retries 6 --timeout 90
+      - name: Resolve and export 80AB0B74
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader,decode_known
+          pkgs=[]
+          for p in Path('recovered').glob('*_0158_*.pkg'):
+              m=re.search(r'_([0-9]+)\.pkg$',p.name)
+              if m: pkgs.append((int(m.group(1)),p))
+          if not pkgs: raise SystemExit('no recovered 0158 packages')
+          pkgs.sort()
+          r=EntryReader(pkgs[-1][1],Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          h='80AB0B74'; e=by.get(h)
+          rep={'logical_view':str(pkgs[-1][1]),'siblings':[str(p) for _,p in pkgs],'target':h,'present':bool(e)}
+          if e:
+              rep['entry']={k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size','starting_block','starting_block_offset']}
+              rep['available']=r.available(e['index'])
+              if rep['available']:
+                  raw=r.entry(e['index']); rep['sha256']=hashlib.sha256(raw).hexdigest(); rep['decoded_header']=decode_known(e,raw,r.h['platform'])
+          Path('reports/80AB0B74_entry.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          if not e: raise SystemExit('80AB0B74 absent from final 0158 logical view')
+          PY
+          view=$(ls recovered/*_0158_*.pkg | sort -V | tail -1)
+          dep_args=()
+          while IFS= read -r p; do dep_args+=(--dependency-pkg "$p"); done < <(ls recovered/*_0158_*.pkg | sort -V | head -n -1)
+          python tools/d1_texture_export.py "$view" --runtime runtime "${dep_args[@]}" --tag-hash 80AB0B74 --out textures/80AB0B74 || true
+          cat textures/80AB0B74/texture_manifest.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-011c-final-material-binding-0158
+          path: |
+            reports/
+            textures/
+          retention-days: 3
+          if-no-files-found: error
