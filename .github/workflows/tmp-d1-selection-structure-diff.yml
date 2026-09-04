@@ -1,0 +1,162 @@
+name: Temporary diff D1 retail weapon selection resource structures
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-selection-structure-diff.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime and 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports/raw011c reports/raw0140
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+
+      - name: Dump and structurally diff 011c selection roots
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import collections,hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_resource_probe import parse_resource
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          roots=['80A39AA6','80A397EA']
+          known=['80A39E0F','80A39E12','80A39E24','80A39E36','80A39E48','80A39E4B','80A39E57',
+                 '80A39DF2','80A39E10','80A39E11','80A39E49','80A39E4A']
+          # Nearby same-family representatives, including exact roots.
+          reps=['80A39A78','80A39A68','80A39AA6','80A39AB8','80A397DD','80A397EA','80A39917','80A394E4']
+          targets=[]
+          for tag in roots+reps:
+              if tag not in targets: targets.append(tag)
+
+          def scan(tag,b):
+              vals=[]
+              for off in range(0,len(b)-3,4):
+                  v=struct.unpack_from('<I',b,off)[0]
+                  if (v>>24)==0x80:
+                      pkg,idx=filehash_pkg_index(v)
+                      vals.append({'offset':off,'offset_hex':f'0x{off:X}','value':f'{v:08X}','pkg':pkg,'pkg_hex':f'{pkg:04X}','index':idx,
+                                   'local_entry':by.get(f'{v:08X}',{}).get('index'),'local_ref':by.get(f'{v:08X}',{}).get('reference')})
+              shorts={}
+              for n in [10,11,12,13,14,157,172,4184,4191,4202,4203,4211,4213,4242,4270,4271,4283]:
+                  needle=struct.pack('<H',n)
+                  shorts[str(n)]=[i for i in range(0,len(b)-1) if b[i:i+2]==needle]
+              exact={h:[] for h in known}
+              for h in known:
+                  needle=struct.pack('<I',int(h,16))
+                  exact[h]=[i for i in range(0,len(b)-3) if b[i:i+4]==needle]
+              return {'aligned_80_dwords':vals,'short_occurrences':shorts,'known_hash_occurrences':exact}
+
+          out={'targets':[]}
+          for tag in targets:
+              e=by.get(tag)
+              if not e or not r.available(e['index']): continue
+              b=r.entry(e['index']); Path(f'reports/raw011c/{tag}.bin').write_bytes(b)
+              rec={'tag':tag,'index':e['index'],'reference':e['reference'].upper(),'size':len(b),'sha256':hashlib.sha256(b).hexdigest(),
+                   'prefix_hex':b[:256].hex(),'scan':scan(tag,b)}
+              if rec['reference']=='80800861': rec['resource']=parse_resource(b,r.h['platform'])
+              out['targets'].append(rec)
+              print('ROOTDIFF',tag,'size',len(b),'80vals',len(rec['scan']['aligned_80_dwords']))
+              print('  CLASSES',json.dumps(rec.get('resource',{}),separators=(',',':')))
+              print('  KNOWN',json.dumps({k:v for k,v in rec['scan']['known_hash_occurrences'].items() if v},separators=(',',':')))
+              print('  SHORTS',json.dumps({k:v for k,v in rec['scan']['short_occurrences'].items() if v},separators=(',',':')))
+              # Log only candidate 0x80 dwords that are not self refs.
+              cand=[x for x in rec['scan']['aligned_80_dwords'] if x['value']!=tag]
+              print('  FILEHASH_CANDIDATES',json.dumps(cand,separators=(',',':')))
+          Path('reports/011c_selection_structure_diff.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+
+      - name: Sparse-dump target 0140 local selector resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          ms=[
+            parse_member('ps4_investment_assets_0140_1.pkg:0x5AA95E000:775550976'),
+            parse_member('ps4_investment_assets_0140_2.pkg:0x5D8CFDA00:15181824'),
+            parse_member('ps4_investment_assets_0140_3.pkg:0x5D9B78400:538624'),
+            parse_member('ps4_investment_assets_0140_5.pkg:0x5D9BFBE00:1605632'),
+          ]
+          r=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          groups={
+            '4184':['80A81DED','80A81DEF','80A81DEE'],
+            '4191':['80A81D1A','80A81D1B'],
+            '4202':['80A8195E'],
+            '4203':['80A81D3D'],
+            '4211':['80A818E1'],
+            '4213':['80A816D5'],
+            '4242':['80A81A69'],
+            '4270':['80A81F03','80A81F04'],
+            '4271':['80A81A47','80A818EF','80A818F0'],
+            '4283':['80A818C2','80A81640'],
+          }
+          known=[10,11,12,13,14,157,172,4184,4191,4202,4203,4211,4213,4242,4270,4271,4283]
+          rows=[]
+          for arrangement,tags in groups.items():
+              for tag in tags:
+                  e=by.get(tag)
+                  rec={'arrangement':int(arrangement),'tag':tag,'present':bool(e)}
+                  if not e: rows.append(rec); continue
+                  rec.update({'index':e['index'],'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size'],'available':r.entry is not None})
+                  try: b=r.entry(e['index'])
+                  except Exception as ex: rec['read_error']=repr(ex); rows.append(rec); continue
+                  Path(f'reports/raw0140/{arrangement}_{tag}.bin').write_bytes(b)
+                  rec['sha256']=hashlib.sha256(b).hexdigest(); rec['prefix_hex']=b[:256].hex()
+                  rec['short_occurrences']={str(n):[i for i in range(len(b)-1) if b[i:i+2]==struct.pack('<H',n)] for n in known}
+                  vals=[]
+                  for off in range(0,len(b)-3,4):
+                      v=struct.unpack_from('<I',b,off)[0]
+                      if (v>>24)==0x80:
+                          pkg,idx=filehash_pkg_index(v)
+                          vals.append({'offset':off,'offset_hex':f'0x{off:X}','value':f'{v:08X}','pkg_hex':f'{pkg:04X}','index':idx})
+                  rec['aligned_80_dwords']=vals
+                  rows.append(rec)
+                  print('LOCAL0140',arrangement,tag,'ref',rec['reference'],'size',len(b))
+                  print('  SHORTS',json.dumps({k:v for k,v in rec['short_occurrences'].items() if v},separators=(',',':')))
+                  print('  FILEHASH_CANDIDATES',json.dumps(vals,separators=(',',':')))
+          Path('reports/0140_local_selector_resources.json').write_text(json.dumps({'rows':rows,'remote_blocks_read':len(r.block_cache)},indent=2)+'\n')
+          print('REMOTE_BLOCKS',len(r.block_cache))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-selection-structure-diff
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
