@@ -1,0 +1,35 @@
+name: Temporary find PS4 weapon package candidates
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-find-weapon-packages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Query final PS4 package index
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o packages.txt
+          echo '=== package index metadata ==='
+          wc -c packages.txt
+          wc -l packages.txt || true
+          echo '=== broad weapon-name candidates ==='
+          grep -Eio '[^[:space:]]*\.pkg' packages.txt | \
+            grep -Ei '(weapon|weap|wpn|gun|rifle|hand.?cannon|shotgun|sniper|fusion|rocket|sidearm|machine.?gun|sword)' | \
+            sort -u | head -n 400 || true
+          echo '=== arch_human candidates ==='
+          grep -Eio '[^[:space:]]*\.pkg' packages.txt | grep -Ei 'arch_human' | sort -u | head -n 400 || true
+          echo '=== package-name token frequency around likely arsenal terms ==='
+          grep -Eio '[^[:space:]]*\.pkg' packages.txt | sed 's#.*/##' | \
+            tr '_-' '\n\n' | tr '[:upper:]' '[:lower:]' | \
+            grep -E '^(weapon|weap|wpn|gun|rifle|cannon|shotgun|sniper|fusion|rocket|sidearm|machine|sword|auto|pulse|scout|hand)$' | \
+            sort | uniq -c | sort -nr || true
+          sha256sum packages.txt
