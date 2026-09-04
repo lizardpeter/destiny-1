@@ -1,0 +1,38 @@
+name: Temporary locate PS4 weapon 011c
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-locate-weapon-011c.yml'
+      - 'tools/d1_split_tar_find.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate 011c family before calibrated 0156 header
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python tools/d1_split_tar_find.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 \
+            --before-offset 0x46711B000 \
+            --scan-bytes 0x200000000 \
+            --chunk-size 0x2000000 \
+            --target ps4_gear_weapons_011c_0.pkg \
+            --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg \
+            --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --manifest reports/011c_locator.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-locator
+          path: reports/
+          retention-days: 1
