@@ -21,6 +21,7 @@ unless a separate ordinary model-parent/render-ownership path is proven.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import struct
 import sys
@@ -42,6 +43,8 @@ COMPOSITION_DISCRIMINATOR = "8080079A"
 COMPOSITION_INFO = "80800610"
 POST_ANIMATION_CONTROL_CLASS = "80802C0E"
 HAVOK_MARKER = b"hk_2012.2.0-r1"
+MODEL_PROMOTION_WINDOW = 4
+HAVOK_PROMOTION_WINDOW = 8
 
 
 def norm_hash(value: str) -> str:
@@ -97,10 +100,10 @@ def classify_pattern(
         "proxy_candidate": has_model and has_animation_side,
         "final_render_model_proven": False,
         "reason": (
-            "0x8080222A neighborhood has an entity model plus animation-side evidence; "
+            "0x8080222A forward bundle sequence has an entity model plus animation-side evidence; "
             "ordinary render ownership must be proven separately"
             if has_model and has_animation_side
-            else "insufficient neighborhood evidence to classify as an animation proxy"
+            else "insufficient forward-sequence evidence to classify as an animation proxy"
         ),
     }
 
@@ -199,24 +202,44 @@ def inspect_neighborhood(
     nearest_model = min(models_after, key=lambda row: row["relative_index"], default=None)
     immediate_model = next((row for row in models_after if row["relative_index"] == 1), None)
 
+    # Promotion evidence is intentionally narrower than the diagnostic
+    # neighborhood.  This prevents a distant, unrelated model or prior clip
+    # from turning a wrapper into a false proxy classification.
+    promotion_models = [
+        row for row in model_rows if 0 < row["relative_index"] <= MODEL_PROMOTION_WINDOW
+    ]
+    promotion_clips = [row for row in clip_rows if row["relative_index"] > 0]
+    promotion_havok = [
+        row for row in havok_rows if 0 < row["relative_index"] <= HAVOK_PROMOTION_WINDOW
+    ]
+
     classification = classify_pattern(
-        model_count=len(models_after),
-        clip_count=len(clip_rows),
-        havok_count=len(havok_rows),
+        model_count=len(promotion_models),
+        clip_count=len(promotion_clips),
+        havok_count=len(promotion_havok),
         known_animation_hash_match_count=sum(len(v) for v in known_animation_matches.values()),
     )
 
     evidence = []
     if immediate_model:
         evidence.append(f"immediate next entry is s_entity_model {immediate_model['tag_hash']}")
+    elif promotion_models:
+        model = min(promotion_models, key=lambda row: row["relative_index"])
+        evidence.append(
+            f"forward s_entity_model {model['tag_hash']} is +{model['relative_index']} entries"
+        )
     elif nearest_model:
         evidence.append(
-            f"nearest forward s_entity_model {nearest_model['tag_hash']} is +{nearest_model['relative_index']} entries"
+            f"nearest forward s_entity_model {nearest_model['tag_hash']} is +{nearest_model['relative_index']} entries (outside promotion window)"
         )
-    if clip_rows:
-        evidence.append(f"{len(clip_rows)} nearby s_animation_clip entr{'y' if len(clip_rows) == 1 else 'ies'}")
-    if havok_rows:
-        evidence.append(f"{len(havok_rows)} nearby payload(s) contain literal {HAVOK_MARKER.decode('ascii')}")
+    if promotion_clips:
+        evidence.append(
+            f"{len(promotion_clips)} forward s_animation_clip entr{'y' if len(promotion_clips) == 1 else 'ies'}"
+        )
+    if promotion_havok:
+        evidence.append(
+            f"{len(promotion_havok)} forward payload(s) within +{HAVOK_PROMOTION_WINDOW} contain literal {HAVOK_MARKER.decode('ascii')}"
+        )
     if known_animation_matches:
         evidence.append(
             "wrapper contains caller-supplied known animation hash dword(s): "
@@ -231,13 +254,21 @@ def inspect_neighborhood(
 
     return {
         "wrapper": entry_brief(wrapper_entry),
-        "wrapper_sha256": __import__("hashlib").sha256(wrapper_payload).hexdigest(),
+        "wrapper_sha256": hashlib.sha256(wrapper_payload).hexdigest(),
         "wrapper_size": len(wrapper_payload),
         "neighborhood_range": {"start_entry_index": lo, "end_entry_index_inclusive": hi - 1},
+        "promotion_windows": {
+            "model_forward_entries": MODEL_PROMOTION_WINDOW,
+            "havok_forward_entries": HAVOK_PROMOTION_WINDOW,
+            "clips_must_be_forward": True,
+        },
         "classification": classification,
         "evidence": evidence,
         "nearest_forward_model": nearest_model,
         "immediate_forward_model": immediate_model,
+        "promotion_models": promotion_models,
+        "promotion_animation_clips": promotion_clips,
+        "promotion_havok_payloads": promotion_havok,
         "models": model_rows,
         "animation_clips": clip_rows,
         "havok_payloads": havok_rows,
