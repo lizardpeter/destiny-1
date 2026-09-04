@@ -1,0 +1,176 @@
+name: Temporary trace 011c weapon backlinks and cluster
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-backlink-cluster.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified runtime and 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+      - name: Build exact local backlink and entity cluster report
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import collections, hashlib, json, struct, sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_resource_probe import parse_resource
+          from d1_entity_model_probe import parse_model
+
+          pkg=Path('recovered/ps4_gear_weapons_011c_5.pkg')
+          rt=Path('runtime')
+          r=EntryReader(pkg,rt)
+          byhash={e['tag_hash'].upper():e for e in r.entries}
+          target='80A39E0E'
+          watched=['80A39E0E','80A39E0F','80A39E10','80A39E11','80A39E12']
+          needles={h:struct.pack('<I',int(h,16)) for h in watched}
+
+          backlink={h:[] for h in watched}
+          available=0
+          errors=[]
+          for e in r.entries:
+              if not r.available(e['index']):
+                  continue
+              available+=1
+              try:
+                  b=r.entry(e['index'])
+              except Exception as ex:
+                  errors.append({'index':e['index'],'tag_hash':e['tag_hash'],'error':repr(ex)})
+                  continue
+              for h,n in needles.items():
+                  offs=[]; p=0
+                  while True:
+                      q=b.find(n,p)
+                      if q<0: break
+                      offs.append(q); p=q+1
+                  if offs:
+                      backlink[h].append({'source_tag':e['tag_hash'].upper(),'index':e['index'],'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size'],'offsets':offs})
+
+          # Entity -> literal EntityResource set, then decode model resources.
+          resource_entries={e['tag_hash'].upper():e for e in r.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800861'}
+          resource_needles={h:struct.pack('<I',int(h,16)) for h in resource_entries}
+          entities=[]
+          sigs=collections.Counter()
+          for e in r.entries:
+              if not (e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734' and r.available(e['index'])):
+                  continue
+              try: b=r.entry(e['index'])
+              except Exception: continue
+              refs=[]
+              # Restrict to aligned dwords to avoid byte-overlap false positives.
+              for o in range(0,len(b)-3,4):
+                  h=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+                  if h in resource_entries:
+                      refs.append((o,h))
+              uniq=[]
+              for _,h in refs:
+                  if h not in uniq: uniq.append(h)
+              decoded=[]; model_tags=[]
+              for h in uniq:
+                  re=resource_entries[h]
+                  row={'tag_hash':h,'index':re['index'],'size':re['file_size']}
+                  if r.available(re['index']):
+                      try:
+                          pr=parse_resource(r.entry(re['index']),r.h['platform']); row.update(pr)
+                          if pr.get('embedded_model_tag_hash'): model_tags.append(pr['embedded_model_tag_hash'])
+                      except Exception as ex: row['error']=repr(ex)
+                  decoded.append(row)
+              classes=tuple(sorted(x.get('unk10',{}).get('class_hash','ERR') for x in decoded))
+              sigs[classes]+=1
+              models=[]
+              for mh in model_tags:
+                  me=byhash.get(mh)
+                  if not me or not r.available(me['index']):
+                      models.append({'tag_hash':mh,'available':False}); continue
+                  try:
+                      pm=parse_model(r.entry(me['index']),r.h['platform'])
+                      meshes=[]
+                      for mi,m in enumerate(pm['meshes']):
+                          meshes.append({'mesh_index':mi,'part_count':len(m['parts']),'vertices1':m['vertices1'],'vertices2':m['vertices2'],'indices':m['indices'],'materials':sorted(set(p['material'] for p in m['parts']))})
+                      models.append({'tag_hash':mh,'index':me['index'],'size':me['file_size'],'mesh_count':pm['mesh_count'],'meshes':meshes})
+                  except Exception as ex:
+                      models.append({'tag_hash':mh,'index':me['index'],'error':repr(ex)})
+              entities.append({'tag_hash':e['tag_hash'].upper(),'index':e['index'],'size':e['file_size'],'literal_resource_refs':refs,'unique_resources':uniq,'resources':decoded,'models':models})
+
+          # Exact deep probes for the two non-model resources attached to target.
+          deep={}
+          for h in ['80A39E10','80A39E11']:
+              e=byhash[h]; b=r.entry(e['index'])
+              local=[]
+              for o in range(0,len(b)-3,4):
+                  v=struct.unpack_from('<I',b,o)[0]; vh=f'{v:08X}'
+                  q=byhash.get(vh)
+                  if q:
+                      local.append({'offset':o,'value':vh,'index':q['index'],'reference':q['reference'].upper(),'type':q['type'],'subtype':q['subtype'],'size':q['file_size'],'available':r.available(q['index'])})
+              pr=parse_resource(b,r.h['platform'])
+              # dump qword-relative pointer candidates whose target has a plausible 0x8080xxxx class immediately before it
+              ptrs=[]
+              for o in range(0,min(len(b),0x100),8):
+                  rel=struct.unpack_from('<q',b,o)[0]
+                  t=o+rel
+                  if rel and 4<=t<=len(b):
+                      cls=struct.unpack_from('<I',b,t-4)[0]
+                      if (cls & 0xFFFF0000)==0x80800000:
+                          ptrs.append({'field_offset':o,'relative':rel,'target_offset':t,'class_hash':f'{cls:08X}'})
+              deep[h]={'entry':{'index':e['index'],'reference':e['reference'].upper(),'size':e['file_size']},'parsed_resource':pr,'sha256':hashlib.sha256(b).hexdigest(),'payload_hex':b.hex(),'local_tag_refs':local,'pointer_candidates_first_0x100':ptrs}
+
+          target_index=byhash[target]['index']
+          nearby=[x for x in entities if abs(x['index']-target_index)<=160]
+          report={
+              'package':str(pkg),'pkg_id':r.h['pkg_id'],'entry_count':len(r.entries),'available_entry_count':available,
+              'watched_backlinks':backlink,
+              'entity_count':len(entities),
+              'entity_resource_signature_counts':[{'classes':list(k),'count':v} for k,v in sigs.most_common()],
+              'nearby_entities_plus_minus_160':nearby,
+              'target_entity':next(x for x in entities if x['tag_hash']==target),
+              'deep_nonmodel_resources':deep,
+              'scan_errors':errors[:200],
+          }
+          Path('reports/011c_backlink_cluster.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('available entries',available,'entities',len(entities),'scan errors',len(errors))
+          for h in watched:
+              print('\nBACKLINK',h,'count',len(backlink[h]))
+              for x in backlink[h][:40]: print(x)
+          print('\nRESOURCE SIGNATURES TOP')
+          for x in report['entity_resource_signature_counts'][:20]: print(x)
+          print('\nNEARBY ENTITIES')
+          for x in nearby:
+              print(x['tag_hash'],x['index'],'resources',x['unique_resources'],'models',[m.get('tag_hash') for m in x['models']])
+          print('\nDEEP RESOURCE REFS')
+          for h,d in deep.items():
+              print(h,d['parsed_resource'])
+              print(' local refs',d['local_tag_refs'])
+              print(' ptrs',d['pointer_candidates_first_0x100'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-011c-backlink-cluster
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
