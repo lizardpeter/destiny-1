@@ -1,0 +1,134 @@
+name: Temporary trace 011C E47 child assembly
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-e47-child-assembly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover runtime and 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/extract.json --retries 6 --timeout 90
+
+      - name: Find E47 EntityChildren parents and decode child transforms
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_resource_probe import parse_resource
+          from d1_remote_entity_child_find import parse_children_resource
+
+          TARGET='80A39E47'
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+
+          def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+          def i64(b,o): return struct.unpack_from('<q',b,o)[0]
+          def dyn(b,o):
+              count=u32(b,o); rel=i64(b,o+8); data=(o+8)+rel+0x10
+              return count,data
+          def entity_resources(tag):
+              e=by.get(tag)
+              if not e or not r.available(e['index']): return []
+              try:b=r.entry(e['index'])
+              except Exception:return []
+              if len(b)<0x30:return []
+              try:n,data=dyn(b,0x20)
+              except Exception:return []
+              out=[]
+              for i in range(n):
+                  o=data+i*0x0C
+                  if o+4>len(b):break
+                  h=f'{u32(b,o):08X}'
+                  row={'resource':h,'entry_offset':o}
+                  re=by.get(h)
+                  if re and re['reference'].upper()=='80800861' and r.available(re['index']):
+                      try:
+                          pr=parse_resource(r.entry(re['index']),r.h['platform'])
+                          row['role']=pr.get('semantic_role')
+                          row['model']=pr.get('embedded_model_tag_hash')
+                          row['discriminator']=pr.get('unk10',{}).get('class_hash')
+                          row['parent_class']=pr.get('unk18',{}).get('class_hash')
+                      except Exception as ex: row['parse_error']=repr(ex)
+                  out.append(row)
+              return out
+
+          child_resources=[]; target_resources=[]; errors=[]
+          for e in r.entries:
+              if not (e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800861' and r.available(e['index'])):
+                  continue
+              try:
+                  parsed=parse_children_resource(r.entry(e['index']))
+                  if parsed is None: continue
+                  row={'resource_tag':e['tag_hash'].upper(),'entry_index':e['index'],'size':e['file_size'],**parsed}
+                  # Decode the D1 S712B8080.Transforms array at child-entry +0x88.
+                  rb=r.entry(e['index'])
+                  for ch in row['children']:
+                      co=ch['entry_offset']
+                      try:
+                          tn,td=dyn(rb,co+0x88)
+                          trs=[]
+                          for ti in range(tn):
+                              to=td+ti*0x40
+                              rot=list(struct.unpack_from('<4f',rb,to+0x10))
+                              trans=list(struct.unpack_from('<4f',rb,to+0x20))
+                              trs.append({'index':ti,'entry_offset':to,'rotation_xyzw':rot,'translation_xyzw':trans})
+                          ch['transforms']=trs
+                      except Exception as ex: ch['transform_error']=repr(ex)
+                      ch['local_entity_resources']=entity_resources(ch['entity_hash'])
+                  child_resources.append(row)
+                  if any(ch['entity_hash']==TARGET for ch in row['children']): target_resources.append(row)
+              except Exception as ex:
+                  errors.append({'tag':e['tag_hash'].upper(),'index':e['index'],'error':repr(ex)})
+
+          # Find SEntity parents that directly reference each matching EntityChildren resource.
+          parents=[]
+          for cr in target_resources:
+              needle=struct.pack('<I',int(cr['resource_tag'],16))
+              for e in r.entries:
+                  if not (e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734' and r.available(e['index'])): continue
+                  try:b=r.entry(e['index'])
+                  except Exception:continue
+                  offs=[o for o in range(0,len(b)-3,4) if b[o:o+4]==needle]
+                  if offs:
+                      parents.append({'parent_entity':e['tag_hash'].upper(),'entry_index':e['index'],'size':e['file_size'],'child_resource':cr['resource_tag'],'offsets':offs,'entity_resources':entity_resources(e['tag_hash'].upper()),'children':cr['children']})
+
+          rep={'target':TARGET,'package_id':r.h['pkg_id'],'entry_count':len(r.entries),'entity_children_resource_count':len(child_resources),'target_child_resources':target_resources,'parents':parents,'errors':errors[:100]}
+          Path('reports/e47_child_assembly.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('EntityChildren resources',len(child_resources),'target resources',len(target_resources),'parents',len(parents))
+          print(json.dumps({'target_resources':[x['resource_tag'] for x in target_resources],'parents':parents},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-011c-e47-child-assembly
+          path: reports/
+          retention-days: 3
+          if-no-files-found: warn
