@@ -40,12 +40,11 @@ jobs:
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_entry_extract.py recovered/ps4_globals_0158_6.pkg --runtime runtime --tag-hash 80AB0B74 -o reports/80AB0B74_entry.json
           cat reports/80AB0B74_entry.json
+          # _1.._6 are physical siblings of one logical package.  EntryReader on
+          # the final snapshot follows block patch_id to those sibling files;
+          # passing siblings as cross-package dependencies would incorrectly
+          # create duplicate TagHash namespaces.
           python tools/d1_texture_export.py recovered/ps4_globals_0158_6.pkg --runtime runtime \
-            --dependency-pkg recovered/ps4_globals_0158_1.pkg \
-            --dependency-pkg recovered/ps4_globals_0158_2.pkg \
-            --dependency-pkg recovered/ps4_globals_0158_3.pkg \
-            --dependency-pkg recovered/ps4_globals_0158_4.pkg \
-            --dependency-pkg recovered/ps4_globals_0158_5.pkg \
             --tag-hash 80AB0B74 --out textures/80AB0B74
           cat textures/80AB0B74/texture_manifest.json
       - uses: actions/upload-artifact@v4
