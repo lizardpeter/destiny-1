@@ -1,6 +1,6 @@
 # Destiny 1 Materials and Shader Bindings — Living Specification
 
-Status: **PARTIALLY SOLVED; Xbox DXBC and PS4 OrbShdr resource bindings binary-confirmed**  
+Status: **PS4/Xbox material texture registers, material b0 constants, PS4 native sampler descriptors, and target shader dataflow substantially solved**  
 Target: final-era Destiny 1 / Rise of Iron. PS4 is the primary finished-export target; Xbox One is the differential/semantic corpus.
 
 ## Evidence policy
@@ -15,34 +15,173 @@ Target: final-era Destiny 1 / Rise of Iron. PS4 is the primary finished-export t
 
 ### PS4 ROI
 
-Charm's D1 `SMaterial_ROI` schema is serialized as little-endian class bytes `D71A8080`, numeric class `0x80801AD7`. The canonical PS4 Cabal package contains 136 instances.
+Charm's D1 `SMaterial_ROI` schema is serialized as little-endian class bytes
+`D71A8080`, numeric class `0x80801AD7`.
 
 Important offsets:
 
 | Offset | Meaning | State |
 |---:|---|---|
-| `0x28` | VertexShader | SOURCE_DERIVED |
-| `0x38` | VS textures | SOURCE_DERIVED |
-| `0x50` | VS TFX bytecode | SOURCE_DERIVED |
-| `0x70` | VS samplers | SOURCE_DERIVED |
-| `0xAC` | VS vector4 container | SOURCE_DERIVED |
+| `0x28` | VertexShader | CONFIRMED_CROSS_SOURCE |
+| `0x38` | VS textures | CONFIRMED_CROSS_SOURCE |
+| `0x50` | VS TFX bytecode | CONFIRMED_CROSS_SOURCE |
+| `0x70` | VS sampler records | CONFIRMED_CROSS_SOURCE |
+| `0xAC` | VS vector4 container | CONFIRMED_CROSS_SOURCE |
 | `0x2A8` | PixelShader | CONFIRMED_CROSS_SOURCE |
-| `0x2B8` | PS texture bindings | CONFIRMED_CROSS_PLATFORM_SEMANTIC |
-| `0x2D0` | PS TFX bytecode | SOURCE_DERIVED |
-| `0x2F0` | PS sampler bindings | CONFIRMED_CROSS_PLATFORM_SEMANTIC |
+| `0x2B8` | PS texture records | CONFIRMED_CROSS_PLATFORM_SEMANTIC |
+| `0x2D0` | PS TFX bytecode | CONFIRMED_CROSS_SOURCE |
+| `0x2F0` | PS sampler records | CONFIRMED_CROSS_SOURCE |
 | `0x300` | inline PS constant vec4 array when no external container is used | CONFIRMED_BINARY on Xbox semantic counterpart |
 | `0x32C` | PS vector4/constant container | CONFIRMED_CROSS_PLATFORM_SEMANTIC |
 
-The PS4 sample has 88 material references at exactly `+0x32C` to `32:7` GPU-resource headers.
-
 ### Xbox One ROI
 
-Real model-part references identify structured class `0x80801C32` as the Xbox material family. The core semantic offsets above are retained even though platform-native shader and texture serialization differs.
+Real model-part references identify structured class `0x80801C32` as the Xbox
+material family. The same engine-level texture-index and material-constant
+semantics survive despite different native shader/resource representations.
 
-Across 411 resident Xbox material tags:
+Across the established Xbox Cabal corpus:
 
-- 396 reference class `0x80801B7C` at `+0x2A8`.
-- 232 reference class `0x80801AA5` at `+0x32C`.
+- 411 resident material tags;
+- 396 reference pixel-shader class `0x80801B7C` at `+0x2A8`;
+- 232 reference vector-container class `0x80801AA5` at `+0x32C`.
+
+## `STextureTag` layout and texture-register semantics — solved
+
+D1 ROI material texture records are:
+
+```text
++0x00 u32 TextureIndex
++0x04 u32 Texture TagHash
+```
+
+### Xbox proof
+
+Across 11 resident material/DXBC overlaps:
+
+```text
+material TextureIndex set == DXBC declared t# set
+11/11 exact
+0 mismatches
+```
+
+Therefore Xbox `TextureIndex` is the actual shader `t#` register.
+
+### PS4 proof
+
+The target PS4 materials independently validate the same semantic against native
+GCN resource binding.
+
+Main surface `809C475F`, shader `80AAE14B`:
+
+```text
+TextureIndex 0 -> 80AACCDD
+TextureIndex 1 -> 80AACCDF
+TextureIndex 2 -> 80AACC26
+TextureIndex 3 -> 80AACC28
+TextureIndex 4 -> 80AACCDD
+```
+
+The `OrbShdr` usage mask exposes exactly five resource-table chunks, and the GCN
+code loads chunks 0..4 one-for-one. Instruction dataflow proves their roles:
+
+```text
+t0 -> 80AACCDD RGB surface term
+t1 -> 80AACCDF primary RG normal term
+t2 -> 80AACC26 detail RG normal term
+t3 -> 80AACC28 six-face environment cubemap
+t4 -> 80AACCDD alpha surface/reflection-control term
+```
+
+Circuitry `816CE240`, shader `816CE0A8`:
+
+```text
+TextureIndex 0 -> 816CE1C5
+TextureIndex 1 -> 816CE1C5
+```
+
+`OrbShdr` exposes direct immediate T0/T1 resources. GCN proves T0 is the
+pre-displacement height sample and T1 is the displaced full image sample.
+
+Thus D1 `STextureTag.TextureIndex` is `CONFIRMED_CROSS_PLATFORM_SEMANTIC` as the
+shader texture/resource index.
+
+## PS4 native sampler class `0x80801A42` — exact layout
+
+Target sampler hashes resolve to structured class `80801A42`, each exactly 24
+bytes:
+
+```text
++0x00 u64 file_size = 24
++0x08 u32 SQ_IMG_SAMP_WORD0
++0x0C u32 SQ_IMG_SAMP_WORD1
++0x10 u32 SQ_IMG_SAMP_WORD2
++0x14 u32 SQ_IMG_SAMP_WORD3
+```
+
+The final 16 bytes are a native PS4 Gnm sampler S# descriptor.
+
+Reusable decoder:
+
+- `tools/d1_ps4_sampler_probe.py`
+
+Raw words are canonical; Sony/Gnm enum names are source-correlated convenience
+labels.
+
+Target descriptors:
+
+```text
+80AAE177  main 2D sampler
+  00000000 00F00000 0A503F80 00000000
+  wrap XYZ   = Wrap
+  min/mag    = Bilinear
+  mip filter = Linear
+
+80AAE176  main cubemap sampler
+  00000092 00F00000 0A503F80 00000000
+  wrap XYZ   = ClampLastTexel
+  min/mag    = Bilinear
+  mip filter = Linear
+
+816CE0AA  circuitry sampler
+  000001B6 00F00000 0A503F80 80000000
+  wrap XYZ   = ClampBorder
+  border     = OpaqueWhite
+  min/mag    = Bilinear
+  mip filter = Linear
+```
+
+The target raw LOD fields are common:
+
+```text
+min_lod_raw          = 0
+max_lod_raw          = 3840
+lod_bias_signed14    = -128
+secondary_lod_bias   = 0
+```
+
+Their fixed-point conversion is intentionally not named until directly proven.
+
+A small census over the resident target/shared namespaces found 18
+`80801A42` sampler tags and 18 unique descriptors, demonstrating this is a real
+state-resource class rather than a three-value target special case.
+
+## Material TFX bytecode
+
+The target PS TFX streams are preserved exactly:
+
+```text
+809C475F:
+49 00 47 21 49 01 47 22 49 02 47 23 49 03 47 24 49 04 47 25
+
+816CE240:
+49 00 47 21 49 01 47 22
+```
+
+Current D1 TFX source names `0x47 = PopTemp` but leaves `0x49` unknown. The
+repetition count matches texture count, and later Tiger strategies place shader
+resource-binding operations in this opcode family, but this is insufficient to
+rename D1 `0x49`. Its exact D1 meaning remains `UNKNOWN`.
 
 ## Xbox inline DXBC pixel shaders
 
@@ -50,52 +189,20 @@ Class `0x80801B7C` is a D1 Xbox pixel-shader inline-DXBC container.
 
 Observed binary invariants over 27/27 resident instances:
 
-- tag begins with a `0x30`-byte header.
-- `u64 +0x00` equals actual tag size.
-- `u64 +0x08` equals DXBC byte size.
-- complete DXBC begins at `+0x30`.
-- DXBC chunk sequence is `ISGN`, `OSGN`, `SHEX`.
-- SHEX version token is pixel shader model 5.0 (`0x00000050`).
+- `0x30`-byte D1 header;
+- `u64 +0x00` equals actual tag size;
+- `u64 +0x08` equals DXBC size;
+- complete DXBC begins at `+0x30`;
+- chunk sequence `ISGN`, `OSGN`, `SHEX`;
+- SHEX version token = pixel shader model 5.0 (`0x00000050`).
 
-`0x80801AB4` is a source-indicated sibling Xbox inline-DXBC shader class, expected to cover vertex shaders; direct validation awaits a package containing resident examples.
-
-## Texture register binding — solved on Xbox
-
-Xbox material `STextureTag` records are:
-
-```text
-+0x00 u32 TextureIndex
-+0x04 u32 Texture TagHash
-```
-
-`TextureIndex` is the actual DXBC texture register number `t#`.
-
-Every resident material/shader overlap validates exactly:
-
-- compared: **11**
-- material texture register set == DXBC declared texture register set: **11/11**
-- mismatches: **0**
-
-Example:
-
-```text
-material 808B3A25:
-  material TextureIndex = [0,1,2,3]
-  shader declarations   = Texture2D t0, TextureCube t1, Texture2D t2, Texture2D t3
-```
-
-## Sampler binding
-
-Across the same 11 Xbox pairs:
-
-- material PS sampler count == DXBC sampler declaration count: **11/11**.
-- shader sampler registers are contiguous `s1..sN`: **11/11**.
-
-The material sampler records are 16 bytes. The first dword is a sampler FileHash. Current overlap contains two hashes, `80AAD3F3` and `80AAD3F1`, both pointing into Xbox package `0x156`. Their trailing 12 bytes remain unnamed. The actual referenced sampler payload is a D3D11 sampler descriptor behind a small sampler header; package `0x156` is therefore a high-value shared dependency.
+`0x80801AB4` is a source-indicated sibling Xbox inline-DXBC shader class,
+expected to cover vertex shaders; direct validation awaits a resident fixture.
 
 ## Xbox vector container `0x80801AA5` — exact layout
 
-There are 595 entries in the Xbox package and 276 resident in patch 1. All 276/276 satisfy:
+There are 595 entries in the established Xbox package and 276 resident in patch
+1. All 276/276 satisfy:
 
 ```text
 +0x00 u64 file_size               == actual size
@@ -115,139 +222,99 @@ Therefore:
 vector_count = (file_size - 0x30) / 16
 ```
 
-## Pixel constant buffer `b0` — solved
+## Pixel material constant buffer `b0` — solved cross-platform
 
 For every comparable Xbox material/pixel shader:
 
-- material-provided vector count == DXBC `cbuffer b0` declared vec4 count: **11/11**.
+```text
+material vector count == DXBC cbuffer b0 vec4 count
+11/11 exact
+```
 
-Two material storage modes feed `b0`:
+Xbox storage modes:
 
-1. external `PSVector4Container` at `+0x32C` -> class `0x80801AA5`.
-2. when the external container is invalid/absent, the inline vec4 array at `+0x300` supplies `b0`.
+1. external `PSVector4Container +0x32C -> 0x80801AA5`;
+2. inline vec4 array at `+0x300` if no external container is used.
 
-The external container formula is binary-proven, so even two patch-0-backed containers have recoverable vector counts from entry metadata size.
-
-Additional shader cbuffers such as `b12` and `b13` are not supplied by the material-local path. They represent higher-level draw/frame/global inputs, but no semantic name is assigned until their producer is traced.
+PS4 stores equivalent material constants through subtype `32:7`.
 
 ## PS4 subtype `32:7` material constants — exact representation
 
-PS4 `SMaterial_ROI +0x32C` references FileEntries with:
-
-```text
-type    = 32
-subtype = 7
-size    = 0x10
-```
-
-The representation is now directly decoded from retail PS4 bytes:
-
 ```text
 32:7 GPU-resource header (16 bytes)
-  +0x00 u32  unknown
-  +0x04 u32  unknown
-  +0x08 u32  unit_count          CONFIRMED_BINARY
-  +0x0C u32  marker/unknown
+  +0x00 u32 unknown
+  +0x04 u32 unknown
+  +0x08 u32 unit_count
+  +0x0C u32 marker/unknown
 
 FileEntry.Reference
-  -> raw payload entry
+  -> raw payload
        byte_size = unit_count * 16
        Vec4[unit_count]
 ```
 
-The first two words and `+0x0C` remain unnamed; they are preserved losslessly.
+Corpus evidence:
 
-Corpus evidence already established:
+- 122/122 observed headers exactly 16 bytes;
+- 122/122 linked metadata sizes = `unit_count*16`;
+- target payloads decode as ordinary IEEE-754 float4 arrays with exact raw-u32
+  preservation.
 
-- 122/122 observed `32:7` headers are exactly 16 bytes.
-- 122/122 linked payload metadata sizes equal `unit_count * 16`.
-- recovered Vex material containers decode to ordinary IEEE-754 float4 arrays with exact raw-u32 preservation.
+Target fixtures:
 
-Concrete target fixture:
+```text
+809C475F / PS 80AAE14B -> 80AAE14C -> 19 vec4s
+816CE240 / PS 816CE0A8 -> 816CE185 -> 8 vec4s
+```
 
-- `809C475F` / PS `80AAE14B` -> container `80AAE14C` -> **19 vec4s**.
-- `816CE240` / PS `816CE0A8` -> container `816CE185` -> **8 vec4s**.
-- all six `816CE240..244/816CE1A7` variant-1 alternatives likewise provide 8 vec4s and differ only in a small subset of those constants.
-
-Because the Xbox semantic counterpart feeds pixel constant buffer `b0`, and the PS4 native shader metadata independently declares immediate constant-buffer API slot 0 for both target pixel shaders, the PS4 subtype-7 payload is now **CONFIRMED_CROSS_PLATFORM_SEMANTIC** material pixel-constant data.
+The PS4 `OrbShdr` metadata independently declares constant-buffer API slot 0,
+and GCN load offsets land exactly on the recovered local vectors. This is direct
+instruction-level confirmation that the subtype-7 payload feeds material `b0`.
 
 Reusable decoder:
 
 - `tools/d1_vector_container_probe.py`
 
-It handles both the PS4 `32:7 -> raw Vec4 payload` representation and the Xbox `0x80801AA5` structured representation while preserving exact float and raw-u32 forms.
-
-## PS4 native pixel shaders and `OrbShdr` metadata — resource binding solved
+## PS4 native pixel shaders and `OrbShdr` metadata
 
 ### D1 engine shader header
 
-The PS4 D1 pixel-shader resource observed here is FileEntry `type=32, subtype=8` with a small engine header. `tools/d1_entry_extract.py` already validates the packed shader-header word:
+Observed PS4 pixel shaders are FileEntry `type=32, subtype=8`:
 
-- low 24 bits = referenced native shader payload byte size.
-- high 8 bits = native shader InputUsageSlot count.
-- FileEntry.Reference = native Orbis GCN shader payload entry.
+- packed low 24 bits = referenced native shader payload size;
+- packed high 8 bits = `InputUsageSlot` count;
+- FileEntry.Reference = native Orbis GCN shader payload.
 
 ### Native Orbis binary framing
 
-The referenced payload uses the standard Sony/Orbis `OrbShdr` representation. Retail target bytes validate the public Gnm structure exactly:
-
-```text
-u32 token[0] = BEEB03FF
-u32 token[1] = sizeInWords immediate
-```
-
-`BEEB03FF` is itself the standard leading GCN instruction `s_mov_b32 vcc_hi, #imm`.
-
-The 28-byte `ShaderBinaryInfo` footer is located by the source-correlated rule:
-
-```text
-footer = token + (token[1] + 1) * 2 dwords
-       = byte offset (token[1] + 1) * 8
-```
-
-For both target shaders:
-
-- the formula lands exactly on the sole `OrbShdr` signature in the native payload;
-- the footer's stage field is PixelShader;
-- the footer's code-length field ends before the InputUsageSlot/usage-mask region with exact accounting;
-- the footer InputUsageSlot count equals the high byte of the D1 engine header's packed word.
-
-This is `CONFIRMED_CROSS_SOURCE`, not a filename/signature guess.
+The referenced payload uses standard Sony `OrbShdr` metadata. The 28-byte
+`ShaderBinaryInfo` footer is recovered by the standard first-token formula and
+matches the sole footer signature in each target payload.
 
 Reusable decoder:
 
 - `tools/d1_ps4_shader_binary_probe.py`
 
-The tool resolves the D1 engine shader header to its native payload, validates the declared size, locates/parses `OrbShdr`, extracts the exact machine-code span, and decodes Sony `InputUsageSlot` records.
+It validates D1 header size, native payload size, footer accounting, exact code
+length, usage slots, and usage masks before any instruction analysis.
 
-### Target PS `80AAE14B` — main Vex surface
-
-D1 header:
+### `80AAE14B` main surface binding layout
 
 ```text
 shader               80AAE14B
 native payload        80AAE14D
 native payload size   1028 bytes
-InputUsageSlot count  9
-```
-
-Native binary:
-
-```text
-OrbShdr footer offset 1000
 GCN code length       956 bytes
-bytes after code and before footer = 44
-  9 InputUsageSlots * 4 = 36 bytes
-  2 usage-mask dwords   = 8 bytes
+InputUsageSlots       9
 ```
 
-Decoded input usage:
+Input usage:
 
 ```text
 PtrExtendedUserData             API 1   user SGPR 2
 ImmSampler                      API 1   user SGPR 4
 ImmSampler                      API 2   user SGPR 8
-PtrResourceTable                API 0   user SGPR 12   chunk mask 1
+PtrResourceTable                API 0   user SGPR 12   usage mask 0x1F
 ImmSampler                      API 3   user SGPR 16
 ImmSampler                      API 4   user SGPR 20
 ImmSampler                      API 5   user SGPR 24
@@ -255,78 +322,172 @@ ImmConstBuffer                  API 0   user SGPR 28
 ImmConstBuffer                  API 12  user SGPR 32
 ```
 
-Usage masks:
+Five active resource-table chunks exactly match material texture indices 0..4.
 
-```text
-0000001F
-00000000
-```
-
-The first mask has exactly five low resource-table chunks active, matching the five serialized PS texture records and five immediate samplers of material `809C475F`. Thus this shader receives its five sampled-image descriptors through a flat resource table rather than five immediate `ImmResource` records.
-
-### Target PS `816CE0A8` — variant-1 Vex circuitry/palette path
-
-Latest retail patch namespace resolves:
+### `816CE0A8` circuitry binding layout
 
 ```text
 shader               816CE0A8
 native payload        816CE0AE
 native payload size   580 bytes
-InputUsageSlot count  8
-```
-
-Native binary:
-
-```text
-OrbShdr footer offset 552
 GCN code length       516 bytes
-bytes after code and before footer = 36
-  8 InputUsageSlots * 4 = 32 bytes
-  1 usage-mask dword    = 4 bytes
+InputUsageSlots       8
 ```
 
-Decoded input usage:
+Input usage:
 
 ```text
 PtrExtendedUserData             API 1   user SGPR 2
-ImmResource (T# texture/image)  API 0   user SGPR 4
+ImmResource                     API 0   user SGPR 4
 ImmSampler                      API 1   user SGPR 12
-ImmResource (T# texture/image)  API 1   user SGPR 16
+ImmResource                     API 1   user SGPR 16
 ImmSampler                      API 2   user SGPR 24
 ImmConstBuffer                  API 0   user SGPR 28
 ImmConstBuffer                  API 12  user SGPR 32
 ImmConstBuffer                  API 13  user SGPR 36
 ```
 
-This exactly matches material `816CE240`'s two PS texture records and two PS sampler records: unlike `80AAE14B`, this shader binds the two texture descriptors directly as immediate resources.
+## Target instruction-level dataflow — solved locally
 
-### Current instruction-level boundary
+The exact equations are documented in `notes/PS4_09A_SHADER_DATAFLOW.md`.
+Important recovered facts follow.
 
-The resource/register binding layer is solved without requiring Xbox assistance. What remains is **shader instruction dataflow semantics**, especially:
+### Main surface `80AAE14B`
 
-- which `80AAE14B` texture-table chunk feeds base color, normal/detail, cube/environment, and other terms;
-- the exact role of the duplicate `816CE1C5` samples in `816CE0A8`;
-- how the eight variant-1 `b0` vec4s drive palette/recolor/emissive output;
-- exact output packing/blending behavior before mapping the native material to portable glTF PBR.
+Let `u=attr3.x`, `v=attr3.y`.
 
-LLVM 18 exposes the gfx700 targets but deliberately has no disassembler implementation for those old subtargets (`Disassembly not yet supported for subtarget`). This is a tooling limitation, not invalid shader data. The current instruction-analysis path therefore uses a GCN-1.1-capable decoder (CLRX/GPCS4) against the exact `OrbShdr`-bounded code bytes.
-
-## Current Vex evidence relevant to portable material reconstruction
-
-`816CE0A8`'s six parent-selected material alternatives use the same shader and the same two copies of grayscale BC1 texture `816CE1C5`. Their 8-vec4 `b0` blocks share several exact constants, including:
+Normal path:
 
 ```text
-vec2 = [0.4, 0, 0, 0]
-vec3 = [0.30, 0.59, 0.11, 0]
-vec6 = [1, 1, 1, 1]
+t1 = sample(80AACCDF, u,v)
+t2 = sample(80AACC26, 20*(1-v), 0.4*u)
+
+n1_xy = 2*t1.xy - 1
+n2_xy = 2*t2.xy - 1
+n_xy  = 1.25*n1_xy + n2_xy
+n_z   = sqrt(max(0,1-dot(n_xy,n_xy)))
 ```
 
-`[0.30, 0.59, 0.11]` is the canonical RGB-luminance coefficient triplet. Variant differences are concentrated in vec4/vec5 and sometimes vec7; one alternative changes vec7.x from `5` to `40`. Combined with the grayscale source image, this is strong evidence for a palette/recolor and intensity/emissive-style path, but the exact semantic names remain **PROVISIONAL** until native instruction dataflow proves which constants feed which output operation.
+Surface/reflection source:
+
+```text
+B = sample(80AACCDD,t0).rgb
+S = sample(80AACCDD,t4).a
+```
+
+`S` is not transparency. It drives reflection blur, reflection strength, and
+native deferred-normal packing.
+
+Cubemap minimum LOD:
+
+```text
+q = saturate(2.3*S - 1.3)
+material_lod = 3 + 3*q
+lod = max(hardware_cube_lod, material_lod)
+E = sample_lod(80AACC28,R,lod)
+```
+
+Reflection/local color:
+
+```text
+strength = 2.5*S*E.a
+reflection_rgb = E.rgb * [2,0.84,0] * strength
+mrt0.rgb = B + (0.75*B + 0.75) * reflection_rgb
+mrt0.a = attr0.w
+```
+
+Deferred normal packing:
+
+```text
+normal_scale = 0.375 + 0.125*S
+mrt1.xyz = saturate(0.5 + normal_scale*N)
+mrt1.w = 0.4754902422 if attr3.y > 1 else 0.4715686738
+```
+
+The shader writes two MRTs, so core glTF cannot reproduce the native deferred
+contract exactly.
+
+### Circuitry `816CE0A8`
+
+T0 provides the centered height sample used for view-dependent UV offset.
+T1 resamples the same BC1 image at displaced coordinates.
+
+```text
+L = saturate(0.30*R + 0.59*G + 0.11*B)
+palette.rgb = vec4.rgb + vec5.rgb*L
+```
+
+Default material `816CE185`:
+
+```text
+vec4.rgb = [0.0151604200,0.0208455771,0.0379010513]
+vec5.rgb = [0.3848395940,0.5291544200,0.9620989560]
+bright endpoint ~= [0.4,0.55,1.0]
+vec6 = [1,1,1,1]
+vec7.x = 5
+```
+
+`vec7.x` is a proven material-local RGB intensity factor before two unresolved
+global scalar multipliers. One variant (`816CE188`) uses 40.
+
+The shader writes only MRT0 RGB with output alpha zero, strongly indicating a
+separate HDR/emissive/additive-style composition pass. Exact render blend state
+is still unresolved.
+
+## Exact target texture recovery
+
+The shared `0156` family has six retail patch members `_0.._5`; the target
+texture headers/stream records may live there while high-resolution backing is
+in `0157`.
+
+`tools/d1_texture_export.py` now supports repeatable dependency packages and
+cross-package TagHash resolution, plus per-face PS4 cubemap deswizzling.
+
+Recovered target images:
+
+```text
+80AACCDD  2048x2048 BC3   backing 80AAE66A in 0157
+80AACCDF  1024x1024 BC5   backing 80AAE66B in 0157
+80AACC26    256x256 BC5   backing 80AAE586 in 0157
+80AACC28      64x64 RGBA8 six-face cube
+816CE1C5    256x512 BC1   backing 816CE246 in 0767
+```
+
+Proof artifact: Actions run `33869489031`, artifact
+`09A-shared-samplers-retail-textures`, ID `9935326724`, ZIP SHA-256
+`934d52dab19d47e36b83f43e0763957e94c0de7a4c834e88629ac330e4aa6632`.
+
+## Portable glTF consequence
+
+A loss-preserving exporter must distinguish **native truth** from **portable
+approximation**.
+
+Main surface:
+
+- base-color source: `80AACCDD.rgb`;
+- opaque surface: never map `80AACCDD.a` to transparency;
+- combined normal requires the exact two-sample equation or a bake;
+- `80AACCDD.a` can seed a glTF roughness/specular approximation, but its proven
+  native role is broader surface/reflection control;
+- native `80AACC28` environment cubemap and explicit LOD equation must be kept
+  in `extras` even if core glTF cannot bind them.
+
+Circuitry:
+
+- bake palette RGB from `816CE1C5` and local vec4/vec5;
+- preserve the view-dependent parallax equation in `extras`;
+- glTF emissive + `KHR_materials_emissive_strength` is the portable
+  approximation; keep local 5/40 intensity distinct from unresolved global
+  scalars.
 
 ## Remaining work
 
-1. Finish instruction-level GCN 1.1 dataflow decode for `80AAE14B` and `816CE0A8`.
-2. Prove PS4 serialized `STextureTag.TextureIndex` values against the native resource-table/immediate API slots for the two target materials.
-3. Trace higher-level constant buffers `b12` and `b13` to their producer classes/resources.
-4. Map sampler-record tail fields and sampler state semantics.
-5. Convert the exact Destiny Vex materials to portable glTF PBR/emissive approximations while preserving original parent/material/shader/texture hashes and native binding metadata losslessly in `extras`.
+1. Trace producers/semantics of global `b12`/`b13` fields used by view/parallax
+   and global circuitry intensity.
+2. Decode the render/blend state that composes the circuitry pass.
+3. Name the `attr0..attr4` shader interface exactly from vertex-stage evidence.
+4. Promote the already successful target skeleton/animation decode/export into
+   a reusable committed exporter.
+5. Produce the proof-grade textured + rigged + animated GLB with original
+   parent/material/shader/texture/sampler/constant metadata serialized in
+   `extras` and all glTF approximations explicitly labeled.
