@@ -23,6 +23,8 @@ This ledger is authoritative for unresolved data. An entry remains here until ev
 | VertexBuffer | header `type` at `0x06` | decoded but semantic values not fully mapped | PARTIAL | bind to D1 mesh layouts/model tags |
 | IndexBuffer | `0x00` and `0x02` | canonical values 1 / 0 | UNKNOWN | compare topology/resource variants |
 | PixelShader header | words after packed word 0 | payload-size/input-slot word solved; remainder not fully named | PARTIAL | correlate GCN registers/resource tables and other shader stages |
+| `0x808008B2` runtime-rig payload | internal fields | retail `816CE095` validates component hash `76F7A98E`, 12 controls and identity bone/control mapping; reusable field offsets were not durably promoted | ROLE/ONE INSTANCE VALIDATED, GENERAL SCHEMA PARTIAL | reconstruct field-by-field layout from retained/runtime evidence and additional rigs without inferring offsets from notes |
+| `0x8080222A` structured class | internal fields | repeatedly precedes special `s_entity_model -> Havok -> clip(s)` clusters; `816CE099` contains aligned `D3FD602F`, exactly clip `816CE09E` animation hash | OBSERVED ANIMATION-BUNDLE/PROXY ROLE, OFFICIAL NAME/FIELDS UNKNOWN | census more packages; correlate each aligned field across wrappers; do not name fields until repeated byte proof |
 | NamedTag | 68-byte record | no records in canonical PS4 sample | SOURCE_DERIVED | validate package with named tags |
 | NamedTag | zero-count hash | 20 zero bytes | CONFIRMED_BINARY for PS4 sample | compare additional zero-count v24 packages |
 | BlockEntry.flags | `0x2` | absent in current samples | SOURCE_DERIVED | validate encrypted D1 package |
@@ -43,3 +45,15 @@ The following were removed from the active ledger after binary validation:
 ## `entry_b[23:16]` current constraint
 
 This byte is not arbitrary per-entry metadata. It is preserved across every observed local resource reference edge in both current corpora, including multi-hop texture chains. Candidate semantic families include inherited resource grouping, streaming/allocation class, or another package-generation property. Do not name it until cross-package evidence separates those possibilities.
+
+## Animation-wrapper caution
+
+`0x8080222A` is now useful enough to drive exporter behavior but **not** solved enough to receive a reconstructed Bungie schema. The safe invariant is behavioral:
+
+```text
+0x8080222A + nearby/forward s_entity_model + animation-side evidence
+    => classify as animation-bundle/proxy pattern
+    => final visible render ownership remains false until separately proven
+```
+
+`tools/d1_animation_bundle_probe.py` implements that rule without assigning field meanings. Caller-supplied known animation hashes are compared only as aligned raw dwords.
