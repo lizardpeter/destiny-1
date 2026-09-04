@@ -36,8 +36,10 @@ def decode_vb1(data,stride,uvscale,uvtrans):
     uv=norm=None; tangent=None; color=None
     if stride==0x0c:
         uv=snorm16(raw[:,:2]); norm=snorm16(raw[:,2:5])
-    elif stride==0x14:
-        # D1 bufferIndex=1, with no pre-existing UVs: UV + normal4 + tangent4.
+    elif stride in (0x14,0x18):
+        # D1 bufferIndex=1, with no pre-existing UVs: UV + padded normal +
+        # tangent. Retail 0x18 adds one final int16 pair after the tangent;
+        # its semantic is intentionally left unresolved and is not consumed.
         uv=snorm16(raw[:,:2]); norm=snorm16(raw[:,2:5]); tangent=snorm16(raw[:,6:9])
     elif stride==0x04:
         uv=snorm16(raw[:,:2])
