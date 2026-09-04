@@ -34,7 +34,7 @@ jobs:
             --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
             --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
             --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
-      - name: Decode six exact plate headers with generation-safe fallback
+      - name: Decode six exact plate headers with cross-package generation-safe fallback
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -43,10 +43,9 @@ jobs:
           from pathlib import Path
           sys.path.insert(0,'tools')
           from d1_entry_extract import EntryReader
-          from d1_texture_plate_probe import parse_plate
           from d1_investment_arrangement_probe import filehash_pkg_index
 
-          HEADER_CLASS='80801C3C'; PLATE_CLASS='80800147'
+          HEADER_CLASS='80801C3C'; PLATE_CLASS='80800147'; TRANSFORM_SIZE=0x14
           owners={
             '80A743A6':'80A39C90',
             '80A73BAB':'80A398B5',
@@ -57,60 +56,70 @@ jobs:
           }
           def patchnum(p):
             m=re.search(r'_(\d+)\.pkg$',p.name);return int(m.group(1)) if m else -1
-          families={
+          paths={
             0x011C:sorted(Path('recovered').glob('ps4_gear_weapons_011c_*.pkg'),key=patchnum,reverse=True),
             0x013F:sorted(Path('recovered').glob('ps4_investment_assets_013f_*.pkg'),key=patchnum,reverse=True),
           }
-          rows=[]
-          for model,header_tag in owners.items():
-            pkg,idx=filehash_pkg_index(int(header_tag,16)); attempts=[]; chosen=None
-            for p in families[pkg]:
-              rec={'snapshot':p.name}
+          cache={}
+          for pkg,ps in paths.items():
+            cache[pkg]=[]
+            for p in ps:
               try:
-                r=EntryReader(p,Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(header_tag)
-                rec['present']=bool(e)
-                if not e: attempts.append(rec); continue
-                rec.update({'entry_index':e['index'],'type':e['type'],'subtype':e['subtype'],'reference':e['reference'].upper(),'size':e['file_size']})
-                if e['reference'].upper()!=HEADER_CLASS:
-                  rec['reject']=f'expected header class {HEADER_CLASS}';attempts.append(rec);continue
-                b=r.entry(e['index'])
-                if len(b)<0x30: raise ValueError(f'short header {len(b)}')
-                albedo=f'{struct.unpack_from("<I",b,0x24)[0]:08X}'
-                normal=f'{struct.unpack_from("<I",b,0x28)[0]:08X}'
-                gstack=f'{struct.unpack_from("<I",b,0x2c)[0]:08X}'
-                plates={}
-                valid=True
-                for role,pt in [('albedo',albedo),('normal',normal),('gstack',gstack)]:
-                  pe=by.get(pt)
-                  if not pe or pe['reference'].upper()!=PLATE_CLASS:
-                    rec.setdefault('plate_rejects',[]).append({'role':role,'tag':pt,'entry':pe});valid=False;break
-                  pr=parse_plate(r,by,pt)
-                  if not pr.get('available') or not pr.get('transforms'):
-                    rec.setdefault('plate_rejects',[]).append({'role':role,'tag':pt,'plate':pr});valid=False;break
-                  plates[role]=pr
-                if not valid:
-                  attempts.append(rec);continue
-                chosen={
-                  'model_tag':model,'header_tag':header_tag,'package_id':pkg,'snapshot':p.name,
-                  'header_entry_index':e['index'],'header_sha256':hashlib.sha256(b).hexdigest(),
-                  'plate_tags':{'albedo':albedo,'normal':normal,'gstack':gstack},'plates':plates,
-                }
-                attempts.append({**rec,'accepted':True});break
+                r=EntryReader(p,Path('runtime'));cache[pkg].append((r,{e['tag_hash'].upper():e for e in r.entries}))
+              except Exception: pass
+          def dyn(b,field):
+            count=struct.unpack_from('<I',b,field)[0];rel=struct.unpack_from('<q',b,field+8)[0];data=field+8+rel+0x10
+            return count,data,rel
+          def pow2(v): return 0 if v<=0 else 1<<(v-1).bit_length()
+          def resolve_struct(tag,expected_class):
+            pkg,idx=filehash_pkg_index(int(tag,16)); attempts=[]
+            if pkg not in cache: return None,[{'error':f'package {pkg:04X} not mounted'}]
+            for r,by in cache[pkg]:
+              e=by.get(tag)
+              rec={'snapshot':r.pkg.name,'present':bool(e)}
+              if not e: attempts.append(rec);continue
+              rec.update({'entry_index':e['index'],'type':e['type'],'subtype':e['subtype'],'reference':e['reference'].upper(),'size':e['file_size']})
+              if e['reference'].upper()!=expected_class:
+                rec['reject']=f'expected class {expected_class}';attempts.append(rec);continue
+              try:
+                b=r.entry(e['index']);rec['accepted']=True;attempts.append(rec);return (r,by,e,b),attempts
               except Exception as ex:
                 rec['error']=repr(ex);attempts.append(rec)
-            if chosen is None: raise SystemExit(f'could not decode complete plate set {header_tag}: {attempts}')
-            chosen['attempts']=attempts
-            rows.append(chosen)
-            print('GJ_PLATE',json.dumps({k:v for k,v in chosen.items() if k not in ('plates','attempts')},separators=(',',':')))
-            for role,plate in chosen['plates'].items():
-              print(' GJ_PLATE_ROLE',model,role,plate['tag_hash'],'dim',plate['plate_dimension_pow2'],'transforms',json.dumps(plate['transforms'],separators=(',',':')))
+            return None,attempts
+          def parse_plate_cross(tag):
+            got,attempts=resolve_struct(tag,PLATE_CLASS)
+            if got is None: raise RuntimeError(f'plate {tag} unresolved: {attempts}')
+            r,by,e,b=got
+            count,data,rel=dyn(b,0x10);trs=[];maxdim=0
+            if data<0 or data+count*TRANSFORM_SIZE>len(b): raise ValueError(f'{tag} transform array OOB')
+            for i in range(count):
+              o=data+i*TRANSFORM_SIZE
+              tex=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+              tx,ty,sx,sy=struct.unpack_from('<iiii',b,o+4)
+              maxdim=max(maxdim,tx+sx,ty+sy)
+              tpkg,tidx=filehash_pkg_index(int(tex,16))
+              trs.append({'index':i,'offset':o,'texture':tex,'texture_filehash_package_id':tpkg,'texture_filehash_entry_index':tidx,'translation':[tx,ty],'scale':[sx,sy]})
+            return {'tag_hash':tag,'package_id':filehash_pkg_index(int(tag,16))[0],'snapshot':r.pkg.name,'entry_index':e['index'],'class_hash':e['reference'].upper(),'sha256':hashlib.sha256(b).hexdigest(),'transform_count':count,'transforms':trs,'plate_dimension_source_max':maxdim,'plate_dimension_pow2':pow2(maxdim),'attempts':attempts}
+
+          rows=[]
+          for model,header_tag in owners.items():
+            got,hattempts=resolve_struct(header_tag,HEADER_CLASS)
+            if got is None: raise SystemExit(f'header {header_tag} unresolved: {hattempts}')
+            hr,hby,he,hb=got
+            if len(hb)<0x30: raise ValueError(f'short header {header_tag}: {len(hb)}')
+            tags={'albedo':f'{struct.unpack_from("<I",hb,0x24)[0]:08X}','normal':f'{struct.unpack_from("<I",hb,0x28)[0]:08X}','gstack':f'{struct.unpack_from("<I",hb,0x2c)[0]:08X}'}
+            plates={role:parse_plate_cross(pt) for role,pt in tags.items()}
+            row={'model_tag':model,'header_tag':header_tag,'header_package_id':filehash_pkg_index(int(header_tag,16))[0],'header_snapshot':hr.pkg.name,'header_entry_index':he['index'],'header_sha256':hashlib.sha256(hb).hexdigest(),'header_attempts':hattempts,'plate_tags':tags,'plates':plates}
+            rows.append(row)
+            print('GJ_PLATE',json.dumps({k:v for k,v in row.items() if k not in ('plates','header_attempts')},separators=(',',':')))
+            for role,p in plates.items():
+              print(' GJ_PLATE_ROLE',model,role,p['tag_hash'],'pkg',f"{p['package_id']:04X}",'dim',p['plate_dimension_pow2'],'transforms',json.dumps(p['transforms'],separators=(',',':')))
 
           alltex=[]
           for row in rows:
-            for role,p in row['plates'].items():
+            for p in row['plates'].values():
               for t in p['transforms']:
-                h=t['texture']
-                if h not in alltex: alltex.append(h)
+                if t['texture'] not in alltex: alltex.append(t['texture'])
           out={'arrangement':1229,'models':rows,'unique_source_texture_hashes':alltex,'unique_source_texture_count':len(alltex)}
           Path('reports/gjallarhorn_1229_texture_plates.json').write_text(json.dumps(out,indent=2)+'\n')
           print('UNIQUE_SOURCE_TEXTURES',len(alltex),alltex)
