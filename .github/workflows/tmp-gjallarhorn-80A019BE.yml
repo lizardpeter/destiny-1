@@ -1,0 +1,89 @@
+name: Temporary probe Gjallarhorn 80A019BE texture chain
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-80A019BE.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0100 family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x3FEBBBE00 \
+            --target ps4_gear_player_0100_0.pkg --target ps4_gear_player_0100_1.pkg \
+            --target ps4_gear_player_0100_2.pkg --target ps4_gear_player_0100_5.pkg \
+            --out recovered --manifest reports/0100_extract.json --retries 6 --timeout 90
+      - name: Inspect target and its reference chain in every snapshot
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_investment_arrangement_probe import filehash_pkg_index
+          from d1_texture_export import decode_header
+          tag='80A019BE'
+          rows=[]
+          for p in sorted(Path('recovered').glob('ps4_gear_player_0100_*.pkg'), reverse=True):
+              q={'snapshot':p.name}
+              try:
+                  r=EntryReader(p,Path('runtime'))
+                  by={e['tag_hash'].upper():e for e in r.entries}
+                  e=by.get(tag)
+                  q['present']=bool(e)
+                  if not e: rows.append(q); continue
+                  q['entry']={k:e[k] for k in ('index','tag_hash','reference','type','subtype','file_size')}
+                  q['reference_package_index']=filehash_pkg_index(int(e['reference'],16)) if e['reference'].upper()!='FFFFFFFF' else None
+                  q['available']=r.available(e['index'])
+                  try:
+                      b=r.entry(e['index']); q['payload_len']=len(b); q['prefix64']=b[:64].hex()
+                      if (e['type'],e['subtype']) in {(32,1),(32,2)}:
+                          q['texture_header']=decode_header(b)
+                  except Exception as ex: q['payload_error']=repr(ex)
+                  ref=e['reference'].upper()
+                  re=by.get(ref)
+                  if re:
+                      q['same_snapshot_ref_entry']={k:re[k] for k in ('index','tag_hash','reference','type','subtype','file_size')}
+                      q['same_snapshot_ref_available']=r.available(re['index'])
+                      try:
+                          rb=r.entry(re['index']); q['same_snapshot_ref_payload_len']=len(rb); q['same_snapshot_ref_prefix64']=rb[:64].hex()
+                      except Exception as ex: q['same_snapshot_ref_payload_error']=repr(ex)
+                      ref2=re['reference'].upper(); rr=by.get(ref2)
+                      q['second_reference_package_index']=filehash_pkg_index(int(ref2,16)) if ref2!='FFFFFFFF' else None
+                      if rr:
+                          q['same_snapshot_ref2_entry']={k:rr[k] for k in ('index','tag_hash','reference','type','subtype','file_size')}
+                          q['same_snapshot_ref2_available']=r.available(rr['index'])
+                          try:
+                              rrb=r.entry(rr['index']); q['same_snapshot_ref2_payload_len']=len(rrb); q['same_snapshot_ref2_prefix64']=rrb[:64].hex()
+                          except Exception as ex: q['same_snapshot_ref2_payload_error']=repr(ex)
+              except Exception as ex: q['snapshot_error']=repr(ex)
+              rows.append(q)
+          Path('reports/80A019BE_chain.json').write_text(json.dumps(rows,indent=2)+'\n')
+          for q in rows: print('GJ_80A019BE',json.dumps({k:v for k,v in q.items() if 'prefix' not in k},separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-gjallarhorn-80A019BE-chain
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
