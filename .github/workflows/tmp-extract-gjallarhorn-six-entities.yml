@@ -80,19 +80,21 @@ jobs:
               if rv is not None and ridx is not None and ridx < len(rv.entries):
                 re=rv.entries[ridx]
                 x.update({'entry_tag':re['tag_hash'].upper(),'entry_reference':re['reference'].upper(),'entry_size':re['file_size']})
-                if re['tag_hash'].upper()==h and rv.available(ridx):
-                  rb=rv.entry(ridx); x['payload_sha256']=hashlib.sha256(rb).hexdigest()
-                  Path(f'reports/raw/{h}_resource.bin').write_bytes(rb)
-                  if re['reference'].upper()=='80800861':
-                    pr=parse_resource(rb,'PS4'); x['entity_resource']=pr
-                    mt=pr.get('embedded_model_tag_hash')
-                    if mt and mt not in ('00000000','FFFFFFFF'):
-                      model_tags.append(mt); x['model_tag']=mt
+                if re['tag_hash'].upper()==h:
+                  try:
+                    rb=rv.entry(ridx); x['payload_sha256']=hashlib.sha256(rb).hexdigest()
+                    Path(f'reports/raw/{h}_resource.bin').write_bytes(rb)
+                    if re['reference'].upper()=='80800861':
+                      pr=parse_resource(rb,'PS4'); x['entity_resource']=pr
+                      mt=pr.get('embedded_model_tag_hash')
+                      if mt and mt not in ('00000000','FFFFFFFF'):
+                        model_tags.append(mt); x['model_tag']=mt
+                  except Exception as ex:
+                    x['read_error']=repr(ex)
               erow['resources'].append(x)
             rows.append(erow)
             print('GJALLARHORN_ENTITY',json.dumps(erow,separators=(',',':')))
 
-          # Decode every locally reachable embedded model.
           models=[]
           for mt in sorted(set(model_tags)):
             mpkg,midx=filehash_pkg_index(int(mt,16)); rv=views.get(mpkg)
@@ -100,10 +102,13 @@ jobs:
             if rv is not None and midx < len(rv.entries):
               me=rv.entries[midx]
               rec.update({'entry_tag':me['tag_hash'].upper(),'reference':me['reference'].upper(),'entry_size':me['file_size']})
-              if me['tag_hash'].upper()==mt and rv.available(midx):
-                mb=rv.entry(midx); rec['sha256']=hashlib.sha256(mb).hexdigest(); Path(f'reports/raw/{mt}_model.bin').write_bytes(mb)
-                if me['reference'].upper()=='80801AB5':
-                  rec['model']=parse_model(mb,'PS4')
+              if me['tag_hash'].upper()==mt:
+                try:
+                  mb=rv.entry(midx); rec['sha256']=hashlib.sha256(mb).hexdigest(); Path(f'reports/raw/{mt}_model.bin').write_bytes(mb)
+                  if me['reference'].upper()=='80801AB5':
+                    rec['model']=parse_model(mb,'PS4')
+                except Exception as ex:
+                  rec['read_error']=repr(ex)
             models.append(rec); print('GJALLARHORN_MODEL',json.dumps(rec,separators=(',',':')))
 
           out={'arrangement':1229,'entities':rows,'embedded_model_tags':sorted(set(model_tags)),'models':models,
