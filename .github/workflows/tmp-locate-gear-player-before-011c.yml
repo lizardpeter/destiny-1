@@ -1,0 +1,35 @@
+name: Temporary locate gear-player families before 011c
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-locate-gear-player-before-011c.yml'
+      - 'tools/d1_split_tar_scan.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Scan 2 GiB immediately before known 011c header
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python tools/d1_split_tar_scan.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start 0x3B779C800 --end 0x43779C800 --chunk-size 0x2000000 \
+            --contains 'ps4_gear_player_' -o reports/gear_player_window.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gear-player-window
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
