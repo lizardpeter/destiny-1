@@ -1,0 +1,115 @@
+name: Temporary decode retail selected 0140 weapon models
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-retail-selected-models-0140.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports/raw_models
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Sparse-decode selected models from 0140
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_entity_model_probe import parse_model
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          ms=[
+            parse_member('ps4_investment_assets_0140_1.pkg:0x5AA95E000:775550976'),
+            parse_member('ps4_investment_assets_0140_2.pkg:0x5D8CFDA00:15181824'),
+            parse_member('ps4_investment_assets_0140_3.pkg:0x5D9B78400:538624'),
+            parse_member('ps4_investment_assets_0140_5.pkg:0x5D9BFBE00:1605632'),
+          ]
+          r=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          selected={
+            4184:['80A81DF0'],
+            4191:['80A81D1C'],
+            4202:['80A8195F'],
+            4203:['80A81D3E'],
+            4211:['80A818E2'],
+            4213:['80A816D6'],
+            4242:['80A81A6A'],
+            4270:['80A81F05'],
+            4271:['80A81A48','80A818F1'],
+            4283:['80A818C3','80A81641'],
+          }
+          rows=[]
+          for arrangement,tags in selected.items():
+            for tag in tags:
+              e=by.get(tag)
+              rec={'arrangement':arrangement,'model_tag':tag,'present':bool(e)}
+              if not e:
+                rows.append(rec); print('MISSING_MODEL',arrangement,tag); continue
+              rec.update({'entry_index':e['index'],'reference':e['reference'].upper(),'entry_size':e['file_size']})
+              try: b=r.entry(e['index'])
+              except Exception as ex:
+                rec['read_error']=repr(ex); rows.append(rec); print('READ_ERROR',arrangement,tag,repr(ex)); continue
+              Path(f'reports/raw_models/{arrangement}_{tag}.bin').write_bytes(b)
+              rec['sha256']=hashlib.sha256(b).hexdigest()
+              if rec['reference']!='80801AB5':
+                rec['wrong_class']=True; rows.append(rec); print('WRONG_CLASS',arrangement,tag,rec['reference']); continue
+              m=parse_model(b,'PS4')
+              rec['model']=m
+              for mi,mesh in enumerate(m['meshes']):
+                # Annotate every resource/material hash by package/index and local entry metadata.
+                ann={}
+                for field in ['vertices1','vertices2','old_weights','unk_resource','indices']:
+                  h=mesh[field]
+                  if h=='FFFFFFFF': ann[field]={'hash':h}; continue
+                  v=int(h,16); pkg,idx=filehash_pkg_index(v); le=by.get(h)
+                  ann[field]={'hash':h,'package_id':pkg,'package_id_hex':f'{pkg:04X}','index':idx,
+                              'local_entry_index':le['index'] if le else None,'local_reference':le['reference'].upper() if le else None,
+                              'local_size':le['file_size'] if le else None}
+                mats=[]
+                for p in mesh['parts']:
+                  h=p['material']; v=int(h,16); pkg,idx=filehash_pkg_index(v); le=by.get(h)
+                  mats.append({'hash':h,'package_id':pkg,'package_id_hex':f'{pkg:04X}','index':idx,
+                               'local_entry_index':le['index'] if le else None,'local_reference':le['reference'].upper() if le else None,
+                               'lod':p['lod'],'index_offset':p['index_offset'],'index_count':p['index_count'],
+                               'dye':p['gear_dye_change_color_index'],'variant':p['variant_shader_index']})
+                mesh['resource_annotations']=ann; mesh['material_annotations']=mats
+              rows.append(rec)
+              print('MODEL',arrangement,tag,'size',len(b),'meshes',m['mesh_count'])
+              for mi,mesh in enumerate(m['meshes']):
+                print(' MESH',mi,'v1',mesh['vertices1'],'v2',mesh['vertices2'],'idx',mesh['indices'],'parts',mesh['part_count'])
+                print('  RES',json.dumps(mesh['resource_annotations'],separators=(',',':')))
+                print('  MATS',json.dumps(mesh['material_annotations'],separators=(',',':')))
+          report={'rows':rows,'remote_blocks_read':len(r.block_cache)}
+          Path('reports/0140_retail_selected_models.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('REMOTE_BLOCKS',len(r.block_cache))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-retail-selected-models-0140
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
