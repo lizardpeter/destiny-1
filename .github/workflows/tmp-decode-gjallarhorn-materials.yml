@@ -1,0 +1,68 @@
+name: Temporary decode exact Gjallarhorn materials
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-decode-gjallarhorn-materials.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and material package families
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/gear_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x59B629600 \
+            --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
+            --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5DED7DE00 \
+            --target ps4_investment_assets_0144_2.pkg --target ps4_investment_assets_0144_3.pkg --target ps4_investment_assets_0144_4.pkg --target ps4_investment_assets_0144_5.pkg \
+            --out recovered --manifest reports/0144_extract.json --retries 6 --timeout 90
+      - name: Decode all locally identified native materials
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime --tag-hash 80A39480 --tag-hash 80A39481 -o reports/materials_011c.json
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime --tag-hash 80A3D18E -o reports/materials_011e.json
+          python tools/d1_material_decode.py recovered/ps4_investment_assets_0139_5.pkg --runtime runtime --tag-hash 80A73263 --tag-hash 80A73264 --tag-hash 80A73D14 --tag-hash 80A73D15 -o reports/materials_0139.json
+          python tools/d1_material_decode.py recovered/ps4_investment_assets_0144_5.pkg --runtime runtime --tag-hash 80A88D62 --tag-hash 80A88D63 --tag-hash 80A88D7E --tag-hash 80A88D7F -o reports/materials_0144.json
+          python - <<'PY'
+          import json,glob
+          rows=[]
+          for p in glob.glob('reports/materials_*.json'):
+            d=json.load(open(p))
+            for r in d.get('materials',[]):
+              rows.append(r)
+              print('GJ_MATERIAL',json.dumps({
+                'tag':r.get('tag_hash'),'vs':r.get('vertex_shader'),'ps':r.get('pixel_shader'),
+                'ps_textures':r.get('ps_textures'),'samplers':r.get('ps_samplers'),
+                'ps_vector4':r.get('ps_vector4_container')
+              },separators=(',',':')))
+          json.dump({'materials':rows},open('reports/gjallarhorn_materials_combined.json','w'),indent=2)
+          print('MATERIAL_COUNT',len(rows))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-gjallarhorn-materials
+          path: reports/
+          retention-days: 7
+          if-no-files-found: warn
