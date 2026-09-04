@@ -1,0 +1,96 @@
+name: Temporary reverse-map 0140 visuals importing 011c to art arrangements
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-0140-arrangement-reverse-011c.yml'
+      - 'tools/d1_investment_arrangement_probe.py'
+      - 'tools/d1_remote_investment_parent_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reverse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover verified Oodle runtime and Investment selector tables
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg \
+            --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg \
+            --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+
+      - name: Decode arrangements and reverse target 0140 s_entities
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_investment_arrangement_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg \
+            recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime --asset-dir recovered \
+            -o reports/art_arrangements.json
+
+          python tools/d1_remote_investment_parent_probe.py reports/art_arrangements.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --member ps4_investment_assets_0140_1.pkg:0x5AA95E000:775550976 \
+            --member ps4_investment_assets_0140_2.pkg:0x5D8CFDA00:15181824 \
+            --member ps4_investment_assets_0140_3.pkg:0x5D9B78400:538624 \
+            --member ps4_investment_assets_0140_5.pkg:0x5D9BFBE00:1605632 \
+            --find-entity 80A816D4 --find-entity 80A818C1 --find-entity 80A818E0 \
+            --find-entity 80A818EE --find-entity 80A8195D --find-entity 80A81A68 \
+            --find-entity 80A81D19 --find-entity 80A81D3C --find-entity 80A81DEC \
+            --find-entity 80A81F02 \
+            -o reports/0140_target_arrangements.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/0140_target_arrangements.json'))
+          print('TARGET ARRANGEMENT MATCHES',len(d['matches']))
+          for m in d['matches']:
+              print('ARRANGEMENT',m['arrangement_index'])
+              print('  source',m['source'])
+              print('  matched',','.join(m['matched_entities']))
+              print('  assignments',','.join(m['assignment_hashes']))
+              print('  parents',','.join(m['entity_parent_hashes']))
+              print('  finals',','.join(m['final_entity_hashes']))
+          # Also give direct parent->target rows for a clean durable census.
+          targets=set(d['wanted_entities'])
+          rows=[]
+          for ph,r in d['parents'].items():
+              if r.get('resolved') and r.get('entity_data_hash') in targets:
+                  rows.append(r)
+          rows.sort(key=lambda r:(r['entity_data_hash'],r['parent_hash']))
+          json.dump({'targets':sorted(targets),'parent_rows':rows,'matches':d['matches']},open('reports/0140_target_arrangements_summary.json','w'),indent=2)
+          print('DIRECT TARGET PARENTS',len(rows))
+          for r in rows:
+              print('  ',r['entity_data_hash'],'<-',r['parent_hash'],'ref',r.get('reference'),'sha',r.get('payload_sha256'))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-0140-target-art-arrangements
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
