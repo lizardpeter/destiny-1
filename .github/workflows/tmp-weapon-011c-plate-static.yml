@@ -5,7 +5,9 @@ on:
     paths:
       - '.github/workflows/tmp-weapon-011c-plate-static.yml'
       - 'tools/d1_texture_plate_probe.py'
+      - 'tools/d1_texture_plate_compose.py'
       - 'tools/d1_entity_model_export.py'
+      - 'tools/d1_texture_export.py'
 
 jobs:
   probe:
@@ -20,7 +22,7 @@ jobs:
       - name: Recover verified runtime
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports out textures
+          mkdir -p runtime recovered reports out textures/source textures/plates
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -44,29 +46,41 @@ jobs:
             recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime --header-tag 80A39E17 \
             -o reports/texture_plate_80A39E17.json
           cat reports/texture_plate_80A39E17.json
-      - name: Decode visible shared material
+      - name: Decode visible shared material from final 011e snapshot
         run: |
           set -euo pipefail
           LINOODLE_SKIP_DLLMAIN=1 python tools/d1_material_decode.py \
-            recovered/ps4_gear_weapons_011e_0.pkg --runtime runtime --tag-hash 80A3CD9A \
+            recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime --tag-hash 80A3CD9A \
             -o reports/material_80A3CD9A.json
           cat reports/material_80A3CD9A.json
-      - name: Export direct material textures
+      - name: Export plate source and direct material textures
         run: |
           set -euo pipefail
           LINOODLE_SKIP_DLLMAIN=1 python tools/d1_texture_export.py \
-            recovered/ps4_gear_weapons_011e_0.pkg --runtime runtime \
-            --dependency-pkg recovered/ps4_gear_weapons_011e_1.pkg \
-            --dependency-pkg recovered/ps4_gear_weapons_011e_2.pkg \
-            --dependency-pkg recovered/ps4_gear_weapons_011e_3.pkg \
-            --dependency-pkg recovered/ps4_gear_weapons_011e_5.pkg \
-            --tag-hash 80A3D4CF --tag-hash 80A3D4D6 --out textures/material
+            recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
+            --tag-hash 80A3D844 --tag-hash 80A3D845 --tag-hash 80A3D846 \
+            --tag-hash 80A3D4CF --tag-hash 80A3D4D6 \
+            --out textures/source
+          cat textures/source/texture_manifest.json
+      - name: Compose native plate layout without resampling
+        run: |
+          set -euo pipefail
+          python tools/d1_texture_plate_compose.py \
+            --plate-report reports/texture_plate_80A39E17.json \
+            --texture-dir textures/source --out textures/plates
+          cat textures/plates/texture_plate_manifest.json
       - name: Export weapon geometry with D1 strip support
         run: |
           set -euo pipefail
-          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entity_model_export.py \
-            recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime --tag-hash 80A39E12 \
-            --out out/80A39E12_static.glb --json reports/80A39E12_static.json
+          ok=0
+          for n in $(seq 1 6); do
+            if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entity_model_export.py \
+              recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime --tag-hash 80A39E12 \
+              --out out/80A39E12_static.glb --json reports/80A39E12_static.json; then ok=1; break; fi
+            rm -f out/80A39E12_static.glb reports/80A39E12_static.json
+            sleep 1
+          done
+          test "$ok" = 1
           sha256sum out/80A39E12_static.glb | tee reports/static_glb.sha256
           cat reports/80A39E12_static.json
       - uses: actions/upload-artifact@v4
