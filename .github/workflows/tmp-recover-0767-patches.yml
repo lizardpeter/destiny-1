@@ -1,4 +1,4 @@
-name: Temporary 09A texture index resolution
+name: Temporary 09A main material resolution
 
 on:
   push:
@@ -22,82 +22,85 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Inspect public package manifest ordering
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
-          echo '===== target lines ====='
-          grep -nE 'ps4_arch_vex(_com01)?_(00e2|0767)_[0-9]+\.pkg' reports/packages.txt || true
-          echo '===== 00E2 context ====='
-          grep -n -B4 -A8 'ps4_arch_vex_00e2_0.pkg' reports/packages.txt || true
-          echo '===== 0767 context ====='
-          grep -n -B4 -A8 'ps4_arch_vex_com01_0767_0.pkg' reports/packages.txt || true
-      - name: Recover 0767 family
+      - name: Recover exact 00E2 family
         shell: bash
         run: |
           set -euo pipefail
           python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start-offset 0x105C6E000 \
-            --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_1.pkg --target ps4_arch_vex_com01_0767_4.pkg \
-            --out recovered --manifest reports/0767_extract.json
-      - name: Decode exact variant-1 material texture indices
+            --start-offset 0xFA2D5000 \
+            --target ps4_arch_vex_00e2_0.pkg --target ps4_arch_vex_00e2_1.pkg --target ps4_arch_vex_00e2_2.pkg --target ps4_arch_vex_00e2_4.pkg \
+            --out recovered --manifest reports/00e2_extract.json
+      - name: Decode main material family from highest namespace
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_material_decode.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
-            --tag-hash 816CE240 --tag-hash 816CE241 --tag-hash 816CE242 --tag-hash 816CE243 --tag-hash 816CE244 --tag-hash 816CE1A7 \
-            -o reports/variant1_materials.json
-          cat reports/variant1_materials.json
-      - name: Sparse reverse-scan before 0767 for 00E2 TAR headers
+          python tools/d1_material_decode.py recovered/ps4_arch_vex_00e2_4.pkg --runtime runtime \
+            --tag-hash 809C475F --tag-hash 809C4760 \
+            -o reports/main_materials_patch4.json
+          cat reports/main_materials_patch4.json
+      - name: Decode main material family from base namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_material_decode.py recovered/ps4_arch_vex_00e2_0.pkg --runtime runtime \
+            --tag-hash 809C475F --tag-hash 809C4760 \
+            -o reports/main_materials_patch0.json
+          cat reports/main_materials_patch0.json
+      - name: Summarize exact bindings and state records
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import sys,json
+          import json
+          from pathlib import Path
+          docs=[]
+          for fn in ('reports/main_materials_patch4.json','reports/main_materials_patch0.json'):
+              d=json.loads(Path(fn).read_text())
+              for m in d['materials']:
+                  if not m.get('available'): continue
+                  docs.append({
+                    'source':fn,
+                    'material':m['tag_hash'],
+                    'pixel_shader':m['pixel_shader'],
+                    'ps_vector4_container':m['ps_vector4_container'],
+                    'textures':[(x['texture_index'],x['texture']) for x in m['ps_textures']['items']],
+                    'tfx':m['ps_tfx_bytecode']['bytes_hex'],
+                    'samplers':[x['dwords_hex'] for x in m['ps_samplers']['items']],
+                  })
+          # De-duplicate identical source views of the same logical material.
+          for x in docs:
+              print(json.dumps(x,sort_keys=True))
+          Path('reports/main_binding_summary.json').write_text(json.dumps(docs,indent=2)+'\n')
+          PY
+      - name: Compare material bytes outside dynamic payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys,json,struct
           from pathlib import Path
           sys.path.insert(0,'tools')
-          from d1_split_tar_extract import SplitHttpTar,tar_header_checksum_ok,tar_name,parse_tar_number,BLOCK
-          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          urls=[f'{base}/packages.tar.{i:03d}' for i in range(1,11)]
-          arc=SplitHttpTar(urls,retries=3,timeout=60)
-          before=0x105C6E000
-          wanted={'ps4_arch_vex_00e2_0.pkg','ps4_arch_vex_00e2_1.pkg','ps4_arch_vex_00e2_2.pkg','ps4_arch_vex_00e2_4.pkg'}
-          # Search backwards in 8 MiB chunks. TAR headers are always 512-byte aligned;
-          # magic+checksum filters distinguish them from package payload bytes.
-          chunk=8<<20
-          max_back=512<<20
-          found={}
-          scanned=0
-          end=before
-          while end>0 and scanned<max_back and found.keys()!=wanted:
-              start=max(0,end-chunk)
-              start=(start//BLOCK)*BLOCK
-              data=arc.read_at(start,end-start)
-              for rel in range(0,len(data)-BLOCK+1,BLOCK):
-                  h=data[rel:rel+BLOCK]
-                  if h[257:262]!=b'ustar' or not tar_header_checksum_ok(h):
-                      continue
-                  name=tar_name(h); base_name=name.rsplit('/',1)[-1]
-                  if base_name in wanted:
-                      off=start+rel
-                      found[base_name]={'archive_name':name,'header_offset':off,'data_offset':off+BLOCK,'size':parse_tar_number(h[124:136])}
-                      print('FOUND',base_name,hex(off),found[base_name]['size'],flush=True)
-              scanned += end-start
-              end=start
-              if found:
-                  # Continue two chunks farther to catch adjacent patch siblings, then stop.
-                  if all(x in found for x in wanted): break
-          rep={'before_offset':before,'bytes_scanned_backwards':scanned,'found':found}
-          Path('reports/00e2_reverse_scan.json').write_text(json.dumps(rep,indent=2)+'\n')
-          print(json.dumps(rep,indent=2))
-          if 'ps4_arch_vex_00e2_0.pkg' not in found:
-              raise SystemExit('00E2_0 not found within reverse-scan window')
+          from d1_entry_extract import EntryReader
+          r=EntryReader(Path('recovered/ps4_arch_vex_00e2_4.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          blobs={}
+          for h in ('809C475F','809C4760'):
+              e=by[h]; blobs[h]=r.entry(e['index'])
+          a,b=blobs['809C475F'],blobs['809C4760']
+          diffs=[]
+          n=min(len(a),len(b))
+          for o in range(0,n,4):
+              aa=a[o:o+4]; bb=b[o:o+4]
+              if aa!=bb:
+                  diffs.append({'offset':o,'a_hex':aa.hex(),'b_hex':bb.hex()})
+          Path('reports/main_material_dword_diff.json').write_text(json.dumps(diffs,indent=2)+'\n')
+          print('dword differences',len(diffs))
+          for x in diffs: print(f"{x['offset']:#06x} {x['a_hex']} -> {x['b_hex']}")
           PY
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 09A-texture-index-and-00e2-position
+          name: 09A-main-material-resolution
           path: reports/
           retention-days: 1
           if-no-files-found: error
