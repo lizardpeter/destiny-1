@@ -1,8 +1,10 @@
-# trigger: 2026-09-03T23:28-04:00
 name: Temporary run Vex animation-proxy compatibility census
 
 on:
   push:
+    paths:
+      - '.github/workflows/tmp-run-vex-compat-census.yml'
+  pull_request:
     paths:
       - '.github/workflows/tmp-run-vex-compat-census.yml'
 
@@ -146,6 +148,7 @@ jobs:
           PY
 
       - name: Commit text-only evidence
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
@@ -154,3 +157,14 @@ jobs:
           git add notes/PS4_09A_VISIBLE_MODEL_COMPAT_CENSUS.md notes/generated/PS4_09A_VISIBLE_MODEL_COMPAT_CENSUS.json
           git commit -m 'Record 09A visible-model compatibility census'
           git push
+
+      - name: Upload census evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vex-09a-visible-model-compat-census
+          path: |
+            out/*.json
+            notes/PS4_09A_VISIBLE_MODEL_COMPAT_CENSUS.md
+            notes/generated/PS4_09A_VISIBLE_MODEL_COMPAT_CENSUS.json
+          retention-days: 1
+          if-no-files-found: error
