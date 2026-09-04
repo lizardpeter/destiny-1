@@ -49,6 +49,8 @@ That is more useful than asking which parent owns `816CE09A`, because byte evide
 
 `tools/d1_animation_proxy_compat_probe.py`
 
+Introduced in commit `f278135531ab77d45adb7dde53aba48b578ab23a`.
+
 The tool deliberately reuses only already-proven binary parsers and treats `76F7A98E` as a raw validated fingerprint rather than pretending the runtime-rig schema is solved.
 
 For every supplied package it:
@@ -79,7 +81,7 @@ Current ranking evidence includes:
 
 ### `809C4B97`
 
-This remains the closest known structural **animation-bundle** counterpart to `816CE09A`:
+This is the closest known structural **animation-bundle** counterpart to `816CE09A`:
 
 - 4,207 vertices
 - 12/16-byte vertex-buffer family
@@ -87,8 +89,9 @@ This remains the closest known structural **animation-bundle** counterpart to `8
 - visible variants 0..3
 - same `80AAE10B/80AAE10C` auxiliary technique family
 - preceded by its own `0x8080222A` wrapper `809C4B96`
+- companion skeleton EntityResource `809C4B90` has **8 bones**
 
-Because it is itself in the same animation-bundle pattern, it is a proxy-family comparison fixture, **not yet the desired ordinary visible-model answer**.
+The target `816CE092` skeleton has **12 bones / 12 runtime controls**. Therefore `809C4B97` is now **eliminated as a direct skeleton-compatible retarget target under the current acceptance test**. It remains highly useful as a proxy-family format analogue, but there is no evidence that the 12-control `09D/09E` clips can drive its 8-node rig directly.
 
 ### `809C44A5 -> 809C47F4`
 
@@ -100,7 +103,7 @@ This is the strongest currently proven **ordinary visible Vex material-control f
 - visible materials `809C475F` and `809C4760`
 - their retail texture stacks are already decoded through the `0156/0157` chain
 
-Its render/material ownership is proven, but its compatibility with `816CE095 / 76F7A98E` is **not** yet proven. It should be tested by the new compatibility probe before any 09D/09E retargeting claim is made.
+Its render/material ownership is proven, but its compatibility with `816CE095 / 76F7A98E` is **not** yet proven. The next useful byte test for this fixture is its entity/skeleton/runtime-control relationship—not another texture experiment.
 
 ## Patch sibling status
 
@@ -114,7 +117,14 @@ The public manifest names:
 
 Direct public-mirror recovery of those five filenames was already attempted through GitHub Actions and returned HTTP 404 for all five. Repeating that mirror attempt is not useful.
 
-The `0767_1/_4` files remain valuable if supplied from the user's corpus, but they are no longer the only productive route forward.
+Historical artifact inspection on 2026-09-03/04 further confirms the result:
+
+- Actions run `33830195439`, artifact `9921383455` (`vex-0767-patch-siblings`) contains only `misses.txt` with `MISS ps4_arch_vex_com01_0767_1.pkg` and `MISS ps4_arch_vex_com01_0767_4.pkg`.
+- Actions run `33829839627`, artifact `9921258302` (`vex-00e2-patch-siblings`) contains only `misses.txt` for `00e2_1`, `_2`, and `_4`.
+- Actions run `33824893203`, artifact `9919569430` (`xbox-vex-0767`) contains three Cloudflare 404 HTML responses and `NO_XBOX_MANIFEST`; it contains no Xbox package bytes.
+- Actions run `33827435293`, artifact `9920454891` (`d1-vex-owner-package-candidates`) contains only manifest/filter text (`packages.txt`, `vex_packages.txt`, `globals_0156_0158.txt`), not package payloads.
+
+The `0767_1/_4` files remain valuable if supplied from the user's corpus, but they are no longer the only productive route forward. No historical Actions artifact currently retains the base `_0` package bytes either.
 
 ## Recommended next corpus run
 
@@ -132,6 +142,17 @@ python tools/d1_animation_proxy_compat_probe.py \
 ```
 
 If `ps4_globals_0157_0.pkg` and `_1.pkg` are colocated, they can be included as additional package arguments for graph evidence, although they are primarily selector/material infrastructure rather than the expected visible-model owner.
+
+The first candidate-specific question to answer is:
+
+```text
+Does the ordinary visible-model cluster containing
+809C44A5 -> 809C47F4
+co-reference a 12-bone skeleton and/or the validated
+76F7A98E runtime-component fingerprint?
+```
+
+If no, `809C47F4` is only a rendering/material control fixture and the census should move to the other 34 standard parents in `00E2_0`.
 
 ## Acceptance test for a final visible-model match
 
