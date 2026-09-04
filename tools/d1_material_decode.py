@@ -15,15 +15,37 @@ XBOX_MATERIAL_CLASS='80801C32'
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
 def h32(b,o): return f'{u32(b,o):08X}'
 
+def checked_rel_array(b,o,elem_size,label):
+    count,off,_=rel_array(b,o,elem_size)
+    end=off+count*elem_size
+    if off<0 or end>len(b):
+        raise ValueError(f'{label} {o:#x} out of bounds: count={count}, off={off:#x}, elem={elem_size:#x}, len={len(b):#x}')
+    return count,off,end
+
 def parse_texture_array(b,o):
-    count,off,_=rel_array(b,o,8)
-    if off<0 or off+count*8>len(b):
-        raise ValueError(f'texture array {o:#x} out of bounds: count={count}, off={off:#x}, len={len(b):#x}')
+    count,off,_=checked_rel_array(b,o,8,'texture array')
     return {'count':count,'offset':off,'items':[{'texture_index':u32(b,off+i*8),'texture':h32(b,off+i*8+4)} for i in range(count)]}
 
-def parse_array_header(b,o,elem_size=None):
-    count,off,_=rel_array(b,o,elem_size or 1)
-    return {'count':count,'offset':off,'elem_size':elem_size}
+def parse_byte_array(b,o):
+    count,off,end=checked_rel_array(b,o,1,'byte array')
+    return {'count':count,'offset':off,'bytes_hex':b[off:end].hex()}
+
+def parse_sampler_array(b,o):
+    count,off,_=checked_rel_array(b,o,16,'sampler array')
+    items=[]
+    for i in range(count):
+        p=off+i*16
+        raw=b[p:p+16]
+        items.append({
+            'index':i,
+            'offset':p,
+            'raw_hex':raw.hex(),
+            'dwords_hex':[f'{x:08X}' for x in struct.unpack_from('<4I',raw,0)],
+            # Keep this explicitly syntactic until the platform-specific sampler
+            # descriptor/reference semantics are proven.
+            'first_dword_hex':f'{u32(raw,0):08X}',
+        })
+    return {'count':count,'offset':off,'elem_size':16,'items':items}
 
 def parse_material(b,platform):
     if len(b)<0x330: raise ValueError('material entry too small for D1 ROI semantic fields')
@@ -32,13 +54,13 @@ def parse_material(b,platform):
       'unk08':h32(b,0x08),'unk0c':h32(b,0x0c),'unk10':h32(b,0x10),
       'vertex_shader':h32(b,0x28),
       'vs_textures':parse_texture_array(b,0x38),
-      'vs_tfx_bytecode':parse_array_header(b,0x50,1),
-      'vs_samplers':parse_array_header(b,0x70,16),
+      'vs_tfx_bytecode':parse_byte_array(b,0x50),
+      'vs_samplers':parse_sampler_array(b,0x70),
       'vs_vector4_container':h32(b,0xAC),
       'pixel_shader':h32(b,0x2A8),
       'ps_textures':parse_texture_array(b,0x2B8),
-      'ps_tfx_bytecode':parse_array_header(b,0x2D0,1),
-      'ps_samplers':parse_array_header(b,0x2F0,16),
+      'ps_tfx_bytecode':parse_byte_array(b,0x2D0),
+      'ps_samplers':parse_sampler_array(b,0x2F0),
       'ps_vector4_container':h32(b,0x32C),
     }
 
