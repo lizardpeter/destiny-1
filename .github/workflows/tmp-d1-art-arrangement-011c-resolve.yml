@@ -1,0 +1,103 @@
+name: Temporary resolve D1 art arrangements into 011c weapon entities
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-art-arrangement-011c-resolve.yml'
+      - 'tools/d1_investment_arrangement_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover verified Oodle runtime and exact package families
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg \
+            --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg \
+            --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+
+      - name: Decode art arrangements and resolve 011c parents
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_investment_arrangement_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg \
+            recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime --asset-dir recovered \
+            -o reports/art_arrangements_with_011c.json
+
+          python - <<'PY'
+          import collections,json
+          p='reports/art_arrangements_with_011c.json'
+          d=json.load(open(p))
+          parents=d['parent_resolution']
+          pkg_counts=collections.Counter(r.get('package_id') for r in parents.values())
+          resolved_pkg_counts=collections.Counter(r.get('package_id') for r in parents.values() if r.get('resolved'))
+          p011c={h:r for h,r in parents.items() if r.get('package_id')==0x011c}
+          resolved011c={h:r for h,r in p011c.items() if r.get('resolved')}
+          rows=[]
+          for a in d['arrangements']:
+              hits=[]
+              for ph in a['entity_parent_hashes']:
+                  if ph in p011c:
+                      hits.append({'parent_hash':ph,'resolution':p011c[ph]})
+              if hits:
+                  rows.append({
+                      'arrangement_index':a['arrangement_index'],
+                      'source':a['source'],
+                      'assignment_hashes':a['assignment_hashes'],
+                      'entity_parent_hashes':a['entity_parent_hashes'],
+                      '011c_parents':hits,
+                  })
+          finals=collections.Counter(r.get('entity_data_hash') for r in resolved011c.values())
+          report={
+              'arrangement_count':d['arrangement_count'],
+              'assignment_mapping_count':d['assignment_map']['mapping_count'],
+              'parent_package_counts':{f'{k:04X}' if k is not None else 'NONE':v for k,v in sorted(pkg_counts.items(), key=lambda kv:(kv[0] is None, kv[0] or -1))},
+              'resolved_parent_package_counts':{f'{k:04X}' if k is not None else 'NONE':v for k,v in sorted(resolved_pkg_counts.items(), key=lambda kv:(kv[0] is None, kv[0] or -1))},
+              '011c_parent_count':len(p011c),
+              '011c_resolved_parent_count':len(resolved011c),
+              '011c_final_entity_counts':dict(sorted(finals.items())),
+              'arrangements_with_011c_parent_count':len(rows),
+              'arrangements_with_011c_parents':rows,
+          }
+          json.dump(report,open('reports/art_arrangement_011c_summary.json','w'),indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-art-arrangement-011c-resolve
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
