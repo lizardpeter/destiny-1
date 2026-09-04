@@ -1,4 +1,4 @@
-name: Temporary corrected 09A PS4 constants
+name: Temporary 09A variant0 constants and shader
 
 on:
   push:
@@ -17,30 +17,58 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports
+          mkdir -p runtime recovered reports shader
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover 0767 patch family
+      - name: Recover 0157 patch family from calibrated TAR offset
         shell: bash
         run: |
           set -euo pipefail
           python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_1.pkg --target ps4_arch_vex_com01_0767_4.pkg \
+            --start-offset 0x46AF91400 \
+            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
             --out recovered --manifest reports/package_extract_manifest.json
-      - name: Dump exact variant-1 PS Vector4 constants
+      - name: Dump exact variant-0 PS Vector4 constants
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_vector_container_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
-            --tag-hash 816CE185 --tag-hash 816CE186 --tag-hash 816CE187 --tag-hash 816CE188 --tag-hash 816CE189 --tag-hash 816CE0A9 \
-            -o reports/variant1_PS_vectors.json
-          cat reports/variant1_PS_vectors.json
-      - name: Upload compact evidence
+          python tools/d1_vector_container_probe.py recovered/ps4_globals_0157_1.pkg --runtime runtime \
+            --tag-hash 80AAE14C -o reports/variant0_PS_vectors.json
+          cat reports/variant0_PS_vectors.json
+      - name: Capture PS4 shader 80AAE14B bytes and framing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader,decode_known
+          r=EntryReader(Path('recovered/ps4_globals_0157_1.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          e=by['80AAE14B']
+          b=r.entry(e['index'])
+          Path('shader/80AAE14B.bin').write_bytes(b)
+          rep=decode_known(e,b,r.h['platform'])
+          rep.update({
+            'full_sha256':hashlib.sha256(b).hexdigest(),
+            'prefix_128':b[:128].hex(),
+            'suffix_128':b[-128:].hex(),
+            'ascii_strings':[x.decode('ascii','replace') for x in b.split(b'\0') if len(x)>=4 and all(32<=c<127 for c in x)],
+          })
+          Path('reports/80AAE14B_framing.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          PY
+          command -v llvm-mc || true
+          llvm-mc --version || true
+      - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 09A-corrected-variant1-constants
-          path: reports/
+          name: 09A-variant0-constants-and-shader
+          path: |
+            reports/
+            shader/
           retention-days: 1
           if-no-files-found: error
