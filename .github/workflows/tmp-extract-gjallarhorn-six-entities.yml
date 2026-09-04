@@ -1,0 +1,119 @@
+name: Temporary decode Gjallarhorn six visual entities
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-extract-gjallarhorn-six-entities.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode exact six retail visual entities and local resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_s_entity_resource_package_find import parse_entity_resources
+          from d1_entity_resource_probe import parse_resource
+          from d1_entity_model_probe import parse_model
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          specs={
+            0x0139:[
+              'ps4_investment_assets_0139_0.pkg:0x59B629800:10217472',
+              'ps4_investment_assets_0139_1.pkg:0x59BFE8200:3856384',
+              'ps4_investment_assets_0139_2.pkg:0x59C395C00:454656',
+              'ps4_investment_assets_0139_3.pkg:0x59C404E00:141312',
+              'ps4_investment_assets_0139_5.pkg:0x59C427800:180224',
+            ],
+            0x013A:[
+              'ps4_investment_assets_013a_0.pkg:0x59C453A00:95760384',
+              'ps4_investment_assets_013a_1.pkg:0x5A1FA6C00:15149056',
+              'ps4_investment_assets_013a_2.pkg:0x5A2E19600:7192576',
+              'ps4_investment_assets_013a_3.pkg:0x5A34F5800:165888',
+              'ps4_investment_assets_013a_4.pkg:0x5A351E200:161792',
+              'ps4_investment_assets_013a_5.pkg:0x5A3545C00:165888',
+            ],
+          }
+          views={}
+          for pkg,ss in specs.items():
+            ms=[parse_member(x) for x in ss]
+            views[pkg]=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+
+          targets=['80A743A4','80A73BA9','80A72200','80A73179','80A73254','80A73D11']
+          rows=[]; model_tags=[]
+          for tag in targets:
+            pkg,idx=filehash_pkg_index(int(tag,16)); r=views[pkg]; e=r.entries[idx]
+            assert e['tag_hash'].upper()==tag,(tag,e['tag_hash'])
+            b=r.entry(idx); assert e['reference'].upper()=='80800734',(tag,e['reference'])
+            resources=parse_entity_resources(b)
+            erow={'entity_hash':tag,'package_id':pkg,'entry_index':idx,'reference':e['reference'].upper(),'size':len(b),'sha256':hashlib.sha256(b).hexdigest(),'resources':[]}
+            Path(f'reports/raw/{tag}_entity.bin').write_bytes(b)
+            for rr in resources:
+              h=rr['resource_hash']; rpkg=rr['resource_package_id']; ridx=rr['resource_file_index']
+              x=dict(rr)
+              rv=views.get(rpkg)
+              if rv is not None and ridx is not None and ridx < len(rv.entries):
+                re=rv.entries[ridx]
+                x.update({'entry_tag':re['tag_hash'].upper(),'entry_reference':re['reference'].upper(),'entry_size':re['file_size']})
+                if re['tag_hash'].upper()==h and rv.available(ridx):
+                  rb=rv.entry(ridx); x['payload_sha256']=hashlib.sha256(rb).hexdigest()
+                  Path(f'reports/raw/{h}_resource.bin').write_bytes(rb)
+                  if re['reference'].upper()=='80800861':
+                    pr=parse_resource(rb,'PS4'); x['entity_resource']=pr
+                    mt=pr.get('embedded_model_tag_hash')
+                    if mt and mt not in ('00000000','FFFFFFFF'):
+                      model_tags.append(mt); x['model_tag']=mt
+              erow['resources'].append(x)
+            rows.append(erow)
+            print('GJALLARHORN_ENTITY',json.dumps(erow,separators=(',',':')))
+
+          # Decode every locally reachable embedded model.
+          models=[]
+          for mt in sorted(set(model_tags)):
+            mpkg,midx=filehash_pkg_index(int(mt,16)); rv=views.get(mpkg)
+            rec={'model_tag':mt,'package_id':mpkg,'entry_index':midx,'local':rv is not None}
+            if rv is not None and midx < len(rv.entries):
+              me=rv.entries[midx]
+              rec.update({'entry_tag':me['tag_hash'].upper(),'reference':me['reference'].upper(),'entry_size':me['file_size']})
+              if me['tag_hash'].upper()==mt and rv.available(midx):
+                mb=rv.entry(midx); rec['sha256']=hashlib.sha256(mb).hexdigest(); Path(f'reports/raw/{mt}_model.bin').write_bytes(mb)
+                if me['reference'].upper()=='80801AB5':
+                  rec['model']=parse_model(mb,'PS4')
+            models.append(rec); print('GJALLARHORN_MODEL',json.dumps(rec,separators=(',',':')))
+
+          out={'arrangement':1229,'entities':rows,'embedded_model_tags':sorted(set(model_tags)),'models':models,
+               'remote_blocks':{f'{k:04X}':len(v.block_cache) for k,v in views.items()}}
+          Path('reports/gjallarhorn_six_entities.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('MODEL_TAGS',sorted(set(model_tags)))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-six-entities
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
