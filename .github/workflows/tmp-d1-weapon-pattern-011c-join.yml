@@ -1,4 +1,4 @@
-name: Temporary join D1 weapon patterns to 011c entities
+name: Temporary join D1 weapon patterns to retail entities
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
             --target ps4_investment_assets_013f_5.pkg \
             --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
 
-      - name: Recover 011c logical weapon family for relation validation
+      - name: Recover 011c logical weapon family for negative validation
         run: |
           set -euo pipefail
           python tools/d1_split_tar_extract.py \
@@ -55,7 +55,7 @@ jobs:
             --target ps4_gear_weapons_011c_5.pkg \
             --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
 
-      - name: Join pattern table to sandbox entity assignments
+      - name: Join pattern table and census actual entity packages
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -65,28 +65,46 @@ jobs:
             --runtime runtime \
             --target-package-id 0x011c \
             --target-pkg recovered/ps4_gear_weapons_011c_5.pkg \
-            -o reports/weapon_pattern_011c_join.json
+            -o reports/weapon_pattern_join.json
 
           python - <<'PY'
-          import json
-          p='reports/weapon_pattern_011c_join.json'
+          import collections,json
+          p='reports/weapon_pattern_join.json'
           d=json.load(open(p))
-          print('weapon patterns',d['weapon_pattern_table'])
-          print('sandbox assignments',d['sandbox_pattern_assignments'])
-          print('join',d['join'])
-          print('011c match count',d['match_count'])
-          for m in d['matches']:
-              print('MATCH',m['weapon_pattern_index'],m['pattern_global_tag_id_hash'],m['weapon_content_group_hash'],m['weapon_type_hash'],m['pattern_hash'],'->',m['entity_relation_hash'],m.get('target_relation_validation'))
-          if d['match_count'] == 0:
-              raise SystemExit('expected at least one retail weapon-pattern assignment into package 011c')
-          bad=[m for m in d['matches'] if not m.get('target_relation_validation',{}).get('is_s_entity')]
-          if bad:
-              raise SystemExit(f'011c relations that are not validated D1 s_entity entries: {bad[:5]}')
+          rows=d['patterns']
+          if d['join']['missing_assignment_count'] != 0:
+              raise SystemExit(f"weapon-pattern join unexpectedly has misses: {d['join']}")
+          counts=collections.Counter(x['entity_relation_package_id'] for x in rows)
+          by_pkg={}
+          for pkg,count in sorted(counts.items(), key=lambda kv:(-kv[1], kv[0] if kv[0] is not None else -1)):
+              samples=[x for x in rows if x['entity_relation_package_id']==pkg][:8]
+              by_pkg[f'{pkg:04X}' if pkg is not None else 'NONE']={
+                  'count':count,
+                  'samples':[{
+                      'weapon_pattern_index':x['weapon_pattern_index'],
+                      'pattern_global_tag_id_hash':x['pattern_global_tag_id_hash'],
+                      'weapon_content_group_hash':x['weapon_content_group_hash'],
+                      'weapon_type_hash':x['weapon_type_hash'],
+                      'pattern_hash':x['pattern_hash'],
+                      'entity_relation_hash':x['entity_relation_hash'],
+                      'entity_relation_file_index':x['entity_relation_file_index'],
+                  } for x in samples]
+              }
+          census={
+              'weapon_pattern_rows':len(rows),
+              'resolved_assignment_rows':d['join']['resolved_assignment_count'],
+              'missing_assignment_rows':d['join']['missing_assignment_count'],
+              'direct_011c_pattern_entities':d['match_count'],
+              'entity_relation_package_count':len(counts),
+              'entity_relation_packages':by_pkg,
+          }
+          json.dump(census,open('reports/weapon_pattern_package_census.json','w'),indent=2)
+          print(json.dumps(census,indent=2))
           PY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: d1-weapon-pattern-011c-join
+          name: d1-weapon-pattern-package-census
           path: reports/
           retention-days: 5
           if-no-files-found: error
