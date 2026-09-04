@@ -41,8 +41,6 @@ jobs:
         run: |
           set -euo pipefail
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          # Tiger's logical namespace can reference blocks resident in lower patch
-          # siblings. Keep every required sibling beside the selected package view.
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
             --start-offset 0x105C6E000 \
             --target ps4_arch_vex_com01_0767_0.pkg \
@@ -79,7 +77,6 @@ jobs:
           python tools/d1_gltf_material_recipe.py --texture-dir exported --out recipe
           cp exported/80AACC26_*_BC5.png recipe/
           cp exported/80AACC28_*_RGBA8_face*.png recipe/
-          find exported recipe -maxdepth 1 -type f -print | sort
 
       - name: Recover pinned animation validation oracle
         run: |
@@ -97,8 +94,22 @@ jobs:
           s=p.read_text()
           old='''    primitives = []\n    for (off, count), parts in sorted(groups.items()):\n        variants = sorted({int(p["variant_shader_index"]) for p in parts})\n        if len(variants) != 1:\n            raise RuntimeError(f"range {off}+{count} has mixed variant shader indices {variants}")\n        tri = strip_to_triangles(source_indices[off:off + count])\n        primitives.append({\n            "index_offset": off,\n            "index_count": count,\n            "triangle_count": int(len(tri)),\n            "variant_shader_index": variants[0],\n            "material_tags": sorted({p["material"] for p in parts}),\n            "lod_values": sorted({int(p["lod"]) for p in parts}),\n            "triangles": tri,\n        })\n'''
           new='''    primitives = []\n    for (off, count), parts in sorted(groups.items()):\n        visible = [p for p in parts if int(p["variant_shader_index"]) >= 0]\n        auxiliary = [p for p in parts if int(p["variant_shader_index"]) < 0]\n        if len(visible) != 1:\n            raise RuntimeError(f"range {off}+{count} expected one visible parent-selected part, got {[(p['material'],p['variant_shader_index']) for p in parts]}")\n        variant = int(visible[0]["variant_shader_index"])\n        if variant not in (0, 1):\n            raise RuntimeError(f"range {off}+{count} unexpected visible variant {variant}")\n        if any(int(p["variant_shader_index"]) != -1 for p in auxiliary):\n            raise RuntimeError(f"range {off}+{count} unexpected auxiliary selector")\n        tri = strip_to_triangles(source_indices[off:off + count])\n        primitives.append({\n            "index_offset": off,\n            "index_count": count,\n            "triangle_count": int(len(tri)),\n            "variant_shader_index": variant,\n            "material_tags": sorted({p["material"] for p in visible}),\n            "auxiliary_material_tags": sorted({p["material"] for p in auxiliary}),\n            "lod_values": sorted({int(p["lod"]) for p in parts}),\n            "triangles": tri,\n        })\n'''
-          if old not in s:
-              raise SystemExit('expected auxiliary-part patch site not found')
+          if old not in s: raise SystemExit('expected auxiliary-part patch site not found')
+          p.write_text(s.replace(old,new))
+          PY
+
+      - name: Adapt animation oracle to real file descriptors
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/d1_vex_09a_test_glb.py')
+          s=p.read_text()
+          if 'import tempfile\n' not in s:
+              s=s.replace('import struct\nimport sys\n','import struct\nimport sys\nimport tempfile\n')
+          old='        anim = read_animation(io.BytesIO(entry_bytes(reader, tag)), version)\n'
+          new='''        clip_bytes = entry_bytes(reader, tag)\n        with tempfile.NamedTemporaryFile() as clip_file:\n            clip_file.write(clip_bytes)\n            clip_file.flush()\n            clip_file.seek(0)\n            anim = read_animation(clip_file, version)\n'''
+          if old not in s: raise SystemExit('expected animation BytesIO site not found')
           p.write_text(s.replace(old,new))
           PY
 
@@ -132,7 +143,7 @@ jobs:
           assert len(g.animations)==2
           assert [x.name for x in g.animations]==['816CE09D','816CE09E']
           assert len(g.materials)==2
-          assert g.meshes[0].primitives
+          assert len(g.meshes[0].primitives)==2
           assert all(x.attributes.JOINTS_0 is not None and x.attributes.WEIGHTS_0 is not None for x in g.meshes[0].primitives)
           r=json.loads(Path('reports/816CE09A_PROVEN_MATERIAL_TEST.json').read_text())
           assert r['geometry']['vertex_count']==4172
@@ -157,12 +168,12 @@ jobs:
             rig       816CE095
             clips     816CE09D / 816CE09E
 
-          Default parent-selected materials:
+          Default parent-selected visible materials:
             VariantShaderIndex 0 -> 809C475F
             VariantShaderIndex 1 -> 816CE240
 
-          Duplicate VariantShaderIndex -1 parts are retained as provenance-only
-          auxiliary material records; they are not rendered as visible primitives.
+          Inline VariantShaderIndex -1 records 80AAE10B/80AAE10C have no pixel
+          shader and are provenance-only auxiliary passes, not visible primitives.
 
           This GLB is a portable glTF approximation of byte-proven native D1 material
           behavior. Native hashes, equations and approximation policy are preserved in
