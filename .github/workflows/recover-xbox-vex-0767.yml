@@ -1,0 +1,41 @@
+name: Recover Xbox Vex 0767
+
+on:
+  push:
+    paths:
+      - '.github/workflows/recover-xbox-vex-0767.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve and fetch Xbox package 0767
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          base='https://crypt.cohae.dev/destiny/xboxone/packages/latest'
+          curl --fail --location --retry 3 "$base/packages.txt" -o out/packages.txt
+          python - <<'PY'
+          import re, pathlib
+          text=pathlib.Path('out/packages.txt').read_text(errors='replace')
+          matches=sorted(set(re.findall(r'[^\s"\'<>]*_0767_[01]\.pkg[^\s"\'<>]*', text, flags=re.I)))
+          pathlib.Path('out/matches.txt').write_text('\n'.join(matches)+'\n')
+          print('\n'.join(matches) if matches else 'NO_MATCH')
+          PY
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            name="${f##*/}"
+            curl --fail --location --retry 3 "$base/$name" -o "out/$name"
+            stat -c '%n %s bytes' "out/$name"
+            sha256sum "out/$name"
+          done < out/matches.txt
+      - name: Upload Xbox Vex package
+        uses: actions/upload-artifact@v4
+        with:
+          name: xbox-vex-0767
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
