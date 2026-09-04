@@ -1,0 +1,183 @@
+name: Build fully textured and natively animated Gjallarhorn 1229
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-gjallarhorn-1229-textured-animated.yml'
+      - 'tools/d1_gjallarhorn_1229_attach_pattern39_rig.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy pygltflib
+          mkdir -p runtime recovered models inputs/textured inputs/rig out reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Download independently proven textured geometry and exact pattern-39 rig fixtures
+        run: |
+          set -euo pipefail
+          gh run download 33929590778 --repo "$GITHUB_REPOSITORY" \
+            -n D1-Gjallarhorn-Year3-arrangement-1229-TEXTURED -D inputs/textured
+          gh run download 33929223229 --repo "$GITHUB_REPOSITORY" \
+            -n D1-Gjallarhorn-pattern39-direct-control-animations -D inputs/rig
+          test -f inputs/textured/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED.glb
+          test -f inputs/rig/GJALLARHORN_PATTERN39_DIRECT_CONTROL_RIG_2CLIPS.glb
+          echo '83362520480c2b846cb44b91f76e37f377c4310aecdbd3f8cb2b15c7d12f5ee1  inputs/textured/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED.glb' | sha256sum --check --strict
+          echo '00d3755921a84ed58c1bcb92cd5d19ee49bfafd539b117221fe23efaf813651a  inputs/rig/GJALLARHORN_PATTERN39_DIRECT_CONTROL_RIG_2CLIPS.glb' | sha256sum --check --strict
+      - name: Recover exact 011C and 0139 source families for native vertex joint indices
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x59B629600 \
+            --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
+            --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+      - name: Recover the six exact selected model headers
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_model_probe import parse_model
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+
+          wanted=['80A72202','80A7317B','80A73256','80A73BAB','80A73D13']
+          found={}; attempts=[]
+          snaps=sorted(Path('recovered').glob('ps4_investment_assets_0139_*.pkg'),reverse=True)
+          for tag in wanted:
+            for p in snaps:
+              rec={'tag':tag,'snapshot':p.name}
+              try:
+                r=EntryReader(p,Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(tag)
+                if not e: attempts.append(rec); continue
+                b=r.entry(e['index']); m=parse_model(b,'PS4'); Path('models',f'{tag}.bin').write_bytes(b)
+                rec.update({'success':True,'sha256':hashlib.sha256(b).hexdigest(),'mesh_count':m['mesh_count']});found[tag]=rec;attempts.append(rec);break
+              except Exception as ex: rec['error']=repr(ex);attempts.append(rec)
+            if tag not in found: raise SystemExit(f'could not recover {tag}')
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          specs=[
+            'ps4_investment_assets_013a_0.pkg:0x59C453A00:95760384','ps4_investment_assets_013a_1.pkg:0x5A1FA6C00:15149056',
+            'ps4_investment_assets_013a_2.pkg:0x5A2E19600:7192576','ps4_investment_assets_013a_3.pkg:0x5A34F5800:165888',
+            'ps4_investment_assets_013a_4.pkg:0x5A351E200:161792','ps4_investment_assets_013a_5.pkg:0x5A3545C00:165888']
+          ms=[parse_member(x) for x in specs]; rr=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+          e=rr.entries[934]; assert e['tag_hash'].upper()=='80A743A6'
+          b=rr.entry(934); m=parse_model(b,'PS4'); Path('models/80A743A6.bin').write_bytes(b)
+          found['80A743A6']={'source':'remote 013A final logical view','sha256':hashlib.sha256(b).hexdigest(),'mesh_count':m['mesh_count']}
+          assert sum(x['mesh_count'] for x in found.values())==8
+          Path('reports/model_recovery_for_skin.json').write_text(json.dumps({'found':found,'attempts':attempts},indent=2)+'\n')
+          PY
+      - name: Attach exact seven-bone skin and two directly linked animations
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_gjallarhorn_1229_attach_pattern39_rig.py \
+            inputs/textured/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED.glb \
+            inputs/rig/GJALLARHORN_PATTERN39_DIRECT_CONTROL_RIG_2CLIPS.glb \
+            --pkg-011c recovered/ps4_gear_weapons_011c_5.pkg \
+            --pkg-0139 recovered/ps4_investment_assets_0139_5.pkg \
+            --runtime runtime --model-dir models \
+            --out out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED_ANIMATED.glb \
+            --report reports/gjallarhorn_1229_textured_animated.json
+          sha256sum out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED_ANIMATED.glb | tee reports/final_glb_sha256.txt
+      - name: Independently validate skinning topology and animation targets
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,math,struct
+          from pathlib import Path
+          import numpy as np
+          from pygltflib import GLTF2
+          p=Path('out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED_ANIMATED.glb')
+          g=GLTF2().load_binary(str(p))
+          r=json.loads(Path('reports/gjallarhorn_1229_textured_animated.json').read_text())
+          assert len(g.meshes)==8 and len(g.skins)==1 and len(g.skins[0].joints)==7
+          assert len(g.animations)==2 and [x.name for x in g.animations]==['80AA2E4A','80AA2E4B']
+          assert len(g.images)==18 and len(g.textures)==12
+          assert r['geometry']['triangles_lod1']==10738
+          assert len(r['binding_rows'])==8
+          expected={
+            ('80A743A6',0):{0:340,6:223},('80A73BAB',0):{0:2040,2:144},('80A72202',0):{5:86},
+            ('80A7317B',0):{1:1423},('80A73256',0):{1:188},('80A73256',1):{0:3064,1:2168},
+            ('80A73D13',0):{0:8},('80A73D13',1):{1:117}}
+          for row in r['binding_rows']:
+            key=(row['model_tag'],row['mesh_index']); got={int(k):v for k,v in row['distribution'].items()}
+            assert got==expected[key],(key,got)
+          assert sum(sum(x['distribution'].values()) for x in r['binding_rows'])==9801
+          # Every primitive must now carry both exact rigid skin attributes.
+          for m in g.meshes:
+            for prim in m.primitives:
+              d=vars(prim.attributes)
+              assert d.get('JOINTS_0') is not None and d.get('WEIGHTS_0') is not None
+          # All animation channels must target only one of the seven copied joint nodes.
+          joints=set(g.skins[0].joints)
+          for anim in g.animations:
+            assert len(anim.channels)==21
+            assert {c.target.node for c in anim.channels} <= joints
+          # Strong spatial cross-check: the all-bone-5 mesh is centered almost exactly on bone 5's bind origin.
+          # Proven earlier independently: model 80A72202 center [0,.16956,.09970]; bone5 world [~0,.17547,.09732].
+          delta=np.linalg.norm(np.array([0,.16956,.09970])-np.array([0,.175474,.097317]))
+          assert delta < 0.007,delta
+          print(json.dumps({'bytes':p.stat().st_size,'meshes':8,'triangles':10738,'images':18,'joints':7,
+                            'rigid_bound_vertices':9801,'animations':['80AA2E4A','80AA2E4B'],'bone5_spatial_crosscheck_m':float(delta)},indent=2))
+          PY
+      - name: Bundle final test fixture
+        run: |
+          set -euo pipefail
+          cp reports/gjallarhorn_1229_textured_animated.json reports/final_glb_sha256.txt out/
+          cp inputs/rig/gjallarhorn_pattern39_direct_animations.json out/
+          cp inputs/textured/gjallarhorn_1229_textured.json out/
+          cat > out/README_FINAL.txt <<'EOF'
+          Destiny 1 Rise of Iron - Gjallarhorn Year 3 - exact retail extraction fixture
+
+          This build combines:
+            * ArtArrangement 1229: 6 selected models / 8 meshes / 10,738 LOD1 triangles
+            * all six byte-proven albedo + normal texture plates, with GStack images retained
+            * weapon pattern 39 skeleton EntityResource 80AA3C97 (7 bones)
+            * runtime rig 80AA2D6D
+            * direct animation control 80AA2DCD
+            * directly linked clips 80AA2E4A and 80AA2E4B
+            * exact per-vertex rigid joint indices from primary vertex-stream int16 lane 3
+
+          All 9,801 source vertices have a retail joint index in 0..6. Every selected mesh has
+          old_weights == FFFFFFFF, so the glTF binding is emitted as the exact joint index plus
+          a rigid weight of 1.0. No joint assignment or animation is synthesized.
+
+          80AA2E4A contains substantial internal movement on bones 1, 2, 5 and 6. 80AA2E4B
+          decodes as a static-transform clip; it is retained because it is directly serialized
+          by the same native animation control.
+
+          The glTF PBR layer is still a portable approximation of Destiny's deferred material:
+          GStack semantics and final gear-dye coloration are preserved as provenance rather than guessed.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-Gjallarhorn-Year3-FULL-TEXTURED-ANIMATED
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
