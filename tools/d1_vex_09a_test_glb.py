@@ -20,6 +20,7 @@ import io
 import json
 import struct
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -207,16 +208,23 @@ def decode_geometry(reader: EntryReader) -> tuple[dict, dict]:
 
     primitives = []
     for (off, count), parts in sorted(groups.items()):
-        variants = sorted({int(p["variant_shader_index"]) for p in parts})
-        if len(variants) != 1:
-            raise RuntimeError(f"range {off}+{count} has mixed variant shader indices {variants}")
+        visible = [p for p in parts if int(p["variant_shader_index"]) >= 0]
+        auxiliary = [p for p in parts if int(p["variant_shader_index"]) < 0]
+        if len(visible) != 1:
+            raise RuntimeError(f"range {off}+{count} expected one visible parent-selected part, got {[(p['material'],p['variant_shader_index']) for p in parts]}")
+        variant = int(visible[0]["variant_shader_index"])
+        if variant not in (0, 1):
+            raise RuntimeError(f"range {off}+{count} unexpected visible variant {variant}")
+        if any(int(p["variant_shader_index"]) != -1 for p in auxiliary):
+            raise RuntimeError(f"range {off}+{count} unexpected auxiliary selector")
         tri = strip_to_triangles(source_indices[off:off + count])
         primitives.append({
             "index_offset": off,
             "index_count": count,
             "triangle_count": int(len(tri)),
-            "variant_shader_index": variants[0],
-            "material_tags": sorted({p["material"] for p in parts}),
+            "variant_shader_index": variant,
+            "material_tags": sorted({p["material"] for p in visible}),
+            "auxiliary_material_tags": sorted({p["material"] for p in auxiliary}),
             "lod_values": sorted({int(p["lod"]) for p in parts}),
             "triangles": tri,
         })
@@ -268,7 +276,12 @@ def load_animation_oracle(parser_root: Path, reader: EntryReader):
     tracks = []
     clip_reports = []
     for tag in CLIPS:
-        anim = read_animation(io.BytesIO(entry_bytes(reader, tag)), version)
+        clip_bytes = entry_bytes(reader, tag)
+        with tempfile.NamedTemporaryFile() as clip_file:
+            clip_file.write(clip_bytes)
+            clip_file.flush()
+            clip_file.seek(0)
+            anim = read_animation(clip_file, version)
         raw = decode_animation(anim)
         retargeted = rig_retarget(anim, raw, skeleton, rig)
         local = convert_obj_to_local(anim, retargeted, skeleton)
@@ -286,8 +299,8 @@ def load_animation_oracle(parser_root: Path, reader: EntryReader):
 
 def add_images_and_materials(gltf: GLTF2, recipe_dir: Path, recipe: dict) -> dict[str, int]:
     gltf.samplers.extend([
-        Sampler(name="D1_80AAE177_Wrap", magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT),
-        Sampler(name="D1_816CE0AA_ClampBorderPortable", magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE),
+        Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT),
+        Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE),
     ])
 
     def add_image(name: str, filename: str, extras: dict | None = None) -> int:
