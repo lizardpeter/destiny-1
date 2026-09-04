@@ -1,0 +1,81 @@
+name: Temporary decode Gjallarhorn pattern 39 sandbox entity
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-pattern39-entity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode exact pattern entity 80A6A017
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_s_entity_resource_package_find import parse_entity_resources
+          from d1_entity_resource_probe import parse_resource
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          specs=[
+            'ps4_investment_assets_0135_0.pkg:0x5996C3200:13039616',
+            'ps4_investment_assets_0135_1.pkg:0x59A332C00:3268608',
+            'ps4_investment_assets_0135_2.pkg:0x59A650E00:3348480',
+            'ps4_investment_assets_0135_3.pkg:0x59A982800:167936',
+            'ps4_investment_assets_0135_4.pkg:0x59A9ABA00:167936',
+            'ps4_investment_assets_0135_5.pkg:0x59A9D4C00:247808',
+          ]
+          ms=[parse_member(x) for x in specs]
+          r=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+          tag='80A6A017'; pkg,idx=filehash_pkg_index(int(tag,16)); assert pkg==0x0135 and idx==23
+          e=r.entries[idx]; assert e['tag_hash'].upper()==tag,(e['tag_hash'],tag); assert e['reference'].upper()=='80800734',e
+          b=r.entry(idx); Path('reports/raw/80A6A017_s_entity.bin').write_bytes(b)
+          resources=parse_entity_resources(b)
+          rows=[]
+          for x in resources:
+            h=x['resource_hash']; rpkg=x['resource_package_id']; ridx=x['resource_file_index']; q=dict(x)
+            if rpkg==0x0135 and ridx is not None and ridx<len(r.entries):
+              re=r.entries[ridx]
+              q.update({'entry_tag':re['tag_hash'].upper(),'entry_reference':re['reference'].upper(),'entry_size':re['file_size']})
+              if re['tag_hash'].upper()==h:
+                try:
+                  rb=r.entry(ridx); q['sha256']=hashlib.sha256(rb).hexdigest(); Path('reports/raw',f'{h}_resource.bin').write_bytes(rb)
+                  if re['reference'].upper()=='80800861': q['entity_resource']=parse_resource(rb,'PS4')
+                  q['prefix64']=rb[:64].hex()
+                except Exception as ex: q['read_error']=repr(ex)
+            rows.append(q)
+          out={'weapon_pattern_index':39,'pattern_global_tag_id_hash':'81F4DC5C','pattern_hash':'811C9DC5','entity_hash':tag,'entity_package_id':pkg,'entity_index':idx,'entity_size':len(b),'entity_sha256':hashlib.sha256(b).hexdigest(),'resources':rows,'remote_blocks_read':len(r.block_cache)}
+          Path('reports/gjallarhorn_pattern39_entity.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('GJ_PATTERN_ENTITY',json.dumps({k:v for k,v in out.items() if k!='resources'},separators=(',',':')))
+          for q in rows: print(' GJ_PATTERN_RESOURCE',json.dumps(q,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-pattern39-entity
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
