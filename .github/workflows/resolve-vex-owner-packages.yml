@@ -1,0 +1,33 @@
+name: Resolve Vex owner package candidates
+
+on:
+  push:
+    paths:
+      - '.github/workflows/resolve-vex-owner-packages.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch PS4 package manifest and filter Vex packages
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          curl --fail --location --retry 3 "$base/packages.txt" -o out/packages.txt
+          grep -i 'vex' out/packages.txt | sort -u > out/vex_packages.txt || true
+          grep -iE '_(0156|0157|0158)_[01]\.pkg' out/packages.txt | sort -u > out/globals_0156_0158.txt || true
+          echo '--- VEX ---'
+          cat out/vex_packages.txt
+          echo '--- GLOBALS ---'
+          cat out/globals_0156_0158.txt
+      - name: Upload filtered manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-vex-owner-package-candidates
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
