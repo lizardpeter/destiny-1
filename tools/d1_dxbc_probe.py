@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from d1_entry_extract import EntryReader
 from d1_material_decode import parse_material, parse_array_header
-from d1_vector_container_probe import count_from_metadata_size, parse_vector_container
+from d1_vector_container_probe import xbox_count_from_metadata_size, parse_xbox_vector_container
 
 XBOX_MATERIAL_CLASS = '80801C32'
 XBOX_SHADER_TAG_CLASS = '80801B7C'
@@ -151,9 +151,9 @@ def main():
         ve=by.get(m['ps_vector4_container'].upper())
         if ve and ve['reference'].upper()==XBOX_VECTOR_CONTAINER_CLASS:
             row['ps_vector4_container_entry']={'tag_hash':ve['tag_hash'],'entry_index':ve['index'],'size':ve['file_size'],
-                'available':r.available(ve['index']),'metadata_vector_count':count_from_metadata_size(ve['file_size'])}
+                'available':r.available(ve['index']),'metadata_vector_count':xbox_count_from_metadata_size(ve['file_size'])}
             if r.available(ve['index']):
-                try: row['ps_vector4_container_entry']['decoded']=parse_vector_container(r.entry(ve['index']))
+                try: row['ps_vector4_container_entry']['decoded']=parse_xbox_vector_container(r.entry(ve['index']))
                 except Exception as ex: row['ps_vector4_container_entry']['decode_error']=repr(ex)
         if not pe or not r.available(pe['index']):
             row['pixel_shader_available']=False; rows.append(row); summary['pixel_shader_unavailable']+=1; continue
