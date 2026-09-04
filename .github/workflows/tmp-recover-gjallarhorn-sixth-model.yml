@@ -1,0 +1,70 @@
+name: Temporary recover Gjallarhorn sixth model
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-recover-gjallarhorn-sixth-model.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and 0139 snapshots
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x59B629600 \
+            --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg \
+            --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
+            --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+      - name: Try 80A73D13 through every snapshot
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_model_probe import parse_model
+          rows=[]; success=[]
+          for p in sorted(Path('recovered').glob('ps4_investment_assets_0139_*.pkg')):
+            rec={'snapshot':p.name}
+            try:
+              r=EntryReader(p,Path('runtime'))
+              by={e['tag_hash'].upper():e for e in r.entries}
+              e=by.get('80A73D13')
+              rec['present']=bool(e)
+              if not e:
+                rows.append(rec); continue
+              rec.update({'entry_index':e['index'],'reference':e['reference'].upper(),'size':e['file_size'],'available':r.available(e['index'])})
+              if r.available(e['index']):
+                b=r.entry(e['index'])
+                rec['sha256']=hashlib.sha256(b).hexdigest()
+                rec['model']=parse_model(b,'PS4')
+                out=Path('reports')/f'80A73D13_{p.stem}.bin';out.write_bytes(b)
+                success.append(str(out)); print('SIXTH_MODEL_SUCCESS',p.name,rec['sha256'],rec['model']['mesh_count'])
+            except Exception as ex:
+              rec['error']=repr(ex); print('SIXTH_MODEL_ERROR',p.name,repr(ex))
+            rows.append(rec)
+          Path('reports/80A73D13_snapshot_recovery.json').write_text(json.dumps({'rows':rows,'success_files':success},indent=2)+'\n')
+          if not success: raise SystemExit('80A73D13 unreadable in every recovered 0139 snapshot')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-sixth-model
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
