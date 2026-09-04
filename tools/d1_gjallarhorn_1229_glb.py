@@ -8,9 +8,10 @@ Retail-byte chain:
 No geometry, attachment transforms, skin weights, or material semantics are
 invented. LOD1 only. Repeated native material-pass rows addressing the same
 strip range are emitted once and preserved as provenance. Some ROI package
-patch snapshots contain Oodle blocks that are unreadable while the same retail
-entry is intact in an earlier snapshot, so every geometry resource is resolved
-newest-to-oldest across the physical patch family and its source is reported.
+patch snapshots contain Oodle blocks that are unreadable or corrupt while the
+same retail entry is intact in an earlier snapshot, so geometry resources are
+resolved newest-to-oldest and vertex candidates must also pass the native
+buffer-header stride invariant before they are accepted.
 """
 from __future__ import annotations
 
@@ -83,7 +84,8 @@ def patch_number(path):
 
 def reader_family(seed,runtime):
     m=re.match(r'^(.*)_\d+\.pkg$',seed.name)
-    if not m: return [(EntryReader(seed,runtime),None)]
+    if not m:
+        r=EntryReader(seed,runtime); return [(r,by_hash(r))]
     paths=sorted(seed.parent.glob(m.group(1)+'_*.pkg'),key=patch_number,reverse=True)
     out=[]
     for p in paths:
@@ -101,9 +103,8 @@ def entry_bytes(reader,table,tag):
     return reader.entry(e['index'])
 
 
-def linked_payload(reader_sets,tag):
-    pkg,_=filehash_pkg_index(int(tag,16))
-    candidates=reader_sets.get(pkg)
+def linked_payload(reader_sets,tag,kind=None):
+    pkg,_=filehash_pkg_index(int(tag,16)); candidates=reader_sets.get(pkg)
     if not candidates: raise KeyError(f'{tag} belongs to unprovided logical package {pkg:04X}')
     errors=[]
     for r,t in candidates:
@@ -113,10 +114,17 @@ def linked_payload(reader_sets,tag):
         if ref not in t: continue
         try:
             h=entry_bytes(r,t,tag); p=entry_bytes(r,t,ref)
-            return h,p,{
-                'header_tag':tag,'payload_tag':ref,'header_reference':ref,
-                'package_id':f'{pkg:04X}','snapshot':r.pkg.name,
-            }
+            stride=None
+            if kind=='vertex':
+                if len(h)<6: raise RuntimeError(f'vertex header too short: {len(h)}')
+                stride=struct.unpack_from('<h',h,4)[0]
+                if stride<6 or stride>128 or stride%2:
+                    raise RuntimeError(f'invalid vertex stride {stride}')
+                if len(p)%stride:
+                    raise RuntimeError(f'payload {len(p)} not divisible by vertex stride {stride}')
+            source={'header_tag':tag,'payload_tag':ref,'header_reference':ref,'package_id':f'{pkg:04X}','snapshot':r.pkg.name}
+            if stride is not None: source['validated_stride']=stride
+            return h,p,source
         except Exception as ex:
             errors.append({'snapshot':r.pkg.name,'error':repr(ex)})
     raise RuntimeError(f'could not recover {tag} in package {pkg:04X}: {errors}')
@@ -134,9 +142,9 @@ def choose_display_material(candidates):
 
 
 def decode_mesh(reader_sets,mesh,model_tag,mesh_index):
-    h0,p0,s0=linked_payload(reader_sets,mesh['vertices1'])
-    h1,p1,s1=linked_payload(reader_sets,mesh['vertices2'])
-    hi,pi,si=linked_payload(reader_sets,mesh['indices'])
+    h0,p0,s0=linked_payload(reader_sets,mesh['vertices1'],'vertex')
+    h1,p1,s1=linked_payload(reader_sets,mesh['vertices2'],'vertex')
+    hi,pi,si=linked_payload(reader_sets,mesh['indices'],'index')
     stride0=struct.unpack_from('<h',h0,4)[0]; stride1=struct.unpack_from('<h',h1,4)[0]
     if stride0<6 or stride0%2 or stride1<10 or stride1%2:
         raise RuntimeError(f'{model_tag} mesh{mesh_index}: unsupported strides {stride0}/{stride1}')
@@ -173,11 +181,7 @@ def main():
     ap.add_argument('--out',type=Path,required=True); ap.add_argument('--report',type=Path,required=True)
     a=ap.parse_args()
 
-    reader_sets={
-        0x011C:reader_family(a.pkg_011c,a.runtime),
-        0x011E:reader_family(a.pkg_011e,a.runtime),
-        0x0139:reader_family(a.pkg_0139,a.runtime),
-    }
+    reader_sets={0x011C:reader_family(a.pkg_011c,a.runtime),0x011E:reader_family(a.pkg_011e,a.runtime),0x0139:reader_family(a.pkg_0139,a.runtime)}
     g=GLTF2(asset=Asset(version='2.0',generator='destiny-1 Gjallarhorn arrangement 1229 proof exporter'))
     g.scenes=[Scene(nodes=[0])]; g.scene=0; g.nodes=[Node(name='Gjallarhorn_1229_PresentationRoot',children=[])]
     g.meshes=[]; g.materials=[]; g.buffers=[]; g.bufferViews=[]; g.accessors=[]
