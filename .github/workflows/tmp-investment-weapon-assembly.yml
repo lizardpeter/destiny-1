@@ -1,4 +1,4 @@
-name: Temporary trace D1 investment weapon assembly
+name: Temporary trace D1 investment weapon assembly phase 2
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   trace:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,26 +26,24 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover investment globals 012f and 013f
+      - name: Recover exact 011c and investment package families from pinned offsets
         run: |
           set -euo pipefail
-          python tools/d1_split_tar_extract.py \
-            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
-            --part-count 10 --start-offset 0x439A04A00 \
-            --target ps4_investment_globals_012f_0.pkg \
-            --target ps4_investment_globals_012f_1.pkg \
-            --target ps4_investment_globals_012f_2.pkg \
-            --target ps4_investment_globals_012f_3.pkg \
-            --target ps4_investment_globals_012f_4.pkg \
-            --target ps4_investment_globals_012f_5.pkg \
-            --target ps4_investment_globals_012f_6.pkg \
-            --target ps4_investment_assets_013f_1.pkg \
-            --target ps4_investment_assets_013f_2.pkg \
-            --target ps4_investment_assets_013f_3.pkg \
-            --target ps4_investment_assets_013f_4.pkg \
-            --target ps4_investment_assets_013f_5.pkg \
-            --out recovered --manifest reports/investment_extract.json
-      - name: Census target hardcoded investment hashes and entity backlinks
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json
+      - name: Cross-link every 011c entity against investment assets
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -55,40 +53,68 @@ jobs:
           sys.path.insert(0,'tools')
           from d1_entry_extract import EntryReader
 
-          target='80A39E0E'
-          target_le=struct.pack('<I',int(target,16))
+          rt=Path('runtime')
+          wr=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),rt)
+          entities=[e['tag_hash'].upper() for e in wr.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734']
+          needles={h:struct.pack('<I',int(h,16)) for h in entities}
           known={
-            'entityAssignmentTag':'80A5FFA7', # Charm A7FFA580
-            'inventoryItemMap':'80A5FFBE',    # Charm BEFFA580
+            'entityAssignmentTag':'80A5FFA7',
+            'inventoryItemMap':'80A5FFBE',
             'sandboxPatternGlobalTagId':'80A5FFA9',
+            'sandboxPatternAssignments':'80A7E1DC',
+            'entityAssignmentsMap':'80A7E1DD',
           }
           rows=[]
-          for p in sorted(Path('recovered').glob('*.pkg')):
-              try:r=EntryReader(p,Path('runtime'))
-              except Exception as ex:
-                  rows.append({'package':p.name,'open_error':repr(ex)}); continue
-              by={e['tag_hash'].upper():e for e in r.entries}
-              hit_known={k:{'tag':h,'present':h in by,'entry_index':by[h]['index'] if h in by else None,'reference':by[h]['reference'] if h in by else None,'size':by[h]['file_size'] if h in by else None} for k,h in known.items()}
+          for p in sorted(Path('recovered').glob('ps4_investment*.pkg')):
+              r=EntryReader(p,rt); by={e['tag_hash'].upper():e for e in r.entries}
+              k={name:{'tag':h,'present':h in by,'index':by[h]['index'] if h in by else None,'reference':by[h]['reference'] if h in by else None,'size':by[h]['file_size'] if h in by else None,'available':r.available(by[h]['index']) if h in by else None} for name,h in known.items()}
               hits=[]
               for e in r.entries:
                   if not r.available(e['index']): continue
                   try:b=r.entry(e['index'])
                   except Exception: continue
-                  pos=0
                   found=[]
-                  while True:
-                      j=b.find(target_le,pos)
-                      if j<0: break
-                      found.append(j); pos=j+1
+                  for h,n in needles.items():
+                      pos=b.find(n)
+                      if pos>=0: found.append({'entity':h,'offset':pos})
                   if found:
-                      hits.append({'entry_index':e['index'],'tag_hash':e['tag_hash'],'reference':e['reference'],'type':e['type'],'subtype':e['subtype'],'size':e['file_size'],'offsets':found,'sha256':hashlib.sha256(b).hexdigest()})
-              rows.append({'package':p.name,'pkg_id':r.h['pkg_id'],'patch_id':r.h['patch_id'],'entry_count':len(r.entries),'known':hit_known,'target_entity_literal_hits':hits})
-          Path('reports/investment_target_backlinks.json').write_text(json.dumps(rows,indent=2)+'\n')
-          print(json.dumps(rows,indent=2))
+                      hits.append({'tag_hash':e['tag_hash'],'entry_index':e['index'],'reference':e['reference'],'type':e['type'],'subtype':e['subtype'],'size':e['file_size'],'hits':found,'sha256':hashlib.sha256(b).hexdigest()})
+              rows.append({'package':p.name,'pkg_id':r.h['pkg_id'],'patch_id':r.h['patch_id'],'known':k,'011c_entity_hits':hits})
+          Path('reports/investment_011c_crosslinks.json').write_text(json.dumps({'011c_entity_count':len(entities),'011c_entities':entities,'packages':rows},indent=2)+'\n')
+          print('011c entities',len(entities))
+          for row in rows:
+              print('\n',row['package'])
+              print(' known',row['known'])
+              for x in row['011c_entity_hits']:
+                  print(' HIT',x['tag_hash'],x['reference'],[(h['entity'],h['offset']) for h in x['hits']])
+          PY
+      - name: Dump exact investment root entries for binary schema work
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          rt=Path('runtime')
+          targets=[('012f','80A5FFA7'),('012f','80A5FFBE'),('013f','80A7E1DC'),('013f','80A7E1DD')]
+          out=[]
+          for fam,h in targets:
+              p=Path('recovered/ps4_investment_globals_012f_6.pkg') if fam=='012f' else Path('recovered/ps4_investment_assets_013f_5.pkg')
+              r=EntryReader(p,rt); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(h)
+              row={'family':fam,'tag_hash':h,'present':bool(e)}
+              if e:
+                  row.update({'entry_index':e['index'],'reference':e['reference'],'size':e['file_size'],'available':r.available(e['index'])})
+                  if r.available(e['index']):
+                      b=r.entry(e['index']); row['prefix_hex']=b[:256].hex(); row['suffix_hex']=b[-128:].hex()
+              out.append(row)
+          Path('reports/investment_roots.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: investment-weapon-assembly-trace
+          name: investment-weapon-assembly-phase2
           path: reports/
           retention-days: 2
           if-no-files-found: error
