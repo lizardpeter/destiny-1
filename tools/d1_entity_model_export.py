@@ -14,7 +14,6 @@ from d1_entity_model_probe import parse_model
 def snorm16(a):
     x=np.asarray(a,dtype=np.float32)/32767.0
     return np.maximum(x,-1.0)
-
 def hdr_stride(h): return struct.unpack_from('<h',h,4)[0]
 def index_is32(h): return bool(h[1])
 
@@ -58,6 +57,10 @@ def decode_indices(data,is32):
 def parse_tag_hash(s):
     s=s.upper().removeprefix('0X'); return s.zfill(8)
 
+def bounds2(a):
+    if a is None or len(a)==0: return None
+    return {'min':[float(x) for x in np.min(a,axis=0)],'max':[float(x) for x in np.max(a,axis=0)]}
+
 def export_model(r, tag_hash, out_glb, out_json=None, unique_ranges=True):
     m=byhash(r); th=parse_tag_hash(tag_hash)
     e=m.get(th)
@@ -79,7 +82,7 @@ def export_model(r, tag_hash, out_glb, out_json=None, unique_ranges=True):
             ranges.setdefault(key,[]).append((pi,p))
         if not unique_ranges:
             ranges={(p['index_offset'],p['index_count'],p['primitive_type'],pi):[(pi,p)] for pi,p in enumerate(mesh['parts'])}
-        mrep={'mesh_index':mi,'model_scale':mesh['model_scale'],'model_translation':mesh['model_translation'],'texcoord_scale':mesh['texcoord_scale'],'texcoord_translation':mesh['texcoord_translation'],'vertices1':mesh['vertices1'],'vertices2':mesh['vertices2'],'indices':mesh['indices'],'vertex_count':len(pos),'vertex_stride0':s0,'vertex_stride1':s1,'index_width_bits':32 if index_is32(ih) else 16,'stage_part_offsets':mesh.get('stage_part_offsets'),'stage_code':mesh.get('stage_code'),'primitive_groups':[]}
+        mrep={'mesh_index':mi,'model_scale':mesh['model_scale'],'model_translation':mesh['model_translation'],'texcoord_scale':mesh['texcoord_scale'],'texcoord_translation':mesh['texcoord_translation'],'uv_bounds':bounds2(uv),'vertices1':mesh['vertices1'],'vertices2':mesh['vertices2'],'indices':mesh['indices'],'vertex_count':len(pos),'vertex_stride0':s0,'vertex_stride1':s1,'index_width_bits':32 if index_is32(ih) else 16,'stage_part_offsets':mesh.get('stage_part_offsets'),'stage_code':mesh.get('stage_code'),'primitive_groups':[]}
         for gi,(key,candidates) in enumerate(ranges.items()):
             off,count,prim=key[:3]
             if prim!=3: raise ValueError(f'mesh {mi} group {gi}: primitive {prim} not triangle-list')
