@@ -1,0 +1,139 @@
+name: Temporary probe Gjallarhorn visual entity bone mapping
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-visual-bone-map.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0139 family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x59B629600 \
+            --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg \
+            --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
+            --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+      - name: Scan six visual chains for exact 7-bone hashes
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_s_entity_resource_package_find import parse_entity_resources
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          bones=['C410084A','AD2A05CD','3308E6CC','752D6334','FC1090F4','0AB6C582','B79A6009']
+          bone_int={int(x,16):x for x in bones}
+          chains=[
+            ('80A743A3','80A743A4','80A743A5','80A743A6'),
+            ('80A73BA8','80A73BA9','80A73BAA','80A73BAB'),
+            ('80A721FF','80A72200','80A72201','80A72202'),
+            ('80A73178','80A73179','80A7317A','80A7317B'),
+            ('80A73253','80A73254','80A73255','80A73256'),
+            ('80A73D10','80A73D11','80A73D12','80A73D13'),
+          ]
+          local=EntryReader(Path('recovered/ps4_investment_assets_0139_5.pkg'),Path('runtime'))
+          local_by={e['tag_hash'].upper():e for e in local.entries}
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          specs=[
+            'ps4_investment_assets_013a_0.pkg:0x59C453A00:95760384','ps4_investment_assets_013a_1.pkg:0x5A1FA6C00:15149056',
+            'ps4_investment_assets_013a_2.pkg:0x5A2E19600:7192576','ps4_investment_assets_013a_3.pkg:0x5A34F5800:165888',
+            'ps4_investment_assets_013a_4.pkg:0x5A351E200:161792','ps4_investment_assets_013a_5.pkg:0x5A3545C00:165888']
+          ms=[parse_member(x) for x in specs]; remote=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+          remote_by={e['tag_hash'].upper():e for e in remote.entries}
+
+          def reader_for(tag):
+            pkg,idx=filehash_pkg_index(int(tag,16))
+            if pkg==0x0139:return local,local_by
+            if pkg==0x013A:return remote,remote_by
+            return None,None
+          def scan_bytes(tag,label):
+            r,by=reader_for(tag)
+            if r is None:return {'tag_hash':tag,'label':label,'error':'package not mounted'}
+            e=by.get(tag)
+            if not e:return {'tag_hash':tag,'label':label,'error':'tag absent'}
+            q={'tag_hash':tag,'label':label,'entry':{k:(e[k].upper() if isinstance(e[k],str) else e[k]) for k in ('index','tag_hash','reference','type','subtype','file_size')}}
+            try:
+              b=r.entry(e['index']); Path('reports/raw',f'{tag}_{label}.bin').write_bytes(b)
+              q['sha256']=hashlib.sha256(b).hexdigest(); q['payload_hex']=b.hex() if len(b)<=512 else b[:512].hex()
+              hits=[]; local_refs=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                v=struct.unpack_from('<I',b,off)[0]
+                if v in bone_int:hits.append({'offset':off,'bone_hash':bone_int[v]})
+                h=f'{v:08X}'
+                x=by.get(h)
+                if x:local_refs.append({'offset':off,'tag_hash':h,'reference':x['reference'].upper(),'type':x['type'],'subtype':x['subtype'],'size':x['file_size']})
+              q['bone_hash_hits']=hits; q['aligned_same_package_refs']=local_refs
+              if label=='entity':
+                try:q['resources']=parse_entity_resources(b)
+                except Exception as ex:q['resource_parse_error']=repr(ex)
+            except Exception as ex:q['read_error']=repr(ex)
+            return q
+
+          outrows=[]
+          for parent,entity,res,model in chains:
+            row={'parent':scan_bytes(parent,'parent'),'entity':scan_bytes(entity,'entity'),'model_resource':scan_bytes(res,'model_resource'),'model':scan_bytes(model,'model')}
+            # Recursively inspect any entity Resource[] entries that live in 0139/013A.
+            extra=[]
+            for x in row['entity'].get('resources',[]):
+              h=x.get('resource_hash')
+              if h:
+                pkg,_=filehash_pkg_index(int(h,16))
+                if pkg in {0x0139,0x013A}:extra.append(scan_bytes(h,'entity_resource'))
+            row['entity_resources_same_package']=extra
+            outrows.append(row)
+            print('GJ_VISUAL_CHAIN',json.dumps({
+              'parent':parent,'entity':entity,'model_resource':res,'model':model,
+              'bone_hits':[(z['label'],z['tag_hash'],z.get('bone_hash_hits',[])) for z in [row['parent'],row['entity'],row['model_resource'],*extra] if z.get('bone_hash_hits')]
+            },separators=(',',':')))
+
+          # Global scan over readable structured entries in 0139 and sparse 013A for any structure that
+          # contains both a selected visual hash and a Gjallarhorn bone hash.
+          selected={int(x,16):x for c in chains for x in c}
+          correlations=[]
+          for r,by,pkgname in [(local,local_by,'0139'),(remote,remote_by,'013A')]:
+            for e in r.entries:
+              if e['type']!=16:continue
+              try:b=r.entry(e['index'])
+              except Exception:continue
+              bh=[]; sh=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                v=struct.unpack_from('<I',b,off)[0]
+                if v in bone_int:bh.append({'offset':off,'bone_hash':bone_int[v]})
+                if v in selected:sh.append({'offset':off,'selected_hash':selected[v]})
+              if bh and sh:
+                correlations.append({'package':pkgname,'entry_index':e['index'],'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'size':e['file_size'],'bone_hits':bh,'visual_hits':sh})
+          report={'bones':bones,'chains':outrows,'correlations':correlations}
+          Path('reports/gjallarhorn_visual_bone_map.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('GJ_CORRELATIONS',json.dumps(correlations,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-gjallarhorn-visual-bone-map
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
