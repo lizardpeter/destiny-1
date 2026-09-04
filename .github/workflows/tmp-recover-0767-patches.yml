@@ -1,4 +1,4 @@
-name: Temporary 09A PS4 GCN CLRX disassembly
+name: Temporary 09A texture index resolution
 
 on:
   push:
@@ -13,43 +13,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build CLRX GCN 1.1 disassembler
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake g++ make git
-          git clone --depth 1 https://github.com/CLRX/CLRX-mirror.git clrx
-          cmake -S clrx -B clrx/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DNO_CLWRAPPER=ON \
-            -DBUILD_TESTS=OFF \
-            -DBUILD_SAMPLES=OFF \
-            -DBUILD_DOCUMENTATION=OFF \
-            -DGCC5CXX11NEWABI=ON
-          cmake --build clrx/build --target clrxdisasm -j2
-          CLRX_DISASM="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
-          test -n "$CLRX_DISASM"
-          echo "$CLRX_DISASM" > clrx_disasm_path.txt
-          "$CLRX_DISASM" --version || true
       - name: Recover verified Oodle runtime
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports shader
+          mkdir -p runtime recovered reports
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover 0157 shader family
+      - name: Inspect public package manifest ordering
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start-offset 0x46AF91400 \
-            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
-            --out recovered --manifest reports/0157_extract.json
-      - name: Recover 0767 shader family
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          echo '===== target lines ====='
+          grep -nE 'ps4_arch_vex(_com01)?_(00e2|0767)_[0-9]+\.pkg' reports/packages.txt || true
+          echo '===== 00E2 context ====='
+          grep -n -B4 -A8 'ps4_arch_vex_00e2_0.pkg' reports/packages.txt || true
+          echo '===== 0767 context ====='
+          grep -n -B4 -A8 'ps4_arch_vex_com01_0767_0.pkg' reports/packages.txt || true
+      - name: Recover 0767 family
         shell: bash
         run: |
           set -euo pipefail
@@ -57,44 +41,63 @@ jobs:
             --start-offset 0x105C6E000 \
             --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_1.pkg --target ps4_arch_vex_com01_0767_4.pkg \
             --out recovered --manifest reports/0767_extract.json
-      - name: Recover exact OrbShdr-bounded shader code
+      - name: Decode exact variant-1 material texture indices
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_ps4_shader_binary_probe.py recovered/ps4_globals_0157_1.pkg --runtime runtime \
-            --tag-hash 80AAE14B --dump-dir shader -o reports/80AAE14B_orbshdr.json
-          python tools/d1_ps4_shader_binary_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
-            --tag-hash 816CE0A8 --dump-dir shader -o reports/816CE0A8_orbshdr.json
-      - name: CLRX raw GCN 1.1 disassembly
+          python tools/d1_material_decode.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
+            --tag-hash 816CE240 --tag-hash 816CE241 --tag-hash 816CE242 --tag-hash 816CE243 --tag-hash 816CE244 --tag-hash 816CE1A7 \
+            -o reports/variant1_materials.json
+          cat reports/variant1_materials.json
+      - name: Sparse reverse-scan before 0767 for 00E2 TAR headers
         shell: bash
         run: |
           set -euo pipefail
-          CLRX_DISASM="$(cat clrx_disasm_path.txt)"
-          for tag in 80AAE14B 816CE0A8; do
-            "$CLRX_DISASM" --raw --gpuType=GFX700 --hexcode "shader/${tag}_gcn_code.bin" \
-              > "reports/${tag}_clrx_gfx700.s" 2> "reports/${tag}_clrx_gfx700.err"
-            "$CLRX_DISASM" --raw --arch=GCN1.1 --hexcode "shader/${tag}_gcn_code.bin" \
-              > "reports/${tag}_clrx_gcn11.s" 2> "reports/${tag}_clrx_gcn11.err"
-            cmp "reports/${tag}_clrx_gfx700.s" "reports/${tag}_clrx_gcn11.s" || true
-          done
-      - name: Summarize decoded shader instructions
-        shell: bash
-        run: |
-          set -euo pipefail
-          for tag in 80AAE14B 816CE0A8; do
-            echo "===== ${tag} full GFX700 decode ====="
-            cat "reports/${tag}_clrx_gfx700.s"
-            echo "===== ${tag} selected dataflow ops ====="
-            grep -Ein 'image|sample|buffer|load|export|exp|interp|mul|add|mad|mac|fma|dot|cmp|max|min|rcp|rsq|sqrt|log|mov|waitcnt|endpgm' "reports/${tag}_clrx_gfx700.s" || true
-            echo "===== ${tag} stderr ====="
-            cat "reports/${tag}_clrx_gfx700.err"
-          done
+          python - <<'PY'
+          import sys,json
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar,tar_header_checksum_ok,tar_name,parse_tar_number,BLOCK
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          urls=[f'{base}/packages.tar.{i:03d}' for i in range(1,11)]
+          arc=SplitHttpTar(urls,retries=3,timeout=60)
+          before=0x105C6E000
+          wanted={'ps4_arch_vex_00e2_0.pkg','ps4_arch_vex_00e2_1.pkg','ps4_arch_vex_00e2_2.pkg','ps4_arch_vex_00e2_4.pkg'}
+          # Search backwards in 8 MiB chunks. TAR headers are always 512-byte aligned;
+          # magic+checksum filters distinguish them from package payload bytes.
+          chunk=8<<20
+          max_back=512<<20
+          found={}
+          scanned=0
+          end=before
+          while end>0 and scanned<max_back and found.keys()!=wanted:
+              start=max(0,end-chunk)
+              start=(start//BLOCK)*BLOCK
+              data=arc.read_at(start,end-start)
+              for rel in range(0,len(data)-BLOCK+1,BLOCK):
+                  h=data[rel:rel+BLOCK]
+                  if h[257:262]!=b'ustar' or not tar_header_checksum_ok(h):
+                      continue
+                  name=tar_name(h); base_name=name.rsplit('/',1)[-1]
+                  if base_name in wanted:
+                      off=start+rel
+                      found[base_name]={'archive_name':name,'header_offset':off,'data_offset':off+BLOCK,'size':parse_tar_number(h[124:136])}
+                      print('FOUND',base_name,hex(off),found[base_name]['size'],flush=True)
+              scanned += end-start
+              end=start
+              if found:
+                  # Continue two chunks farther to catch adjacent patch siblings, then stop.
+                  if all(x in found for x in wanted): break
+          rep={'before_offset':before,'bytes_scanned_backwards':scanned,'found':found}
+          Path('reports/00e2_reverse_scan.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          if 'ps4_arch_vex_00e2_0.pkg' not in found:
+              raise SystemExit('00E2_0 not found within reverse-scan window')
+          PY
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 09A-ps4-gcn-clrx-disassembly
-          path: |
-            reports/
-            shader/*_gcn_code.bin
+          name: 09A-texture-index-and-00e2-position
+          path: reports/
           retention-days: 1
           if-no-files-found: error
