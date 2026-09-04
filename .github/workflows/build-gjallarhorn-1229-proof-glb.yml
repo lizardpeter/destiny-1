@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/build-gjallarhorn-1229-proof-glb.yml'
       - 'tools/d1_gjallarhorn_1229_glb.py'
+      - 'tools/d1_gjallarhorn_1229_glb_validated.py'
   workflow_dispatch:
 
 permissions:
@@ -93,8 +94,8 @@ jobs:
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python -m py_compile tools/d1_gjallarhorn_1229_glb.py
-          python tools/d1_gjallarhorn_1229_glb.py \
+          python -m py_compile tools/d1_gjallarhorn_1229_glb.py tools/d1_gjallarhorn_1229_glb_validated.py
+          python tools/d1_gjallarhorn_1229_glb_validated.py \
             --pkg-011c recovered/ps4_gear_weapons_011c_5.pkg \
             --pkg-011e recovered/ps4_gear_weapons_011e_5.pkg \
             --pkg-0139 recovered/ps4_investment_assets_0139_5.pkg \
