@@ -1,0 +1,94 @@
+name: Temporary trace D1 investment weapon assembly
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-investment-weapon-assembly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover investment globals 012f and 013f
+        run: |
+          set -euo pipefail
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_investment_globals_012f_0.pkg \
+            --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg \
+            --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg \
+            --target ps4_investment_globals_012f_5.pkg \
+            --target ps4_investment_globals_012f_6.pkg \
+            --target ps4_investment_assets_013f_1.pkg \
+            --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg \
+            --target ps4_investment_assets_013f_4.pkg \
+            --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/investment_extract.json
+      - name: Census target hardcoded investment hashes and entity backlinks
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys,hashlib
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+
+          target='80A39E0E'
+          target_le=struct.pack('<I',int(target,16))
+          known={
+            'entityAssignmentTag':'80A5FFA7', # Charm A7FFA580
+            'inventoryItemMap':'80A5FFBE',    # Charm BEFFA580
+            'sandboxPatternGlobalTagId':'80A5FFA9',
+          }
+          rows=[]
+          for p in sorted(Path('recovered').glob('*.pkg')):
+              try:r=EntryReader(p,Path('runtime'))
+              except Exception as ex:
+                  rows.append({'package':p.name,'open_error':repr(ex)}); continue
+              by={e['tag_hash'].upper():e for e in r.entries}
+              hit_known={k:{'tag':h,'present':h in by,'entry_index':by[h]['index'] if h in by else None,'reference':by[h]['reference'] if h in by else None,'size':by[h]['file_size'] if h in by else None} for k,h in known.items()}
+              hits=[]
+              for e in r.entries:
+                  if not r.available(e['index']): continue
+                  try:b=r.entry(e['index'])
+                  except Exception: continue
+                  pos=0
+                  found=[]
+                  while True:
+                      j=b.find(target_le,pos)
+                      if j<0: break
+                      found.append(j); pos=j+1
+                  if found:
+                      hits.append({'entry_index':e['index'],'tag_hash':e['tag_hash'],'reference':e['reference'],'type':e['type'],'subtype':e['subtype'],'size':e['file_size'],'offsets':found,'sha256':hashlib.sha256(b).hexdigest()})
+              rows.append({'package':p.name,'pkg_id':r.h['pkg_id'],'patch_id':r.h['patch_id'],'entry_count':len(r.entries),'known':hit_known,'target_entity_literal_hits':hits})
+          Path('reports/investment_target_backlinks.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-weapon-assembly-trace
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
