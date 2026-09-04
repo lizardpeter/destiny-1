@@ -37,9 +37,27 @@ REPEAT = 10497
 _SMALL_REPORT: dict | None = None
 
 
+def material_record(report: dict, expected_tag: str) -> dict:
+    """Accept either d1_material_decode's report wrapper or a bare record."""
+    if not isinstance(report, dict):
+        raise TypeError(f"material report for {expected_tag} is not an object")
+    if "materials" in report:
+        rows = report.get("materials")
+        if not isinstance(rows, list):
+            raise ValueError("material report 'materials' field is not a list")
+        matches = [r for r in rows if isinstance(r, dict) and r.get("tag_hash", "").upper() == expected_tag]
+        if len(matches) != 1:
+            raise ValueError(f"expected exactly one {expected_tag} material record, got {len(matches)}")
+        return matches[0]
+    if report.get("tag_hash", "").upper() != expected_tag:
+        raise ValueError(f"expected material {expected_tag}, got {report.get('tag_hash')}")
+    return report
+
+
 def add_final_materials(gltf, texture_root: Path, material_report: dict, plate_report: dict) -> dict[str, int]:
     if _SMALL_REPORT is None:
         raise RuntimeError("small material report was not loaded")
+    material_report = material_record(material_report, FINAL_MAIN_MATERIAL)
 
     # Main plate sampler is a conservative portable choice. The small atlas gets
     # a separate wrap sampler because retail sampler 80AAE1D5 is byte-decoded as
@@ -204,11 +222,11 @@ def main() -> None:
     ap.add_argument("--report", type=Path, required=True)
     args = ap.parse_args()
 
-    _SMALL_REPORT = json.loads(args.small_material_report.read_text())
+    _SMALL_REPORT = material_record(json.loads(args.small_material_report.read_text()), SMALL_MATERIAL)
     if _SMALL_REPORT.get("pixel_shader") != SMALL_PIXEL_SHADER:
         raise RuntimeError(f"{SMALL_MATERIAL} expected PS {SMALL_PIXEL_SHADER}, got {_SMALL_REPORT.get('pixel_shader')}")
-    if _SMALL_REPORT.get("pixel_vector4") != SMALL_PIXEL_VECTOR4:
-        raise RuntimeError(f"{SMALL_MATERIAL} expected PS vec4 {SMALL_PIXEL_VECTOR4}, got {_SMALL_REPORT.get('pixel_vector4')}")
+    if _SMALL_REPORT.get("ps_vector4_container") != SMALL_PIXEL_VECTOR4:
+        raise RuntimeError(f"{SMALL_MATERIAL} expected PS vec4 {SMALL_PIXEL_VECTOR4}, got {_SMALL_REPORT.get('ps_vector4_container')}")
     base.MAIN_MATERIAL = FINAL_MAIN_MATERIAL
     base.SMALL_MATERIAL = SMALL_MATERIAL
     base.add_materials = add_final_materials
