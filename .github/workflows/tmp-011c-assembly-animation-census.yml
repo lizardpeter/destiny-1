@@ -1,0 +1,301 @@
+name: Temporary census 011c weapon assembly and visible animation motion
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-assembly-animation-census.yml'
+      - 'tools/d1_weapon_geometry_only_glb.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: python -m pip install --quiet numpy scipy pygltflib pyglm matplotlib
+
+      - name: Recover runtime and final 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports out/gallery out/models
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg \
+            --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg \
+            --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+
+      - name: Discover all entity models and exact animation backlinks
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import collections, hashlib, json, struct, sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_resource_probe import parse_resource
+          from d1_entity_model_probe import parse_model
+
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+
+          # Discover every EntityResource that embeds an s_entity_model.
+          resources={}
+          for e in r.entries:
+              if not (e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800861' and r.available(e['index'])):
+                  continue
+              try:
+                  pr=parse_resource(r.entry(e['index']),r.h['platform'])
+              except Exception:
+                  continue
+              mh=pr.get('embedded_model_tag_hash')
+              if mh:
+                  resources[e['tag_hash'].upper()]={'resource':e['tag_hash'].upper(),'resource_index':e['index'],'model':mh.upper()}
+
+          # Exact literal entity -> EntityResource membership.
+          entity_rows=[]
+          for e in r.entries:
+              if not (e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734' and r.available(e['index'])):
+                  continue
+              b=r.entry(e['index'])
+              refs=[]
+              for o in range(0,len(b)-3,4):
+                  h=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+                  if h in resources and h not in [x['resource'] for x in refs]:
+                      refs.append({'offset':o,**resources[h]})
+              if refs:
+                  entity_rows.append({'entity':e['tag_hash'].upper(),'index':e['index'],'size':e['file_size'],'model_resources':refs})
+
+          model_tags=[]
+          for x in entity_rows:
+              for q in x['model_resources']:
+                  if q['model'] not in model_tags:model_tags.append(q['model'])
+
+          # Parse model metadata now; geometry exporter below will produce exact triangle/bbox reports.
+          models=[]
+          for mh in model_tags:
+              me=by.get(mh)
+              row={'model':mh,'entry_index':me['index'] if me else None,'size':me['file_size'] if me else None}
+              if me and r.available(me['index']):
+                  try:
+                      pm=parse_model(r.entry(me['index']),r.h['platform'])
+                      row['mesh_count']=pm['mesh_count']
+                      row['meshes']=[{
+                          'mesh_index':i,'part_count':len(m['parts']),
+                          'vertices1':m['vertices1'],'vertices2':m['vertices2'],'indices':m['indices'],
+                          'materials':sorted(set(p['material'] for p in m['parts'])),
+                          'lod_values':sorted(set(int(p['lod']) for p in m['parts']))
+                      } for i,m in enumerate(pm['meshes'])]
+                  except Exception as ex: row['error']=repr(ex)
+              models.append(row)
+
+          clips=[e for e in r.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='808005A1']
+          clip_hashes={e['tag_hash'].upper():e for e in clips}
+          clip_needles={h:struct.pack('<I',int(h,16)) for h in clip_hashes}
+          backlinks={h:[] for h in clip_hashes}
+          # Scan all available type-16 structures for exact aligned clip references.
+          for e in r.entries:
+              if e['type']!=16 or not r.available(e['index']): continue
+              try:b=r.entry(e['index'])
+              except Exception:continue
+              for o in range(0,len(b)-3,4):
+                  h=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+                  if h in clip_hashes:
+                      backlinks[h].append({'source':e['tag_hash'].upper(),'index':e['index'],'reference':e['reference'].upper(),'offset':o,'size':e['file_size']})
+
+          target_clips=[f'80A39{x:03X}' for x in range(0xDF6,0xE02)]
+          target_backlinks={h:backlinks.get(h,[]) for h in target_clips}
+          skeleton_entity='80A39DE8'
+          skeleton_entity_refs=[]
+          se=by.get(skeleton_entity)
+          if se and r.available(se['index']):
+              b=r.entry(se['index'])
+              for o in range(0,len(b)-3,4):
+                  h=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+                  q=by.get(h)
+                  if q:
+                      skeleton_entity_refs.append({'offset':o,'tag':h,'index':q['index'],'reference':q['reference'].upper(),'type':q['type'],'subtype':q['subtype'],'size':q['file_size']})
+
+          out={
+            'pkg_id':r.h['pkg_id'],'entry_count':len(r.entries),
+            'entity_model_owners':entity_rows,
+            'model_tags':model_tags,'models':models,
+            'animation_clip_count':len(clips),
+            'animation_clips':[{'tag':e['tag_hash'].upper(),'index':e['index'],'size':e['file_size']} for e in clips],
+            'target_clip_backlinks':target_backlinks,
+            'skeleton_entity':skeleton_entity,'skeleton_entity_local_tag_refs':skeleton_entity_refs,
+          }
+          Path('reports/011c_assembly_animation_census.json').write_text(json.dumps(out,indent=2)+'\n')
+          Path('reports/model_tags.txt').write_text('\n'.join(model_tags)+'\n')
+          print('entity model owners',len(entity_rows),'unique models',len(model_tags),'animation clips',len(clips))
+          print('models:',model_tags)
+          for h in target_clips: print('clip backlink',h,target_backlinks[h])
+          print('skeleton entity refs:',skeleton_entity_refs)
+          PY
+
+      - name: Export every discovered model geometry
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          while read -r h; do
+            [ -n "$h" ] || continue
+            echo "=== $h ==="
+            if python tools/d1_weapon_geometry_only_glb.py \
+              recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime --model "$h" \
+              --out "out/models/${h}.glb" --report "reports/${h}_geometry.json"; then
+              echo "$h OK"
+            else
+              echo "$h FAILED" | tee "reports/${h}_FAILED.txt"
+            fi
+          done < reports/model_tags.txt
+
+      - name: Recover pinned animation parser and measure visible weapon motion
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,math,sys,tempfile
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools');sys.path.insert(0,'tiger-animation-parser')
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          def eb(h):return r.entry(by[h]['index'])
+          ver=Game_Version.D1_ROI
+          sk=read_skeleton(io.BytesIO(eb('80A39DF2')),ver)
+          rig=read_runtime_rig(io.BytesIO(eb('80A39DF1')),ver)
+          assert len(sk.node_defs)==73 and int(sk.node_defs[72].bone_hash)==0xC410084A
+
+          rows=[]
+          for h in [f'80A39{x:03X}' for x in range(0xDF6,0xE02)]:
+              with tempfile.NamedTemporaryFile() as f:
+                  f.write(eb(h));f.flush();f.seek(0);anim=read_animation(f,ver)
+              raw=decode_animation(anim);ret=rig_retarget(anim,raw,sk,rig);local=convert_obj_to_local(anim,ret,sk)
+              bones=[]
+              # local entries are Transform-like; measure robustly via attributes exposed by parser.
+              for bi,tr in enumerate(local):
+                  def arr_attr(obj,names):
+                      for n in names:
+                          if hasattr(obj,n):
+                              try:return np.asarray(getattr(obj,n),dtype=float)
+                              except Exception:pass
+                      return None
+                  # Each track contains per-frame transformations in .frames in this pinned parser.
+                  frames=getattr(tr,'frames',None)
+                  if frames is None: continue
+                  Ts=[];Qs=[];Ss=[]
+                  for fr in frames:
+                      t=arr_attr(fr,['translation','position','trans'])
+                      q=arr_attr(fr,['rotation','quaternion','rot'])
+                      s=arr_attr(fr,['scale'])
+                      if t is not None:Ts.append(t.reshape(-1)[:3])
+                      if q is not None:Qs.append(q.reshape(-1)[:4])
+                      if s is not None:Ss.append(s.reshape(-1)[:3])
+                  tmax=0.0;rmax=0.0;smax=0.0
+                  if Ts:
+                      A=np.asarray(Ts);tmax=float(np.max(np.linalg.norm(A-A[0],axis=1)))
+                  if Qs:
+                      Q=np.asarray(Qs);Q=Q/np.maximum(np.linalg.norm(Q,axis=1,keepdims=True),1e-12);dots=np.clip(np.abs(Q@Q[0]),0,1);rmax=float(np.degrees(np.max(2*np.arccos(dots))))
+                  if Ss:
+                      A=np.asarray(Ss);smax=float(np.max(np.linalg.norm(A-A[0],axis=1)))
+                  bones.append({'bone_index':bi,'bone_hash':f'{int(sk.node_defs[bi].bone_hash):08X}','translation_delta':tmax,'rotation_delta_deg':rmax,'scale_delta':smax})
+              moving=sorted(bones,key=lambda x:max(x['translation_delta'],x['rotation_delta_deg']/90.0,x['scale_delta']),reverse=True)
+              rows.append({'tag':h,'frames':int(anim.animation_header.frame_count),'node_count':int(anim.animation_header.node_count),'rig_control_count':int(anim.animation_header.rig_control_count),'grip_r':next((x for x in bones if x['bone_index']==24),None),'pedestal':next((x for x in bones if x['bone_index']==72),None),'top_motion':moving[:12]})
+          Path('reports/target_clip_visible_motion.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+
+      - name: Make orthographic gallery of every successful model
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          import numpy as np
+          import matplotlib.pyplot as plt
+          from matplotlib.collections import PolyCollection
+
+          def load_glb(path):
+              b=path.read_bytes();o=12;chunks=[]
+              while o<len(b):
+                  l,t=struct.unpack_from('<II',b,o);o+=8;chunks.append((t,b[o:o+l]));o+=l
+              j=json.loads(chunks[0][1].decode('utf-8').rstrip('\x00 '));bc=chunks[1][1]
+              ct={5126:'<f4',5123:'<u2',5125:'<u4'};num={'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4}
+              def acc(i):
+                  a=j['accessors'][i];bv=j['bufferViews'][a['bufferView']];off=bv.get('byteOffset',0)+a.get('byteOffset',0)
+                  return np.frombuffer(bc,dtype=ct[a['componentType']],count=a['count']*num[a['type']],offset=off).reshape(a['count'],num[a['type']])
+              polys=[];allp=[]
+              for m in j['meshes']:
+                  P=acc(m['primitives'][0]['attributes']['POSITION']);allp.append(P)
+                  for pr in m['primitives']:
+                      F=acc(pr['indices']).reshape(-1,3).astype(int)
+                      polys.extend(P[F])
+              return np.asarray(polys),np.vstack(allp)
+
+          paths=sorted(Path('out/models').glob('*.glb'))
+          rows=[]
+          for p in paths:
+              try:
+                  polys,P=load_glb(p)
+                  rows.append((p.stem,polys,P))
+              except Exception as e: print('gallery skip',p,e)
+          if not rows:raise SystemExit('no gallery models')
+          fig,axs=plt.subplots(len(rows),2,figsize=(15,max(4,3.2*len(rows))),squeeze=False)
+          for ri,(name,polys,P) in enumerate(rows):
+              for ci,(axes,title) in enumerate([((2,1),'side z-y'),((2,0),'top z-x')]):
+                  ax=axs[ri,ci];q=polys[:,:,list(axes)]
+                  pc=PolyCollection(q,facecolors='0.70',edgecolors='0.18',linewidths=.08)
+                  ax.add_collection(pc);ax.autoscale_view();ax.set_aspect('equal');ax.set_title(f'{name} — {title}');ax.axis('off')
+          fig.tight_layout();fig.savefig('out/gallery/011c_model_gallery.png',dpi=180,bbox_inches='tight')
+          PY
+
+      - name: Consolidate geometry metrics
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json
+          from pathlib import Path
+          rows=[]
+          for p in sorted(glob.glob('reports/80*_geometry.json')):
+              d=json.load(open(p));rows.append({'model':d['model'],'mesh_count':d['mesh_count'],'triangles':d['total_lod1_triangles'],'meshes':[{'mesh_index':m['mesh_index'],'vertices':m['vertex_count'],'triangles':m['lod1_triangle_count'],'bbox':m['bbox_gltf'],'strides':[m['stride0'],m['stride1']]} for m in d['meshes']]})
+          Path('reports/geometry_metrics.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-011c-assembly-animation-census
+          path: |
+            reports/
+            out/
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
