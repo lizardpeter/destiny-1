@@ -1,0 +1,91 @@
+name: Temporary decode PS4 weapon 011e materials
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-weapon-011e-material.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install --quiet numpy trimesh pygltflib pillow texture2ddecoder
+      - name: Recover verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports out textures
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover exact 011c and 011e families
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011e_extract.json
+      - name: Decode shared weapon materials
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011e_0.pkg'
+          for h in 80A3CD9A 80A3D294; do
+            ok=0
+            for n in $(seq 1 10); do
+              if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_material_decode.py "$pkg" --runtime runtime --tag-hash "$h" -o "reports/material_${h}.json"; then ok=1; break; fi
+              rm -f "reports/material_${h}.json"; sleep 1
+            done
+            test "$ok" = 1
+            cat "reports/material_${h}.json"
+          done
+      - name: Collect referenced texture hashes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,glob
+          hashes=[]
+          for p in glob.glob('reports/material_*.json'):
+              d=json.load(open(p))
+              for m in d.get('materials',[]):
+                  for side in ('vs_textures','ps_textures'):
+                      for t in m.get(side,[]):
+                          h=t.get('texture') or t.get('texture_tag_hash') or t.get('tag_hash')
+                          if h and h!='FFFFFFFF' and h not in hashes: hashes.append(h)
+          print('\n'.join(hashes))
+          open('reports/texture_hashes.txt','w').write('\n'.join(hashes)+'\n')
+          PY
+      - name: Export static weapon geometry with strip support
+        run: |
+          set -euo pipefail
+          ok=0
+          for n in $(seq 1 10); do
+            if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entity_model_export.py recovered/ps4_gear_weapons_011c_0.pkg \
+              --runtime runtime --tag-hash 80A39E12 --out out/80A39E12_STATIC_WEAPON.glb --json reports/static_weapon.json; then ok=1; break; fi
+            rm -f out/80A39E12_STATIC_WEAPON.glb reports/static_weapon.json; sleep 1
+          done
+          test "$ok" = 1
+          sha256sum out/80A39E12_STATIC_WEAPON.glb | tee reports/static_weapon.sha256
+          cat reports/static_weapon.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011e-material-static
+          path: |
+            reports/
+            out/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
