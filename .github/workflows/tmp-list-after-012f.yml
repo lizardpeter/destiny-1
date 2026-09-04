@@ -1,0 +1,51 @@
+name: Temporary list immediate package families after 012f
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-list-after-012f.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Walk first 120 validated TAR headers after 012f_6
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar,parse_tar_number,tar_header_checksum_ok,tar_name
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          off=0x622401000
+          rows=[]
+          for i in range(120):
+              h=arc.read_at(off,512)
+              if h==b'\0'*512: break
+              if h[257:262]!=b'ustar' or not tar_header_checksum_ok(h):
+                  raise RuntimeError(f'invalid header at 0x{off:X}: {h[257:263]!r}')
+              name=tar_name(h); size=parse_tar_number(h[124:136])
+              row={'ordinal':i,'name':name,'header_offset':off,'data_offset':off+512,'size':size}
+              rows.append(row); print('MEMBER',json.dumps(row,separators=(',',':')),flush=True)
+              off+=512+((size+511)//512)*512
+          targets=[r for r in rows if '_0131_' in r['name'] or '_0132_' in r['name']]
+          json.dump({'members':rows,'targets':targets,'next_header':off},open('reports/after_012f.json','w'),indent=2)
+          print('TARGETS',len(targets))
+          for r in targets: print('TARGET',json.dumps(r,separators=(',',':')),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-after-012f-header-list
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
