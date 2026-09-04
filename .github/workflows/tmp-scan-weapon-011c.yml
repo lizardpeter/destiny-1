@@ -31,6 +31,7 @@ jobs:
           python tools/d1_split_tar_extract.py \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
             --part-count 10 \
+            --start-offset 0x43779C800 \
             --target ps4_gear_weapons_011c_0.pkg \
             --target ps4_gear_weapons_011c_1.pkg \
             --target ps4_gear_weapons_011c_2.pkg \
