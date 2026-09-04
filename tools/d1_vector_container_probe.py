@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Probe final-era D1 Xbox One pixel/vertex Vector4 container tags.
+"""Probe final-era Destiny 1 Vector4 container tags.
 
-Observed Xbox material class 0x80801C32 references structured tag class
-0x80801AA5 from VSVector4Container / PSVector4Container fields.  Real binary
-corpus shows a fixed 0x30-byte container header followed by N raw vec4 values.
+D1 material resources reference structured class 0x80801AA5 from their
+VSVector4Container / PSVector4Container fields.  The observed binary layout is
+a fixed 0x30-byte container header followed by N raw vec4 values.
+
+This probe preserves both IEEE-754 float interpretations and the exact raw u32
+words so material constants can be compared without losing bit-level evidence.
 """
 from __future__ import annotations
-import argparse, collections, json, struct, sys
+import argparse, collections, json, math, struct, sys
 from pathlib import Path
 
 HERE=Path(__file__).resolve().parent
@@ -21,6 +24,13 @@ ELEMENT_CLASS=0x80800009
 
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
 def u64(b,o): return struct.unpack_from('<Q',b,o)[0]
+
+def safe_float(v: float):
+    if math.isfinite(v):
+        return v
+    if math.isnan(v):
+        return 'nan'
+    return 'inf' if v > 0 else '-inf'
 
 def parse_vector_container(b: bytes) -> dict:
     if len(b)<HEADER_SIZE:
@@ -49,6 +59,19 @@ def parse_vector_container(b: bytes) -> dict:
         'zero2c':d['zero2c']==0,
         'payload_vec4_aligned':payload%VEC4_SIZE==0,
     }
+    values=[]
+    if d['vector_count'] is not None:
+        for i in range(d['vector_count']):
+            o=HEADER_SIZE+i*VEC4_SIZE
+            raw=struct.unpack_from('<4I',b,o)
+            flt=struct.unpack_from('<4f',b,o)
+            values.append({
+                'index':i,
+                'offset':o,
+                'float4':[safe_float(x) for x in flt],
+                'u32_hex':[f'{x:08X}' for x in raw],
+            })
+    d['vectors']=values
     return d
 
 def count_from_metadata_size(size:int)->int|None:
