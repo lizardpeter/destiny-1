@@ -19,10 +19,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-18
-          LLVM_MC=/usr/lib/llvm-18/bin/llvm-mc
-          "$LLVM_MC" --version
-          "$LLVM_MC" --triple=amdgcn-amd-amdhsa --mcpu=help </dev/null > reports_mcpu.txt 2>&1 || true
-          grep -E 'gfx70[0-9]|bonaire|hawaii|kaveri' reports_mcpu.txt || true
+          /usr/lib/llvm-18/bin/llvm-mc --version
       - name: Recover verified Oodle runtime
         shell: bash
         run: |
@@ -56,16 +53,21 @@ jobs:
             --tag-hash 80AAE14B --dump-dir shader -o reports/80AAE14B_orbshdr.json
           python tools/d1_ps4_shader_binary_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
             --tag-hash 816CE0A8 --dump-dir shader -o reports/816CE0A8_orbshdr.json
-      - name: LLVM disassemble GCN 1.1 candidates
+      - name: LLVM disassemble GCN byte streams
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          for tag in ('80AAE14B','816CE0A8'):
+              b=Path(f'shader/{tag}_gcn_code.bin').read_bytes()
+              Path(f'shader/{tag}.llvmhex').write_text(' '.join(f'0x{x:02x}' for x in b)+'\n')
+          PY
           LLVM_MC=/usr/lib/llvm-18/bin/llvm-mc
           for tag in 80AAE14B 816CE0A8; do
-            xxd -p -c 1000000 "shader/${tag}_gcn_code.bin" | tr -d '\n' > "shader/${tag}.hex"
             for cpu in gfx700 gfx701 gfx702 gfx704; do
-              "$LLVM_MC" --disassemble --hex --triple=amdgcn-amd-amdhsa --mcpu="$cpu" \
-                "shader/${tag}.hex" > "reports/${tag}_${cpu}.s" 2> "reports/${tag}_${cpu}.err" || true
+              "$LLVM_MC" --disassemble --show-encoding --triple=amdgcn-amd-amdhsa --mcpu="$cpu" \
+                "shader/${tag}.llvmhex" > "reports/${tag}_${cpu}.s" 2> "reports/${tag}_${cpu}.err" || true
               printf '%s %s asm_lines=%s err_lines=%s\n' "$tag" "$cpu" \
                 "$(wc -l < "reports/${tag}_${cpu}.s")" "$(wc -l < "reports/${tag}_${cpu}.err")"
             done
@@ -74,20 +76,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for f in reports/*_gfx70*.s; do
-            echo "===== $f ====="
-            grep -En 'image_|buffer_|sample|load|exp |v_dot|v_mul|v_add|v_mad|v_fma|v_cvt|v_rcp|v_sqrt|v_max|v_min|s_endpgm' "$f" || true
+          for tag in 80AAE14B 816CE0A8; do
+            echo "===== ${tag} gfx700 full decode ====="
+            cat "reports/${tag}_gfx700.s"
+            echo "===== ${tag} key ops ====="
+            grep -Ein 'image|buffer|sample|load|exp|dot|mul|add|mad|fma|cvt|rcp|sqrt|max|min|endpgm|cmp|interp|mov|log|sin|cos' "reports/${tag}_gfx700.s" || true
           done
-          echo '===== decoder errors ====='
+          echo '===== decoder errors by cpu ====='
           for f in reports/*_gfx70*.err; do echo "--- $f"; cat "$f"; done
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 09A-ps4-gcn-disassembly
+          name: 09A-ps4-gcn-disassembly-fixed
           path: |
             reports/
-            shader/*.hex
+            shader/*.llvmhex
             shader/*_gcn_code.bin
-            reports_mcpu.txt
           retention-days: 1
           if-no-files-found: error
