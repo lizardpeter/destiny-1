@@ -6,6 +6,7 @@ on:
       - '.github/workflows/build-gjallarhorn-1229-texture-plates.yml'
       - 'tools/d1_gjallarhorn_1229_compose_plates.py'
       - 'tools/d1_texture_export.py'
+      - 'tools/d1_texture_export_generation_safe.py'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +15,7 @@ permissions:
 jobs:
   textures:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,11 +41,17 @@ jobs:
             --target ps4_gear_player_0100_0.pkg --target ps4_gear_player_0100_1.pkg \
             --target ps4_gear_player_0100_2.pkg --target ps4_gear_player_0100_5.pkg \
             --out recovered --manifest reports/0100_extract.json --retries 6 --timeout 90
-      - name: Export all 24 byte-proven source textures
+      - name: Export all 24 byte-proven source textures generation-safely
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python tools/d1_texture_export.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
+          python tools/d1_texture_export_generation_safe.py \
+            --snapshot recovered/ps4_gear_weapons_011e_5.pkg \
+            --snapshot recovered/ps4_gear_weapons_011e_3.pkg \
+            --snapshot recovered/ps4_gear_weapons_011e_2.pkg \
+            --snapshot recovered/ps4_gear_weapons_011e_1.pkg \
+            --snapshot recovered/ps4_gear_weapons_011e_0.pkg \
+            --runtime runtime \
             --tag-hash 80A3DB32 --tag-hash 80A3DB33 --tag-hash 80A3DB34 --tag-hash 80A3DB35 --tag-hash 80A3DB36 --tag-hash 80A3DB37 \
             --tag-hash 80A3DB41 --tag-hash 80A3DB42 --tag-hash 80A3DB43 \
             --tag-hash 80A3DB4D --tag-hash 80A3DB4E --tag-hash 80A3DB4F \
@@ -52,8 +59,12 @@ jobs:
             --tag-hash 80A3DB73 --tag-hash 80A3DB74 --tag-hash 80A3DB75 --tag-hash 80A3DB76 --tag-hash 80A3DB77 --tag-hash 80A3DB78 \
             --tag-hash 80A3DB53 --tag-hash 80A3D8F6 \
             --out textures/011e
-          python tools/d1_texture_export.py recovered/ps4_gear_player_0100_5.pkg --runtime runtime \
-            --tag-hash 80A019BE --out textures/0100
+          python tools/d1_texture_export_generation_safe.py \
+            --snapshot recovered/ps4_gear_player_0100_5.pkg \
+            --snapshot recovered/ps4_gear_player_0100_2.pkg \
+            --snapshot recovered/ps4_gear_player_0100_1.pkg \
+            --snapshot recovered/ps4_gear_player_0100_0.pkg \
+            --runtime runtime --tag-hash 80A019BE --out textures/0100
           python - <<'PY'
           import json
           from pathlib import Path
@@ -61,11 +72,14 @@ jobs:
           b=json.loads(Path('textures/0100/texture_manifest.json').read_text())
           assert not a['missing_requested'],a['missing_requested']
           assert not b['missing_requested'],b['missing_requested']
-          assert a['texture_count']==23,a['texture_count']
-          assert b['texture_count']==1,b['texture_count']
-          errs=[x for x in a['textures']+b['textures'] if not x.get('png') or x.get('png_error')]
+          assert a['resolved_count']==23,a['resolved_count']
+          assert b['resolved_count']==1,b['resolved_count']
+          rows=[x['texture'] for x in a['textures']+b['textures']]
+          errs=[x for x in rows if not x.get('png') or x.get('png_error')]
           assert not errs,errs
-          print('SOURCE_TEXTURES_OK',a['texture_count']+b['texture_count'])
+          print('SOURCE_TEXTURES_OK',len(rows))
+          print('011E_SNAPSHOT_SELECTIONS',[(x['tag_hash'],Path(x['chosen_snapshot']).name) for x in a['textures']])
+          print('0100_SNAPSHOT_SELECTIONS',[(x['tag_hash'],Path(x['chosen_snapshot']).name) for x in b['textures']])
           PY
       - name: Compose all six albedo normal GStack plate sets without resampling
         run: |
@@ -97,6 +111,10 @@ jobs:
           6 model plate headers, 18 composed plate images, 24 retail source textures.
           Every source image dimension is asserted equal to its serialized plate transform scale.
           No image resampling is performed.
+
+          Source textures are resolved generation-safely per TagHash. A newer physical
+          package table is rejected when its backing chain cannot decode, and the newest
+          valid older snapshot is used. The selected snapshot is recorded per texture.
 
           Albedo and normal are suitable for a portable glTF presentation layer.
           GStack is preserved exactly as source imagery; its full native deferred-shader semantics
