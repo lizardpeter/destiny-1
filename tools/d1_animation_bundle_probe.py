@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Classify D1 0x8080222A animation-bundle/proxy neighborhoods.
+"""Classify D1 0x8080222A animation-bundle neighborhoods.
 
 This tool deliberately does *not* assign an original Bungie type name to
-0x8080222A and does not decode undocumented wrapper fields.  It recognizes the
+0x8080222A and does not decode undocumented wrapper fields. It recognizes the
 retail pattern observed around Vex animation assets using only byte-proven or
 schema-independent evidence:
 
@@ -14,9 +14,10 @@ schema-independent evidence:
 * aligned 32-bit wrapper dwords that match nearby TagHashes;
 * optional caller-supplied known animation hashes, matched as raw dwords only.
 
-The output says "proxy pattern" rather than "final render model".  A model next
-to this wrapper must not be automatically textured as a visible entity model
-unless a separate ordinary model-parent/render-ownership path is proven.
+Important semantic boundary: this classifier detects animation-bundle context.
+It does NOT determine whether a nearby model is visible/render-owned. Retail
+`816CE09A` proves those roles can coexist: it appears in this bundle pattern and
+also has ordinary standard model parent `816CE12B`.
 """
 from __future__ import annotations
 
@@ -80,16 +81,16 @@ def classify_pattern(
     havok_count: int,
     known_animation_hash_match_count: int,
 ) -> dict:
-    """Pure evidence classifier used by the CLI and synthetic regression tests."""
+    """Pure animation-context classifier; render ownership is out of scope."""
     has_model = model_count > 0
     has_animation_side = clip_count > 0 or havok_count > 0
 
     if has_model and clip_count > 0 and havok_count > 0 and known_animation_hash_match_count > 0:
-        strength = "hash_correlated_animation_bundle_proxy_pattern"
+        strength = "hash_correlated_animation_bundle_pattern"
     elif has_model and clip_count > 0 and havok_count > 0:
-        strength = "strong_animation_bundle_proxy_pattern"
+        strength = "strong_animation_bundle_pattern"
     elif has_model and has_animation_side:
-        strength = "animation_bundle_proxy_pattern"
+        strength = "animation_bundle_pattern"
     elif has_model:
         strength = "wrapper_plus_model_unresolved"
     else:
@@ -97,13 +98,20 @@ def classify_pattern(
 
     return {
         "classification": strength,
+        "animation_bundle_candidate": has_model and has_animation_side,
+        # Backward-compatible alias. "proxy" here means animation-context
+        # geometry, not non-visible geometry.
         "proxy_candidate": has_model and has_animation_side,
-        "final_render_model_proven": False,
+        "render_ownership_assessed": False,
+        "render_ownership_conclusion": "not_assessed",
+        # Deprecated field retained so older JSON consumers fail safely rather
+        # than interpreting a false boolean as negative evidence.
+        "final_render_model_proven": None,
         "reason": (
-            "0x8080222A forward bundle sequence has an entity model plus animation-side evidence; "
-            "ordinary render ownership must be proven separately"
+            "0x8080222A forward sequence contains an entity model plus animation-side evidence; "
+            "render ownership is a separate graph question and is not assessed here"
             if has_model and has_animation_side
-            else "insufficient forward-sequence evidence to classify as an animation proxy"
+            else "insufficient forward-sequence evidence to classify an animation bundle"
         ),
     }
 
@@ -203,8 +211,8 @@ def inspect_neighborhood(
     immediate_model = next((row for row in models_after if row["relative_index"] == 1), None)
 
     # Promotion evidence is intentionally narrower than the diagnostic
-    # neighborhood.  This prevents a distant, unrelated model or prior clip
-    # from turning a wrapper into a false proxy classification.
+    # neighborhood. This prevents distant unrelated entries from promoting a
+    # wrapper into a false animation-bundle classification.
     promotion_models = [
         row for row in model_rows if 0 < row["relative_index"] <= MODEL_PROMOTION_WINDOW
     ]
@@ -285,7 +293,7 @@ def inspect_neighborhood(
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Classify schema-free D1 0x8080222A animation-bundle/proxy neighborhoods"
+        description="Classify schema-free D1 0x8080222A animation-bundle neighborhoods"
     )
     ap.add_argument("pkg", type=Path)
     ap.add_argument("--runtime", type=Path, required=True)
@@ -348,6 +356,7 @@ def main() -> None:
         "package_patch_id": reader.h["patch_id"],
         "wrapper_class": ANIMATION_BUNDLE_WRAPPER_CLASS,
         "semantic_name_claimed": False,
+        "render_ownership_scope": "not_assessed_by_this_tool",
         "method": "schema-free neighborhood + raw aligned-dword correlation",
         "known_animation_hashes": args.known_animation_hash,
         "wrapper_count": len(wrappers),
