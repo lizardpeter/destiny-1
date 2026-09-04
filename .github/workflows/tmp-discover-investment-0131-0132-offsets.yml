@@ -1,0 +1,57 @@
+name: Temporary discover Investment 0131 and 0132 offsets
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-discover-investment-0131-0132-offsets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Walk validated TAR headers after 012f
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          off=0x622401000
+          rows=[]
+          for n in range(2000):
+              h=arc.read(off,512)
+              if len(h)!=512: raise RuntimeError(f'short header at 0x{off:X}')
+              if h==b'\0'*512: break
+              if h[257:262] != b'ustar':
+                  raise RuntimeError(f'invalid TAR header at 0x{off:X}: magic={h[257:263]!r}')
+              name=h[:100].split(b'\0',1)[0].decode('utf-8','replace')
+              raw=h[124:136].split(b'\0',1)[0].strip() or b'0'
+              size=int(raw,8)
+              if name.startswith('ps4_investment_assets_013'):
+                  row={'name':name,'header_offset':off,'data_offset':off+512,'size':size}
+                  rows.append(row)
+                  print('MEMBER',json.dumps(row,separators=(',',':')))
+              # Stop after passing 0132 into 0133/0134.
+              if name.startswith('ps4_investment_assets_0133'):
+                  break
+              off=off+512+((size+511)//512)*512
+          json.dump({'members':rows,'stop_offset':off},open('reports/0131_0132_offsets.json','w'),indent=2)
+          print('FOUND',len(rows),'013x members')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-investment-0131-0132-offsets
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
