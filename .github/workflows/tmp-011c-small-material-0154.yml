@@ -1,0 +1,108 @@
+name: Temporary resolve 011c small material and 0154 texture
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-small-material-0154.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports textures
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover 011e family and decode 80A3D294 from latest parseable snapshot
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011e_extract.json --retries 6 --timeout 90
+          python - <<'PY'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_material_decode import parse_material,annotate
+          target='80A3D294'; rt=Path('runtime'); rows=[]; decoded=[]
+          for p in sorted(Path('recovered').glob('ps4_gear_weapons_011e_*.pkg'), key=lambda p:int(re.search(r'_([0-9]+)\.pkg$',p.name).group(1))):
+              patch=int(re.search(r'_([0-9]+)\.pkg$',p.name).group(1)); r=EntryReader(p,rt); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(target)
+              row={'patch':patch,'package':p.name,'present':bool(e)}
+              if e:
+                  row['entry']={k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size','starting_block','starting_block_offset']}; row['available']=r.available(e['index'])
+                  if row['available']:
+                      try:
+                          b=r.entry(e['index']); row['payload_size']=len(b); row['sha256']=hashlib.sha256(b).hexdigest()
+                          if len(b)>=0x330:
+                              d=parse_material(b,r.h['platform']); annotate(r,d); d['source_patch']=patch; d['source_package']=p.name; decoded.append(d); row['material_decode']='success'
+                          else: row['material_decode']='too_small'
+                      except Exception as ex: row['decode_error']=repr(ex)
+              rows.append(row)
+          Path('reports/80A3D294_snapshots.json').write_text(json.dumps(rows,indent=2)+'\n')
+          if not decoded: raise SystemExit('no parseable 80A3D294 material snapshot')
+          d=decoded[-1]; Path('reports/material_80A3D294.json').write_text(json.dumps(d,indent=2)+'\n'); print(json.dumps(d,indent=2))
+          PY
+      - name: Discover and recover package 0154 family
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          mapfile -t targets < <(grep -Ei '_0154_[0-9]+\.pkg$' reports/packages.txt | tr -d '\r')
+          printf '0154 manifest targets (%d):\n' "${#targets[@]}"; printf '%s\n' "${targets[@]}"
+          if [ "${#targets[@]}" -eq 0 ]; then echo 'No package 0154 members in manifest' >&2; exit 1; fi
+          args=(); for t in "${targets[@]}"; do args+=(--target "$t"); done
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x44EE5D200 \
+            "${args[@]}" --out recovered --manifest reports/0154_extract.json --retries 6 --timeout 90
+      - name: Resolve and export 80AA9D4D
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader,decode_known
+          pkgs=[]
+          for p in Path('recovered').glob('*_0154_*.pkg'):
+              m=re.search(r'_([0-9]+)\.pkg$',p.name)
+              if m: pkgs.append((int(m.group(1)),p))
+          if not pkgs: raise SystemExit('no recovered 0154 packages')
+          pkgs.sort(); r=EntryReader(pkgs[-1][1],Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}; h='80AA9D4D'; e=by.get(h)
+          rep={'logical_view':str(pkgs[-1][1]),'siblings':[str(p) for _,p in pkgs],'target':h,'present':bool(e)}
+          if e:
+              rep['entry']={k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size','starting_block','starting_block_offset']}; rep['available']=r.available(e['index'])
+              if rep['available']:
+                  raw=r.entry(e['index']); rep['sha256']=hashlib.sha256(raw).hexdigest(); rep['decoded_header']=decode_known(e,raw,r.h['platform'])
+          Path('reports/80AA9D4D_entry.json').write_text(json.dumps(rep,indent=2)+'\n'); print(json.dumps(rep,indent=2))
+          if not e: raise SystemExit('80AA9D4D absent from latest 0154 logical view')
+          PY
+          view=$(ls recovered/*_0154_*.pkg | sort -V | tail -1)
+          dep_args=(); while IFS= read -r p; do dep_args+=(--dependency-pkg "$p"); done < <(ls recovered/*_0154_*.pkg | sort -V | head -n -1)
+          python tools/d1_texture_export.py "$view" --runtime runtime "${dep_args[@]}" --tag-hash 80AA9D4D --out textures/80AA9D4D || true
+          cat textures/80AA9D4D/texture_manifest.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-011c-small-material-0154
+          path: |
+            reports/
+            textures/
+          retention-days: 3
+          if-no-files-found: error
