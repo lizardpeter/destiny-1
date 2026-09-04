@@ -1,0 +1,80 @@
+name: Temporary resolve D1 Gjallarhorn art arrangements
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-resolve-gjallarhorn-art-arrangement.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Sparse-decode exact 0132 Gjallarhorn item definitions
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import parse_member,RemoteLogicalPackage
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_investment_arrangement_probe import filehash_pkg_index
+          from d1_remote_inventory_art_arrangement_find import parse_item
+
+          specs=[
+            'ps4_investment_globals_0132_2.pkg:0x62360E200:1138688',
+            'ps4_investment_globals_0132_3.pkg:0x623724400:430080',
+            'ps4_investment_globals_0132_4.pkg:0x62378D600:3534848',
+            'ps4_investment_globals_0132_5.pkg:0x623AEC800:407552',
+            'ps4_investment_globals_0132_6.pkg:0x623B50200:147456',
+          ]
+          members=[parse_member(x) for x in specs]
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          rr=RemoteLogicalPackage(arc,{m.patch_id:m for m in members},Path('runtime'))
+          targets={
+            '80A644D4':{'name':'Gjallarhorn Year 1','inventory_hash':'4BF4BE3F'},
+            '80A65584':{'name':'Iron Gjallarhorn','inventory_hash':'45CA94E4'},
+            '80A6558A':{'name':'Gjallarhorn Year 3','inventory_hash':'D471D331'},
+          }
+          rows=[]
+          for fh,meta in targets.items():
+              pkg,idx=filehash_pkg_index(int(fh,16))
+              assert pkg==0x0132,(fh,pkg)
+              e=rr.entries[idx]
+              assert e['tag_hash'].upper()==fh,(fh,e['tag_hash'])
+              b=rr.entry(idx)
+              p=parse_item(b)
+              row={**meta,'item_file_hash':fh,'entry_index':idx,'entry_reference':e['reference'].upper(),'entry_size':len(b),**p}
+              rows.append(row)
+              print('GJALLARHORN_ART',json.dumps(row,separators=(',',':')))
+          rep={'package_id':'0132','logical_view':rr.view.name,'remote_blocks_read':len(rr.block_cache),'items':rows}
+          Path('reports/gjallarhorn_art_arrangements.json').write_text(json.dumps(rep,indent=2)+'\n')
+          year3=next(x for x in rows if x['name']=='Gjallarhorn Year 3')
+          assert year3.get('arrangements'),year3
+          print('YEAR3 ARRANGEMENTS',[x['art_arrangement_index'] for x in year3['arrangements']], 'PATTERN',year3.get('weapon_pattern_index'))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-gjallarhorn-art-arrangements
+          path: reports/
+          retention-days: 7
+          if-no-files-found: warn
