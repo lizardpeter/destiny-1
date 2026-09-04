@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Recover Oodle and 0767 family
+      - name: Recover Oodle and package families
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports
+          mkdir -p runtime recovered reports native
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -28,6 +28,10 @@ jobs:
             --target ps4_arch_vex_com01_0767_1.pkg \
             --target ps4_arch_vex_com01_0767_4.pkg \
             --out recovered --manifest reports/0767_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 0x46AF91400 \
+            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
+            --out recovered --manifest reports/0157_extract.json
       - name: Dump model and summarize part stages
         run: |
           set -euo pipefail
@@ -37,34 +41,46 @@ jobs:
           import json
           from pathlib import Path
           d=json.loads(Path('reports/09a_model.json').read_text())
-          m=d['models'][0]; mesh=m['meshes'][0]
-          parts=mesh['parts']
-          offsets=mesh['stage_part_offsets_source_derived']
+          mesh=d['models'][0]['meshes'][0]; parts=mesh['parts']; offsets=mesh['stage_part_offsets_source_derived']
           valid=sorted(set(x for x in offsets if 0 <= x <= len(parts)))
           if 0 not in valid: valid=[0]+valid
           if len(parts) not in valid: valid.append(len(parts))
-          print('part_count',len(parts))
-          print('stage_part_offsets_raw',offsets)
-          print('stage_boundaries',valid)
-          print('index material variant prim off count flags_d1 extid unk1a unk1b lod unk20 lod_run stage_group')
+          print('part_count',len(parts)); print('stage_part_offsets_raw',offsets); print('stage_boundaries',valid)
           rows=[]
           for i,p in enumerate(parts):
-              group=None
-              for gi in range(len(valid)-1):
-                  if valid[gi] <= i < valid[gi+1]: group=gi; break
-              row={'part_index':i,'stage_group':group,**p}
-              rows.append(row)
-              print(i,p['material'],p['variant_shader_index'],p['primitive_type'],p['index_offset'],p['index_count'],p['flags_d1'],p['external_identifier'],p['unk1a'],p['unk1b'],p['lod'],p['unk20'],p['lod_run'],group)
-          # group identical geometry ranges and show all part records using each range
+              group=next((gi for gi in range(len(valid)-1) if valid[gi] <= i < valid[gi+1]),None)
+              row={'part_index':i,'stage_group':group,**p}; rows.append(row); print(row)
           by={}
           for r in rows: by.setdefault((r['index_offset'],r['index_count']),[]).append(r)
-          print('=== RANGES ===')
-          ranges=[]
-          for k,rr in sorted(by.items()):
-              item={'range':list(k),'parts':rr}; ranges.append(item)
-              print(k,[(x['part_index'],x['stage_group'],x['material'],x['variant_shader_index'],x['lod'],x['flags_d1'],x['external_identifier'],x['unk1a'],x['unk1b'],x['unk20'],x['lod_run']) for x in rr])
+          ranges=[{'range':list(k),'parts':rr} for k,rr in sorted(by.items())]
+          print('RANGES',json.dumps(ranges,indent=2))
           Path('reports/09a_part_stage_summary.json').write_text(json.dumps({'raw_stage_offsets':offsets,'boundaries':valid,'rows':rows,'ranges':ranges},indent=2)+'\n')
           PY
+      - name: Decode inline stage materials
+        run: |
+          set -euo pipefail
+          python tools/d1_material_decode.py recovered/ps4_globals_0157_1.pkg --runtime runtime \
+            --tag-hash 80AAE10B --tag-hash 80AAE10C -o reports/inline_materials.json
+          cat reports/inline_materials.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('reports/inline_materials.json').read_text())
+          hashes=[]
+          for m in d['materials']:
+              if m.get('available'):
+                  print('INLINE',m['tag_hash'],'VS',m.get('vertex_shader'),'PS',m.get('pixel_shader'),
+                        'textures',[(x['texture_index'],x['texture']) for x in m.get('ps_textures',{}).get('items',[])],
+                        'samplers',m.get('ps_samplers',{}).get('count'),
+                        'b0',m.get('ps_vector4_container'))
+                  if m.get('pixel_shader') and m['pixel_shader']!='FFFFFFFF': hashes.append(m['pixel_shader'])
+          Path('reports/inline_shader_hashes.txt').write_text('\n'.join(hashes)+'\n')
+          PY
+          while read -r h; do
+            [ -z "$h" ] && continue
+            python tools/d1_ps4_shader_binary_probe.py recovered/ps4_globals_0157_1.pkg --runtime runtime --tag-hash "$h" --dump-dir native -o "reports/shader_${h}.json" || true
+            cat "reports/shader_${h}.json" 2>/dev/null || true
+          done < reports/inline_shader_hashes.txt
       - uses: actions/upload-artifact@v4
         with:
           name: 09a-part-stage-census
