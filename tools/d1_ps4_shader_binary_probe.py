@@ -31,6 +31,9 @@ from d1_entry_extract import EntryReader, decode_known
 ORB_MAGIC = b"OrbShdr"
 FIRST_TOKEN = 0xBEEB03FF
 
+# Sony Gnm::ShaderInputUsageType values, cross-checked against public Orbis
+# headers used by GPCS4.  Values 0x0B/0x0C and 0x0E..0x11 are deliberately not
+# named here because that public header elides them; unknown values stay raw.
 USAGE_NAMES = {
     0x00: "ImmResource",
     0x01: "ImmSampler",
@@ -42,22 +45,21 @@ USAGE_NAMES = {
     0x07: "ImmGdsCounterRange",
     0x08: "ImmGdsMemoryRange",
     0x09: "ImmGwsBase",
-    0x0A: "ImmLdsEsgsSize",
-    0x0B: "SubPtrFetchShader",
-    0x0C: "PtrResourceTable",
-    0x0D: "PtrInternalResourceTable",
-    0x0E: "PtrSamplerTable",
-    0x0F: "PtrConstBufferTable",
-    0x10: "PtrVertexBufferTable",
-    0x11: "PtrSoBufferTable",
-    0x12: "PtrRwResourceTable",
-    0x13: "PtrInternalGlobalTable",
-    0x14: "PtrExtendedUserData",
-    0x15: "PtrIndirectResourceTable",
-    0x16: "PtrIndirectInternalResourceTable",
-    0x17: "PtrIndirectRwResourceTable",
-    0x18: "ImmShaderResourceTable",
-    0x19: "ImmLdsEsgsSizeNeo",
+    0x0A: "ImmShaderResourceTable",
+    0x0D: "ImmLdsEsGsSize",
+    0x12: "SubPtrFetchShader",
+    0x13: "PtrResourceTable",
+    0x14: "PtrInternalResourceTable",
+    0x15: "PtrSamplerTable",
+    0x16: "PtrConstBufferTable",
+    0x17: "PtrVertexBufferTable",
+    0x18: "PtrSoBufferTable",
+    0x19: "PtrRwResourceTable",
+    0x1A: "PtrInternalGlobalTable",
+    0x1B: "PtrExtendedUserData",
+    0x1C: "PtrIndirectResourceTable",
+    0x1D: "PtrIndirectInternalResourceTable",
+    0x1E: "PtrIndirectRwResourceTable",
 }
 
 STAGE_NAMES = {
