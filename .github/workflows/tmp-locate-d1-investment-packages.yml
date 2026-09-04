@@ -1,0 +1,26 @@
+name: Temporary locate D1 investment packages
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-locate-d1-investment-packages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public package index
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o packages.txt
+          echo '=== investment ==='
+          grep -i 'investment' packages.txt || true
+          echo '=== globals ==='
+          grep -i 'globals' packages.txt | head -200 || true
+          echo '=== candidate ids ==='
+          grep -Ei '03fd|0bfd|0b0d|030d|03ff|0bff' packages.txt || true
+          wc -c packages.txt
