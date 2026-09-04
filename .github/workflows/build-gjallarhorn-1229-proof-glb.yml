@@ -27,14 +27,16 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover exact 011c geometry and 0139 visual package families
+      - name: Recover exact 011c 011e geometry and 0139 visual package families
         run: |
           set -euo pipefail
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
             --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
             --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
-            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011c_011e_extract.json --retries 6 --timeout 90
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x59B629600 \
             --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg \
             --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
@@ -54,23 +56,21 @@ jobs:
 
           wanted=['80A72202','80A7317B','80A73256','80A73BAB','80A73D13']
           found={}; attempts=[]
-          # Try newest to oldest physical snapshots; each EntryReader still honors logical sibling patch ownership.
           snaps=sorted(Path('recovered').glob('ps4_investment_assets_0139_*.pkg'),reverse=True)
           for tag in wanted:
             for p in snaps:
               rec={'tag':tag,'snapshot':p.name}
               try:
-                r=EntryReader(p,Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries};e=by.get(tag)
+                r=EntryReader(p,Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(tag)
                 rec['present']=bool(e)
                 if not e: attempts.append(rec); continue
                 b=r.entry(e['index']); m=parse_model(b,'PS4')
                 Path('models',f'{tag}.bin').write_bytes(b)
-                rec.update({'success':True,'sha256':hashlib.sha256(b).hexdigest(),'mesh_count':m['mesh_count']});found[tag]=rec;attempts.append(rec);break
+                rec.update({'success':True,'sha256':hashlib.sha256(b).hexdigest(),'mesh_count':m['mesh_count']}); found[tag]=rec; attempts.append(rec); break
               except Exception as ex:
-                rec['error']=repr(ex);attempts.append(rec)
+                rec['error']=repr(ex); attempts.append(rec)
             if tag not in found: raise SystemExit(f'could not recover selected model {tag} from any 0139 snapshot')
 
-          # Sixth visual package model is in 013a; sparse-read only the exact selected tag.
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
           arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
           specs=[
@@ -81,10 +81,11 @@ jobs:
             'ps4_investment_assets_013a_4.pkg:0x5A351E200:161792',
             'ps4_investment_assets_013a_5.pkg:0x5A3545C00:165888',
           ]
-          ms=[parse_member(x) for x in specs];rr=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+          ms=[parse_member(x) for x in specs]; rr=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
           tag='80A743A6'; idx=934; e=rr.entries[idx]; assert e['tag_hash'].upper()==tag,(e['tag_hash'],tag)
-          b=rr.entry(idx);m=parse_model(b,'PS4');Path('models',f'{tag}.bin').write_bytes(b)
+          b=rr.entry(idx); m=parse_model(b,'PS4'); Path('models',f'{tag}.bin').write_bytes(b)
           found[tag]={'tag':tag,'source':'remote 013a final logical view','sha256':hashlib.sha256(b).hexdigest(),'mesh_count':m['mesh_count']}
+          assert sum(x['mesh_count'] for x in found.values())==8, found
           Path('reports/model_recovery.json').write_text(json.dumps({'found':found,'attempts':attempts},indent=2)+'\n')
           print('RECOVERED_MODELS',json.dumps(found,separators=(',',':')))
           PY
@@ -95,6 +96,7 @@ jobs:
           python -m py_compile tools/d1_gjallarhorn_1229_glb.py
           python tools/d1_gjallarhorn_1229_glb.py \
             --pkg-011c recovered/ps4_gear_weapons_011c_5.pkg \
+            --pkg-011e recovered/ps4_gear_weapons_011e_5.pkg \
             --pkg-0139 recovered/ps4_investment_assets_0139_5.pkg \
             --runtime runtime --model-dir models \
             --out out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_GEOMETRY.glb \
@@ -107,10 +109,11 @@ jobs:
           import json
           from pathlib import Path
           from pygltflib import GLTF2
-          p=Path('out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_GEOMETRY.glb');g=GLTF2().load_binary(str(p))
+          p=Path('out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_GEOMETRY.glb'); g=GLTF2().load_binary(str(p))
           r=json.loads(Path('reports/gjallarhorn_1229_geometry.json').read_text())
-          assert len(g.meshes)==7, len(g.meshes)  # five one-mesh models + one two-mesh model + sixth one-mesh model
+          assert len(g.meshes)==8, len(g.meshes)
           assert len(g.scenes)==1 and len(g.nodes[0].children)==6
+          assert len(r['models'])==6 and sum(x['mesh_count'] for x in r['models'])==8
           assert r['total_lod1_triangles']>5000,r['total_lod1_triangles']
           assert r['output_bytes']==p.stat().st_size
           print(json.dumps({'bytes':p.stat().st_size,'meshes':len(g.meshes),'materials':len(g.materials),'triangles':r['total_lod1_triangles'],'bbox_min':r['bbox_min'],'bbox_max':r['bbox_max']},indent=2))
@@ -134,10 +137,11 @@ jobs:
             80A73D11 -> model 80A73D13
 
           This GLB exports all six retail-selected LOD1 model components in their native shared
-          model coordinate system. A presentation root recenters the assembled geometry.
-          Native material hashes are retained, but this first proof uses neutral portable PBR
-          placeholders while texture/dye/shader binding is being closed. No geometry, weights,
-          transforms, or animations are invented.
+          model coordinate system. The six models contain eight mesh records total. Geometry
+          resources span logical packages 011C, 011E and 0139. A presentation root recenters
+          the assembled geometry. Native material hashes are retained, but this first proof
+          uses neutral portable PBR placeholders while texture/dye/shader binding is being
+          closed. No geometry, weights, transforms, or animations are invented.
           EOF
       - uses: actions/upload-artifact@v4
         with:
