@@ -1,0 +1,35 @@
+name: Temporary locate weapon 0154 dependency
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-locate-0154-weapon-small.yml'
+      - 'tools/d1_split_tar_locate.py'
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact 0154 member names and sparse-locate them
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          curl --fail --location --retry 3 "$base/packages.txt" -o reports/packages.txt
+          grep -E '0154_[0-9]+\.pkg' reports/packages.txt | tee reports/0154_names.txt
+          mapfile -t names < <(grep -Eio '[^[:space:]]*0154_[0-9]+\.pkg' reports/packages.txt | sed 's#.*/##' | sort -u)
+          test "${#names[@]}" -gt 0
+          args=()
+          for n in "${names[@]}"; do args+=(--target "$n"); done
+          python tools/d1_split_tar_locate.py \
+            --base-url "$base" --part-count 10 \
+            --before-offset 0x46711B000 --window 0x40000000 \
+            "${args[@]}" --output reports/0154_locate.json
+          cat reports/0154_locate.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weapon-0154-locator
+          path: reports/
+          retention-days: 2
