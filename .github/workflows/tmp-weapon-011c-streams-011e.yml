@@ -1,0 +1,83 @@
+name: Temporary weapon streams and 011e dependency
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-weapon-011c-streams-011e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install --quiet numpy
+      - name: Recover runtime and exact 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg --out recovered --manifest reports/011c_extract.json
+      - name: Dump exact linked model payloads
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entry_extract.py "$pkg" --runtime runtime \
+            --tag-hash 80A39E15 --tag-hash 80A39E16 --tag-hash 80A39E1C \
+            --tag-hash 80A39E1E --tag-hash 80A39E21 --tag-hash 80A39E22 \
+            --dump-dir raw -o reports/model_payload_entries.json
+          python - <<'PY'
+          from pathlib import Path
+          import numpy as np,json,struct
+          def p(h): return next(Path('raw').glob(h+'_*')).read_bytes()
+          out={}
+          for name,h,stride in [('main_v0','80A39E15',8),('main_v1','80A39E16',24),('tiny_v0','80A39E1E',8),('tiny_v1','80A39E21',20)]:
+              b=p(h); raw=np.frombuffer(b,dtype='<i2').reshape((-1,stride//2))
+              cols=[]
+              for c in range(raw.shape[1]):
+                  u=np.unique(raw[:,c]); cols.append({'column':c,'min':int(u.min()),'max':int(u.max()),'unique_count':int(len(u)),'small_values':[int(x) for x in u[:128]] if len(u)<=128 else None})
+              out[name]={'tag':h,'bytes':len(b),'stride':stride,'count':len(raw),'i16_columns':cols,'first_rows':raw[:32].tolist()}
+          for name,h in [('main_indices','80A39E1C'),('tiny_indices','80A39E22')]:
+              v=np.frombuffer(p(h),dtype='<u2')
+              out[name]={'tag':h,'count':len(v),'restart_count':int(np.sum(v==0xffff)),'min_nonrestart':int(v[v!=0xffff].min()),'max_nonrestart':int(v[v!=0xffff].max()),'first_values':[int(x) for x in v[:256]]}
+          Path('reports/vertex_layout_census.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2)[:30000])
+          PY
+      - name: Query exact 011e package filenames
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o packages.txt
+          grep -Eio '[^[:space:]]*ps4_gear_weapons_011e_[^[:space:]]*\.pkg|ps4_gear_weapons_011e_[0-9]+\.pkg' packages.txt | sort -u | tee reports/011e_names.txt
+          test -s reports/011e_names.txt
+      - name: Locate likely 011e members
+        run: |
+          set -euo pipefail
+          mapfile -t names < reports/011e_names.txt
+          args=()
+          for n in "${names[@]}"; do args+=(--target "$(basename "$n")"); done
+          python tools/d1_split_tar_find.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --before-offset 0x46711B000 --scan-bytes 0x40000000 --chunk-size 0x2000000 \
+            "${args[@]}" --manifest reports/011e_locator.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-streams-011e
+          path: |
+            reports/
+            raw/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
