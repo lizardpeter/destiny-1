@@ -3,14 +3,16 @@
 
 This is deliberately a thin specialization of d1_weapon_011c_test_glb.py so
 all proven geometry, rigid Pedestal attachment and 12-clip animation logic stay
-identical.  The historical test fixture hard-coded tombstoned material
+identical. The historical test fixture hard-coded tombstoned material
 80A3CD9A; this wrapper switches the native main-shell binding to the material
 actually serialized by final model 80A39E12: 80A382A6.
 
-Core glTF PBR remains explicitly portable/approximate.  Exact entity texture
-plates drive the main shell.  Direct shader resources (current cubemap,
-secondary 2D texture, GStack and the small-component decal atlas) are embedded
-as provenance images until their complete native shader semantics are proven.
+Core glTF PBR remains explicitly portable/approximate. Exact entity texture
+plates drive the main shell. Direct shader resources whose renderer semantics
+remain unresolved are embedded as provenance images. The small-component
+80AA9D4D atlas is different: retail PS 80AA9D63 is now instruction-proven to
+sample attr0.xy, pass sampled RGB, and discard when sampled alpha is below 0.5,
+so that texture is legitimately mapped as a glTF MASK base-color texture.
 """
 from __future__ import annotations
 
@@ -25,6 +27,12 @@ FINAL_MAIN_CUBE = "80AB0B74"
 FINAL_MAIN_DIRECT_2D = "80A3D4D6"
 SMALL_MATERIAL = "80A3D294"
 SMALL_ATLAS = "80AA9D4D"
+SMALL_PIXEL_SHADER = "80AA9D63"
+SMALL_PIXEL_VECTOR4 = "80AAE1E1"
+SMALL_PIXEL_SAMPLER = "80AAE1D5"
+SMALL_SHADER_CODE_SHA256 = "c846c4182497fb5f7e98226964f91045e2c8fab244141c380845800968fdbf51"
+SMALL_ALPHA_CUTOFF = 0.5
+REPEAT = 10497
 
 _SMALL_REPORT: dict | None = None
 
@@ -33,11 +41,20 @@ def add_final_materials(gltf, texture_root: Path, material_report: dict, plate_r
     if _SMALL_REPORT is None:
         raise RuntimeError("small material report was not loaded")
 
+    # Main plate sampler is a conservative portable choice. The small atlas gets
+    # a separate wrap sampler because retail sampler 80AAE1D5 is byte-decoded as
+    # Wrap/Wrap with anisotropic bilinear min+mag and linear mip filtering.
     gltf.samplers.append(base.Sampler(
         magFilter=base.LINEAR,
         minFilter=base.LINEAR_MIPMAP_LINEAR,
         wrapS=base.CLAMP_TO_EDGE,
         wrapT=base.CLAMP_TO_EDGE,
+    ))
+    gltf.samplers.append(base.Sampler(
+        magFilter=base.LINEAR,
+        minFilter=base.LINEAR_MIPMAP_LINEAR,
+        wrapS=REPEAT,
+        wrapT=REPEAT,
     ))
 
     def add_image(name: str, path: Path, extras: dict | None = None) -> int:
@@ -47,9 +64,9 @@ def add_final_materials(gltf, texture_root: Path, material_report: dict, plate_r
         gltf.images.append(base.Image(name=name, uri=base.data_uri(path), extras=extras or {}))
         return idx
 
-    def add_texture(image_index: int, name: str) -> int:
+    def add_texture(image_index: int, name: str, sampler_index: int = 0) -> int:
         idx = len(gltf.textures)
-        gltf.textures.append(base.Texture(name=name, source=image_index, sampler=0))
+        gltf.textures.append(base.Texture(name=name, source=image_index, sampler=sampler_index))
         return idx
 
     plate_dir = texture_root / "plates"
@@ -85,20 +102,23 @@ def add_final_materials(gltf, texture_root: Path, material_report: dict, plate_r
         ))
 
     small_atlas_i = add_image(
-        f"{SMALL_ATLAS}_small_component_atlas_NATIVE_ONLY",
+        f"{SMALL_ATLAS}_small_component_masked_base_color",
         src_dir / f"{SMALL_ATLAS}_1024x1024_BC3.png",
         {
             "d1TagHash": SMALL_ATLAS,
             "d1Material": SMALL_MATERIAL,
             "textureIndex": 0,
             "nativeFormat": "BC3",
-            "nativeOnly": True,
-            "semanticStatus": "exact texture bytes resolved; shader-role dataflow must authorize any core glTF mapping",
+            "semanticStatus": "retail pixel-shader dataflow proven",
+            "pixelShader": SMALL_PIXEL_SHADER,
+            "pixelShaderCodeSha256": SMALL_SHADER_CODE_SHA256,
+            "mapping": "sampled RGB -> portable base color; sampled A -> alpha-test mask",
         },
     )
 
     albedo_t = add_texture(albedo_i, "D1_weapon_albedo_plate")
     normal_t = add_texture(normal_i, "D1_weapon_normal_plate")
+    small_atlas_t = add_texture(small_atlas_i, "D1_small_component_masked_atlas", sampler_index=1)
 
     main_idx = len(gltf.materials)
     gltf.materials.append(base.Material(
@@ -130,10 +150,11 @@ def add_final_materials(gltf, texture_root: Path, material_report: dict, plate_r
 
     small_idx = len(gltf.materials)
     gltf.materials.append(base.Material(
-        name=f"D1_{SMALL_MATERIAL}_SmallComponent_NATIVE_TEXTURE_UNMAPPED",
-        alphaMode="OPAQUE",
+        name=f"D1_{SMALL_MATERIAL}_SmallComponent_MASKED",
+        alphaMode="MASK",
+        alphaCutoff=SMALL_ALPHA_CUTOFF,
         pbrMetallicRoughness=base.PbrMetallicRoughness(
-            baseColorFactor=[0.18, 0.18, 0.18, 1.0],
+            baseColorTexture=base.TextureInfo(index=small_atlas_t, texCoord=0),
             metallicFactor=0.0,
             roughnessFactor=0.7,
         ),
@@ -144,8 +165,26 @@ def add_final_materials(gltf, texture_root: Path, material_report: dict, plate_r
             "d1MaterialReport": _SMALL_REPORT,
             "nativeAtlasImageIndex": small_atlas_i,
             "nativeTextureIndexBindings": {"0": SMALL_ATLAS},
-            "portableApproximation": True,
-            "warning": "The exact 0154 BC3 atlas is embedded, but it is not connected to core PBR until the retail PS 80AA9D63 dataflow authorizes that mapping.",
+            "provenPixelShaderSemantics": {
+                "shader": SMALL_PIXEL_SHADER,
+                "codeSha256": SMALL_SHADER_CODE_SHA256,
+                "uv": "attr0.xy / TEXCOORD_0",
+                "rgb": "sampled texture RGB passes to MRT0 RGB",
+                "alphaUse": "coverage test only; sampled alpha is not exported as native MRT0 alpha",
+                "discardEquation": "discard when clamp(CB0[dword5],0,1) * sampled_alpha - 0.5 < 0",
+                "constantBuffer": SMALL_PIXEL_VECTOR4,
+                "constantDword5": 1.0,
+                "effectiveAlphaCutoff": SMALL_ALPHA_CUTOFF,
+            },
+            "nativeSampler": {
+                "tag": SMALL_PIXEL_SAMPLER,
+                "wrapX": "Wrap",
+                "wrapY": "Wrap",
+                "magFilter": "AnisoBilinear",
+                "minFilter": "AnisoBilinear",
+                "mipFilter": "Linear",
+            },
+            "portableApproximation": "Core glTF MASK exactly preserves the proven 0.5 coverage decision and uses the same atlas RGB. Core glTF cannot express the native anisotropic sampler descriptor; linear mipmapped repeat filtering is the portable fallback.",
         },
     ))
     return {FINAL_MAIN_MATERIAL: main_idx, SMALL_MATERIAL: small_idx}
@@ -166,6 +205,10 @@ def main() -> None:
     args = ap.parse_args()
 
     _SMALL_REPORT = json.loads(args.small_material_report.read_text())
+    if _SMALL_REPORT.get("pixel_shader") != SMALL_PIXEL_SHADER:
+        raise RuntimeError(f"{SMALL_MATERIAL} expected PS {SMALL_PIXEL_SHADER}, got {_SMALL_REPORT.get('pixel_shader')}")
+    if _SMALL_REPORT.get("pixel_vector4") != SMALL_PIXEL_VECTOR4:
+        raise RuntimeError(f"{SMALL_MATERIAL} expected PS vec4 {SMALL_PIXEL_VECTOR4}, got {_SMALL_REPORT.get('pixel_vector4')}")
     base.MAIN_MATERIAL = FINAL_MAIN_MATERIAL
     base.SMALL_MATERIAL = SMALL_MATERIAL
     base.add_materials = add_final_materials
