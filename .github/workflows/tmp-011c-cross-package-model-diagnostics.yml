@@ -1,0 +1,70 @@
+name: Temporary compare 011c weapon models with shared globals
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-cross-package-model-diagnostics.yml'
+      - 'tools/d1_weapon_geometry_cross_diagnostic.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover 011c and globals 0154 families
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45B642200 \
+            --target ps4_globals_0154_0.pkg --target ps4_globals_0154_1.pkg --target ps4_globals_0154_2.pkg --target ps4_globals_0154_3.pkg --target ps4_globals_0154_4.pkg --target ps4_globals_0154_5.pkg \
+            --out recovered --manifest reports/0154_extract.json --retries 6 --timeout 90
+      - name: Cross-package geometry diagnostics
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          primary='recovered/ps4_gear_weapons_011c_5.pkg'
+          extra='recovered/ps4_globals_0154_5.pkg'
+          python tools/d1_weapon_geometry_cross_diagnostic.py "$primary" --extra-pkg "$extra" --runtime runtime --entity 80A39E0E --model 80A39E12 -o reports/E0E_E12_cross.json
+          python tools/d1_weapon_geometry_cross_diagnostic.py "$primary" --extra-pkg "$extra" --runtime runtime --entity 80A39E23 --model 80A39E26 -o reports/E23_E26_cross.json
+          python tools/d1_weapon_geometry_cross_diagnostic.py "$primary" --extra-pkg "$extra" --runtime runtime --entity 80A39E35 --model 80A39E38 -o reports/E35_E38_cross.json
+          python tools/d1_weapon_geometry_cross_diagnostic.py "$primary" --extra-pkg "$extra" --runtime runtime --entity 80A39E47 --model 80A39E4B -o reports/E47_E4B_cross.json
+          python tools/d1_weapon_geometry_cross_diagnostic.py "$primary" --extra-pkg "$extra" --runtime runtime --entity 80A39E56 --model 80A39E58 -o reports/E56_E58_cross.json
+          python - <<'PY'
+          import glob,json
+          for f in sorted(glob.glob('reports/E*_cross.json')):
+              d=json.load(open(f)); print('\n===',f,'===')
+              print('entity',d['entity']['tag_hash'],'model',d['model']['tag_hash'],'mesh_count',d['model']['mesh_count'])
+              for m in d['model']['meshes']:
+                  p=m['position_stream']; i=m['index_stream']
+                  print(' mesh',m['mesh_index'],'verts',p['vertex_count'],'tris',m['lod1_triangle_count_deduplicated_ranges'],'components',m['connected_component_count'])
+                  print('  bbox',p['decoded_bbox_lod1_used_tiger_model_space'])
+                  print('  pos',p['header_source']['pkg_id'],p['header_source']['tag_hash'],'->',p['payload_source']['pkg_id'],p['payload_source']['tag_hash'])
+                  print('  idx',i['header_source']['pkg_id'],i['header_source']['tag_hash'],'->',i['payload_source']['pkg_id'],i['payload_source']['tag_hash'])
+                  print('  ranges',[(x['index_offset'],x['index_count'],x['triangle_count'],x['materials']) for x in m['lod1_ranges']])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-011c-cross-package-model-diagnostics
+          path: reports/
+          retention-days: 2
+          if-no-files-found: warn
