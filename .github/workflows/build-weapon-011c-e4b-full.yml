@@ -1,0 +1,218 @@
+name: Build fuller PS4 011C E4B weapon GLB
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-weapon-011c-e4b-full.yml'
+      - 'tools/d1_weapon_011c_e4b_final_glb.py'
+      - 'tools/d1_gltf_bake_rigid_weapon_motion.py'
+      - 'tools/d1_weapon_011c_test_glb.py'
+      - 'tools/d1_texture_plate_probe.py'
+      - 'tools/d1_texture_plate_compose.py'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_material_decode.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies and verified runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm pillow jsonpickle texture2ddecoder
+          mkdir -p runtime recovered reports textures/source textures/plates textures/0158 out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact retail package families
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011c_011e_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x46AF91400 \
+            --target ps4_globals_0158_1.pkg --target ps4_globals_0158_2.pkg --target ps4_globals_0158_3.pkg \
+            --target ps4_globals_0158_4.pkg --target ps4_globals_0158_5.pkg --target ps4_globals_0158_6.pkg \
+            --out recovered --manifest reports/0158_extract.json --retries 6 --timeout 90
+
+      - name: Decode exact E4B materials and entity plate
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
+            --tag-hash 80A382A6 -o reports/material_80A382A6.json
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
+            --tag-hash 80A3CED5 -o reports/material_80A3CED5.json
+          python tools/d1_texture_plate_probe.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
+            --header-tag 80A39E4C -o reports/texture_plate_80A39E4C.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          def one(p,h):
+              d=json.loads(Path(p).read_text()); x=[r for r in d['materials'] if r.get('tag_hash')==h]; assert len(x)==1; return x[0]
+          a=one('reports/material_80A382A6.json','80A382A6'); b=one('reports/material_80A3CED5.json','80A3CED5')
+          for h,r in [('80A382A6',a),('80A3CED5',b)]:
+              assert r['vertex_shader']=='80A3D28E' and r['pixel_shader']=='80A3D145', (h,r['vertex_shader'],r['pixel_shader'])
+              tex={x['texture'] for x in r['ps_textures']['items']}
+              assert {'80AB0B74','80A3D4D6'} <= tex, (h,tex)
+          p=json.loads(Path('reports/texture_plate_80A39E4C.json').read_text())
+          assert p['header']['tag_hash']=='80A39E4C'
+          assert p['plates']['albedo']['tag_hash']=='80A39E50'
+          assert p['plates']['normal']['tag_hash']=='80A39E51'
+          assert p['plates']['gstack']['tag_hash']=='80A39E52'
+          assert all(len(p['plates'][k]['transforms'])==5 for k in ['albedo','normal','gstack'])
+          print('E4B distinct materials share final shader program; E4C 5-transform plate pinned')
+          PY
+
+      - name: Export all native E4B plate sources and shader images
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_texture_export.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
+            --tag-hash 80A3D844 --tag-hash 80A3D845 --tag-hash 80A3D846 \
+            --tag-hash 80A3D847 --tag-hash 80A3D848 --tag-hash 80A3D849 --tag-hash 80A3D84A \
+            --tag-hash 80A3D84B --tag-hash 80A3D84C --tag-hash 80A3D84D --tag-hash 80A3D84E \
+            --tag-hash 80A3D84F --tag-hash 80A3D850 --tag-hash 80A3D851 --tag-hash 80A3D852 \
+            --tag-hash 80A3D4D6 --out textures/source
+          python tools/d1_texture_export.py recovered/ps4_globals_0158_6.pkg --runtime runtime \
+            --tag-hash 80AB0B74 --out textures/0158
+          cp textures/0158/80AB0B74_*.png textures/source/
+          python tools/d1_texture_plate_compose.py --plate-report reports/texture_plate_80A39E4C.json \
+            --texture-dir textures/source --out textures/plates
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('textures/source/texture_manifest.json').read_text()); assert not r['missing_requested'],r['missing_requested']
+          r=json.loads(Path('textures/0158/texture_manifest.json').read_text()); assert not r['missing_requested'],r['missing_requested']
+          assert len(list(Path('textures/source').glob('80AB0B74_*_face*.png')))==6
+          for k in ['albedo','normal','gstack']:
+              assert Path(f'textures/plates/80A39E4C_{k}_plate.png').is_file()
+          PY
+
+      - name: Recover pinned D1 animation oracle
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C tiger-animation-parser rev-parse HEAD)" = 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+      - name: Build fuller native E4B proof GLB
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_weapon_011c_e4b_final_glb.py tools/d1_gltf_bake_rigid_weapon_motion.py
+          python tools/d1_weapon_011c_e4b_final_glb.py recovered/ps4_gear_weapons_011c_5.pkg \
+            --runtime runtime --parser-root tiger-animation-parser --texture-root textures \
+            --material-report reports/material_80A382A6.json \
+            --extra-material-report reports/material_80A3CED5.json \
+            --plate-report reports/texture_plate_80A39E4C.json \
+            --out out/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.glb \
+            --report reports/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.json
+          sha256sum out/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.glb | tee reports/proof_glb_sha256.txt
+
+      - name: Bake directly visible rigid weapon motion
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_bake_rigid_weapon_motion.py \
+            out/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.glb \
+            --source-node 72 \
+            --out out/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.glb \
+            --report reports/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.json
+          sha256sum out/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.glb | tee reports/visible_glb_sha256.txt
+
+      - name: Validate fuller geometry, textures and visible clips
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          from pygltflib import GLTF2
+          proof=Path('out/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.glb')
+          g=GLTF2().load_binary(str(proof))
+          assert len(g.meshes)==1 and len(g.meshes[0].primitives)==3
+          assert len(g.materials)==2 and len(g.animations)==12 and len(g.skins)==1
+          assert len(g.images)==10 and len(g.textures)==2 and len(g.samplers)==1
+          rep=json.loads(Path('reports/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.json').read_text())
+          assert rep['geometry']['model']=='80A39E4B'
+          assert rep['geometry']['vertex_count']==4044
+          assert rep['geometry']['triangle_count_lod1']==4298
+          assert rep['geometry']['native_range_census']==[
+              [114,2015,1294,'80A382A6'],[2240,2188,1310,'80A382A6'],[4429,2706,1694,'80A3CED5']]
+          assert len(g.nodes[72].children or [])==1 and g.nodes[g.nodes[72].children[0]].mesh==0
+
+          visible=Path('out/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.glb')
+          b=visible.read_bytes(); assert b[:4]==b'glTF' and struct.unpack_from('<I',b,8)[0]==len(b)
+          v=GLTF2().load_binary(str(visible))
+          expected=['80A39DF7_VISIBLE_WEAPON','80A39DFA_VISIBLE_WEAPON','80A39DFB_VISIBLE_WEAPON','80A39DFF_VISIBLE_WEAPON']
+          assert [a.name for a in v.animations]==expected,[a.name for a in v.animations]
+          assert all(len(a.channels)==3 and {c.target.path for c in a.channels}=={'translation','rotation','scale'} for a in v.animations)
+          vr=json.loads(Path('reports/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.json').read_text())
+          assert vr['output_animation_count']==4
+          moving=[x['source_animation'] for x in vr['clips'] if x['moving']]
+          assert moving==['80A39DF7','80A39DFA','80A39DFB','80A39DFF'],moving
+          assert vr['clips'][1]['translation_delta'] > 0.28
+          by={x['source_animation']:x for x in vr['clips']}
+          assert by['80A39DFA']['translation_delta']>0.8 and by['80A39DFA']['rotation_delta_deg']>140
+          assert by['80A39DFB']['translation_delta']>0.7 and by['80A39DFB']['rotation_delta_deg']>140
+          assert by['80A39DFF']['translation_delta']>0.8 and by['80A39DFF']['rotation_delta_deg']>140
+          print(json.dumps({
+              'proof_bytes':proof.stat().st_size,'visible_bytes':visible.stat().st_size,
+              'vertices':4044,'triangles':4298,'materials':['80A382A6','80A3CED5'],
+              'plate':'80A39E4C','proof_animations':12,'direct_visible_animations':expected,
+              'motion':{h:{'translation':by[h]['translation_delta'],'rotation_deg':by[h]['rotation_delta_deg']} for h in ['80A39DF7','80A39DFA','80A39DFB','80A39DFF']}
+          },indent=2))
+          PY
+
+      - name: Bundle user-testable fuller weapon fixture
+        run: |
+          set -euo pipefail
+          cp reports/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.json out/80A39E4B_WEAPON_FULLER_PROOF_RIG_12CLIPS.report.json
+          cp reports/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.json out/80A39E4B_WEAPON_FULLER_VISIBLE_ANIMATIONS.report.json
+          cp reports/material_80A382A6.json reports/material_80A3CED5.json reports/texture_plate_80A39E4C.json out/
+          cp reports/proof_glb_sha256.txt reports/visible_glb_sha256.txt out/
+          cp textures/plates/80A39E4C_albedo_plate.png textures/plates/80A39E4C_normal_plate.png textures/plates/80A39E4C_gstack_plate.png out/
+          cat > out/README.txt <<'EOF'
+          Destiny 1 ROI PS4 fuller 011C weapon fixture
+
+          entity 80A39E47 | EntityResource 80A39E48 | model 80A39E4B
+          texture plate header 80A39E4C | 4044 vertices | 4298 LOD1 triangles
+
+          80A39E4B is a native entity-backed geometric superset of the previously
+          tested 80A39E12 base shell. Its first two LOD1 ranges are the same 1294 +
+          1310 triangle shell ranges; a third retail range contributes 1694 additional
+          triangles under native material 80A3CED5. No geometry is mirrored or guessed.
+
+          FULLER_PROOF_RIG_12CLIPS preserves the recovered 73-bone skeleton, all 12
+          source clips, and the rigid C410084A Pedestal attachment.
+
+          FULLER_VISIBLE_ANIMATIONS is the recommended interchange/viewer test. It
+          evaluates the exact Pedestal world transform through the native animation
+          hierarchy and writes it directly onto a normal WeaponRoot node. Only the four
+          source clips with measurable visible weapon motion are retained: DF7, DFA,
+          DFB, DFF. This does not invent magazine/trigger/bolt articulation; no native
+          weapon skin weights have yet been proven for this rigid model.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 80A39E4B-fuller-weapon-visible-animations
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
