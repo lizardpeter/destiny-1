@@ -1,0 +1,53 @@
+name: Repair D1 DXBC probe imports
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-d1-dxbc-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Update renamed vector helpers and compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/d1_dxbc_probe.py')
+          s=p.read_text()
+          s=s.replace(
+              'from d1_vector_container_probe import count_from_metadata_size, parse_vector_container',
+              'from d1_vector_container_probe import xbox_count_from_metadata_size, parse_xbox_vector_container'
+          )
+          s=s.replace('count_from_metadata_size(', 'xbox_count_from_metadata_size(')
+          s=s.replace('parse_vector_container(', 'parse_xbox_vector_container(')
+          if 'count_from_metadata_size' in s.replace('xbox_count_from_metadata_size',''):
+              raise SystemExit('stale count helper remains')
+          if 'parse_vector_container' in s.replace('parse_xbox_vector_container',''):
+              raise SystemExit('stale parser helper remains')
+          p.write_text(s)
+          PY
+          python -m py_compile tools/d1_dxbc_probe.py
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/d1_dxbc_probe.py
+          if git diff --cached --quiet; then
+            echo 'Already fixed.'
+          else
+            git commit -m 'Repair D1 DXBC vector helper imports'
+            git push origin HEAD:main
+          fi
