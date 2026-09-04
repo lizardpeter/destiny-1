@@ -1,3 +1,4 @@
+# trigger: 2026-09-03T23:28-04:00
 name: Temporary run Vex animation-proxy compatibility census
 
 on:
@@ -127,7 +128,7 @@ jobs:
           else:
               lines += ['No standard visible-model candidates were decoded from this corpus.','']
 
-          lines += ['## Direct target-fingerprint observations','']
+          lines += ['','## Direct target-fingerprint observations','']
           for pkg in reports:
               name=Path(pkg['package']).name
               lines += [
