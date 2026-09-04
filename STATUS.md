@@ -1,23 +1,23 @@
 # Destiny 1 Reversal — Current Status
 
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 ## Canonical storage
 
 - Durable source of truth: private GitHub repo `lizardpeter/destiny-1`.
-- Runtime analysis mirror: `/mnt/data/Destiny1_Reversal/`.
 - Raw Destiny `.pkg` files, proprietary `oo2core_*` binaries, compiled bridge binaries and other proprietary/native runtime dependencies are never committed.
 - Confirmed specs, tools, tests and lightweight evidence are committed after material findings.
+- Runtime-only discoveries are not considered durable until promoted into the repo.
 
 ## Executive state
 
-The package/container and compression barriers are crossed. Real final-era D1 PS4 and Xbox One Tiger v24 packages are parsed; Oodle 3 decompression works; logical entries reconstruct; PS4 textures export; vertex/index geometry exports; Xbox entity-model metadata is decoded; and material-to-native-shader register binding is now proven.
+The package/container and compression barriers are crossed. Real final-era D1 PS4 and Xbox One Tiger v24 packages are parsed; Oodle 3 decompression works; logical entries reconstruct; PS4 textures export; model geometry/material selection is substantially decoded; a real PS4 skeleton/skin/runtime-rig pair is validated; and two real PS4 animation clips have been exported successfully.
 
-The active frontier is no longer archive extraction. It is **complete semantic asset assembly**: model/material selection, platform texture layout, skeleton/skin binding, and animation clips.
+The newest correction is architectural: the articulated Vex model `816CE09A`, although fully reconstructable as a rigged/animated GLB, is **not currently treated as the final visible retail combatant model**. Retail byte evidence places it in a recurring `0x8080222A` animation-bundle/proxy pattern. The active frontier is therefore to connect validated animation bundles to the correct ordinary visible model/entity/material ownership graph without guessing textures or parentage.
 
 ## Real corpus
 
-### PS4 canonical sample
+### PS4 Cabal canonical package sample
 
 `ps4_arch_cabal_005b_1.pkg`
 
@@ -27,9 +27,9 @@ The active frontier is no longer archive extraction. It is **complete semantic a
 - 667 entries / 626 blocks
 - all blocks resident and stored-payload SHA-1 verified
 - 30/30 Texture2D assets exported through real Oodle + reference-chain + GCN deswizzle path
-- useful renderer/material corpus but no resident entity-model/skeleton resource in the eight `0x80800861` EntityResource tags
+- useful renderer/material corpus but no resident model/skeleton resource in its eight `0x80800861` EntityResources
 
-### Xbox One secondary corpus
+### Xbox One Cabal secondary corpus
 
 `xboxone_arch_cabal_0059_1.pkg`
 
@@ -46,14 +46,52 @@ The active frontier is no longer archive extraction. It is **complete semantic a
 - 276 resident vector/constant containers
 - 22 animation clips exist, but all require patch 0
 
+### PS4 Vex articulated validation corpus
+
+Primary target package:
+
+`ps4_arch_vex_com01_0767_0.pkg`
+
+Validated target cluster:
+
+- model/proxy `816CE09A`
+- 4,172 vertices
+- 5,336 triangles after D1 triangle-strip + restart conversion
+- UV0 and normals
+- skeleton EntityResource `816CE092`: 12 bones
+- runtime rig EntityResource `816CE095`
+- runtime component hash `76F7A98E`
+- 12 runtime controls with validated identity bone/control mapping
+- animation `816CE09D`: hash `6FB760FF`, 31 frames, static tracks
+- animation `816CE09E`: hash `D3FD602F`, 101 frames
+- successful glTF skin, inverse bind matrices and animation export
+
+The clean rigged/animated `816CE09A` GLB remains a trusted **animation-system validation artifact**, not a final textured combatant claim.
+
+### PS4 Vex shared/render-context package
+
+`ps4_arch_vex_00e2_0.pkg`
+
+- package `0x00E2`
+- 5,451 entries
+- 130 EntityResources
+- 47 `s_entity_model` entries
+- 35 standard D1 model parents
+- 11 animation clips
+- 130 techniques
+- direct entity/composition correspondence with the `0767` combatant graph
+
+This package supplied the decisive animation-proxy comparison and the first fully byte-proven ordinary Vex external-material chain.
+
 ## Oodle 3
 
-Working with user-supplied `oo2core_3_win64.dll` via the project experimental Linux PE bridge. The current runtime DLL hash is recorded in `notes/OODLE_RUNTIME.md`; the DLL itself is not committed.
+Working with the project Oodle 3 Linux bridge plus a verified `oo2core_3_win64.dll` runtime. Runtime hashes are recorded in `notes/OODLE_RUNTIME.md`; binaries are not committed.
 
 Representative validation:
 
-- PS4: 12/12 compressed blocks -> exact `0x40000` logical bytes.
-- Xbox resident patch 1: 12/12 -> exact `0x40000`.
+- PS4 compressed blocks reconstruct exact `0x40000` logical blocks.
+- Xbox resident patch-1 blocks reconstruct correctly.
+- stored block SHA-1 verification is enforced before decompression.
 
 ## Package / resource layer
 
@@ -61,11 +99,13 @@ Working:
 
 - Tiger v24 header, FileEntry and BlockEntry parsing.
 - table SHA-1 and stored-block SHA-1 verification.
-- patch-family ownership and `.pkg.bin` path handling.
+- patch-family ownership and sibling `.pkg` path handling.
 - D1 TagHash construction/decomposition.
 - generic decompressed entry reader.
 - graph/reference analysis and cross-package comparison.
-- `entry_b[23:16]` preserved across every observed local edge: PS4 209/209; Xbox 3,171/3,171.
+- `entry_b[23:16]` preservation constraint across observed local edges.
+- standard D1 EntityResource role decoding for model/skeleton/physics resources.
+- standard model-parent signature `0x80801A80 -> 0x80801A9C`.
 
 ## GPU/resource layer
 
@@ -73,20 +113,21 @@ Working:
 
 - Vertex header `0x0C`; PS4 marker `BEEFCACE`, Xbox `BEEFDEAD`.
 - Index header `0x18`; index width and payload size validated.
-- real topology proof GLBs exist.
-- Xbox metadata-driven entity-model GLB export exists.
+- PS4 and Xbox model geometry paths exist.
+- D1 triangle strips and `0xFFFF` restart conversion validated on the Vex articulated model.
 
 ### PS4 textures
 
 - Texture2D header `0x3C`.
 - BC1/BC3/BC4/BC5 validated visually.
-- 30/30 canonical textures exported.
+- streamed texture backing across package boundaries is resolved.
+- exact Vex material textures have been decoded through the `0156/0157` chain.
 
 ### Xbox textures
 
 - header `0x44` with DXGI format/tile mode, dimensions and three flag words solved.
-- first model's actual bound textures are known, but use Durango tile mode 14.
-- active parallel target: replace/bridge the Windows XG address-computer dependency so tile-mode-14 textures can be detiled and attached to the metadata-driven model.
+- first model's bound textures are known but use Durango tile mode 14.
+- portable tile-mode-14 detiling remains an Xbox-side engineering target.
 
 ### PS4 shaders
 
@@ -95,15 +136,15 @@ Working:
 
 ## Entity/model layer
 
-D1 ROI `0x80800861` is treated as the EntityResource outer-container class by the real ROI entity consumer. ROI `s_pattern_component` is `0x80800715`; do not reuse the older TTK mapping.
+D1 ROI `0x80800861` is the EntityResource outer-container class. ROI `s_pattern_component` is `0x80800715`; do not reuse the older TTK mapping.
 
-Xbox real-byte results:
+Confirmed:
 
 - model discriminator `0x80801A80`.
 - model parent class `0x80801A9C`.
+- PS4 embedded EntityModel field in the standard parent is at the validated D1 source-correlated location used by the project parser.
 - Xbox embedded EntityModel field in parent at `+0x1C4`.
-- 16 resident model tags / 23 meshes / 284 parts.
-- model `808B3A16` is fully resident and is the first clean end-to-end model target.
+- model mesh/part arrays, variant shader indices, resource hashes and buffer descriptors parse across current corpora.
 
 ## Materials / shader binding
 
@@ -111,52 +152,151 @@ See `spec/D1_MATERIALS_SHADERS.md`.
 
 Confirmed:
 
-- PS4 ROI material class is Charm's `SMaterial_ROI` at numeric `0x80801AD7`.
+- PS4 ROI material class `0x80801AD7`.
 - Xbox material family observed as `0x80801C32`.
 - Xbox `STextureTag.TextureIndex` is the actual DXBC `t#` register: 11/11 exact.
-- material PS sampler count equals shader sampler count: 11/11; registers contiguous `s1..sN`.
-- Xbox vector container `0x80801AA5` has an exact `0x30 + N*16` layout across 276/276 resident examples.
-- material-provided pixel constants equal DXBC `b0` vec4 count: 11/11.
-- PS4 subtype 7 is therefore semantically confirmed cross-platform as material constant/vector-buffer data; original Bungie type name remains unclaimed.
+- material PS sampler count equals shader sampler count in all validated overlaps.
+- Xbox vector container `0x80801AA5` exact `0x30 + N*16` layout across 276/276 resident examples.
+- material-provided pixel constants equal DXBC `b0` vec4 count in all validated overlaps.
+- standard PS4 model-parent `ExternalMaterialsMap` / `ExternalMaterials` selection is decoded.
 
-Still unresolved:
+### Proven ordinary Vex render/material fixture
 
-- sampler record tail fields.
-- shared sampler/vertex-shader package `0x156` dependencies.
-- non-material cbuffers such as `b12` / `b13`.
-- portable PBR semantic mapping for texture slots.
+`809C44A5 -> 809C47F4`
 
-## Skeleton / animation
+- ordinary standard model parent
+- variants 0 and 1 resolved through real external materials
+- material family `809C475F / 809C4760`
+- exact PS texture bindings decoded
+- backing textures resolved through `0156/0157`
+
+This is a rendering/material **control fixture**. Its skeleton/runtime-control compatibility with the 12-control `816CE095` rig is not yet proven.
+
+## Skeleton / skin / runtime rig
 
 See `spec/D1_SKELETONS_ANIMATIONS.md`.
 
-Skeleton parser is implemented for D1 source-correlated layout:
+Validated on PS4 retail bytes:
 
 - skeleton discriminator `0x808006BD`.
 - skeleton info `0x8080049A`.
-- node hierarchy, default object transforms, inverse transforms and index maps decoded by the parser.
-- current real corpus has no resident skeleton resource to binary-validate this layout yet.
+- node hierarchy.
+- default and inverse object-space transforms.
+- range/inner index maps.
+- 12-node skeleton `816CE092`.
+- skinning of `816CE09A` into glTF.
+- runtime rig `816CE095` with secondary class `0x808008B2`.
+- runtime component hash `76F7A98E`.
+- 12 controls and identity bone/control mapping for this instance.
 
-Animation:
+The complete general field schema for `0x808008B2` is **not yet durably decoded**. Do not recreate offsets from memory; use only byte-documented fields when promoting the schema.
 
-- final ROI `s_animation_clip = 0x808005A1`.
-- Xbox package contains 22 clips, all patch-0-backed.
-- animation track compression/layout remains a genuine active RE target.
+## Animation
 
-Historical Destiny extractor source independently corroborates the node/transform shape and includes weapon-mechanism hash names (`GunBase`, `Trigger`, `Magazine`, etc.); retained as a source lead, not D1 binary fact.
+Final ROI clip class:
 
-## Current highest-value inputs
+`0x808005A1 = s_animation_clip`
 
-1. `xboxone_arch_cabal_0059_0.pkg` — unlocks the 22 known animation clips and likely skeleton resources.
-2. A PS4 model/entity/weapon package — enables canonical full textured/skinned PS4 validation.
-3. Xbox shared package ID `0x156` — contains observed shared sampler and likely vertex-shader dependencies.
+Two concrete PS4 clips (`816CE09D/E`) have been successfully decoded and exported against the 12-node Vex rig. This proves the current runtime decoding for that clip family, but a reusable general clip decoder is not yet committed.
 
-## Immediate engineering/reversal targets
+General D1 animation compression/layout therefore remains **partially solved**, not globally solved.
 
-1. Finish Xbox Durango tile-mode-14 detiling and texture model `808B3A16`.
-2. Resolve sampler descriptors and shared vertex-shader dependencies.
-3. Trace non-`b0` constant buffers.
-4. Validate the D1 skeleton parser against real resident bytes as soon as an appropriate package is acquired.
-5. Reverse `s_animation_clip` once patch-0 clip bytes are available.
-6. Build a global TagHash/class/dependency index over acquired package sets so weapon extraction becomes recursive and package-independent.
-7. Produce a one-command loss-preserving asset export path: model + mesh parts + materials + textures + skin + animations + raw provenance metadata.
+## `0x8080222A` animation-bundle/proxy pattern
+
+This is the largest semantic correction in the current frontier.
+
+Observed repeatedly:
+
+```text
+0x8080222A structured wrapper
+    -> nearby/forward s_entity_model
+    -> Havok hk_2012.2.0-r1 data
+    -> control/wrapper data
+    -> s_animation_clip(s)
+```
+
+Target wrapper `816CE099` contains aligned dword `D3FD602F`, exactly the validated animation hash of `816CE09E`.
+
+Equivalent clusters occur in `00E2_0`, including `809C4B96 -> 809C4B97`.
+
+Safe project conclusion:
+
+- observed semantic role: **animation-bundle/proxy pattern**
+- original Bungie class name: unknown
+- internal field schema: unresolved
+- adjacency to this wrapper does **not** prove final visible render ownership
+
+Reusable classifier:
+
+`tools/d1_animation_bundle_probe.py`
+
+It uses no guessed wrapper offsets. It correlates class/order, Havok markers, EntityResource roles and optional known raw animation-hash dwords.
+
+## Direct-retarget elimination: `809C4B97`
+
+`809C4B97` is the closest known proxy-family geometry analogue to `816CE09A`, but its companion skeleton `809C4B90` has **8 bones**, versus 12 bones/12 controls for `816CE092/095`.
+
+It is therefore eliminated as a direct skeleton-compatible target for `816CE09D/E` under the current acceptance criteria. It remains a valuable format comparison fixture.
+
+## Current active frontier
+
+The next question is not “which textures belong on `816CE09A`?”
+
+It is:
+
+> Which ordinary visible Vex model parent/model/skeleton/control cluster is byte-compatible with the validated 12-node / 12-control `816CE092 / 816CE095 / 76F7A98E` animation bundle?
+
+New ranking tool:
+
+`tools/d1_animation_proxy_compat_probe.py`
+
+It ranks standard visible-model candidates using only proven parsers plus raw graph/fingerprint evidence. Its score is explicitly heuristic and cannot itself promote a candidate to final visible-model status.
+
+First candidate-specific byte test:
+
+```text
+809C44A5 -> 809C47F4
+    ? co-referenced 12-bone skeleton
+    ? 76F7A98E runtime-component fingerprint
+    ? equivalent 12-control mapping
+```
+
+If that fixture fails, enumerate the other 34 standard parents in `00E2_0`.
+
+## Patch sibling recovery status
+
+The public manifest names higher Vex patch siblings including:
+
+- `ps4_arch_vex_com01_0767_1.pkg`
+- `ps4_arch_vex_com01_0767_4.pkg`
+- `ps4_arch_vex_00e2_1.pkg`
+- `ps4_arch_vex_00e2_2.pkg`
+- `ps4_arch_vex_00e2_4.pkg`
+
+Historical GitHub Actions artifacts were inspected directly. All five public-mirror recovery attempts were recorded as HTTP 404/misses. No retained historical artifact contains those package bytes, and no retained artifact contains the base `_0` package payloads.
+
+Do not repeat the same mirror attempt unless the mirror changes.
+
+## Immediate engineering / reversal targets
+
+1. Run `d1_animation_proxy_compat_probe.py` over `0767_0 + 00E2_0 + 0156_0 (+0157)` when those already-used package bytes are available in the active runtime.
+2. Test `809C44A5 -> 809C47F4` for 12-bone / `76F7A98E` / 12-control compatibility before any retarget or texture claim.
+3. Generalize and durably document the `0x808008B2` runtime-rig field layout from real bytes.
+4. Promote the successful PS4 animation-clip decoder into a reusable committed tool without overgeneralizing beyond validated compression modes.
+5. Use `d1_animation_bundle_probe.py` to classify `0x8080222A` neighborhoods across future packages and prevent proxy models from being mislabeled as final render models.
+6. Finish Xbox Durango tile-mode-14 detiling and texture model `808B3A16`.
+7. Build the global TagHash/class/dependency index so complete asset export becomes package-independent.
+8. Produce a one-command loss-preserving asset path: visible model + materials + textures + skin + compatible animations + raw provenance metadata.
+
+## Final-visible-model acceptance rule
+
+Do not call a Vex candidate the final retail animated body until all applicable checks pass:
+
+1. ordinary standard model parent is byte-proven;
+2. visible model is identified from that parent;
+3. compatible skeleton/control relationship is byte-proven;
+4. runtime control map matches the 12-control animation bundle;
+5. clips retarget without hierarchy/transform anomalies;
+6. external material selection is resolved from the candidate's own parent;
+7. textures come from those exact materials, not adjacency or visual guessing;
+8. Blender/glTF validation succeeds.
