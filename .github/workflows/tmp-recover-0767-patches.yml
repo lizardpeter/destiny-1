@@ -1,4 +1,4 @@
-name: Temporary decode proven 09A texture set
+name: Temporary trace resolved 09A owner backlinks
 
 on:
   push:
@@ -9,130 +9,73 @@ permissions:
   contents: read
 
 jobs:
-  decode:
+  trace:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Runtime dependencies
+      - name: Recover verified Oodle runtime
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet pillow
-          mkdir -p runtime
+          mkdir -p runtime recovered reports
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-
-      - name: Sparse-extract required package families
+      - name: Recover only 0767 family
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p recovered reports textures/0156 textures/0767 shader_dump
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 \
+            --target ps4_arch_vex_com01_0767_0.pkg \
+            --target ps4_arch_vex_com01_0767_1.pkg \
+            --target ps4_arch_vex_com01_0767_4.pkg \
+            --out recovered --manifest reports/0767_split_tar_manifest.json
+      - name: Scan parent backlinks and local graph
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
-          import bisect,re
+          import json,struct,sys
           from pathlib import Path
-          import requests
-          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          urls=[f'{base}/packages.tar.{i:03d}' for i in range(1,11)]
-          targets={
-            'ps4_arch_vex_com01_0767_0.pkg','ps4_arch_vex_com01_0767_1.pkg','ps4_arch_vex_com01_0767_4.pkg',
-            'ps4_globals_0156_0.pkg','ps4_globals_0156_1.pkg',
-            'ps4_globals_0157_0.pkg','ps4_globals_0157_1.pkg',
-          }
-          s=requests.Session();s.headers.update({'User-Agent':'d1-research-range-probe/1.0'})
-          sizes=[]
-          for url in urls:
-            r=s.get(url,headers={'Range':'bytes=0-0'},stream=True,timeout=60)
-            if r.status_code!=206:raise RuntimeError((url,r.status_code))
-            m=re.match(r'bytes 0-0/(\d+)$',r.headers.get('Content-Range',''))
-            if not m:raise RuntimeError((url,r.headers.get('Content-Range')))
-            sizes.append(int(m.group(1)));r.close()
-          starts=[0]
-          for z in sizes:starts.append(starts[-1]+z)
-          def get(off,n):
-            out=bytearray()
-            while n:
-              pi=bisect.bisect_right(starts,off)-1;local=off-starts[pi];take=min(n,sizes[pi]-local)
-              r=s.get(urls[pi],headers={'Range':f'bytes={local}-{local+take-1}'},timeout=60)
-              if r.status_code!=206 or len(r.content)!=take:raise RuntimeError(('range',pi,local,take,r.status_code,len(r.content)))
-              out+=r.content;off+=take;n-=take
-            return bytes(out)
-          def tsz(f):
-            f=f.rstrip(b'\0 ').lstrip(b' ')
-            if not f:return 0
-            if f[0]&0x80:
-              b=bytearray(f);b[0]&=0x7f;return int.from_bytes(b,'big')
-            return int(f,8)
-          found={};off=0;zero=0;count=0
-          while off+512<=starts[-1]:
-            h=get(off,512)
-            if h==b'\0'*512:
-              zero+=1
-              if zero>=2:break
-              off+=512;continue
-            zero=0
-            if h[257:262]!=b'ustar':raise RuntimeError(('bad tar',off))
-            name=h[:100].split(b'\0',1)[0].decode('utf-8','replace');prefix=h[345:500].split(b'\0',1)[0].decode('utf-8','replace')
-            if prefix:name=prefix+'/'+name
-            n=tsz(h[124:136]);count+=1;base_name=name.rsplit('/',1)[-1]
-            if base_name in targets:
-              found[base_name]=(off+512,n,off);print('FOUND',base_name,n,hex(off),flush=True)
-              if len(found)==len(targets):break
-            off+=512+((n+511)//512)*512
-          missing=targets-found.keys()
-          if missing:raise RuntimeError(('missing',sorted(missing),count))
-          for name,(data_off,n,header_off) in found.items():
-            dst=Path('recovered')/name;remain=n;off=data_off
-            with dst.open('wb') as f:
-              while remain:
-                pi=bisect.bisect_right(starts,off)-1;local=off-starts[pi];take=min(remain,sizes[pi]-local)
-                r=s.get(urls[pi],headers={'Range':f'bytes={local}-{local+take-1}'},stream=True,timeout=120)
-                if r.status_code!=206:raise RuntimeError(('extract',name,r.status_code))
-                wrote=0
-                for chunk in r.iter_content(1024*1024):
-                  if chunk:f.write(chunk);wrote+=len(chunk)
-                r.close()
-                if wrote!=take:raise RuntimeError(('short',name,wrote,take))
-                off+=take;remain-=take
-            if dst.stat().st_size!=n:raise RuntimeError(('size',name))
-          with open('reports/package_locations.txt','w') as f:
-            for name,(data_off,n,header_off) in sorted(found.items()):f.write(f'{name} header={header_off} data={data_off} size={n}\n')
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          r=EntryReader(Path('recovered/ps4_arch_vex_com01_0767_4.pkg'),Path('runtime'))
+          by_int={int(e['tag_hash'],16):e for e in r.entries}
+          target=0x816CE12B; pat=struct.pack('<I',target)
+          backlinks=[]
+          for e in r.entries:
+            if e['type']!=16 or not r.available(e['index']):continue
+            try:b=r.entry(e['index'])
+            except Exception as ex:continue
+            offsets=[];start=0
+            while True:
+              j=b.find(pat,start)
+              if j<0:break
+              offsets.append(j);start=j+1
+            if offsets:
+              refs=[]
+              for o in range(0,len(b)-3,4):
+                v=struct.unpack_from('<I',b,o)[0]
+                t=by_int.get(v)
+                if t:refs.append({'offset':o,'tag_hash':t['tag_hash'],'entry_index':t['index'],'reference':t['reference'],'type':t['type'],'subtype':t['subtype']})
+              backlinks.append({'entry_index':e['index'],'tag_hash':e['tag_hash'],'reference':e['reference'],'size':e['file_size'],'target_offsets':offsets,'local_taghash_refs':refs})
+          owner=next(e for e in r.entries if e['tag_hash']=='816CE12B')
+          ob=r.entry(owner['index'])
+          owner_refs=[]
+          for o in range(0,len(ob)-3,4):
+            v=struct.unpack_from('<I',ob,o)[0]
+            t=by_int.get(v)
+            if t:owner_refs.append({'offset':o,'tag_hash':t['tag_hash'],'entry_index':t['index'],'reference':t['reference'],'type':t['type'],'subtype':t['subtype']})
+          rep={'package':str(r.pkg),'entry_count':len(r.entries),'target_parent':'816CE12B','backlinks':backlinks,
+               'owner':{'entry_index':owner['index'],'reference':owner['reference'],'size':owner['file_size'],'local_taghash_refs':owner_refs}}
+          Path('reports/816CE12B_backlinks.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
           PY
-          sha256sum recovered/*.pkg > reports/pkg_sha256.txt
-
-      - name: Export exact texture headers/backings
-        shell: bash
-        run: |
-          set -euo pipefail
-          python tools/d1_texture_export.py recovered/ps4_globals_0156_1.pkg --runtime runtime \
-            --tag-hash 80AACCDD --tag-hash 80AACCDF --tag-hash 80AACC26 --tag-hash 80AACC28 --out textures/0156
-          python tools/d1_texture_export.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
-            --tag-hash 816CE1C5 --out textures/0767
-          cp textures/0156/texture_manifest.json reports/09A_0156_texture_manifest.json
-          cp textures/0767/texture_manifest.json reports/09A_0767_texture_manifest.json
-          echo '--- 0156 ---'; cat reports/09A_0156_texture_manifest.json
-          echo '--- 0767 ---'; cat reports/09A_0767_texture_manifest.json
-          find textures -type f -maxdepth 2 -printf '%p %s bytes\n' | sort | tee reports/texture_files.txt
-          sha256sum textures/*/* 2>/dev/null | tee reports/texture_sha256.txt || true
-
-      - name: Dump the two proven pixel shader headers
-        shell: bash
-        run: |
-          set -euo pipefail
-          python tools/d1_entry_extract.py recovered/ps4_globals_0157_1.pkg --runtime runtime --entry 331 --dump-dir shader_dump -o reports/PS_80AAE14B.json
-          python tools/d1_entry_extract.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime --entry 168 --dump-dir shader_dump -o reports/PS_816CE0A8.json
-          cat reports/PS_80AAE14B.json
-          cat reports/PS_816CE0A8.json
-          sha256sum shader_dump/* > reports/shader_dump_sha256.txt
-
-      - name: Upload reports and decoded textures
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: proven-09A-textures
-          path: |
-            reports/
-            textures/
-            shader_dump/
+          name: 09A-owner-backlinks
+          path: reports/
           retention-days: 1
-          if-no-files-found: error
