@@ -1,4 +1,4 @@
-name: Temporary trace resolved 09A owner backlinks
+name: Temporary resolve 09A streamed textures and constants
 
 on:
   push:
@@ -9,10 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  trace:
+  resolve:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Recover verified Oodle runtime
         shell: bash
         run: |
@@ -22,18 +23,24 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover only 0767 family
+
+      - name: Recover required package families
         shell: bash
         run: |
           set -euo pipefail
           python tools/d1_split_tar_extract.py \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
             --part-count 10 \
+            --target ps4_globals_0156_0.pkg \
+            --target ps4_globals_0156_1.pkg \
+            --target ps4_globals_0157_0.pkg \
+            --target ps4_globals_0157_1.pkg \
             --target ps4_arch_vex_com01_0767_0.pkg \
             --target ps4_arch_vex_com01_0767_1.pkg \
             --target ps4_arch_vex_com01_0767_4.pkg \
-            --out recovered --manifest reports/0767_split_tar_manifest.json
-      - name: Scan parent backlinks and local graph
+            --out recovered --manifest reports/package_extract_manifest.json
+
+      - name: Compare streamed texture records
         shell: bash
         run: |
           set -euo pipefail
@@ -42,40 +49,61 @@ jobs:
           from pathlib import Path
           sys.path.insert(0,'tools')
           from d1_entry_extract import EntryReader
-          r=EntryReader(Path('recovered/ps4_arch_vex_com01_0767_4.pkg'),Path('runtime'))
-          by_int={int(e['tag_hash'],16):e for e in r.entries}
-          target=0x816CE12B; pat=struct.pack('<I',target)
-          backlinks=[]
-          for e in r.entries:
-            if e['type']!=16 or not r.available(e['index']):continue
-            try:b=r.entry(e['index'])
-            except Exception as ex:continue
-            offsets=[];start=0
-            while True:
-              j=b.find(pat,start)
-              if j<0:break
-              offsets.append(j);start=j+1
-            if offsets:
-              refs=[]
-              for o in range(0,len(b)-3,4):
-                v=struct.unpack_from('<I',b,o)[0]
-                t=by_int.get(v)
-                if t:refs.append({'offset':o,'tag_hash':t['tag_hash'],'entry_index':t['index'],'reference':t['reference'],'type':t['type'],'subtype':t['subtype']})
-              backlinks.append({'entry_index':e['index'],'tag_hash':e['tag_hash'],'reference':e['reference'],'size':e['file_size'],'target_offsets':offsets,'local_taghash_refs':refs})
-          owner=next(e for e in r.entries if e['tag_hash']=='816CE12B')
-          ob=r.entry(owner['index'])
-          owner_refs=[]
-          for o in range(0,len(ob)-3,4):
-            v=struct.unpack_from('<I',ob,o)[0]
-            t=by_int.get(v)
-            if t:owner_refs.append({'offset':o,'tag_hash':t['tag_hash'],'entry_index':t['index'],'reference':t['reference'],'type':t['type'],'subtype':t['subtype']})
-          rep={'package':str(r.pkg),'entry_count':len(r.entries),'target_parent':'816CE12B','backlinks':backlinks,
-               'owner':{'entry_index':owner['index'],'reference':owner['reference'],'size':owner['file_size'],'local_taghash_refs':owner_refs}}
-          Path('reports/816CE12B_backlinks.json').write_text(json.dumps(rep,indent=2)+'\n')
-          print(json.dumps(rep,indent=2))
+
+          def entry_row(r,e,include_bytes=True):
+              row={k:e[k] for k in ['index','tag_hash','type','subtype','reference','file_size','entry_b','starting_block','starting_block_offset'] if k in e}
+              row['available']=r.available(e['index'])
+              if include_bytes and row['available']:
+                  try:
+                      b=r.entry(e['index'])
+                      row['sha256']=__import__('hashlib').sha256(b).hexdigest()
+                      row['bytes_hex']=b.hex()
+                      refs=[]
+                      by={int(x['tag_hash'],16):x for x in r.entries}
+                      for o in range(0,len(b)-3,4):
+                          v=struct.unpack_from('<I',b,o)[0]
+                          t=by.get(v)
+                          if t:
+                              refs.append({'offset':o,'value':f'{v:08X}','tag_hash':t['tag_hash'],'index':t['index'],'type':t['type'],'subtype':t['subtype'],'reference':t['reference'],'size':t['file_size']})
+                      row['embedded_local_taghashes']=refs
+                  except Exception as ex:
+                      row['read_error']=repr(ex)
+              return row
+
+          out={}
+          r156=EntryReader(Path('recovered/ps4_globals_0156_1.pkg'),Path('runtime'))
+          wanted156=['80AACC26','80AACC27','80AACC28','80AACC29','80AACCDD','80AACCDE','80AACCDF','80AACCE0','80AACCE1','80AACCE2']
+          by156={e['tag_hash']:e for e in r156.entries}
+          out['0156_targets']=[entry_row(r156,by156[h]) if h in by156 else {'tag_hash':h,'missing':True} for h in wanted156]
+          out['0156_neighborhood_3110']=[entry_row(r156,e,include_bytes=e['file_size']<=256) for e in r156.entries[3108:3117]]
+          out['0156_neighborhood_3293']=[entry_row(r156,e,include_bytes=e['file_size']<=256) for e in r156.entries[3291:3302]]
+
+          r767=EntryReader(Path('recovered/ps4_arch_vex_com01_0767_4.pkg'),Path('runtime'))
+          by767={e['tag_hash']:e for e in r767.entries}
+          wanted767=['816CE1C5','816CE1C6','816CE1C7','816CE1C8','816CE1C9','816CE1CA','816CE246']
+          out['0767_known_good_chain']=[entry_row(r767,by767[h]) if h in by767 else {'tag_hash':h,'missing':True} for h in wanted767]
+
+          Path('reports/streamed_texture_diagnostic.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
           PY
-      - uses: actions/upload-artifact@v4
+
+      - name: Dump exact material Vector4 constants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_vector_container_probe.py recovered/ps4_globals_0157_1.pkg --runtime runtime \
+            --tag-hash 80AAE14C -o reports/variant0_PS_vectors.json
+          python tools/d1_vector_container_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
+            --tag-hash 816CE185 --tag-hash 816CE186 --tag-hash 816CE187 \
+            --tag-hash 816CE188 --tag-hash 816CE189 --tag-hash 816CE0A9 \
+            -o reports/variant1_PS_vectors.json
+          cat reports/variant0_PS_vectors.json
+          cat reports/variant1_PS_vectors.json
+
+      - name: Upload compact evidence
+        uses: actions/upload-artifact@v4
         with:
-          name: 09A-owner-backlinks
+          name: 09A-streaming-and-constants
           path: reports/
           retention-days: 1
+          if-no-files-found: error
