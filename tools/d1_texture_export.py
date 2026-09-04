@@ -5,10 +5,17 @@ Follows the observed Tiger texture chain
     32:1 header -> 65:1 streamed mip record -> 5:1 full-resolution backing
 and exports faithful linearized DDS plus PNG.
 
-Headers and backing entries do not have to reside in the same package.  Supply
-repeatable --dependency-pkg arguments for shared/global namespaces; TagHash is
-used as the cross-package key and duplicate hashes are rejected unless their
-entry metadata is identical enough for deterministic resolution.
+Headers and backing entries do not have to reside in the same package. Supply
+repeatable --dependency-pkg arguments only for genuinely different logical
+package namespaces; TagHash is used as the cross-package key and duplicate
+hashes are rejected unless their entry metadata is identical enough for
+deterministic resolution.
+
+Important: physical ``*_N.pkg`` siblings are patch/block owners of one logical
+package. EntryReader already resolves block patch_id through sibling files, so
+those siblings must never be passed as cross-package dependencies. This module
+rejects that misuse explicitly instead of allowing artificial duplicate
+TagHash collisions.
 """
 from __future__ import annotations
 import argparse, io, json, struct, sys
@@ -32,6 +39,23 @@ FORMAT_NAME={GCN_BC1:'BC1',GCN_BC2:'BC2',GCN_BC3:'BC3',GCN_BC4:'BC4',GCN_BC5:'BC
 
 def u16(b,o): return struct.unpack_from('<H',b,o)[0]
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+
+def logical_package_family_key(pkg:Path|str)->str:
+    """Return the logical package namespace, stripping only a numeric patch suffix."""
+    stem=Path(pkg).stem
+    base,sep,patch=stem.rpartition('_')
+    return base.lower() if sep and patch.isdigit() else stem.lower()
+
+def validate_dependency_namespaces(primary:EntryReader, dependencies:list[EntryReader])->None:
+    primary_family=logical_package_family_key(primary.pkg)
+    for dep in dependencies:
+        if logical_package_family_key(dep.pkg)==primary_family:
+            raise ValueError(
+                f'{dep.pkg} is a physical sibling of logical package {primary_family}; '
+                f'do not pass *_N siblings via --dependency-pkg. Use one logical snapshot '
+                f'(normally the highest patch) and keep its sibling files beside it so '
+                f'EntryReader can resolve block patch_id automatically.'
+            )
 
 def morton(t:int,sx:int=8,sy:int=8)->int:
     num1=num2=1; num3=t; num4=sx; num5=sy; num6=num7=0
@@ -153,6 +177,7 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
     deps=dependencies or []
     for d in deps:
         if d.h['platform']!='PS4': raise ValueError('dependency package is not PS4')
+    validate_dependency_namespaces(r,deps)
     readers=[r,*deps]
     outdir.mkdir(parents=True,exist_ok=True); global_by=build_global_index(readers)
     wanted={x.upper().removeprefix('0X') for x in tag_hashes or []}
@@ -204,7 +229,9 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
                      **h,'format_name':fmt_name,'backing_bytes':len(raw),'unswizzled':swizzled,
                      'dds':dds_name,'png':png_name,'face_dds':face_dds,'face_pngs':face_pngs,'png_error':png_error})
     missing=sorted(wanted-{x['header'].upper() for x in rows}) if wanted else []
-    rep={'package':str(r.pkg),'dependency_packages':[str(x.pkg) for x in deps],'platform':r.h['platform'],'texture_count':len(rows),'missing_requested':missing,'textures':rows}
+    rep={'package':str(r.pkg),'logical_package_family':logical_package_family_key(r.pkg),
+         'dependency_packages':[str(x.pkg) for x in deps],'platform':r.h['platform'],
+         'texture_count':len(rows),'missing_requested':missing,'textures':rows}
     (outdir/'texture_manifest.json').write_text(json.dumps(rep,indent=2)+'\n'); return rep
 
 def main():
@@ -213,5 +240,7 @@ def main():
     ap.add_argument('--tag-hash',action='append'); ap.add_argument('--out',type=Path,required=True); a=ap.parse_args()
     r=EntryReader(a.pkg,a.runtime); deps=[EntryReader(p,a.runtime) for p in a.dependency_pkg]
     rep=export_reader(r,a.out,tag_hashes=a.tag_hash,dependencies=deps)
-    print(json.dumps({'package':rep['package'],'dependencies':rep['dependency_packages'],'texture_count':rep['texture_count'],'missing_requested':rep['missing_requested'],'out':str(a.out)},indent=2))
+    print(json.dumps({'package':rep['package'],'logical_package_family':rep['logical_package_family'],
+                      'dependencies':rep['dependency_packages'],'texture_count':rep['texture_count'],
+                      'missing_requested':rep['missing_requested'],'out':str(a.out)},indent=2))
 if __name__=='__main__': main()
