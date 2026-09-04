@@ -1,0 +1,124 @@
+name: Temporary probe fuller 011c E4B weapon variant
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-e4b-deep.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install runtime dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy pillow texture2ddecoder
+          mkdir -p runtime recovered reports raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover 011c and 011e logical package families
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/extract.json --retries 6 --timeout 90
+
+      - name: Dump E4B cluster, exact backlinks and nearby entry table
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_resource_probe import parse_resource
+          from d1_entity_model_probe import parse_model
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          watch=['80A39DE8','80A39DF1','80A39DF2','80A39DF3','80A39E47','80A39E48','80A39E49','80A39E4A','80A39E4B']
+          backlinks={h:[] for h in watch}
+          errors=[]
+          for e in r.entries:
+              if e['type']!=16 or not r.available(e['index']):continue
+              try:b=r.entry(e['index'])
+              except Exception as ex:
+                  errors.append({'tag':e['tag_hash'].upper(),'index':e['index'],'error':repr(ex)});continue
+              for o in range(0,len(b)-3,4):
+                  h=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+                  if h in backlinks:backlinks[h].append({'source':e['tag_hash'].upper(),'index':e['index'],'reference':e['reference'].upper(),'offset':o,'size':e['file_size']})
+          near=[]
+          for i in range(7748,7767):
+              e=r.entries[i]
+              near.append({k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size','start_block','start_offset'] if k in e}|{'available':r.available(i)})
+          dumps={}
+          for h in watch:
+              e=by.get(h)
+              if not e or not r.available(e['index']):continue
+              try:
+                  b=r.entry(e['index']);Path(f'raw/{h}.bin').write_bytes(b)
+                  refs=[]
+                  for o in range(0,len(b)-3,4):
+                      x=f'{struct.unpack_from("<I",b,o)[0]:08X}'
+                      q=by.get(x)
+                      if q:refs.append({'offset':o,'tag':x,'index':q['index'],'reference':q['reference'].upper(),'type':q['type'],'subtype':q['subtype'],'size':q['file_size']})
+                  dumps[h]={'entry':{k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size']},'aligned_local_refs':refs,'hex_prefix':b[:256].hex()}
+                  if e['reference'].upper()=='80800861':dumps[h]['resource']=parse_resource(b,r.h['platform'])
+                  if e['reference'].upper()=='80801AB5':dumps[h]['model']=parse_model(b,r.h['platform'])
+              except Exception as ex:dumps[h]={'error':repr(ex)}
+          out={'nearby_entries':near,'backlinks':backlinks,'dumps':dumps,'scan_errors':errors}
+          Path('reports/e4b_cluster.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Probe candidate texture plate headers around E4B
+        run: |
+          set -uo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          for h in 80A39E4C 80A39E50 80A39E51 80A39E52; do
+            echo "=== plate candidate $h ==="
+            python tools/d1_texture_plate_probe.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime --header-tag "$h" -o "reports/plate_${h}.json" || true
+          done
+
+      - name: Decode E4B additional material from 011e
+        run: |
+          set -uo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime --tag-hash 80A3CED5 -o reports/material_80A3CED5.json || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('reports/material_80A3CED5.json')
+          if p.exists():
+              d=json.loads(p.read_text());print(json.dumps(d,indent=2))
+              Path('reports/material_texture_tags.txt').write_text('\n'.join(sorted({x['texture'] for m in d.get('materials',[]) for side in ['vs_textures','ps_textures'] for x in m.get(side,{}).get('items',[]) if x.get('texture') and x['texture']!='FFFFFFFF'}))+'\n')
+          else:Path('reports/material_texture_tags.txt').write_text('')
+          PY
+
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-011c-e4b-deep
+          path: |
+            reports/
+            raw/
+          retention-days: 3
+          if-no-files-found: warn
+          compression-level: 0
