@@ -4,6 +4,10 @@ on:
   push:
     paths:
       - '.github/workflows/build-09a-test-glb.yml'
+      - 'tools/d1_vex_09a_test_glb.py'
+      - 'tools/d1_dds_to_png.py'
+      - 'tools/d1_gltf_material_recipe.py'
+      - 'tools/d1_texture_export.py'
   workflow_dispatch:
 
 permissions:
@@ -70,13 +74,9 @@ jobs:
             --out exported
           cat exported/texture_manifest.json
           test -n "$(find exported -maxdepth 1 -name '*.dds' -print -quit)"
-          # Host Pillow DDS support varies. Decode our already-linearized DDS files
-          # explicitly so PNG generation is deterministic across runners.
           mapfile -t dds_files < <(find exported -maxdepth 1 -name '*.dds' -print | sort)
           python tools/d1_dds_to_png.py --overwrite "${dds_files[@]}"
           python tools/d1_gltf_material_recipe.py --texture-dir exported --out recipe
-          # Core glTF cannot bind these native sources faithfully, but the proof GLB
-          # embeds them in extras/provenance so future D1-native renderers retain them.
           cp exported/80AACC26_*_BC5.png recipe/
           cp exported/80AACC28_*_RGBA8_face*.png recipe/
           find exported recipe -maxdepth 1 -type f -print | sort
@@ -87,6 +87,20 @@ jobs:
           git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
           git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
           test "$(git -C tiger-animation-parser rev-parse HEAD)" = 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+      - name: Apply proven 09A auxiliary-part rule
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/d1_vex_09a_test_glb.py')
+          s=p.read_text()
+          old='''    primitives = []\n    for (off, count), parts in sorted(groups.items()):\n        variants = sorted({int(p["variant_shader_index"]) for p in parts})\n        if len(variants) != 1:\n            raise RuntimeError(f"range {off}+{count} has mixed variant shader indices {variants}")\n        tri = strip_to_triangles(source_indices[off:off + count])\n        primitives.append({\n            "index_offset": off,\n            "index_count": count,\n            "triangle_count": int(len(tri)),\n            "variant_shader_index": variants[0],\n            "material_tags": sorted({p["material"] for p in parts}),\n            "lod_values": sorted({int(p["lod"]) for p in parts}),\n            "triangles": tri,\n        })\n'''
+          new='''    primitives = []\n    for (off, count), parts in sorted(groups.items()):\n        visible = [p for p in parts if int(p["variant_shader_index"]) >= 0]\n        auxiliary = [p for p in parts if int(p["variant_shader_index"]) < 0]\n        if len(visible) != 1:\n            raise RuntimeError(f"range {off}+{count} expected one visible parent-selected part, got {[(p['material'],p['variant_shader_index']) for p in parts]}")\n        variant = int(visible[0]["variant_shader_index"])\n        if variant not in (0, 1):\n            raise RuntimeError(f"range {off}+{count} unexpected visible variant {variant}")\n        if any(int(p["variant_shader_index"]) != -1 for p in auxiliary):\n            raise RuntimeError(f"range {off}+{count} unexpected auxiliary selector")\n        tri = strip_to_triangles(source_indices[off:off + count])\n        primitives.append({\n            "index_offset": off,\n            "index_count": count,\n            "triangle_count": int(len(tri)),\n            "variant_shader_index": variant,\n            "material_tags": sorted({p["material"] for p in visible}),\n            "auxiliary_material_tags": sorted({p["material"] for p in auxiliary}),\n            "lod_values": sorted({int(p["lod"]) for p in parts}),\n            "triangles": tri,\n        })\n'''
+          if old not in s:
+              raise SystemExit('expected auxiliary-part patch site not found')
+          p.write_text(s.replace(old,new))
+          PY
 
       - name: Build textured rigged animated GLB
         run: |
@@ -123,6 +137,7 @@ jobs:
           r=json.loads(Path('reports/816CE09A_PROVEN_MATERIAL_TEST.json').read_text())
           assert r['geometry']['vertex_count']==4172
           assert r['geometry']['triangle_count']==5336
+          assert [p['variant_shader_index'] for p in r['geometry']['primitive_groups']] == [1,0]
           print(json.dumps({'bytes':len(b),'nodes':len(g.nodes),'animations':[x.name for x in g.animations],'materials':[x.name for x in g.materials]},indent=2))
           PY
 
@@ -145,6 +160,9 @@ jobs:
           Default parent-selected materials:
             VariantShaderIndex 0 -> 809C475F
             VariantShaderIndex 1 -> 816CE240
+
+          Duplicate VariantShaderIndex -1 parts are retained as provenance-only
+          auxiliary material records; they are not rendered as visible primitives.
 
           This GLB is a portable glTF approximation of byte-proven native D1 material
           behavior. Native hashes, equations and approximation policy are preserved in
