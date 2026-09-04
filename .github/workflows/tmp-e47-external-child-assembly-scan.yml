@@ -1,0 +1,104 @@
+name: Temporary external EntityChildren scan for E47 weapon component
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-e47-external-child-assembly-scan.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    strategy:
+      fail-fast: false
+      matrix:
+        source:
+          - gear
+          - investment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install scanner runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet pyyaml
+          mkdir -p runtime reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Scan ${{ matrix.source }} package matrix for child 80A39E47
+        env:
+          SOURCE: ${{ matrix.source }}
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures, json, os, shlex, subprocess
+          from pathlib import Path
+          import yaml
+
+          source=os.environ['SOURCE']
+          config={
+              'gear': Path('.github/workflows/tmp-gear-player-child-target-find.yml'),
+              'investment': Path('.github/workflows/tmp-investment-child-target-find.yml'),
+          }[source]
+          doc=yaml.safe_load(config.read_text())
+          rows=doc['jobs']['find']['strategy']['matrix']['include']
+          base=['python','tools/d1_remote_entity_child_find.py']
+          def scan(row):
+              family=str(row['family'])
+              out=Path('reports')/f'{source}_{family}.json'
+              cmd=base+[
+                  '--package-id',str(row['package_id']),
+                  '--find-child','80A39E47',
+                  '--base-url','https://crypt.cohae.dev/destiny/ps4/packages/latest',
+                  '--part-count','10','--runtime','runtime',
+              ]+shlex.split(str(row['members']))+['-o',str(out)]
+              print('SCAN',source,family,flush=True)
+              cp=subprocess.run(cmd,text=True,capture_output=True)
+              if cp.stdout: print(cp.stdout,flush=True)
+              if cp.stderr: print(cp.stderr,flush=True)
+              return {'source':source,'family':family,'returncode':cp.returncode,'report':str(out)}
+
+          results=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+              futs=[ex.submit(scan,row) for row in rows]
+              for f in concurrent.futures.as_completed(futs):
+                  results.append(f.result())
+          hits=[]
+          for r in results:
+              p=Path(r['report'])
+              if not p.exists(): continue
+              try:d=json.loads(p.read_text())
+              except Exception: continue
+              # Support current scanner report shapes without assuming one exact field name.
+              candidates=[]
+              for key in ('hits','matching_resources','matches','resources'):
+                  v=d.get(key)
+                  if isinstance(v,list): candidates.extend(v)
+              def contains_target(x):
+                  return '80A39E47' in json.dumps(x).upper()
+              matched=[x for x in candidates if contains_target(x)]
+              declared=d.get('hit_count')
+              if matched or (isinstance(declared,int) and declared>0):
+                  hits.append({'source':source,'family':r['family'],'hit_count':declared,'matched':matched,'full_report':d})
+          summary={'source':source,'target':'80A39E47','families_scanned':len(rows),'process_results':sorted(results,key=lambda x:x['family']),'hits':hits,'hit_family_count':len(hits)}
+          Path(f'reports/{source}_SUMMARY.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print('SUMMARY',json.dumps({'source':source,'families':len(rows),'hit_families':[x['family'] for x in hits]},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-e47-external-child-${{ matrix.source }}
+          path: reports/
+          retention-days: 3
+          if-no-files-found: warn
