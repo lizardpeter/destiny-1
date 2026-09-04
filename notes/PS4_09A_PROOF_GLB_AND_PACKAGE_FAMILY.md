@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 
-This note records the first reproducible textured + rigged + multi-animation GLB for the byte-proven D1 PS4 Vex model `816CE09A`, and a package-resolution behavior discovered while making the build reproducible.
+This note records the first reproducible textured + rigged + multi-animation GLB for the byte-proven D1 PS4 Vex model `816CE09A`, plus package-patch and material-constant behavior established while making the build reproducible.
 
 ## Reproducible proof GLB
 
@@ -94,13 +94,17 @@ Native equations and unresolved renderer state are preserved by `tools/d1_gltf_m
 
 `tools/d1_texture_export.py` now resolves cross-package second-hop backing hashes and emits cubemap faces independently.
 
-## Important package-format finding: physical patch members are one logical namespace
+The deterministic DDS decoder was pixel-compared with the older Pillow DDS path for BC5. The decoded RGBA pixels are bit-identical (`maxdiff = 0`); differing PNG SHA-256 values are only different PNG byte encoding/compression. All six cubemap PNGs are byte-identical to the earlier export.
+
+## Package patch behavior: entry-table snapshots plus patch-resident blocks
 
 A reproducibility failure exposed a Tiger behavior that should become first-class in our parser API.
 
-Opening only the highest physical patch member (for example `ps4_globals_0156_5.pkg`) exposes the logical entry metadata but can leave referenced data blocks unavailable. The corresponding lower patch siblings must be present beside it so `EntryReader` can resolve the logical package's block residency.
+`EntryReader` currently parses the entry/block tables from the physical member that is opened. Each block record then contains a `patch_id`, and `patch_path()` maps that directly to the sibling `..._<patch_id>.pkg` file. Therefore an entry-table snapshot can reference payload blocks physically resident in lower patch members.
 
-For this fixture the successful build requires the complete relevant families:
+Opening a later member without its lower siblings can expose correct entry metadata while making payloads unavailable. The complete required family must be present for deterministic extraction.
+
+For this fixture the successful build requires:
 
 ### 0156
 
@@ -122,9 +126,86 @@ For this fixture the successful build requires the complete relevant families:
 - `ps4_arch_vex_com01_0767_1.pkg`
 - `ps4_arch_vex_com01_0767_4.pkg`
 
-This means our public abstraction should eventually be something like `LogicalPackageFamily`, with one merged entry namespace and deterministic block lookup across `_0`, `_1`, `_2`, ... patch members. Individual physical `.pkg` files are storage members, not necessarily self-contained semantic packages.
+A dedicated non-speculative census tool now exists:
 
-The same issue explains why a compact `d1_vector_container_probe.py` run against individual `_1` / `_4` files returned zero `80801AA5` containers even though materials reference `80AAE14C`, `816CE185`, etc. Vector-constant probing should be redone through the logical family view rather than treating one physical member as the whole namespace.
+- `tools/d1_package_family_probe.py`
+- first family/vector census run: `33873725331`
+
+Retail census results:
+
+### 0157
+
+- `_0`: 2,117 entries / 1,623 blocks
+- `_1`: 8,192 entries / 1,749 blocks
+- union TagHashes: 8,192
+- all 2,117 `_0` TagHashes occur in `_1`
+- 904 duplicate entries have identical metadata
+- 1,213 duplicate entries have changed metadata
+
+### 0767
+
+- `_0`: 424 entries / 239 blocks
+- `_1`: 594 entries / 232 blocks
+- `_4`: 594 entries / 233 blocks
+- union TagHashes: 594
+- `_1` vs `_4`: 593/594 entries have identical metadata
+- sole `_1` -> `_4` metadata override: `816CE033`
+  - `_1`: class `80800576`, 93 bytes, starting block 1 + 108544
+  - `_4`: class `80800576`, 120 bytes, starting block 232 + 0
+
+This strongly supports treating later physical members as successive entry-table snapshots/overrides while block `patch_id` selects physical storage. We should still encode the final authoritative-entry precedence rule only after validating header `patch_id`/suffix consistency across a broader corpus.
+
+## IMPORTANT correction: PS4 Vector4 containers are not Xbox `80801AA5`
+
+An earlier compact diagnostic returned zero `80801AA5` resources and was initially misattributed to physical-member namespace visibility. That interpretation was wrong.
+
+Current retail evidence proves two platform representations:
+
+- **PS4 ROI:** material Vector4 FileHash -> FileEntry `type=32, subtype=7`, 16-byte GPU header -> `FileEntry.Reference` raw vec4 payload. Header `+0x08` is vec4 unit count; referenced payload size is `count * 16`.
+- **Xbox One ROI:** structured `80801AA5` resource with 0x30-byte header + raw vec4 payload.
+
+The target PS4 hashes are present and decodable in the later entry-table snapshots.
+
+### Main material `80AAE14C`
+
+`80AAE14C` is `32:7 -> 80AAE14E`, vector count 19. It is byte-identical in `0157_0` and `0157_1`.
+
+Exact float4 constants:
+
+0. `[2.5, -1.25, -1.25, -1.25]`
+1. `[0, -1, 1, 1]`
+2. `[1, 0, 0, 0]`
+3. `[20, 0.4, 0, 0]`
+4. `[2, -1, -1, -1]`
+5. `[0, 0, 0, 0]`
+6. `[0, 0, 0, 0]`
+7. `[0, 0, 0, 0]`
+8. `[3, 1, 1, 1]`
+9. `[0, 1, 1, 1]`
+10. `[-1.3, 2.3, 1, 1]`
+11. `[0, 2.5, 0, 0]`
+12. `[1, 0.4200000167, 0, 1]`
+13. `[2, 0, 0, 0]`
+14. `[0.75, 0.75, 1.5, 1.5]`
+15. `[0, 0, 0, 0]`
+16. `[0, 0, 0, 0]`
+17. `[0, 0.4715686738, 120, 121]`
+18. `[0, 0.4754902422, 121, 122]`
+
+Several already-recovered shader equations are directly visible in these constants, including detail UV `[20, 0.4]`, `reflection_q = saturate(2.3*S - 1.3)`, and the `2.5` reflection multiplier. Constants 17/18 remain preserved but not semantically named yet.
+
+### Circuitry family constants
+
+All six variant containers have 8 vec4s. Vectors 0/1 are zero, vec2 is `[0.4,0,0,0]`, vec3 is the luma vector `[0.3,0.59,0.11,0]`, vec6 is `[1,1,1,1]`. Vec4/vec5 form the palette `base + delta*L`; vec7 is the local intensity scalar.
+
+- `816CE0A9`: base `[0.0115131522,0.0258343946,0.0280808620]`, delta `[0.3984868526,0.8941656351,0.9719191194]`, bright endpoint ~= `[0.41,0.92,1.0]`, intensity `5`
+- `816CE185` (default `816CE240`): base `[0.0151604200,0.0208455771,0.0379010513]`, delta `[0.3848395944,0.5291544199,0.9620989561]`, bright endpoint ~= `[0.40,0.55,1.0]`, intensity `5`
+- `816CE186`: base `[0.0299771838,0.0355443731,0.0428245477]`, delta `[0.6700227857,0.7944555879,0.9571754336]`, bright endpoint ~= `[0.70,0.83,1.0]`, intensity `5`
+- `816CE187`: base `[0.0204112902,0.0187103488,0.0566980168]`, delta `[0.3395887315,0.3112896681,0.9433019757]`, bright endpoint ~= `[0.36,0.33,1.0]`, intensity `5`
+- `816CE188`: base `[0.0233529322,0.0066123544,0.0021214203]`, delta `[0.9766470790,0.0442637354,0.0119630974]`, bright endpoint ~= `[1.0,0.050876,0.014085]`, intensity **`40`**
+- `816CE189`: base `[0.0628910884,0.0018867309,0.0031445611]`, delta `[0.9371089339,0.0281132683,0.0468554385]`, bright endpoint ~= `[1.0,0.03,0.05]`, intensity `5`
+
+Thus the six variant materials are now proven to share the same shader/texture structure while changing principally the palette and, for `816CE188`, a dramatically larger local intensity.
 
 ## Export-harness compatibility fixes discovered
 
@@ -138,12 +219,11 @@ These compatibility fixes should be promoted from workflow-time adaptations into
 
 The interchange/export milestone is now achieved. The remaining goal is the native renderer/format reconstruction:
 
-1. Implement a first-class logical package-family reader and migrate probes/exporters to it.
-2. Re-probe `80AAE14C`, `816CE185/186/187/188/189/0A9` through the merged namespace and preserve exact float4 constants.
-3. Finish PS4 GCN shader input/resource semantics for `80AAE14B` and `816CE0A8`.
-4. Decode exact render-state / MRT / blend behavior, especially the circuitry pass and unresolved global intensity multipliers.
-5. Use the Xbox One D1 DXBC counterpart as a semantic oracle for texture-register and constant-buffer usage, then map those semantics back to PS4 GCN.
-6. Implement Destiny-native material + shader + sampler behavior directly in the target game renderer instead of relying on glTF PBR.
-7. Generalize the proven model/skeleton/rig/animation/material pipeline from this fixture to arbitrary D1 assets and maps.
+1. Validate entry-table patch precedence and header `patch_id`/filename-suffix consistency across a broader corpus; then formalize a `LogicalPackageReader` that opens the authoritative snapshot while resolving patch-resident blocks.
+2. Finish PS4 GCN shader input/resource semantics for `80AAE14B` and `816CE0A8`.
+3. Decode exact render-state / MRT / blend behavior, especially the circuitry pass and unresolved global intensity multipliers.
+4. Use the Xbox One D1 DXBC counterpart as a semantic oracle for texture-register and constant-buffer usage, then map those semantics back to PS4 GCN.
+5. Implement Destiny-native material + shader + sampler behavior directly in the target game renderer instead of relying on glTF PBR.
+6. Generalize the proven model/skeleton/rig/animation/material pipeline from this fixture to arbitrary D1 assets and maps.
 
 The GLB is therefore a validation target, not the endpoint of the reverse engineering.
