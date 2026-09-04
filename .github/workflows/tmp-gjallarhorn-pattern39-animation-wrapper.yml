@@ -1,0 +1,111 @@
+name: Temporary decode Gjallarhorn pattern 39 animation wrapper
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-pattern39-animation-wrapper.yml'
+      - 'tools/d1_animation_bundle_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and complete 0151 logical package
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest reports/0151_extract.json --retries 6 --timeout 90
+      - name: Classify directly-linked wrapper 80AA2DDB
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_animation_bundle_probe.py recovered/ps4_globals_0151_6.pkg --runtime runtime \
+            --wrapper-tag 80AA2DDB --backward 48 --forward 96 \
+            -o reports/80AA2DDB_bundle.json
+      - name: Decode wrapper control and clip neighborhood
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          targets=['80AA2D6D','80AA3C97','80AAECD5','80AAECD6','80AA2DCD','80AA2DDB']
+          targetints={int(x,16):x for x in targets}
+          wrapper_class='8080222A'; control_class='80802C0E'; clip_class='808005A1'; havok=b'hk_2012.2.0-r1'
+          def brief(e): return {k:(e[k].upper() if isinstance(e[k],str) else e[k]) for k in ('index','tag_hash','reference','type','subtype','file_size')}
+          def dwords(payload):
+              out=[]
+              for off in range(0,len(payload)-(len(payload)%4),4):
+                  v=struct.unpack_from('<I',payload,off)[0]
+                  if v in targetints: out.append({'offset':off,'target':targetints[v]})
+              return out
+          # Exact linked objects.
+          exact={}
+          for tag in ['80AA2DCD','80AA2DDB']:
+              e=by[tag]; b=r.entry(e['index']); Path('reports/raw',f'{tag}.bin').write_bytes(b)
+              resolved=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                  v=struct.unpack_from('<I',b,off)[0]
+                  h=f'{v:08X}'; x=by.get(h)
+                  if x: resolved.append({'offset':off,'tag_hash':h,'entry':brief(x)})
+              exact[tag]={'entry':brief(e),'sha256':hashlib.sha256(b).hexdigest(),'payload_hex':b.hex(),'target_dword_matches':dwords(b),'resolved_entry_dwords':resolved}
+          # Full wrapper/control scan for backlinks to Gjallarhorn-specific resources.
+          scan=[]
+          for e in r.entries:
+              if e['reference'].upper() not in {wrapper_class,control_class}: continue
+              try: b=r.entry(e['index'])
+              except Exception as ex:
+                  scan.append({'entry':brief(e),'error':repr(ex)}); continue
+              matches=dwords(b)
+              if matches:
+                  scan.append({'entry':brief(e),'sha256':hashlib.sha256(b).hexdigest(),'matches':matches})
+          # Wide neighborhood around the proven wrapper.
+          wi=by['80AA2DDB']['index']; lo=max(0,wi-96); hi=min(len(r.entries),wi+193)
+          neighborhood=[]; clips=[]; wrappers=[]; controls=[]
+          for i in range(lo,hi):
+              e=r.entries[i]; q={**brief(e),'relative_index':i-wi,'available':r.available(i)}
+              ref=e['reference'].upper()
+              if ref==clip_class: clips.append(q)
+              if ref==wrapper_class: wrappers.append(q)
+              if ref==control_class: controls.append(q)
+              if q['available'] and (ref in {clip_class,wrapper_class,control_class} or abs(i-wi)<=24):
+                  try:
+                      b=r.entry(i); q['sha256']=hashlib.sha256(b).hexdigest(); q['havok_marker_offset']=b.find(havok) if havok in b else None
+                      if ref==clip_class: Path('reports/raw',f"{e['tag_hash'].upper()}_clip.bin").write_bytes(b)
+                  except Exception as ex: q['read_error']=repr(ex)
+              neighborhood.append(q)
+          out={'proven_link_path':['80A6A017','80AAECD6','80AA2DDB'],'runtime_rig':'80AA2D6D','skeleton':'80AA3C97','exact':exact,'wrapper_control_backlinks':scan,'wrapper_index':wi,'neighborhood':neighborhood,'clips_in_window':clips,'wrappers_in_window':wrappers,'controls_in_window':controls}
+          Path('reports/gjallarhorn_pattern39_animation_wrapper.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('GJ_WRAPPER_INDEX',wi)
+          print('GJ_EXACT_DWORDS',json.dumps(exact,separators=(',',':')))
+          print('GJ_WRAPPER_CONTROL_BACKLINKS',json.dumps(scan,separators=(',',':')))
+          print('GJ_CLIPS_IN_WINDOW',json.dumps(clips,separators=(',',':')))
+          print('GJ_WRAPPERS_IN_WINDOW',json.dumps(wrappers,separators=(',',':')))
+          print('GJ_CONTROLS_IN_WINDOW',json.dumps(controls,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-pattern39-animation-wrapper
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
