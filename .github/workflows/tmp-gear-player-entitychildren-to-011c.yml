@@ -1,0 +1,58 @@
+name: Temporary scan gear-player EntityChildren into 011c
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gear-player-entitychildren-to-011c.yml'
+      - 'tools/d1_remote_entity_child_package_find.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        include:
+          - {family: '00fc', package_id: '0x00FC', members: '--member ps4_gear_player_00fc_0.pkg:0x3F8DB4800:29204480 --member ps4_gear_player_00fc_1.pkg:0x3FA98EA00:4681728 --member ps4_gear_player_00fc_2.pkg:0x3FAE05C00:1040384 --member ps4_gear_player_00fc_5.pkg:0x3FAF03E00:280576'}
+          - {family: '00fe', package_id: '0x00FE', members: '--member ps4_gear_player_00fe_0.pkg:0x3FAF48800:27312128 --member ps4_gear_player_00fe_1.pkg:0x3FC954A00:4452352 --member ps4_gear_player_00fe_2.pkg:0x3FCD93C00:978944 --member ps4_gear_player_00fe_5.pkg:0x3FCE82E00:331776'}
+          - {family: '00ff', package_id: '0x00FF', members: '--member ps4_gear_player_00ff_0.pkg:0x3FCED4000:24981504 --member ps4_gear_player_00ff_1.pkg:0x3FE6A7200:4032512 --member ps4_gear_player_00ff_2.pkg:0x3FEA7FC00:946176 --member ps4_gear_player_00ff_5.pkg:0x3FEB66E00:348160'}
+          - {family: '0100', package_id: '0x0100', members: '--member ps4_gear_player_0100_0.pkg:0x3FEBBC000:30646272 --member ps4_gear_player_0100_1.pkg:0x4008F6200:3969024 --member ps4_gear_player_0100_2.pkg:0x400CBF400:389120 --member ps4_gear_player_0100_5.pkg:0x400D1E600:219136'}
+          - {family: '0101', package_id: '0x0101', members: '--member ps4_gear_player_0101_0.pkg:0x400D54000:25647104 --member ps4_gear_player_0101_1.pkg:0x4025C9A00:40380416 --member ps4_gear_player_0101_2.pkg:0x404C4C400:1634304 --member ps4_gear_player_0101_5.pkg:0x404DDB600:3553280'}
+          - {family: '0102', package_id: '0x0102', members: '--member ps4_gear_player_0102_0.pkg:0x40513F000:28991488 --member ps4_gear_player_0102_1.pkg:0x406CE5200:1409024 --member ps4_gear_player_0102_2.pkg:0x406E3D400:145408 --member ps4_gear_player_0102_5.pkg:0x406E60E00:321536'}
+          - {family: '0103', package_id: '0x0103', members: '--member ps4_gear_player_0103_0.pkg:0x406EAF800:26697728 --member ps4_gear_player_0103_1.pkg:0x408825A00:1630208 --member ps4_gear_player_0103_2.pkg:0x4089B3C00:323584 --member ps4_gear_player_0103_5.pkg:0x408A02E00:225280'}
+          - {family: '0104', package_id: '0x0104', members: '--member ps4_gear_player_0104_0.pkg:0x408A3A000:56281088 --member ps4_gear_player_0104_1.pkg:0x40BFE6A00:823296 --member ps4_gear_player_0104_2.pkg:0x40C0AFC00:237568 --member ps4_gear_player_0104_3.pkg:0x40C0E9E00:593920 --member ps4_gear_player_0104_4.pkg:0x40C17B000:598016 --member ps4_gear_player_0104_5.pkg:0x40C20D200:182272'}
+          - {family: '0105', package_id: '0x0105', members: '--member ps4_gear_player_0105_0.pkg:0x40C239C00:597002240 --member ps4_gear_player_0105_1.pkg:0x42FB92600:7645184 --member ps4_gear_player_0105_2.pkg:0x4302DD000:1808384 --member ps4_gear_player_0105_5.pkg:0x430496A00:5777408'}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Scan EntityChildren for package 011c children
+        env: {MEMBER_ARGS: '${{ matrix.members }}'}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          eval python tools/d1_remote_entity_child_package_find.py \
+            --package-id '${{ matrix.package_id }}' --target-package-id 0x011c \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            $MEMBER_ARGS -o reports/gear_entitychildren_${{ matrix.family }}_to_011c.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-gear-entitychildren-to-011c-${{ matrix.family }}
+          path: reports/
+          retention-days: 5
+          if-no-files-found: warn
