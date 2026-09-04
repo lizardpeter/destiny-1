@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Apply the six proven Gjallarhorn arrangement-1229 texture plates to a proof GLB.
 
-This is deliberately an interchange/presentation layer.  It preserves the exact
+This is deliberately an interchange/presentation layer. It preserves the exact
 retail six-model geometry and each primitive's native material-hash provenance,
 while duplicating portable glTF materials per owning model so that each model can
 sample its own byte-proven EntityResource texture plate.
 
-Albedo and normal plates are connected to core glTF PBR.  GStack is embedded as
+Albedo and normal plates are connected to core glTF PBR. GStack is embedded as
 an image and referenced in material extras, but is not interpreted as metallic /
 roughness because the complete D1 deferred GStack semantics are not yet closed.
 Likewise, gear dye indices remain source provenance; this tool does not invent
 Gjallarhorn's final dye colors.
+
+The input plate report may be either the original ownership report with a
+``models`` array or the production compositor report with an 18-row ``plates``
+array. Both representations are normalized to the same six model/header/role
+mapping before any GLB mutation occurs.
 """
 from __future__ import annotations
 
@@ -42,6 +47,51 @@ def data_uri(path: Path) -> str:
     return 'data:image/png;base64,' + base64.b64encode(path.read_bytes()).decode('ascii')
 
 
+def normalize_plate_rows(report: dict) -> dict[str, dict]:
+    """Return model -> {plate_tags:{role:tag}} from either supported report schema."""
+    if 'models' in report:
+        rows = {r['model_tag']: r for r in report['models']}
+        if set(rows) != set(MODEL_PLATES):
+            raise RuntimeError(f'plate report models differ: {sorted(rows)}')
+        for model, row in rows.items():
+            if row.get('header_tag') and row['header_tag'] != MODEL_PLATES[model]:
+                raise RuntimeError(f'{model}: expected header {MODEL_PLATES[model]}, got {row["header_tag"]}')
+            if set(row.get('plate_tags', {})) != {'albedo', 'normal', 'gstack'}:
+                raise RuntimeError(f'{model}: incomplete plate_tags {row.get("plate_tags")}')
+        return rows
+
+    if 'plates' not in report:
+        raise RuntimeError('plate report has neither models nor plates schema')
+
+    by_header: dict[str, dict[str, str]] = {}
+    for p in report['plates']:
+        header = p['header_tag'].upper()
+        role = p['role'].lower()
+        tag = p['plate_tag'].upper()
+        if role not in {'albedo', 'normal', 'gstack'}:
+            raise RuntimeError(f'unexpected plate role {role!r}')
+        roles = by_header.setdefault(header, {})
+        if role in roles and roles[role] != tag:
+            raise RuntimeError(f'{header}: duplicate conflicting {role} plate')
+        roles[role] = tag
+
+    expected_headers = set(MODEL_PLATES.values())
+    if set(by_header) != expected_headers:
+        raise RuntimeError(f'composed report headers differ: {sorted(by_header)}')
+    for header, roles in by_header.items():
+        if set(roles) != {'albedo', 'normal', 'gstack'}:
+            raise RuntimeError(f'{header}: incomplete composed roles {roles}')
+
+    return {
+        model: {
+            'model_tag': model,
+            'header_tag': header,
+            'plate_tags': dict(by_header[header]),
+        }
+        for model, header in MODEL_PLATES.items()
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('input_glb', type=Path)
@@ -53,9 +103,7 @@ def main() -> int:
 
     gltf = GLTF2().load_binary(str(a.input_glb))
     plate_report = json.loads(a.plate_report.read_text())
-    rows = {r['model_tag']: r for r in plate_report['models']}
-    if set(rows) != set(MODEL_PLATES):
-        raise RuntimeError(f'plate report models differ: {sorted(rows)}')
+    rows = normalize_plate_rows(plate_report)
 
     # Identify each glTF mesh's owning model from the byte-proven geometry export.
     mesh_owner: dict[int, str] = {}
