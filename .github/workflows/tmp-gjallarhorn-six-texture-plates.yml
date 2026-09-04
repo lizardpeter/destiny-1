@@ -29,7 +29,9 @@ jobs:
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
             --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
             --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
-            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011c_011e_extract.json --retries 6 --timeout 90
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
             --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
             --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
@@ -58,6 +60,7 @@ jobs:
             m=re.search(r'_(\d+)\.pkg$',p.name);return int(m.group(1)) if m else -1
           paths={
             0x011C:sorted(Path('recovered').glob('ps4_gear_weapons_011c_*.pkg'),key=patchnum,reverse=True),
+            0x011E:sorted(Path('recovered').glob('ps4_gear_weapons_011e_*.pkg'),key=patchnum,reverse=True),
             0x013F:sorted(Path('recovered').glob('ps4_investment_assets_013f_*.pkg'),key=patchnum,reverse=True),
           }
           cache={}
