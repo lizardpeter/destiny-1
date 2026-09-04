@@ -40,12 +40,9 @@ jobs:
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_entry_extract.py recovered/ps4_globals_0154_5.pkg --runtime runtime --tag-hash 80AA9D4D -o reports/80AA9D4D_entry.json
           cat reports/80AA9D4D_entry.json
+          # _0.._5 are physical siblings of one logical package.  The final
+          # snapshot's block patch_id resolves bytes through sibling paths.
           python tools/d1_texture_export.py recovered/ps4_globals_0154_5.pkg --runtime runtime \
-            --dependency-pkg recovered/ps4_globals_0154_0.pkg \
-            --dependency-pkg recovered/ps4_globals_0154_1.pkg \
-            --dependency-pkg recovered/ps4_globals_0154_2.pkg \
-            --dependency-pkg recovered/ps4_globals_0154_3.pkg \
-            --dependency-pkg recovered/ps4_globals_0154_4.pkg \
             --tag-hash 80AA9D4D --out textures/80AA9D4D
           cat textures/80AA9D4D/texture_manifest.json
       - uses: actions/upload-artifact@v4
