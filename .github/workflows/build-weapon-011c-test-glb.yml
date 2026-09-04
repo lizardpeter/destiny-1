@@ -28,21 +28,17 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies
+      - name: Install dependencies and verified runtime
         run: |
           set -euo pipefail
           python -m pip install --quiet numpy scipy pygltflib pyglm pillow jsonpickle texture2ddecoder
-
-      - name: Recover verified runtime
-        run: |
-          set -euo pipefail
           mkdir -p runtime recovered reports textures/source textures/plates textures/0154 textures/0158 out
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Recover final 011C and 011E logical families
+      - name: Recover exact retail package families
         run: |
           set -euo pipefail
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
@@ -52,11 +48,6 @@ jobs:
             --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
             --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
             --out recovered --manifest reports/011c_011e_extract.json --retries 6 --timeout 90
-
-      - name: Recover exact global texture and shader families
-        run: |
-          set -euo pipefail
-          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x44EE5D200 \
             --target ps4_globals_0154_0.pkg --target ps4_globals_0154_1.pkg --target ps4_globals_0154_2.pkg \
             --target ps4_globals_0154_3.pkg --target ps4_globals_0154_4.pkg --target ps4_globals_0154_5.pkg \
@@ -67,7 +58,7 @@ jobs:
             --target ps4_globals_0158_4.pkg --target ps4_globals_0158_5.pkg --target ps4_globals_0158_6.pkg \
             --out recovered --manifest reports/0157_0158_extract.json --retries 6 --timeout 90
 
-      - name: Decode final materials and exact small shader evidence
+      - name: Decode and pin final material/shader evidence
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -84,65 +75,63 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          main=json.loads(Path('reports/material_80A382A6.json').read_text())
-          small=json.loads(Path('reports/material_80A3D294.json').read_text())
+          def one(path, tag):
+              rep=json.loads(Path(path).read_text())
+              rows=[x for x in rep['materials'] if x.get('tag_hash')==tag]
+              assert len(rows)==1, (path, tag, len(rows))
+              return rows[0]
+          main=one('reports/material_80A382A6.json','80A382A6')
+          small=one('reports/material_80A3D294.json','80A3D294')
           shader=json.loads(Path('reports/shader_80AA9D63.json').read_text())['shaders'][0]
           vector=json.loads(Path('reports/vector_80AAE1E1.json').read_text())['rows'][0]
           sampler=json.loads(Path('reports/sampler_80AAE1D5.json').read_text())['samplers'][0]
-          assert main['tag_hash']=='80A382A6'
           assert main['vertex_shader']=='80A3D28E' and main['pixel_shader']=='80A3D145'
-          assert '80AB0B74' in json.dumps(main).upper() and '80A3D4D6' in json.dumps(main).upper()
-          assert small['tag_hash']=='80A3D294'
-          assert small['pixel_shader']=='80AA9D63' and small['pixel_vector4']=='80AAE1E1'
-          small_blob=json.dumps(small).upper()
-          assert '80AAE1D5' in small_blob and '80AA9D4D' in small_blob
+          assert {x['texture'] for x in main['ps_textures']['items']} >= {'80AB0B74','80A3D4D6'}
+          assert small['pixel_shader']=='80AA9D63'
+          assert small['ps_vector4_container']=='80AAE1E1'
+          assert {x['texture'] for x in small['ps_textures']['items']} == {'80AA9D4D'}
           assert shader['code_sha256']=='c846c4182497fb5f7e98226964f91045e2c8fab244141c380845800968fdbf51'
           assert vector['vectors'][1]['float4']==[-4.0,1.0,1.0,1.0]
           dec=sampler['decoded']
           assert dec['wrap_x']['gnm_name']=='Wrap' and dec['wrap_y']['gnm_name']=='Wrap'
           assert dec['mag_filter']['gnm_name']=='AnisoBilinear' and dec['min_filter']['gnm_name']=='AnisoBilinear'
           assert dec['mip_filter']['gnm_name']=='Linear'
-          print('final material and small-shader evidence pinned')
+          print('final material + 80AA9D63 alpha-test evidence pinned')
           PY
 
-      - name: Export final-snapshot textures without sibling dependency aliases
+      - name: Export exact final textures and compose entity plates
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_texture_plate_probe.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
             --header-tag 80A39E17 -o reports/texture_plate_80A39E17.json
           python tools/d1_texture_export.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
-            --tag-hash 80A3D844 --tag-hash 80A3D845 --tag-hash 80A3D846 --tag-hash 80A3D4D6 \
-            --out textures/source
+            --tag-hash 80A3D844 --tag-hash 80A3D845 --tag-hash 80A3D846 --tag-hash 80A3D4D6 --out textures/source
           python tools/d1_texture_export.py recovered/ps4_globals_0158_6.pkg --runtime runtime \
             --tag-hash 80AB0B74 --out textures/0158
           python tools/d1_texture_export.py recovered/ps4_globals_0154_5.pkg --runtime runtime \
             --tag-hash 80AA9D4D --out textures/0154
           cp textures/0158/80AB0B74_*.png textures/source/
           cp textures/0154/80AA9D4D_*.png textures/source/
-          python tools/d1_texture_plate_compose.py \
-            --plate-report reports/texture_plate_80A39E17.json \
+          python tools/d1_texture_plate_compose.py --plate-report reports/texture_plate_80A39E17.json \
             --texture-dir textures/source --out textures/plates
           python - <<'PY'
           import json
           from pathlib import Path
           for p in ['textures/source/texture_manifest.json','textures/0158/texture_manifest.json','textures/0154/texture_manifest.json']:
-              r=json.loads(Path(p).read_text())
-              assert not r['missing_requested'], (p,r['missing_requested'])
+              r=json.loads(Path(p).read_text()); assert not r['missing_requested'], (p,r['missing_requested'])
           assert len(list(Path('textures/source').glob('80AB0B74_*_face*.png')))==6
-          assert len(list(Path('textures/source').glob('80AA9D4D_1024x1024_BC3.png')))==1
+          assert Path('textures/source/80AA9D4D_1024x1024_BC3.png').is_file()
           PY
 
-      - name: Prove sibling dependency guard on the weapon fixture
+      - name: Prove physical siblings are not dependency namespaces
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           if python tools/d1_texture_export.py recovered/ps4_globals_0154_5.pkg --runtime runtime \
-              --dependency-pkg recovered/ps4_globals_0154_4.pkg --tag-hash 80AA9D4D --out /tmp/should-not-export; then
-            echo 'same-family sibling dependency was incorrectly accepted' >&2
-            exit 1
+              --dependency-pkg recovered/ps4_globals_0154_4.pkg --tag-hash 80AA9D4D --out /tmp/invalid-sibling-export; then
+            echo 'same logical-package sibling was incorrectly accepted' >&2; exit 1
           fi
-          echo 'same-family sibling dependency correctly rejected'
 
       - name: Recover pinned animation validation oracle
         run: |
@@ -151,121 +140,83 @@ jobs:
           git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
           test "$(git -C tiger-animation-parser rev-parse HEAD)" = 'b9fdc3a43dd28118113275624fcc9054b75855f4'
 
-      - name: Build corrected rigid textured 12-animation weapon GLB
+      - name: Build corrected final rigid 12-animation GLB
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_weapon_011c_final_glb.py tools/d1_texture_export.py
           python tools/d1_weapon_011c_final_glb.py recovered/ps4_gear_weapons_011c_5.pkg \
-            --runtime runtime \
-            --parser-root tiger-animation-parser \
-            --texture-root textures \
+            --runtime runtime --parser-root tiger-animation-parser --texture-root textures \
             --material-report reports/material_80A382A6.json \
             --small-material-report reports/material_80A3D294.json \
             --plate-report reports/texture_plate_80A39E17.json \
             --out out/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.glb \
             --report reports/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.json
           sha256sum out/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.glb | tee reports/weapon_glb_sha256.txt
-          cat reports/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.json
 
-      - name: Validate final GLB structure, binding and alpha-test material
+      - name: Validate final GLB
         run: |
           set -euo pipefail
           python - <<'PY'
           import json,struct
           from pathlib import Path
           from pygltflib import GLTF2
-          p=Path('out/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.glb')
-          b=p.read_bytes()
-          assert b[:4]==b'glTF'
-          assert struct.unpack_from('<I',b,4)[0]==2
-          assert struct.unpack_from('<I',b,8)[0]==len(b)
+          p=Path('out/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.glb'); b=p.read_bytes()
+          assert b[:4]==b'glTF' and struct.unpack_from('<I',b,4)[0]==2 and struct.unpack_from('<I',b,8)[0]==len(b)
           g=GLTF2().load_binary(str(p))
-          assert len(g.meshes)==2
+          assert len(g.meshes)==2 and len(g.skins)==1 and len(g.materials)==2
           assert len(g.animations)==12
           assert [x.name for x in g.animations]==[f'80A39{x:03X}' for x in range(0xDF6,0xE02)]
-          assert len(g.materials)==2
-          assert len(g.images)==11
-          assert len(g.textures)==3
-          assert len(g.samplers)==2
-          assert len(g.skins)==1
-          mats={m.extras.get('d1Material'):m for m in g.materials}
-          assert set(mats)=={'80A382A6','80A3D294'}
-          assert mats['80A382A6'].alphaMode=='OPAQUE'
-          small=mats['80A3D294']
-          assert small.alphaMode=='MASK' and abs(float(small.alphaCutoff)-0.5)<1e-8
-          ti=small.pbrMetallicRoughness.baseColorTexture.index
-          tex=g.textures[ti]
+          assert len(g.images)==11 and len(g.textures)==3 and len(g.samplers)==2
+          mats={m.extras.get('d1Material'):m for m in g.materials}; assert set(mats)=={'80A382A6','80A3D294'}
+          assert mats['80A382A6'].extras['d1VertexShader']=='80A3D28E'
+          assert mats['80A382A6'].extras['d1PixelShader']=='80A3D145'
+          small=mats['80A3D294']; assert small.alphaMode=='MASK' and abs(float(small.alphaCutoff)-0.5)<1e-8
+          tex=g.textures[small.pbrMetallicRoughness.baseColorTexture.index]
           assert g.images[tex.source].name.startswith('80AA9D4D_')
           assert g.samplers[tex.sampler].wrapS==10497 and g.samplers[tex.sampler].wrapT==10497
           sem=small.extras['provenPixelShaderSemantics']
           assert sem['shader']=='80AA9D63' and sem['constantDword5']==1.0 and sem['effectiveAlphaCutoff']==0.5
-          # skeleton order is byte-proven; weapon Pedestal is joint/node 72.
-          children=g.nodes[72].children or []
-          assert len(children)==2
+          children=g.nodes[72].children or []; assert len(children)==2
           assert all(g.nodes[i].mesh is not None and g.nodes[i].skin is None for i in children)
           r=json.loads(Path('reports/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.json').read_text())
-          assert r['geometry']['triangle_count_lod1']==2620
-          assert r['weapon_pedestal_node_index']==72
-          print(json.dumps({
-            'bytes':len(b),
-            'nodes':len(g.nodes),
-            'animations':[x.name for x in g.animations],
-            'materials':list(mats),
-            'images':len(g.images),
-            'textures':len(g.textures),
-            'weapon_pedestal_children':children,
-            'triangles_lod1':r['geometry']['triangle_count_lod1'],
-            'small_alpha_mode':small.alphaMode,
-            'small_alpha_cutoff':small.alphaCutoff,
-          },indent=2))
+          assert r['geometry']['triangle_count_lod1']==2620 and r['weapon_pedestal_node_index']==72
+          print(json.dumps({'bytes':len(b),'nodes':len(g.nodes),'animations':[x.name for x in g.animations],
+                            'materials':list(mats),'images':len(g.images),'textures':len(g.textures),
+                            'pedestal_children':children,'triangles_lod1':2620,
+                            'small_alpha_mode':small.alphaMode,'small_alpha_cutoff':small.alphaCutoff},indent=2))
           PY
 
       - name: Bundle final proof fixture
         run: |
           set -euo pipefail
           cp reports/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.json out/80A39E12_WEAPON_FINAL_RIGID_ANIMATED.report.json
-          cp reports/material_80A382A6.json out/material_80A382A6.json
-          cp reports/material_80A3D294.json out/material_80A3D294.json
-          cp reports/shader_80AA9D63.json out/shader_80AA9D63.json
-          cp reports/vector_80AAE1E1.json out/vector_80AAE1E1.json
-          cp reports/sampler_80AAE1D5.json out/sampler_80AAE1D5.json
-          cp reports/texture_plate_80A39E17.json out/texture_plate_80A39E17.json
+          cp reports/material_80A382A6.json reports/material_80A3D294.json reports/shader_80AA9D63.json \
+             reports/vector_80AAE1E1.json reports/sampler_80AAE1D5.json reports/texture_plate_80A39E17.json out/
           cp reports/weapon_glb_sha256.txt out/SHA256SUMS.txt
-          cp textures/plates/80A39E17_albedo_plate.png out/
-          cp textures/plates/80A39E17_normal_plate.png out/
-          cp textures/plates/80A39E17_gstack_plate.png out/
-          cp textures/source/80AA9D4D_1024x1024_BC3.png out/
+          cp textures/plates/80A39E17_albedo_plate.png textures/plates/80A39E17_normal_plate.png \
+             textures/plates/80A39E17_gstack_plate.png textures/source/80AA9D4D_1024x1024_BC3.png out/
           cat > out/README.txt <<'EOF'
           Destiny 1 ROI PS4 final-snapshot weapon export fixture
 
-          owner     80A39E0F
-          model     80A39E12
-          skeleton  80A39DF2
-          rig       80A39DF1
-          clips     80A39DF6 through 80A39E01 (12)
+          owner 80A39E0F | model 80A39E12 | skeleton 80A39DF2 | rig 80A39DF1
+          clips 80A39DF6..80A39E01 (12)
+          final materials: small 80A3D294; main 80A382A6
 
-          Final native LOD1 materials:
-            small component  80A3D294 -> PS 80AA9D63 -> TextureIndex0 80AA9D4D
-            main shell       80A382A6 -> VS 80A3D28E / PS 80A3D145
+          Geometry has no native skin weights. Both mesh nodes remain rigid children
+          of weapon Pedestal C410084A (skeleton/glTF node 72), itself under Grip.R.
 
-          The 73-node skeleton is the player skeleton plus weapon Pedestal C410084A.
-          The weapon geometry has no native skin weights. Both weapon mesh nodes are
-          therefore rigid children of weapon Pedestal (bone 72), itself under Grip.R.
+          Main shell uses exact entity albedo/normal plates. Direct main shader resources
+          remain provenance where their complete native semantics are not yet reconstructed.
 
-          Main LOD1 geometry uses the exact D1 entity albedo and normal texture plates.
-          The current main-material cubemap 80AB0B74, direct 2D resource 80A3D4D6 and
-          GStack plate are preserved as native provenance where shader semantics are
-          not yet completely reconstructed.
+          Small PS 80AA9D63 is instruction-proven to sample 80AA9D4D at attr0.xy, pass
+          sampled RGB, and discard when alpha < 0.5. The portable GLB therefore uses that
+          atlas as baseColorTexture with MASK / alphaCutoff 0.5. Native sampler 80AAE1D5
+          is Wrap + anisotropic bilinear + linear mip; glTF uses repeat + linear mipmapped
+          filtering and preserves the exact native descriptor in extras.
 
-          Small material 80A3D294 is no longer a neutral fallback. Exact GCN
-          disassembly of PS 80AA9D63 proves attr0.xy sampling of BC3 atlas 80AA9D4D,
-          sampled RGB output, and discard when sampled alpha < 0.5. The GLB therefore
-          maps that atlas to baseColorTexture with alphaMode MASK / alphaCutoff 0.5.
-          Native anisotropic filtering is approximated by core glTF linear mipmapped
-          repeat sampling; the native sampler descriptor remains in material extras.
-
-          Physical *_N siblings are one logical package namespace and are never passed
-          as --dependency-pkg aliases. The exporter now rejects that misuse directly.
+          Physical *_N siblings are one logical package namespace and are never supplied
+          as --dependency-pkg aliases; the exporter rejects that misuse.
           EOF
 
       - uses: actions/upload-artifact@v4
