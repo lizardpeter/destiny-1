@@ -1,4 +1,4 @@
-name: Temporary compact 09A texture and constants
+name: Temporary corrected 09A PS4 constants
 
 on:
   push:
@@ -22,56 +22,25 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover only required packages
+      - name: Recover 0767 patch family
         shell: bash
         run: |
           set -euo pipefail
           python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --target ps4_globals_0156_0.pkg --target ps4_globals_0156_1.pkg \
-            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
             --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_1.pkg --target ps4_arch_vex_com01_0767_4.pkg \
             --out recovered --manifest reports/package_extract_manifest.json
-      - name: Record compact texture reference metadata
+      - name: Dump exact variant-1 PS Vector4 constants
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json,sys
-          from pathlib import Path
-          sys.path.insert(0,'tools')
-          from d1_entry_extract import EntryReader
-          out={}
-          for pkgname,tags in {
-            'ps4_globals_0156_1.pkg':['80AACC26','80AACC27','80AACC28','80AACC29','80AACCDD','80AACCDE','80AACCDF','80AACCE0','80AACCE1','80AACCE2'],
-            'ps4_globals_0157_1.pkg':['80AAE586','80AAE66A','80AAE66B'],
-            'ps4_arch_vex_com01_0767_4.pkg':['816CE1C5','816CE1CA','816CE246'],
-          }.items():
-            r=EntryReader(Path('recovered')/pkgname,Path('runtime'))
-            by={e['tag_hash']:e for e in r.entries}
-            rows=[]
-            for h in tags:
-              e=by.get(h)
-              if not e:
-                rows.append({'tag_hash':h,'missing':True});continue
-              rows.append({k:e[k] for k in ['index','tag_hash','type','subtype','reference','file_size','entry_b','starting_block','starting_block_offset']})
-            out[pkgname]=rows
-          Path('reports/texture_reference_metadata.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps(out,indent=2))
-          PY
-      - name: Dump exact material Vector4 constants
-        shell: bash
-        run: |
-          set -euo pipefail
-          python tools/d1_vector_container_probe.py recovered/ps4_globals_0157_1.pkg --runtime runtime --tag-hash 80AAE14C -o reports/variant0_PS_vectors.json
           python tools/d1_vector_container_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
             --tag-hash 816CE185 --tag-hash 816CE186 --tag-hash 816CE187 --tag-hash 816CE188 --tag-hash 816CE189 --tag-hash 816CE0A9 \
             -o reports/variant1_PS_vectors.json
-          cat reports/variant0_PS_vectors.json
           cat reports/variant1_PS_vectors.json
       - name: Upload compact evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 09A-compact-texture-and-constants
+          name: 09A-corrected-variant1-constants
           path: reports/
           retention-days: 1
           if-no-files-found: error
