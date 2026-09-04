@@ -12,7 +12,7 @@ permissions:
 jobs:
   resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,29 +36,54 @@ jobs:
             --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
             --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
             --out recovered --manifest reports/011c_011e_extract.json --retries 6 --timeout 90
-      - name: Decode and compare current and stale material candidates
+      - name: Decode current material and characterize legacy 80A3CD9A across snapshots
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_material_decode.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime --tag-hash 80A382A6 -o reports/material_80A382A6.json
-          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime --tag-hash 80A3CD9A -o reports/material_80A3CD9A.json
           python - <<'PY'
-          import hashlib,json
+          import hashlib,json,re,sys
           from pathlib import Path
-          a=json.loads(Path('reports/material_80A382A6.json').read_text())
-          b=json.loads(Path('reports/material_80A3CD9A.json').read_text())
-          keys=['tag_hash','reference','size','vertex_shader','pixel_shader','vertex_vector4','pixel_vector4','pixel_tfx_bytecode','pixel_samplers','pixel_textures']
-          def pick(d): return {k:d.get(k) for k in keys}
-          pa,pb=pick(a),pick(b)
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_material_decode import parse_material,annotate
+          rt=Path('runtime')
+          target='80A3CD9A'
+          rows=[]; decoded=[]
+          for p in sorted(Path('recovered').glob('ps4_gear_weapons_011e_*.pkg'), key=lambda p:int(re.search(r'_([0-9]+)\.pkg$',p.name).group(1))):
+              patch=int(re.search(r'_([0-9]+)\.pkg$',p.name).group(1))
+              r=EntryReader(p,rt); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(target)
+              row={'patch':patch,'package':p.name,'present':bool(e)}
+              if e:
+                  row['entry']={k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size','starting_block','starting_block_offset']}
+                  row['available']=r.available(e['index'])
+                  if row['available']:
+                      try:
+                          b=r.entry(e['index']); row['payload_size']=len(b); row['sha256']=hashlib.sha256(b).hexdigest()
+                          if len(b)>=0x330:
+                              d=parse_material(b,r.h['platform']); annotate(r,d); d['source_patch']=patch; d['source_package']=p.name
+                              decoded.append(d); row['material_decode']='success'
+                          else: row['material_decode']='too_small'
+                      except Exception as ex: row['decode_error']=repr(ex)
+              rows.append(row)
+          Path('reports/legacy_80A3CD9A_snapshots.json').write_text(json.dumps(rows,indent=2)+'\n')
+          if decoded:
+              Path('reports/material_80A3CD9A_parseable.json').write_text(json.dumps(decoded[-1],indent=2)+'\n')
+          current=json.loads(Path('reports/material_80A382A6.json').read_text())
+          legacy=decoded[-1] if decoded else None
+          def slim(d):
+              if not d:return None
+              return {k:d.get(k) for k in ['tag_hash','reference','size','vertex_shader','pixel_shader','vertex_vector4','pixel_vector4','pixel_tfx_bytecode','pixel_samplers','pixel_textures','source_patch','source_package']}
           rep={
             'proven_model_inline_material':'80A382A6',
             'legacy_export_material':'80A3CD9A',
-            'current':pa,'legacy':pb,
-            'same_vs':a.get('vertex_shader')==b.get('vertex_shader'),
-            'same_ps':a.get('pixel_shader')==b.get('pixel_shader'),
-            'same_tfx':a.get('pixel_tfx_bytecode')==b.get('pixel_tfx_bytecode'),
-            'same_samplers':a.get('pixel_samplers')==b.get('pixel_samplers'),
-            'same_texture_records':a.get('pixel_textures')==b.get('pixel_textures'),
+            'current':slim(current),'latest_parseable_legacy':slim(legacy),
+            'legacy_final_snapshot_state':rows[-1] if rows else None,
+            'same_vs': bool(legacy) and current.get('vertex_shader')==legacy.get('vertex_shader'),
+            'same_ps': bool(legacy) and current.get('pixel_shader')==legacy.get('pixel_shader'),
+            'same_tfx': bool(legacy) and current.get('pixel_tfx_bytecode')==legacy.get('pixel_tfx_bytecode'),
+            'same_samplers': bool(legacy) and current.get('pixel_samplers')==legacy.get('pixel_samplers'),
+            'same_texture_records': bool(legacy) and current.get('pixel_textures')==legacy.get('pixel_textures'),
           }
           Path('reports/material_binding_comparison.json').write_text(json.dumps(rep,indent=2)+'\n')
           print(json.dumps(rep,indent=2))
@@ -113,6 +138,7 @@ jobs:
           python tools/d1_texture_export.py "$view" --runtime runtime "${dep_args[@]}" --tag-hash 80AB0B74 --out textures/80AB0B74 || true
           cat textures/80AB0B74/texture_manifest.json || true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: d1-011c-final-material-binding-0158
           path: |
