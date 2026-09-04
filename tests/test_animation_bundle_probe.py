@@ -16,7 +16,14 @@ def test_aligned_u32_matches_only_accepts_aligned_dwords():
     assert hits == {"D3FD602F": [4]}
 
 
-def test_hash_correlated_proxy_pattern_requires_model_clip_and_havok():
+def assert_render_ownership_not_assessed(result):
+    assert result["render_ownership_assessed"] is False
+    assert result["render_ownership_conclusion"] == "not_assessed"
+    # Deprecated compatibility key must never encode false negative evidence.
+    assert result["final_render_model_proven"] is None
+
+
+def test_hash_correlated_bundle_pattern_requires_model_clip_and_havok():
     result = classify_pattern(
         model_count=1,
         clip_count=2,
@@ -24,12 +31,13 @@ def test_hash_correlated_proxy_pattern_requires_model_clip_and_havok():
         known_animation_hash_match_count=1,
     )
 
-    assert result["classification"] == "hash_correlated_animation_bundle_proxy_pattern"
+    assert result["classification"] == "hash_correlated_animation_bundle_pattern"
+    assert result["animation_bundle_candidate"] is True
     assert result["proxy_candidate"] is True
-    assert result["final_render_model_proven"] is False
+    assert_render_ownership_not_assessed(result)
 
 
-def test_wrapper_plus_model_alone_is_not_promoted_to_proxy():
+def test_wrapper_plus_model_alone_is_not_promoted_to_bundle():
     result = classify_pattern(
         model_count=1,
         clip_count=0,
@@ -38,8 +46,9 @@ def test_wrapper_plus_model_alone_is_not_promoted_to_proxy():
     )
 
     assert result["classification"] == "wrapper_plus_model_unresolved"
+    assert result["animation_bundle_candidate"] is False
     assert result["proxy_candidate"] is False
-    assert result["final_render_model_proven"] is False
+    assert_render_ownership_not_assessed(result)
 
 
 def test_animation_side_without_model_is_not_promoted():
@@ -51,4 +60,6 @@ def test_animation_side_without_model_is_not_promoted():
     )
 
     assert result["classification"] == "wrapper_only_unresolved"
+    assert result["animation_bundle_candidate"] is False
     assert result["proxy_candidate"] is False
+    assert_render_ownership_not_assessed(result)
