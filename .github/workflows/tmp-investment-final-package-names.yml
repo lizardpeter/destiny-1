@@ -1,0 +1,31 @@
+name: Temporary locate Investment final entity package names
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-investment-final-package-names.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect public package manifest for final entity package ids
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o packages.txt
+          python - <<'PY'
+          from pathlib import Path
+          ids=['00fc','00fe','0100','0101','0102','0103','0135','0137','0139','013a','013b','013c','013d','013e','0140','0141','0142','0143','0144','0145','0146']
+          lines=Path('packages.txt').read_text(errors='replace').splitlines()
+          print('line_count',len(lines))
+          for pid in ids:
+              hits=[x for x in lines if f'_{pid}_' in x.lower() or f'_{pid}.' in x.lower()]
+              print(f'=== {pid} ({len(hits)}) ===')
+              for x in hits[:100]: print(x)
+          PY
