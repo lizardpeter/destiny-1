@@ -8,12 +8,13 @@ on:
 jobs:
   disasm:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Recover verified runtime and 0154 family
+      - name: Recover verified runtime, 0154 and 0157 globals
         run: |
           set -euo pipefail
           mkdir -p runtime recovered reports shader
@@ -26,9 +27,21 @@ jobs:
             --target ps4_globals_0154_0.pkg --target ps4_globals_0154_1.pkg --target ps4_globals_0154_2.pkg \
             --target ps4_globals_0154_3.pkg --target ps4_globals_0154_4.pkg --target ps4_globals_0154_5.pkg \
             --out recovered --manifest reports/0154_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x46AF91400 \
+            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
+            --out recovered --manifest reports/0157_extract.json
           LINOODLE_SKIP_DLLMAIN=1 python tools/d1_ps4_shader_binary_probe.py \
-            recovered/ps4_globals_0154_0.pkg --runtime runtime --tag-hash 80AA9D63 \
+            recovered/ps4_globals_0154_5.pkg --runtime runtime --tag-hash 80AA9D63 \
             --dump-dir shader -o reports/shader_80AA9D63.json
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_vector_container_probe.py \
+            recovered/ps4_globals_0157_1.pkg --runtime runtime --tag-hash 80AAE1E1 \
+            -o reports/vector_80AAE1E1.json
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_ps4_sampler_probe.py \
+            recovered/ps4_globals_0157_1.pkg --runtime runtime --tag-hash 80AAE1D5 \
+            -o reports/sampler_80AAE1D5.json
+          cat reports/shader_80AA9D63.json
+          cat reports/vector_80AAE1E1.json
+          cat reports/sampler_80AAE1D5.json
       - name: Build pinned CLRX
         run: |
           set -euo pipefail
@@ -60,4 +73,4 @@ jobs:
           path: |
             reports/
             shader/
-          retention-days: 2
+          retention-days: 3
