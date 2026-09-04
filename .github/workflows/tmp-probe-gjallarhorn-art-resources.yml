@@ -1,0 +1,70 @@
+name: Temporary probe Gjallarhorn selected art resources
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-probe-gjallarhorn-art-resources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and 011c 011e families
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/extract.json --retries 6 --timeout 90
+      - name: Probe exact non-model resources selected by Gjallarhorn entities
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_investment_arrangement_probe import filehash_pkg_index
+          tags=['80A39C8E','80A39C8F','80A398B4','80A3CDB1','80A39404','80A39405','80A39406','80A3D0F8','80A3D180']
+          fam={
+            0x011C: sorted(Path('recovered').glob('ps4_gear_weapons_011c_*.pkg'),reverse=True),
+            0x011E: sorted(Path('recovered').glob('ps4_gear_weapons_011e_*.pkg'),reverse=True),
+          }
+          rows=[]
+          for tag in tags:
+            pkg,idx=filehash_pkg_index(int(tag,16)); row={'tag':tag,'package_id':f'{pkg:04X}','entry_index':idx,'snapshots':[]}
+            for p in fam[pkg]:
+              rec={'snapshot':p.name}
+              try:
+                r=EntryReader(p,Path('runtime')); e=r.entries[idx]
+                rec.update({'entry_tag':e['tag_hash'].upper(),'reference':e['reference'].upper(),'file_size':e['file_size'],'available':r.available(idx)})
+                if e['tag_hash'].upper()==tag and r.available(idx):
+                  try:
+                    b=r.entry(idx); rec['sha256']=hashlib.sha256(b).hexdigest(); rec['prefix']=b[:96].hex(); rec['payload_size']=len(b)
+                    Path('reports/raw',f'{tag}_{p.stem}.bin').write_bytes(b)
+                  except Exception as ex: rec['read_error']=repr(ex)
+              except Exception as ex: rec['error']=repr(ex)
+              row['snapshots'].append(rec)
+            rows.append(row); print('GJ_ART_RESOURCE',json.dumps(row,separators=(',',':')))
+          Path('reports/gjallarhorn_selected_art_resources.json').write_text(json.dumps({'resources':rows},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-selected-art-resources
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
