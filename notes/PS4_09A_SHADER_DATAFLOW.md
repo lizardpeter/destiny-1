@@ -11,19 +11,19 @@ VariantShaderIndex 1 -> 816CE240 -> PS 816CE0A8
 ```
 
 This note records instruction-level findings from the exact retail PS4 native
-GCN binaries.  It intentionally separates proven machine-code behavior from
+GCN binaries. It intentionally separates proven machine-code behavior from
 portable glTF approximations.
 
 ## Decoder provenance and byte boundaries
 
-Destiny's PS4 pixel-shader header points to a native Orbis shader payload.  The
+Destiny's PS4 pixel-shader header points to a native Orbis shader payload. The
 payload's `OrbShdr` metadata gives an exact machine-code length and input-usage
-table.  `tools/d1_ps4_shader_binary_probe.py` verifies both the Destiny header
+table. `tools/d1_ps4_shader_binary_probe.py` verifies both the Destiny header
 size and the Sony footer before extracting code.
 
 The bounded code was disassembled using CLRX 0.1.9 in raw `GFX700` / GCN 1.1
-mode.  CLRX reports `.gpu Spectre`, decodes both streams to `s_endpgm`, and
-produces no stderr decoder errors.
+mode. CLRX reports `.gpu Spectre`, decodes both streams to `s_endpgm`, and
+produces no decoder errors.
 
 Validated code spans:
 
@@ -39,338 +39,427 @@ Validated code spans:
   OrbShdr footer  552
 ```
 
-The temporary proof run was GitHub Actions run `33868029823`; the uploaded
-artifact was `09A-ps4-gcn-clrx-disassembly`, artifact ID `9934793728`, artifact
-ZIP SHA-256 `268655f8c3bf0c4e4bf037ad7ba552e3d56bb56638b441471c322f6f2679412a`.
+The proof run was GitHub Actions run `33868029823`; artifact
+`09A-ps4-gcn-clrx-disassembly`, ID `9934793728`, ZIP SHA-256
+`268655f8c3bf0c4e4bf037ad7ba552e3d56bb56638b441471c322f6f2679412a`.
 
-## Variant 0 / `80AAE14B`: main surface shader
+## Exact serialized texture/register map
 
-### Five-image material family is visible in the machine code
-
-The shader performs four ordinary image samples near the beginning:
+The material `STextureTag` records are eight bytes:
 
 ```text
-0x08C image_sample v[9:10],  ... dmask:3
-0x094 image_sample v[4:5],   ... dmask:3
-0x09C image_sample v[11:13], ... dmask:7
-0x0A8 image_sample v2,       ... dmask:8
++0x00 u32 TextureIndex
++0x04 u32 Texture TagHash
 ```
 
-and later a cubemap-style explicit-LOD path:
+The recovered target material proves the same semantic as Xbox: `TextureIndex`
+is the shader texture/resource index.
+
+### Main surface `809C475F`
 
 ```text
-0x22C v_cubema_f32
-0x234 v_cubetc_f32
-0x23C v_cubesc_f32
-0x254 v_cubeid_f32
-0x270 image_get_lod ... dmask:2
-0x2B0 image_sample_l ... dmask:15
+t0 / index 0 -> 80AACCDD  2048x2048 BC3
+t1 / index 1 -> 80AACCDF  1024x1024 BC5
+t2 / index 2 -> 80AACC26    256x256 BC5
+t3 / index 3 -> 80AACC28      64x64 RGBA8 cube, six faces
+t4 / index 4 -> 80AACCDD  2048x2048 BC3 (same image as t0)
 ```
 
-This is exactly the expected resource count for `809C475F`, whose material
-contains five pixel-texture records.
+The `80AAE14B` resource table loads exactly those five indices at table chunks
+0..4. Therefore the texture-role mapping below is `CONFIRMED_BINARY`, not based
+on image format or visual appearance.
 
-### Two sampled RG pairs form tangent-space normal data
-
-The first two samples each request `dmask:3`, i.e. two components.  Immediately
-after they are combined, the shader reconstructs a third component:
+### Circuitry `816CE240`
 
 ```text
-0x0D4  v4 = v7 * v7
-0x0D8  v4 += v6 * v6
-0x0DC  v4 = clamp(1.0 - v4)
-0x0E4  v4 = sqrt(v4)
+t0 / index 0 -> 816CE1C5  256x512 BC1
+t1 / index 1 -> 816CE1C5  256x512 BC1
 ```
 
-Therefore the shader is reconstructing the missing normal component using:
+`816CE0A8` binds these as immediate T0/T1 descriptors. The duplicate image is
+intentional: T0 is sampled before UV displacement and T1 after displacement.
+
+## Exact PS4 sampler resources
+
+D1 sampler class `80801A42` is now decoded as:
 
 ```text
-z = sqrt(max(0, 1 - x*x - y*y))
++0x00 u64 file_size = 24
++0x08 16-byte native Gnm S# descriptor
 ```
 
-This is direct machine-code proof that the two RG samples are normal/detail-
-normal inputs or equivalent two-component tangent-space perturbations.  It is
-not an inference from BC5 format alone.
+Reusable decoder: `tools/d1_ps4_sampler_probe.py`.
 
-The two known BC5 textures in the material family are:
+All target samplers use bilinear min/mag filtering and linear mip filtering.
+The raw LOD fields are retained because their fixed-point scaling is not named
+without a direct source proof.
+
+Main 2D sampler `80AAE177`:
 
 ```text
-80AACCDF  1024x1024 BC5
-80AACC26   256x256  BC5
+S# words = 00000000 00F00000 0A503F80 00000000
+wrap XYZ = Wrap
 ```
 
-Exact resource-table index -> texture-hash correlation is tracked separately
-and must be resolved before naming which one is the primary normal versus the
-detail normal.
-
-### Cubemap/environment path is explicit
-
-The `v_cube*` coordinate instructions followed by `image_get_lod` and
-`image_sample_l` prove a cube/environment lookup with explicit LOD selection.
-The material's only cube-shaped image is:
+Main cubemap sampler `80AAE176`:
 
 ```text
-80AACC28  64x64 RGBA8, six faces
+S# words = 00000092 00F00000 0A503F80 00000000
+wrap XYZ = ClampLastTexel
 ```
 
-This makes `80AACC28` the uniquely compatible environment/cubemap asset.  The
-final binary-proof step is still the serialized `TextureIndex` / resource-table
-chunk correlation, but no other bound texture has cubemap dimensionality.
-
-### Remaining RGB and alpha samples fit the duplicated BC3 texture
-
-The other early samples request:
+Circuitry sampler `816CE0AA`:
 
 ```text
-dmask:7 -> RGB
-dmask:8 -> alpha/W
+S# words = 000001B6 00F00000 0A503F80 80000000
+wrap XYZ = ClampBorder
+border   = OpaqueWhite
 ```
 
-`809C475F` binds `80AACCDD` twice and that image is 2048x2048 BC3.  Thus the
-retail material contains exactly the representation needed to expose RGB and
-alpha through separate resource-table entries while the two BC5 assets service
-the two RG normal samples and the six-face RGBA8 asset services the cubemap.
+The wrap/filter/border names come from the public Sony Gnm enum/register layout;
+the raw four dwords remain the canonical lossless representation.
 
-This mapping is structurally exact and format-consistent, but the duplicate
-BC3 resource-table indices are not promoted to `CONFIRMED_BINARY` until the
-serialized material `TextureIndex` values are compared to the table loads.
+## Variant 0 / `80AAE14B`: exact main-surface material math
 
-### Main shader writes two render targets
-
-The tail is:
+Material `809C475F` supplies 19 local vec4s through `80AAE14C`:
 
 ```text
-0x390 v_cvt_pkrtz_f16_f32 ...
-0x394 v_cvt_pkrtz_f16_f32 ...
-0x398 exp mrt1 ... compr
-...
-0x3A8 v_cvt_pkrtz_f16_f32 ...
-0x3AC v_cvt_pkrtz_f16_f32 ...
-0x3B0 exp mrt0 ... done compr vm
-0x3B8 s_endpgm
+c0  = [ 2.5,  -1.25, -1.25, -1.25 ]
+c1  = [ 0,    -1,     1,     1    ]
+c2  = [ 1,     0,     0,     0    ]
+c3  = [20,     0.4,   0,     0    ]
+c4  = [ 2,    -1,    -1,    -1    ]
+c5  = [ 0,     0,     0,     0    ]
+c6  = [ 0,     0,     0,     0    ]
+c7  = [ 0,     0,     0,     0    ]
+c8  = [ 3,     1,     1,     1    ]
+c9  = [ 0,     1,     1,     1    ]
+c10 = [-1.3,   2.3,   1,     1    ]
+c11 = [ 0,     2.5,   0,     0    ]
+c12 = [ 1,     0.42,  0,     1    ]
+c13 = [ 2,     0,     0,     0    ]
+c14 = [ 0.75,  0.75,  1.5,   1.5  ]
+c15 = [ 0,     0,     0,     0    ]
+c16 = [ 0,     0,     0,     0    ]
+c17 = [ 0,     0.4715686738, 120, 121 ]
+c18 = [ 0,     0.4754902422, 121, 122 ]
 ```
 
-So this pass is not a simple forward `baseColor` shader.  It writes two MRTs,
-consistent with Destiny's deferred/material-buffer rendering.  A glTF PBR
-export will necessarily be an approximation of this native output contract.
+The GCN `s_buffer_load` offsets are dword indices and land exactly on these
+values. The shader only reads the components documented below; unreferenced
+components are not assigned semantics.
+
+### UVs and the two normal samples
+
+Let the interpolated material UV pair be:
+
+```text
+u = attr3.x
+v = attr3.y
+```
+
+`t1` samples directly at `(u,v)`.
+
+The local constants `c1..c3` produce the second coordinates exactly as:
+
+```text
+uv_detail.x = 20 * (1 - v)
+uv_detail.y = 0.4 * u
+```
+
+`t2` samples at `uv_detail`.
+
+The sampled RG pairs are decoded and combined as:
+
+```text
+n1_xy = 2 * t1.xy - 1
+n2_xy = 2 * t2.xy - 1
+n_xy  = 1.25 * n1_xy + n2_xy
+n_z   = sqrt(max(0, 1 - dot(n_xy,n_xy)))
+```
+
+This follows directly from:
+
+```text
+2.5*t1 + 2*t2 - 2.25
+```
+
+in each XY component. The result is transformed through the interpolated
+attribute basis (`attr0..attr2`) and normalized before reflection and MRT
+packing. Naming those basis attributes as tangent/bitangent/normal is the
+portable interpretation; the arithmetic itself is proven.
+
+### `t0` RGB and `t4` alpha are two views of the same BC3 image
+
+The shader samples:
+
+```text
+B = sample(t0, uv).rgb
+S = sample(t4, uv).a
+```
+
+Because `t0` and `t4` both serialize `80AACCDD`, this is one BC3 texture used
+through separate resource entries for RGB and alpha paths.
+
+`S` is **not transparency**. Native output alpha is sourced from `attr0.w`.
+
+### `S` controls reflection blur / LOD
+
+The local material maps BC3 alpha into an explicit cubemap LOD control:
+
+```text
+q = saturate(2.3 * S - 1.3)
+material_lod = 3 + 3 * q
+lod = max(hardware_cube_lod, material_lod)
+E = sample_lod(t3, reflection_vector, lod)
+```
+
+Thus the material requests a minimum cubemap LOD between 3 and 6 as `S`
+increases. `S` is therefore instruction-proven to contain a
+reflection-blur/roughness-like control. The original Bungie field name remains
+unknown.
+
+### Reflection vector
+
+The shader reconstructs and normalizes the perturbed surface normal, builds a
+normalized view vector from higher-level/global `b12` data and `attr4`, and
+executes the standard reflection form:
+
+```text
+R = 2 * dot(V,N) * N - V
+```
+
+The GCN then converts `R` with `v_cubema/v_cubetc/v_cubesc/v_cubeid`, obtains
+hardware cubemap LOD, applies the material minimum above, and samples `t3`.
+
+This proves `80AACC28` is the environment/reflection cubemap.
+
+### `S` also controls reflection amount
+
+After the cubemap sample:
+
+```text
+reflection_strength = 2.5 * S * E.a
+reflection_rgb = E.rgb * [2.0, 0.84, 0.0] * reflection_strength
+```
+
+The local `[2, 0.84, 0]` term comes from `c13.x * c12.rgb`.
+
+The RGB result written to MRT0 is exactly:
+
+```text
+mrt0.rgb = B + (0.75 * B + 0.75) * reflection_rgb
+mrt0.a   = attr0.w
+```
+
+All multiplies above are component-wise. For this material the cubemap is
+therefore tint-weighted toward R/G and contributes no B term through the local
+`c12.b = 0` multiplier.
+
+### `S` is packed into the deferred normal magnitude too
+
+The perturbed transformed normal is normalized again to `N`. The shader writes
+MRT1 XYZ as:
+
+```text
+normal_scale = 0.375 + 0.125 * S
+mrt1.xyz = saturate(0.5 + normal_scale * N)
+```
+
+So BC3 alpha affects three independent native paths:
+
+1. cubemap minimum blur LOD;
+2. reflection strength;
+3. deferred normal-vector packing magnitude.
+
+This is stronger than simply calling it a roughness texture. The safe recovered
+name is **surface/reflection-control scalar `S`**; a glTF roughness/specular map
+is an approximation.
+
+MRT1 W is selected from two local constants using `attr3.y`:
+
+```text
+mrt1.w = 0.4754902422  if attr3.y > 1
+         0.4715686738  otherwise
+```
+
+Only `c17.y/c18.y` are loaded by this shader. Their nearby `120/121/122`
+constants are preserved but not semantically named.
+
+### Native output contract
+
+`80AAE14B` writes:
+
+```text
+mrt0 = surface/reflection RGB + attr0.w
+mrt1 = packed perturbed normal/material data
+```
+
+It is therefore a deferred material pass, not a forward glTF-style PBR shader.
 
 ## Variant 1 / `816CE0A8`: circuitry palette + parallax path
 
-Material `816CE240` binds the same grayscale BC1 texture `816CE1C5` twice.
-The machine code proves those two bindings have different jobs.
+Material `816CE240` binds grayscale BC1 texture `816CE1C5` twice through the
+same ClampBorder/OpaqueWhite sampler.
 
-### First sample: height/parallax scalar
-
-Base UVs are interpolated from `attr3.xy` and sampled once:
+The exact local 8-vector block `816CE185` is:
 
 ```text
-0x014..0x020 interpolate attr3.xy
-0x024 image_sample v4, ...
+c0 = [0,0,0,0]
+c1 = [0,0,0,0]
+c2 = [0.4,0,0,0]
+c3 = [0.30,0.59,0.11,0]
+c4 = [0.0151604200,0.0208455771,0.0379010513,1]
+c5 = [0.3848395940,0.5291544200,0.9620989560,0]
+c6 = [1,1,1,1]
+c7 = [5,0,0,0]
 ```
 
-Only one sampled scalar is retained.  Later:
+### T0 is the pre-displacement height sample
+
+The shader samples T0 at base UV and retains one scalar `H`. It computes:
 
 ```text
-0x110 v1 = v4 - 0.5
-0x124 scale the centered scalar
-0x128/0x12C scale projected/view-space terms
-0x130 reciprocal
-0x134/0x13C MAD shifted coordinates onto the original UVs
+Hc = H - 0.5
 ```
 
-The resulting coordinates are used for the second sample:
+A higher-level/global constant scales `Hc`; a normalized view vector is
+projected through the interpolated basis and used to offset the base UV before
+the second sample. The exact register arithmetic proves view-dependent
+parallax/offset mapping. The global scale producer is still unresolved, so no
+Bungie field name is assigned.
+
+### T1 is the displaced full image sample
+
+T1 resamples the same `816CE1C5` image at the displaced UV and produces the
+palette coordinate:
 
 ```text
-0x144 image_sample v[0:3], ... dmask:15
+L = saturate(0.30*R + 0.59*G + 0.11*B)
 ```
 
-Therefore texture binding 0 is a height/parallax/offset-mapping scalar and
-binding 1 resamples the same image at the displaced coordinates.  The duplicate
-texture hashes are intentional, not redundant serialization.
+Alpha has coefficient zero.
 
-### Exact luminance computation from material `b0` vec3
+### Exact palette equation
 
-The 8-vector PS material constant block for `816CE240` is `816CE185`.
-The shader loads material-buffer dword offset `0x0C` into `s[8:11]`:
+The material-local palette is:
 
 ```text
-s_buffer_load_dwordx4 s[8:11], ..., 0x0c
+palette.rgb = c4.rgb + c5.rgb * L
 ```
 
-The offset is in dwords, so this is vec4 index 3.  `816CE185` vec3 is exactly:
-
-```text
-[0.30, 0.59, 0.11, 0.0]
-```
-
-After the displaced full-RGBA sample, the shader performs:
-
-```text
-v3 = s11 * sample.a
-v3 += s10 * sample.b
-v3 += s9  * sample.g
-v3 += s8  * sample.r
-v3 = clamp(v3)
-```
-
-Therefore the material-controlled scalar is exactly:
-
-```text
-L = clamp(0.30*R + 0.59*G + 0.11*B)
-```
-
-Alpha contributes zero.  The prior observation that vec3 looked like classic
-luminance weights is now instruction-proven.
-
-### Exact palette formula from vec4 and vec5
-
-The same material buffer is then loaded at dword offsets:
-
-```text
-0x10 -> vec4 -> s[20:23]
-0x14 -> vec5 -> s[4:7]
-0x18 -> vec6 -> s[16:19]
-0x1C -> vec7.x -> s12
-```
-
-The relevant machine code constructs:
-
-```text
-palette.r = vec4.r + vec5.r * L
-palette.g = vec4.g + vec5.g * L
-palette.b = vec4.b + vec5.b * L
-```
-
-because:
-
-```text
-v5 = vec4.r
-v6 = vec4.g
-v7 = vec4.b
-v5 += vec5.r * L
-v6 += vec5.g * L
-v7 += vec5.b * L
-```
-
-For the default `816CE185` material:
-
-```text
-vec4.rgb = [0.0151604200, 0.0208455771, 0.0379010513]
-vec5.rgb = [0.3848395940, 0.5291544200, 0.9620989560]
-```
-
-Thus the luminance ramp goes from the dark endpoint:
+For default `816CE185`:
 
 ```text
 L=0 -> [0.01516042, 0.02084558, 0.03790105]
-```
-
-to exactly approximately:
-
-```text
 L=1 -> [0.40000001, 0.55000000, 1.00000001]
 ```
 
-So these are not arbitrary color constants: vec4 is the dark/base endpoint and
-vec5 is the delta to the bright endpoint.
+All six external-material alternatives use the same image/shader and change
+these authored palette constants (and, for one variant, intensity).
 
-Other parent-selected alternatives produce correspondingly different bright
-endpoints.  Examples:
+### Material-local HDR intensity
 
-```text
-816CE0A9: vec4+vec5 ~= [0.41, 0.92, 1.00]
-816CE186: vec4+vec5 ~= [0.70, 0.83, 1.00]
-816CE187: vec4+vec5 ~= [0.36, 0.33, 1.00]
-816CE188: vec4+vec5 ~= [1.00, 0.050876, 0.014085]
-816CE189: vec4+vec5 ~= [1.00, 0.03, 0.05]
-```
-
-The six external-material alternatives are therefore genuine authored color
-palettes over the same circuitry image.
-
-### vec6 and vec7.x form an HDR-intensity branch
-
-Every variant has:
+The shader multiplies RGB by:
 
 ```text
-vec6 = [1,1,1,1]
+c6.rgb * c7.x
 ```
 
-and the shader multiplies `vec6.rgb` by `vec7.x` before additional global
-scalars and the palette term.  Five materials use:
+before two higher-level/global scalar factors. Since default `c6.rgb=[1,1,1]`
+and `c7.x=5`, the default local intensity is 5. Variant `816CE188` uses 40.
+
+The two global multipliers remain unresolved, so a portable exporter may record
+5/40 as the proven material-local emissive strength but must not claim it is the
+complete on-screen multiplier.
+
+### Output
+
+The circuitry shader writes only MRT0 RGB and explicitly writes output alpha 0.
+Together with the 5x/40x local intensity and separate visible material range,
+this is strong evidence for an emissive/additive-style pass. The exact render
+blend state is still a separate proof target.
+
+## Material TFX byte streams
+
+The exact target streams are:
 
 ```text
-vec7.x = 5
+809C475F: 49 00 47 21  49 01 47 22  49 02 47 23  49 03 47 24  49 04 47 25
+816CE240: 49 00 47 21  49 01 47 22
 ```
 
-while `816CE188` uses:
+Current D1 TFX source names `0x47 = PopTemp` and leaves `0x49` unnamed. Later
+Tiger strategies place explicit shader-resource binding opcodes in this opcode
+family, and the repetition count here exactly matches texture count, but that is
+not enough to rename D1 `0x49`. The raw bytecode is preserved and its exact D1
+semantic remains `UNKNOWN`.
+
+## Exact retail texture recovery
+
+The final images are now reproducibly exported through cross-package backing
+resolution (`0156 -> 0157`, plus local `0767`) using
+`tools/d1_texture_export.py`:
 
 ```text
-vec7.x = 40
+80AACCDD  2048x2048 BC3   backing 80AAE66A
+80AACCDF  1024x1024 BC5   backing 80AAE66B
+80AACC26    256x256 BC5   backing 80AAE586
+80AACC28      64x64 RGBA8 six-face cube
+816CE1C5    256x512 BC1   backing 816CE246
 ```
 
-So vec7.x is instruction-proven as a material RGB intensity multiplier.  Its
-higher-level renderer name remains unclaimed; `emissive/HDR intensity` is the
-portable interpretation, not a recovered Bungie field name.
+The exporter now resolves dependency packages by TagHash and deswizzles each
+cubemap face independently.
 
-### Output contract strongly indicates an additive/emissive-style pass
-
-The shader writes only one target:
-
-```text
-0x1F0 pack R/G as f16
-0x1F4 pack B/0 as f16
-0x1F8 exp mrt0 ... done compr vm
-0x200 s_endpgm
-```
-
-The exported fourth component is explicitly zero.  Combined with the 5x/40x
-material intensity and absence of the main surface shader's second material
-MRT, this is strong evidence for an emissive/additive-style circuitry pass.
-The exact blend-state semantic is not yet claimed until the material/render
-state producer is decoded.
+Proof run `33869489031` produced artifact
+`09A-shared-samplers-retail-textures`, ID `9935326724`, ZIP SHA-256
+`934d52dab19d47e36b83f43e0763957e94c0de7a4c834e88629ac330e4aa6632`.
 
 ## Portable reconstruction consequences
 
 ### Main surface
 
-The native shader cannot be represented exactly by core glTF PBR because it:
+Core glTF cannot exactly represent this native pass because it combines two
+normal textures, samples a per-material cubemap with explicit LOD, and writes a
+deferred MRT pair.
 
-- combines two tangent-space perturbation textures;
-- reconstructs normal Z in shader;
-- samples a dedicated cubemap with explicit LOD;
-- writes two native MRTs.
+The portable path should:
 
-A faithful portable exporter should therefore:
-
-1. preserve all five original texture hashes and native shader/resource metadata
-   in `extras`;
-2. bake/combine the normal/detail-normal path when a single glTF normal map is
+1. use `80AACCDD.rgb` as the source surface/base color;
+2. keep the surface opaque; never use `80AACCDD.a` as glTF alpha;
+3. bake or reproduce the two-normal equation when a single glTF normal map is
    required;
-3. map the BC3 RGB/alpha terms only after exact resource-table index correlation;
-4. preserve `80AACC28` as the original environment texture even though core
-   glTF material definitions do not directly bind a per-material cubemap.
+4. treat `80AACCDD.a` as a recovered surface/reflection-control source and only
+   derive roughness/specular values with an explicit approximation label;
+5. preserve `80AACC28` and the exact native reflection equation in `extras`,
+   because core glTF has no per-material cubemap binding;
+6. preserve both native MRT equations in metadata.
 
 ### Circuitry pass
 
-A portable approximation can be generated much more faithfully now:
+A portable approximation can be substantially faithful:
 
-1. use `816CE1C5` luminance as the palette coordinate;
-2. bake RGB as `vec4.rgb + vec5.rgb * L` for the selected variant;
-3. preserve the native parallax recipe and duplicate texture bindings in
-   `extras`, because core glTF has no standard parallax/offset mapping;
-4. use glTF emissive color / `KHR_materials_emissive_strength` only as a
-   portable approximation after the remaining global multipliers and blend
-   state are understood.
+1. bake `c4.rgb + c5.rgb*L` from `816CE1C5` for the selected palette;
+2. record the view-dependent parallax equation and duplicate T0/T1 bindings in
+   `extras` (core glTF has no standard parallax mapping);
+3. use glTF emissive texture/color plus `KHR_materials_emissive_strength` as an
+   approximation, with `c7.x` stored separately as the proven local 5x/40x
+   multiplier and the unresolved global scalars called out;
+4. preserve sampler ClampBorder/OpaqueWhite behavior in metadata even where a
+   target glTF runtime cannot express it exactly.
 
 ## Remaining proof frontier
 
-1. Resolve serialized PS4 `STextureTag.TextureIndex` values for `809C475F` and
-   `816CE240` and correlate them to the native resource-table/direct API slots.
-2. Name the exact main-surface BC3 RGB and alpha terms from downstream dataflow.
-3. Trace higher-level constant buffers `b12`/`b13` and the two global scalars
-   participating in the circuitry intensity chain.
-4. Decode the relevant render/blend state to confirm the circuitry pass's
-   additive/emissive composition mode.
-5. Build the proof-grade textured + rigged + animated GLB with all native hashes,
-   constants, and approximation decisions serialized in `extras`.
+1. Trace the producers/semantics of higher-level `b12` and `b13` values used for
+   camera/view/parallax/global intensity data.
+2. Decode the relevant render/blend state to prove the circuitry composition
+   mode rather than only its shader-side output contract.
+3. Map the `attr0..attr4` vertex/pixel interface names exactly, although the
+   arithmetic using them is already decoded.
+4. Promote the previously successful skin + animation export logic into a
+   reusable committed tool for `816CE09D/E` rather than relying on the old
+   one-off GLB.
+5. Build the proof-grade textured + rigged + animated GLB with native hashes,
+   exact constants/samplers, and every portable approximation serialized in
+   `extras`.
