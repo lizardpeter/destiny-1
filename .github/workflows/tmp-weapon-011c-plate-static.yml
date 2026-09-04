@@ -46,18 +46,22 @@ jobs:
             recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime --header-tag 80A39E17 \
             -o reports/texture_plate_80A39E17.json
           cat reports/texture_plate_80A39E17.json
-      - name: Decode visible shared material from final 011e snapshot
+      - name: Decode visible shared material from 011e base table
         run: |
           set -euo pipefail
           LINOODLE_SKIP_DLLMAIN=1 python tools/d1_material_decode.py \
-            recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime --tag-hash 80A3CD9A \
+            recovered/ps4_gear_weapons_011e_0.pkg --runtime runtime --tag-hash 80A3CD9A \
             -o reports/material_80A3CD9A.json
           cat reports/material_80A3CD9A.json
-      - name: Export plate source and direct material textures
+      - name: Export plate source and direct material textures from 011e base table
         run: |
           set -euo pipefail
+          # Do NOT pass sibling snapshots as dependency readers. EntryReader already
+          # follows each block's patch_id to the physical _N sibling. Treating _0/_1/
+          # _2/_3/_5 as independent namespaces incorrectly creates duplicate-TagHash
+          # ambiguity when snapshot metadata changed.
           LINOODLE_SKIP_DLLMAIN=1 python tools/d1_texture_export.py \
-            recovered/ps4_gear_weapons_011e_5.pkg --runtime runtime \
+            recovered/ps4_gear_weapons_011e_0.pkg --runtime runtime \
             --tag-hash 80A3D844 --tag-hash 80A3D845 --tag-hash 80A3D846 \
             --tag-hash 80A3D4CF --tag-hash 80A3D4D6 \
             --out textures/source
