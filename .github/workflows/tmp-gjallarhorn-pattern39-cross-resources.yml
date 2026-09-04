@@ -1,0 +1,145 @@
+name: Temporary probe Gjallarhorn pattern 39 cross-package resources
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-pattern39-cross-resources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime and package index
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Decode exact 80A6A017 cross-package resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,re,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_investment_arrangement_probe import filehash_pkg_index
+          from d1_entity_resource_probe import parse_resource
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          families={'0151':0x0151,'0154':0x0154,'0156':0x0156,'0157':0x0157,'0158':0x0158}
+          targets=[
+            '80AA3C97','80AA2D68','80AACC23','80AADB7D','80AA2D6A','80AA2D14','80AAECBE','80AA2D70',
+            '80AA97A0','80AAC5D5','80AA2D6D','80AAECD6','80AAECD5','80AB0301','80AAE3A4','80AAECD7',
+            '80AA3C98','80AAECD8','80AAC4B3','80AA2D69',
+          ]
+          # The package index is authoritative for which physical patch siblings exist.
+          lines=Path('reports/packages.txt').read_text(errors='replace').splitlines()
+          wanted=[]
+          family_names={k:[] for k in families}
+          for line in lines:
+            name=Path(line.strip()).name
+            m=re.fullmatch(r'ps4_globals_(0151|0154|0156|0157|0158)_(\d+)\.pkg',name,re.I)
+            if m:
+              fam=m.group(1).lower(); family_names[fam].append(name); wanted.append(name)
+          if not wanted:
+            raise SystemExit('no target globals families found in packages.txt')
+          print('TARGET_GLOBAL_MEMBERS',json.dumps(family_names,sort_keys=True))
+
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(set(wanted),start_offset=0x44EE5D200)
+          missing=sorted(set(wanted)-set(found))
+          if missing: raise SystemExit(f'missing target package members: {missing}')
+          Path('reports/gjallarhorn_pattern39_global_member_locations.json').write_text(json.dumps({'headers_scanned':headers,'members':found},indent=2)+'\n')
+
+          remotes={}
+          for fam,pkgid in families.items():
+            specs=[]
+            for name in family_names[fam]:
+              row=found[name]
+              specs.append(f"{name}:0x{row['data_offset']:X}:{row['size']}")
+            ms=[parse_member(x) for x in specs]
+            remotes[pkgid]=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},Path('runtime'))
+
+          interesting_refs={'80800861','808005A1','8080222A','80802C0E','80801AB5','80800734'}
+          havok=b'hk_2012.2.0-r1'
+          rows=[]
+          for tag in targets:
+            pkg,idx=filehash_pkg_index(int(tag,16)); q={'tag_hash':tag,'package_id':pkg,'file_index':idx}
+            r=remotes.get(pkg)
+            if r is None:
+              q['error']='package family not mounted'; rows.append(q); continue
+            if idx>=len(r.entries):
+              q['error']=f'index {idx} >= {len(r.entries)}'; rows.append(q); continue
+            e=r.entries[idx]
+            q['entry']={k:(v.upper() if isinstance(v,str) and k in ('tag_hash','reference') else v) for k,v in e.items() if k in ('index','tag_hash','reference','type','subtype','file_size')}
+            q['tag_matches_index']=e['tag_hash'].upper()==tag
+            try:
+              b=r.entry(idx); q['payload_size']=len(b); q['sha256']=hashlib.sha256(b).hexdigest(); q['prefix128']=b[:128].hex()
+              Path('reports/raw',f'{tag}.bin').write_bytes(b)
+              q['havok_marker_offset']=b.find(havok) if havok in b else None
+              ref=e['reference'].upper()
+              if ref=='80800861':
+                try: q['entity_resource']=parse_resource(b,'PS4')
+                except Exception as ex: q['entity_resource_error']=repr(ex)
+              # Aligned dwords that resolve to valid entries in any mounted target globals family.
+              matches=[]
+              lim=len(b)-(len(b)%4)
+              for off in range(0,lim,4):
+                v=struct.unpack_from('<I',b,off)[0]
+                vpkg,vidx=filehash_pkg_index(v)
+                rr=remotes.get(vpkg)
+                if rr is not None and vidx < len(rr.entries):
+                  ve=rr.entries[vidx]
+                  if int(ve['tag_hash'],16)==v:
+                    matches.append({'offset':off,'tag_hash':f'{v:08X}','reference':ve['reference'].upper(),'type':ve['type'],'subtype':ve['subtype'],'size':ve['file_size']})
+              q['aligned_global_tag_matches']=matches[:256]
+            except Exception as ex:
+              q['read_error']=repr(ex)
+            # Neighborhood metadata is often enough to recognize animation bundle clusters.
+            nb=[]
+            lo=max(0,idx-12); hi=min(len(r.entries),idx+17)
+            for j in range(lo,hi):
+              ne=r.entries[j]
+              nr={'relative_index':j-idx,'index':j,'tag_hash':ne['tag_hash'].upper(),'reference':ne['reference'].upper(),'type':ne['type'],'subtype':ne['subtype'],'size':ne['file_size']}
+              if ne['reference'].upper() in interesting_refs:
+                nr['interesting']=True
+              nb.append(nr)
+            q['neighborhood']=nb
+            rows.append(q)
+            print('GJ_CROSS_RESOURCE',json.dumps({k:v for k,v in q.items() if k not in ('prefix128','aligned_global_tag_matches','neighborhood')},separators=(',',':')))
+
+          # Census animation-relevant classes across each mounted logical global package.
+          census={}
+          for pkg,r in remotes.items():
+            c={ref:[] for ref in sorted(interesting_refs)}
+            for e in r.entries:
+              ref=e['reference'].upper()
+              if ref in c:
+                c[ref].append({'index':e['index'],'tag_hash':e['tag_hash'].upper(),'size':e['file_size'],'type':e['type'],'subtype':e['subtype']})
+            census[f'{pkg:04X}']={k:v for k,v in c.items() if v}
+          out={'pattern_entity':'80A6A017','weapon_pattern_index':39,'resource_count':len(rows),'resources':rows,'animation_relevant_class_census':census,'remote_block_cache_sizes':{f'{pkg:04X}':len(r.block_cache) for pkg,r in remotes.items()}}
+          Path('reports/gjallarhorn_pattern39_cross_resources.json').write_text(json.dumps(out,indent=2)+'\n')
+          assert len(rows)==20
+          assert all(x.get('tag_matches_index') for x in rows),[x for x in rows if not x.get('tag_matches_index')]
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-gjallarhorn-pattern39-cross-resources
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
