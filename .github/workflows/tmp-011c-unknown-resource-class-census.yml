@@ -1,0 +1,99 @@
+name: Temporary census imported 011c unknown resource classes
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-unknown-resource-class-census.yml'
+      - 'tools/d1_entity_resource_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and exact 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+      - name: Census pointer classes and owners
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_entity_resource_probe.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime -o reports/entity_resources.json
+          python - <<'PY'
+          import collections,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+
+          wanted={'8080080F','80802475','80802733','808008D2','80800594','808008F6'}
+          rep=json.load(open('reports/entity_resources.json'))
+          rows=[]
+          for r in rep['resources']:
+              classes=[r.get('unk08',{}).get('class_hash'),r.get('unk10',{}).get('class_hash'),r.get('unk18',{}).get('class_hash')]
+              if wanted.intersection(x for x in classes if x):
+                  rows.append(r)
+          print('MATCHING RESOURCES',len(rows))
+          class_tags=collections.defaultdict(list)
+          for r in rows:
+              cls=[r.get('unk08',{}).get('class_hash'),r.get('unk10',{}).get('class_hash'),r.get('unk18',{}).get('class_hash')]
+              print('RESOURCE',r['tag_hash'],'size',r['size'],'role',r.get('semantic_role'),'classes',cls)
+              for c in cls:
+                  if c in wanted: class_tags[c].append(r['tag_hash'])
+
+          rr=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          entities=[]
+          for e in rr.entries:
+              if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734' and rr.available(e['index']):
+                  try: b=rr.entry(e['index'])
+                  except Exception: continue
+                  entities.append((e,b))
+          target_tags={r['tag_hash'].upper() for r in rows}
+          owner_map={t:[] for t in target_tags}
+          for e,b in entities:
+              # Restrict to the exact D1 s_entity Resource[] array at +0x20.
+              if len(b)<0x30: continue
+              try:
+                  count=struct.unpack_from('<q',b,0x20)[0]
+                  rel=struct.unpack_from('<q',b,0x28)[0]
+              except Exception: continue
+              if count<0 or count>256: continue
+              start=0x28+rel
+              if start<0 or start+count*0xC>len(b): continue
+              resources=[]
+              for i in range(count):
+                  h=struct.unpack_from('<I',b,start+i*0xC)[0]
+                  resources.append(f'{h:08X}')
+              for t in target_tags.intersection(resources):
+                  owner_map[t].append({'entity_hash':e['tag_hash'].upper(),'resources':resources})
+          for t in sorted(owner_map):
+              print('OWNERS',t,json.dumps(owner_map[t],separators=(',',':')))
+
+          out={'wanted_classes':sorted(wanted),'matching_resources':rows,
+               'class_to_resource_tags':dict(sorted(class_tags.items())),
+               'owners':owner_map}
+          json.dump(out,open('reports/unknown_resource_class_census.json','w'),indent=2)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-011c-unknown-resource-class-census
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
