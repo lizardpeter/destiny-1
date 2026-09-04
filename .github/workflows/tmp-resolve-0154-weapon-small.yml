@@ -1,0 +1,85 @@
+name: Temporary resolve weapon 0154 dependency
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-resolve-0154-weapon-small.yml'
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install --quiet pillow texture2ddecoder numpy
+      - name: Recover verified runtime and exact families
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports textures shader
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45B642200 \
+            --target ps4_globals_0154_0.pkg --target ps4_globals_0154_1.pkg --target ps4_globals_0154_2.pkg \
+            --target ps4_globals_0154_3.pkg --target ps4_globals_0154_4.pkg --target ps4_globals_0154_5.pkg \
+            --out recovered --manifest reports/0154_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x46AF91400 \
+            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
+            --out recovered --manifest reports/0157_extract.json
+      - name: Export exact small-component texture
+        run: |
+          set -euo pipefail
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_texture_export.py \
+            recovered/ps4_globals_0154_0.pkg --runtime runtime --tag-hash 80AA9D4D --out textures
+          cat textures/texture_manifest.json
+          sha256sum textures/* | tee reports/0154_texture_sha256.txt
+      - name: Probe exact pixel shader
+        run: |
+          set -euo pipefail
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_ps4_shader_binary_probe.py \
+            recovered/ps4_globals_0154_0.pkg --runtime runtime --tag-hash 80AA9D63 \
+            --dump-dir shader -o reports/shader_80AA9D63.json
+          cat reports/shader_80AA9D63.json
+          sha256sum shader/* | tee reports/0154_shader_sha256.txt
+      - name: Probe exact material vector constants
+        run: |
+          set -euo pipefail
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_vector_container_probe.py \
+            recovered/ps4_globals_0157_0.pkg --runtime runtime --tag-hash 80AAE1E1 \
+            -o reports/vector_80AAE1E1.json
+          cat reports/vector_80AAE1E1.json
+      - name: Summarize exported image channels
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          import json, numpy as np
+          rows=[]
+          for p in sorted(Path('textures').glob('*.png')):
+              im=Image.open(p).convert('RGBA')
+              a=np.asarray(im,dtype=np.uint8)
+              rows.append({
+                  'file':p.name,'size':list(im.size),
+                  'channel_min':a.reshape(-1,4).min(0).tolist(),
+                  'channel_max':a.reshape(-1,4).max(0).tolist(),
+                  'channel_mean':[float(x) for x in a.reshape(-1,4).mean(0)],
+                  'alpha_unique_count':int(len(np.unique(a[:,:,3]))),
+              })
+          Path('reports/image_stats.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weapon-0154-small-resolved
+          path: |
+            reports/
+            textures/
+            shader/
+          retention-days: 2
