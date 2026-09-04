@@ -128,40 +128,9 @@ Animation `816CE09D`:
 
 `tiger-animation-parser` D1 ROI retargeting successfully generated the retail skeleton animation tracks and glTF armature.
 
-## Material / texture frontier
+## Texture decoding breakthrough
 
-The rigged GLB currently has placeholder glTF materials because the actual model materials are external:
-
-- `80AAE10B`
-- `80AAE10C`
-
-Both TagHashes decode to package ID `0x0157`.
-
-The public D1 PS4 package manifest resolves package `0x0157` to:
-
-- `ps4_globals_0157_0.pkg`
-- `ps4_globals_0157_1.pkg`
-
-The public manifest server does not expose the package binaries at the obvious sibling URL (HTTP 404), and those package files are not currently available in the local corpus/connected Drive search.
-
-Therefore original material/texture reconstruction is now blocked only on acquiring the `ps4_globals_0157` package pair (or another corpus containing those material tags), not on mesh/rig/animation reverse engineering.
-
-## Remaining path to fully textured animated export
-
-1. Acquire `ps4_globals_0157_0.pkg` and preferably `_1.pkg`.
-2. Decode entries `0x10B` and `0x10C` (`80AAE10B`, `80AAE10C`).
-3. Parse D1 material fields and shader texture bindings.
-4. Recursively resolve texture TagHashes to owning packages.
-5. Decode PS4 texture metadata/mips/swizzle as necessary.
-6. Map D1 channels to glTF PBR approximately (base color, normal, emissive, roughness/metalness/specular as appropriate), while retaining original hashes/semantics in extras.
-7. Replace placeholder materials in the already-working GLB.
-8. Add any additional compatible clips found for the same runtime-rig component.
-
-At this point, the first asset is fully rigged and animated. The main missing fidelity layer is original materials/textures.
-
-## Texture decoding breakthrough (2026-09-03 later pass)
-
-The D1 ROI PS4 texture pipeline itself is now validated end-to-end on retail bytes from `0767`.
+The D1 ROI PS4 texture pipeline is validated end-to-end on retail bytes from `0767`.
 
 ### Resident texture census
 
@@ -179,7 +148,7 @@ Largest validated image is `816CE138`, a 4096x4096 BC1 texture. Multiple 2048x20
 
 ### Exact observed backing chain
 
-The resident ROI textures follow the package chain:
+ROI texture headers can resolve through either a direct data entry or a streamed chain. The observed full-resolution streamed form is:
 
 `32:1 texture header -> 65:1 streamed/mip record -> 5:1 full-resolution backing data`
 
@@ -201,8 +170,6 @@ For D1 ROI PS4 texture headers:
 - block-compressed formats use 4x4 BC blocks
 - decoded BC1/BC3/BC4/BC5 and RGBA8 images visually validate the reconstruction
 
-A reusable exporter now exists at `tools/d1_texture_export.py` and was validated against all 23 resident textures.
-
 Local validation artifacts:
 
 - `/mnt/data/0767_resident_textures.zip`
@@ -214,29 +181,93 @@ Resident texture archive SHA-256:
 
 `97bf079b8b63cd022f6ad2146e1374ab127a2d0966698889a3eecde6fc7a2855`
 
-### Important model-material distinction
+## IMPORTANT correction: `80AAE10B/80AAE10C` are not the main visible 09A surface materials
 
-The successful resident texture extraction does **not** justify arbitrarily attaching those textures to articulated model `816CE09A`.
+A later byte-level part-table + Charm source comparison corrected the earlier interpretation.
 
-The model's retail part records explicitly reference external material tags:
+`816CE09A` has four D1 mesh parts:
 
-- `80AAE10B`
-- `80AAE10C`
+- part 0: inline material `FFFFFFFF`, `VariantShaderIndex=0`, strip range `927/7780`
+- part 1: inline material `80AAE10B`, `VariantShaderIndex=-1`, same `927/7780` range
+- part 2: inline material `FFFFFFFF`, `VariantShaderIndex=1`, strip range `0/926`
+- part 3: inline material `80AAE10C`, `VariantShaderIndex=-1`, same `927/7780` range
 
-and the first geometry range also uses `VariantShaderIndex = 1`, requiring the model parent's external-material table rather than a guessed material.
+Charm's D1 `DynamicMeshPart` behavior is source-confirmed:
 
-Both direct material hashes resolve to package ID `0x0157`:
+- `VariantShaderIndex == -1` -> use the inline part material;
+- otherwise -> resolve through the model parent `ExternalMaterialsMap` and `ExternalMaterials` arrays.
 
-- `ps4_globals_0157_0.pkg`
-- `ps4_globals_0157_1.pkg`
+Charm also skips a D1 part when its resolved material has no vertex shader or no pixel shader.
 
-The correct evidence-driven path is therefore:
+`ps4_globals_0157_0.pkg` is now available and both direct inline technique tags were decoded correctly:
 
-1. acquire/decode package 0157;
-2. parse `80AAE10B` and `80AAE10C` using the already-existing D1 material decoder (`VSTextures` at `0x38`, `PSTextures` at `0x2B8`);
-3. follow each returned texture TagHash to its owning package;
-4. use `d1_texture_export.py` to reconstruct the exact retail image;
-5. classify albedo/normal/mask/emissive from the material slots/shader use;
-6. bind those proven textures to the already-valid rigged + multi-animation GLB.
+- `80AAE10B`: 1,160 bytes, VS shader `80AAE1DB`, **pixel shader `FFFFFFFF`**, VS texture count 0, PS texture count 0
+- `80AAE10C`: 1,160 bytes, VS shader `80AAE1DD`, **pixel shader `FFFFFFFF`**, VS texture count 0, PS texture count 0
 
-Thus the **texture file format and PS4 swizzle are solved**. The remaining blocker for a faithfully textured `816CE09A` is acquisition of the external material package `0157`, not texture decoding.
+Therefore `80AAE10B/80AAE10C` cannot be the ordinary visible surface passes under Charm's own D1 filtering rule. They are more likely auxiliary/depth/shadow-like passes.
+
+The visible 09A geometry is instead the `VariantShaderIndex=0` and `VariantShaderIndex=1` path, whose materials must be selected from the model parent's external-material tables.
+
+This moves the exact texturing frontier from **"decode 10B/10C texture arrays"** to **"locate 09A's owning model parent and resolve external material variants 0/1"**.
+
+## D1 model-parent material selector now calibrated
+
+For the standard D1 model parent (`0x80801A9C`) the parent structure contains:
+
+- model FileHash at `+0x15C`
+- `TexturePlatesROI` DynamicArray at `+0x1A8`
+- `ExternalMaterialsMap` at `+0x230`, element size `0x0C`
+- `ExternalMaterials` at `+0x270`, element size `0x04`
+
+D1 DynamicArray layout used here is:
+
+- count = `u32(field+0)`
+- relative pointer = `qword(field+8)`
+- absolute data offset = `(field+8) + rel + 0x10`
+
+Charm's external selector is:
+
+`mapEntry = ExternalMaterialsMap[VariantShaderIndex]`
+
+`material = ExternalMaterials[mapEntry.MaterialStartIndex + 0 % mapEntry.MaterialCount]`
+
+Calibrated resident parents in 0767:
+
+- `816CE061 -> model 816CE062`: map `(count=3,start=0)`, materials `80AD2003,80AD294D,80AD2898`
+- `816CE0C1 -> model 816CE0C4`: no external materials
+- `816CE0C2 -> model 816CE0C5`: map `(6,0)`, six external materials
+- `816CE0C3 -> model 816CE0C6`: maps `(6,0)` and `(6,6)`, twelve external material slots
+
+No standard model-parent EntityResource resident in 0767 points to model `816CE09A`. A scan of all 500 type-16 tags in `ps4_globals_0157_0.pkg` also found no literal `816CE09A` reference or standard D1 model-parent class. Thus 09A is currently best interpreted as a reusable articulated submodel whose owning/render-context parent is elsewhere in the package graph.
+
+## `ps4_globals_0157_0.pkg` checkpoint
+
+Package `0x0157` `_0` is now available and parsed:
+
+- 2,117 entries
+- 1,623 blocks
+- 117 `0x80801AD7` technique entries
+- 13 PS4 Texture2D headers
+- 688 `5:1` payload entries
+- 3 `65:1` streamed texture entries
+- 117 type `32:8` shaders
+- 171 type `32:9` shaders
+
+At least one resident texture was decoded immediately:
+
+- `80AAE02F -> 80AAE030`, RGBA8, 1024x32, coherent color-ramp/lookup image
+
+The Oodle bridge can occasionally fault on an individual block under the lightweight PE loader; retrying the same block in a fresh process with `LINOODLE_SKIP_DLLMAIN=1` succeeds and should be treated as bridge instability rather than package corruption.
+
+## Current remaining path to a faithfully textured animated export
+
+1. Resolve the owning/render-context model parent for `816CE09A`.
+2. Read parent `ExternalMaterialsMap[0]` and `[1]` and resolve the corresponding actual surface material hashes.
+3. Parse those materials' shader texture arrays / texture plates / any remaining material indirections.
+4. Follow texture TagHashes to owning packages.
+5. Reconstruct the exact retail PS4 images using the already-proven texture exporter.
+6. Map the D1 channels into an approximate glTF PBR material while preserving original material/texture hashes and semantics in `extras`.
+7. Replace the placeholder materials in the already-valid rigged + multi-animation GLB.
+8. Continue adding compatible clips using runtime-rig component `76F7A98E`.
+
+The hard mesh, skeleton, skinning, animation-codec, package-compression, and PS4 texture-format problems are solved for this fixture. The active problem is now exact **render-context/material binding** for the reusable articulated model.
