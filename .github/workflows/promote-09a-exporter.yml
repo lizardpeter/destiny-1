@@ -1,0 +1,61 @@
+name: Prepare durable 09A proof exporter
+
+on:
+  push:
+    paths:
+      - '.github/workflows/promote-09a-exporter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Apply successful proof-build fixes to source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/d1_vex_09a_test_glb.py')
+          s=p.read_text()
+
+          old='''    primitives = []\n    for (off, count), parts in sorted(groups.items()):\n        variants = sorted({int(p["variant_shader_index"]) for p in parts})\n        if len(variants) != 1:\n            raise RuntimeError(f"range {off}+{count} has mixed variant shader indices {variants}")\n        tri = strip_to_triangles(source_indices[off:off + count])\n        primitives.append({\n            "index_offset": off,\n            "index_count": count,\n            "triangle_count": int(len(tri)),\n            "variant_shader_index": variants[0],\n            "material_tags": sorted({p["material"] for p in parts}),\n            "lod_values": sorted({int(p["lod"]) for p in parts}),\n            "triangles": tri,\n        })\n'''
+          new='''    primitives = []\n    for (off, count), parts in sorted(groups.items()):\n        visible = [p for p in parts if int(p["variant_shader_index"]) >= 0]\n        auxiliary = [p for p in parts if int(p["variant_shader_index"]) < 0]\n        if len(visible) != 1:\n            raise RuntimeError(f"range {off}+{count} expected one visible parent-selected part, got {[(p['material'],p['variant_shader_index']) for p in parts]}")\n        variant = int(visible[0]["variant_shader_index"])\n        if variant not in (0, 1):\n            raise RuntimeError(f"range {off}+{count} unexpected visible variant {variant}")\n        if any(int(p["variant_shader_index"]) != -1 for p in auxiliary):\n            raise RuntimeError(f"range {off}+{count} unexpected auxiliary selector")\n        tri = strip_to_triangles(source_indices[off:off + count])\n        primitives.append({\n            "index_offset": off,\n            "index_count": count,\n            "triangle_count": int(len(tri)),\n            "variant_shader_index": variant,\n            "material_tags": sorted({p["material"] for p in visible}),\n            "auxiliary_material_tags": sorted({p["material"] for p in auxiliary}),\n            "lod_values": sorted({int(p["lod"]) for p in parts}),\n            "triangles": tri,\n        })\n'''
+          if old not in s:
+              raise SystemExit('expected auxiliary-part source not found')
+          s=s.replace(old,new)
+
+          if 'import tempfile\n' not in s:
+              s=s.replace('import struct\nimport sys\n','import struct\nimport sys\nimport tempfile\n')
+          old='        anim = read_animation(io.BytesIO(entry_bytes(reader, tag)), version)\n'
+          new='''        clip_bytes = entry_bytes(reader, tag)\n        with tempfile.NamedTemporaryFile() as clip_file:\n            clip_file.write(clip_bytes)\n            clip_file.flush()\n            clip_file.seek(0)\n            anim = read_animation(clip_file, version)\n'''
+          if old not in s:
+              raise SystemExit('expected animation BytesIO source not found')
+          s=s.replace(old,new)
+
+          s=s.replace('Sampler(name="D1_80AAE177_Wrap", magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT)',
+                      'Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT)')
+          s=s.replace('Sampler(name="D1_816CE0AA_ClampBorderPortable", magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE)',
+                      'Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE)')
+          if 'Sampler(name="D1_' in s:
+              raise SystemExit('sampler compatibility transform incomplete')
+
+          p.write_text(s)
+          PY
+          python -m py_compile tools/d1_vex_09a_test_glb.py
+          sha256sum tools/d1_vex_09a_test_glb.py > exporter.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: durable-09a-exporter-source
+          path: |
+            tools/d1_vex_09a_test_glb.py
+            exporter.sha256
+          retention-days: 1
+          if-no-files-found: error
