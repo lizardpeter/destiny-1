@@ -1,27 +1,33 @@
-name: Temporary diagnose weapon 011c geometry
+name: Temporary weapon 011c geometry-only and pedestal probe
 
 on:
   push:
     paths:
       - '.github/workflows/tmp-weapon-011c-final-snapshot-census.yml'
-      - 'tools/d1_weapon_geometry_diagnostic.py'
+      - 'tools/d1_weapon_geometry_only_glb.py'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  geometry:
-    runs-on: ubuntu-latest
+  check:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      - name: Install check dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+
       - name: Recover runtime and exact 011c family
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports
+          mkdir -p runtime recovered reports out
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -36,115 +42,110 @@ jobs:
             --target ps4_gear_weapons_011c_5.pkg \
             --out recovered --manifest reports/011c_extract.json
 
-      - name: Diagnose target entity and model in patch 0 and patch 5 snapshots
+      - name: Build latest-snapshot skeleton-free geometry GLB
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python tools/d1_weapon_geometry_diagnostic.py \
-            recovered/ps4_gear_weapons_011c_0.pkg --runtime runtime \
-            -o reports/weapon_geometry_patch0.json
-          python tools/d1_weapon_geometry_diagnostic.py \
+          python tools/d1_weapon_geometry_only_glb.py \
             recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
-            -o reports/weapon_geometry_patch5.json
-          python tools/d1_entity_resource_probe.py \
-            recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
-            -o reports/entity_resources_patch5.json
-          python tools/d1_entity_model_probe.py \
-            recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime \
-            --tag-hash 80A39E12 -o reports/model_80A39E12_patch5.json
+            --model 80A39E12 \
+            --out out/80A39E12_PATCH5_GEOMETRY_ONLY.glb \
+            --report reports/80A39E12_PATCH5_GEOMETRY_ONLY.json
+          sha256sum out/80A39E12_PATCH5_GEOMETRY_ONLY.glb | tee reports/geometry_only_sha256.txt
 
-      - name: Summarize geometry evidence
+      - name: Recover pinned animation parser
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C tiger-animation-parser rev-parse HEAD)" = 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+      - name: Prove weapon Pedestal rest-space transform
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,'tiger-animation-parser')
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton, transform_to_np_matrix
+          from matrix_operations.numpy_matrix_operations import np_decompose_matrix
+
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          sb=r.entry(by['80A39DF2']['index'])
+          import io
+          s=read_skeleton(io.BytesIO(sb),Game_Version.D1_ROI)
+          assert len(s.node_defs)==73
+          rows=[]
+          for i in (23,24,72):
+              nd=s.node_defs[i]
+              world=np.array(s.default_obj_space_matrices[i],dtype=float)
+              invworld=np.array(s.default_inv_obj_space_matrices[i],dtype=float)
+              local=np.array(s.bone_to_parent_offset[i],dtype=float)
+              sc,rot,tr=np_decompose_matrix(local)
+              rows.append({
+                'index':i,'bone_hash':f'{int(nd.bone_hash):08X}','parent':int(nd.parent_node_index),
+                'world_matrix':world.tolist(),'inverse_world_matrix':invworld.tolist(),
+                'local_matrix':local.tolist(),'local_translation_gltf':np.asarray(tr,dtype=float).tolist(),
+                'local_rotation_xyzw':rot.as_quat().astype(float).tolist(),
+                'local_scale':np.asarray(sc,dtype=float).tolist(),
+                'world_translation_gltf':[float(world[3][0]),float(world[3][1]),float(world[3][2])],
+              })
+          p=rows[-1]
+          # Also test matrix product orientation numerically instead of assuming it.
+          ident_a=np.array(s.default_obj_space_matrices[72],dtype=float) @ np.array(s.default_inv_obj_space_matrices[72],dtype=float)
+          ident_b=np.array(s.default_inv_obj_space_matrices[72],dtype=float) @ np.array(s.default_obj_space_matrices[72],dtype=float)
+          out={'skeleton':'80A39DF2','nodes':rows,
+               'pedestal_world_identity_max_abs':float(np.max(np.abs(np.array(s.default_obj_space_matrices[72],dtype=float)-np.eye(4)))),
+               'world_times_inverse_error':float(np.max(np.abs(ident_a-np.eye(4)))),
+               'inverse_times_world_error':float(np.max(np.abs(ident_b-np.eye(4))))}
+          Path('reports/weapon_pedestal_rest_transform.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Validate geometry-only GLB
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
-          p0=json.load(open('reports/weapon_geometry_patch0.json'))
-          p5=json.load(open('reports/weapon_geometry_patch5.json'))
-          for name,r in [('patch0',p0),('patch5',p5)]:
-              print('\n===',name,'===')
-              e=r['entity']
-              print('entity',e['tag_hash'],'resources',e['unique_entity_resources'])
-              for x in e['resources']:
-                  print(' resource',x['tag_hash'],'role',x.get('semantic_role'),'model',x.get('embedded_model_tag_hash'))
-              m=r['model']
-              print('model',m['tag_hash'],'entry',m['entry_index'],'size',m['size'],'meshes',m['mesh_count'])
-              for q in m['meshes']:
-                  ps=q['position_stream']
-                  print(' mesh',q['mesh_index'],
-                        'vtx',ps['vertex_count'],
-                        'stride/type',ps['header'].get('stride'),ps['header'].get('vertex_type'),
-                        'secondary',q['secondary_stream']['header'].get('stride'),q['secondary_stream']['header'].get('vertex_type'),
-                        'fourth',ps['fourth_i16_minmax'],'unique',ps['fourth_i16_unique_count'],
-                        'tris',q['lod1_triangle_count_deduplicated_ranges'],
-                        'components',q['connected_component_count'])
-                  print('  bbox used',ps['decoded_bbox_lod1_used_tiger_model_space'])
-                  for i,c in enumerate(q['connected_components'][:12]):
-                      print('  component',i,'tris',c['triangle_count'],'verts',c['vertex_count'],'bbox',c['bbox_tiger_model_space'])
-          print('\n=== patch differences ===')
-          print('model size',p0['model']['size'],p5['model']['size'])
-          for a,b in zip(p0['model']['meshes'],p5['model']['meshes']):
-              print('mesh',a['mesh_index'],
-                    'pos payload',a['position_stream']['payload_tag'],b['position_stream']['payload_tag'],
-                    'vtx',a['position_stream']['vertex_count'],b['position_stream']['vertex_count'],
-                    'bbox_equal',a['position_stream']['decoded_bbox_lod1_used_tiger_model_space']==b['position_stream']['decoded_bbox_lod1_used_tiger_model_space'],
-                    'range_materials0',[x['materials'] for x in a['lod1_ranges']],
-                    'range_materials5',[x['materials'] for x in b['lod1_ranges']])
+          from pygltflib import GLTF2
+          g=GLTF2().load_binary('out/80A39E12_PATCH5_GEOMETRY_ONLY.glb')
+          r=json.load(open('reports/80A39E12_PATCH5_GEOMETRY_ONLY.json'))
+          assert len(g.meshes)==2
+          assert len(g.nodes)==2
+          assert len(g.skins)==0
+          assert len(g.animations)==0
+          assert r['total_lod1_triangles']==2620
+          assert [x['vertex_count'] for x in r['meshes']]==[28,2500]
+          print('geometry-only GLB validated:',r['bytes'],'bytes, 2 meshes, 2528 vertices, 2620 triangles')
           PY
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: weapon-011c-geometry-diagnostic
-          path: reports/
-          retention-days: 2
-          if-no-files-found: error
-
-  native-oodle:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Recover verified Windows Oodle runtime and 011c family
-        shell: pwsh
+      - name: Bundle check artifact
         run: |
-          $ErrorActionPreference='Stop'
-          New-Item -ItemType Directory -Force runtime,recovered,reports | Out-Null
-          curl.exe -L --fail --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
-          $h=(Get-FileHash runtime/oo2core_3_win64.dll -Algorithm SHA256).Hash.ToLower()
-          if ($h -ne '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62') { throw "Oodle hash mismatch: $h" }
-          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg --out recovered --manifest reports/011c_extract_windows.json
+          set -euo pipefail
+          cp reports/80A39E12_PATCH5_GEOMETRY_ONLY.json out/
+          cp reports/weapon_pedestal_rest_transform.json out/
+          cp reports/geometry_only_sha256.txt out/SHA256SUMS.txt
+          cat > out/README.txt <<'EOF'
+          D1 ROI PS4 80A39E12 geometry-only diagnostic
 
-      - name: Probe historically failing blocks with native Windows Oodle 3
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          @'
-          import json,sys
-          from pathlib import Path
-          sys.path.insert(0,'tools')
-          from d1_oodle_probe import read_pkg_blocks,Oodle3,probe_one
-          pkg=Path('recovered/ps4_gear_weapons_011c_5.pkg').resolve()
-          h,blocks=read_pkg_blocks(pkg)
-          oodle=Oodle3(Path('runtime'))
-          out={'package':str(pkg),'platform':h['platform'],'package_patch_id':h['patch_id'],'results':[]}
-          for i in (245,299):
-              b=blocks[i]
-              row={'block_index':i,'metadata':b}
-              try:
-                  row['probe']=probe_one(pkg,blocks,i,oodle)
-                  row['success']=True
-              except Exception as ex:
-                  row['success']=False
-                  row['error']=repr(ex)
-              out['results'].append(row)
-              print(i,'success' if row['success'] else 'FAIL',row.get('error',''))
-          Path('reports/native_windows_oodle_blocks_245_299.json').write_text(json.dumps(out,indent=2)+'\n')
-          '@ | python -
+          This GLB intentionally contains ONLY the two LOD1 meshes from the final
+          patch-5 logical snapshot.  It has no skeleton, skin, animation, weapon
+          Pedestal parenting, textures, or inferred native render semantics.
+
+          Purpose: visually distinguish model-geometry completeness from the old
+          rigged fixture's attachment/rest-space behavior in Blender.
+          EOF
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-011c-native-windows-oodle
-          path: reports/
+          name: 80A39E12-patch5-geometry-only-check
+          path: out/
           retention-days: 2
           if-no-files-found: error
+          compression-level: 0
