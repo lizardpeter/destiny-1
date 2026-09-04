@@ -1,0 +1,65 @@
+name: Temporary validate D1 investment arrangement parser
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-investment-parser-validate.yml'
+      - 'tools/d1_investment_arrangement_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover runtime and pinned investment roots
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json
+      - name: Decode all art arrangements and assignment parents
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_investment_arrangement_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg \
+            recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime -o reports/arrangements.json
+          python - <<'PY'
+          import json,collections
+          d=json.load(open('reports/arrangements.json'))
+          rows=d['arrangements']
+          print('arrangements',d['arrangement_count'])
+          print('assignment map',d['assignment_map']['mapping_count'])
+          print('source counts',collections.Counter(x['source'] for x in rows))
+          print('entity counts',collections.Counter(len(x['assignment_hashes']) for x in rows).most_common(20))
+          print('unresolved assignments',sum(len(x['unresolved_assignment_hashes']) for x in rows))
+          print('max assignments in arrangement',max(len(x['assignment_hashes']) for x in rows))
+          for x in rows:
+              if len(x['assignment_hashes'])>=4:
+                  print('MULTI',x['arrangement_index'],x['assignment_hashes'],x['entity_parent_hashes'])
+                  if x['arrangement_index']>20: break
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-investment-arrangement-parser-validation
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
