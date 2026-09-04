@@ -1,0 +1,134 @@
+name: Temporary probe Gjallarhorn native vertex binding fields
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-vertex-binding-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and exact package families
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy
+          mkdir -p runtime recovered reports models
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x59B629600 \
+            --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
+            --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+      - name: Recover six model headers and inspect unused streams
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from collections import Counter
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_model_probe import parse_model
+          from d1_gjallarhorn_1229_glb import reader_family,linked_payload
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_split_tar_extract import SplitHttpTar
+
+          runtime=Path('runtime')
+          models=['80A743A6','80A73BAB','80A72202','80A7317B','80A73256','80A73D13']
+          r139=EntryReader(Path('recovered/ps4_investment_assets_0139_5.pkg'),runtime)
+          by139={e['tag_hash'].upper():e for e in r139.entries}
+          snaps139=sorted(Path('recovered').glob('ps4_investment_assets_0139_*.pkg'),reverse=True)
+          model_bytes={}
+          model_source={}
+          for tag in models[1:]:
+            for p in snaps139:
+              try:
+                r=EntryReader(p,runtime); by={e['tag_hash'].upper():e for e in r.entries}; e=by.get(tag)
+                if not e: continue
+                b=r.entry(e['index']); parse_model(b,'PS4')
+                model_bytes[tag]=b; model_source[tag]=p.name; break
+              except Exception: pass
+            if tag not in model_bytes: raise SystemExit(f'cannot recover {tag}')
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          specs=[
+            'ps4_investment_assets_013a_0.pkg:0x59C453A00:95760384','ps4_investment_assets_013a_1.pkg:0x5A1FA6C00:15149056',
+            'ps4_investment_assets_013a_2.pkg:0x5A2E19600:7192576','ps4_investment_assets_013a_3.pkg:0x5A34F5800:165888',
+            'ps4_investment_assets_013a_4.pkg:0x5A351E200:161792','ps4_investment_assets_013a_5.pkg:0x5A3545C00:165888']
+          ms=[parse_member(x) for x in specs]; rr=RemoteLogicalPackage(arc,{m.patch_id:m for m in ms},runtime)
+          e=rr.entries[934]; assert e['tag_hash'].upper()=='80A743A6'
+          model_bytes['80A743A6']=rr.entry(934); model_source['80A743A6']='remote_013A_final'
+
+          reader_sets={0x011C:reader_family(Path('recovered/ps4_gear_weapons_011c_5.pkg'),runtime),
+                       0x0139:reader_family(Path('recovered/ps4_investment_assets_0139_5.pkg'),runtime)}
+
+          def stats_i16(arr):
+            c=Counter(int(x) for x in arr.tolist())
+            return {'unique_count':len(c),'min':int(arr.min()),'max':int(arr.max()),'most_common':c.most_common(20)}
+
+          rows=[]
+          for tag in models:
+            b=model_bytes[tag]; m=parse_model(b,'PS4'); mr={'model_tag':tag,'source':model_source[tag],'model_sha256':hashlib.sha256(b).hexdigest(),'meshes':[]}
+            for mi,mesh in enumerate(m['meshes']):
+              q={'mesh_index':mi,'old_weights':mesh['old_weights'],'unk_resource':mesh['unk_resource'],
+                 'stage_part_offsets_source_derived':mesh['stage_part_offsets_source_derived'],
+                 'zero_or_unknown_44':mesh['zero_or_unknown_44'],'parts':mesh['parts']}
+              h0,p0,s0=linked_payload(reader_sets,mesh['vertices1'],'vertex')
+              h1,p1,s1=linked_payload(reader_sets,mesh['vertices2'],'vertex')
+              st0=struct.unpack_from('<h',h0,4)[0]; st1=struct.unpack_from('<h',h1,4)[0]
+              a0=np.frombuffer(p0,dtype='<i2').reshape((-1,st0//2)); a1=np.frombuffer(p1,dtype='<i2').reshape((-1,st1//2))
+              q['vertex_count']=len(a0); q['stride0']=st0; q['stride1']=st1; q['v0_columns']=[stats_i16(a0[:,i]) for i in range(a0.shape[1])]
+              q['v1_columns']=[stats_i16(a1[:,i]) for i in range(a1.shape[1])]
+              # Check whether old_weights / unk_resource can be resolved by mounted package families.
+              extras=[]
+              for field in ('old_weights','unk_resource'):
+                h=mesh[field].upper()
+                if h=='FFFFFFFF': extras.append({'field':field,'tag_hash':h,'present':False}); continue
+                hit=None
+                for pkg,sets in reader_sets.items():
+                  for r,t in sets:
+                    e=t.get(h)
+                    if e:
+                      hit={'field':field,'tag_hash':h,'package':f'{pkg:04X}','snapshot':r.pkg.name,'entry':{k:e[k] for k in ('index','reference','type','subtype','file_size')},'available':r.available(e['index'])}
+                      try:
+                        rb=r.entry(e['index']); hit['payload_sha256']=hashlib.sha256(rb).hexdigest();hit['prefix128']=rb[:128].hex()
+                        ref=e['reference'].upper(); re=t.get(ref)
+                        if re:
+                          hit['linked']={k:re[k] for k in ('index','tag_hash','reference','type','subtype','file_size')}
+                          try:
+                            pb=r.entry(re['index']);hit['linked_payload_size']=len(pb);hit['linked_payload_sha256']=hashlib.sha256(pb).hexdigest();hit['linked_payload_prefix256']=pb[:256].hex()
+                          except Exception as ex:hit['linked_payload_error']=repr(ex)
+                      except Exception as ex:hit['payload_error']=repr(ex)
+                      break
+                  if hit: break
+                extras.append(hit or {'field':field,'tag_hash':h,'present_in_mounted':False})
+              q['extra_resources']=extras
+              mr['meshes'].append(q)
+              print('GJ_BIND_MESH',tag,mi,'weights',mesh['old_weights'],'unk',mesh['unk_resource'],'v0_fourth',q['v0_columns'][3] if len(q['v0_columns'])>3 else None)
+            rows.append(mr)
+          out={'models':rows,'bone_count':7,'bone_hashes':['C410084A','AD2A05CD','3308E6CC','752D6334','FC1090F4','0AB6C582','B79A6009']}
+          Path('reports/gjallarhorn_vertex_binding_probe.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-vertex-binding-probe
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
