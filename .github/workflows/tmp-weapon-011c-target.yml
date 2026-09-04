@@ -1,0 +1,103 @@
+name: Temporary resolve PS4 weapon 011c target
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-weapon-011c-target.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install export dependencies
+        run: python -m pip install --quiet numpy trimesh pygltflib scipy pyglm jsonpickle
+      - name: Recover verified runtime and 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg \
+            --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg \
+            --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+      - name: Retry exact model in fresh processes
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          ok=0
+          for n in $(seq 1 12); do
+            echo "model probe attempt $n"
+            if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entity_model_probe.py "$pkg" --runtime runtime --tag-hash 80A39E12 -o reports/model_80A39E12.json; then
+              ok=1; break
+            fi
+            rm -f reports/model_80A39E12.json
+            sleep 1
+          done
+          test "$ok" = 1
+          cat reports/model_80A39E12.json
+      - name: Decode exact render parent
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          ok=0
+          for n in $(seq 1 8); do
+            if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_render_owner_probe.py "$pkg" --runtime runtime --model-tag 80A39E12 -o reports/owner_80A39E12.json; then ok=1; break; fi
+            rm -f reports/owner_80A39E12.json; sleep 1
+          done
+          test "$ok" = 1
+          cat reports/owner_80A39E12.json
+      - name: Summarize geometry and try static GLB
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          m=json.load(open('reports/model_80A39E12.json'))['models'][0]
+          o=json.load(open('reports/owner_80A39E12.json'))
+          summary={
+            'model':m['tag_hash'], 'model_size':m['actual_file_size'], 'mesh_count':m['mesh_count'],
+            'meshes':[{
+              'vertex_buffers':[x['vertices1'],x['vertices2'],x['old_weights']],
+              'indices':x['indices'],
+              'parts':x['parts'],
+              'resources':x.get('resources',{}),
+              'scale':x['model_scale'],'translation':x['model_translation'],
+            } for x in m['meshes']],
+            'owner':o.get('model_parents',[{}])[0].get('tag_hash'),
+            'external_materials_map':o.get('model_parents',[{}])[0].get('external_materials_map_entries'),
+            'external_materials':o.get('model_parents',[{}])[0].get('external_material_tag_hashes'),
+            'default_materials':o.get('model_parents',[{}])[0].get('first_material_per_variant'),
+          }
+          print(json.dumps(summary,indent=2))
+          json.dump(summary,open('reports/target_summary.json','w'),indent=2)
+          PY
+          ok=0
+          for n in $(seq 1 8); do
+            if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entity_model_export.py recovered/ps4_gear_weapons_011c_0.pkg \
+              --runtime runtime --tag-hash 80A39E12 --out out/80A39E12_static.glb --json reports/static_export.json; then ok=1; break; fi
+            rm -f out/80A39E12_static.glb reports/static_export.json; sleep 1
+          done
+          echo "static_export_success=$ok" | tee reports/static_export_status.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-target
+          path: |
+            reports/
+            out/
+          retention-days: 1
+          if-no-files-found: error
