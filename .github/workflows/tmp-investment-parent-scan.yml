@@ -1,0 +1,107 @@
+name: Temporary scan investment parents for 011c entities
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-investment-parent-scan.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover runtime and 011c
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+      - name: Recover investment asset package families 0135 through 0146
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          args=(
+            ps4_investment_assets_0135_0.pkg ps4_investment_assets_0135_1.pkg ps4_investment_assets_0135_2.pkg ps4_investment_assets_0135_3.pkg ps4_investment_assets_0135_4.pkg ps4_investment_assets_0135_5.pkg
+            ps4_investment_assets_0137_0.pkg ps4_investment_assets_0137_1.pkg ps4_investment_assets_0137_2.pkg ps4_investment_assets_0137_3.pkg ps4_investment_assets_0137_5.pkg
+            ps4_investment_assets_0139_0.pkg ps4_investment_assets_0139_1.pkg ps4_investment_assets_0139_2.pkg ps4_investment_assets_0139_3.pkg ps4_investment_assets_0139_5.pkg
+            ps4_investment_assets_013a_0.pkg ps4_investment_assets_013a_1.pkg ps4_investment_assets_013a_2.pkg ps4_investment_assets_013a_3.pkg ps4_investment_assets_013a_4.pkg ps4_investment_assets_013a_5.pkg
+            ps4_investment_assets_013b_1.pkg ps4_investment_assets_013b_2.pkg
+            ps4_investment_assets_013c_1.pkg ps4_investment_assets_013c_2.pkg ps4_investment_assets_013c_3.pkg ps4_investment_assets_013c_5.pkg
+            ps4_investment_assets_013d_1.pkg ps4_investment_assets_013d_2.pkg ps4_investment_assets_013d_3.pkg ps4_investment_assets_013d_4.pkg ps4_investment_assets_013d_5.pkg
+            ps4_investment_assets_013e_1.pkg ps4_investment_assets_013e_2.pkg ps4_investment_assets_013e_3.pkg ps4_investment_assets_013e_4.pkg ps4_investment_assets_013e_5.pkg
+            ps4_investment_assets_013f_1.pkg ps4_investment_assets_013f_2.pkg ps4_investment_assets_013f_3.pkg ps4_investment_assets_013f_4.pkg ps4_investment_assets_013f_5.pkg
+            ps4_investment_assets_0140_1.pkg ps4_investment_assets_0140_2.pkg ps4_investment_assets_0140_3.pkg ps4_investment_assets_0140_5.pkg
+            ps4_investment_assets_0141_2.pkg ps4_investment_assets_0141_3.pkg ps4_investment_assets_0141_4.pkg ps4_investment_assets_0141_5.pkg
+            ps4_investment_assets_0142_2.pkg ps4_investment_assets_0142_3.pkg ps4_investment_assets_0142_4.pkg ps4_investment_assets_0142_5.pkg
+            ps4_investment_assets_0143_2.pkg ps4_investment_assets_0143_3.pkg ps4_investment_assets_0143_4.pkg ps4_investment_assets_0143_5.pkg
+            ps4_investment_assets_0144_2.pkg ps4_investment_assets_0144_3.pkg ps4_investment_assets_0144_4.pkg ps4_investment_assets_0144_5.pkg
+            ps4_investment_assets_0145_2.pkg ps4_investment_assets_0145_3.pkg ps4_investment_assets_0145_4.pkg ps4_investment_assets_0145_5.pkg
+            ps4_investment_assets_0146_4.pkg ps4_investment_assets_0146_5.pkg ps4_investment_assets_0146_6.pkg
+          )
+          cmd=(python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x439A04A00 --out recovered --manifest reports/investment_assets_extract.json)
+          for x in "${args[@]}"; do cmd+=(--target "$x"); done
+          "${cmd[@]}"
+      - name: Scan every logical asset snapshot for 011c entity targets
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys,hashlib,re
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          rt=Path('runtime')
+          wr=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),rt)
+          ents=[e['tag_hash'].upper() for e in wr.entries if e['type']==16 and e['subtype']==0 and e['reference'].upper()=='80800734']
+          needles={h:struct.pack('<I',int(h,16)) for h in ents}
+          # use highest numbered physical snapshot per family as logical view; siblings are beside it
+          fams={}
+          for p in Path('recovered').glob('ps4_investment_assets_*.pkg'):
+              m=re.match(r'(.+)_([0-9]+)\.pkg$',p.name)
+              if m:
+                  base=m.group(1); patch=int(m.group(2))
+                  if base not in fams or patch>fams[base][0]: fams[base]=(patch,p)
+          out=[]
+          for base,(patch,p) in sorted(fams.items()):
+              r=EntryReader(p,rt); hits=[]
+              for e in r.entries:
+                  if not r.available(e['index']): continue
+                  try:b=r.entry(e['index'])
+                  except Exception: continue
+                  found=[]
+                  for h,n in needles.items():
+                      pos=b.find(n)
+                      if pos>=0: found.append({'entity':h,'offset':pos})
+                  if found:
+                      hits.append({'parent_tag':e['tag_hash'].upper(),'entry_index':e['index'],'reference':e['reference'].upper(),'size':e['file_size'],'hits':found,'sha256':hashlib.sha256(b).hexdigest(),'prefix_hex':b[:48].hex()})
+              if hits:
+                  print('\nFAMILY',base,'view patch',patch,'HITS',len(hits))
+                  for x in hits: print(' ',x['parent_tag'],'->',[(h['entity'],h['offset']) for h in x['hits']], 'ref',x['reference'])
+              out.append({'family':base,'view_patch':patch,'package':p.name,'hits':hits})
+          Path('reports/all_investment_parent_hits.json').write_text(json.dumps({'011c_entities':ents,'families':out},indent=2)+'\n')
+          target='80A39E0E'
+          target_hits=[(f['family'],x) for f in out for x in f['hits'] if any(h['entity']==target for h in x['hits'])]
+          print('\nTARGET',target,'PARENTS',[(fam,x['parent_tag']) for fam,x in target_hits])
+          Path('reports/target_80A39E0E_parents.json').write_text(json.dumps([{'family':fam,**x} for fam,x in target_hits],indent=2)+'\n')
+          if not target_hits: print('TARGET NOT FOUND')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-parent-scan-011c
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
