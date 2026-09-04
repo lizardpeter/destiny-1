@@ -13,14 +13,16 @@ jobs:
   locate:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect public package index
+      - name: Inspect public package index order
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o packages.txt
-          echo '=== investment ==='
-          grep -i 'investment' packages.txt || true
-          echo '=== globals ==='
-          grep -i 'globals' packages.txt | head -200 || true
-          echo '=== candidate ids ==='
-          grep -Ei '03fd|0bfd|0b0d|030d|03ff|0bff' packages.txt || true
-          wc -c packages.txt
+          echo '=== numbered anchors ==='
+          grep -nE 'ps4_gear_weapons_011e_0.pkg|ps4_investment_globals_012f_0.pkg|ps4_investment_assets_013f_1.pkg|ps4_globals_0154_0.pkg' packages.txt || true
+          echo '=== context around 012f ==='
+          n=$(grep -n 'ps4_investment_globals_012f_0.pkg' packages.txt | head -1 | cut -d: -f1 || true)
+          if [ -n "$n" ]; then sed -n "$((n-8)),$((n+18))p" packages.txt; fi
+          echo '=== context around 013f ==='
+          n=$(grep -n 'ps4_investment_assets_013f_1.pkg' packages.txt | head -1 | cut -d: -f1 || true)
+          if [ -n "$n" ]; then sed -n "$((n-8)),$((n+18))p" packages.txt; fi
+          wc -l packages.txt
