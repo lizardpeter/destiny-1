@@ -26,7 +26,7 @@ from d1_entry_extract import EntryReader
 GCN_BC1=0x23; GCN_BC2=0x24; GCN_BC3=0x25; GCN_BC4=0x26; GCN_BC5=0x27
 GCN_RGBA8=0x0A
 COMPRESSED={GCN_BC1,GCN_BC2,GCN_BC3,GCN_BC4,GCN_BC5,0x28,0x29}
-BLOCK_SIZE={GCN_BC1:8,GCN_BC4:8,GCN_BC2:16,GCN_BC3:16,GCN_BC4:8,GCN_BC5:16,0x28:16,0x29:16}
+BLOCK_SIZE={GCN_BC1:8,GCN_BC4:8,GCN_BC2:16,GCN_BC3:16,GCN_BC5:16,0x28:16,0x29:16}
 BPP={0x01:8,0x02:16,0x03:16,0x04:32,0x05:32,0x06:32,0x07:32,0x08:32,0x09:32,0x0A:32,0x0B:64,0x0C:64,0x0D:96,0x0E:128}
 FORMAT_NAME={GCN_BC1:'BC1',GCN_BC2:'BC2',GCN_BC3:'BC3',GCN_BC4:'BC4',GCN_BC5:'BC5',GCN_RGBA8:'RGBA8'}
 
@@ -45,16 +45,27 @@ def morton(t:int,sx:int=8,sy:int=8)->int:
 def ceil_pow2(x:int)->int:
     return 1 if x<=1 else 1<<(x-1).bit_length()
 
-def unswizzle_ps4(data:bytes,width:int,height:int,array_size:int,gfmt:int)->bytes:
+def expected_base_size(w:int,h:int,gfmt:int,array_size:int=1)->int|None:
+    if gfmt in {GCN_BC1,GCN_BC4}: one=w*h//2
+    elif gfmt in {GCN_BC2,GCN_BC3,GCN_BC5,0x28,0x29}: one=w*h
+    elif gfmt in BPP: one=w*h*(BPP[gfmt]//8)
+    else: return None
+    return one*max(1,array_size)
+
+def _unswizzle_face(data:bytes,width:int,height:int,gfmt:int)->bytes:
     compressed=gfmt in COMPRESSED
     pixel_block=4 if compressed else 1
     block_size=BLOCK_SIZE.get(gfmt, BPP.get(gfmt,0)//8)
     if not block_size: raise NotImplementedError(f'unsupported GCN surface format {gfmt:#x}')
     width_src=ceil_pow2(width) if compressed else width
     height_src=ceil_pow2(height) if compressed else height
-    width_dest=width//pixel_block; height_dest=height//pixel_block
-    htiles=(height_src//pixel_block+7)//8; wtiles=(width_src//pixel_block+7)//8
-    out=bytearray(len(data)); src=0
+    width_dest=max(1,(width+pixel_block-1)//pixel_block)
+    height_dest=max(1,(height+pixel_block-1)//pixel_block)
+    htiles=((height_src+pixel_block-1)//pixel_block+7)//8
+    wtiles=((width_src+pixel_block-1)//pixel_block+7)//8
+    out_size=expected_base_size(width,height,gfmt,1)
+    if out_size is None: raise NotImplementedError(f'unsupported GCN surface format {gfmt:#x}')
+    out=bytearray(out_size); src=0
     for ty in range(htiles):
         for tx in range(wtiles):
             for t in range(64):
@@ -66,16 +77,21 @@ def unswizzle_ps4(data:bytes,width:int,height:int,array_size:int,gfmt:int)->byte
                 src += block_size
     return bytes(out)
 
-def expected_base_size(w:int,h:int,gfmt:int,array_size:int=1)->int|None:
-    if gfmt in {GCN_BC1,GCN_BC4}: one=w*h//2
-    elif gfmt in {GCN_BC2,GCN_BC3,GCN_BC5,0x28,0x29}: one=w*h
-    elif gfmt in BPP: one=w*h*(BPP[gfmt]//8)
-    else: return None
-    return one*max(1,array_size)
+def unswizzle_ps4(data:bytes,width:int,height:int,array_size:int,gfmt:int)->bytes:
+    count=max(1,array_size)
+    if count==1: return _unswizzle_face(data,width,height,gfmt)
+    per=expected_base_size(width,height,gfmt,1)
+    if per is None: raise NotImplementedError(f'unsupported GCN surface format {gfmt:#x}')
+    # For the validated D1 ROI cubemap fixture each face occupies an equal
+    # top-level surface span. Process each independently so Morton addresses
+    # restart at the beginning of every face.
+    if len(data)<per*count:
+        raise ValueError(f'array payload short: need at least {per*count}, got {len(data)}')
+    return b''.join(_unswizzle_face(data[i*per:(i+1)*per],width,height,gfmt) for i in range(count))
 
 def make_dds(data:bytes,w:int,h:int,gfmt:int,array_size:int=1)->bytes:
-    # The existing portable DDS writer intentionally represents one 2D image.
-    # Cubemap/array export is handled separately below so no invalid cube DDS is emitted.
+    # The portable DDS writer intentionally represents one 2D image. Cubemap
+    # faces are wrapped one at a time below to avoid emitting an invalid cube DDS.
     if array_size!=1:
         raise NotImplementedError('array/cubemap DDS wrapping requires face-aware export')
     DDSD_CAPS=1; DDSD_HEIGHT=2; DDSD_WIDTH=4; DDSD_PITCH=8; DDSD_PIXELFORMAT=0x1000; DDSD_LINEARSIZE=0x80000
@@ -116,12 +132,10 @@ def build_global_index(readers):
             if cur is None:
                 out[h]=rec
                 continue
-            # Patch views of the same logical namespace can repeat identical metadata.
             cr,ce=cur
             key=lambda x:(x['type'],x['subtype'],x['file_size'],x['reference'].upper())
             if key(ce)!=key(e):
                 raise RuntimeError(f'ambiguous cross-package TagHash {h}: {cr.pkg} vs {r.pkg}')
-            # Prefer an available view.
             if not cr.available(ce['index']) and r.available(e['index']): out[h]=rec
     return out
 
@@ -129,7 +143,7 @@ def follow_backing(global_by,header_entry):
     mid=global_by.get(header_entry['reference'].upper())
     backing=mid
     if mid:
-        mr,me=mid
+        _,me=mid
         nxt=me['reference'].upper()
         if nxt in global_by: backing=global_by[nxt]
     return mid,backing
@@ -143,8 +157,6 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
     outdir.mkdir(parents=True,exist_ok=True); global_by=build_global_index(readers)
     wanted={x.upper().removeprefix('0X') for x in tag_hashes or []}
     headers=[]
-    # Requested headers may live in a dependency namespace.  With no explicit
-    # hashes, retain historical behavior and enumerate only the primary package.
     if wanted:
         for h in sorted(wanted):
             rec=global_by.get(h)
@@ -163,7 +175,7 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
         linear=unswizzle_ps4(raw,h['width'],h['height'],h['array_size'],h['surface_format']) if swizzled else raw
         fmt_name=FORMAT_NAME.get(h['surface_format']) or ('GCN%02X' % h['surface_format'])
         stem=f"{e['tag_hash']}_{h['width']}x{h['height']}_{fmt_name}"
-        dds_name=None; png_name=None; png_error=None; face_pngs=[]
+        dds_name=None; png_name=None; png_error=None; face_pngs=[]; face_dds=[]
         if h['array_size']==1:
             dds=make_dds(linear,h['width'],h['height'],h['surface_format']); dds_name=stem+'.dds'; (outdir/dds_name).write_bytes(dds)
             if Image is not None:
@@ -171,7 +183,6 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
                     im=Image.open(io.BytesIO(dds)); im.load(); png_name=stem+'.png'; im.save(outdir/png_name)
                 except Exception as ex: png_error=repr(ex)
         elif h['array_size']==6:
-            # The unswizzled buffer is six equal faces in serialization order.
             per=expected_base_size(h['width'],h['height'],h['surface_format'],1)
             if per is None or len(linear)<per*6:
                 png_error='cubemap face sizing failed'
@@ -180,7 +191,7 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
                     fb=linear[face*per:(face+1)*per]
                     try:
                         dds=make_dds(fb,h['width'],h['height'],h['surface_format'],1)
-                        fn=f'{stem}_face{face}.dds'; (outdir/fn).write_bytes(dds)
+                        fn=f'{stem}_face{face}.dds'; (outdir/fn).write_bytes(dds); face_dds.append(fn)
                         if Image is not None:
                             im=Image.open(io.BytesIO(dds)); im.load(); pn=f'{stem}_face{face}.png'; im.save(outdir/pn); face_pngs.append(pn)
                     except Exception as ex:
@@ -191,7 +202,7 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
                      'stream':mid[1]['tag_hash'] if mid else None,'stream_package':str(mid[0].pkg) if mid else None,
                      'backing':be['tag_hash'],'backing_package':str(br.pkg),
                      **h,'format_name':fmt_name,'backing_bytes':len(raw),'unswizzled':swizzled,
-                     'dds':dds_name,'png':png_name,'face_pngs':face_pngs,'png_error':png_error})
+                     'dds':dds_name,'png':png_name,'face_dds':face_dds,'face_pngs':face_pngs,'png_error':png_error})
     missing=sorted(wanted-{x['header'].upper() for x in rows}) if wanted else []
     rep={'package':str(r.pkg),'dependency_packages':[str(x.pkg) for x in deps],'platform':r.h['platform'],'texture_count':len(rows),'missing_requested':missing,'textures':rows}
     (outdir/'texture_manifest.json').write_text(json.dumps(rep,indent=2)+'\n'); return rep
