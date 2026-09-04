@@ -1,0 +1,91 @@
+name: Temporary scan PS4 weapon family 011c
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-scan-weapon-011c.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover exact 011c family
+        run: |
+          set -euo pipefail
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 \
+            --target ps4_gear_weapons_011c_0.pkg \
+            --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg \
+            --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+      - name: Probe articulated assets
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          python tools/d1_entity_model_probe.py "$pkg" --runtime runtime --all-resident -o reports/models.json || true
+          python tools/d1_skeleton_probe.py "$pkg" --runtime runtime -o reports/skeletons.json || true
+          python tools/d1_animation_bundle_probe.py "$pkg" --runtime runtime --backward 16 --forward 32 -o reports/animation_bundles.json || true
+          python tools/d1_entry_extract.py "$pkg" --runtime runtime --types 16:0 --all-available -o reports/type16.json
+          python - <<'PY'
+          import json, pathlib, collections
+          R=pathlib.Path('reports')
+          def load(name):
+              p=R/name
+              return json.loads(p.read_text()) if p.exists() else {}
+          models=load('models.json').get('models',[])
+          sk=load('skeletons.json')
+          bundles=load('animation_bundles.json')
+          t16=load('type16.json').get('entries',[])
+          refs=collections.Counter(x.get('reference') for x in t16)
+          out={
+            'models': [{
+              'tag_hash':m.get('tag_hash'),'mesh_count':m.get('mesh_count'),
+              'mesh_parts':[len(x.get('parts',[])) for x in m.get('meshes',[])],
+              'resources':[{k:v.get('tag_hash') for k,v in x.get('resources',{}).items()} for x in m.get('meshes',[])],
+            } for m in models],
+            'resident_skeleton_count': sk.get('resident_skeleton_resources',0),
+            'skeletons': [{
+              'tag_hash':x.get('tag_hash'),
+              'bone_count':x.get('skeleton_info',{}).get('node_hierarchy',{}).get('count'),
+              'bone_hashes':[b.get('node_hash') for b in x.get('skeleton_info',{}).get('bones',[])],
+            } for x in sk.get('resources',[]) if x.get('semantic_role')=='entity_skeleton'],
+            'animation_wrapper_count': bundles.get('wrapper_count',0),
+            'animation_classifications': bundles.get('classification_counts',{}),
+            'animation_bundles': [{
+              'wrapper':b.get('wrapper',{}).get('tag_hash'),
+              'classification':b.get('classification',{}).get('classification'),
+              'models':[x.get('tag_hash') for x in b.get('models',[])],
+              'clips':[x.get('tag_hash') for x in b.get('animation_clips',[])],
+              'skeletons':[x.get('tag_hash') for x in b.get('skeleton_resources',[])],
+              'rigs':[x.get('tag_hash') for x in b.get('runtime_rig_resources',[])],
+            } for b in bundles.get('bundles',[])],
+            'top_type16_refs':refs.most_common(30),
+          }
+          print(json.dumps(out,indent=2))
+          (R/'summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-scan
+          path: reports/
+          retention-days: 1
+          if-no-files-found: error
