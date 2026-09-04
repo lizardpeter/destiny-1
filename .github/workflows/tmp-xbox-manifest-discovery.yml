@@ -1,0 +1,62 @@
+name: Temporary Xbox D1 manifest discovery
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-xbox-manifest-discovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download final Xbox One D1 package manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/xb1/packages/packages.txt' -o reports/packages.txt
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/xb1/packages/files.txt' -o reports/files.txt
+          wc -c reports/packages.txt reports/files.txt
+          head -c 1024 reports/packages.txt | xxd -g1 | head -40
+          printf '\n=== split files ===\n'
+          cat reports/files.txt
+      - name: Find candidate Xbox counterparts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re,json
+          from pathlib import Path
+          text=Path('reports/packages.txt').read_text(errors='replace')
+          # Capture package-looking tokens robustly regardless of separators/HTML.
+          pkgs=sorted(set(re.findall(r'[A-Za-z0-9_.-]+\.pkg',text,re.I)))
+          print('package token count',len(pkgs))
+          queries={
+            '00e2':[p for p in pkgs if '00e2' in p.lower()],
+            '0767':[p for p in pkgs if '0767' in p.lower()],
+            '0156':[p for p in pkgs if '0156' in p.lower()],
+            '0157':[p for p in pkgs if '0157' in p.lower()],
+            'vex':[p for p in pkgs if 'vex' in p.lower()],
+          }
+          for k,v in queries.items():
+              print('\n###',k,len(v))
+              for p in v[:200]: print(p)
+          Path('reports/candidates.json').write_text(json.dumps(queries,indent=2)+'\n')
+          if not pkgs:
+              # Preserve useful textual context if manifest is not a plain package list.
+              for needle in ('00e2','0767','0156','0157','vex'):
+                  print('\nCONTEXT',needle)
+                  low=text.lower(); pos=low.find(needle)
+                  print(text[max(0,pos-500):pos+1000] if pos>=0 else 'not found')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xbox-d1-manifest-discovery
+          path: reports/
+          retention-days: 1
+          if-no-files-found: error
