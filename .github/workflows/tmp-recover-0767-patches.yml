@@ -1,4 +1,4 @@
-name: Temporary range-extract Vex 0767 patch siblings
+name: Temporary decode proven 09A material banks
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  recover-and-probe:
+  decode:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,213 +19,121 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p runtime
-          curl --fail --location --retry 3 \
-            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
-            --output runtime/oo2core_3_win64.dll
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           test "$(stat -c '%s' runtime/oo2core_3_win64.dll)" = '894752'
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
-          curl --fail --location --retry 3 \
-            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
-            --output runtime/liblinoodle3.so
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Range-walk split PS4 tar and extract only 0767 siblings
+      - name: Sparse-extract 0767 and 00E2 patch families
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p recovered reports
           python - <<'PY'
-          import bisect, os, re, sys, time
+          import bisect,re
           from pathlib import Path
-          try:
-              import requests
-          except ImportError:
-              raise SystemExit('requests module unavailable')
-
-          base = 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          urls = [f'{base}/packages.tar.{i:03d}' for i in range(1, 11)]
-          targets = {
-              'ps4_arch_vex_com01_0767_0.pkg',
-              'ps4_arch_vex_com01_0767_1.pkg',
-              'ps4_arch_vex_com01_0767_4.pkg',
+          import requests
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          urls=[f'{base}/packages.tar.{i:03d}' for i in range(1,11)]
+          targets={
+            'ps4_arch_vex_com01_0767_0.pkg','ps4_arch_vex_com01_0767_1.pkg','ps4_arch_vex_com01_0767_4.pkg',
+            'ps4_arch_vex_00e2_0.pkg','ps4_arch_vex_00e2_1.pkg','ps4_arch_vex_00e2_2.pkg','ps4_arch_vex_00e2_4.pkg',
           }
-          s = requests.Session()
-          s.headers.update({'User-Agent': 'd1-research-range-probe/1.0'})
-
-          sizes = []
+          s=requests.Session(); s.headers.update({'User-Agent':'d1-research-range-probe/1.0'})
+          sizes=[]
           for url in urls:
-              r = s.get(url, headers={'Range':'bytes=0-0'}, stream=True, timeout=60)
-              if r.status_code != 206:
-                  raise RuntimeError(f'Range unsupported for {url}: HTTP {r.status_code}')
-              cr = r.headers.get('Content-Range','')
-              m = re.match(r'bytes 0-0/(\d+)$', cr)
-              if not m:
-                  raise RuntimeError(f'Bad Content-Range for {url}: {cr!r}')
-              sizes.append(int(m.group(1)))
-              r.close()
-          starts = [0]
-          for z in sizes:
-              starts.append(starts[-1] + z)
-          print('PART_SIZES', sizes, flush=True)
-          print('LOGICAL_TAR_SIZE', starts[-1], flush=True)
-
-          def read_at(off, n):
-              out = bytearray()
-              while n:
-                  pi = bisect.bisect_right(starts, off) - 1
-                  if pi < 0 or pi >= len(urls):
-                      raise EOFError((off,n))
-                  local = off - starts[pi]
-                  take = min(n, sizes[pi] - local)
-                  if take <= 0:
-                      raise EOFError((off,n,pi,local))
-                  r = s.get(urls[pi], headers={'Range':f'bytes={local}-{local+take-1}'}, timeout=60)
-                  if r.status_code != 206 or len(r.content) != take:
-                      raise RuntimeError(f'bad range pi={pi} local={local} take={take}: HTTP {r.status_code}, got {len(r.content)}')
-                  out += r.content
-                  off += take
-                  n -= take
-              return bytes(out)
-
-          def parse_octal(field):
-              field = field.rstrip(b'\0 ').lstrip(b' ')
-              if not field:
-                  return 0
-              if field[0] & 0x80:
-                  # POSIX base-256 size encoding.
-                  b = bytearray(field)
-                  b[0] &= 0x7f
-                  return int.from_bytes(b, 'big')
-              return int(field, 8)
-
-          found = {}
-          off = 0
-          count = 0
-          zero = 0
-          while off + 512 <= starts[-1]:
-              h = read_at(off, 512)
-              if h == b'\0' * 512:
-                  zero += 1
-                  if zero >= 2:
-                      break
-                  off += 512
-                  continue
-              zero = 0
-              magic = h[257:263]
-              if magic[:5] != b'ustar':
-                  raise RuntimeError(f'bad tar header at logical {off}: magic={magic!r}, prefix={h[:32].hex()}')
-              name = h[:100].split(b'\0',1)[0].decode('utf-8','replace')
-              prefix = h[345:500].split(b'\0',1)[0].decode('utf-8','replace')
-              if prefix:
-                  name = prefix + '/' + name
-              size = parse_octal(h[124:136])
-              count += 1
-              if count % 100 == 0:
-                  print(f'SCANNED {count} headers; logical=0x{off:X}; current={name}', flush=True)
-              base_name = name.rsplit('/',1)[-1]
-              if base_name in targets:
-                  found[base_name] = (off + 512, size, off)
-                  print(f'FOUND {base_name} header=0x{off:X} data=0x{off+512:X} size={size}', flush=True)
-                  if len(found) == len(targets):
-                      break
-              off += 512 + ((size + 511) // 512) * 512
-
-          if targets - found.keys():
-              raise RuntimeError(f'missing targets: {sorted(targets - found.keys())}; scanned {count}')
-
-          def extract(name, data_off, size):
-              dst = Path('recovered') / name
-              remain = size
-              off = data_off
-              with dst.open('wb') as f:
-                  while remain:
-                      pi = bisect.bisect_right(starts, off) - 1
-                      local = off - starts[pi]
-                      take = min(remain, sizes[pi] - local)
-                      r = s.get(urls[pi], headers={'Range':f'bytes={local}-{local+take-1}'}, stream=True, timeout=120)
-                      if r.status_code != 206:
-                          raise RuntimeError(f'extract range failed {name} pi={pi}: HTTP {r.status_code}')
-                      wrote = 0
-                      for chunk in r.iter_content(1024*1024):
-                          if chunk:
-                              f.write(chunk); wrote += len(chunk)
-                      r.close()
-                      if wrote != take:
-                          raise RuntimeError(f'short extract {name}: {wrote} != {take}')
-                      off += take; remain -= take
-              if dst.stat().st_size != size:
-                  raise RuntimeError(f'bad extracted size {name}')
-
-          for name, (data_off, size, header_off) in found.items():
-              extract(name, data_off, size)
-
-          with open('reports/0767_tar_locations.txt','w') as f:
-              f.write(f'logical_tar_size={starts[-1]}\n')
-              for i,z in enumerate(sizes,1): f.write(f'part_{i:03d}_size={z}\n')
-              for name,(data_off,size,header_off) in sorted(found.items()):
-                  f.write(f'{name} header={header_off} data={data_off} size={size}\n')
+            r=s.get(url,headers={'Range':'bytes=0-0'},stream=True,timeout=60)
+            if r.status_code!=206: raise RuntimeError((url,r.status_code))
+            m=re.match(r'bytes 0-0/(\d+)$',r.headers.get('Content-Range',''))
+            if not m: raise RuntimeError((url,r.headers.get('Content-Range')))
+            sizes.append(int(m.group(1))); r.close()
+          starts=[0]
+          for z in sizes: starts.append(starts[-1]+z)
+          def get(off,n):
+            out=bytearray()
+            while n:
+              pi=bisect.bisect_right(starts,off)-1; local=off-starts[pi]; take=min(n,sizes[pi]-local)
+              r=s.get(urls[pi],headers={'Range':f'bytes={local}-{local+take-1}'},timeout=60)
+              if r.status_code!=206 or len(r.content)!=take: raise RuntimeError(('range',pi,local,take,r.status_code,len(r.content)))
+              out+=r.content; off+=take; n-=take
+            return bytes(out)
+          def sz(field):
+            f=field.rstrip(b'\0 ').lstrip(b' ')
+            if not f:return 0
+            if f[0]&0x80:
+              b=bytearray(f);b[0]&=0x7f;return int.from_bytes(b,'big')
+            return int(f,8)
+          found={};off=0;count=0;zero=0
+          while off+512<=starts[-1]:
+            h=get(off,512)
+            if h==b'\0'*512:
+              zero+=1
+              if zero>=2:break
+              off+=512;continue
+            zero=0
+            if h[257:262]!=b'ustar': raise RuntimeError(('bad tar',off,h[257:263]))
+            name=h[:100].split(b'\0',1)[0].decode('utf-8','replace')
+            prefix=h[345:500].split(b'\0',1)[0].decode('utf-8','replace')
+            if prefix:name=prefix+'/'+name
+            n=sz(h[124:136]);count+=1;base_name=name.rsplit('/',1)[-1]
+            if base_name in targets:
+              found[base_name]=(off+512,n,off);print('FOUND',base_name,n,hex(off),flush=True)
+              if len(found)==len(targets):break
+            off+=512+((n+511)//512)*512
+          missing=targets-found.keys()
+          if missing:raise RuntimeError(('missing',sorted(missing),count))
+          for name,(data_off,n,header_off) in found.items():
+            dst=Path('recovered')/name;remain=n;off=data_off
+            with dst.open('wb') as f:
+              while remain:
+                pi=bisect.bisect_right(starts,off)-1;local=off-starts[pi];take=min(remain,sizes[pi]-local)
+                r=s.get(urls[pi],headers={'Range':f'bytes={local}-{local+take-1}'},stream=True,timeout=120)
+                if r.status_code!=206:raise RuntimeError(('extract',name,r.status_code))
+                wrote=0
+                for chunk in r.iter_content(1024*1024):
+                  if chunk:f.write(chunk);wrote+=len(chunk)
+                r.close()
+                if wrote!=take:raise RuntimeError(('short',name,wrote,take))
+                off+=take;remain-=take
+            if dst.stat().st_size!=n:raise RuntimeError(('size',name,dst.stat().st_size,n))
+          with open('reports/package_locations.txt','w') as f:
+            for name,(data_off,n,header_off) in sorted(found.items()):f.write(f'{name} header={header_off} data={data_off} size={n}\n')
           PY
           ls -lh recovered
-          sha256sum recovered/*.pkg | tee reports/0767_pkg_sha256.txt
+          sha256sum recovered/*.pkg | tee reports/pkg_sha256.txt
 
-      - name: Probe 09A model parent and literal backlinks
+      - name: Decode all proven 09A material-bank entries
         shell: bash
         run: |
           set -euo pipefail
-          for p in recovered/ps4_arch_vex_com01_0767_1.pkg recovered/ps4_arch_vex_com01_0767_4.pkg; do
-            b=$(basename "$p" .pkg)
-            python tools/d1_render_owner_probe.py "$p" --runtime runtime --model-tag 816CE09A -o "reports/${b}_09A_owner.json"
-          done
+          python tools/d1_material_decode.py recovered/ps4_arch_vex_00e2_4.pkg --runtime runtime \
+            --tag-hash 809C475F --tag-hash 809C4760 \
+            -o reports/09A_00E2_materials.json
+          python tools/d1_material_decode.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
+            --tag-hash 816CE240 --tag-hash 816CE241 --tag-hash 816CE242 --tag-hash 816CE243 --tag-hash 816CE244 --tag-hash 816CE1A7 \
+            -o reports/09A_0767_materials.json
           python - <<'PY'
-          import json, struct, sys
+          import json
           from pathlib import Path
-          sys.path.insert(0, 'tools')
-          from d1_entry_extract import EntryReader
-
-          targets = [0x816CE09A, 0x816CE092, 0x816CE095]
-          pats = {t: struct.pack('<I', t) for t in targets}
-          out = {}
-          for pkg in [Path('recovered/ps4_arch_vex_com01_0767_1.pkg'), Path('recovered/ps4_arch_vex_com01_0767_4.pkg')]:
-              r = EntryReader(pkg, Path('runtime'))
-              hits = {f'{t:08X}': [] for t in targets}
-              structured = available = 0
-              for e in r.entries:
-                  if e['type'] != 16:
-                      continue
-                  structured += 1
-                  if not r.available(e['index']):
-                      continue
-                  available += 1
-                  try:
-                      b = r.entry(e['index'])
-                  except Exception as ex:
-                      continue
-                  for t, pat in pats.items():
-                      start = 0
-                      offsets = []
-                      while True:
-                          j = b.find(pat, start)
-                          if j < 0: break
-                          offsets.append(j); start = j + 1
-                      if offsets:
-                          hits[f'{t:08X}'].append({'entry_index':e['index'],'tag_hash':e['tag_hash'],'reference':e['reference'],'offsets':offsets})
-              out[pkg.name] = {'entry_count':len(r.entries),'structured_entries':structured,'available_structured_entries':available,'hits':hits}
-          Path('reports/0767_patch_literal_backlinks.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps(out,indent=2))
+          rows=[]
+          for p in [Path('reports/09A_00E2_materials.json'),Path('reports/09A_0767_materials.json')]:
+            d=json.loads(p.read_text())
+            for m in d['materials']:
+              row={'tag_hash':m['tag_hash'],'present':m.get('present',True),'available':m.get('available')}
+              if m.get('available'):
+                row.update(class_hash=m['class_hash'],vertex_shader=m['vertex_shader'],pixel_shader=m['pixel_shader'],
+                           vs_textures=[x['texture'] for x in m['vs_textures']['items']],
+                           ps_textures=[x['texture'] for x in m['ps_textures']['items']])
+              rows.append(row)
+          Path('reports/09A_material_summary.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
           PY
 
-      - name: Print owner reports
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat reports/*_09A_owner.json
-          cat reports/0767_tar_locations.txt
-          cat reports/0767_pkg_sha256.txt
-
-      - name: Upload compact reports only
+      - name: Upload compact reports
         uses: actions/upload-artifact@v4
         with:
-          name: vex-0767-owner-probe-reports
+          name: proven-09A-material-bank-reports
           path: reports/
           retention-days: 1
           if-no-files-found: error
