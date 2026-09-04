@@ -1,0 +1,87 @@
+name: Temporary probe target 0140 entity Resource arrays
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-0140-target-entity-resources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode exact target entity Resource arrays
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_remote_s_entity_resource_package_find import parse_entity_resources
+          from d1_split_tar_extract import SplitHttpTar
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          members=[
+            parse_member('ps4_investment_assets_0140_1.pkg:0x5AA95E000:775550976'),
+            parse_member('ps4_investment_assets_0140_2.pkg:0x5D8CFDA00:15181824'),
+            parse_member('ps4_investment_assets_0140_3.pkg:0x5D9B78400:538624'),
+            parse_member('ps4_investment_assets_0140_5.pkg:0x5D9BFBE00:1605632'),
+          ]
+          r=RemoteLogicalPackage(arc,{m.patch_id:m for m in members},Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          targets=[
+            '80A816D4','80A818C1','80A818E0','80A818EE','80A8195D','80A81A68',
+            '80A81D19','80A81D3C','80A81DEC','80A81F02','80A81A46','80A8163F',
+          ]
+          rows=[]
+          for tag in targets:
+              e=by.get(tag)
+              if e is None: raise RuntimeError(f'missing target {tag}')
+              if e['reference'].upper()!='80800734': raise RuntimeError(f'{tag}: ref {e["reference"]} != s_entity')
+              b=r.entry(e['index'])
+              resources=parse_entity_resources(b)
+              row={
+                'entity_hash':tag,'entry_index':e['index'],'reference':e['reference'].upper(),
+                'size':len(b),'payload_sha256':hashlib.sha256(b).hexdigest(),
+                'resources':resources,
+                'resource_hashes':[x['resource_hash'] for x in resources],
+                'resource_packages':[f'{x["resource_package_id"]:04X}' if x['resource_package_id'] is not None else None for x in resources],
+                'resources_to_011c':[x for x in resources if x['resource_package_id']==0x011c],
+              }
+              rows.append(row)
+              print('TARGET_ENTITY_RESOURCE',json.dumps(row,separators=(',',':')),flush=True)
+          report={
+            'logical_view':r.view.name,'target_count':len(targets),'rows':rows,
+            'remote_blocks_read':len(r.block_cache),
+            'entities_with_011c':[x['entity_hash'] for x in rows if x['resources_to_011c']],
+            '011c_resource_hashes':sorted({y['resource_hash'] for x in rows for y in x['resources_to_011c']}),
+          }
+          Path('reports/0140_target_entity_resources.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('ENTITIES_WITH_011C',','.join(report['entities_with_011c']))
+          print('011C_RESOURCE_HASHES',','.join(report['011c_resource_hashes']))
+          print('REMOTE_BLOCKS',report['remote_blocks_read'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-0140-target-entity-resources
+          path: reports/
+          retention-days: 5
+          if-no-files-found: error
