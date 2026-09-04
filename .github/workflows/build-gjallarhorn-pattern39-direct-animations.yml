@@ -1,0 +1,161 @@
+name: Build Gjallarhorn pattern 39 directly-linked animations
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-gjallarhorn-pattern39-direct-animations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies and Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered reports/raw out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover complete 0151 logical package
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest reports/0151_extract.json --retries 6 --timeout 90
+      - name: Recover pinned animation oracle
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C tiger-animation-parser rev-parse HEAD)" = 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+      - name: Decode exact skeleton rig and two direct clips
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,math,struct,sys,tempfile
+          from pathlib import Path
+          import numpy as np
+          from pygltflib import GLTF2,Asset,Scene
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+          from animation_export.gltf_export import create_armature_hierarchy,add_animation
+          from animation_export.enums import Name_Convention
+
+          SKELETON='80AA3C97'; RIG='80AA2D6D'; CONTROL='80AA2DCD'; CLIPS=['80AA2E4A','80AA2E4B']
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          def raw(tag):
+              e=by[tag]; b=r.entry(e['index']); Path('reports/raw',f'{tag}.bin').write_bytes(b); return b
+          # Revalidate the direct control -> clip relation from retail bytes.
+          cb=raw(CONTROL)
+          assert [f'{struct.unpack_from("<I",cb,o)[0]:08X}' for o in (176,180)]==CLIPS
+          ver=Game_Version.D1_ROI
+          sk=read_skeleton(io.BytesIO(raw(SKELETON)),ver)
+          rig=read_runtime_rig(io.BytesIO(raw(RIG)),ver)
+
+          # Introspect only JSON-safe summary fields; no undocumented semantic names are invented.
+          skdict=vars(sk) if hasattr(sk,'__dict__') else {}
+          rigdict=vars(rig) if hasattr(rig,'__dict__') else {}
+          def seq_len(obj,*names):
+              for n in names:
+                  v=getattr(obj,n,None)
+                  if v is not None:
+                      try:return len(v)
+                      except Exception:pass
+              return None
+          skeleton_count=seq_len(sk,'nodes','bone_nodes','parent_node_indices','node_hashes')
+          rig_count=seq_len(rig,'controls','control_nodes','nodes','bone_indices')
+
+          tracks=[]; clip_rows=[]
+          for tag in CLIPS:
+              b=raw(tag)
+              with tempfile.NamedTemporaryFile() as f:
+                  f.write(b); f.flush(); f.seek(0)
+                  anim=read_animation(f,ver)
+              decoded=decode_animation(anim)
+              retargeted=rig_retarget(anim,decoded,sk,rig)
+              local=convert_obj_to_local(anim,retargeted,sk)
+              tracks.append((tag,local))
+              h=anim.animation_header
+              clip_rows.append({
+                  'tag_hash':tag,'bytes':len(b),
+                  'frame_count':int(h.frame_count),'node_count':int(h.node_count),'rig_control_count':int(h.rig_control_count),
+                  'decoded_track_count':len(decoded) if hasattr(decoded,'__len__') else None,
+                  'retargeted_track_count':len(retargeted) if hasattr(retargeted,'__len__') else None,
+                  'local_track_count':len(local) if hasattr(local,'__len__') else None,
+              })
+
+          gltf=GLTF2(asset=Asset(version='2.0',generator='destiny-1 exact Gjallarhorn pattern39 direct-control animation proof'),scene=0,
+                    scenes=[Scene(nodes=[])],nodes=[],meshes=[],skins=[],animations=[],materials=[],textures=[],images=[],samplers=[],buffers=[],bufferViews=[],accessors=[])
+          root,bones=create_armature_hierarchy(gltf,sk,Name_Convention.FNV1BE)
+          gltf.scenes[0].nodes.append(root)
+          for tag,local in tracks:
+              before=len(gltf.animations)
+              add_animation(gltf,bones,local,Name_Convention.FNV1BE,fps=30)
+              assert len(gltf.animations)==before+1
+              gltf.animations[-1].name=tag
+          gltf.extras={
+              'd1WeaponPatternIndex':39,'d1PatternEntity':'80A6A017','d1SkeletonResource':SKELETON,
+              'd1RuntimeRigResource':RIG,'d1DirectAnimationControl':CONTROL,
+              'd1DirectControlClipOffsets':{'176':'80AA2E4A','180':'80AA2E4B'},
+              'geometryIncluded':False,
+          }
+          out=Path('out/GJALLARHORN_PATTERN39_DIRECT_CONTROL_RIG_2CLIPS.glb'); gltf.save_binary(str(out))
+          chk=GLTF2().load_binary(str(out)); assert len(chk.animations)==2
+          report={'pattern_entity':'80A6A017','weapon_pattern_index':39,'skeleton':SKELETON,'runtime_rig':RIG,'direct_control':CONTROL,
+                  'control_clip_offsets':{'176':'80AA2E4A','180':'80AA2E4B'},'skeleton_count_probe':skeleton_count,'rig_count_probe':rig_count,
+                  'gltf_bone_node_count':len(bones),'clip_rows':clip_rows,'output':str(out),'output_bytes':out.stat().st_size,
+                  'animation_names':[a.name for a in chk.animations],
+                  'parser_commit':'b9fdc3a43dd28118113275624fcc9054b75855f4'}
+          Path('reports/gjallarhorn_pattern39_direct_animations.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+          sha256sum out/GJALLARHORN_PATTERN39_DIRECT_CONTROL_RIG_2CLIPS.glb | tee reports/glb_sha256.txt
+      - name: Bundle proof fixture
+        run: |
+          set -euo pipefail
+          cp reports/gjallarhorn_pattern39_direct_animations.json reports/glb_sha256.txt out/
+          cat > out/README.txt <<'EOF'
+          Destiny 1 Rise of Iron - Gjallarhorn weapon pattern 39 direct animation proof
+
+          Exact ownership path:
+            weapon pattern 39 -> s_entity 80A6A017
+            80A6A017 Resource[] -> skeleton EntityResource 80AA3C97
+            80A6A017 Resource[] -> runtime rig EntityResource 80AA2D6D
+            80A6A017 Resource[] -> resource 80AAECD6
+            80AAECD6 -> post-animation control 80AA2DCD
+            80AA2DCD payload +0xB0/+0xB4 -> s_animation_clip 80AA2E4A / 80AA2E4B
+
+          This GLB is intentionally rig/animation-only. It proves the two clips decode and
+          retarget against the exact Gjallarhorn pattern skeleton/runtime rig before the
+          six-model visual geometry is attached. No animation, bone, weight or clip identity
+          is synthesized.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-Gjallarhorn-pattern39-direct-control-animations
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
