@@ -1,0 +1,75 @@
+name: Temporary resolve 011c inline material 80A382A6
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-011c-material-80A382A6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover verified runtime and 011c family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+      - name: Inspect and decode 80A382A6
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entity_model_probe import parse_model
+          r=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          out={}
+          for h in ['80A382A6','80A39E12','80A3CD9A']:
+              e=by.get(h)
+              row={'present':bool(e)}
+              if e:
+                  row.update({k:e[k] for k in ['index','tag_hash','reference','type','subtype','file_size','starting_block','starting_block_offset']})
+                  row['available']=r.available(e['index'])
+                  if row['available']:
+                      b=r.entry(e['index'])
+                      row['sha256']=hashlib.sha256(b).hexdigest()
+                      row['payload_hex_prefix']=b[:256].hex()
+                      row['contains_80A3CD9A_offsets']=[o for o in range(0,len(b)-3,4) if struct.unpack_from('<I',b,o)[0]==0x80A3CD9A]
+                      row['contains_self_offsets']=[o for o in range(0,len(b)-3,4) if struct.unpack_from('<I',b,o)[0]==int(h,16)]
+              out[h]=row
+          me=by['80A39E12']; m=parse_model(r.entry(me['index']),r.h['platform'])
+          out['model_materials']=[{
+              'mesh_index':mi,
+              'parts':[{'part_index':pi,'lod':p['lod'],'index_offset':p['index_offset'],'index_count':p['index_count'],'primitive_type':p['primitive_type'],'material':p['material']} for pi,p in enumerate(mesh['parts'])]
+          } for mi,mesh in enumerate(m['meshes'])]
+          Path('reports/80A382A6_entry.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+          python tools/d1_material_decode.py recovered/ps4_gear_weapons_011c_5.pkg --runtime runtime --tag-hash 80A382A6 -o reports/80A382A6_material.json || true
+          cat reports/80A382A6_material.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-011c-material-80A382A6
+          path: reports/
+          retention-days: 3
+          if-no-files-found: error
