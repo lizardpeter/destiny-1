@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   patch:
@@ -51,6 +51,21 @@ jobs:
           PY
           python -m py_compile tools/d1_vex_09a_test_glb.py
           sha256sum tools/d1_vex_09a_test_glb.py > exporter.sha256
+
+      - name: Commit durable exporter
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/d1_vex_09a_test_glb.py
+          if git diff --cached --quiet; then
+            echo 'Exporter already durable; no commit needed.'
+          else
+            git commit -m 'Promote proven 09A GLB exporter fixes'
+            git push origin HEAD:main
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: durable-09a-exporter-source
