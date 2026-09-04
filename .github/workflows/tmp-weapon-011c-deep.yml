@@ -1,0 +1,121 @@
+name: Temporary deep probe PS4 weapon 011c
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-weapon-011c-deep.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install --quiet numpy scipy pyglm jsonpickle pygltflib
+      - name: Recover runtime and 011c
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports raw parser_reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg \
+            --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg \
+            --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json
+      - name: Dump exact model streams and animation cluster
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          tags=(80A39E13 80A39E14 80A39E18 80A39E1D 80A39E1F 80A39E20 80A39E17 80A3CD9A 80A3D294 80AAE10B 80AAE10C 80A39DF1 80A39DF2)
+          for h in 80A39DF6 80A39DF7 80A39DF8 80A39DF9 80A39DFA 80A39DFB 80A39DFC 80A39DFD 80A39DFE 80A39DFF 80A39E00 80A39E01; do tags+=("$h"); done
+          args=()
+          for h in "${tags[@]}"; do args+=(--tag-hash "$h"); done
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_entry_extract.py "$pkg" --runtime runtime "${args[@]}" --dump-dir raw -o reports/target_entries.json
+          cat reports/target_entries.json
+      - name: Decode material candidates
+        run: |
+          set -euo pipefail
+          pkg='recovered/ps4_gear_weapons_011c_0.pkg'
+          for h in 80A3CD9A 80A3D294 80AAE10B 80AAE10C; do
+            ok=0
+            for n in $(seq 1 6); do
+              if LINOODLE_SKIP_DLLMAIN=1 python tools/d1_material_decode.py "$pkg" --runtime runtime --tag-hash "$h" -o "reports/material_${h}.json"; then ok=1; break; fi
+              rm -f "reports/material_${h}.json"; sleep 1
+            done
+            echo "$h decode=$ok"
+          done
+      - name: Recover pinned animation parser and summarize clips
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          python - <<'PY'
+          import json,sys,tempfile
+          from pathlib import Path
+          sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          def raw_for(h):
+              p=next(Path('raw').glob(h+'_*'))
+              return p.read_bytes()
+          def with_file(data,fn):
+              with tempfile.NamedTemporaryFile() as f:
+                  f.write(data);f.flush();f.seek(0);return fn(f)
+          ver=Game_Version.D1_ROI
+          sk=with_file(raw_for('80A39DF2'),lambda f:read_skeleton(f,ver))
+          rig=with_file(raw_for('80A39DF1'),lambda f:read_runtime_rig(f,ver))
+          rows=[]
+          for h in ['80A39DF6','80A39DF7','80A39DF8','80A39DF9','80A39DFA','80A39DFB','80A39DFC','80A39DFD','80A39DFE','80A39DFF','80A39E00','80A39E01']:
+              anim=with_file(raw_for(h),lambda f:read_animation(f,ver))
+              decoded=decode_animation(anim)
+              ret=rig_retarget(anim,decoded,sk,rig)
+              rows.append({
+                'tag_hash':h,
+                'frame_count':int(anim.animation_header.frame_count),
+                'node_count':int(anim.animation_header.node_count),
+                'rig_control_count':int(anim.animation_header.rig_control_count),
+                'static_codec':int(anim.static_bones_header.codec_type) if anim.static_bones_header else None,
+                'animated_codec':int(anim.animated_bones_header.codec_type) if anim.animated_bones_header else None,
+                'retarget_track_count':len(ret),
+              })
+          # Probe public object attributes without depending on private implementation names.
+          def shape(obj):
+              d={}
+              for k in dir(obj):
+                  if k.startswith('_'): continue
+                  try:v=getattr(obj,k)
+                  except Exception:continue
+                  if callable(v):continue
+                  if isinstance(v,(int,float,str,bool,type(None))): d[k]=v
+                  elif isinstance(v,(list,tuple)): d[k]={'len':len(v),'preview':[str(x)[:80] for x in v[:8]]}
+              return d
+          rep={'skeleton_shape':shape(sk),'rig_shape':shape(rig),'clips':rows}
+          Path('parser_reports/animation_summary.json').write_text(json.dumps(rep,indent=2,default=str)+'\n')
+          print(json.dumps(rep,indent=2,default=str))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-011c-deep
+          path: |
+            reports/
+            raw/
+            parser_reports/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
