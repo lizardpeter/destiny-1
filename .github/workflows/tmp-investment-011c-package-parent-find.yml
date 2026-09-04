@@ -1,0 +1,67 @@
+name: Temporary find every Investment parent resolving into package 011c
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-investment-011c-package-parent-find.yml'
+      - 'tools/d1_remote_investment_package_target_find.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  find:
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        include:
+          - {family: '0135', package_id: '0x0135', members: '--member ps4_investment_assets_0135_0.pkg:0x5996C3200:13039616 --member ps4_investment_assets_0135_1.pkg:0x59A332C00:3268608 --member ps4_investment_assets_0135_2.pkg:0x59A650E00:3348480 --member ps4_investment_assets_0135_3.pkg:0x59A982800:167936 --member ps4_investment_assets_0135_4.pkg:0x59A9ABA00:167936 --member ps4_investment_assets_0135_5.pkg:0x59A9D4C00:247808'}
+          - {family: '0137', package_id: '0x0137', members: '--member ps4_investment_assets_0137_0.pkg:0x59AA11600:9207808 --member ps4_investment_assets_0137_1.pkg:0x59B2D9800:2756608 --member ps4_investment_assets_0137_2.pkg:0x59B57AA00:432128 --member ps4_investment_assets_0137_3.pkg:0x59B5E4400:141312 --member ps4_investment_assets_0137_5.pkg:0x59B606E00:141312'}
+          - {family: '0139', package_id: '0x0139', members: '--member ps4_investment_assets_0139_0.pkg:0x59B629800:10217472 --member ps4_investment_assets_0139_1.pkg:0x59BFE8200:3856384 --member ps4_investment_assets_0139_2.pkg:0x59C395C00:454656 --member ps4_investment_assets_0139_3.pkg:0x59C404E00:141312 --member ps4_investment_assets_0139_5.pkg:0x59C427800:180224'}
+          - {family: '013a', package_id: '0x013A', members: '--member ps4_investment_assets_013a_0.pkg:0x59C453A00:95760384 --member ps4_investment_assets_013a_1.pkg:0x5A1FA6C00:15149056 --member ps4_investment_assets_013a_2.pkg:0x5A2E19600:7192576 --member ps4_investment_assets_013a_3.pkg:0x5A34F5800:165888 --member ps4_investment_assets_013a_4.pkg:0x5A351E200:161792 --member ps4_investment_assets_013a_5.pkg:0x5A3545C00:165888'}
+          - {family: '013b', package_id: '0x013B', members: '--member ps4_investment_assets_013b_1.pkg:0x5A356E600:26503168 --member ps4_investment_assets_013b_2.pkg:0x5A4EB5000:1114112'}
+          - {family: '013c', package_id: '0x013C', members: '--member ps4_investment_assets_013c_1.pkg:0x5A4FC5200:24469504 --member ps4_investment_assets_013c_2.pkg:0x5A671B400:839680 --member ps4_investment_assets_013c_3.pkg:0x5A67E8600:145408 --member ps4_investment_assets_013c_5.pkg:0x5A680C000:237568'}
+          - {family: '013d', package_id: '0x013D', members: '--member ps4_investment_assets_013d_1.pkg:0x5A6846200:22304768 --member ps4_investment_assets_013d_2.pkg:0x5A7D8BC00:985088 --member ps4_investment_assets_013d_3.pkg:0x5A7E7C600:163840 --member ps4_investment_assets_013d_4.pkg:0x5A7EA4800:143360 --member ps4_investment_assets_013d_5.pkg:0x5A7EC7A00:196608'}
+          - {family: '013e', package_id: '0x013E', members: '--member ps4_investment_assets_013e_1.pkg:0x5A7EF7C00:21049344 --member ps4_investment_assets_013e_2.pkg:0x5A930AE00:704512 --member ps4_investment_assets_013e_3.pkg:0x5A93B7000:143360 --member ps4_investment_assets_013e_4.pkg:0x5A93DA200:145408 --member ps4_investment_assets_013e_5.pkg:0x5A93FDC00:145408'}
+          - {family: '013f', package_id: '0x013F', members: '--member ps4_investment_assets_013f_1.pkg:0x5A9421600:17747968 --member ps4_investment_assets_013f_2.pkg:0x5AA50E800:3614720 --member ps4_investment_assets_013f_3.pkg:0x5AA881200:301056 --member ps4_investment_assets_013f_4.pkg:0x5AA8CAC00:284672 --member ps4_investment_assets_013f_5.pkg:0x5AA910600:317440'}
+          - {family: '0140', package_id: '0x0140', members: '--member ps4_investment_assets_0140_1.pkg:0x5AA95E000:775550976 --member ps4_investment_assets_0140_2.pkg:0x5D8CFDA00:15181824 --member ps4_investment_assets_0140_3.pkg:0x5D9B78400:538624 --member ps4_investment_assets_0140_5.pkg:0x5D9BFBE00:1605632'}
+          - {family: '0141', package_id: '0x0141', members: '--member ps4_investment_assets_0141_2.pkg:0x5D9D84000:28954624 --member ps4_investment_assets_0141_3.pkg:0x5DB921200:352256 --member ps4_investment_assets_0141_4.pkg:0x5DB977400:184320 --member ps4_investment_assets_0141_5.pkg:0x5DB9A4600:444416'}
+          - {family: '0142', package_id: '0x0142', members: '--member ps4_investment_assets_0142_2.pkg:0x5DBA11000:26355712 --member ps4_investment_assets_0142_3.pkg:0x5DD333A00:229376 --member ps4_investment_assets_0142_4.pkg:0x5DD36BC00:350208 --member ps4_investment_assets_0142_5.pkg:0x5DD3C1600:401408'}
+          - {family: '0143', package_id: '0x0143', members: '--member ps4_investment_assets_0143_2.pkg:0x5DD423800:25309184 --member ps4_investment_assets_0143_3.pkg:0x5DEC46A00:530432 --member ps4_investment_assets_0143_4.pkg:0x5DECC8400:176128 --member ps4_investment_assets_0143_5.pkg:0x5DECF3600:567296'}
+          - {family: '0144', package_id: '0x0144', members: '--member ps4_investment_assets_0144_2.pkg:0x5DED7E000:33804288 --member ps4_investment_assets_0144_3.pkg:0x5E0DBB200:655360 --member ps4_investment_assets_0144_4.pkg:0x5E0E5B400:221184 --member ps4_investment_assets_0144_5.pkg:0x5E0E91600:335872'}
+          - {family: '0145', package_id: '0x0145', members: '--member ps4_investment_assets_0145_2.pkg:0x5E0EE3800:653187072 --member ps4_investment_assets_0145_3.pkg:0x607DD1200:50792448 --member ps4_investment_assets_0145_4.pkg:0x60AE41C00:15742976 --member ps4_investment_assets_0145_5.pkg:0x60BD45600:3166208'}
+          - {family: '0146', package_id: '0x0146', members: '--member ps4_investment_assets_0146_4.pkg:0x60C04A800:82329600 --member ps4_investment_assets_0146_5.pkg:0x610ECEA00:76988416 --member ps4_investment_assets_0146_6.pkg:0x61583AC00:161792'}
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and compact 013f assignment map
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          python tools/d1_split_tar_extract.py --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+      - name: Find parents resolving anywhere into 011c
+        env: {MEMBER_ARGS: '${{ matrix.members }}'}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          eval python tools/d1_remote_investment_package_target_find.py recovered/ps4_investment_assets_013f_5.pkg \
+            --package-id '${{ matrix.package_id }}' --target-package-id 0x011c \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            $MEMBER_ARGS -o reports/targetpkg_${{ matrix.family }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-investment-011c-parent-${{ matrix.family }}
+          path: reports/
+          retention-days: 4
+          if-no-files-found: warn
