@@ -13,7 +13,7 @@ Updated: 2026-09-04
 
 The package/container and compression barriers are crossed. Real final-era D1 PS4 and Xbox One Tiger v24 packages are parsed; Oodle 3 decompression works; logical entries reconstruct; PS4 textures export; model geometry/material selection is substantially decoded; a real PS4 skeleton/skin/runtime-rig pair is validated; and two real PS4 animation clips have been exported successfully.
 
-The newest correction is architectural: the articulated Vex model `816CE09A`, although fully reconstructable as a rigged/animated GLB, is **not currently treated as the final visible retail combatant model**. Retail byte evidence places it in a recurring `0x8080222A` animation-bundle/proxy pattern. The active frontier is therefore to connect validated animation bundles to the correct ordinary visible model/entity/material ownership graph without guessing textures or parentage.
+The former `816CE09A` render-ownership ambiguity is now resolved. Higher 0767 patch siblings contain standard D1 model parent `816CE12B`, which points directly to `816CE09A` and supplies its two external-material ranges. The default visible materials are byte-proven as `809C475F` for `VariantShaderIndex=0` and `816CE240` for `VariantShaderIndex=1`. Their textures, material constants, native PS4 `OrbShdr` resource layouts and both target pixel-shader machine-code streams are now decoded. The active frontier is no longer finding the visible owner; it is completing exact texture-table/register semantics and converting the proven native two-pass material behavior into a loss-preserving portable glTF approximation.
 
 ## Real corpus
 
@@ -46,15 +46,20 @@ The newest correction is architectural: the articulated Vex model `816CE09A`, al
 - 276 resident vector/constant containers
 - 22 animation clips exist, but all require patch 0
 
-### PS4 Vex articulated validation corpus
+### PS4 Vex articulated target corpus
 
-Primary target package:
+Primary family:
 
-`ps4_arch_vex_com01_0767_0.pkg`
+```text
+ps4_arch_vex_com01_0767_0.pkg
+ps4_arch_vex_com01_0767_1.pkg
+ps4_arch_vex_com01_0767_4.pkg
+```
 
 Validated target cluster:
 
-- model/proxy `816CE09A`
+- model `816CE09A`
+- standard render owner/model parent `816CE12B`
 - 4,172 vertices
 - 5,336 triangles after D1 triangle-strip + restart conversion
 - UV0 and normals
@@ -66,7 +71,15 @@ Validated target cluster:
 - animation `816CE09E`: hash `D3FD602F`, 101 frames
 - successful glTF skin, inverse bind matrices and animation export
 
-The clean rigged/animated `816CE09A` GLB remains a trusted **animation-system validation artifact**, not a final textured combatant claim.
+Trusted rigged/animated validation GLB:
+
+`816CE09A_816CE092_multi_animation_rigged.glb`
+
+SHA-256:
+
+`7c613d4ca28253a1c3ebadbf283a6fac8c0578868ea91c115ceff96211d963da`
+
+This GLB remains trusted for geometry/skin/animation. Its material assignment is being replaced by the newly proven retail render chain rather than the rejected earlier appearance experiment.
 
 ### PS4 Vex shared/render-context package
 
@@ -80,8 +93,41 @@ The clean rigged/animated `816CE09A` GLB remains a trusted **animation-system va
 - 11 animation clips
 - 130 techniques
 - direct entity/composition correspondence with the `0767` combatant graph
+- owns default variant-0 material `809C475F`
 
-This package supplied the decisive animation-proxy comparison and the first fully byte-proven ordinary Vex external-material chain.
+This package supplied the ordinary Vex material control fixture and the default variant-0 material used by the actual `816CE09A` parent.
+
+## Retail package acquisition
+
+The public final D1 PS4 corpus is exposed as ten split TAR volumes rather than direct per-package URLs. A reusable sparse extractor is now committed:
+
+`tools/d1_split_tar_extract.py`
+
+Working behavior:
+
+- discovers split sizes with HTTP Range;
+- walks TAR headers without downloading skipped package payloads;
+- verifies TAR magic/checksums;
+- extracts only requested package members across split boundaries;
+- records exact logical TAR offsets, sizes and SHA-256 hashes;
+- supports validated `--start-offset` resume from previously calibrated family positions.
+
+Known 0767 retail TAR locations:
+
+```text
+0767_0 header 0x105C6E000  size 42,686,464
+0767_1 header 0x108523A00  size  8,278,016
+0767_4 header 0x108D08C00  size     24,576
+```
+
+Known 0157 locations:
+
+```text
+0157_0 header 0x46AF91400  size 206,192,640
+0157_1 header 0x477435600  size  30,326,784
+```
+
+The former direct-URL 404 problem is therefore obsolete; higher patch siblings are recoverable deterministically from the split archive.
 
 ## Oodle 3
 
@@ -106,6 +152,7 @@ Working:
 - `entry_b[23:16]` preservation constraint across observed local edges.
 - standard D1 EntityResource role decoding for model/skeleton/physics resources.
 - standard model-parent signature `0x80801A80 -> 0x80801A9C`.
+- sparse package recovery directly from the public split TAR corpus.
 
 ## GPU/resource layer
 
@@ -122,6 +169,8 @@ Working:
 - BC1/BC3/BC4/BC5 validated visually.
 - streamed texture backing across package boundaries is resolved.
 - exact Vex material textures have been decoded through the `0156/0157` chain.
+- `816CE1C5` is a real 256x512 BC1 grayscale Vex circuitry/panel texture.
+- target variant-0 images include 2048² BC3 `80AACCDD`, 1024² BC5 `80AACCDF`, 256² BC5 `80AACC26`, and six-face 64² RGBA8 `80AACC28`.
 
 ### Xbox textures
 
@@ -131,8 +180,50 @@ Working:
 
 ### PS4 shaders
 
-- native GCN framing and `OrbShdr` footer parsed.
-- PixelShader packed header word solved: low 24 bits payload size; high 8 bits input-usage-slot count.
+Native shader framing and resource binding are now decoded substantially beyond the earlier header-only state.
+
+Reusable tool:
+
+`tools/d1_ps4_shader_binary_probe.py`
+
+Confirmed on target retail binaries:
+
+- D1 PixelShader packed header low 24 bits = native payload size.
+- packed header high 8 bits = Sony InputUsageSlot count.
+- FileEntry.Reference points to the native Orbis shader payload.
+- native payload starts with standard `BEEB03FF` GCN token/instruction.
+- source-correlated `OrbShdr` footer formula lands exactly on the sole footer signature.
+- 28-byte ShaderBinaryInfo stage, code-length and input-usage metadata parse cleanly.
+- Sony InputUsageSlot resource/sampler/constant-buffer layout is decoded.
+
+Target `80AAE14B`:
+
+```text
+native payload 80AAE14D
+payload 1028 bytes
+GCN code 956 bytes
+5-image resource table
+5 samplers
+b0 + b12 constant buffers
+```
+
+Target `816CE0A8`:
+
+```text
+native payload 816CE0AE
+payload 580 bytes
+GCN code 516 bytes
+2 immediate texture resources
+2 samplers
+b0 + b12 + b13 constant buffers
+```
+
+LLVM 18 exposes the old gfx700 target names but intentionally lacks their disassembler implementation. CLRX 0.1.9 successfully disassembles the exact bounded streams in raw GFX700 / GCN 1.1 mode to `s_endpgm` with no decoder errors.
+
+See:
+
+- `spec/D1_MATERIALS_SHADERS.md`
+- `notes/PS4_09A_SHADER_DATAFLOW.md`
 
 ## Entity/model layer
 
@@ -145,6 +236,7 @@ Confirmed:
 - PS4 embedded EntityModel field in the standard parent is at the validated D1 source-correlated location used by the project parser.
 - Xbox embedded EntityModel field in parent at `+0x1C4`.
 - model mesh/part arrays, variant shader indices, resource hashes and buffer descriptors parse across current corpora.
+- target parent `816CE12B -> 816CE09A` is byte-proven in higher 0767 patch siblings.
 
 ## Materials / shader binding
 
@@ -155,22 +247,81 @@ Confirmed:
 - PS4 ROI material class `0x80801AD7`.
 - Xbox material family observed as `0x80801C32`.
 - Xbox `STextureTag.TextureIndex` is the actual DXBC `t#` register: 11/11 exact.
-- material PS sampler count equals shader sampler count in all validated overlaps.
+- material PS sampler count equals shader sampler count in all validated Xbox overlaps.
 - Xbox vector container `0x80801AA5` exact `0x30 + N*16` layout across 276/276 resident examples.
-- material-provided pixel constants equal DXBC `b0` vec4 count in all validated overlaps.
+- PS4 subtype `32:7` material-vector header is exactly 16 bytes; `+0x08` is vec4 unit count and FileEntry.Reference resolves to a raw `N*16` vec4 payload.
+- material-provided pixel constants feed `b0` semantics across the Xbox/PS4 comparison.
 - standard PS4 model-parent `ExternalMaterialsMap` / `ExternalMaterials` selection is decoded.
 
-### Proven ordinary Vex render/material fixture
+### Target render owner and default materials
 
-`809C44A5 -> 809C47F4`
+```text
+816CE12B -> model 816CE09A
 
-- ordinary standard model parent
-- variants 0 and 1 resolved through real external materials
-- material family `809C475F / 809C4760`
-- exact PS texture bindings decoded
-- backing textures resolved through `0156/0157`
+ExternalMaterialsMap[0] count=2 start=0
+  809C475F  <- default variant 0
+  809C4760
 
-This is a rendering/material **control fixture**. Its skeleton/runtime-control compatibility with the 12-control `816CE095` rig is not yet proven.
+ExternalMaterialsMap[1] count=6 start=2
+  816CE240  <- default variant 1
+  816CE241
+  816CE242
+  816CE243
+  816CE244
+  816CE1A7
+```
+
+### Variant 0 default / main surface
+
+`809C475F`:
+
+- PS `80AAE14B`
+- PS constant container `80AAE14C`: 19 vec4s
+- five material texture records
+- machine code proves two two-component normal/detail perturbation samples followed by `sqrt(max(0,1-x²-y²))` normal-Z reconstruction
+- machine code proves a cubemap/environment sample with explicit LOD
+- remaining early samples read RGB and alpha separately
+- native pass exports both `mrt0` and `mrt1`
+
+Known image family:
+
+```text
+80AACCDD  2048x2048 BC3, bound twice
+80AACCDF  1024x1024 BC5
+80AACC26    256x256  BC5
+80AACC28     64x64   RGBA8 x6 faces
+```
+
+The exact serialized PS4 `TextureIndex` -> resource-table chunk correlation is the remaining proof needed to label primary/detail-normal and duplicated BC3 RGB/A slots without inference.
+
+### Variant 1 default / circuitry palette pass
+
+`816CE240`:
+
+- PS `816CE0A8`
+- two texture records, both `816CE1C5`
+- PS `b0` container `816CE185`: 8 vec4s
+- first texture binding is sampled as a height/parallax scalar and shifts the UVs
+- second binding resamples the same texture at the displaced coordinates
+- vec3 is instruction-proven luminance weights `[0.30,0.59,0.11,0]`
+- exact palette equation is instruction-proven:
+
+```text
+L = clamp(dot(sample.rgb, [0.30, 0.59, 0.11]))
+palette.rgb = vec4.rgb + vec5.rgb * L
+```
+
+Default palette endpoints:
+
+```text
+L=0 -> [0.01516042, 0.02084558, 0.03790105]
+L=1 -> approximately [0.40, 0.55, 1.00]
+```
+
+- vec6 is `[1,1,1,1]` in all six variants.
+- vec7.x is an instruction-proven material RGB intensity multiplier: normally `5`, but `816CE188` uses `40`.
+- shader writes only `mrt0`; exported fourth component is zero.
+- combined behavior strongly indicates an HDR/additive/emissive-style circuitry pass; exact blend-state naming remains pending render-state proof.
 
 ## Skeleton / skin / runtime rig
 
@@ -203,8 +354,6 @@ General D1 animation compression/layout therefore remains **partially solved**, 
 
 ## `0x8080222A` animation-bundle/proxy pattern
 
-This is the largest semantic correction in the current frontier.
-
 Observed repeatedly:
 
 ```text
@@ -219,84 +368,38 @@ Target wrapper `816CE099` contains aligned dword `D3FD602F`, exactly the validat
 
 Equivalent clusters occur in `00E2_0`, including `809C4B96 -> 809C4B97`.
 
-Safe project conclusion:
-
-- observed semantic role: **animation-bundle/proxy pattern**
-- original Bungie class name: unknown
-- internal field schema: unresolved
-- adjacency to this wrapper does **not** prove final visible render ownership
+Important correction: adjacency to `0x8080222A` does not itself prove render ownership, but it also does **not** negate renderability. The actual standard model parent is now independently proven as `816CE12B`, so `816CE09A` no longer needs to be treated only as an animation proxy.
 
 Reusable classifier:
 
 `tools/d1_animation_bundle_probe.py`
 
-It uses no guessed wrapper offsets. It correlates class/order, Havok markers, EntityResource roles and optional known raw animation-hash dwords.
-
-## Direct-retarget elimination: `809C4B97`
-
-`809C4B97` is the closest known proxy-family geometry analogue to `816CE09A`, but its companion skeleton `809C4B90` has **8 bones**, versus 12 bones/12 controls for `816CE092/095`.
-
-It is therefore eliminated as a direct skeleton-compatible target for `816CE09D/E` under the current acceptance criteria. It remains a valuable format comparison fixture.
-
 ## Current active frontier
 
-The next question is not “which textures belong on `816CE09A`?”
+The target owner/model/material problem is solved. The active question is now:
 
-It is:
+> How do we reproduce the two proven native PS4 material passes in a portable, visibly faithful export while preserving every native binding and approximation decision?
 
-> Which ordinary visible Vex model parent/model/skeleton/control cluster is byte-compatible with the validated 12-node / 12-control `816CE092 / 816CE095 / 76F7A98E` animation bundle?
+Immediate proof tasks:
 
-New ranking tool:
+1. resolve PS4 `STextureTag.TextureIndex` for `809C475F` and `816CE240` against native resource-table/direct API slots;
+2. finish exact naming of the BC3 RGB/alpha terms in `80AAE14B` from downstream dataflow;
+3. trace `b12` / `b13` producers and the non-material global intensity scalars in `816CE0A8`;
+4. decode blend/render state sufficiently to prove the circuitry pass composition mode;
+5. bake a single portable normal map from the proven primary+detail normal path if required by glTF;
+6. bake the circuitry palette from `816CE1C5` using the exact `vec4 + vec5*L` formula while preserving parallax metadata;
+7. attach both portable approximations to the already-valid rigged + animated target GLB and serialize the original parent/material/shader/texture/constants/resource-table hashes in `extras`;
+8. validate the resulting GLB structurally and visually.
 
-`tools/d1_animation_proxy_compat_probe.py`
+## Final textured-export acceptance rule
 
-It ranks standard visible-model candidates using only proven parsers plus raw graph/fingerprint evidence. Its score is explicitly heuristic and cannot itself promote a candidate to final visible-model status.
+Do not call the portable GLB a faithful retail reconstruction until all applicable checks pass:
 
-First candidate-specific byte test:
-
-```text
-809C44A5 -> 809C47F4
-    ? co-referenced 12-bone skeleton
-    ? 76F7A98E runtime-component fingerprint
-    ? equivalent 12-control mapping
-```
-
-If that fixture fails, enumerate the other 34 standard parents in `00E2_0`.
-
-## Patch sibling recovery status
-
-The public manifest names higher Vex patch siblings including:
-
-- `ps4_arch_vex_com01_0767_1.pkg`
-- `ps4_arch_vex_com01_0767_4.pkg`
-- `ps4_arch_vex_00e2_1.pkg`
-- `ps4_arch_vex_00e2_2.pkg`
-- `ps4_arch_vex_00e2_4.pkg`
-
-Historical GitHub Actions artifacts were inspected directly. All five public-mirror recovery attempts were recorded as HTTP 404/misses. No retained historical artifact contains those package bytes, and no retained artifact contains the base `_0` package payloads.
-
-Do not repeat the same mirror attempt unless the mirror changes.
-
-## Immediate engineering / reversal targets
-
-1. Run `d1_animation_proxy_compat_probe.py` over `0767_0 + 00E2_0 + 0156_0 (+0157)` when those already-used package bytes are available in the active runtime.
-2. Test `809C44A5 -> 809C47F4` for 12-bone / `76F7A98E` / 12-control compatibility before any retarget or texture claim.
-3. Generalize and durably document the `0x808008B2` runtime-rig field layout from real bytes.
-4. Promote the successful PS4 animation-clip decoder into a reusable committed tool without overgeneralizing beyond validated compression modes.
-5. Use `d1_animation_bundle_probe.py` to classify `0x8080222A` neighborhoods across future packages and prevent proxy models from being mislabeled as final render models.
-6. Finish Xbox Durango tile-mode-14 detiling and texture model `808B3A16`.
-7. Build the global TagHash/class/dependency index so complete asset export becomes package-independent.
-8. Produce a one-command loss-preserving asset path: visible model + materials + textures + skin + compatible animations + raw provenance metadata.
-
-## Final-visible-model acceptance rule
-
-Do not call a Vex candidate the final retail animated body until all applicable checks pass:
-
-1. ordinary standard model parent is byte-proven;
-2. visible model is identified from that parent;
-3. compatible skeleton/control relationship is byte-proven;
-4. runtime control map matches the 12-control animation bundle;
-5. clips retarget without hierarchy/transform anomalies;
-6. external material selection is resolved from the candidate's own parent;
-7. textures come from those exact materials, not adjacency or visual guessing;
-8. Blender/glTF validation succeeds.
+1. standard model parent is byte-proven (`816CE12B` passes);
+2. visible model is identified from that parent (`816CE09A` passes);
+3. skeleton/control relationship is byte-proven (`816CE092/095` passes for this model export);
+4. external material selection comes from the model's own parent (passes);
+5. texture hashes come from those exact materials (passes at material-list level);
+6. native shader resource role is instruction/resource-table proven, not assigned from visual guesswork;
+7. portable PBR/emissive substitutions are explicitly labeled approximations and native metadata is preserved losslessly;
+8. Blender/glTF validation succeeds with geometry, skin, animations and final material bindings intact.
