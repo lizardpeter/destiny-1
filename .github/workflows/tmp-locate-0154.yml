@@ -1,0 +1,34 @@
+name: Temporary locate 0154 shared package
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-locate-0154.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Scan between 011c and known 0157 region
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python tools/d1_split_tar_scan.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start 0x43779C800 --end 0x46AF91400 --chunk-size 0x2000000 \
+            --contains '_0154_' -o reports/pkg_0154_window.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-0154-window
+          path: reports/
+          retention-days: 2
+          if-no-files-found: error
