@@ -1,0 +1,64 @@
+name: Temporary backscan Investment archive for 0131 and 0132
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-backscan-investment-0131-0132.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Range-scan 512 MiB before known 0135 header
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar, parse_tar_number, tar_header_checksum_ok, tar_name
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          end=0x5996C3200
+          span=512<<20
+          start=(end-span)//512*512
+          chunk=16<<20
+          rows=[]
+          off=start
+          while off<end:
+              take=min(chunk,end-off)
+              b=arc.read_at(off,take)
+              for q in range(0,len(b)-511,512):
+                  h=b[q:q+512]
+                  if h[257:262]!=b'ustar' or not tar_header_checksum_ok(h): continue
+                  name=tar_name(h)
+                  if name.startswith('ps4_investment_assets_013'):
+                      size=parse_tar_number(h[124:136])
+                      row={'name':name,'header_offset':off+q,'data_offset':off+q+512,'size':size}
+                      rows.append(row); print('MEMBER',json.dumps(row,separators=(',',':')),flush=True)
+              off+=take
+              print(f'SCANNED 0x{off:X}/0x{end:X} hits={len(rows)}',flush=True)
+          # Deduplicate exact headers.
+          uniq={r['header_offset']:r for r in rows}
+          rows=[uniq[k] for k in sorted(uniq)]
+          json.dump({'start':start,'end':end,'members':rows},open('reports/backscan_013x.json','w'),indent=2)
+          found=[r for r in rows if r['name'].startswith(('ps4_investment_assets_0131','ps4_investment_assets_0132'))]
+          print('TARGET MEMBERS',len(found))
+          for r in found: print('TARGET',json.dumps(r,separators=(',',':')))
+          if not found: raise SystemExit('no 0131/0132 headers found in scan window')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-backscan-investment-0131-0132
+          path: reports/
+          retention-days: 5
+          if-no-files-found: warn
