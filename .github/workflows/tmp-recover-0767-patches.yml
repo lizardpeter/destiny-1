@@ -1,40 +1,201 @@
-name: Temporary recover Vex 0767 patch siblings
+name: Temporary recover and probe Vex 0767 patches
 
 on:
-  pull_request:
+  push:
+    paths:
+      - '.github/workflows/tmp-recover-0767-patches.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Recover package siblings
+      - uses: actions/checkout@v4
+
+      - name: Recover complete 0767 package family
         shell: bash
         run: |
-          set -u
-          mkdir -p out
+          set -euo pipefail
+          mkdir -p corpus runtime out notes/generated
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          found=0
-          for f in ps4_arch_vex_com01_0767_1.pkg ps4_arch_vex_com01_0767_4.pkg; do
-            echo "Trying $f"
-            if curl --fail --location --retry 2 --connect-timeout 20 "$base/$f" --output "out/$f"; then
-              stat -c '%n %s bytes' "out/$f"
-              sha256sum "out/$f"
-              found=1
-            else
-              rm -f "out/$f"
-            fi
-          done
-          if [ "$found" -ne 1 ]; then
-            echo 'No requested package siblings recovered'
-            exit 1
+          curl --fail --location --retry 3 "$base/packages.txt" -o out/packages.txt
+          grep -E '^ps4_arch_vex_com01_0767_[0-9]+\.pkg$' out/packages.txt | sort -V -u > out/0767_siblings.txt || true
+          if [ ! -s out/0767_siblings.txt ]; then
+            printf '%s\n' \
+              ps4_arch_vex_com01_0767_0.pkg \
+              ps4_arch_vex_com01_0767_1.pkg \
+              ps4_arch_vex_com01_0767_4.pkg > out/0767_candidates.txt
+          else
+            cp out/0767_siblings.txt out/0767_candidates.txt
           fi
-      - name: Upload recovered packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: vex-0767-patch-siblings
-          path: out/
-          retention-days: 1
-          if-no-files-found: error
+          : > out/0767_downloaded.txt
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            echo "Trying $f"
+            if curl --fail --location --retry 3 --connect-timeout 20 "$base/$f" -o "corpus/$f"; then
+              stat -c '%n %s bytes' "corpus/$f"
+              sha256sum "corpus/$f"
+              echo "$f" >> out/0767_downloaded.txt
+            else
+              rm -f "corpus/$f"
+            fi
+          done < out/0767_candidates.txt
+          test -s out/0767_downloaded.txt
+          echo 'Recovered siblings:'
+          cat out/0767_downloaded.txt
+
+      - name: Recover and verify Oodle 3 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          test "$(stat -c '%s' runtime/oo2core_3_win64.dll)" = '894752'
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact render owner and structured backlinks
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD/tools"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            python tools/d1_render_owner_probe.py "corpus/$f" \
+              --runtime runtime \
+              --model-tag 816CE09A \
+              -o "out/${f}.owner.json"
+          done < out/0767_downloaded.txt
+
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib, json, struct, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from d1_entry_extract import EntryReader
+
+          targets = ['816CE09A', '816CE092', '816CE095']
+          patterns = {t: struct.pack('<I', int(t, 16)) for t in targets}
+          downloaded = [x.strip() for x in Path('out/0767_downloaded.txt').read_text().splitlines() if x.strip()]
+          packages = []
+
+          for name in downloaded:
+              pkg = Path('corpus') / name
+              r = EntryReader(pkg, Path('runtime'))
+              hits = {t: [] for t in targets}
+              scanned = 0
+              available = 0
+              errors = []
+              for e in r.entries:
+                  if e['type'] != 16:
+                      continue
+                  scanned += 1
+                  if not r.available(e['index']):
+                      continue
+                  available += 1
+                  try:
+                      b = r.entry(e['index'])
+                  except Exception as ex:
+                      errors.append({'entry_index': e['index'], 'tag_hash': e['tag_hash'], 'error': repr(ex)})
+                      continue
+                  for tag, pat in patterns.items():
+                      start = 0
+                      while True:
+                          pos = b.find(pat, start)
+                          if pos < 0:
+                              break
+                          hits[tag].append({
+                              'entry_index': e['index'],
+                              'entry_tag_hash': e['tag_hash'],
+                              'entry_reference': e['reference'],
+                              'entry_size': e['file_size'],
+                              'offset': pos,
+                          })
+                          start = pos + 1
+              owner_path = Path('out') / f'{name}.owner.json'
+              owner = json.loads(owner_path.read_text())
+              packages.append({
+                  'filename': name,
+                  'sha256': hashlib.sha256(pkg.read_bytes()).hexdigest(),
+                  'platform': r.h['platform'],
+                  'package_id': r.h['pkg_id'],
+                  'package_patch_id': r.h['patch_id'],
+                  'entry_table_count': len(r.entries),
+                  'type16_entries': scanned,
+                  'available_type16_entries': available,
+                  'owner_probe': owner,
+                  'structured_backlinks': hits,
+                  'errors': errors,
+              })
+
+          report = {
+              'target_model': '816CE09A',
+              'target_skeleton': '816CE092',
+              'target_runtime_rig': '816CE095',
+              'packages': packages,
+          }
+          Path('notes/generated/PS4_0767_PATCH_OWNER_PROBE.json').write_text(json.dumps(report, indent=2) + '\n')
+
+          lines = [
+              '# D1 PS4 `0767` patch render-owner result',
+              '',
+              'This file is generated from recovered retail package bytes. Package and Oodle binaries are not committed.',
+              '',
+          ]
+          total_owner = 0
+          for p in packages:
+              owner_rows = p['owner_probe'].get('model_parents', [])
+              total_owner += len(owner_rows)
+              lines += [
+                  f"## `{p['filename']}`",
+                  '',
+                  f"- SHA-256: `{p['sha256']}`",
+                  f"- header patch id: `{p['package_patch_id']}`",
+                  f"- logical entries: **{p['entry_table_count']}**",
+                  f"- available structured type-16 entries: **{p['available_type16_entries']} / {p['type16_entries']}**",
+                  f"- exact standard parent(s) embedding `816CE09A`: **{len(owner_rows)}**",
+              ]
+              for t in targets:
+                  lines.append(f"- structured literal `{t}` hits: **{len(p['structured_backlinks'][t])}**")
+              lines.append('')
+              for row in owner_rows:
+                  lines += [
+                      f"### Owner `{row.get('tag_hash')}` (entry {row.get('entry_index')})",
+                      '',
+                      f"- embedded model: `{row.get('embedded_model_tag_hash')}`",
+                      f"- TexturePlatesROI headers: `{[x.get('texture_plate_header_tag_hash') for x in row.get('texture_plates_roi_entries', [])]}`",
+                      f"- ExternalMaterialsMap: `{row.get('external_materials_map_entries', [])}`",
+                      f"- first material per variant: `{row.get('first_material_per_variant', [])}`",
+                      '',
+                  ]
+          lines += [
+              '## Conclusion',
+              '',
+              (f"The recovered `0767` patch family contains **{total_owner}** exact standard D1 model-parent match(es) for `816CE09A`." if total_owner else 'No recovered `0767` patch sibling contains a standard D1 model parent embedding `816CE09A`; the owner search must move to a different package family or a non-standard parent layout.'),
+              '',
+              'Full machine-readable evidence is in `notes/generated/PS4_0767_PATCH_OWNER_PROBE.json`.',
+              '',
+          ]
+          Path('notes/PS4_0767_PATCH_OWNER_RESULT.md').write_text('\n'.join(lines))
+          print('\n'.join(lines))
+          PY
+
+      - name: Commit text-only evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add notes/PS4_0767_PATCH_OWNER_RESULT.md notes/generated/PS4_0767_PATCH_OWNER_PROBE.json
+          if git diff --cached --quiet; then
+            echo 'No evidence changes to commit'
+          else
+            git commit -m 'Record 0767 patch render-owner probe'
+            git push
+          fi
