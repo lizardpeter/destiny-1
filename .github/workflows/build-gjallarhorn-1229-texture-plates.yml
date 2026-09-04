@@ -15,7 +15,7 @@ permissions:
 jobs:
   textures:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,8 +40,10 @@ jobs:
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x3FEBBBE00 \
             --target ps4_gear_player_0100_0.pkg --target ps4_gear_player_0100_1.pkg \
             --target ps4_gear_player_0100_2.pkg --target ps4_gear_player_0100_5.pkg \
-            --out recovered --manifest reports/0100_extract.json --retries 6 --timeout 90
-      - name: Export all 24 byte-proven source textures generation-safely
+            --target ps4_gear_player_0101_0.pkg --target ps4_gear_player_0101_1.pkg \
+            --target ps4_gear_player_0101_2.pkg --target ps4_gear_player_0101_5.pkg \
+            --out recovered --manifest reports/0100_0101_extract.json --retries 6 --timeout 90
+      - name: Export all 24 byte-proven source textures
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -59,12 +61,12 @@ jobs:
             --tag-hash 80A3DB73 --tag-hash 80A3DB74 --tag-hash 80A3DB75 --tag-hash 80A3DB76 --tag-hash 80A3DB77 --tag-hash 80A3DB78 \
             --tag-hash 80A3DB53 --tag-hash 80A3D8F6 \
             --out textures/011e
-          python tools/d1_texture_export_generation_safe.py \
-            --snapshot recovered/ps4_gear_player_0100_5.pkg \
-            --snapshot recovered/ps4_gear_player_0100_2.pkg \
-            --snapshot recovered/ps4_gear_player_0100_1.pkg \
-            --snapshot recovered/ps4_gear_player_0100_0.pkg \
-            --runtime runtime --tag-hash 80A019BE --out textures/0100
+          # 80A019BE is a real cross-namespace chain:
+          # 0100 texture header -> 0101 streamed/backing records.
+          # This is not a same-logical-package sibling dependency.
+          python tools/d1_texture_export.py recovered/ps4_gear_player_0100_5.pkg --runtime runtime \
+            --dependency-pkg recovered/ps4_gear_player_0101_5.pkg \
+            --tag-hash 80A019BE --out textures/0100
           python - <<'PY'
           import json
           from pathlib import Path
@@ -73,13 +75,16 @@ jobs:
           assert not a['missing_requested'],a['missing_requested']
           assert not b['missing_requested'],b['missing_requested']
           assert a['resolved_count']==23,a['resolved_count']
-          assert b['resolved_count']==1,b['resolved_count']
-          rows=[x['texture'] for x in a['textures']+b['textures']]
+          assert b['texture_count']==1,b['texture_count']
+          rows=[x['texture'] for x in a['textures']] + b['textures']
           errs=[x for x in rows if not x.get('png') or x.get('png_error')]
           assert not errs,errs
+          x=b['textures'][0]
+          assert x['header'].upper()=='80A019BE' and x['width']==512 and x['height']==512 and x['format_name']=='BC5',x
+          assert '0101' in x['stream_package'] or '0101' in x['backing_package'],x
           print('SOURCE_TEXTURES_OK',len(rows))
           print('011E_SNAPSHOT_SELECTIONS',[(x['tag_hash'],Path(x['chosen_snapshot']).name) for x in a['textures']])
-          print('0100_SNAPSHOT_SELECTIONS',[(x['tag_hash'],Path(x['chosen_snapshot']).name) for x in b['textures']])
+          print('80A019BE_CROSS_PACKAGE',x['stream'],x['stream_package'],x['backing'],x['backing_package'])
           PY
       - name: Compose all six albedo normal GStack plate sets without resampling
         run: |
@@ -112,9 +117,9 @@ jobs:
           Every source image dimension is asserted equal to its serialized plate transform scale.
           No image resampling is performed.
 
-          Source textures are resolved generation-safely per TagHash. A newer physical
-          package table is rejected when its backing chain cannot decode, and the newest
-          valid older snapshot is used. The selected snapshot is recorded per texture.
+          23 011E source textures are resolved generation-safely per TagHash. 80A019BE
+          is a byte-proven 512x512 BC5 cross-package texture whose header lives in 0100
+          and whose stream/backing chain lives in 0101.
 
           Albedo and normal are suitable for a portable glTF presentation layer.
           GStack is preserved exactly as source imagery; its full native deferred-shader semantics
