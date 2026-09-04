@@ -1,4 +1,4 @@
-name: Temporary 09A OrbShdr binding decode
+name: Temporary 09A PS4 GCN disassembly
 
 on:
   push:
@@ -13,6 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install LLVM AMDGPU disassembler
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm-18
+          LLVM_MC=/usr/lib/llvm-18/bin/llvm-mc
+          "$LLVM_MC" --version
+          "$LLVM_MC" --triple=amdgcn-amd-amdhsa --mcpu=help </dev/null > reports_mcpu.txt 2>&1 || true
+          grep -E 'gfx70[0-9]|bonaire|hawaii|kaveri' reports_mcpu.txt || true
       - name: Recover verified Oodle runtime
         shell: bash
         run: |
@@ -38,26 +48,46 @@ jobs:
             --start-offset 0x105C6E000 \
             --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_1.pkg --target ps4_arch_vex_com01_0767_4.pkg \
             --out recovered --manifest reports/0767_extract.json
-      - name: Decode variant-0 native pixel shader
+      - name: Recover exact OrbShdr-bounded shader code
         shell: bash
         run: |
           set -euo pipefail
           python tools/d1_ps4_shader_binary_probe.py recovered/ps4_globals_0157_1.pkg --runtime runtime \
             --tag-hash 80AAE14B --dump-dir shader -o reports/80AAE14B_orbshdr.json
-          cat reports/80AAE14B_orbshdr.json
-      - name: Decode variant-1 native pixel shader
+          python tools/d1_ps4_shader_binary_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
+            --tag-hash 816CE0A8 --dump-dir shader -o reports/816CE0A8_orbshdr.json
+      - name: LLVM disassemble GCN 1.1 candidates
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_ps4_shader_binary_probe.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime \
-            --tag-hash 816CE0A8 --dump-dir shader -o reports/816CE0A8_orbshdr.json
-          cat reports/816CE0A8_orbshdr.json
+          LLVM_MC=/usr/lib/llvm-18/bin/llvm-mc
+          for tag in 80AAE14B 816CE0A8; do
+            xxd -p -c 1000000 "shader/${tag}_gcn_code.bin" | tr -d '\n' > "shader/${tag}.hex"
+            for cpu in gfx700 gfx701 gfx702 gfx704; do
+              "$LLVM_MC" --disassemble --hex --triple=amdgcn-amd-amdhsa --mcpu="$cpu" \
+                "shader/${tag}.hex" > "reports/${tag}_${cpu}.s" 2> "reports/${tag}_${cpu}.err" || true
+              printf '%s %s asm_lines=%s err_lines=%s\n' "$tag" "$cpu" \
+                "$(wc -l < "reports/${tag}_${cpu}.s")" "$(wc -l < "reports/${tag}_${cpu}.err")"
+            done
+          done
+      - name: Summarize decoded shader instructions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in reports/*_gfx70*.s; do
+            echo "===== $f ====="
+            grep -En 'image_|buffer_|sample|load|exp |v_dot|v_mul|v_add|v_mad|v_fma|v_cvt|v_rcp|v_sqrt|v_max|v_min|s_endpgm' "$f" || true
+          done
+          echo '===== decoder errors ====='
+          for f in reports/*_gfx70*.err; do echo "--- $f"; cat "$f"; done
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 09A-orbshdr-bindings
+          name: 09A-ps4-gcn-disassembly
           path: |
             reports/
-            shader/
+            shader/*.hex
+            shader/*_gcn_code.bin
+            reports_mcpu.txt
           retention-days: 1
           if-no-files-found: error
