@@ -27,8 +27,11 @@ jobs:
           from d1_split_tar_extract import SplitHttpTar,parse_tar_number,tar_header_checksum_ok,tar_name
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
           arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
-          off=0x615862600  # exact next TAR header after ps4_investment_assets_0146_6
-          stop=0x61A5CB200 # known ps4_investment_globals_012f_0 header
+          # Existing workflow member offsets are TAR data offsets. 0146_6 data is
+          # 0x61583AC00 and its size is 0x27800, so this is the next header.
+          off=0x615862400
+          # 012f_0's known workflow member offset is its data offset too.
+          stop=0x61A5CB000
           rows=[]
           while off<=stop:
               h=arc.read_at(off,512)
