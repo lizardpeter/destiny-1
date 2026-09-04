@@ -22,7 +22,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           set -euo pipefail
-          python -m pip install --quiet numpy scipy pygltflib pyglm pillow jsonpickle
+          python -m pip install --quiet numpy scipy pygltflib pyglm pillow jsonpickle texture2ddecoder
 
       - name: Recover verified Oodle runtime
         run: |
@@ -58,7 +58,15 @@ jobs:
             --dependency-pkg recovered/ps4_arch_vex_com01_0767_4.pkg \
             --tag-hash 80AACCDD --tag-hash 80AACCDF --tag-hash 80AACC26 --tag-hash 80AACC28 --tag-hash 816CE1C5 \
             --out exported
+          # Host Pillow DDS support varies. Decode our already-linearized DDS files
+          # explicitly so PNG generation is deterministic across runners.
+          python tools/d1_dds_to_png.py --overwrite exported/*.dds
           python tools/d1_gltf_material_recipe.py --texture-dir exported --out recipe
+          # Core glTF cannot bind these native sources faithfully, but the proof GLB
+          # embeds them in extras/provenance so future D1-native renderers retain them.
+          cp exported/80AACC26_*_BC5.png recipe/
+          cp exported/80AACC28_*_RGBA8_face*.png recipe/
+          find exported recipe -maxdepth 1 -type f -print | sort
 
       - name: Recover pinned animation validation oracle
         run: |
