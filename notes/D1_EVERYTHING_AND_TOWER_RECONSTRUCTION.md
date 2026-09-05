@@ -114,6 +114,141 @@ Workflow `.github/workflows/d1-tower-map-census.yml` (initial commit `969d0d8fe9
 
 Initial Actions run: `33943092135`.
 
+## Tower census completed
+
+The complete Tower-core census run `33943271839` succeeded. Artifact `9963042289` (`d1-tower-map-census-v1`) contains the loss-preserving entry graph, literal edges, texture census, and generic model exports.
+
+Exact current totals:
+
+- 24 physical Tower-core package snapshots across package IDs `023D`, `0244`, `024C`, `0250`;
+- 116,794 physical Tiger entry occurrences;
+- 21,120 union TagHashes;
+- 170,864 aligned literal co-reference edges;
+- 1,492 `s_entity_model` occurrences;
+- 503 animation-clip occurrences;
+- 1,956 `s_entity` occurrences;
+- 7,944 EntityResource occurrences;
+- 769 texture headers, 748 resolved textures, 21 unresolved;
+- 338 `s_entity_model` candidates, 108 successfully exported by the generic exporter.
+
+## First binary-confirmed Tower baked-static chain
+
+`evidence/d1_tower_static_map_validated_chains.json` (initial commit `85788d082c7609c009ee4b086beb38a4831c15d5`) records the first Tower chain that passes all current strict binary invariants in the recovered Tower+`009F` corpus.
+
+The exact chain is:
+
+```text
+80CA0B70  class 808008B4 / SStaticMapData candidate
+  +0x30 -> 80CA0B96  class 80801B75 / D1 static-map data
+              instance count = 123
+              instance backing = 80CA0BAE
+              backing bytes = 7,872 = 123 * 0x40 exactly
+              all matrix floats finite
+
+              static table 80CA0BA0  class 80801A90  43 meshes / 43 infos
+              static table 80CA0BA1  class 80801A90  49 meshes / 49 infos
+              static table 80CA0BA2  class 80801A90  20 meshes / 20 infos
+              static table 80CA0BA3  class 80801A90  12 meshes / 12 infos
+```
+
+Totals for this chain:
+
+- 124 baked-static mesh records;
+- 124 static-info records;
+- **556 serialized placed-geometry references**;
+- all 123 transform indices `0..122` are actually referenced;
+- all 124 V0/V1/index target triples resolve;
+- all 124 triples are consecutive FileHashes;
+- all static/material/transform indices pass bounds checks;
+- primitive type is `3` for all 124 records;
+- 112 buffer triples are Tower-local (`0250`); 12 are in `009F`;
+- 22 unique serialized material hashes.
+
+This is **confirmed binary structure**, not yet a claim that the entire Tower world has been reconstructed.
+
+Across all 31 unique `808008B4` Tower candidates, `80CA0B70` is currently the only resource that passes every strict invariant in the recovered corpus. The other 30 remain explicit failures rather than being force-fit to the schema.
+
+## Independent static-to-entity-model geometry corroboration
+
+`tools/d1_tower_static_model_crosscheck.py` (initial commit `21b4d3e9de34e22d7dc67324ef5b6e7e00baf36a`) compares baked-static records to ordinary decoded `s_entity_model` primitive groups by **exact serialized equality only**:
+
+- V0 FileHash;
+- V1 FileHash;
+- index FileHash;
+- index offset;
+- index count;
+- primitive type;
+- LOD/detail level.
+
+For `80CA0B70`, 24 of 124 baked-static records have exact independent counterparts in already decoded ordinary models:
+
+- 18 via `s_entity_model 80CA0B95`;
+- 6 via `s_entity_model 80CA0F39`;
+- 3 unique shared buffer triples;
+- all 24 have one unique, non-conflicting vertex decode signature;
+- zero scale/translation/stride conflicts.
+
+The remaining 100 records are not classified as wrong; they simply lack an exact counterpart among the 108 generic model exports currently supplied to the verifier.
+
+This creates an independent test fixture for packed static geometry. `tools/d1_tower_static_quantization_proof.py` (initial commit `f786edcab596f0f327c3c57c54104985863bc0de`) algebraically factors the independently decoded `model_scale` / `model_translation` from the shipped 0x40 static matrices and measures affine/similarity residuals for both raw and transposed conventions. It intentionally does not use visual fit.
+
+## Tower static materials and exact texture co-references
+
+The 124 static records reference 22 unique PS4 material resources. All 22 are class `80801AD7`; seven have payload conflicts across the six `0250` snapshots, so patch generations are preserved rather than silently collapsed.
+
+`tools/d1_material_literal_reference_join.py` and `evidence/d1_tower_80ca0b70_material_references.json` (initial evidence commit `0c8c710ddc7bcd81536f80c6c7ee6c85f4e25c57`) checkpoint the current byte-backed material evidence:
+
+- 22 materials;
+- 35 exact fixed-field references matching offsets already decoded by `tools/d1_material_decode.py` (`+0x28` vertex shader, `+0x2A8` pixel shader, `+0x32C` PS vector container where present);
+- 9 materials contain exact serialized literal references to recovered texture headers;
+- 10 unique recovered texture headers;
+- 13 material→texture literal occurrences.
+
+The material→texture edge is proven as serialized co-reference, but **texture stage and texture_index are not assigned from the literal scan**. The dedicated proof workflow re-parses the material dynamic arrays from shipped current-generation bytes before promoting stage/slot semantics.
+
+## Outer map-data chain above the static map
+
+A pinned external schema snapshot (`MontagueM/Charm`, commit `50d36ee1f9ecadad7522504c20b1f3f9c97e30af`) provides candidate D1 layouts for `SMapDataTable`, `SMapDataEntry`, `SMapDataResource`, `SStaticMapParent`, and `ResourcePointer`. These source-derived names/layouts are treated as hypotheses until the shipped PS4 bytes satisfy the exact offsets/classes.
+
+The existing Tower census already supplies a strong literal chain:
+
+```text
+80CA0B0E  class 808009A2 / source-derived SMapDataTable
+  contains 10 stable literal refs at 0x18 spacing:
+    80CA0B22 ... 80CA0B2B  all class 80801AC6
+
+80CA0B27  class 80801AC6 / source-derived SStaticMapParent
+  +0x08 -> 80CA0B70
+
+80CA0B70
+  +0x30 -> 80CA0B96
+```
+
+`80CA0B27 -> 80CA0B70` is especially strong: the shipped reference is at exactly `+0x08`, the field that the pinned D1 `SStaticMapParent` schema identifies as `StaticMap`.
+
+Nine sibling parents (`80CA0B22-26`, `80CA0B28-2B`) point at `80CA0B6F`; that static-map candidate currently fails the strict validator because its D1-static-data link is unresolved/`FFFFFFFF`. Only `80CA0B27` points to the fully passing `80CA0B70` chain.
+
+The map-data table is itself stably referenced by unknown-class resource `80CA0B19` (`80800343`) at `+0x44`; that upstream semantic remains unresolved.
+
+This candidate outer chain is checkpointed in `evidence/d1_tower_80ca0b70_outer_chain_candidate.json` (initial commit `1d961ef446d2890b86cf45a33c1910e8770ba1f4`). `tools/d1_tower_map_data_resource_validate.py` (initial commit `062d7e8d622a8169ed1bb2f763f5317df63569d9`) performs the missing decisive proof by parsing the shipped `SMapDataEntry +0x88` relative ResourcePointer, requiring resource class `80801AEA`, then `+0x0C -> 80CA0B27`, then parent `+0x08 -> 80CA0B70`.
+
+Only after that passes is the containing `SMapDataEntry` rotation/translation allowed to become the outer world transform for this static resource.
+
+## Targeted proof workflow and runner incident
+
+`.github/workflows/d1-tower-80ca0b70-quantization-material-proof.yml` (initial commit `4c22c25c7db75fd68bed1d6c04002f7b53512880`) is SHA-locked to the exact six `0250` package members and four `009F` members recovered by successful validator run `33944444030`. It range-copies those exact bytes directly instead of rescanning the full split TAR.
+
+Its intended proof sequence is:
+
+1. revalidate `80CA0B70 -> 80CA0B96`;
+2. independently decode `80CA0B95` and `80CA0F39`;
+3. reproduce the 24 exact static/model crossmatches;
+4. algebraically prove or reject how packed vertex quantization composes with the 0x40 matrices;
+5. parse all 22 current-generation material dynamic arrays and promote texture stage/index only from those bytes;
+6. preserve a diagnostic artifact even when a hypothesis is rejected.
+
+The first run `33946377240` did **not execute any workflow code**. GitHub returned a failed job with no steps/runner provisioned, matching the separate contemporaneous Actions runner failure seen on other workflows. This is infrastructure/account-runner state, not a Tower decoder/exporter failure. The tools/evidence remain committed and ready to run when a hosted runner is provisioned again.
+
 ## Acceptance boundary for a whole Tower export
 
 Do not call a GLB/scene the Tower merely because it contains many meshes. A final reconstruction needs byte-backed answers for at least:
