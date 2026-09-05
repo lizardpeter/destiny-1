@@ -143,6 +143,15 @@ PROVEN_PIXEL_SHADER_ROLES: dict[str, dict[int, str]] = {
     '80CA0BFA': {
         0: 'surface_rgb_alpha_intensity_control',
     },
+
+    # Final common-layer family, native PS 80A3D3AE. The shader samples t0.xyzw,
+    # derives w = saturate(t0.a * material_scalar), then emits
+    #     MRT0.rgb = 1 + w * (t0.rgb - 1)
+    # so alpha controls a material-scaled interpolation from white toward sampled
+    # RGB. Directly binding t0 as base color would discard this native behavior.
+    '80C991D5': {
+        0: 'surface_rgb_alpha_material_scaled_white_mix',
+    },
 }
 
 # Roles that have a safe direct *portable preview* interpretation. This is kept
