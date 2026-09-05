@@ -1,0 +1,131 @@
+name: Temporary decode D1 shared viewmodel wrapper contexts
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-wrapper-context-decode.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+      - name: Decode pointer and dynamic-array structure
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+
+          WRAPPERS=['80AA3CC4','80AA3CC7','80AA3CCB']
+          STATES={0x6FB760FF:'idle',0xDCA2827A:'ready',0x6D507AD8:'reload_empty',0x28F43BD2:'reload_full',0x9FAC79C9:'fire',0xE480E089:'jump',0x4CF9B596:'base'}
+          TARGETS={int(x,16):x for x in ['80AA3CA0','80AA3CA1','80AA3CA2','80AA3CB2','80AA3CB3','80AA3CB8','80AA3CB9','80AA3CBE','80AA3CBF','80AA3CC2','80AA3CC5','80AA3CC9','80AA3CD4']}
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          byv={int(e['tag_hash'],16):e for e in r.entries}
+          def u32(b,o):return struct.unpack_from('<I',b,o)[0]
+          def i64(b,o):return struct.unpack_from('<q',b,o)[0]
+          def entry(v):
+            e=byv.get(v)
+            if not e:return None
+            return {'index':e['index'],'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'size':e['file_size'],'type':e['type'],'subtype':e['subtype']}
+          def relptr_candidates(b):
+            out=[]
+            for o in range(0,len(b)-7,4):
+              rel=i64(b,o)
+              if rel==0:continue
+              t=o+rel
+              if t<4 or t>=len(b):continue
+              cls=u32(b,t-4)
+              # D1 schema/class hashes overwhelmingly fall in this band.
+              if 0x80800000<=cls<=0x8080FFFF:
+                out.append({'field_offset':o,'relative':rel,'target_offset':t,'class_hash':f'{cls:08X}','target_prefix':b[t:t+32].hex()})
+            return out
+          def dyn_candidates(b):
+            # Tiger dynamic array convention observed in D1 s_entity: u32 count at field, qword rel at field+8,
+            # data = field + rel + 0x18. Keep candidates conservative and report, do not assert semantics.
+            out=[]
+            for f in range(0,len(b)-16,4):
+              n=u32(b,f)
+              if n==0 or n>512:continue
+              rel=i64(b,f+8)
+              d=f+rel+0x18
+              if d<0 or d>=len(b):continue
+              maxbytes=len(b)-d
+              # Look for regular strides where n rows fit and rows contain useful hashes/FileHashes.
+              stride_rows=[]
+              for st in (4,8,12,16,20,24,28,32,40,48,56,64):
+                if n*st>maxbytes:continue
+                hits=[]
+                for i in range(n):
+                  o=d+i*st
+                  vals=[]
+                  for p in range(o,min(o+st,len(b)-3),4):
+                    v=u32(b,p)
+                    if v in STATES:vals.append({'rel':p-o,'kind':'state','value':f'{v:08X}','name':STATES[v]})
+                    if v in TARGETS:vals.append({'rel':p-o,'kind':'target','value':f'{v:08X}','name':TARGETS[v]})
+                    e=entry(v)
+                    if e and v not in TARGETS:vals.append({'rel':p-o,'kind':'filehash','value':f'{v:08X}','reference':e['reference']})
+                  if vals:hits.append({'row':i,'offset':o,'hits':vals})
+                if hits:stride_rows.append({'stride':st,'hit_rows':hits[:128]})
+              if stride_rows:
+                out.append({'field_offset':f,'count':n,'relative':rel,'data_offset':d,'stride_hypotheses':stride_rows})
+            return out
+          rows=[]
+          for tag in WRAPPERS:
+            e=by[tag];b=r.entry(e['index']);Path('out/raw',tag+'.bin').write_bytes(b)
+            state_occ=[]; exact=[]
+            for o in range(0,len(b)-3,4):
+              v=u32(b,o)
+              if v in STATES:state_occ.append({'offset':o,'hash':f'{v:08X}','state':STATES[v]})
+              if v in TARGETS:exact.append({'offset':o,'tag_hash':f'{v:08X}','name':TARGETS[v],'entry':entry(v)})
+            rows.append({'wrapper':tag,'entry':entry(int(tag,16)),'size':len(b),'sha256':hashlib.sha256(b).hexdigest(),
+                         'prefix512':b[:512].hex(),'state_occurrences':state_occ,'exact_target_occurrences':exact,
+                         'resource_pointer_candidates':relptr_candidates(b),'dynamic_array_candidates':dyn_candidates(b)})
+          # Byte-diff common-position dwords across three wrappers. This is useful because they are parallel variants.
+          bs=[Path('out/raw',x+'.bin').read_bytes() for x in WRAPPERS];m=min(map(len,bs));diffs=[]
+          for o in range(0,m-(m%4),4):
+            vals=[u32(b,o) for b in bs]
+            if len(set(vals))>1:
+              q={'offset':o,'values':[f'{v:08X}' for v in vals]}
+              ann=[]
+              for v in vals:
+                if v in STATES:ann.append(STATES[v])
+                elif entry(v):ann.append(entry(v)['reference'])
+                else:ann.append(None)
+              q['annotations']=ann;diffs.append(q)
+          rep={'wrappers':rows,'common_prefix_dword_differences':diffs,
+               'policy':'Only exact state hashes, exact FileHashes, in-bounds D1-class relative pointers, and conservative dynamic-array candidates are reported. No pointer/field semantic is assigned from adjacency.'}
+          Path('out/wrapper_context_decode.json').write_text(json.dumps(rep,indent=2)+'\n')
+          for x in rows:
+            print('WRAPPER_SUMMARY',json.dumps({'wrapper':x['wrapper'],'size':x['size'],'state_occurrences':len(x['state_occurrences']),'exact_targets':x['exact_target_occurrences'],'pointer_candidates':len(x['resource_pointer_candidates']),'dyn_candidates':len(x['dynamic_array_candidates'])},separators=(',',':')))
+          print('DIFF_DWORDS',len(diffs))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-wrapper-context-decode
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
