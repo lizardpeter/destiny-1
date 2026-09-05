@@ -1,0 +1,95 @@
+name: D1 Tower 024C5 block flag diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-024c5-block-flag-diagnostic.yml'
+      - 'tools/d1_pkg_probe.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-blocks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover only ps4_city_tower_destination_024c_5.pkg
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reports
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=4,timeout=60)
+          dst=Path('recovered')/name
+          got=arc.copy_to(off,size,dst)
+          if got.lower()!=expected:
+              raise SystemExit(f'SHA mismatch {got} != {expected}')
+          Path('reports/member.json').write_text(json.dumps({'name':name,'data_offset':off,'size':size,'sha256':got},indent=2)+'\n')
+          print('RECOVERED',name,size,got)
+          PY
+
+      - name: Inspect failing logical blocks and entry coverage
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_entries,parse_blocks,read_table,BLOCK_SIZE
+          p=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with p.open('rb') as f:
+              h=parse_header(f)
+              et=parse_entries(read_table(f,h['entry_table_offset'],h['entry_table_count'],16),h['pkg_id'])
+              bt=parse_blocks(read_table(f,h['block_table_offset'],h['block_table_count'],32))
+          wanted=[287,288,635,709,710,724,725,763]
+          rows=[]
+          for bi in wanted:
+              b=bt[bi]
+              users=[]
+              for e in et:
+                  span=e['starting_block_offset']+e['file_size']
+                  count=max(1,(span+BLOCK_SIZE-1)//BLOCK_SIZE)
+                  if e['starting_block'] <= bi < e['starting_block']+count:
+                      users.append({k:e[k] for k in ('index','tag_hash','reference','type','subtype','starting_block','starting_block_offset','file_size')})
+              rows.append({
+                  'block_index':bi,
+                  'offset':b['offset'],'size':b['size'],'patch_id':b['patch_id'],'flags':b['flags'],
+                  'flags_hex':f"0x{b['flags']:04X}",'bit0_compressed':bool(b['flags']&1),
+                  'other_flag_bits_hex':f"0x{b['flags'] & ~1:04X}",'sha1':b['sha1'],
+                  'entry_users':users,
+              })
+          target=et[600]
+          out={
+              'package':p.name,
+              'package_id':f"{h['pkg_id']:04X}",'package_patch_id':h['patch_id'],
+              'entry_80C98258':target,
+              'blocks':rows,
+              'policy':'For D1 ROI only bit0=compressed is semantically promoted here. Other flag bits are reported raw until byte/source proof identifies them.',
+          }
+          Path('reports/024c5_block_flags.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-024c5-block-flag-diagnostic
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
