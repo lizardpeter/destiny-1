@@ -1,0 +1,93 @@
+name: D1 activity and PGCR image catalog
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-activity-image-catalog.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover preserved D1 activity/destination definitions
+        run: |
+          set -euo pipefail
+          mkdir -p input out/pgcr out/icons out/destinations
+          git clone --depth 1 --branch gh-pages --filter=blob:none --sparse https://github.com/nmlorg/destiny-db.git input/destiny-db
+          git -C input/destiny-db sparse-checkout set definitions/Activity.json definitions/ActivityType.json definitions/Destination.json definitions/Place.json
+      - name: Build activity catalog and mirror presentation art
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures,json,urllib.request
+          from pathlib import Path
+          defs=Path('input/destiny-db/definitions')
+          activities=json.load(open(defs/'Activity.json')); types=json.load(open(defs/'ActivityType.json')); dests=json.load(open(defs/'Destination.json')); places=json.load(open(defs/'Place.json'))
+          pgcr=Path('out/pgcr'); icons=Path('out/icons'); ditem=Path('out/destinations')
+          def lookup(d,h): return d.get(str(h)) or d.get(h) or {}
+          rows=[]
+          for k,a in activities.items():
+              dh=a.get('destinationHash'); ph=a.get('placeHash'); th=a.get('activityTypeHash')
+              d=lookup(dests,dh); p=lookup(places,ph); t=lookup(types,th)
+              rows.append({
+                'hash':a.get('activityHash') or a.get('hash') or int(k),'name':a.get('activityName'),'description':a.get('activityDescription'),
+                'level':a.get('activityLevel'),'activityTypeHash':th,'activityTypeName':t.get('activityTypeName') or t.get('activityTypeIdentifier'),
+                'destinationHash':dh,'destinationName':d.get('destinationName'),'destinationIdentifier':d.get('destinationIdentifier'),
+                'destinationIcon':d.get('icon'),'placeHash':ph,'placeName':p.get('placeName'),'icon':a.get('icon'),'releaseIcon':a.get('releaseIcon'),
+                'pgcrImage':a.get('pgcrImage'),'isMatchmade':a.get('isMatchmade'),'isPlaylist':a.get('isPlaylist'),
+                'minParty':a.get('minParty'),'maxParty':a.get('maxParty'),'maxPlayers':a.get('maxPlayers'),'tier':a.get('tier'),
+              })
+          tasks=[]
+          def add(kind,row,path,root):
+              if not path or 'missing_icon' in path:return
+              ext=Path(path).suffix or '.img'; key=str(row['hash']); dst=root/f'{key}{ext}'; tasks.append((kind,row,path,dst))
+          for r in rows:
+              add('pgcr',r,r.get('pgcrImage'),pgcr); add('icon',r,r.get('icon'),icons)
+          seen_dest={}
+          for r in rows:
+              dh=r.get('destinationHash'); path=r.get('destinationIcon')
+              if dh and path and dh not in seen_dest and 'missing_icon' not in path:
+                  seen_dest[dh]=path; ext=Path(path).suffix or '.img'; tasks.append(('destination',{'hash':dh},path,ditem/f'{dh}{ext}'))
+          def one(task):
+              kind,row,path,dst=task
+              req=urllib.request.Request('https://www.bungie.net'+path,headers={'User-Agent':'d1-asset-browser/1.0'})
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as resp:b=resp.read()
+                  if not b:return kind,row['hash'],None,'empty'
+                  dst.write_bytes(b);return kind,row['hash'],dst.name,None
+              except Exception as ex:return kind,row['hash'],None,repr(ex)
+          image_map={'pgcr':{},'icon':{},'destination':{}}; errors=[];done=0
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+              fs={ex.submit(one,t):t for t in tasks}
+              for f in concurrent.futures.as_completed(fs):
+                  kind,h,name,err=f.result();image_map[kind][str(h)]=name;done+=1
+                  if err:errors.append({'kind':kind,'hash':h,'path':fs[f][2],'error':err})
+                  if done%100==0:print('images',done,'/',len(tasks),flush=True)
+          for r in rows:
+              h=str(r['hash']);r['localPgcr']=image_map['pgcr'].get(h);r['localIcon']=image_map['icon'].get(h)
+              dh=str(r['destinationHash']) if r.get('destinationHash') is not None else None;r['localDestinationIcon']=image_map['destination'].get(dh) if dh else None
+          rows.sort(key=lambda r:((r.get('placeName') or ''),(r.get('destinationName') or ''),(r.get('name') or ''),r['hash']))
+          out={'schema':'d1_activity_presentation_catalog/v1','activity_count':len(rows),'with_pgcr_path':sum(bool(x.get('pgcrImage')) for x in rows),
+               'pgcr_downloaded':sum(bool(x.get('localPgcr')) for x in rows),'activity_icons_downloaded':sum(bool(x.get('localIcon')) for x in rows),
+               'unique_destinations':len({x.get('destinationHash') for x in rows if x.get('destinationHash') is not None}),
+               'destination_icons_downloaded':len([x for x in image_map['destination'].values() if x]),'activities':rows,'errors':errors,
+               'policy':'Historical D1 activity/destination definitions are presentation/naming data. Archive world-root ownership remains separately byte-derived.'}
+          Path('out/activity_catalog.json').write_text(json.dumps(out,separators=(',',':'))+'\n')
+          Path('out/activity_summary.json').write_text(json.dumps({k:v for k,v in out.items() if k not in ('activities','errors')},indent=2)+'\n')
+          print(json.dumps({k:v for k,v in out.items() if k not in ('activities','errors')},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-activity-image-catalog
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
