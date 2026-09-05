@@ -1,0 +1,60 @@
+name: D1 Guardian 67-bone control decode
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-guardian-67bone-control-decode.yml'
+      - 'tools/d1_animation_control_state_map.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact 00EC retail family and Oodle
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0xAAB580800 \
+            --target ps4_race_set_all_00ec_0.pkg --target ps4_race_set_all_00ec_1.pkg \
+            --target ps4_race_set_all_00ec_2.pkg --target ps4_race_set_all_00ec_3.pkg \
+            --target ps4_race_set_all_00ec_4.pkg --target ps4_race_set_all_00ec_5.pkg \
+            --out recovered --manifest out/00ec_extract.json --retries 6 --timeout 90
+      - name: Decode exact clip-owning controls
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          NAMES="--name death --name dead --name die --name spawn --name respawn --name locomotion --name move --name movement --name forward --name backward --name strafe_left --name strafe_right --name turn_left --name turn_right --name crouch --name crouch_idle --name crouch_walk --name airborne --name fall --name landing --name grenade --name throw_grenade --name super --name ability --name hit --name hit_react --name flinch --name revive --name resurrect --name emote --name dance --name social --name pose --name bind_pose --name reference_pose"
+          eval python tools/d1_animation_control_state_map.py recovered/ps4_race_set_all_00ec_5.pkg --runtime runtime --control-tag 809D8466 $NAMES -o out/809D8466_control.json
+          eval python tools/d1_animation_control_state_map.py recovered/ps4_race_set_all_00ec_5.pkg --runtime runtime --control-tag 809D856F $NAMES -o out/809D856F_control.json
+          python - <<'PY'
+          import json
+          for h in ('809D8466','809D856F'):
+              d=json.load(open(f'out/{h}_control.json'))
+              print('\nCONTROL',h,'animations',d['animation_list']['count'],'states',d['state_table']['count'])
+              print('ANIMS',[x['tag_hash'] for x in d['animation_list']['items']])
+              for s in d['state_table']['records']:
+                  print('STATE',s['record_index'],s['state_hash'],s.get('state_name'),'scalar',s['scalar_f32'],
+                        'select',[x['tag_hash'] for x in s['selected_animations']])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-guardian-67bone-control-decode
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
