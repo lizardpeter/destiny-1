@@ -20,6 +20,8 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from d1_world_material_texture_export import KNOWN_PIXEL_SHADER_ROLES
+
 COLOR_FORMATS={'BC1','BC2','BC3','RGBA8','BGRA8'}
 NORMAL_VECTOR_FORMATS={'BC5'}
 SCALAR_FORMATS={'BC4'}
@@ -66,11 +68,16 @@ def main()->int:
         psb=sorted((b for b in m.get('bindings',[]) if b.get('stage')=='ps'),key=lambda x:int(x['texture_index']))
         rows=[]
         for b in psb:
+            idx=int(b['texture_index'])
             t=textures.get(b['texture'],{})
             rc=resource_class(t)
-            proven=b.get('semantic_role') if b.get('semantic_status')=='PROVEN' else None
+            # New manifests carry the semantic on each binding.  Older exact
+            # manifests remain usable by looking up the same instruction-proven
+            # shader/t# table; this changes only the semantic annotation, never
+            # the serialized binding itself.
+            proven=b.get('semantic_role') if b.get('semantic_status')=='PROVEN' else KNOWN_PIXEL_SHADER_ROLES.get(ps,{}).get(idx)
             row={
-                'texture_index':int(b['texture_index']),'texture':b['texture'],
+                'texture_index':idx,'texture':b['texture'],
                 'format_name':t.get('format_name'),'shape':tex_shape(t),
                 'resource_class':rc,'proven_role':proven,
                 'evidence_status':'PROVEN' if proven else 'UNKNOWN',
