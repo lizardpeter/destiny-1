@@ -48,6 +48,17 @@ KNOWN_PIXEL_SHADER_ROLES={
     '816CE0A8': {0:'height_pre_displacement',1:'displaced_image'},
 }
 
+# D1 Rise of Iron PS4 ROI stores a GCN surface format in the texture header.
+# Public Tiger/Charm GcnSurfaceFormatExtensions maps BC1/2/3/7 to DXGI *_SRGB,
+# while BC4/BC5 and Format8_8_8_8 map to linear UNORM.  Keep this as a storage
+# interpretation hint, separate from shader semantic role: a BC3 can still be a
+# packed control texture even though the resource's native format is sRGB.
+ROI_COLORSPACE_HINT={
+    'BC1':'sRGB','BC2':'sRGB','BC3':'sRGB','BC7':'sRGB',
+    'BC4':'linear','BC5':'linear','RGBA8':'linear',
+}
+ROI_COLORSPACE_EVIDENCE='SOURCE_CORRELATED_GCN_SURFACE_TO_DXGI'
+
 
 def norm(h:str)->str:
     return h.upper().removeprefix('0X').zfill(8)
@@ -112,7 +123,12 @@ def export_texture(c, th:str, outdir:Path):
 
     fmt=FORMAT_NAME.get(hdr['surface_format'],f'GCN{hdr["surface_format"]:02X}')
     stem=f'{th}_{hdr["width"]}x{hdr["height"]}_{fmt}'
-    row.update({'format_name':fmt,'backing_hash':backing['hash'],'backing_bytes':len(raw),'unswizzled':swizzled})
+    row.update({
+        'format_name':fmt,
+        'native_colorspace_hint':ROI_COLORSPACE_HINT.get(fmt,'unknown'),
+        'native_colorspace_evidence':ROI_COLORSPACE_EVIDENCE,
+        'backing_hash':backing['hash'],'backing_bytes':len(raw),'unswizzled':swizzled,
+    })
     files=[]
     try:
         if hdr['array_size']==1:
@@ -169,43 +185,43 @@ def main()->int:
         if not meta or norm(meta.get('reference',''))!=MAT_CLASS or b is None:
             rec['error']='material unavailable/non-80801AD7';errors.append(rec);materials[mh]=rec;continue
         try:
-            md=parse_material(b,'PS4')
+            parsed=parse_material(b)
+            rec.update({k:parsed[k] for k in ('file_size','unk08','vertex_shader','pixel_shader','vs_texture_count','ps_texture_count','textures','vs_texture_tags','ps_texture_tags','constants','samplers','tfx')})
+            bindings=[]
+            ps=norm(parsed['pixel_shader']);shader_freq[ps]+=1
+            for stage,key in [('vs','vs_texture_tags'),('ps','ps_texture_tags')]:
+                for tr in parsed[key]:
+                    th=norm(tr['texture']);idx=int(tr['texture_index'])
+                    role=KNOWN_PIXEL_SHADER_ROLES.get(ps,{}).get(idx) if stage=='ps' else None
+                    br={'stage':stage,'texture_index':idx,'texture':th}
+                    if role:
+                        br['semantic_role']=role;br['semantic_status']='PROVEN'
+                    bindings.append(br);texture_refs[th].append({'material':mh,'stage':stage,'texture_index':idx,'pixel_shader':ps,'role':role})
+            rec['bindings']=bindings
         except Exception as ex:
-            rec['error']=repr(ex);errors.append(rec);materials[mh]=rec;continue
-        ps=norm(md['pixel_shader']);vs=norm(md['vertex_shader']);shader_freq[ps]+=1
-        rec.update({'pixel_shader':ps,'vertex_shader':vs,'unk08':md['unk08'],'bindings':[]})
-        for stage,key in [('vs','vs_textures'),('ps','ps_textures')]:
-            for x in md[key]['items']:
-                ti=int(x['texture_index']);th=norm(x['texture'])
-                role=None
-                if stage=='ps': role=KNOWN_PIXEL_SHADER_ROLES.get(ps,{}).get(ti)
-                br={'stage':stage,'texture_index':ti,'texture':th,'package_id':pkg_id_from_tag(th),
-                    'semantic_role':role,'semantic_status':'PROVEN' if role else 'UNKNOWN'}
-                rec['bindings'].append(br);texture_refs[th].append({'material':mh,**br})
+            rec['error']=repr(ex);errors.append(rec)
         materials[mh]=rec
 
-    texdir=a.out/'textures';texdir.mkdir(exist_ok=True)
     textures={}
-    for i,th in enumerate(sorted(texture_refs),1):
-        print(f'TEXTURE {i}/{len(texture_refs)} {th}',flush=True)
-        textures[th]=export_texture(c,th,texdir)
-
+    unique=sorted(texture_refs)
+    for i,th in enumerate(unique,1):
+        print(f'TEXTURE {i}/{len(unique)} {th}',flush=True)
+        textures[th]=export_texture(c,th,a.out/'textures')
     missing=[h for h,r in textures.items() if r.get('error')]
     missing_pkg=Counter(pkg_id_from_tag(h) for h in missing)
-    decoded=sum(1 for r in textures.values() if not r.get('error'))
-    pngs=sum(1 for r in textures.values() if r.get('png'))+sum(len([f for f in r.get('faces',[]) if f.get('png')]) for r in textures.values())
-    rep={
-      'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_DEPENDENCIES_EXACT',
-      'visible_material_count':len(visible),'material_decode_errors':len(errors),
-      'unique_texture_tags':len(texture_refs),'decoded_texture_tags':decoded,
-      'texture_errors':len(missing),'png_outputs':pngs,
-      'pixel_shader_frequency':dict(shader_freq.most_common()),
-      'missing_texture_package_ids':dict(sorted((k,v) for k,v in missing_pkg.items() if k is not None)),
-      'materials':materials,'textures':textures,'texture_references':dict(texture_refs),
-      'semantic_policy':'TextureIndex is exact shader t#; semantic role is named only for shader/register dataflow already proven in spec/D1_MATERIALS_SHADERS.md.'
+    report={
+        'schema_version':1,'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT',
+        'visible_material_count':len(visible),'material_decode_errors':len(errors),
+        'unique_texture_tags':len(unique),'decoded_texture_tags':len(unique)-len(missing),
+        'texture_errors':len(missing),
+        'png_outputs':sum(1 for r in textures.values() if r.get('png'))+sum(len([f for f in r.get('faces',[]) if f.get('png')]) for r in textures.values()),
+        'missing_texture_package_ids':dict(sorted((k,v) for k,v in missing_pkg.items() if k is not None)),
+        'pixel_shader_frequency':dict(shader_freq.most_common()),
+        'materials':materials,'texture_references':dict(texture_refs),'textures':textures,
+        'policy':'Exact material/shader/register/texture relationships are preserved. Texture semantic roles are only named for independently instruction-proven shader families; all others remain t#.',
     }
-    (a.out/'material_texture_manifest.json').write_text(json.dumps(rep,indent=2)+'\n')
-    print(json.dumps({k:rep[k] for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},indent=2))
+    (a.out/'material_texture_manifest.json').write_text(json.dumps(report,indent=2)+'\n')
+    print(json.dumps({k:report[k] for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},indent=2))
     return 0
 
 if __name__=='__main__': raise SystemExit(main())
