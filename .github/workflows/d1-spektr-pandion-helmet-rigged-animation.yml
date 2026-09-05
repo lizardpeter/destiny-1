@@ -1,0 +1,149 @@
+name: D1 Spektar Pandion helmet rigged animation proof
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-helmet-rigged-animation.yml'
+      - 'tools/d1_gltf_bind_rigid_animation.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies
+        run: python -m pip install -q numpy scipy pygltflib pyglm
+      - name: Recover exact masculine Spektar helmet geometry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime recovered out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-titan-masculine&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/spektar.zip
+          unzip -q input/spektar.zip -d input/spektar
+          test -f input/spektar/models/80A816E4.glb
+          test -f input/spektar/models/80A816E4.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/spektar/models/80A816E4.json'))
+          assert d['model_tag_hash']=='80A816E4',d
+          assert d['geometry_count']==10,d
+          print('helmet triangles',d['triangle_count'],'bounds',d['bounds'])
+          PY
+      - name: Recover exact 67-bone retail animation family
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0xAAB580800 \
+            --target ps4_race_set_all_00ec_0.pkg --target ps4_race_set_all_00ec_1.pkg \
+            --target ps4_race_set_all_00ec_2.pkg --target ps4_race_set_all_00ec_3.pkg \
+            --target ps4_race_set_all_00ec_4.pkg --target ps4_race_set_all_00ec_5.pkg \
+            --out recovered --manifest out/00ec_extract.json --retries 6 --timeout 90
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+      - name: Bind exact helmet joint 18 and serialize exact 324-frame clip
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_gltf_bind_rigid_animation.py \
+            input/spektar/models/80A816E4.glb \
+            --pkg recovered/ps4_race_set_all_00ec_5.pkg --runtime runtime --parser-root parser \
+            --skeleton 809D8613 --rig 809D856E --clip 809D8572 --joint-index 18 \
+            --animation-name STATE_13433E07_809D8572 \
+            --out out/SPEKTAR_PANDION_HELMET_MASCULINE_67BONE_ANIMATED.glb \
+            --report out/spektar_helmet_rigged_report.json
+      - name: Validate glTF skin, rigid weights, bind target, and animation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          import numpy as np
+          from pygltflib import GLTF2
+          p=Path('out/SPEKTAR_PANDION_HELMET_MASCULINE_67BONE_ANIMATED.glb')
+          g=GLTF2().load_binary(str(p)); blob=g.binary_blob()
+          r=json.load(open('out/spektar_helmet_rigged_report.json'))
+          assert r['joint_index']==18 and r['joint_name']=='b_head',r
+          assert r['skeleton_node_count']==67 and r['runtime_rig_control_count']==67,r
+          assert r['clip_frame_count']==324,r
+          assert r['bound_primitive_count']==10,r
+          assert len(g.skins)==1 and len(g.skins[0].joints)==67
+          assert len(g.animations)==1 and g.animations[0].name=='STATE_13433E07_809D8572'
+          assert any(n.name=='b_head' for n in g.nodes)
+          mesh_nodes=[n for n in g.nodes if n.mesh is not None]
+          assert mesh_nodes and all(n.skin==0 for n in mesh_nodes)
+          def read_acc(idx):
+              a=g.accessors[idx];v=g.bufferViews[a.bufferView];off=(v.byteOffset or 0)+(a.byteOffset or 0)
+              comps={'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}[a.type]
+              dt={5123:'<u2',5126:'<f4'}[a.componentType]
+              return np.frombuffer(blob,dtype=dt,count=a.count*comps,offset=off).reshape((a.count,comps))
+          total=0
+          for m in g.meshes:
+              for prim in m.primitives:
+                  j=read_acc(prim.attributes.JOINTS_0); w=read_acc(prim.attributes.WEIGHTS_0)
+                  assert np.all(j[:,0]==18) and np.all(j[:,1:]==0)
+                  assert np.allclose(w[:,0],1.0) and np.allclose(w[:,1:],0.0)
+                  total+=len(j)
+          assert total==r['bound_vertex_count'],(total,r)
+          # Confirm b_head receives animated channels and is not a static bind-only node.
+          head=next(i for i,n in enumerate(g.nodes) if n.name=='b_head')
+          channels=[c for c in g.animations[0].channels if c.target.node==head]
+          assert {c.target.path for c in channels}=={'translation','rotation','scale'},[(c.target.path,c.target.node) for c in channels]
+          print(json.dumps({'bytes':p.stat().st_size,'meshes':len(g.meshes),'skin_joints':len(g.skins[0].joints),
+                            'bound_vertices':total,'rigid_joint':18,'joint_name':'b_head',
+                            'animation':g.animations[0].name,'head_channels':[c.target.path for c in channels]},indent=2))
+          PY
+          sha256sum out/SPEKTAR_PANDION_HELMET_MASCULINE_67BONE_ANIMATED.glb | tee out/sha256.txt
+      - name: Provenance README
+        run: |
+          cat > out/README.txt <<'EOF'
+          Destiny 1 Rise of Iron - Spektar Pandion Helmet masculine rigged proof
+
+          Named retail equipment chain:
+            Spektar Pandion Helmet (Titan, masculine)
+            -> final s_entity 80A816E2
+            -> entity-model resource 80A816E3
+            -> s_entity_model 80A816E4
+
+          Retail rigid-joint evidence:
+            model 80A816E4 has two rigid meshes, zero old_weights payloads
+            every decoded primary-stream rigid joint value = 18
+
+          Evidence-converged playable Guardian animation family:
+            skeleton 809D8613 = 67 nodes; node 18 = b_head
+            runtime rig 809D856E = 67 controls; component 75F560CA x67
+            clip 809D8572 = 324 frames / 67 nodes / 67 controls
+            clip-owning animation control 809D856F; state hash 13433E07
+
+          Export policy:
+            all helmet vertices are assigned JOINTS_0=(18,0,0,0), WEIGHTS_0=(1,0,0,0)
+            because the retail model is uniformly joint 18. No weight is guessed.
+            inverse bind matrices come from skeleton 809D8613.
+            animation is decoded and retargeted from the exact retail clip.
+
+          State hash 13433E07 remains semantically unnamed. The file does not invent a state name.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-Spektar-Pandion-Helmet-Masculine-RIGGED-ANIMATED
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
