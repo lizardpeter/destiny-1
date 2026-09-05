@@ -1,0 +1,74 @@
+name: D1 Tower highlighted large static texture inspect
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-large-static-texture-inspect.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Download proven Tower texture corpus and isolate highlighted static resources
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          python -m pip install pillow
+          mkdir -p prior out
+          gh run download 33980537616 -n d1-tower-visible-material-textures-v1 -D prior
+          python - <<'PY'
+          from pathlib import Path
+          import json,shutil
+          from PIL import Image,ImageOps,ImageDraw
+          wanted=['80C9855D','80C9855E','80C9855F','80C98562','80C98563','80C98564','80C98565']
+          root=Path('prior')
+          out=Path('out');out.mkdir(exist_ok=True)
+          found={h:[] for h in wanted}
+          for p in root.rglob('*'):
+              if not p.is_file(): continue
+              up=p.name.upper()
+              for h in wanted:
+                  if up.startswith(h):
+                      q=out/p.name
+                      shutil.copy2(p,q);found[h].append(q.name)
+          manifest=None
+          for p in root.rglob('material_texture_manifest.json'):
+              manifest=json.loads(p.read_text());break
+          rec={h:(manifest or {}).get('textures',{}).get(h) for h in wanted}
+          Path('out/records.json').write_text(json.dumps({'found':found,'texture_records':rec},indent=2)+'\n')
+          # Contact sheet of PNGs, preserving aspect ratio and labeling exact tag/file.
+          pngs=[]
+          for h in wanted:
+              for n in found[h]:
+                  if n.lower().endswith('.png'):
+                      pngs.append((h,out/n))
+          if pngs:
+              cellw,cellh=520,420
+              sheet=Image.new('RGB',(cellw*2,cellh*((len(pngs)+1)//2)),(32,32,32))
+              draw=ImageDraw.Draw(sheet)
+              for i,(h,p) in enumerate(pngs):
+                  im=Image.open(p).convert('RGB')
+                  im.thumbnail((cellw-20,cellh-70))
+                  x=(i%2)*cellw+(cellw-im.width)//2
+                  y=(i//2)*cellh+45
+                  sheet.paste(im,(x,y))
+                  draw.text(((i%2)*cellw+10,(i//2)*cellh+10),f'{h}  {p.name}',fill='white')
+              sheet.save(out/'highlighted_static_texture_contact_sheet.jpg',quality=92)
+          if not any(found.values()): raise SystemExit('no highlighted-static textures found in proven corpus')
+          print(json.dumps(found,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-highlighted-large-static-textures
+          path: out/
+          retention-days: 14
+          compression-level: 6
