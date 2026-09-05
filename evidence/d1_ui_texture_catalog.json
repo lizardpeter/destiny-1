@@ -1,1 +1,20 @@
-PLACEHOLDER
+{
+  "source": "shipped Destiny 1 PS4 Tiger PKG bytes",
+  "actions_run": 33942166285,
+  "artifact_id": 9962232859,
+  "artifact_digest": "sha256:7803ac9ff225899003116f57f9c510d486052f08b60428ec5a082832a9b07720",
+  "policy": "PKG-extracted texture identity is exact by TagHash/stream/backing/package generation. Visual resemblance does not assign activity/map ownership. The workflow and tolerant exporter are deterministic and the full per-texture manifests are retained in the named Actions artifact and V4 browser bundle.",
+  "summary": {
+    "core_000a": {"headers": 31, "resolved": 29, "failed": 2, "pngs": 29, "formats": {"RGBA8": 29}},
+    "menus_0018": {"headers": 39, "resolved": 35, "failed": 4, "pngs": 35, "formats": {"RGBA8": 35}},
+    "orbit_0026": {"headers": 450, "resolved": 444, "failed": 6, "pngs": 444, "formats": {"RGBA8": 444}},
+    "pve_002d": {"headers": 0, "resolved": 0, "failed": 0, "pngs": 0, "formats": {}},
+    "pvp_0034": {"headers": 0, "resolved": 0, "failed": 0, "pngs": 0, "formats": {}}
+  },
+  "totals": {"texture_headers": 520, "resolved_pngs": 508, "failed": 12},
+  "full_manifest_paths_in_artifact": [
+    "exports/core_000a/texture_manifest.json",
+    "exports/menus_0018/texture_manifest.json",
+    "exports/orbit_0026/texture_manifest.json"
+  ]
+}
