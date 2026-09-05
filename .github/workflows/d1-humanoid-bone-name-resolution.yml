@@ -33,10 +33,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p reports
-          targets='\
-          --target E5685C1A --target 6EBAC0C7 --target 9EF0E980 --target 09AF5D69 --target 8CD20F9F --target A2A652A1 --target 1B4DB135 --target 3F4AD48B --target A2A652A2 --target 5D508B0F --target 5DE0B9B9 --target A2A652A3 --target 3A2D8E03 --target C6359025 --target 10BB4E0D --target 1664D7A9 --target 98412EC3 --target A22B23D1 --target AFFB585B --target 10BB4E0E --target 505F0217 --target 036B0EC1 --target 40D6927E --target 04157A89 --target 4FF150E3 --target CD1D78A3 --target 112FF885 --target 67CB838C --target 9C592B2A --target EA6B9DDE --target E5EFCD7C --target CAA7BCC3 --target 40BC82E5 --target EF4BAB19 --target C8472F93 --target 0E355AA8 --target A91E97AF --target 3AE77E9D --target 3284136B --target 0FAB2B51 --target 363F23DB --target 7B86173C --target 9CE6197A --target FDB26189 --target 2F6EFFE3 --target F1C7B263 --target AD943545 --target 1F2F2FC2 --target F0FE5C68 --target 92403903 --target 3A5AE325 --target 0FAB2B52 --target 960FEAD8 --target 7B86173F --target 5882DB59 --target FDB2618A --target 714E6040 --target F1C7B260 --target A1644966 --target 1F2F2FC1 --target 6CE0D0AB --target 92403900 --target DA88A8C6 --target 0FAB2B53 --target 212748D5 --target 7B86173E --target 39A95F9C --target FDB2618B --target AD186F5D --target F1C7B261 --target 42E79A8B --target 1F2F2FC0 --target 10E94486 --target 92403901 --target 5245BFEB \
-          --target B2977AD2 --target 7F62FCC1 --target 4CBE4D22 --target 3206EFEE --target 41ADC6A1 --target F4D37063 --target 205915D4 --target D66CBF0C --target BDC92507 --target 8E1AA114 --target 9B74FBB0 --target 9A853AD1 --target 5726EF22 --target 96A11D62 --target 0E34902F --target 9B74FBB3 --target 9A853AD2 --target 96A11D61 --target 0E34902C --target 9B74FBB2 --target 9A853AD3 --target 96A11D60 --target 0E34902D'
-          eval python tools/d1_stringhash_wordlist_resolve.py wordlist.txt $targets -o reports/full_character_bone_names.json
+          targets=(
+            E5685C1A 6EBAC0C7 9EF0E980 09AF5D69 8CD20F9F A2A652A1 1B4DB135 3F4AD48B A2A652A2 5D508B0F 5DE0B9B9 A2A652A3 3A2D8E03 C6359025 10BB4E0D 1664D7A9 98412EC3 A22B23D1 AFFB585B 10BB4E0E 505F0217 036B0EC1 40D6927E 04157A89 4FF150E3 CD1D78A3 112FF885 67CB838C 9C592B2A EA6B9DDE E5EFCD7C CAA7BCC3 40BC82E5 EF4BAB19 C8472F93 0E355AA8 A91E97AF 3AE77E9D 3284136B 0FAB2B51 363F23DB 7B86173C 9CE6197A FDB26189 2F6EFFE3 F1C7B263 AD943545 1F2F2FC2 F0FE5C68 92403903 3A5AE325 0FAB2B52 960FEAD8 7B86173F 5882DB59 FDB2618A 714E6040 F1C7B260 A1644966 1F2F2FC1 6CE0D0AB 92403900 DA88A8C6 0FAB2B53 212748D5 7B86173E 39A95F9C FDB2618B AD186F5D F1C7B261 42E79A8B 1F2F2FC0 10E94486 92403901 5245BFEB
+            B2977AD2 7F62FCC1 4CBE4D22 3206EFEE 41ADC6A1 F4D37063 205915D4 D66CBF0C BDC92507 8E1AA114 9B74FBB0 9A853AD1 5726EF22 96A11D62 0E34902F 9B74FBB3 9A853AD2 96A11D61 0E34902C 9B74FBB2 9A853AD3 96A11D60 0E34902D
+          )
+          args=()
+          for t in "${targets[@]}"; do args+=(--target "$t"); done
+          python tools/d1_stringhash_wordlist_resolve.py wordlist.txt "${args[@]}" -o reports/full_character_bone_names.json
       - uses: actions/upload-artifact@v4
         with:
           name: d1-full-character-bone-name-resolution
