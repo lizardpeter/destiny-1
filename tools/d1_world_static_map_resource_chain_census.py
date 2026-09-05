@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Close D1 SMapDataEntry -> static-map ownership chains for a world.
+
+This sits immediately above the baked-static parser.  It uses the now binary-
+validated D1 DynamicArray framing and 0x90 SMapDataEntry layout, then follows only
+the source-backed static-map resource class:
+
+  SMapDataTable/808009A2
+    -> SMapDataEntry[0x90].DataResource +0x88
+    -> class 80801AEA / SMapDataResource
+    -> +0x0C SStaticMapParent/80801AC6
+    -> parent +0x08 SStaticMapData/808008B4
+    -> static-map +0x30 D1 static data/80801B75
+
+The tool also records the post-array resource sidecar exactly.  Tower's shipped
+files have a useful invariant: the 0x90 entry array is followed by one 0x18-spaced
+resource sidecar slot per entry.  This explains why whole-file size can be
+misleadingly factorized as 0x30 + count*0xA8; 0xA8 is NOT the SMapDataEntry stride.
+
+Unknown/unavailable targets are retained as evidence rather than guessed.  A
+chain is "closed" only when every class-linked hop above resolves in the current
+class-stable corpus.
+"""
+from __future__ import annotations
+
+import argparse, json, math, struct, sys
+from collections import Counter
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import d1_tower_map_schema_validate_v5 as v5
+import d1_world_map_data_layer_census as layer
+
+TABLE_CLASS = '808009A2'
+MAP_DATA_RESOURCE = '80801AEA'
+STATIC_MAP_PARENT = '80801AC6'
+STATIC_MAP_DATA = '808008B4'
+D1_STATIC_MAP_DATA = '80801B75'
+ENTRY_STRIDE = 0x90
+RESOURCE_FIELD = 0x88
+PINNED_SOURCE = (
+    'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
+    'Tiger/Schema/Static/StaticMapData.cs + Tiger/SchemaTypes.cs'
+)
+
+
+def norm(x):
+    return str(x).upper().removeprefix('0X').zfill(8)
+
+
+def hx(x):
+    return f'{x:08X}'
+
+
+def u32(b, o):
+    return struct.unpack_from('<I', b, o)[0]
+
+
+def i64(b, o):
+    return struct.unpack_from('<q', b, o)[0]
+
+
+def f4(b, o):
+    return [float(x) for x in struct.unpack_from('<4f', b, o)]
+
+
+def target(c, h, expected=None):
+    h = norm(h)
+    m = c.entry_meta(h)
+    return {
+        'hash': h,
+        'exists': m is not None,
+        'meta': m,
+        'expected_reference': expected,
+        'reference_matches': bool(m and (expected is None or norm(m.get('reference', '')) == expected)),
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--snapshot', type=Path, action='append', required=True)
+    ap.add_argument('--runtime', type=Path, required=True)
+    ap.add_argument('--map-data-table', action='append', required=True)
+    ap.add_argument('--expected-static-map', action='append', default=[])
+    ap.add_argument('--out', type=Path, required=True)
+    a = ap.parse_args()
+
+    c = v5.v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
+    tables = []
+    rows = []
+    violations = []
+
+    for raw_table in a.map_data_table:
+        th = norm(raw_table)
+        meta = c.entry_meta(th)
+        b, src = c.payload(th)
+        tr = {'map_data_table': th, 'meta': meta, 'source': src, 'entries': []}
+        if not meta or norm(meta.get('reference', '')) != TABLE_CLASS:
+            tr['error'] = 'map_data_table_class_mismatch'
+            violations.append(f'{th}: not {TABLE_CLASS}')
+            tables.append(tr)
+            continue
+        if b is None:
+            tr['error'] = 'payload_unavailable'
+            violations.append(f'{th}: payload unavailable')
+            tables.append(tr)
+            continue
+
+        arr = layer.dyn(b, 0x08, ENTRY_STRIDE)
+        tr['payload_bytes'] = len(b)
+        tr['entries_array'] = arr
+        if not arr['ok']:
+            tr['error'] = 'entry_array_bounds'
+            violations.append(f'{th}: entry array bounds')
+            tables.append(tr)
+            continue
+
+        class_offsets = []
+        target_offsets = []
+        for i in range(arr['count']):
+            o = arr['absolute'] + i * ENTRY_STRIDE
+            pf = o + RESOURCE_FIELD
+            rel = i64(b, pf)
+            r = {
+                'map_data_table': th,
+                'index': i,
+                'record_offset': o,
+                'entity_hash': hx(u32(b, o)),
+                'rotation': f4(b, o + 0x20),
+                'translation': f4(b, o + 0x30),
+                'resource_pointer_field': pf,
+                'resource_relative': rel,
+                'resource_absolute': None,
+                'resource_class': None,
+                'static_map_parent': None,
+                'static_map': None,
+                'd1_static_map_data': None,
+                'chain_closed': False,
+            }
+            if not all(math.isfinite(x) for x in r['rotation'] + r['translation']):
+                r['error'] = 'nonfinite_transform'
+                tr['entries'].append(r); rows.append(r); continue
+            if rel == 0:
+                r['error'] = 'null_resource_pointer'
+                tr['entries'].append(r); rows.append(r); continue
+
+            absolute = pf + rel
+            r['resource_absolute'] = absolute
+            if absolute < 4 or absolute + 0x10 > len(b):
+                r['error'] = 'resource_pointer_oob'
+                tr['entries'].append(r); rows.append(r); continue
+            class_off = absolute - 4
+            cls = hx(u32(b, class_off))
+            r['resource_class_offset'] = class_off
+            r['resource_class'] = cls
+            class_offsets.append(class_off)
+            target_offsets.append(absolute)
+            if cls != MAP_DATA_RESOURCE:
+                r['error'] = f'non_static_map_resource:{cls}'
+                tr['entries'].append(r); rows.append(r); continue
+
+            parent_hash = hx(u32(b, absolute + 0x0C))
+            parent = target(c, parent_hash, STATIC_MAP_PARENT)
+            r['static_map_parent'] = parent
+            if not parent['reference_matches']:
+                r['error'] = 'static_map_parent_missing_or_class_mismatch'
+                tr['entries'].append(r); rows.append(r); continue
+
+            pb, psrc = c.payload(parent_hash)
+            r['static_map_parent_payload_source'] = psrc
+            if pb is None or len(pb) < 0x0C:
+                r['error'] = 'static_map_parent_payload_unavailable_or_short'
+                tr['entries'].append(r); rows.append(r); continue
+
+            sm_hash = hx(u32(pb, 0x08))
+            sm = target(c, sm_hash, STATIC_MAP_DATA)
+            r['static_map'] = sm
+            if not sm['reference_matches']:
+                r['error'] = 'static_map_missing_or_class_mismatch'
+                tr['entries'].append(r); rows.append(r); continue
+
+            sb, ssrc = c.payload(sm_hash)
+            r['static_map_payload_source'] = ssrc
+            if sb is None or len(sb) < 0x34:
+                r['error'] = 'static_map_payload_unavailable_or_short'
+                tr['entries'].append(r); rows.append(r); continue
+
+            d1_hash = hx(u32(sb, 0x30))
+            d1 = target(c, d1_hash, D1_STATIC_MAP_DATA)
+            r['d1_static_map_data'] = d1
+            if not d1['reference_matches']:
+                r['error'] = 'd1_static_map_data_missing_or_class_mismatch'
+                tr['entries'].append(r); rows.append(r); continue
+
+            r['chain_closed'] = True
+            tr['entries'].append(r)
+            rows.append(r)
+
+        tail = len(b) - arr['end']
+        sorted_class = sorted(class_offsets)
+        class_stride = sorted({b - a for a, b in zip(sorted_class, sorted_class[1:])})
+        tr['post_array_resource_sidecar'] = {
+            'array_end': arr['end'],
+            'payload_end': len(b),
+            'tail_bytes': tail,
+            'entry_count': arr['count'],
+            'tail_bytes_per_entry_exact': (tail // arr['count']) if arr['count'] and tail % arr['count'] == 0 else None,
+            'resource_class_offset_min': min(sorted_class) if sorted_class else None,
+            'resource_class_offset_max': max(sorted_class) if sorted_class else None,
+            'resource_class_offset_deltas': class_stride,
+            'first_class_offset_minus_array_end': (min(sorted_class) - arr['end']) if sorted_class else None,
+            'last_resource_frontier': (max(target_offsets) + 0x10) if target_offsets else None,
+            'last_resource_frontier_equals_payload_end': bool(target_offsets and max(target_offsets) + 0x10 == len(b)),
+        }
+        tr['summary'] = {
+            'entry_count': len(tr['entries']),
+            'closed_chains': sum(bool(x.get('chain_closed')) for x in tr['entries']),
+            'resource_classes': dict(Counter(x.get('resource_class') or 'NULL' for x in tr['entries'])),
+            'unique_static_map_parents': len({x['static_map_parent']['hash'] for x in tr['entries'] if x.get('static_map_parent')}),
+            'unique_static_maps': len({x['static_map']['hash'] for x in tr['entries'] if x.get('static_map')}),
+            'unique_d1_static_map_data': len({x['d1_static_map_data']['hash'] for x in tr['entries'] if x.get('d1_static_map_data')}),
+        }
+        tables.append(tr)
+
+    closed = [x for x in rows if x.get('chain_closed')]
+    static_maps = Counter(x['static_map']['hash'] for x in closed)
+    parents = Counter(x['static_map_parent']['hash'] for x in closed)
+    d1_maps = Counter(x['d1_static_map_data']['hash'] for x in closed)
+    expected = [norm(x) for x in a.expected_static_map]
+    expected_counts = {h: static_maps.get(h, 0) for h in expected}
+
+    # The static-map chain itself is a class-linked invariant.  A caller can pass
+    # known maps to make subset ownership fail closed without hard-coding Tower in
+    # this generic tool.
+    if expected and any(v != 1 for v in expected_counts.values()):
+        violations.append('one_or_more_expected_static_maps_not_unique:' + json.dumps(expected_counts, sort_keys=True))
+
+    out = {
+        'schema_version': 1,
+        'status': 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED' if len(closed) == len(rows) and not violations else 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_PARTIAL',
+        'pinned_source': PINNED_SOURCE,
+        'map_data_table_count': len(tables),
+        'entry_count': len(rows),
+        'closed_chain_count': len(closed),
+        'resource_class_counts': dict(Counter(x.get('resource_class') or 'NULL' for x in rows)),
+        'unique_static_map_parent_count': len(parents),
+        'unique_static_map_count': len(static_maps),
+        'unique_d1_static_map_data_count': len(d1_maps),
+        'duplicate_parent_targets': {k: v for k, v in parents.items() if v != 1},
+        'duplicate_static_map_targets': {k: v for k, v in static_maps.items() if v != 1},
+        'duplicate_d1_static_map_targets': {k: v for k, v in d1_maps.items() if v != 1},
+        'expected_static_map_counts': expected_counts,
+        'static_maps': sorted(static_maps),
+        'd1_static_map_data': sorted(d1_maps),
+        'tables': tables,
+        'violations': violations,
+        'policy': 'Only class-linked source-backed fields are followed. 0x90 remains the SMapDataEntry stride; post-array sidecar bytes are reported separately and never reinterpreted as an enlarged entry stride.',
+    }
+    a.out.parent.mkdir(parents=True, exist_ok=True)
+    a.out.write_text(json.dumps(out, indent=2) + '\n')
+    print(json.dumps({k: out[k] for k in (
+        'status', 'map_data_table_count', 'entry_count', 'closed_chain_count',
+        'resource_class_counts', 'unique_static_map_parent_count',
+        'unique_static_map_count', 'unique_d1_static_map_data_count',
+        'expected_static_map_counts', 'violations')}, indent=2))
+    return 0 if out['status'] == 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED' else 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
