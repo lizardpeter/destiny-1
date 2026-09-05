@@ -1,0 +1,65 @@
+name: D1 investment 013F entry block census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-investment-013f-entry-block-census.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Read latest 013F logical tables and report physical block generations
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import io,json
+          from pathlib import Path
+          from tools.d1_split_tar_extract import SplitHttpTar
+          from tools.d1_pkg_probe import parse_header,parse_entries,parse_blocks,BLOCK_SIZE
+          from tools.d1_remote_investment_parent_probe import parse_member
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          members=[
+            parse_member('ps4_investment_assets_013f_1.pkg:0x5A9421600:17747968'),
+            parse_member('ps4_investment_assets_013f_2.pkg:0x5AA50E800:3614720'),
+            parse_member('ps4_investment_assets_013f_3.pkg:0x5AA881200:301056'),
+            parse_member('ps4_investment_assets_013f_4.pkg:0x5AA8CAC00:284672'),
+            parse_member('ps4_investment_assets_013f_5.pkg:0x5AA910600:317440'),
+          ]
+          latest=max(members,key=lambda x:x.patch_id)
+          head=arc.read_at(latest.data_offset,0x140)
+          h=parse_header(io.BytesIO(head))
+          et=arc.read_at(latest.data_offset+h['entry_table_offset'],h['entry_table_count']*16)
+          bt=arc.read_at(latest.data_offset+h['block_table_offset'],h['block_table_count']*32)
+          entries=parse_entries(et,h['pkg_id']);blocks=parse_blocks(bt)
+          targets={6971:'80A7FB3B',6974:'80A7FB3E',7745:'80A7FE41',7751:'80A7FE47'}
+          rows=[]
+          for idx,tag in targets.items():
+              e=entries[idx]
+              remain=int(e['file_size']);bi=int(e['starting_block']);off=int(e['starting_block_offset']);used=[]
+              while remain:
+                  b=blocks[bi];n=min(remain,BLOCK_SIZE-off)
+                  used.append({'block_index':bi,'patch_id':int(b['patch_id']),'offset':int(b['offset']),'compressed_size':int(b['size']),'compressed':bool(b['compressed']),'encrypted':bool(b['encrypted']),'sha1':b['sha1'],'entry_bytes':n})
+                  remain-=n;bi+=1;off=0
+              row={'entry_index':idx,'expected_tag':tag,'actual_tag':e['tag_hash'].upper(),'entry_size':int(e['file_size']),'starting_block':int(e['starting_block']),'starting_block_offset':int(e['starting_block_offset']),'blocks':used}
+              assert row['actual_tag']==tag,row
+              rows.append(row)
+              print(tag,'entry',idx,'size',row['entry_size'],'blocks',[(x['block_index'],x['patch_id'],hex(x['offset']),x['compressed_size']) for x in used])
+          out={'schema':'d1_entry_block_generation_census/v1','package_id':f"{h['pkg_id']:04X}",'latest_member':latest.name,'rows':rows}
+          Path('out').mkdir();Path('out/013f_entry_blocks.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-investment-013f-entry-block-census
+          path: out/
+          retention-days: 14
