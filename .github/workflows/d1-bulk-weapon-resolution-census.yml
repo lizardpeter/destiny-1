@@ -71,6 +71,8 @@ jobs:
           assert inv['row_count']==8609,inv['row_count']
           assert inv['package_counts']=={'0131':4092,'0132':4517},inv['package_counts']
           assert art['arrangement_count']==4473,art['arrangement_count']
+          assert pat['weapon_pattern_table']['row_count']==208
+          assert pat['join']['resolved_assignment_count']==208 and pat['join']['missing_assignment_count']==0
           print(json.dumps({'inventory_items':inv['row_count'],'inventory_packages':inv['package_counts'],
                             'art_arrangements':art['arrangement_count'],'weapon_patterns':pat['weapon_pattern_table']['row_count'],
                             'pattern_join':pat['join']},indent=2))
@@ -83,7 +85,7 @@ jobs:
           python tools/d1_remote_arrangement_parent_resolve.py reports/art_arrangements.json \
             --packages-list reports/packages.txt \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start-offset 0x5A0000000 --runtime runtime \
+            --start-offset 0x5996C3000 --runtime runtime \
             -o reports/art_arrangements_resolved.json
 
       - name: Census all 8,609 retail inventory definitions
