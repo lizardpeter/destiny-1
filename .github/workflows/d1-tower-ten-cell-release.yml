@@ -1,0 +1,73 @@
+name: Publish D1 Tower ten-cell model release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-ten-cell-release.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and reassemble current ten-cell model
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p src work
+          gh run download 33987189885 -n d1-tower-ten-cell-current-model-chunks -D src
+          cat src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part* > work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          echo 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa  work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' | sha256sum --check --strict
+          cp src/ten_cell_geometry_summary.json work/
+          cp src/ten_cell_texture_summary.json work/
+          cp src/ten_cell_textured_sha256.txt work/
+      - name: Publish single-file model release
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          tag='d1-tower-ten-cell-r1'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release delete "$tag" --yes --cleanup-tag
+          fi
+          cat > work/RELEASE_NOTES.md <<'EOF'
+          Current reusable D1 Tower baked-static regression model.
+
+          - 10 map-owned baked-static cells
+          - 50,148 serialized placements
+          - 11,728 retail-visible placements
+          - 2,071 geometry variants
+          - 0 geometry decode failures
+          - 400 visible materials
+          - 506/506 exact texture resources reconstructed
+          - 1,786 geometry variants currently textured in the portable preview
+          - 1,469 geometry variants currently normal-mapped
+          - corrected D1 0x40 affine + per-instance UV interpretation
+          - D1 Z-up -> glTF Y-up adapter for Blender import
+
+          This is not yet the entire retail Tower destination: entity/dynamic layers,
+          decals, sky/lighting/VFX, and activity-conditional content remain separate work.
+          EOF
+          gh release create "$tag" \
+            work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            work/ten_cell_geometry_summary.json \
+            work/ten_cell_texture_summary.json \
+            work/ten_cell_textured_sha256.txt \
+            --title 'D1 Tower ten-cell textured regression model r1' \
+            --notes-file work/RELEASE_NOTES.md \
+            --target '${{ github.sha }}'
+          gh release view "$tag" --json url,tagName,name,assets > work/release.json
+          cat work/release.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-ten-cell-release-metadata
+          path: work/release.json
+          retention-days: 14
