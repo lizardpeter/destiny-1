@@ -1,0 +1,86 @@
+name: D1 Tower final common shader closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-missing-shader-closure.yml'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and exact common manifest
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered prior shader disasm reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          gh run download 33994999358 -n d1-tower-common-layer-texture-census -D prior
+          test -f prior/compact/common_material_texture_manifest.json
+      - name: Recover only shader header namespace 024C and native namespace 011E
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x1C1984400 \
+            --target ps4_city_tower_destination_024c_0.pkg --target ps4_city_tower_destination_024c_1.pkg \
+            --target ps4_city_tower_destination_024c_2.pkg --target ps4_city_tower_destination_024c_3.pkg \
+            --target ps4_city_tower_destination_024c_4.pkg --target ps4_city_tower_destination_024c_5.pkg \
+            --out recovered --manifest reports/024c_extract.json
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg --target ps4_gear_weapons_011e_5.pkg \
+            --out recovered --manifest reports/011e_extract.json
+      - name: Extract exact final shader family
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_shader_extract.py "${args[@]}" --runtime runtime \
+            --manifest prior/compact/common_material_texture_manifest.json --shader 80C991D5 \
+            --out-dir shader --report reports/final_common_shader_extract.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/final_common_shader_extract.json'))
+          r=d['shaders'][0]
+          if d['error_count'] or r['shader']!='80C991D5' or r.get('native_shader')!='80A3D3AE' or not r.get('gcn_bytes'):
+              raise SystemExit('final common shader did not close exactly: '+json.dumps(d,indent=2))
+          print('FINAL_COMMON_SHADER_EXACT',r['shader'],r['native_shader'],r['gcn_bytes'],r['gcn_sha256'])
+          PY
+      - name: Build pinned disassembler and analyze exact image usage
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_80C991D5_gcn.bin > disasm/PS_80C991D5.s 2> disasm/PS_80C991D5.stderr
+          test ! -s disasm/PS_80C991D5.stderr
+          grep -q s_endpgm disasm/PS_80C991D5.s
+          python tools/d1_gcn_image_usage_analyze.py --extract-report reports/final_common_shader_extract.json \
+            --disasm-dir disasm --out reports/final_common_shader_image_usage.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-final-common-shader-closure
+          path: |
+            reports/
+            shader/
+            disasm/
+          retention-days: 14
+          compression-level: 6
