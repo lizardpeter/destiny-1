@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "D1_TOWER_COMMON_LAYER_BINDING_PROVEN",
+  "workflow": {
+    "run_id": 33993338626,
+    "commit": "13a86de73f97cc60df3ffdd0eca3588ccb9b2845",
+    "artifact_id": 9977398428,
+    "artifact_name": "d1-tower-common-layer-record-binding",
+    "artifact_digest": "sha256:5e578f2b368aba8c0d124b5bd348760daf43123e5c2d182ee65af9ac85323e26"
+  },
+  "binding": {
+    "container": "SStaticMapParent",
+    "field_offset": "0x10",
+    "width_bits": 32,
+    "interpretation": "zero-based embedded D1Class_BA048080 record selector",
+    "closure_rule": "For each common carrier, map row count equals embedded record count and +0x10 values are an exact permutation of 0..N-1."
+  },
+  "tower_totals": {
+    "group_count": 9,
+    "selected_record_placements": 327,
+    "inline_resource_unavailable_rows": 7,
+    "violations": 0
+  },
+  "groups": [
+    {"map_data_table":"80C98028","common_static_map":"80C98191","rows":38,"records":38,"selector_permutation":true},
+    {"map_data_table":"80C984A0","common_static_map":"80C984D7","rows":13,"records":13,"selector_permutation":true},
+    {"map_data_table":"80C9895C","common_static_map":"80C98A69","rows":78,"records":78,"selector_permutation":true},
+    {"map_data_table":"80C989F7","common_static_map":"80C993A2","rows":110,"records":110,"selector_permutation":true},
+    {"map_data_table":"80C997DF","common_static_map":"80C997F4","rows":3,"records":3,"selector_permutation":true},
+    {"map_data_table":"80C99956","common_static_map":"80C99980","rows":21,"records":21,"selector_permutation":true},
+    {"map_data_table":"80CA0B0E","common_static_map":"80CA0B6F","rows":9,"records":9,"selector_permutation":true},
+    {"map_data_table":"80CA0B11","common_static_map":"80CA0B71","rows":53,"records":53,"selector_permutation":true},
+    {"map_data_table":"80CA0C4E","common_static_map":"80CA0C5F","rows":2,"records":2,"selector_permutation":true}
+  ],
+  "important_edge_case": "Seven inline SMapDataResource pointer locations are outside the resident map-table payload. Their SStaticMapParent resources are nevertheless valid and complete; the authoritative +0x10 selector is in SStaticMapParent, so these seven rows must not be dropped.",
+  "regression_rule": "Never pair map rows to common records by row ordinal alone and never replay the common array once per parent row. Use SStaticMapParent +0x10 for row-to-record identity; the common scene carrier itself is loaded once per map-data table."
+}
