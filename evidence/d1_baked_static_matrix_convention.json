@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "evidence_status": "SOURCE_CROSSCHECKED_MATRIX_CONVENTION",
+  "scope": "Destiny 1 ROI baked-static 0x40 instance transforms",
+  "conclusion": {
+    "shipped_matrix_convention_for_numpy_trimesh": "use raw 4x4 matrix without transposing",
+    "translation_storage": "M0.w, M1.w, M2.w (matrix rows 0..2, column 3)",
+    "vertex_position_decode": "first three signed int16 components divided by 32767 for common D1 static primary streams",
+    "important_distinction": "Charm transposes the shipped matrix before System.Numerics.Matrix4x4.Decompose because System.Numerics uses a different matrix/vector convention. That transpose is an API adaptation, not an instruction to transpose again when using a column-vector numpy/trimesh matrix."
+  },
+  "source_crosschecks": [
+    {
+      "repository": "MontagueM/MontevenDynamicExtractor",
+      "branch": "d1",
+      "commit": "87889a11921084030b33ef34c6a3bce87ad112bc",
+      "file": "d1map.cpp",
+      "observation": "D1Map::GetDataTable reads each 0x40 transform as four 4-float rows and sets Translation from SRT[0][3], SRT[1][3], SRT[2][3]. Scale is computed from the first three components of rows, then applied to each static instance."
+    },
+    {
+      "repository": "MontagueM/MontevenDynamicExtractor",
+      "branch": "d1",
+      "commit": "87889a11921084030b33ef34c6a3bce87ad112bc",
+      "file": "vertex.cpp",
+      "observation": "VertexBuffer::readPosition decodes xyz as signed int16 / 32767; the Static primary-stream path calls that decoder for D1 baked statics."
+    },
+    {
+      "repository": "MontagueM/Charm",
+      "commit": "50d36ee1f9ecadad7522504c20b1f3f9c97e30af",
+      "file": "Tiger/Schema/Static/StaticMapData.cs",
+      "observation": "StaticMapData_D1.ParseTransforms constructs System.Numerics.Matrix4x4 from shipped M0..M3 and explicitly transposes it before Matrix4x4.Decompose, consistent with adapting Tiger's stored convention to System.Numerics."
+    }
+  ],
+  "project_change": {
+    "tool": "tools/d1_tower_static_chunk_export.py",
+    "old_behavior": "m.T was passed to trimesh",
+    "corrected_behavior": "m is passed to trimesh unchanged",
+    "fix_commit": "03561a93c4a080af7937c5664ba04b870de42f3c"
+  },
+  "remaining_boundary": "This establishes the matrix orientation convention. The separate algebraic test of how the static matrix composes with s_entity_model model_scale/model_translation remains useful for the 24 exact cross-representation records and should still be run when Actions resumes."
+}
