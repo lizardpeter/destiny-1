@@ -1,0 +1,95 @@
+name: D1 enriched weapon icon catalog
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-weapon-icon-catalog.yml'
+      - 'tools/d1_asset_browser_seed.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover latest bulk weapon census artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out/weapon_icons
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-bulk-weapon-resolution-census&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/census.zip
+          unzip -q input/census.zip -d input/census
+          test -f input/census/resolved_weapon_manifests.json
+      - name: Recover preserved Destiny 1 manifest item definitions
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch gh-pages --filter=blob:none --sparse https://github.com/nmlorg/destiny-db.git input/destiny-db
+          git -C input/destiny-db sparse-checkout set definitions/InventoryItem
+      - name: Join all weapon names, native icons, and archive status
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures, json, mimetypes, urllib.request
+          from pathlib import Path
+          src=json.load(open('input/census/resolved_weapon_manifests.json'))
+          root=Path('input/destiny-db/definitions/InventoryItem'); icon_dir=Path('out/weapon_icons'); icon_dir.mkdir(parents=True,exist_ok=True)
+          rows=[]; missing=[]
+          for m in src['manifests']:
+              hx=m['inventory_item_hash']; dec=int(hx,16); p=root/f'{dec}.json'
+              d={}
+              if p.is_file():
+                  try:d=json.load(open(p))
+                  except Exception as ex:d={'_parse_error':repr(ex)}
+              else:missing.append(hx)
+              st=m.get('status') or {}; pat=m.get('internal_weapon_pattern') or {}; eq=m.get('equipping') or {}
+              rows.append({
+                  'hash':hx,'decimal':dec,'name':d.get('itemName'),'description':d.get('itemDescription'),'itemTypeName':d.get('itemTypeName'),
+                  'tierTypeName':d.get('tierTypeName'),'icon':d.get('icon'),'hasIcon':bool(d.get('hasIcon')),'hasGeometry':d.get('hasGeometry'),
+                  'manifestArrangementIndex':(d.get('equippingBlock') or {}).get('gearArtArrangementIndex'),
+                  'manifestWeaponPatternIndex':(d.get('equippingBlock') or {}).get('weaponSandboxPatternIndex'),
+                  'archiveArrangementIndices':[x.get('art_arrangement_index') for x in eq.get('art_arrangements',[])],
+                  'archiveWeaponPatternIndex':eq.get('weapon_pattern_index'),'weaponTypeHash':pat.get('weapon_type_hash'),'patternEntity':pat.get('pattern_entity'),
+                  'visualReady':bool(st.get('visual_entity_selection_resolved')),'internalReady':bool(st.get('weapon_pattern_resolved')),
+                  'sharedReady':bool(st.get('shared_viewmodel_context_resolved')),'fullReady':bool(st.get('resolution_complete_for_current_graph')),
+              })
+          def get_icon(row):
+              icon=row.get('icon')
+              if not row.get('hasIcon') or not icon or 'missing_icon' in icon:return None
+              ext=Path(icon).suffix or '.img'; dst=icon_dir/f"{row['hash']}{ext}"
+              if dst.exists():return dst.name
+              req=urllib.request.Request('https://www.bungie.net'+icon,headers={'User-Agent':'d1-asset-browser/1.0'})
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as r: data=r.read()
+                  if not data:return None
+                  dst.write_bytes(data);return dst.name
+              except Exception:return None
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+              futures={ex.submit(get_icon,r):r for r in rows}
+              done=0
+              for f in concurrent.futures.as_completed(futures):
+                  row=futures[f]; row['localIcon']=f.result(); done+=1
+                  if done%100==0:print('icons',done,'/',len(rows),flush=True)
+          result={'schema':'d1_enriched_weapon_catalog/v1','weapon_count':len(rows),'definition_missing_count':len(missing),
+                  'native_icon_downloaded_count':sum(bool(r.get('localIcon')) for r in rows),'missing_definitions':missing,'weapons':rows,
+                  'policy':'Names/icons are historical D1 manifest presentation metadata. Archive resolution status is copied from the byte-proven bulk weapon census.'}
+          Path('out/weapon_catalog.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in result.items() if k not in ('weapons','missing_definitions')},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-enriched-weapon-icon-catalog
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
