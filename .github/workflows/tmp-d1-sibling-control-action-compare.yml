@@ -1,0 +1,75 @@
+name: Temporary compare D1 sibling shared viewmodel action controls
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-sibling-control-action-compare.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+      - name: Decode three controls with identical action-name set
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_animation_control_state_map import decode_control
+          controls={'CA0':'80AA3CC2','CA1':'80AA3CC5','CA2':'80AA3CC9'}
+          names=['idle','ready','reload_empty','reload_full','fire','jump','base']
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          out={}
+          for owner,tag in controls.items():
+            sm=decode_control(r.entry(by[tag]['index']),r,names)
+            rows=[]
+            for i,s in enumerate(sm['state_table']['records']):
+              if s.get('state_name') in names:
+                rows.append({'record_index':i,'state_name':s['state_name'],'state_hash':s['state_hash'],'selection_start':s['selection_start'],
+                             'selection_count':s['selection_count'],'clips':[a['tag_hash'] for a in s['selected_animations']]})
+            out[owner]={'control':tag,'animation_count':sm['animation_list']['count'],'state_count':sm['state_table']['count'],'known':rows}
+          # Action-centric comparison, preserving absence rather than guessing.
+          matrix={}
+          for name in names:
+            matrix[name]={}
+            for owner,q in out.items():
+              xs=[x for x in q['known'] if x['state_name']==name]
+              matrix[name][owner]=xs
+          rep={'owners':{'CA0':{'entity':'80AA3CA0','rig':'80AA3CB2','skeleton':'80AA3CB3','control':'80AA3CC2','wrapper':'80AA3CC4'},
+                         'CA1':{'entity':'80AA3CA1','rig':'80AA3CB8','skeleton':'80AA3CB9','control':'80AA3CC5','wrapper':'80AA3CC7'},
+                         'CA2':{'entity':'80AA3CA2','rig':'80AA3CBE','skeleton':'80AA3CBF','control':'80AA3CC9','wrapper':'80AA3CCB'}},
+               'controls':out,'action_matrix':matrix,
+               'policy':'Clip equivalence across sibling controls is reported literally. It is not by itself called a rig handoff unless the owner/wrapper path also supports that interpretation.'}
+          Path('out/sibling_control_action_compare.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(matrix,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sibling-control-action-compare
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
