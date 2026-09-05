@@ -55,13 +55,21 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('out/809D8613_809D856E_retarget.json'))
-          assert d['skeleton']['node_count']==67,d['skeleton']
-          assert d['runtime_rig']['control_count']==67,d['runtime_rig']
-          assert len(d['clips'])==3,len(d['clips'])
+          assert d['target']['skeleton']=='809D8613',d['target']
+          assert d['target']['skeleton_node_count']==67,d['target']
+          assert d['target']['runtime_rig']=='809D856E',d['target']
+          assert d['target']['runtime_rig_control_count']==67,d['target']
+          assert d['summary']['clip_count']==3,d['summary']
+          assert d['summary']['success_count']==3,d['summary']
+          assert d['summary']['failure_count']==0,d['summary']
+          expected={'809D8469':2,'809D846A':2,'809D8572':324}
+          assert {c['tag_hash']:c['frame_count'] for c in d['clips']}==expected,d['clips']
           for c in d['clips']:
               assert c['success'],c
-              assert c['animation_node_count']==67,c
-              assert c['animation_control_count']==67,c
+              assert c['node_count']==67,c
+              assert c['rig_control_count']==67,c
+              assert c['native_control_limit']==67,c
+              assert c['decoded_track_count']==67,c
               assert c['retargeted_track_count']==67,c
               assert c['local_track_count']==67,c
               print('SUCCESS',c['tag_hash'],'frames',c['frame_count'],'decoded',c['decoded_track_count'],
