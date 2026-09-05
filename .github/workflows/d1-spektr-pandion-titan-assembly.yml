@@ -39,7 +39,7 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('out/spektar_pandion_resources.json'))
-          assert d['arrangement_count']==5,d
+          assert len(d['arrangements'])==5,d
           names={e['name'] for a in d['arrangements'] for e in a.get('examples',[])}
           expected={'Spektar Pandion Gauntlets','Spektar Pandion Plate','Spektar Pandion Mark','Spektar Pandion Helmet','Spektar Pandion Greaves'}
           assert expected <= names,(expected,names)
