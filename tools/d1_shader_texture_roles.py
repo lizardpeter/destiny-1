@@ -106,6 +106,43 @@ PROVEN_PIXEL_SHADER_ROLES: dict[str, dict[int, str]] = {
         0: 'base_uv_palette_scalar_r',
         1: 'parallax_displaced_rgb_modulation_scalar_r',
     },
+
+    # Tower common-layer emissive/color pass. The sampled t0.xyz components are
+    # independently multiplied by authored constants and reach MRT0 directly.
+    # There is no alpha/mask-only reinterpretation in this shader.
+    '8093E96F': {
+        0: 'surface_rgb',
+    },
+
+    # Common-layer authored-color mask siblings. All three emit RGB assembled
+    # from material constants; the sampled texture contributes only one scalar
+    # control channel, so binding the whole texture as glTF base color is wrong.
+    '80CA08B1': {
+        0: 'material_rgb_intensity_mask_r',
+    },
+    '80CA08C1': {
+        0: 'material_rgb_intensity_mask_a',
+    },
+    '80CA08C3': {
+        0: 'material_rgb_intensity_mask_a',
+    },
+
+    # Common reflective/normal-mapped family. t2.xy is transformed into a
+    # tangent-space normal and reconstructs +Z. Cube-coordinate instructions,
+    # image_get_lod and image_sample_l prove t1 as the environment cube. t0.r is
+    # folded into the chosen cube LOD rather than used as surface RGB. The shader
+    # also samples a runtime resource-table t11 which is not a material t# binding.
+    '80CA08B0': {
+        0: 'reflection_lod_control_r',
+        1: 'environment_cubemap',
+        2: 'primary_normal_rg',
+    },
+
+    # Common-layer RGBA surface. t0.rgb reaches MRT0 after authored scaling;
+    # t0.a participates in the common intensity multiplier applied to the RGB.
+    '80CA0BFA': {
+        0: 'surface_rgb_alpha_intensity_control',
+    },
 }
 
 # Roles that have a safe direct *portable preview* interpretation. This is kept
@@ -114,6 +151,7 @@ PORTABLE_BASE_COLOR_ROLES = {
     'surface_rgb',
     'surface_rgb_alpha_deferred_normal_control',
     'surface_rgb_alpha_reflection_and_deferred_normal_control',
+    'surface_rgb_alpha_intensity_control',
 }
 
 PORTABLE_NORMAL_ROLES = {
