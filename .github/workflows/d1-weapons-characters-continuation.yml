@@ -1,0 +1,160 @@
+name: D1 weapons and characters continuation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-weapons-characters-continuation.yml'
+      - 'tools/d1_weapon_action_readiness.py'
+      - 'tools/d1_character_family_census.py'
+      - 'tests/test_weapon_action_readiness.py'
+      - 'tests/test_character_family_census.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q pytest
+      - run: python -m pytest -q tests/test_weapon_action_readiness.py tests/test_character_family_census.py
+
+  weapon-action-readiness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Download latest exact weapon resolver artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/manifests input/actions reports
+          python - <<'PY' > /tmp/artifacts.txt
+          import json,os,urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']
+          token=os.environ['GH_TOKEN']
+          req=urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/actions/artifacts?per_page=100',
+              headers={'Authorization':f'Bearer {token}','X-GitHub-Api-Version':'2022-11-28'},
+          )
+          with urllib.request.urlopen(req) as r:
+              data=json.load(r)
+          wanted=['d1-bulk-weapon-resolution-census','d1-bulk-weapon-pattern-action-bundles']
+          for name in wanted:
+              rows=[x for x in data['artifacts'] if x['name']==name and not x['expired']]
+              if not rows:
+                  raise SystemExit(f'no live artifact named {name}')
+              rows.sort(key=lambda x:x['created_at'],reverse=True)
+              x=rows[0]
+              print(name, x['archive_download_url'])
+          PY
+          while read -r name url; do
+            dest="input/${name}.zip"
+            curl --fail --location --retry 3 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$url" -o "$dest"
+            if [[ "$name" == 'd1-bulk-weapon-resolution-census' ]]; then
+              unzip -q "$dest" -d input/manifests
+            else
+              unzip -q "$dest" -d input/actions
+            fi
+          done < /tmp/artifacts.txt
+
+      - name: Join inventory weapons to exact pattern-owned action bundles
+        run: |
+          set -euo pipefail
+          M=$(find input/manifests -name resolved_weapon_manifests.json -print -quit)
+          A=$(find input/actions -name weapon_pattern_action_bundles.json -print -quit)
+          test -n "$M" && test -n "$A"
+          python tools/d1_weapon_action_readiness.py "$M" "$A" -o reports/weapon_action_readiness.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/weapon_action_readiness.json'))
+          print(json.dumps(d['summary'],indent=2))
+          rows=d['queues']['full_animated_weapon_candidate']
+          gj=[x for x in rows if x['inventory_item_hash']=='D471D331']
+          assert len(gj)==1,gj
+          g=gj[0]
+          assert g['weapon_pattern_index']==39,g
+          assert any(
+              '80AA2DCD' in b.get('action_controls',[])
+              and '80AADE4C' in b.get('context_tables',[])
+              and '80AA2DDB' in b.get('wrappers',[])
+              for b in g['action_bundles']
+          ),g
+          assert g['shared_pattern_equivalence_proven'] is False
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-weapon-action-readiness
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+
+  vex-character-family:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified runtime and Vex 0767 family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 0x105C6E000 \
+            --target ps4_arch_vex_com01_0767_0.pkg \
+            --target ps4_arch_vex_com01_0767_1.pkg \
+            --target ps4_arch_vex_com01_0767_4.pkg \
+            --out recovered --manifest reports/0767_extract.json --retries 6 --timeout 90
+
+      - name: Census exact articulated entity graph on latest Vex member
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_character_family_census.py \
+            recovered/ps4_arch_vex_com01_0767_4.pkg \
+            --runtime runtime -o reports/vex_0767_character_family.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/vex_0767_character_family.json'))
+          fam=d['families'][0]
+          print(json.dumps({
+            'candidate_count':fam['candidate_count'],
+            'kind_counts':fam['kind_counts'],
+            'top_candidates':[
+              {'classification':x['classification'],'facts':x['facts'],'bone_counts':x['bone_counts']}
+              for x in fam['candidates'][:5]
+            ]
+          },indent=2))
+          # The census must at minimum recover the already byte-proven Vex fixture
+          # somewhere in the exact local graph. We do not require all of these
+          # tags to be one connected component until that graph edge is proven.
+          roles=fam['roles']
+          assert roles['816CE12B']['kind']=='model_parent',roles.get('816CE12B')
+          assert roles['816CE12B']['embedded_model_tag_hash']=='816CE09A'
+          assert roles['816CE092']['kind']=='skeleton' and roles['816CE092']['bone_count']==12
+          assert roles['816CE095']['kind']=='runtime_rig',roles.get('816CE095')
+          assert roles['816CE09D']['kind']=='s_animation_clip',roles.get('816CE09D')
+          assert roles['816CE09E']['kind']=='s_animation_clip',roles.get('816CE09E')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-vex-character-family-census
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
