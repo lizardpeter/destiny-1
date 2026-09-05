@@ -2,21 +2,9 @@ name: D1 Tower common-layer model export
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/d1-tower-common-layer-model-export.yml'
-      - 'tools/d1_entity_model_corpus_export.py'
-      - 'tools/d1_tower_recover_activity_root_corpus.py'
-      - 'tools/d1_recover_package_ids.py'
-      - 'tools/d1_tag_manifest_resolver.py'
-      - 'tools/d1_world_activity_map_root_census.py'
-      - 'tools/d1_world_map_root_census.py'
-      - 'tools/d1_world_map_data_layer_census.py'
-      - 'tools/d1_world_static_map_resource_chain_census.py'
-      - 'tools/d1_world_static_map_target_plan.py'
-      - 'tools/d1_world_static_map_decal_validate.py'
-      - 'tools/d1_world_table_scoped_decal_census.py'
-      - 'tools/d1_world_common_model_plan.py'
+  workflow_run:
+    workflows: ["D1 Tower activity map-root census"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -24,93 +12,71 @@ permissions:
 
 jobs:
   export:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
+
       - name: Install exporter dependencies and Oodle runtime
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check numpy trimesh
-          mkdir -p runtime recovered root_corpus reports models validation/source_driven
+          mkdir -p runtime recovered root_evidence reports models validation/source_driven
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover geometry dependencies and isolated Activity root corpus
+
+      - name: Recover proven Activity-root ownership artifact
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            root_run='${{ github.event.workflow_run.id }}'
+          else
+            root_run="$(gh run list --workflow d1-tower-activity-map-root-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$root_run"
+          echo "ACTIVITY_ROOT_RUN=$root_run"
+          gh run download "$root_run" -n d1-tower-activity-map-root-census -D root_evidence
+          root_json="$(find root_evidence -type f -name tower_activity_map_root_census.json -print -quit)"
+          manifest_plan="$(find root_evidence -type f -name tower_activity_manifest_dependency_plan.json -print -quit)"
+          test -n "$root_json" -a -f "$root_json"
+          test -n "$manifest_plan" -a -f "$manifest_plan"
+          cp "$root_json" reports/common_layer_activity_map_roots.json
+          cp "$manifest_plan" reports/common_layer_activity_manifest_dependency_plan.json
+          python - <<'PY'
+          import json
+          r=json.load(open('reports/common_layer_activity_map_roots.json'))
+          m=json.load(open('reports/common_layer_activity_manifest_dependency_plan.json'))
+          expected=sorted([
+            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
+            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
+          ])
+          if r.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
+              raise SystemExit('upstream Activity-root artifact not complete')
+          if r.get('selected_activities')!=['80C98019'] or sorted(r.get('map_data_tables',[]))!=expected or r.get('total_reachable_map_entries')!=337:
+              raise SystemExit('upstream Tower Activity-root fixture changed: '+json.dumps(r,indent=2))
+          if m.get('status')!='D1_WORLD_ACTIVITY_MANIFEST_DEPENDENCY_PLAN_COMPLETE' or m.get('manifest_package_ids')!=['0430','0431']:
+              raise SystemExit('upstream Activity manifest dependencies changed: '+json.dumps(m,indent=2))
+          print('CONSUMING_PROVEN_ACTIVITY_ROOTS',json.dumps({
+              'activity':'80C98019','manifest_packages':m['manifest_package_ids'],
+              'tables':len(expected),'entries':337},sort_keys=True))
+          PY
+
+      - name: Recover common geometry and material dependency corpus
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
-
-          # Large downstream dependency corpus: geometry/material/model resolution.
           python tools/d1_tower_recover_current_corpus.py \
             --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
           python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
             --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 \
             --out-dir recovered --report reports/common_model_global_recovery.json
-
-          # Small upstream ownership corpus. The 023D/0244 Activity roots and pinned
-          # 024C/0250 destination generations are isolated from unrelated geometry
-          # dependencies. Shared manifest 0430/0431 is then added because the D1 global
-          # Tag References from this world resolve their class through S48018080 there.
-          python tools/d1_tower_recover_activity_root_corpus.py \
-            --package-list reports/packages.txt --out-dir root_corpus \
-            --report reports/activity_root_recovery.json
-          for f in recovered/ps4_city_tower_destination_024c_*.pkg recovered/ps4_city_tower_destination_0250_*.pkg; do
-            test -f "$f"
-            ln "$f" root_corpus/"$(basename "$f")"
-          done
-          test "$(find root_corpus -maxdepth 1 -name '*.pkg' -type f | wc -l)" -eq 24
-
-          python tools/d1_recover_package_ids.py \
-            --package-list reports/packages.txt \
-            --package-id 0430 --package-id 0431 \
-            --out-dir root_corpus \
-            --report reports/root_shared_manifest_recovery.json
-          test "$(find root_corpus -maxdepth 1 -name '*.pkg' -type f | wc -l)" -eq 38
-
-      - name: Discover Activity-owned map roots through D1 manifest classes
-        env: {LINOODLE_SKIP_DLLMAIN: '1'}
-        run: |
-          set -euo pipefail
-          mapfile -t root_files < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
-          root_args=(); for f in "${root_files[@]}"; do root_args+=(--snapshot "$f"); done
-          python tools/d1_world_activity_map_root_census.py "${root_args[@]}" --runtime runtime \
-            --out reports/common_layer_activity_map_roots.json \
-            | tee reports/common_layer_activity_map_roots_stdout.txt
-
-          python - <<'PY'
-          import json
-          r=json.load(open('reports/common_layer_activity_map_roots.json'))
-          expected_tables=sorted([
-            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
-            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
-          ])
-          actual=sorted(r.get('map_data_tables',[]))
-          if r.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
-              raise SystemExit('Tower Activity map-root census not complete: '+json.dumps(r.get('violations')))
-          if r.get('current_d1_activity_count')!=1 or r.get('current_d1_activity_named_row_count')!=2:
-              raise SystemExit('Tower Activity alias fixture changed: '+json.dumps({
-                  'unique':r.get('current_d1_activity_count'),
-                  'named_rows':r.get('current_d1_activity_named_row_count')}))
-          if r.get('selected_activities')!=['80C98019']:
-              raise SystemExit('Tower root Activity changed: '+json.dumps(r.get('selected_activities')))
-          if actual!=expected_tables:
-              raise SystemExit('Tower Activity-owned map-table set changed: '+json.dumps({'expected':expected_tables,'actual':actual},indent=2))
-          if r.get('total_reachable_map_entries')!=337:
-              raise SystemExit(f'unexpected Activity-owned Tower map-entry total {r.get("total_reachable_map_entries")}')
-          print('ACTIVITY_OWNED_MAP_ROOTS_CLOSED',json.dumps({
-              'activity':'80C98019',
-              'activity_alias_rows':r.get('current_d1_activity_named_row_count'),
-              'bubbles':r.get('reachable_bubble_count'),
-              'containers':r.get('reachable_map_container_count'),
-              'tables':len(actual),
-              'entries':r.get('total_reachable_map_entries'),
-              'unowned_package_tables':len(r.get('unowned_current_map_data_tables',[])),
-          },sort_keys=True))
-          PY
 
       - name: Derive common-layer records and model set from ownership manifest
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
@@ -151,8 +117,7 @@ jobs:
               raise SystemExit('resource-chain census did not consume ownership manifest')
           expected_census={
             'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE',
-            'table_scoped_target_count':9,
-            'table_scoped_decal_records':327,
+            'table_scoped_target_count':9,'table_scoped_decal_records':327,
             'table_scoped_materialized_record_count':327,
             'table_scoped_export_ready_singleton_records':327,
             'table_scoped_unique_entity_models':69,
@@ -160,15 +125,14 @@ jobs:
           bad={k:{'expected':v,'actual':c.get(k)} for k,v in expected_census.items() if c.get(k)!=v}
           if bad: raise SystemExit('Tower source-driven common census mismatch: '+json.dumps(bad,indent=2))
           expected_plan={
-            'status':'D1_WORLD_COMMON_MODEL_PLAN_COMPLETE',
-            'source_record_count':327,
-            'resolved_model_reference_records':327,
-            'unique_model_count':69,
+            'status':'D1_WORLD_COMMON_MODEL_PLAN_COMPLETE','source_record_count':327,
+            'resolved_model_reference_records':327,'unique_model_count':69,
           }
           bad={k:{'expected':v,'actual':p.get(k)} for k,v in expected_plan.items() if p.get(k)!=v}
           if bad: raise SystemExit('Tower common-model plan mismatch: '+json.dumps(bad,indent=2))
           print('DISCOVERED_COMMON_MODELS',p['unique_model_count'],p['models'])
           PY
+
       - name: Export discovered common-layer models with retail map-decal selection
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
@@ -206,6 +170,7 @@ jobs:
           if unavailable:
               raise SystemExit('common-layer material dependency closure incomplete: '+json.dumps(unavailable))
           PY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
