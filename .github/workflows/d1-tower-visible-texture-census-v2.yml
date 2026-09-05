@@ -1,0 +1,137 @@
+name: D1 Tower complete visible texture dependency closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-visible-texture-census-v2.yml'
+      - 'tools/d1_recover_member_catalog.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_world_texture_contact_sheets.py'
+      - 'evidence/d1_tower_texture_dependency_member_catalog.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  textures-v2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install numpy pillow texture2ddecoder
+          mkdir -p runtime recovered recovered_texture prior textures reports contact_sheets
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Download exact nine-cell retail-visible selection sidecars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 33978906679 -n d1-tower-nine-cell-retail-visible-v5 -D prior
+          test -f prior/visual/TOWER_80C984D8_VISUAL.json
+          test -f prior/visual/TOWER_80CA0C60_VISUAL.json
+          test "$(find prior/visual -maxdepth 1 -name 'TOWER_*_VISUAL.json' -type f | wc -l)" -eq 9
+
+      - name: Recover canonical Tower map/material corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt \
+            --out-dir recovered \
+            --report reports/current_corpus.json
+
+      - name: Recover exact missing texture dependency families
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt \
+            --family 0154 --family 0155 --family 0156 --family 0158 --family 01db \
+            --out-dir recovered_texture \
+            --report reports/texture_dependency_recovery.json
+
+      - name: Export complete exact visible texture set
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered recovered_texture -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t vis < <(find prior/visual -maxdepth 1 -name 'TOWER_*_VISUAL.json' -type f | sort)
+          vargs=(); for f in "${vis[@]}"; do vargs+=(--visual-json "$f"); done
+          python tools/d1_world_material_texture_export.py \
+            "${args[@]}" --runtime runtime "${vargs[@]}" --out textures \
+            | tee reports/texture_export_stdout.txt
+          cp textures/material_texture_manifest.json reports/material_texture_manifest.json
+
+      - name: Require full dependency closure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/material_texture_manifest.json'))
+          required={
+            'visible_material_count':472,
+            'material_decode_errors':0,
+            'unique_texture_tags':657,
+            'decoded_texture_tags':657,
+            'texture_errors':0,
+          }
+          bad={k:(d.get(k),v) for k,v in required.items() if d.get(k)!=v}
+          summary={k:d.get(k) for k in ['visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids']}
+          Path('reports/closure_summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          if bad: raise SystemExit('texture dependency closure incomplete: '+json.dumps(bad))
+          PY
+
+      - name: Build conservative semantic inventory and visual shader audit
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py \
+            reports/material_texture_manifest.json \
+            -o reports/texture_role_inventory.json \
+            | tee reports/texture_role_inventory_stdout.txt
+          python tools/d1_world_texture_contact_sheets.py \
+            reports/material_texture_manifest.json \
+            --texture-dir textures/textures --out-dir contact_sheets \
+            --top-shaders 40 --materials-per-shader 4
+
+      - name: Compact SHA catalog for newly recovered physical families
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/texture_dependency_recovery.json'))
+          out={
+            'schema_version':1,
+            'status':'TOWER_TEXTURE_DEPENDENCY_MEMBERS_SHA256_MEASURED',
+            'members':[{k:r[k] for k in ('family','name','data_offset','size','sha256')} for r in d['members']],
+            'source':'exact catalog offsets + streamed/local SHA-256 agreement in this workflow',
+          }
+          Path('reports/texture_dependency_sha256_catalog_candidate.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-visible-texture-closure-v2-reports
+          path: |
+            reports/
+            contact_sheets/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
