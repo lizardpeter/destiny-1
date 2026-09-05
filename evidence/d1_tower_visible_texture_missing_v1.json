@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "source_workflow_run": 33980537616,
+  "status": "TOWER_VISIBLE_TEXTURE_CENSUS_V1_DEPENDENCY_FRONTIER",
+  "counts": {
+    "visible_materials": 472,
+    "material_decode_errors": 0,
+    "unique_texture_tags": 657,
+    "decoded_texture_tags": 635,
+    "unresolved_texture_tags": 22,
+    "png_outputs": 660
+  },
+  "unresolved": [
+    {"texture":"80AA825F","package_id":"0154","reason":"texture header unavailable"},
+    {"texture":"80AA8260","package_id":"0154","reason":"texture header unavailable"},
+    {"texture":"80AA9D0D","package_id":"0154","reason":"texture header unavailable"},
+    {"texture":"80AAABBA","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AAABBB","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AAB813","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AABA31","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AABA32","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AABA35","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AABA37","package_id":"0155","reason":"texture header unavailable"},
+    {"texture":"80AACC28","package_id":"0156","reason":"texture header unavailable"},
+    {"texture":"80AACCE3","package_id":"0156","reason":"texture header unavailable"},
+    {"texture":"80AACDD6","package_id":"0156","reason":"texture header unavailable"},
+    {"texture":"80AAF97E","package_id":"0157","reason":"full-resolution backing unavailable","known_chain":["80AAF97E","80AAF980","80AB0D9B"],"backing_package_id":"0158"},
+    {"texture":"80AB04BF","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80AB0779","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80AB077A","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80AB0B86","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80AB0B88","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80AB0B8A","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80AB0B8C","package_id":"0158","reason":"texture header unavailable"},
+    {"texture":"80BB612C","package_id":"01db","reason":"texture header unavailable"}
+  ],
+  "highlighted_blender_object": {
+    "source_node":"80C98662_info56_xform194",
+    "material":"80C98898",
+    "pixel_shader":"80AADC40",
+    "vertex_shader":"80CA0CB5",
+    "pixel_binding":{"texture_index":0,"texture":"80BB612C","package_id":"01db"},
+    "note":"The object highlighted in the user's Blender screenshot depends on ps4_env_shared_01db. This is evidence for fixing the legitimate shared environment asset rather than deleting it."
+  }
+}
