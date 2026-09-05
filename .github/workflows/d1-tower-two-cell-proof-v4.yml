@@ -1,0 +1,154 @@
+name: D1 Tower two-cell proof v4
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-two-cell-proof-v4.yml'
+      - 'tools/d1_tower_map_schema_validate_v3.py'
+      - 'tools/d1_tower_static_chunk_export_v3.py'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install runtime
+        run: |
+          set -euo pipefail
+          python -m pip install numpy trimesh
+          mkdir -p runtime recovered validation export reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact current corpus by pinned TAR ranges
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+
+          rows=[
+            ('ps4_arch_human_earth_city_009f_0.pkg',2870153216,269680640,'7446d5c4b8c2ca3fed6bb0b13a649ff68052a8a2fcfa3aae1b38bf8356c54813'),
+            ('ps4_arch_human_earth_city_009f_1.pkg',3139834368,32270336,'e5907ac4b5ba8256c23b667b5f1b237b729db824503a225c9b39daad993d7719'),
+            ('ps4_arch_human_earth_city_009f_2.pkg',3172105216,203638784,'467047bcfab0281f0f1a69ea2e43038c9e1bc616b0214f1cdc62eb7666844b24'),
+            ('ps4_arch_human_earth_city_009f_4.pkg',3375744512,116736,'0f58f8042d96852a1641e4b4378d2b6f7316b15ba8c6294cd5674e5ac61dc504'),
+            ('ps4_city_tower_destination_0250_0.pkg',7882616320,294875136,'beb269a2673f1106e2eff20ff577d0221d7fa56a8b71f5f8763cf34272114b32'),
+            ('ps4_city_tower_destination_0250_1.pkg',8177491968,17983488,'87904a97ce9899305b6bdba9df960d220749b3b2398c4ba8bd97e6efb8f81f91'),
+            ('ps4_city_tower_destination_0250_2.pkg',8195475968,11143168,'7543c1926023ec76ff8949618e04e1d0a93609f8448a1f8f875fcfc505a6b219'),
+            ('ps4_city_tower_destination_0250_3.pkg',8206619648,206848,'1db9423081f922b78cce256641dfab195e6a4b4afb6020e4e0c5029234f19375'),
+            ('ps4_city_tower_destination_0250_4.pkg',8206827008,17901568,'5a9370d60724622fb6592a7bcfa2fc4dbb40a4fca5cd696ce8db086a5756e84f'),
+            ('ps4_city_tower_destination_0250_5.pkg',8224729088,1677312,'2066afe09503eee4c35d948f6749a6e7b7b02572dcd41d1d3ca679fa523ea22c'),
+            ('ps4_globals_0157_0.pkg',18974578176,206192640,'e4f0844d75dde0d062ddf42f6a13b82d00689b76543c28255aefa28785d3f7b6'),
+            ('ps4_globals_0157_1.pkg',19180771328,30326784,'91c19b8c392f8f12c98ec6527306190fe2a59012abfe016a975b54b42a7dad2f'),
+            ('ps4_globals_0157_2.pkg',19211098624,30464000,'c8f71e22a37d2feed68178dbb60aed245bfbbe5d342c70d0e11dfd580684573f'),
+            ('ps4_globals_0157_3.pkg',19241563136,268288,'d06814d03e9b00d9df8ed683bff036627cd3195edb8fe58fcf80566c13d3f79a'),
+            ('ps4_globals_0157_4.pkg',19241831936,546816,'98b0e7abdfd88eabe7a3d6534b8f487dbbaa4ea0bf8e87b2d0fe6ec29c229077'),
+            ('ps4_globals_0157_5.pkg',19242379264,380928,'723b1d79ed9904474bd737f9af6065dc6b6266eaf2c59d123e3452434550089c'),
+            ('ps4_globals_0157_6.pkg',19242760704,356352,'51cb4f9bdb8a10e0fc25de757a9885641cce0c887549019831b9a0687a44b089'),
+          ]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          out=[]
+          for name,off,size,expected in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=expected.lower():
+                  raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
+              out.append({'name':name,'offset':off,'size':size,'sha256':got})
+              print('RECOVERED',name,size,got,flush=True)
+          Path('reports/member_catalog.json').write_text(json.dumps({'members':out},indent=2)+'\n')
+          PY
+
+      - name: Validate both cells with v3
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v3.py "${args[@]}" --runtime runtime --out validation | tee reports/validator_v3_stdout.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          expected={'80CA0B70':('80CA0B96',123,124,556),'80CA0C60':('80CA0C6B',304,471,1596)}
+          out={}
+          for parent,(child,nx,nm,np_) in expected.items():
+              good=[x for x in d.get('static_map_data',[]) if x.get('hash','').upper()==parent and x.get('ok')]
+              if len(good)!=1: raise SystemExit(f'{parent}: passing rows={len(good)}')
+              c=good[0]['d1_validation']
+              meshes=sum(t['summary']['meshes'] for t in c['static_tables'])
+              placements=sum(sum(i['instance_count'] for i in t['info_entries']) for t in c['static_tables'])
+              if c['hash'].upper()!=child or not c.get('ok') or c['instance_count']!=nx or meshes!=nm or placements!=np_ or not c.get('transform_size_exact'):
+                  raise SystemExit(f'{parent}: invariant mismatch')
+              if not all(t['summary']['all_required_mesh_targets_exist'] and t['summary']['all_info_indices_in_bounds'] for t in c['static_tables']):
+                  raise SystemExit(f'{parent}: table invariant failed')
+              out[parent]={'d1':child,'transforms':nx,'meshes':meshes,'placements':placements,
+                           'null_v1':sum(t['summary'].get('null_vertices1_sentinel_records',0) for t in c['static_tables'])}
+          Path('reports/two_cell_validation_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Export both cells
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          for h in 80CA0B70 80CA0C60; do
+            python tools/d1_tower_static_chunk_export_v3.py "${args[@]}" --runtime runtime \
+              --validation-json validation/tower_map_schema_validation.json \
+              --static-map-data "$h" --out "export/TOWER_${h}_V4.glb" --json "export/TOWER_${h}_V4.json" \
+              | tee "reports/export_${h}.txt"
+          done
+
+      - name: Verify GLBs and produce summary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import trimesh
+          expected={'80CA0B70':556,'80CA0C60':1596}
+          cells=[]
+          for h,n in expected.items():
+              gp=Path(f'export/TOWER_{h}_V4.glb')
+              jp=Path(f'export/TOWER_{h}_V4.json')
+              d=json.loads(jp.read_text())
+              if d['decode_failure_count'] != 0: raise SystemExit(f'{h}: decode failures')
+              if d['node_instance_count'] != n: raise SystemExit(f'{h}: nodes {d["node_instance_count"]} != {n}')
+              s=trimesh.load(gp,force='scene',process=False)
+              cells.append({'static_map':h,'d1':d['d1_static_map_data'],'placed_nodes':n,
+                            'geometry_variants':d['geometry_variant_count'],'scene_geometry':len(s.geometry),
+                            'scene_nodes':len(s.graph.nodes),'bounds':s.bounds.tolist() if s.bounds is not None else None,
+                            'glb_bytes':gp.stat().st_size})
+          out={'status':'TWO_CURRENT_TOWER_STATIC_CELLS_EXPORTED','outer_transform':'identity (serialized/proven)',
+               'total_placed_nodes':sum(x['placed_nodes'] for x in cells),'cells':cells}
+          Path('reports/two_cell_export_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-two-cell-proof-v4
+          path: |
+            export/
+            reports/
+            validation/tower_map_schema_validation.json
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
