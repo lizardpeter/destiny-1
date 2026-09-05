@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "status": "D1_STATIC_VERTEX_LAYOUT_SOURCE_CLOSED_AND_RETAIL_VALIDATED",
+  "date": "2026-09-05",
+  "source_reference": {
+    "repository": "MontagueM/Charm",
+    "commit": "50d36ee1f9ecadad7522504c20b1f3f9c97e30af",
+    "file": "Tiger/Schema/Model/VertexBuffer.cs",
+    "function": "ReadD1VertexData"
+  },
+  "correction": {
+    "old_stride_24_secondary_assumption": "UV@0 + normal xyz@+6, with tangent/color discarded",
+    "correct_stride_24_primary_not_0x0c": {
+      "uv0_offset": 0,
+      "selector": "int16@0x0E == 0 && int16@0x16 in {+32767,-32767}",
+      "branch_a": {
+        "color": "RGBA8@+0x04",
+        "normal": "SNORM16x4@+0x08",
+        "tangent": "SNORM16x4@+0x10"
+      },
+      "branch_b": {
+        "normal": "SNORM16x4@+0x04",
+        "tangent": "SNORM16x4@+0x0C",
+        "color": "RGBA8@+0x14"
+      }
+    },
+    "other_fixes": [
+      "primary stride 0x1C/0x20 tangent decode retained",
+      "primary stride 0x20 COLOR offset corrected to +0x1C",
+      "primary stride 0x20 normal decode retained",
+      "secondary stride 0x10/0x14 tangent decode retained",
+      "D1 decoded COLOR_0 is exported together with UV/material data",
+      "decoded D1 tangent is preserved as custom glTF _D1_TANGENT pending direct glTF handedness proof"
+    ]
+  },
+  "tower_three_cell_validation": {
+    "workflow_run_id": 33995338025,
+    "artifact_id": 9977946883,
+    "artifact_digest": "sha256:fb39dfd0d8883cc94f4a40d36b7e98cbb05039186106cca031f3293cfcce235d",
+    "placements": 4702,
+    "geometry_variants": 773,
+    "decode_errors": 0,
+    "geometry_with_uv": 773,
+    "geometry_with_normals": 773,
+    "geometry_with_tangents": 707,
+    "geometry_with_colors": 81,
+    "non_affine_nodes": 0,
+    "glb_bytes": 27357172,
+    "glb_sha256": "c554f07d89ea9a088c5ff51f68bfa9c4ee4f9a0889d920000d9f8006ea51765e"
+  },
+  "highlighted_large_composite": {
+    "cell": "80C984D8",
+    "primary_vertex_header": "80C98740",
+    "secondary_vertex_header": "80C98741",
+    "secondary_backing": "80C98833",
+    "primary_stride": 8,
+    "secondary_stride": 24,
+    "source_vertex_count": 18050,
+    "branch_a_vertices": 18050,
+    "branch_b_vertices": 0,
+    "materials": ["80C988A8", "80C988A9"],
+    "visible_parts": [
+      {"index_offset":333,"index_count":471,"primitive_type":3,"material":"80C988A8"},
+      {"index_offset":4617,"index_count":18795,"primitive_type":3,"material":"80C988A9"},
+      {"index_offset":29040,"index_count":18228,"primitive_type":3,"material":"80C988A9"}
+    ],
+    "consequence": "The highlighted composite's complete secondary stream is unambiguously branch A: COLOR_0 is bytes +0x04, normal is +0x08, tangent is +0x10. The old normal@+6 decode was wrong for every one of its 18,050 source vertices. Geometry/placement/scale were not changed or removed."
+  },
+  "visual_adapter_boundary": {
+    "color": "Decoded RGBA8 is emitted as standard glTF COLOR_0.",
+    "tangent": "Exact decoded SNORM tangent xyzw is emitted as _D1_TANGENT. It is not yet promoted to glTF TANGENT because the source W-to-handedness convention remains to be closed.",
+    "shader_input_open_question": "The highlighted vertex shader exports pixel attr3.w from incoming v11. COLOR_0 now exists and is preserved, but fetch-shader/input-layout evidence is still required before identifying v11 with a particular color/tangent component."
+  }
+}
