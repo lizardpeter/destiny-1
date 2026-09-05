@@ -1,0 +1,156 @@
+name: D1 Tower ten-cell final handoff
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-ten-cell-handoff-finalize.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Wait for complete ten-cell source build
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          source_run=33986652279
+          for i in $(seq 1 120); do
+            status=$(gh run view "$source_run" --json status --jq .status)
+            conclusion=$(gh run view "$source_run" --json conclusion --jq '.conclusion // ""')
+            echo "source run $source_run: $status $conclusion"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              exit 0
+            fi
+            sleep 15
+          done
+          echo 'timed out waiting for source ten-cell build' >&2
+          exit 1
+
+      - name: Download ten-cell model chunks and highlighted exact textures
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p source highlight work chunks reports
+          gh run download 33986652279 -n d1-tower-ten-cell-current-model-chunks -D source
+          gh run download 33986691531 -n d1-tower-highlighted-large-static-textures -D highlight
+          ls -lh source highlight
+          cat $(find source -maxdepth 1 -type f -name 'D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part*' | sort) > work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          cp source/FINAL_TEN_CELL_MODEL.json source/ten_cell_geometry_summary.json source/ten_cell_texture_summary.json reports/
+          sha256sum work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb | tee reports/source_reassembled_sha256.txt
+
+      - name: Apply evidence-scoped highlighted architecture material pairing
+        run: |
+          set -euo pipefail
+          python -m pip install numpy pillow trimesh
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,re
+          import numpy as np
+          import trimesh
+          from PIL import Image
+
+          src=Path('work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb')
+          out=Path('work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL_ARCHPAIR.glb')
+          scene=trimesh.load(src,force='scene',process=False)
+          before_nodes=len(scene.graph.nodes_geometry)
+          before_geo=len(scene.geometry)
+
+          pairs={
+            '80C988A8':('80C9855E_512x512_BC3.png','80C9855F_512x512_BC5.png'),
+            '80C988A9':('80C98563_2048x2048_BC3.png','80C98565_2048x2048_BC5.png'),
+          }
+          def bc5_to_rgb(p):
+            im=Image.open(p).convert('RGB')
+            a=np.asarray(im,dtype=np.float32)/255.0
+            x=a[...,0]*2-1;y=a[...,1]*2-1
+            z=np.sqrt(np.maximum(0.0,1.0-x*x-y*y))
+            b=np.stack((x*.5+.5,y*.5+.5,z*.5+.5),axis=-1)
+            return Image.fromarray(np.clip(b*255+.5,0,255).astype(np.uint8),'RGB')
+
+          mats={}
+          for mh,(bf,nf) in pairs.items():
+            b=Image.open(Path('highlight')/bf);b.load()
+            n=bc5_to_rgb(Path('highlight')/nf);n.load()
+            mats[mh]=trimesh.visual.material.PBRMaterial(
+              name=f'TigerMaterial_{mh}_PREVIEW_ARCHPAIR',
+              baseColorTexture=b,normalTexture=n,
+              metallicFactor=0.0,roughnessFactor=1.0,doubleSided=False,alphaMode='OPAQUE')
+
+          changed=[]
+          for gname,g in scene.geometry.items():
+            old=getattr(getattr(g,'visual',None),'material',None)
+            name=getattr(old,'name','') or ''
+            for mh,mat in mats.items():
+              if mh in name:
+                uv=getattr(g.visual,'uv',None)
+                g.visual=trimesh.visual.TextureVisuals(uv=uv,material=mat)
+                changed.append({'geometry':str(gname),'material':mh})
+                break
+
+          if not changed:
+            raise SystemExit('highlighted architecture materials were not found in ten-cell model')
+          scene.export(out,file_type='glb')
+          chk=trimesh.load(out,force='scene',process=False)
+          if len(chk.graph.nodes_geometry)!=before_nodes: raise SystemExit('node-count regression')
+          if len(chk.geometry)!=before_geo: raise SystemExit('geometry-count regression')
+          rep={
+            'status':'D1_TOWER_TEN_CELL_TEXTURED_ARCHPAIR_HANDOFF',
+            'source_model':src.name,
+            'source_sha256':hashlib.sha256(src.read_bytes()).hexdigest(),
+            'output_model':out.name,
+            'output_sha256':hashlib.sha256(out.read_bytes()).hexdigest(),
+            'output_bytes':out.stat().st_size,
+            'placements':len(chk.graph.nodes_geometry),
+            'geometry_variants':len(chk.geometry),
+            'changed_geometry_count':len(changed),
+            'changed':changed,
+            'preview_only_material_pairs':{
+              '80C988A8':{'base':'80C9855E','normal':'80C9855F','evidence':'unique same-size BC3+BC5 pair; exact t# bindings retained elsewhere'},
+              '80C988A9':{'base':'80C98563','normal':'80C98565','evidence':'unique same-size BC3+BC5 pair; exact t# bindings retained elsewhere'},
+            },
+            'policy':'No placement, scale, geometry, or visibility was removed or altered. This handoff only improves the portable preview of two highlighted materials using their unique same-resolution color-capable + BC5 pair. This remains preview semantics until native shader dataflow is proven.'
+          }
+          Path('reports/FINAL_HANDOFF.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          PY
+
+      - name: Split final GLB into reliable handoff parts
+        run: |
+          set -euo pipefail
+          model=work/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL_ARCHPAIR.glb
+          split -b 90M -d -a 2 "$model" chunks/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL_ARCHPAIR.glb.part
+          cp reports/FINAL_HANDOFF.json reports/FINAL_TEN_CELL_MODEL.json reports/ten_cell_geometry_summary.json reports/ten_cell_texture_summary.json chunks/
+          sha256sum "$model" | tee chunks/FINAL_SHA256.txt
+          python - <<'PY'
+          from pathlib import Path
+          parts=sorted(p.name for p in Path('chunks').glob('*.glb.part*'))
+          out='D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL_ARCHPAIR.glb'
+          Path('chunks/REASSEMBLE_WINDOWS.cmd').write_text('@echo off\r\ncopy /b '+ '+'.join(parts)+' '+out+'\r\ncertutil -hashfile '+out+' SHA256\r\npause\r\n')
+          Path('chunks/README.txt').write_text('This is the current ten-cell Tower baked-static textured regression model. No geometry was removed to address the highlighted large structure. Unzip all part archives into one directory and run REASSEMBLE_WINDOWS.cmd.\nParts:\n'+'\n'.join(parts)+'\n')
+          print(parts)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-ten-cell-PROPER-current-model
+          path: chunks/
+          retention-days: 14
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-ten-cell-PROPER-current-reports
+          path: reports/
+          retention-days: 14
+          compression-level: 6
