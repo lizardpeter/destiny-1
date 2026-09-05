@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-three-cell-textured-preview.yml'
+      - 'tools/d1_recover_member_catalog.py'
       - 'tools/d1_world_texture_manifest_fill.py'
       - 'tools/d1_world_apply_preview_materials.py'
 
