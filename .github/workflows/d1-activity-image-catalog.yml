@@ -20,16 +20,18 @@ jobs:
       - name: Recover preserved D1 activity/destination definitions
         run: |
           set -euo pipefail
-          mkdir -p input out/pgcr out/icons out/destinations
-          git clone --depth 1 --branch gh-pages --filter=blob:none --sparse https://github.com/nmlorg/destiny-db.git input/destiny-db
-          git -C input/destiny-db sparse-checkout set definitions/Activity.json definitions/ActivityType.json definitions/Destination.json definitions/Place.json
+          mkdir -p input/definitions out/pgcr out/icons out/destinations
+          base='https://raw.githubusercontent.com/nmlorg/destiny-db/gh-pages/definitions'
+          for f in Activity ActivityType Destination Place; do
+            curl --fail --location --retry 4 "$base/$f.json" -o "input/definitions/$f.json"
+          done
       - name: Build activity catalog and mirror presentation art
         run: |
           set -euo pipefail
           python - <<'PY'
           import concurrent.futures,json,urllib.request
           from pathlib import Path
-          defs=Path('input/destiny-db/definitions')
+          defs=Path('input/definitions')
           activities=json.load(open(defs/'Activity.json')); types=json.load(open(defs/'ActivityType.json')); dests=json.load(open(defs/'Destination.json')); places=json.load(open(defs/'Place.json'))
           pgcr=Path('out/pgcr'); icons=Path('out/icons'); ditem=Path('out/destinations')
           def lookup(d,h): return d.get(str(h)) or d.get(h) or {}
