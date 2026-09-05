@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_COMMON_LAYER_TEXTURE_CENSUS_CLOSED",
+  "date": "2026-09-05",
+  "source_workflow": {
+    "run_id": 33994999358,
+    "artifact_id": 9977924922,
+    "artifact_digest": "sha256:80f46695d92d26da108b68d53df560e2ddd6c4752904a944e11c031d60191b07",
+    "commit": "e3fff8e314cfeffd1bcda09799bbe198ecc2a523"
+  },
+  "selection": {
+    "common_model_selected_parts": 163,
+    "unique_materials": 99,
+    "selection_source": "strict 69/69 map-decal common-model export"
+  },
+  "exact_texture_corpus": {
+    "material_decode_errors": 0,
+    "unique_texture_taghashes": 50,
+    "decoded_texture_taghashes": 50,
+    "texture_decode_errors": 0,
+    "png_outputs_including_cubemap_faces": 70,
+    "missing_texture_package_ids": {},
+    "pixel_shader_families": 65
+  },
+  "portable_preview_inventory": {
+    "base_color": {
+      "strong_format_candidate_materials": 4,
+      "medium_preview_candidate_materials": 43,
+      "none": 52
+    },
+    "normal": {
+      "strong_format_candidate_materials": 4,
+      "none": 95
+    },
+    "policy": "STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE are adapter hints only. They do not promote texture-register semantics. Shader-dataflow proof remains canonical."
+  },
+  "highest_frequency_pixel_shaders": [
+    ["80AAE1F5", 10],
+    ["8093E96F", 7],
+    ["80AAE1F6", 7],
+    ["80CA08C4", 5],
+    ["80CA08B0", 3],
+    ["80CA08B1", 3],
+    ["8093E8A2", 2],
+    ["80CA0F50", 2],
+    ["80CA08C3", 2],
+    ["80CA08C1", 2],
+    ["80CA0BFA", 2]
+  ],
+  "notable_patterns": {
+    "80AAE1F5": "10 materials; t0+t1 are both color-capable 2D resources with differing dimensions, so no arbitrary base-color choice is made.",
+    "80AAE1F6": "7 materials; same two-color-resource ambiguity as 80AAE1F5.",
+    "8093E96F": "7 materials; one color-capable t0 resource each; medium preview candidate until shader dataflow proves the role.",
+    "80CA08B0": "3 materials; t0 color-capable 2D + t1 cubemap + t2 same-size BC5 vector resource; strong preview base/normal candidate but not canonical semantic proof.",
+    "80CA08C4": "5 materials; t0 role is already instruction-proven as material_rgb_intensity_mask_a, therefore the texture is not promoted to direct base color despite being color-capable."
+  }
+}
