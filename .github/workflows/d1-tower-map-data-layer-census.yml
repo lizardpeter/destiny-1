@@ -9,6 +9,8 @@ on:
       - 'tools/d1_world_static_map_resource_chain_census.py'
       - 'tools/d1_world_static_map_content_census.py'
       - 'tools/d1_world_static_map_target_plan.py'
+      - 'tools/d1_world_static_map_decal_validate.py'
+      - 'tools/d1_world_table_scoped_decal_census.py'
 
 permissions:
   contents: read
@@ -24,7 +26,7 @@ jobs:
       - name: Recover current Tower corpus and runtime
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports
+          mkdir -p runtime recovered reports validation
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -98,6 +100,38 @@ jobs:
           if bad: raise SystemExit('Tower source-driven target-plan mismatch: '+json.dumps(bad,indent=2))
           print('TOWER_SOURCE_DRIVEN_TARGET_PLAN_CLOSED',json.dumps(expected,sort_keys=True))
           PY
+      - name: Validate table-scoped common/decal layer from discovered targets
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_table_scoped_decal_census.py "${args[@]}" --runtime runtime \
+            --target-plan reports/tower_static_map_target_plan.json \
+            --out reports/tower_table_scoped_decal_census.json \
+            --validation-dir validation/table_scoped_targets \
+            | tee reports/tower_table_scoped_decal_census_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_table_scoped_decal_census.json'))
+          expected={
+            'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE',
+            'target_count':19,
+            'target_role_counts':{'table_scoped_decal_target':9,'baked_static_target':10},
+            'validated_target_count':19,
+            'table_scoped_target_count':9,
+            'table_scoped_decal_records':327,
+            'table_scoped_structurally_valid_decal_records':327,
+            'table_scoped_singleton_transform_model_records':327,
+            'table_scoped_all_records_singleton':True,
+            'table_scoped_model_reference_occurrences':327,
+            'table_scoped_unique_entity_models':69,
+            'baked_target_count':10,
+          }
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('Tower source-driven decal census mismatch: '+json.dumps(bad,indent=2))
+          print('TOWER_SOURCE_DRIVEN_DECAL_LAYER_CLOSED',json.dumps(expected,sort_keys=True))
+          PY
       - name: Census baked-static content across all unique map resources
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
@@ -132,6 +166,8 @@ jobs:
         if: always()
         with:
           name: d1-tower-map-data-layer-census
-          path: reports/
+          path: |
+            reports/
+            validation/
           retention-days: 14
           compression-level: 6
