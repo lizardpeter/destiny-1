@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "CONFIRMED_CROSS_SOURCE_D1_BAKED_STATIC_INSTANCE_RECORD_SPLIT",
+  "scope": "D1 ROI baked-static 0x40 instance record",
+  "correction": {
+    "old_export_behavior": "The exporter passed all four serialized float4 rows as a homogeneous 4x4 node matrix.",
+    "problem": "The fourth serialized row is not a homogeneous transform row. Writing it into glTF creates a projective/non-affine Blender node matrix.",
+    "correct_affine_transform": "+0x00..+0x2F: first three float4 rows form the 3x4 affine SRT transform; synthesize homogeneous row [0,0,0,1].",
+    "per_instance_uv": "+0x30 float scale, +0x34 float translateX, +0x38 float translateY.",
+    "tail_0x3c": "not treated as a transform element; semantic still intentionally unnamed."
+  },
+  "independent_source_crosscheck": {
+    "repository": "MontagueM/MontevenDynamicExtractor",
+    "commit": "87889a11921084030b33ef34c6a3bce87ad112bc",
+    "file": "d1map.cpp",
+    "observations": [
+      "Translation is read from SRT[0][3], SRT[1][3], SRT[2][3].",
+      "Scale/rotation are derived only from the first three rows/columns.",
+      "Three floats at byte offsets 0x30,0x34,0x38 are stored separately as UVTransform.",
+      "TransformUV applies u=u*Scale+TranslateX and v=v*(-Scale)+1-TranslateY."
+    ]
+  },
+  "blender_axis_adapter": {
+    "source_basis": "D1 world Z-up",
+    "gltf_basis": "glTF Y-up",
+    "matrix": [[1,0,0,0],[0,0,1,0],[0,-1,0,0],[0,0,0,1]],
+    "policy": "export adapter only; canonical source matrices remain D1-space 3x4 affine records"
+  },
+  "implementation": [
+    "tools/d1_world_static_common.py",
+    "tools/d1_tower_static_chunk_export_v6.py",
+    "tools/d1_scene_basis_convert.py"
+  ],
+  "local_revalidation": {
+    "three_cell_nodes_checked": 4702,
+    "three_cell_non_affine_old_node_matrices": 4702,
+    "corrected_three_cell_nodes": 4702,
+    "corrected_three_cell_geometry_variants": 773,
+    "corrected_three_cell_sha256": "6d6130a48b05281dbe95166321c51eed210805eb93fbc7228a6f247441232757",
+    "nine_cell_nodes_checked": 9360,
+    "nine_cell_non_affine_old_node_matrices": 9360,
+    "corrected_nine_cell_nodes": 9360,
+    "corrected_nine_cell_geometry_variants": 1743,
+    "corrected_nine_cell_sha256": "06f91b8e92d0a504124d99bdd6749120268bcafceefa89563b6585dfaee8a16a"
+  }
+}
