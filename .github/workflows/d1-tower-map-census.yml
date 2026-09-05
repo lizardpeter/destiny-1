@@ -35,14 +35,18 @@ jobs:
           import json,re
           from pathlib import Path
           names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
-          rx=re.compile(r'^ps4_city_tower_[0-9a-fA-F]{4}_\d+\.pkg$')
+          # Core non-localized Tower families. Locale payloads are catalogued separately;
+          # the first map reconstruction pass targets structural/activity/destination families.
+          rx=re.compile(r'^ps4_city_tower_.+_[0-9a-fA-F]{4}_\d+\.pkg$')
           hits=sorted(x for x in names if rx.match(x))
-          if not hits: raise SystemExit('no ps4_city_tower package members found')
-          Path('reports/tower_target_members.json').write_text(json.dumps({'count':len(hits),'members':hits},indent=2)+'\n')
+          if not hits: raise SystemExit('no ps4_city_tower core package members found')
+          all_tower=sorted(x for x in names if x.startswith('ps4_city_tower'))
+          Path('reports/tower_target_members.json').write_text(json.dumps({'core_count':len(hits),'all_tower_count':len(all_tower),'members':hits,'all_tower_members':all_tower},indent=2)+'\n')
           Path('reports/tower_target_members.txt').write_text('\n'.join(hits)+'\n')
+          print('core members',len(hits),'all Tower-prefixed archive members',len(all_tower))
           print('\n'.join(hits))
           PY
-      - name: Locate and recover only Tower members from split TAR
+      - name: Locate and recover only Tower core members from split TAR
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -64,7 +68,7 @@ jobs:
               print('RECOVERED',name,r['size'],sha,flush=True)
           Path('reports/tower_member_catalog.json').write_text(json.dumps({'tar_headers_scanned':headers,'members':rows},indent=2)+'\n')
           PY
-      - name: Census every Tiger entry in Tower family
+      - name: Census every Tiger entry in Tower core families
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
         run: |
@@ -73,18 +77,37 @@ jobs:
           args=()
           for f in "${files[@]}"; do args+=(--snapshot "$f"); done
           python tools/d1_everything_family_census.py "${args[@]}" --runtime runtime --out tower_census
-      - name: Recover every directly decodable Tower texture
+      - name: Recover every directly decodable Tower texture, family-safe
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
         run: |
           set -euo pipefail
-          mapfile -t files < <(find recovered -maxdepth 1 -name 'ps4_city_tower_*.pkg' -type f | sort -r)
-          args=()
-          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          python tools/d1_texture_census_tolerant.py "${args[@]}" --runtime runtime --out tower_textures
-          if compgen -G 'tower_textures/*.png' > /dev/null; then
-            python tools/d1_contact_sheet.py tower_textures --out contact_sheets/tower_textures.jpg --columns 6 --max-images 1000
-          fi
+          python - <<'PY'
+          import json,re,subprocess,sys
+          from collections import defaultdict
+          from pathlib import Path
+          rx=re.compile(r'^(.*)_([0-9]+)\.pkg$')
+          groups=defaultdict(list)
+          for p in sorted(Path('recovered').glob('ps4_city_tower_*.pkg')):
+              m=rx.match(p.name)
+              if not m: continue
+              groups[m.group(1)].append((int(m.group(2)),p))
+          summaries=[]
+          for base,members in sorted(groups.items()):
+              # Tolerant exporter expects same-family snapshots newest -> oldest.
+              members=sorted(members,reverse=True)
+              out=Path('tower_textures')/base
+              cmd=[sys.executable,'tools/d1_texture_census_tolerant.py']
+              for _,p in members: cmd += ['--snapshot',str(p)]
+              cmd += ['--runtime','runtime','--out',str(out)]
+              subprocess.run(cmd,check=True)
+              d=json.load(open(out/'texture_manifest.json'))
+              summaries.append({'family':base,'members':[p.name for _,p in members],
+                                'headers':d['unique_texture_header_count'],'resolved':d['resolved_count'],'failed':d['failed_count']})
+              if any(out.glob('*.png')):
+                  subprocess.run([sys.executable,'tools/d1_contact_sheet.py',str(out),'--out',f'contact_sheets/{base}.jpg','--columns','6','--max-images','1000'],check=True)
+          Path('reports/tower_texture_family_summary.json').write_text(json.dumps(summaries,indent=2)+'\n')
+          PY
       - name: Export every resident s_entity_model candidate without assigning ownership
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
@@ -116,15 +139,18 @@ jobs:
           import json
           from pathlib import Path
           c=json.load(open('tower_census/everything_census.json'))
-          t=json.load(open('tower_textures/texture_manifest.json'))
+          tf=json.load(open('reports/tower_texture_family_summary.json'))
           m=json.load(open('reports/tower_model_export_summary.json'))
           members=json.load(open('reports/tower_member_catalog.json'))
+          target=json.load(open('reports/tower_target_members.json'))
           out={
-            'physical_tower_pkg_members':len(members['members']),
+            'all_tower_prefixed_archive_members':target['all_tower_count'],
+            'physical_tower_core_pkg_members':len(members['members']),
+            'logical_tower_core_families':len(tf),
             **c['summary'],
-            'texture_headers':t['unique_texture_header_count'],
-            'textures_resolved':t['resolved_count'],
-            'textures_failed':t['failed_count'],
+            'texture_headers':sum(x['headers'] for x in tf),
+            'textures_resolved':sum(x['resolved'] for x in tf),
+            'textures_failed':sum(x['failed'] for x in tf),
             's_entity_model_candidates':m['candidate_count'],
             's_entity_models_exported':m['exported_count'],
             'next_boundary':'World placement/assembly and any non-s_entity_model static-world geometry classes must be identified from the Tower class/reference and literal-edge census; no placement is inferred from successful model decoding.'
@@ -139,8 +165,8 @@ jobs:
           path: |
             reports/
             tower_census/
-            tower_textures/texture_manifest.json
-            tower_textures/*.png
+            tower_textures/**/texture_manifest.json
+            tower_textures/**/*.png
             contact_sheets/
             tower_models/*.json
             tower_models/*.glb
