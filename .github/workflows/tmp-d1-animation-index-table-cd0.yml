@@ -1,0 +1,96 @@
+name: Temporary decode D1 shared animation index table CD0
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-animation-index-table-cd0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+      - name: Decode CD0 structure
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          TAG='80AA3CD0'
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries};byv={int(e['tag_hash'],16):e for e in r.entries}
+          e=by[TAG];b=r.entry(e['index']);Path('out/80AA3CD0.bin').write_bytes(b)
+          def u32(o):return struct.unpack_from('<I',b,o)[0]
+          def i64(o):return struct.unpack_from('<q',b,o)[0]
+          def ent(v):
+            x=byv.get(v)
+            return None if not x else {'index':x['index'],'tag_hash':x['tag_hash'].upper(),'reference':x['reference'].upper(),'size':x['file_size'],'type':x['type'],'subtype':x['subtype']}
+          exact=[]
+          for o in range(0,len(b)-3,4):
+            v=u32(o);x=ent(v)
+            if x: exact.append({'offset':o,**x})
+          ptr=[]
+          for o in range(0,len(b)-7,4):
+            rel=i64(o)
+            if not rel:continue
+            t=o+rel
+            if 4<=t<len(b):
+              cls=u32(t-4)
+              if 0x80800000<=cls<=0x8080FFFF:
+                ptr.append({'field_offset':o,'relative':rel,'target_offset':t,'class_hash':f'{cls:08X}','target_prefix':b[t:t+64].hex()})
+          # Recognize in-place arrays using a few common Tiger conventions without assigning semantics.
+          arrays=[]
+          for f in range(0,len(b)-16,4):
+            n=u32(f)
+            if n==0 or n>1024:continue
+            for mode in ('field_plus_rel_plus_18','rel_field_plus_rel'):
+              rel=i64(f+8)
+              d=f+rel+0x18 if mode=='field_plus_rel_plus_18' else f+8+rel
+              if d<0 or d>=len(b):continue
+              cand=[]
+              for st in (4,8,12,16,20,24,32,40,48,64):
+                if d+n*st>len(b):continue
+                eh=[]
+                for i in range(n):
+                  ro=d+i*st
+                  hits=[]
+                  for p in range(ro,ro+st,4):
+                    v=u32(p);x=ent(v)
+                    if x:hits.append({'rel':p-ro,'tag_hash':x['tag_hash'],'reference':x['reference']})
+                  if hits:eh.append({'row':i,'offset':ro,'hits':hits})
+                if eh:cand.append({'stride':st,'rows_with_exact_filehashes':eh[:256]})
+              if cand:arrays.append({'field_offset':f,'count':n,'mode':mode,'relative':rel,'data_offset':d,'stride_candidates':cand})
+          rep={'entry':{'index':e['index'],'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'size':e['file_size']},
+               'sha256':hashlib.sha256(b).hexdigest(),'prefix1024':b[:1024].hex(),'exact_filehashes':exact,'resource_pointer_candidates':ptr,'array_candidates':arrays,
+               'policy':'Raw structural census only; small integer indices and nested classes are not named until cross-record correspondence proves them.'}
+          Path('out/cd0_decode.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps({'entry':rep['entry'],'exact_filehash_count':len(exact),'pointer_count':len(ptr),'array_candidate_count':len(arrays),'exact_filehashes':exact[:80]},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-animation-index-table-cd0
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
