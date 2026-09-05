@@ -1,0 +1,75 @@
+name: D1 iconic Guardian entity sample
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-iconic-guardian-entity-sample.yml'
+      - 'tools/d1_playable_guardian_parent_resolve.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sample:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover Guardian arrangement join
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-playable-guardian-arrangement-join&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/guardian.zip
+          unzip -q input/guardian.zip -d input/guardian
+      - name: Select one iconic armor item per Guardian class
+        run: |
+          python - <<'PY'
+          import json
+          src=json.load(open('input/guardian/playable_guardian_arrangements.json'))
+          wanted={('Titan',785):'Helm of Saint-14',('Hunter',2384):'Celestial Nighthawk',('Warlock',965):'Heart of the Praxic Fire'}
+          arr=[x for x in src['arrangements'] if (x['className'],x['arrangement_index']) in wanted]
+          items=[x for x in src['items'] if (x['className'],x['arrangement_index']) in wanted]
+          assert len(arr)==3,[(x['className'],x['arrangement_index']) for x in arr]
+          out={**src,'arrangements':arr,'items':items,'item_count':len(items),'unique_class_arrangements':len(arr)}
+          json.dump(out,open('input/iconic_guardians.json','w'),indent=2)
+          for x in arr: print(x['className'],x['arrangement_index'],wanted[(x['className'],x['arrangement_index'])],x['entity_parents'])
+          PY
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Resolve six masculine/feminine EntityParents
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_playable_guardian_parent_resolve.py input/iconic_guardians.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/iconic_guardian_entities.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/iconic_guardian_entities.json'))
+          for a in d['arrangements']:
+              print('\n',a['className'],a['arrangement_index'],a['examples'][0]['name'])
+              for x in a['resolved_body_assignments']:
+                  print(x['body_role'],x['parent_hash'],'->',x.get('entity_data_hash'),f"pkg={x.get('entity_data_package_id'):04X}" if x.get('entity_data_package_id') is not None else '')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-iconic-guardian-entity-sample
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
