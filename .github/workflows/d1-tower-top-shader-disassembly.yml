@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/d1-tower-top-shader-disassembly.yml'
       - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_recover_member_catalog.py'
+      - 'evidence/d1_tower_shader_dependency_member_catalog.json'
+      - 'evidence/d1_tower_texture_dependency_member_catalog.json'
 
 permissions:
   contents: read
@@ -25,7 +28,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered prior shader reports disasm
+          mkdir -p runtime recovered shader_deps prior shader reports disasm
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -41,11 +44,23 @@ jobs:
             --package-list reports/packages.txt --out-dir recovered \
             --report reports/current_corpus.json
 
+      - name: Recover exact 0156, 00EC and 00EE top-shader dependencies
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 0156 \
+            --out-dir shader_deps --report reports/shader_dep_0156_recovery.json
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_shader_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 00ec --family 00ee \
+            --out-dir shader_deps --report reports/shader_dep_race_recovery.json
+
       - name: Extract exact native GCN for top 40 visible pixel shaders
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
-          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t files < <(find recovered shader_deps -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
           set +e
           python tools/d1_world_shader_extract.py \
@@ -54,16 +69,16 @@ jobs:
             --out-dir shader --report reports/top40_shader_extract.json
           rc=$?
           set -e
-          # rc=2 means a subset belongs to package families not yet in this
-          # corpus. Keep exact successful GCN streams and record those gaps.
           test "$rc" -eq 0 -o "$rc" -eq 2
           python - <<'PY'
           import json
           d=json.load(open('reports/top40_shader_extract.json'))
           ok=[r for r in d['shaders'] if not r.get('error')]
           bad=[r for r in d['shaders'] if r.get('error')]
+          print(f'exact shaders available: {len(ok)}/{len(d["shaders"])}; remaining package/resource gaps: {len(bad)}')
+          if bad:
+              print(json.dumps([{'shader':r['shader'],'visible_material_count':r.get('visible_material_count'),'error':r.get('error'),'native_shader':r.get('native_shader')} for r in bad],indent=2))
           if not ok: raise SystemExit('no shaders extracted')
-          print(f'exact shaders available: {len(ok)}/{len(d["shaders"])}; package gaps: {len(bad)}')
           PY
 
       - name: Build pinned CLRX disassembler
@@ -83,8 +98,8 @@ jobs:
           test -n "$exe"
           failures=0
           count=0
+          shopt -s nullglob
           for f in shader/PS_*_gcn.bin; do
-            test -f "$f" || continue
             count=$((count+1))
             b="$(basename "$f" _gcn.bin)"
             if ! "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"; then failures=$((failures+1)); fi
