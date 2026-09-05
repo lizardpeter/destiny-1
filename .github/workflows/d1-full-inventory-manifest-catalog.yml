@@ -1,0 +1,81 @@
+name: D1 full inventory presentation catalog
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-full-inventory-manifest-catalog.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover latest retail inventory census
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-bulk-weapon-resolution-census&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/census.zip
+          unzip -q input/census.zip -d input/census
+          test -f input/census/inventory_item_map.json
+      - name: Recover preserved D1 item definitions
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch gh-pages --filter=blob:none --sparse https://github.com/nmlorg/destiny-db.git input/destiny-db
+          git -C input/destiny-db sparse-checkout set definitions/InventoryItem
+      - name: Build compact all-item catalog
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          inv=json.load(open('input/census/inventory_item_map.json'))
+          root=Path('input/destiny-db/definitions/InventoryItem')
+          rows=[];missing=[];types=collections.Counter();tiers=collections.Counter();icons=0;geometry=0
+          for r in inv['rows']:
+              hx=r['inventory_item_hash']; dec=int(hx,16); p=root/f'{dec}.json'; d={}
+              if p.is_file():
+                  try:d=json.load(open(p))
+                  except Exception:pass
+              else:missing.append(hx)
+              typ=d.get('itemTypeName') or ''; tier=d.get('tierTypeName') or ''
+              if typ:types[typ]+=1
+              if tier:tiers[tier]+=1
+              has_icon=bool(d.get('hasIcon') and d.get('icon') and 'missing_icon' not in d.get('icon',''))
+              icons+=has_icon; geometry+=bool(d.get('hasGeometry'))
+              eq=d.get('equippingBlock') or {}
+              rows.append({
+                  'hash':hx,'decimal':dec,'itemFile':r['item_file_hash'],'packageId':r['item_package_id'],'fileIndex':r['item_file_index'],
+                  'name':d.get('itemName'),'description':d.get('itemDescription'),'itemTypeName':d.get('itemTypeName'),'itemType':d.get('itemType'),
+                  'itemSubType':d.get('itemSubType'),'tierTypeName':d.get('tierTypeName'),'tierType':d.get('tierType'),'icon':d.get('icon') if has_icon else None,
+                  'hasIcon':has_icon,'hasGeometry':bool(d.get('hasGeometry')),'equippable':d.get('equippable'),'classType':d.get('classType'),
+                  'gearArtArrangementIndex':eq.get('gearArtArrangementIndex'),'weaponSandboxPatternIndex':eq.get('weaponSandboxPatternIndex'),
+              })
+          out={'schema':'d1_full_inventory_presentation_catalog/v1','item_count':len(rows),'definition_missing_count':len(missing),
+               'native_icon_count':icons,'has_geometry_count':geometry,'item_type_counts':dict(types.most_common()),'tier_counts':dict(tiers.most_common()),
+               'items':rows,'missing_definitions':missing,
+               'policy':'Names/icons/types are historical D1 manifest presentation metadata; retail item hashes/FileHashes come from 80A5FFBE.'}
+          Path('out/d1_full_inventory_catalog.json').write_text(json.dumps(out,separators=(',',':'))+'\n')
+          Path('out/d1_full_inventory_summary.json').write_text(json.dumps({k:v for k,v in out.items() if k not in ('items','missing_definitions')},indent=2)+'\n')
+          print(json.dumps({k:v for k,v in out.items() if k not in ('items','missing_definitions','item_type_counts')},indent=2))
+          print('top types',types.most_common(30))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-full-inventory-presentation-catalog
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
