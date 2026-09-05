@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-map-data-layer-census.yml'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_world_activity_map_root_census.py'
+      - 'tools/d1_world_map_root_census.py'
       - 'tools/d1_world_map_data_layer_census.py'
       - 'tools/d1_world_static_map_resource_chain_census.py'
       - 'tools/d1_world_static_map_content_census.py'
@@ -23,55 +26,109 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Recover current Tower corpus and runtime
+      - name: Recover current Tower dependencies and isolated Activity root corpus
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports validation
+          mkdir -p runtime recovered root_corpus reports validation
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
-          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
-      - name: Census every entry in the Tower map-data tables
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_tower_recover_activity_root_corpus.py \
+            --package-list reports/packages.txt --out-dir root_corpus --report reports/activity_root_recovery.json
+          for f in recovered/ps4_city_tower_destination_024c_*.pkg recovered/ps4_city_tower_destination_0250_*.pkg; do
+            test -f "$f"
+            ln "$f" root_corpus/"$(basename "$f")"
+          done
+          test "$(find root_corpus -maxdepth 1 -name '*.pkg' -type f | wc -l)" -eq 24
+
+      - name: Discover Tower map tables through Activity ownership
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t root_files < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          root_args=(); for f in "${root_files[@]}"; do root_args+=(--snapshot "$f"); done
+          python tools/d1_world_activity_map_root_census.py "${root_args[@]}" --runtime runtime \
+            --out reports/tower_activity_map_roots.json \
+            | tee reports/tower_activity_map_roots_stdout.txt
+          python - <<'PY'
+          import json
+          r=json.load(open('reports/tower_activity_map_roots.json'))
+          expected=sorted([
+            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
+            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
+          ])
+          actual=sorted(r.get('map_data_tables',[]))
+          if r.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
+              raise SystemExit('Tower Activity root census incomplete: '+json.dumps(r.get('violations')))
+          if actual!=expected:
+              raise SystemExit('Tower Activity-owned table set changed: '+json.dumps({'expected':expected,'actual':actual},indent=2))
+          if r.get('total_reachable_map_entries')!=337:
+              raise SystemExit(f'Tower Activity-owned entry total changed: {r.get("total_reachable_map_entries")}')
+          if r.get('unowned_current_map_data_tables'):
+              raise SystemExit('Tower current tables outside Activity ownership: '+json.dumps(r['unowned_current_map_data_tables']))
+          print('TOWER_ACTIVITY_MAP_ROOTS_CLOSED',json.dumps({
+              'activities':r.get('selected_activity_count'),
+              'bubbles':r.get('reachable_bubble_count'),
+              'containers':r.get('reachable_map_container_count'),
+              'tables':len(actual),'entries':r.get('total_reachable_map_entries')
+          },sort_keys=True))
+          PY
+
+      - name: Census every Activity-owned Tower map-data entry
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          tables=(
-            80C98028 80C984A0 80C9895C 80C989F7 80C997DF
-            80C99956 80CA0B0E 80CA0B11 80CA0C4E
-          )
-          table_args=(); for h in "${tables[@]}"; do table_args+=(--map-data-table "$h"); done
           python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
-            "${table_args[@]}" \
-            --out reports/tower_map_data_layer_census.json | tee reports/tower_map_data_layer_census_stdout.txt
+            --map-root-json reports/tower_activity_map_roots.json \
+            --out reports/tower_map_data_layer_census.json \
+            | tee reports/tower_map_data_layer_census_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_map_data_layer_census.json'))
+          if (d.get('root_source') or {}).get('mode')!='ownership_root_manifest':
+              raise SystemExit('map-data census did not consume ownership manifest')
+          if d.get('map_data_table_count')!=9 or d.get('entry_count')!=337:
+              raise SystemExit('map-data census root/count regression: '+json.dumps({
+                  'tables':d.get('map_data_table_count'),'entries':d.get('entry_count')}))
+          print('TOWER_MAP_DATA_FROM_ACTIVITY_ROOTS_CLOSED',d['map_data_table_count'],d['entry_count'])
+          PY
+
       - name: Close and classify every static-map ResourcePointer chain
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          tables=(
-            80C98028 80C984A0 80C9895C 80C989F7 80C997DF
-            80C99956 80CA0B0E 80CA0B11 80CA0C4E
-          )
-          table_args=(); for h in "${tables[@]}"; do table_args+=(--map-data-table "$h"); done
           python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
-            "${table_args[@]}" \
-            --expected-static-map 80C98254 \
-            --expected-static-map 80C984D8 \
-            --expected-static-map 80C98A6B \
-            --expected-static-map 80C993CD \
-            --expected-static-map 80C993CF \
-            --expected-static-map 80C997F5 \
-            --expected-static-map 80C99981 \
-            --expected-static-map 80CA0B70 \
-            --expected-static-map 80CA0B72 \
-            --expected-static-map 80CA0C60 \
+            --map-root-json reports/tower_activity_map_roots.json \
             --out reports/tower_static_map_resource_chain_census.json \
             | tee reports/tower_static_map_resource_chain_census_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_static_map_resource_chain_census.json'))
+          if (d.get('root_source') or {}).get('mode')!='ownership_root_manifest':
+              raise SystemExit('resource-chain census did not consume ownership manifest')
+          expected={
+            'status':'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED',
+            'map_data_table_count':9,
+            'entry_count':337,
+            'closed_chain_count':337,
+            'direct_d1_baked_entry_count':10,
+            'no_direct_d1_static_child_entry_count':327,
+            'unique_static_map_count':19,
+            'unique_direct_d1_static_map_data_count':10,
+          }
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('Tower resource-chain regression mismatch: '+json.dumps(bad,indent=2))
+          print('TOWER_RESOURCE_CHAINS_FROM_ACTIVITY_ROOTS_CLOSED',json.dumps(expected,sort_keys=True))
+          PY
+
       - name: Derive source-driven table/decal and baked target plan
         run: |
           set -euo pipefail
@@ -98,6 +155,15 @@ jobs:
           }
           bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
           if bad: raise SystemExit('Tower source-driven target-plan mismatch: '+json.dumps(bad,indent=2))
+
+          # These hashes are now output-only regression evidence, never parser inputs.
+          expected_baked=sorted([
+            '80C98254','80C984D8','80C98A6B','80C993CD','80C993CF',
+            '80C997F5','80C99981','80CA0B70','80CA0B72','80CA0C60',
+          ])
+          actual_baked=sorted(x['static_map_data'] for x in d.get('targets',[]) if x.get('role')=='baked_static_target')
+          if actual_baked!=expected_baked:
+              raise SystemExit('Tower discovered baked carrier set changed: '+json.dumps({'expected':expected_baked,'actual':actual_baked},indent=2))
           print('TOWER_SOURCE_DRIVEN_TARGET_PLAN_CLOSED',json.dumps(expected,sort_keys=True))
           PY
       - name: Validate table-scoped common/decal layer from discovered targets
@@ -126,13 +192,15 @@ jobs:
             'table_scoped_all_records_singleton':True,
             'table_scoped_model_reference_occurrences':327,
             'table_scoped_unique_entity_models':69,
+            'table_scoped_materialized_record_count':327,
+            'table_scoped_export_ready_singleton_records':327,
             'baked_target_count':10,
           }
           bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
           if bad: raise SystemExit('Tower source-driven decal census mismatch: '+json.dumps(bad,indent=2))
           print('TOWER_SOURCE_DRIVEN_DECAL_LAYER_CLOSED',json.dumps(expected,sort_keys=True))
           PY
-      - name: Census baked-static content across all unique map resources
+      - name: Census baked-static content across all discovered map resources
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
