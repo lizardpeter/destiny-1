@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/d1-spektr-pandion-texture-plate-census.yml'
       - 'tools/d1_remote_texture_plate_probe.py'
+      - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_player_gear_member_catalog.json'
   workflow_dispatch:
 
 permissions:
