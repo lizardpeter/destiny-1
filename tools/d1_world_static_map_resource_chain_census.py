@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Close D1 SMapDataEntry -> SStaticMapData ownership chains for a world.
 
-This sits immediately above the baked-static/common-layer parsers. It uses the
-binary-validated D1 DynamicArray framing and 0x90 SMapDataEntry layout, then
-follows the source-backed map resource chain:
+This sits immediately above the map-root/map-data parsers. Preferred input is a
+--map-root-json produced by the activity/bubble ownership census. Direct repeated
+--map-data-table values remain supported for targeted validation and historical runs.
+
+For each table it uses the binary-validated D1 DynamicArray framing and 0x90
+SMapDataEntry layout, then follows the source-backed resource chain:
 
   SMapDataTable/808009A2
     -> SMapDataEntry[0x90].DataResource +0x88
@@ -17,11 +20,6 @@ Tower data there are two proven families:
 - baked-static carriers whose +0x30 target is 80801B75 D1 static-map data;
 - large/common carriers with no direct 80801B75 child, handled separately by the
   table-scoped embedded-model/decal pipeline.
-
-This distinction is essential: all 337 Tower map entries close through
-SStaticMapData, but only the 10 baked carriers have direct 80801B75 children.
-The 9 common carriers are legitimate map resources, not broken baked-static
-chains.
 
 The tool also records the post-array resource sidecar exactly. Tower's shipped
 files have one 0x18-spaced resource sidecar slot per 0x90 entry. Thus whole-file
@@ -83,21 +81,44 @@ def target(c, h, expected=None):
     }
 
 
+def load_table_roots(a):
+    if a.map_root_json:
+        d = json.loads(a.map_root_json.read_text())
+        vals = d.get('map_data_tables')
+        if not isinstance(vals, list) or not vals:
+            raise SystemExit(f'{a.map_root_json}: missing non-empty map_data_tables list')
+        return list(dict.fromkeys(norm(x) for x in vals)), {
+            'mode': 'ownership_root_manifest',
+            'path': str(a.map_root_json),
+            'status': d.get('status'),
+            'schema_version': d.get('schema_version'),
+            'selection_mode': d.get('selection_mode'),
+            'selected_activities': d.get('selected_activities'),
+            'bubble_definitions': d.get('bubble_definitions'),
+            'map_containers': d.get('map_containers'),
+        }
+    vals = list(dict.fromkeys(norm(x) for x in (a.map_data_table or [])))
+    return vals, {'mode': 'explicit_map_data_tables'}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--snapshot', type=Path, action='append', required=True)
     ap.add_argument('--runtime', type=Path, required=True)
-    ap.add_argument('--map-data-table', action='append', required=True)
+    roots = ap.add_mutually_exclusive_group(required=True)
+    roots.add_argument('--map-data-table', action='append')
+    roots.add_argument('--map-root-json', type=Path)
     ap.add_argument('--expected-static-map', action='append', default=[])
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()
 
+    table_roots, root_source = load_table_roots(a)
     c = v5.v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
     tables = []
     rows = []
     violations = []
 
-    for raw_table in a.map_data_table:
+    for raw_table in table_roots:
         th = norm(raw_table)
         meta = c.entry_meta(th)
         b, src = c.payload(th)
@@ -253,9 +274,11 @@ def main() -> int:
         violations.append(f'unclassified_static_map_rows:{len(unclassified)}')
 
     out = {
-        'schema_version': 2,
+        'schema_version': 3,
         'status': 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED' if len(closed) == len(rows) and not violations else 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_PARTIAL',
         'pinned_source': PINNED_SOURCE,
+        'root_source': root_source,
+        'map_data_tables': table_roots,
         'map_data_table_count': len(tables),
         'entry_count': len(rows),
         'closed_chain_count': len(closed),
@@ -273,12 +296,12 @@ def main() -> int:
         'direct_d1_static_map_data': sorted(d1_maps),
         'tables': tables,
         'violations': violations,
-        'policy': 'Ownership closes at SStaticMapData. +0x30 is used only to classify a direct 80801B75 baked-static child; common carriers without that child are valid and are not treated as broken chains. 0x90 remains the SMapDataEntry stride; the post-array 0x18-per-entry resource sidecar is separate.',
+        'policy': 'Map roots may be consumed directly from an ownership manifest. Ownership closes at SStaticMapData. +0x30 is used only to classify a direct 80801B75 baked-static child; common carriers without that child are valid. 0x90 remains the SMapDataEntry stride; the post-array 0x18-per-entry resource sidecar is separate.',
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({k: out[k] for k in (
-        'status', 'map_data_table_count', 'entry_count', 'closed_chain_count',
+        'status', 'root_source', 'map_data_table_count', 'entry_count', 'closed_chain_count',
         'resource_class_counts', 'static_map_kind_counts',
         'unique_static_map_parent_count', 'unique_static_map_count',
         'direct_d1_baked_entry_count', 'no_direct_d1_static_child_entry_count',
