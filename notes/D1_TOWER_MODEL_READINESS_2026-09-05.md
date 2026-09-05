@@ -50,10 +50,10 @@ This is a dependency-availability measurement, not a claim that a whole Tower GL
 
 Targeted package closure is unusually favorable:
 
-- add `0157` -> **97.28%** placement readiness;
-- add `0157 + 01CF` -> **99.10%**;
-- add `0157 + 01CF + 01D1` -> **99.36%**;
-- add `00EF + 0157 + 01CF + 01D1` -> **99.90%**.
+- add current `0157` -> **97.28%** placement readiness;
+- add current `0157 + 01CF` -> **99.10%**;
+- add current `0157 + 01CF + 01D1` -> **99.36%**;
+- add current `00EF + 0157 + 01CF + 01D1` -> **99.90%**.
 
 Canonical evidence: `evidence/d1_tower_dependency_closure_priority.json`.
 
@@ -95,32 +95,62 @@ A tiny diagnostic workflow, `.github/workflows/d1-tower-024c5-block-flag-diagnos
 
 The public `v4nguard/tiger-pkg` D1 ROI reader was also checked as a source-derived implementation reference. Its D1 block reader only promotes flag bit 0 as Oodle compression and invokes the same Oodle 3 ABI/arguments used by this project. Therefore no encryption semantic is being promoted from our generic flag labels without actual D1 block evidence.
 
+## Current 0157 generation boundary
+
+The old Vex proof corpus used `ps4_globals_0157_0.pkg` and `_1.pkg`, and those bytes remain valid evidence for that historical/proven fixture. They are **not sufficient to prove current Tower dependency resolution**.
+
+The later Tower-era `packages.txt` contains:
+
+- `ps4_globals_0157_0.pkg`
+- `_1.pkg`
+- `_2.pkg`
+- `_3.pkg`
+- `_4.pkg`
+- `_5.pkg`
+- `_6.pkg`
+
+Therefore current Tower export must inspect the complete current 0157 family (or first prove a smaller current subset from the current entry/block tables). `80AAE174` cannot be promoted from `_0/_1` alone.
+
+The stale `_0/_1`-only two-cell workflow was deleted and replaced with a current-family workflow that:
+
+1. reads current `packages.txt`;
+2. discovers all current `0250`, `009F`, and `0157` physical members;
+3. sparse-recovers those exact members;
+4. records `80AAE174` across every 0157 snapshot;
+5. applies class-stable validator v3 semantics;
+6. exports only if both target cells pass current binary invariants.
+
 ## Export status
 
 There is **not yet a finished Tower GLB**.
 
-The prior first-cell workflow did not reach export because it recovered an incomplete patch corpus. The later validator proved that the correct first-cell corpus needs the full `0250_0..5` family plus `009F_0/1/2/4`.
+The prior first-cell workflow did not reach export because it recovered an incomplete patch corpus. The later validator proved that the correct first-cell corpus needs the full current `0250` family plus the required `009F` family.
 
 The corrected exporter now uses:
 
 - raw Tiger 0x40 matrices in their shipped column-vector convention;
 - validator-v2 null-V1 handling without fabricated bytes;
+- validator-v3 class-stable generation fallback;
 - exact serialized StaticInfo -> transform ranges;
 - exact material identities as provenance.
 
-A two-cell workflow is committed to export:
+`tools/d1_tower_static_chunk_export_v3.py` composes both safety corrections before export.
+
+The corrected two-cell workflow is committed to export:
 
 - `80CA0B70 -> 80CA0B96` (556 placements), and
-- `80CA0C60 -> 80CA0C6B` (1,596 placements), once the single missing `0157` buffer `80AAE174` is recovered.
+- `80CA0C60 -> 80CA0C6B` (1,596 placements),
+
+but only after `80AAE174` is resolved from the **current complete 0157 family** and both chains pass validator v3.
 
 The workflow itself is currently blocked before step 1 by GitHub hosted-runner provisioning, not by decoder assertions.
 
 ## Immediate model path
 
-1. Recover `0157_0/_1` and close `80AAE174`.
+1. Recover and inspect the full current `0157` family; close `80AAE174` only from current class-stable evidence.
 2. Export the first two corrected cells and verify zero decode failures.
-3. Recover `01CF`; this raises the nine-cell dependency coverage to 99.10% together with 0157.
-4. Recover `01D1` and `00EF` for 99.90% of the currently parseable placement graph.
+3. Recover current `01CF`; together with current 0157 this raises the nine-cell dependency coverage to 99.10%.
+4. Recover current `01D1` and `00EF` for 99.90% of the currently parseable placement graph.
 5. Re-run validator v3 on the current `80C98258` payload after the failing-block issue is resolved.
 6. Merge only binary-passing map-owned cells in their already-proven common coordinate frame.
 7. Bind materials/textures from serialized material arrays, then validate the common/decal layer and dynamic props.
