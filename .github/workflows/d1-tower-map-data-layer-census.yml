@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-tower-map-data-layer-census.yml'
       - 'tools/d1_world_map_data_layer_census.py'
       - 'tools/d1_world_static_map_resource_chain_census.py'
+      - 'tools/d1_world_static_map_content_census.py'
 
 permissions:
   contents: read
@@ -43,7 +44,7 @@ jobs:
           python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
             "${table_args[@]}" \
             --out reports/tower_map_data_layer_census.json | tee reports/tower_map_data_layer_census_stdout.txt
-      - name: Close every static-map ResourcePointer chain
+      - name: Close and classify every static-map ResourcePointer chain
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -68,6 +69,36 @@ jobs:
             --expected-static-map 80CA0C60 \
             --out reports/tower_static_map_resource_chain_census.json \
             | tee reports/tower_static_map_resource_chain_census_stdout.txt
+      - name: Census baked-static content across all unique map resources
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_static_map_content_census.py "${args[@]}" --runtime runtime \
+            --chain-json reports/tower_static_map_resource_chain_census.json \
+            --out reports/tower_static_map_content_census.json \
+            | tee reports/tower_static_map_content_census_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_static_map_content_census.json'))
+          expected={
+            'status':'D1_WORLD_STATIC_MAP_CONTENT_CENSUS_COMPLETE',
+            'static_map_count':19,
+            'common_no_direct_d1_static_child_maps':9,
+            'direct_d1_baked_static_maps':10,
+            'structurally_valid_baked_static_maps':10,
+            'visual_selection_complete_baked_static_maps':10,
+            'retail_visible_baked_static_emitters':10,
+            'unique_d1_static_map_data':10,
+            'total_serialized_placements':50148,
+            'total_retail_visible_placements':11728,
+            'material_cache_unresolved':0,
+          }
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('Tower static-map regression mismatch: '+json.dumps(bad,indent=2))
+          print('TOWER_STATIC_MAP_CONTENT_CLOSED',json.dumps(expected,sort_keys=True))
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
