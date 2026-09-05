@@ -3,12 +3,16 @@
 
 This is for D1 assets whose visible object has its own internal rig but whose broader
 first-person/world motion comes from a separate parent skeleton/socket. The target GLB
-is left structurally intact below a new root. The source joint motion is evaluated
-through its complete animated ancestor chain and rebased to the source animation's
-first sample, so no character-space bind offset is imposed on the standalone asset.
+is left structurally intact below a root. The source joint motion is evaluated through
+its complete animated ancestor chain and rebased to the source animation's first
+sample, so no character-space bind offset is imposed on the standalone asset.
 
 No motion is synthesized: the output root animation is an exact TRS decomposition of
   source_world(t) @ inverse(source_world(t0)).
+
+By default a new external-motion root is created. --reuse-root-name lets subsequent
+native actions append animations to the same already-created root, avoiding a stack of
+one root node per action while preserving the same exact motion math.
 """
 from __future__ import annotations
 import argparse,json,math
@@ -27,6 +31,7 @@ def main():
     ap.add_argument('--source-animation')
     ap.add_argument('--animation-name',required=True)
     ap.add_argument('--root-name',default='ExternalMotionRoot')
+    ap.add_argument('--reuse-root-name',help='Append this animation to an existing scene-root node with this exact name instead of creating another root')
     ap.add_argument('--out',type=Path,required=True)
     ap.add_argument('--report',type=Path,required=True)
     a=ap.parse_args()
@@ -50,28 +55,34 @@ def main():
     inv0=np.linalg.inv(mats[0])
     T=[];Q=[];S=[]
     for m in mats:
-        # World-space delta from source bind/sample-0 pose.
         d=m@inv0
         tt,qq,ss=decompose(d);T.append(tt);Q.append(qq);S.append(ss)
     T=np.asarray(T,dtype=np.float32);Q=np.asarray(Q,dtype=np.float32);S=np.asarray(S,dtype=np.float32)
-    # Quaternion sign continuity is representation-only and does not alter rotations.
     for i in range(1,len(Q)):
         if float(np.dot(Q[i-1],Q[i]))<0:Q[i]*=-1
     assert np.linalg.norm(T[0])<1e-5
     assert abs(abs(float(Q[0,3]))-1.0)<1e-4
     assert np.linalg.norm(S[0]-1.0)<1e-5
 
-    scene_i=int(tj.get('scene',0)); old_roots=list(tj['scenes'][scene_i].get('nodes',[]))
-    root_i=len(tj.setdefault('nodes',[]))
-    tj['nodes'].append({'name':a.root_name,'children':old_roots,
-                        'extras':{'d1ExternalMotionSource':str(a.motion_source.name),
-                                  'sourceAnimation':sa.get('name'),'sourceNode':a.source_node,
-                                  'sourceNodeName':sj['nodes'][a.source_node].get('name'),
-                                  'method':'source_world(t) * inverse(source_world(t0)); exact evaluated TRS'}})
-    tj['scenes'][scene_i]['nodes']=[root_i]
+    scene_i=int(tj.get('scene',0)); scene_roots=list(tj['scenes'][scene_i].get('nodes',[]))
+    reused=False
+    if a.reuse_root_name:
+        matches=[i for i,n in enumerate(tj.get('nodes',[])) if n.get('name')==a.reuse_root_name]
+        if len(matches)!=1: raise ValueError(f'--reuse-root-name {a.reuse_root_name!r} matched {len(matches)} nodes')
+        root_i=matches[0]
+        if scene_roots!=[root_i]: raise ValueError(f'reused node {root_i} is not the sole active scene root: {scene_roots}')
+        old_roots=list(tj['nodes'][root_i].get('children',[]));reused=True
+    else:
+        old_roots=scene_roots
+        root_i=len(tj.setdefault('nodes',[]))
+        tj['nodes'].append({'name':a.root_name,'children':old_roots,
+                            'extras':{'d1ExternalMotionRoot':True,'targetOriginalRoots':old_roots}})
+        tj['scenes'][scene_i]['nodes']=[root_i]
 
     ti=append_f32_accessor(tj,tb,np.asarray(times,dtype=np.float32).reshape(-1,1),'SCALAR',minmax=True)
     ta=append_f32_accessor(tj,tb,T,'VEC3');qa=append_f32_accessor(tj,tb,Q,'VEC4');sa_i=append_f32_accessor(tj,tb,S,'VEC3')
+    provenance={'d1ExternalMotionSource':str(a.motion_source.name),'sourceAnimation':sa.get('name'),'sourceNode':a.source_node,
+                'sourceNodeName':sj['nodes'][a.source_node].get('name'),'method':'source_world(t) * inverse(source_world(t0)); exact evaluated TRS'}
     anim={'name':a.animation_name,'samplers':[
               {'input':ti,'output':ta,'interpolation':'LINEAR'},
               {'input':ti,'output':qa,'interpolation':'LINEAR'},
@@ -80,17 +91,20 @@ def main():
               {'sampler':0,'target':{'node':root_i,'path':'translation'}},
               {'sampler':1,'target':{'node':root_i,'path':'rotation'}},
               {'sampler':2,'target':{'node':root_i,'path':'scale'}}],
-          'extras':{'d1SourceAnimation':sa.get('name'),'d1SourceJointNode':a.source_node,
-                    'd1SourceJointName':sj['nodes'][a.source_node].get('name'),'rebasedToFirstSample':True}}
+          'extras':{**provenance,'rebasedToFirstSample':True}}
     tj.setdefault('animations',[]).append(anim)
-    tj.setdefault('extras',{})['d1ExternalRootMotion']={'rootNode':root_i,'animation':a.animation_name,
-        'sourceAnimation':sa.get('name'),'sourceNode':a.source_node,'sourceNodeName':sj['nodes'][a.source_node].get('name'),
-        'targetOriginalRoots':old_roots,'motionInvented':False}
+    root_extras=tj['nodes'][root_i].setdefault('extras',{})
+    root_extras['d1ExternalMotionRoot']=True
+    root_extras.setdefault('motions',[]).append({'animation':a.animation_name,**provenance})
+    summary={'rootNode':root_i,'animation':a.animation_name,'sourceAnimation':sa.get('name'),'sourceNode':a.source_node,
+             'sourceNodeName':sj['nodes'][a.source_node].get('name'),'targetOriginalRoots':old_roots,'motionInvented':False,'reusedRoot':reused}
+    tj.setdefault('extras',{})['d1ExternalRootMotion']=summary
+    tj['extras'].setdefault('d1ExternalRootMotions',[]).append(summary)
     write_glb(a.out,tj,tb)
 
     q0=Q[0]/max(float(np.linalg.norm(Q[0])),1e-12); qn=Q/np.maximum(np.linalg.norm(Q,axis=1,keepdims=True),1e-12)
     rd=np.degrees(2*np.arccos(np.clip(np.abs(qn@q0),0,1)))
-    report={'output':str(a.out),'output_bytes':a.out.stat().st_size,'root_node':root_i,'old_scene_roots':old_roots,
+    report={'output':str(a.out),'output_bytes':a.out.stat().st_size,'root_node':root_i,'old_scene_roots':old_roots,'reused_root':reused,
             'source_node':a.source_node,'source_node_name':sj['nodes'][a.source_node].get('name'),'source_chain':chain,
             'source_animation':sa.get('name'),'output_animation':a.animation_name,'sample_count':len(times),
             'duration_s':float(times[-1]-times[0]),'max_translation':float(np.linalg.norm(T,axis=1).max()),
