@@ -74,9 +74,6 @@ def primary_attrs(data,stride):
         raw=np.frombuffer(data,dtype='<i2').reshape(n,stride//2)
         pos=snorm16(raw[:,0:3])
         if stride==0x0C:
-            # D1 dynamic stride 0x0C can be position+UV or position+2-bone
-            # weights.  Defer the trailing 4 bytes unless another stream makes
-            # the UV interpretation unambiguous.
             pass
         elif stride in (0x1C,0x20):
             uv=snorm16(raw[:,4:6])
@@ -114,8 +111,6 @@ def secondary_attrs(data,stride,primary_uv_exists,other_stride):
     elif stride==0x18:
         if other_stride==0x0C and primary_uv_exists:
             normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:7])
-            # Charm's D1 branch reads this tail as 4 int16s in this case; retain
-            # it only as raw evidence rather than pretending it is RGBA8.
         else:
             uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]); tangent=snorm16(raw16[:,6:9]); color=raw8[:,20:24].astype(np.float32)/255.0
     elif stride==0x1C:
@@ -186,8 +181,6 @@ def export_one(c,h,out_dir,mode='map-decal'):
             mrep['parts'].append(row)
             if keep: selected.append((pi,p,minfo));selected_parts+=1
             else: rejected_parts+=1
-        # Preserve separate part records even when index ranges coincide because
-        # D1 materials can differ on the same underlying triangle range.
         for pi,p,minfo in selected:
             off=int(p['index_offset']);count=int(p['index_count']);prim=int(p['primitive_type']);sl=inds[off:off+count]
             if len(sl)!=count: raise ValueError(f'{h} mesh {mi} part {pi}: short index range')
@@ -205,7 +198,12 @@ def export_one(c,h,out_dir,mode='map-decal'):
         rep['meshes'].append(mrep)
     rep['selected_part_count']=selected_parts;rep['rejected_part_count']=rejected_parts;rep['geometry_count']=len(scene.geometry);rep['bounds']=None if scene.bounds is None else scene.bounds.tolist()
     rep['triangle_count']=sum(len(g.faces) for g in scene.geometry.values())
-    glb=out_dir/f'{h}.glb';js=out_dir/f'{h}.json';out_dir.mkdir(parents=True,exist_ok=True);scene.export(glb);rep['glb']=str(glb);js.write_text(json.dumps(rep,indent=2)+'\n')
+    glb=out_dir/f'{h}.glb';js=out_dir/f'{h}.json';out_dir.mkdir(parents=True,exist_ok=True)
+    if len(scene.geometry):
+        scene.export(glb);rep['glb']=str(glb);rep['zero_selected_geometry']=False
+    else:
+        rep['glb']=None;rep['zero_selected_geometry']=True
+    js.write_text(json.dumps(rep,indent=2)+'\n')
     return rep
 
 
@@ -219,7 +217,7 @@ def main()->int:
         except Exception as ex:
             r={'model':h,'ok':False,'error':repr(ex),'traceback':traceback.format_exc()};(a.out_dir/f'{h}.error.json').parent.mkdir(parents=True,exist_ok=True);(a.out_dir/f'{h}.error.json').write_text(json.dumps(r,indent=2)+'\n')
         rows.append(r)
-    out={'schema_version':1,'status':'D1_ENTITY_MODEL_CORPUS_EXPORT' if all(r['ok'] for r in rows) else 'D1_ENTITY_MODEL_CORPUS_EXPORT_PARTIAL','mode':a.mode,'requested_models':len(rows),'exported_models':sum(r['ok'] for r in rows),'failed_models':sum(not r['ok'] for r in rows),'geometry_count':sum(r.get('geometry_count',0) for r in rows),'triangle_count':sum(r.get('triangle_count',0) for r in rows),'models':rows,'policy':'Cross-package v5 Corpus resolution; map-decal mode reproduces Charm D1 MostDetailed + transparentsOnly selection without guessing external parent materials.'}
-    sp=a.summary or a.out_dir/'summary.json';sp.parent.mkdir(parents=True,exist_ok=True);sp.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({k:out[k] for k in ('status','requested_models','exported_models','failed_models','geometry_count','triangle_count')},indent=2));return 0 if out['failed_models']==0 else 2
+    out={'schema_version':1,'status':'D1_ENTITY_MODEL_CORPUS_EXPORT' if all(r['ok'] for r in rows) else 'D1_ENTITY_MODEL_CORPUS_EXPORT_PARTIAL','mode':a.mode,'requested_models':len(rows),'exported_models':sum(r['ok'] for r in rows),'failed_models':sum(not r['ok'] for r in rows),'geometry_count':sum(r.get('geometry_count',0) for r in rows),'triangle_count':sum(r.get('triangle_count',0) for r in rows),'zero_selected_geometry_models':[r['model'] for r in rows if r.get('ok') and r.get('zero_selected_geometry')],'models':rows,'policy':'Cross-package v5 Corpus resolution; map-decal mode reproduces Charm D1 MostDetailed + transparentsOnly selection without guessing external parent materials. A source-valid model with zero selected map-decal geometry is preserved as a successful diagnostic record and emits no fake GLB.'}
+    sp=a.summary or a.out_dir/'summary.json';sp.parent.mkdir(parents=True,exist_ok=True);sp.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({k:out[k] for k in ('status','requested_models','exported_models','failed_models','geometry_count','triangle_count','zero_selected_geometry_models')},indent=2));return 0 if out['failed_models']==0 else 2
 
 if __name__=='__main__': raise SystemExit(main())
