@@ -47,10 +47,24 @@ jobs:
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          set +e
           python tools/d1_world_shader_extract.py \
             "${args[@]}" --runtime runtime \
             --manifest prior/material_texture_manifest.json --top 40 \
             --out-dir shader --report reports/top40_shader_extract.json
+          rc=$?
+          set -e
+          # rc=2 means a subset belongs to package families not yet in this
+          # corpus. Keep exact successful GCN streams and record those gaps.
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/top40_shader_extract.json'))
+          ok=[r for r in d['shaders'] if not r.get('error')]
+          bad=[r for r in d['shaders'] if r.get('error')]
+          if not ok: raise SystemExit('no shaders extracted')
+          print(f'exact shaders available: {len(ok)}/{len(d["shaders"])}; package gaps: {len(bad)}')
+          PY
 
       - name: Build pinned CLRX disassembler
         run: |
@@ -62,18 +76,22 @@ jobs:
             -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
           cmake --build clrx/build --target clrxdisasm -j2
 
-      - name: Disassemble every bounded top-family shader
+      - name: Disassemble every bounded available top-family shader
         run: |
           set -euo pipefail
           exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
           test -n "$exe"
           failures=0
+          count=0
           for f in shader/PS_*_gcn.bin; do
+            test -f "$f" || continue
+            count=$((count+1))
             b="$(basename "$f" _gcn.bin)"
             if ! "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"; then failures=$((failures+1)); fi
             if [ -s "disasm/${b}.stderr" ]; then failures=$((failures+1)); fi
             grep -q 's_endpgm' "disasm/${b}.s" || failures=$((failures+1))
           done
+          test "$count" -gt 0
           test "$failures" -eq 0
 
       - name: Build shader instruction/resource census
@@ -97,14 +115,14 @@ jobs:
               loads=[x for x in ops if x.startswith('s_load_')]
               rows.append({
                   'shader':sh,'visible_material_count':r.get('visible_material_count',0),
-                  'gcn_bytes':r.get('gcn_bytes'),'usage':r.get('usage'),
+                  'extract_error':r.get('error'),'gcn_bytes':r.get('gcn_bytes'),'usage':r.get('usage'),
                   'image_instruction_count':len(image),'image_ops':sorted(set(image)),
                   'scalar_load_count':len(loads),'scalar_load_ops':sorted(set(loads)),
-                  'instruction_count_approx':len(ops),'disassembly':str(p),
+                  'instruction_count_approx':len(ops),'disassembly':str(p) if p.exists() else None,
               })
           out={'status':'D1_TOWER_TOP40_PIXEL_SHADER_DISASSEMBLY_CENSUS','shaders':rows}
           Path('reports/top40_disassembly_census.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps([{k:r[k] for k in ('shader','visible_material_count','gcn_bytes','image_instruction_count','image_ops')} for r in rows],indent=2))
+          print(json.dumps([{k:r[k] for k in ('shader','visible_material_count','extract_error','gcn_bytes','image_instruction_count','image_ops')} for r in rows],indent=2))
           PY
 
       - uses: actions/upload-artifact@v4
@@ -113,6 +131,7 @@ jobs:
           name: d1-tower-top40-pixel-shader-disassembly
           path: |
             reports/
+            shader/
             disasm/
           retention-days: 14
           if-no-files-found: warn
