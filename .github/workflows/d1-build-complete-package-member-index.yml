@@ -1,0 +1,38 @@
+name: D1 build complete remote package member index
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-build-complete-package-member-index.yml'
+      - 'tools/d1_split_tar_index.py'
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Walk every validated TAR header and verify packages.txt
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_split_tar_index.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --package-list reports/packages.txt \
+            -o reports/d1_ps4_complete_package_member_index.json \
+            | tee reports/index_stdout.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-ps4-complete-package-member-index
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn
+          compression-level: 6
