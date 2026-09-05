@@ -33,7 +33,7 @@ jobs:
             --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
           git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
           git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
-      - name: Attempt all selected clips on all three owner rigs
+      - name: Attempt all selected clips on all three owner rigs and report component limits
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -47,52 +47,49 @@ jobs:
           from tag_readers.read_rig import read_runtime_rig
           from tag_readers.read_animation import read_animation
           from animation_decoding.decode_animation import decode_animation
-          from runtime_rig.rig_retarget import rig_retarget
+          from runtime_rig.rig_retarget import rig_retarget,calc_control_limit
           from animation_export.convert_animation_object_to_local import convert_obj_to_local
 
-          PAIRS={
-            'CA0':('80AA3CB2','80AA3CB3'),
-            'CA1':('80AA3CB8','80AA3CB9'),
-            'CA2':('80AA3CBE','80AA3CBF'),
-          }
-          CLIPS={
-            'idle':'80AA3CD6','ready':'80AA3CDA','jump_a':'80AA3CE2','jump_b':'80AA3CE3',
-            'ca0_reload':'80AA3CDB','ca0_fire':'80AA3CEC',
-            'ca1_reload':'80AA3D2A','ca1_fire':'80AA3D2B',
-            'ca2_reload':'80AA3D40','ca2_fire':'80AA3D42',
-          }
+          PAIRS={'CA0':('80AA3CB2','80AA3CB3'),'CA1':('80AA3CB8','80AA3CB9'),'CA2':('80AA3CBE','80AA3CBF')}
+          CLIPS={'idle':'80AA3CD6','ready':'80AA3CDA','jump_a':'80AA3CE2','jump_b':'80AA3CE3',
+                 'ca0_reload':'80AA3CDB','ca0_fire':'80AA3CEC','ca1_reload':'80AA3D2A','ca1_fire':'80AA3D2B',
+                 'ca2_reload':'80AA3D40','ca2_fire':'80AA3D42'}
           r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}
           def raw(t):return r.entry(by[t]['index'])
+          def comps(xs):return [{'hash':f'{int(x.hash)&0xffffffff:08X}','count':int(x.count)} for x in xs]
           ver=Game_Version.D1_ROI
           parsed_pairs={}
           for owner,(rt,st) in PAIRS.items():
-            parsed_pairs[owner]=(read_runtime_rig(io.BytesIO(raw(rt)),ver),read_skeleton(io.BytesIO(raw(st)),ver))
+            rig=read_runtime_rig(io.BytesIO(raw(rt)),ver);sk=read_skeleton(io.BytesIO(raw(st)),ver)
+            parsed_pairs[owner]=(rig,sk)
           parsed_clips={}
           for name,t in CLIPS.items():
             with tempfile.NamedTemporaryFile() as f:
               f.write(raw(t));f.flush();f.seek(0);a=read_animation(f,ver)
             h=a.animation_header
-            parsed_clips[name]=(a,{'tag':t,'frames':int(h.frame_count),'node_count':int(h.node_count),'rig_control_count':int(h.rig_control_count)})
+            parsed_clips[name]=(a,{'tag':t,'frames':int(h.frame_count),'node_count':int(h.node_count),'rig_control_count':int(h.rig_control_count),
+                                  'animation_rig_components':comps(a.runtime_rig_components)})
           rows=[]
           for cname,(anim,cm) in parsed_clips.items():
             for owner,(rig,sk) in parsed_pairs.items():
               q={'clip_name':cname,**cm,'owner':owner,'rig':PAIRS[owner][0],'skeleton':PAIRS[owner][1],
-                 'skeleton_nodes':len(sk.node_defs),'rig_controls':len(rig.controls_relations)}
+                 'skeleton_nodes':len(sk.node_defs),'rig_controls':len(rig.controls_relations),'target_rig_components':comps(rig.rig_components)}
+              q['control_limit']=int(calc_control_limit(rig,anim.runtime_rig_components))
               try:
-                dec=decode_animation(anim)
-                q['decoded_tracks']=len(dec)
-                ret=rig_retarget(anim,dec,sk,rig)
-                q['retargeted_tracks']=len(ret)
-                loc=convert_obj_to_local(anim,ret,sk)
-                q['local_tracks']=len(loc);q['success']=True
+                dec=decode_animation(anim);q['decoded_tracks']=len(dec)
+                ret=rig_retarget(anim,dec,sk,rig);q['retargeted_tracks']=len(ret)
+                loc=convert_obj_to_local(anim,ret,sk);q['local_tracks']=len(loc);q['success']=True
               except Exception as ex:
                 q['success']=False;q['error_type']=type(ex).__name__;q['error']=str(ex);q['trace_tail']=traceback.format_exc().splitlines()[-8:]
               rows.append(q)
-          rep={'pairs':{k:{'rig':v[0],'skeleton':v[1]} for k,v in PAIRS.items()},'clips':{k:v[1] for k,v in parsed_clips.items()},'tests':rows,
-               'policy':'No node/control count prefilter. Every clip is actually decode->rig_retarget->convert_obj_to_local attempted against every owner pair.'}
+          pair_meta={k:{'rig':PAIRS[k][0],'skeleton':PAIRS[k][1],'rig_components':comps(v[0].rig_components),'rig_controls':len(v[0].controls_relations),'skeleton_nodes':len(v[1].node_defs)} for k,v in parsed_pairs.items()}
+          rep={'pairs':pair_meta,'clips':{k:v[1] for k,v in parsed_clips.items()},'tests':rows,
+               'policy':'No node/control count prefilter. control_limit is computed by the same calc_control_limit used by rig_retarget: matching runtime-rig component hashes consume full or common-prefix component counts and stop at first incompatible subset.'}
           Path('out/cross_rig_retarget_no_prefilter.json').write_text(json.dumps(rep,indent=2)+'\n')
-          for q in rows:
-            print(q['clip_name'],q['owner'],'clip',q['node_count'],q['rig_control_count'],'target',q['skeleton_nodes'],q['rig_controls'],'SUCCESS' if q['success'] else q['error_type']+':'+q['error'])
+          ca2=[q for q in rows if q['owner']=='CA2']
+          print('CA2_RIG_COMPONENTS',json.dumps(pair_meta['CA2']['rig_components'],separators=(',',':')))
+          for q in ca2:
+            print(q['clip_name'],'clip_components',json.dumps(q['animation_rig_components'],separators=(',',':')),'limit',q['control_limit'],'SUCCESS',q['success'])
           PY
       - uses: actions/upload-artifact@v4
         with:
