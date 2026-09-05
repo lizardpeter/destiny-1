@@ -1,0 +1,58 @@
+{
+  "schema": "d1_weapon_shared_context_catalog/v1",
+  "policy": "Profiles describe byte-proven shared viewmodel owners. Assignments are emitted only where an exact item/context relationship has been proven; weapon-type similarity is not sufficient.",
+  "profiles": {
+    "CA0": {
+      "owner_entity": "80AA3CA0",
+      "runtime_rig": "80AA3CB2",
+      "skeleton": "80AA3CB3",
+      "action_control": "80AA3CC2",
+      "wrapper": "80AA3CC4",
+      "owner_context_resource": "80AAF413",
+      "evidence": [
+        "80AA3CA0 Resource[] serializes 80AA3CB2/80AA3CB3",
+        "80AAF413 serializes 80AA3CC2/80AA3CC4"
+      ]
+    },
+    "CA1": {
+      "owner_entity": "80AA3CA1",
+      "runtime_rig": "80AA3CB8",
+      "skeleton": "80AA3CB9",
+      "action_control": "80AA3CC5",
+      "wrapper": "80AA3CC7",
+      "owner_context_resource": "80AAF416",
+      "evidence": [
+        "80AA3CA1 Resource[] serializes 80AA3CB8/80AA3CB9",
+        "80AAF416 serializes 80AA3CC5/80AA3CC7"
+      ]
+    },
+    "CA2": {
+      "owner_entity": "80AA3CA2",
+      "runtime_rig": "80AA3CBE",
+      "skeleton": "80AA3CBF",
+      "action_control": "80AA3CC9",
+      "wrapper": "80AA3CCB",
+      "owner_context_resource": "80AAF419",
+      "weapon_attachment_parent": "C410084A",
+      "weapon_motion_node": "E6477C3B",
+      "evidence": [
+        "80AA3CA2 Resource[] serializes 80AA3CBE/80AA3CBF",
+        "80AAF419 serializes 80AA3CC9/80AA3CCB",
+        "E6477C3B is a direct child of C410084A and carries the measured native CA2 fire impulse"
+      ]
+    }
+  },
+  "inventory_assignments": {
+    "D471D331": {
+      "profile": "CA2",
+      "scope": "exact_inventory_item",
+      "reason": "Gjallarhorn Year 3 retail owner/action path proven end-to-end",
+      "evidence": [
+        "inventory D471D331 -> art arrangement 1229 / weapon pattern 39",
+        "Gjallarhorn shared action graph is 80AA3CC9 under owner 80AA3CA2"
+      ]
+    }
+  },
+  "weapon_type_assignments": {},
+  "pattern_assignments": {}
+}
