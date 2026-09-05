@@ -1,0 +1,64 @@
+name: D1 investment 013F family recovery
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-investment-013f-family-recovery.yml'
+      - 'tools/d1_split_tar_family_discover.py'
+      - 'tools/d1_split_tar_extract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Discover every 013F member between calibrated 013E and 0140 headers
+        run: |
+          set -euo pipefail
+          mkdir -p out recovered
+          python tools/d1_split_tar_family_discover.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x5A7EF7A00 --stop-offset 0x5AA95DE00 \
+            --prefix ps4_investment_assets_013f_ \
+            -o out/013f_family.json
+      - name: Extract all discovered members and hash them
+        run: |
+          set -euo pipefail
+          mapfile -t NAMES < <(python - <<'PY'
+          import json
+          d=json.load(open('out/013f_family.json'))
+          assert d['member_count']>0,d
+          for x in d['members']: print(x['name'])
+          PY
+          )
+          args=()
+          for x in "${NAMES[@]}"; do args+=(--target "$x"); done
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x5A7EF7A00 "${args[@]}" --out recovered --manifest out/013f_extract.json \
+            --retries 6 --timeout 90
+          python - <<'PY'
+          import hashlib,json,pathlib
+          d=json.load(open('out/013f_family.json'))
+          rows=[]
+          for x in d['members']:
+              p=pathlib.Path('recovered')/x['name']
+              assert p.stat().st_size==x['size'],(p,p.stat().st_size,x['size'])
+              rows.append({**x,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          out={'schema':'d1_verified_investment_013f_family/v1','members':rows}
+          json.dump(out,open('out/013f_verified.json','w'),indent=2)
+          for x in rows: print(x['name'],x['data_offset'],x['size'],x['sha256'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-investment-013f-family-recovery
+          path: out/
+          retention-days: 14
+          compression-level: 6
