@@ -12,12 +12,12 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Install dependencies and exact 024c corpus
+      - name: Install dependencies and exact Tower corpus
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check numpy trimesh
@@ -26,24 +26,8 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-          python - <<'PY'
-          import sys
-          from pathlib import Path
-          sys.path.insert(0,'tools')
-          from d1_split_tar_extract import SplitHttpTar
-          rows=[
-            ('ps4_city_tower_destination_024c_0.pkg',7542949376,137527296,'ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2'),
-            ('ps4_city_tower_destination_024c_1.pkg',7680477184,12226560,'21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8'),
-            ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
-            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
-            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
-            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
-          ]
-          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=120)
-          for name,off,size,sha in rows:
-              got=arc.copy_to(off,size,Path('recovered')/name)
-              if got.lower()!=sha: raise SystemExit(f'{name}: sha mismatch {got} != {sha}')
-          PY
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
       - name: Rebuild highlighted cell and inspect exact source streams
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
@@ -64,7 +48,7 @@ jobs:
           mats={'80C988A8','80C988A9'}
           geos=[g for g in d['geometry'] if g['source_key']['material_hash'].upper() in mats]
           nodes=[n for n in d['nodes'] if n['material_hash'].upper() in mats or int(n['transform_index'])==368]
-          c=v5.v3.base.Corpus([Path(x) for x in sorted(str(p) for p in Path('recovered').glob('*.pkg'))],Path('runtime').resolve())
+          c=v5.v3.base.Corpus([p.resolve() for p in sorted(Path('recovered').glob('*.pkg'))],Path('runtime').resolve())
           streams={}
           for g in geos:
               for field in ('vertices0','vertices1'):
@@ -80,7 +64,6 @@ jobs:
                           row['vertex_count']=len(db)//stride
                           row['first_vertices_hex']=[db[i*stride:(i+1)*stride].hex() for i in range(min(32,len(db)//stride))]
                           if stride==0x18:
-                              # Preserve both known D1 stride-24 candidate colour locations.
                               a=[tuple(db[i*stride+4:i*stride+8]) for i in range(len(db)//stride)]
                               b=[tuple(db[i*stride+20:i*stride+24]) for i in range(len(db)//stride)]
                               row['rgba8_at_04_histogram']=[[list(k),v] for k,v in Counter(a).most_common(32)]
