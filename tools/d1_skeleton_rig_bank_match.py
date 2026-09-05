@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Rank every resident D1 runtime rig against one skeleton using all package clips.
 
-For one known skeleton, parse all runtime-rig EntityResources and every resident
-s_animation_clip in the same logical package. A rig is ranked by clips whose
-ordered runtime-component fingerprint exactly equals that rig and whose animation
-header node/control counts match the skeleton/rig dimensions.
+For one known skeleton, parse all byte-validated runtime-rig EntityResources and
+every resident s_animation_clip in the same logical package. A rig is ranked by
+clips whose ordered runtime-component fingerprint exactly equals that rig and whose
+animation header node/control counts match the skeleton/rig dimensions.
 
 This intentionally avoids tag adjacency and filename inference. It establishes a
 runtime compatibility family, not gameplay semantic ownership.
@@ -24,9 +24,9 @@ sys.path.insert(0,str(HERE))
 from d1_entry_extract import EntryReader
 from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource
 from d1_animation_retarget_probe import component_rows
+from d1_character_family_census import RUNTIME_RIG_DISCRIMINATOR, RUNTIME_RIG_INFO
 
 ANIMATION_CLIP_CLASS='808005A1'
-RUNTIME_RIG_ROLE='runtime_rig'
 
 
 def filebacked(read_animation,payload,version):
@@ -63,13 +63,17 @@ def main()->int:
             p=parse_resource(r.entry(e['index']),r.h['platform'])
         except Exception:
             continue
-        if p.get('semantic_role')!=RUNTIME_RIG_ROLE: continue
+        u10=(p.get('unk10') or {}).get('class_hash')
+        u18=(p.get('unk18') or {}).get('class_hash')
+        if not (u10==RUNTIME_RIG_DISCRIMINATOR and u18==RUNTIME_RIG_INFO):
+            continue
         try:
             rig=read_runtime_rig(io.BytesIO(r.entry(e['index'])),ver)
             comps=component_rows(rig.rig_components)
             rigs.append({
                 'tag_hash':e['tag_hash'].upper(),'entry_index':e['index'],'size':e['file_size'],
                 'control_count':len(rig.controls_relations),'runtime_rig_components':comps,
+                'discriminator_class':u10,'info_class':u18,
                 '_sig':tuple((x['hash'],int(x['count'])) for x in comps),
             })
         except Exception as ex:
@@ -97,6 +101,7 @@ def main()->int:
         ranked.append({
             'tag_hash':rig['tag_hash'],'entry_index':rig['entry_index'],'size':rig['size'],
             'control_count':rig['control_count'],'runtime_rig_components':rig['runtime_rig_components'],
+            'discriminator_class':rig['discriminator_class'],'info_class':rig['info_class'],
             'exact_component_clip_count':len(exact),
             'exact_component_and_node_count':len(node_only),
             'exact_component_dimension_match_count':len(dimension),
@@ -108,12 +113,13 @@ def main()->int:
     ranked.sort(key=lambda x:(x['exact_component_dimension_match_count'],x['exact_component_and_node_count'],x['exact_component_clip_count']),reverse=True)
 
     report={
-        'schema':'d1_skeleton_rig_bank_match/v1','package':str(r.pkg),'package_id':f"{int(r.h['pkg_id']):04X}",
+        'schema':'d1_skeleton_rig_bank_match/v2','package':str(r.pkg),'package_id':f"{int(r.h['pkg_id']):04X}",
         'skeleton':stag,'skeleton_node_count':node_count,
+        'runtime_rig_discriminator':RUNTIME_RIG_DISCRIMINATOR,'runtime_rig_info':RUNTIME_RIG_INFO,
         'runtime_rig_count':len(rigs),'animation_clip_count':len(clips),
         'rig_parse_error_count':len(rig_errors),'clip_parse_error_count':len(clip_errors),
         'ranked_rigs':ranked,'rig_errors':rig_errors,'clip_errors':clip_errors,
-        'policy':'Rank is based on exact ordered runtime-component fingerprints and exact clip node/control dimensions. No tag adjacency, filename, or gameplay semantic inference is used.'
+        'policy':'Runtime rigs are selected only by byte-validated EntityResource pair 808008B2->8080099B. Rank then uses exact ordered runtime-component fingerprints and exact clip node/control dimensions. No tag adjacency, filename, or gameplay semantic inference is used.'
     }
     a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({k:v for k,v in report.items() if k not in ('ranked_rigs','rig_errors','clip_errors')},indent=2))
