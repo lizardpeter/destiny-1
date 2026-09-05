@@ -1,0 +1,44 @@
+name: D1 ROI external schema registry
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-roi-external-schema-registry.yml'
+      - 'tools/d1_external_roi_schema_registry.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Fetch pinned Charm source revision
+        run: |
+          set -euo pipefail
+          mkdir -p external reports
+          git init external/Charm
+          git -C external/Charm remote add origin https://github.com/MontagueM/Charm.git
+          git -C external/Charm fetch --depth 1 origin 50d36ee1f9ecadad7522504c20b1f3f9c97e30af
+          git -C external/Charm checkout --detach FETCH_HEAD
+          test "$(git -C external/Charm rev-parse HEAD)" = '50d36ee1f9ecadad7522504c20b1f3f9c97e30af'
+      - name: Build source-derived ROI schema registry
+        run: |
+          set -euo pipefail
+          python tools/d1_external_roi_schema_registry.py \
+            --source-root external/Charm \
+            --source-name MontagueM/Charm \
+            --source-revision 50d36ee1f9ecadad7522504c20b1f3f9c97e30af \
+            --source-url https://github.com/MontagueM/Charm \
+            --out reports/d1_roi_external_schema_registry.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-roi-external-schema-registry
+          path: reports/d1_roi_external_schema_registry.json
+          retention-days: 30
+          if-no-files-found: error
