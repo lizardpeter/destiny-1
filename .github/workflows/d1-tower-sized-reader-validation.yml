@@ -1,0 +1,168 @@
+name: D1 Tower sized Tiger block reader validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-sized-reader-validation.yml'
+      - 'tools/d1_entry_extract_sized.py'
+      - 'tools/d1_tower_map_schema_validate_v5.py'
+      - 'tools/d1_tower_static_chunk_export_v5.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact current 024C package family
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_city_tower_destination_024c_0.pkg',7542949376,137527296,'ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2'),
+            ('ps4_city_tower_destination_024c_1.pkg',7680477184,12226560,'21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8'),
+            ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
+            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
+            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+          ]
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          for name,off,size,sha in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=sha.lower(): raise SystemExit(f'{name}: SHA mismatch {got} != {sha}')
+          PY
+
+      - name: Validate every used current block and regression controls
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,re,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entry_extract_sized import SizedEntryReader, RAW_QUANTUM
+          import d1_tower_map_schema_validate_v5 as v5
+
+          runtime=Path('runtime').resolve()
+          newest=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          sized=SizedEntryReader(newest,runtime)
+          legacy=EntryReader(newest,runtime)
+
+          used=[i for i,end in enumerate(sized.block_used_end) if end>0]
+          failures=[]; decoded=[]; full_regressions=[]; legacy_partial_failures=[]
+          for bi in used:
+              try:
+                  sb=sized.block(bi)
+                  meta=sized.block_decode_meta[bi]
+                  decoded.append(meta)
+              except Exception as ex:
+                  failures.append({'block_index':bi,'used_end':sized.block_used_end[bi],'expected_raw_len':sized.expected_raw_len(bi),'error':repr(ex)})
+                  continue
+              # Whenever the correct raw length is a full logical block, the new
+              # reader must reproduce legacy bytes exactly if legacy can decode it.
+              if sized.expected_raw_len(bi)==0x40000:
+                  try:
+                      lb=legacy.block(bi)
+                      if lb!=sb:
+                          raise SystemExit(f'full block {bi}: sized reader differs from legacy reader')
+                      full_regressions.append({'block_index':bi,'sha256':hashlib.sha256(sb).hexdigest()})
+                  except Exception as ex:
+                      legacy_partial_failures.append({'block_index':bi,'error':repr(ex)})
+
+          if failures:
+              raise SystemExit(f'sized reader failed {len(failures)} used blocks; first={failures[0]}')
+
+          by={e['tag_hash'].upper():e for e in sized.entries}
+          # Recover the formerly missing secondary vertex payload.
+          he=by['80C99BDF']; pe=by['80C99F52']
+          hb=sized.entry(he['index']); pb=sized.entry(pe['index'])
+          data_size=struct.unpack_from('<I',hb,0)[0]; stride=struct.unpack_from('<h',hb,4)[0]
+          if he['reference'].upper()!='80C99F52': raise SystemExit('80C99BDF link changed')
+          if pe['reference'].upper()!='FFFFFFFF': raise SystemExit('80C99F52 current reference changed')
+          if len(pb)!=40416 or data_size!=40416: raise SystemExit(f'80C99F52/header wrong size payload={len(pb)} header={data_size}')
+          if stride<=0 or len(pb)%stride: raise SystemExit(f'80C99F52 bad stride {stride}')
+
+          # Recover the current 10th D1 baked-static cell payload.
+          ce=by['80C98258']; cb=sized.entry(ce['index'])
+          if ce['reference'].upper()!='80801B75': raise SystemExit('80C98258 current class changed')
+          if len(cb)!=48084: raise SystemExit(f'80C98258 wrong payload size {len(cb)}')
+
+          # Verify exact partial-block raw lengths/hashes proven by the focused probe.
+          expected_partial={
+            636:(0x4000,'b58bbf2de6c465bac6f8036f70c3303cc40d7968c57c045dbcfe62666af2cd01'),
+            725:(0x30000,'91787d1d67606f4dde01f6fef8e193308a2639cd4b8d9661a4f5b4e03d70adad'),
+          }
+          partial={}
+          for bi,(rawlen,sha) in expected_partial.items():
+              m=sized.block_decode_meta.get(bi) or (sized.block(bi) and sized.block_decode_meta[bi])
+              if m['expected_raw_len']!=rawlen or m['decoded_raw_len']!=rawlen:
+                  raise SystemExit(f'block {bi}: raw length mismatch {m}')
+              # Hash only the actual decoded range, not logical-address padding.
+              actual=sized.cache[bi][:rawlen]
+              got=hashlib.sha256(actual).hexdigest()
+              if got!=sha: raise SystemExit(f'block {bi}: decoded SHA mismatch {got} != {sha}')
+              partial[str(bi)]={**m,'decoded_raw_sha256':got}
+
+          # v5 Corpus must choose current-class/current-generation payloads.
+          snaps=sorted(Path('recovered').glob('ps4_city_tower_destination_024c_*.pkg'), key=lambda p:int(re.search(r'_(\d+)\.pkg$',p.name).group(1)))
+          corpus=v5.v3.base.Corpus([p.resolve() for p in snaps],runtime)
+          vp,vsrc=corpus.payload('80C99F52')
+          cp,csrc=corpus.payload('80C98258')
+          if vp is None or cp is None: raise SystemExit(f'v5 Corpus failed recovered resources vertex={vsrc} cell={csrc}')
+          if vsrc['snapshot']!='ps4_city_tower_destination_024c_5.pkg' or vsrc['reference'].upper()!='FFFFFFFF':
+              raise SystemExit(f'wrong v5 occurrence for 80C99F52: {vsrc}')
+          if csrc['snapshot']!='ps4_city_tower_destination_024c_5.pkg' or csrc['reference'].upper()!='80801B75':
+              raise SystemExit(f'wrong v5 occurrence for 80C98258: {csrc}')
+          if vp!=pb or cp!=cb: raise SystemExit('v5 Corpus payload differs from direct SizedEntryReader')
+
+          out={
+            'evidence_status':'CONFIRMED_D1_TIGER_SERIALIZED_COVERAGE_BLOCK_SIZING_ON_CURRENT_024C',
+            'raw_quantum':RAW_QUANTUM,
+            'used_block_count':len(used),
+            'decoded_used_block_count':len(decoded),
+            'decode_failures':failures,
+            'full_size_regression_count':len(full_regressions),
+            'legacy_full_size_decode_failures':legacy_partial_failures,
+            'partial_blocks':partial,
+            '80C99F52':{
+              'payload_bytes':len(pb),'payload_sha256':hashlib.sha256(pb).hexdigest(),
+              'header_data_size':data_size,'stride':stride,'vertex_count':len(pb)//stride,
+              'corpus_source':vsrc,
+            },
+            '80C98258':{
+              'payload_bytes':len(cb),'payload_sha256':hashlib.sha256(cb).hexdigest(),
+              'corpus_source':csrc,
+            },
+          }
+          Path('reports/sized_reader_validation.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-sized-reader-validation
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
