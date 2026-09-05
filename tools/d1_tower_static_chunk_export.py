@@ -6,8 +6,9 @@ This deliberately gates every export on a previously generated
 
 The current output is a geometry/provenance proof scene, not yet a final visual map:
 - static placement/index relationships come only from the validated retail bytes;
-- raw D1 0x40 instance matrices are transposed before use, matching the source-derived
-  convention independently validated by exact backing size/index bounds;
+- raw D1 0x40 instance matrices are used in their shipped column-vector form. The
+  older D1 extractor reads translation from M0.w/M1.w/M2.w; Charm transposes the same
+  bytes only to adapt them to System.Numerics' row-vector/decomposition convention;
 - mesh buffer FileHashes/index ranges come from validated D1 static table records;
 - material hashes are preserved as material identities, but texture/material semantic
   reconstruction is intentionally deferred;
@@ -108,9 +109,12 @@ def matrix_records(data: bytes, count: int) -> list[np.ndarray]:
     vals = np.frombuffer(data, dtype="<f4").reshape(count, 4, 4)
     if not np.isfinite(vals).all():
         raise ValueError("non-finite instance matrix")
-    # Shipped rows are transposed before decomposition/use by the source-derived ROI
-    # implementation. Keep the full matrix rather than decomposing/recomposing it.
-    return [m.T.astype(np.float64) for m in vals]
+    # MontevenDynamicExtractor/d1 branch reads D1 map translation directly from
+    # SRT[0][3], SRT[1][3], SRT[2][3]. Therefore the shipped bytes are already in
+    # the column-vector convention expected by numpy/trimesh. Charm's explicit
+    # Matrix4x4.Transpose is an API adaptation for System.Numerics, not a second
+    # transform encoded by Tiger.
+    return [m.astype(np.float64) for m in vals]
 
 
 def select_validated_map(report: dict, static_map_hash: str) -> dict:
@@ -300,7 +304,8 @@ def main() -> int:
             "placement": "only validator-passing StaticInfo -> TransformIndex/InstanceCount ranges are emitted",
             "materials": "exact material hashes preserved; texture/shader semantics not inferred here",
             "lod": "no visual LOD/depth-pass filtering is applied in this proof export",
-            "coordinate_system": "raw Tiger packed positions + transposed shipped instance matrices; no cosmetic axis conversion",
+            "coordinate_system": "raw Tiger packed positions + raw shipped column-vector instance matrices; no cosmetic axis conversion",
+            "matrix_source_crosscheck": "MontevenDynamicExtractor d1 branch D1Map::GetDataTable reads translation from SRT[0..2][3]; Charm transpose is a System.Numerics convention adaptation",
         },
     }
     out_json.write_text(json.dumps(report, indent=2) + "\n")
