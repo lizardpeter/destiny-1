@@ -8,9 +8,11 @@ on:
       - 'tools/d1_remote_inventory_art_arrangement_find.py'
       - 'tools/d1_remote_arrangement_parent_resolve.py'
       - 'tools/d1_weapon_manifest_join.py'
+      - 'tools/d1_weapon_export_readiness.py'
       - 'tools/d1_investment_arrangement_probe.py'
       - 'tools/d1_weapon_pattern_assignment_probe.py'
       - 'evidence/d1_weapon_shared_context_catalog.json'
+      - 'evidence/d1_investment_asset_member_catalog.json'
   workflow_dispatch:
 
 permissions:
@@ -83,10 +85,9 @@ jobs:
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_remote_arrangement_parent_resolve.py reports/art_arrangements.json \
-            --packages-list reports/packages.txt \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start-offset 0x5996C3000 --runtime runtime \
-            -o reports/art_arrangements_resolved.json
+            --runtime runtime -o reports/art_arrangements_resolved.json
 
       - name: Census all 8,609 retail inventory definitions
         run: |
@@ -113,7 +114,7 @@ jobs:
             --member ps4_investment_globals_0132_6.pkg:0x623B50200:147456 \
             -o reports/inventory_census_0132.json
 
-      - name: Build all weapon-candidate manifests
+      - name: Build all weapon-candidate manifests and readiness queues
         run: |
           set -euo pipefail
           python tools/d1_weapon_manifest_join.py \
@@ -123,15 +124,18 @@ jobs:
             --weapon-patterns reports/weapon_patterns.json \
             --shared-context-catalog evidence/d1_weapon_shared_context_catalog.json \
             --only-with-pattern -o reports/resolved_weapon_manifests.json
+          python tools/d1_weapon_export_readiness.py reports/resolved_weapon_manifests.json \
+            -o reports/weapon_export_readiness.json
 
           python - <<'PY'
           import json,collections
           d=json.load(open('reports/resolved_weapon_manifests.json'))
-          s=d['summary']
-          ms=d['manifests']
+          ready=json.load(open('reports/weapon_export_readiness.json'))
+          s=d['summary'];ms=d['manifests']
           types=collections.Counter((m.get('internal_weapon_pattern') or {}).get('weapon_type_hash') for m in ms)
           patterns=collections.Counter((m.get('internal_weapon_pattern') or {}).get('weapon_pattern_index') for m in ms)
-          report={'summary':s,'weapon_type_hash_counts':dict(sorted((k,v) for k,v in types.items() if k)),
+          report={'summary':s,'readiness':ready['summary'],
+                  'weapon_type_hash_counts':dict(sorted((k,v) for k,v in types.items() if k)),
                   'unique_weapon_pattern_indices':len([k for k in patterns if k is not None]),
                   'gjallarhorn':[m for m in ms if m['inventory_item_hash']=='D471D331']}
           json.dump(report,open('reports/bulk_weapon_resolution_summary.json','w'),indent=2)
