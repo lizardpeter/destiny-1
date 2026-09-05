@@ -1,0 +1,119 @@
+name: D1 Tower top pixel-shader disassembly
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-top-shader-disassembly.yml'
+      - 'tools/d1_world_shader_extract.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  shaders:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime and recover compact Tower manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered prior shader reports disasm
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          gh run download 33981127591 -n d1-tower-texture-manifest-compact -D prior
+          test -f prior/material_texture_manifest.json
+
+      - name: Recover canonical Tower shader/material corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered \
+            --report reports/current_corpus.json
+
+      - name: Extract exact native GCN for top 40 visible pixel shaders
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_shader_extract.py \
+            "${args[@]}" --runtime runtime \
+            --manifest prior/material_texture_manifest.json --top 40 \
+            --out-dir shader --report reports/top40_shader_extract.json
+
+      - name: Build pinned CLRX disassembler
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
+          cmake --build clrx/build --target clrxdisasm -j2
+
+      - name: Disassemble every bounded top-family shader
+        run: |
+          set -euo pipefail
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          failures=0
+          for f in shader/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            if ! "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"; then failures=$((failures+1)); fi
+            if [ -s "disasm/${b}.stderr" ]; then failures=$((failures+1)); fi
+            grep -q 's_endpgm' "disasm/${b}.s" || failures=$((failures+1))
+          done
+          test "$failures" -eq 0
+
+      - name: Build shader instruction/resource census
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          ext=json.load(open('reports/top40_shader_extract.json'))
+          rows=[]
+          for r in ext['shaders']:
+              sh=r['shader'];p=Path('disasm')/f'PS_{sh}.s'
+              text=p.read_text(errors='replace') if p.exists() else ''
+              ops=[]
+              for line in text.splitlines():
+                  s=line.strip()
+                  if not s or s.startswith(('.', '#', ';')): continue
+                  m=re.search(r'\b([sv]_[A-Za-z0-9_]+|image_[A-Za-z0-9_]+|buffer_[A-Za-z0-9_]+)\b',s)
+                  if m: ops.append(m.group(1))
+              image=[x for x in ops if x.startswith('image_')]
+              loads=[x for x in ops if x.startswith('s_load_')]
+              rows.append({
+                  'shader':sh,'visible_material_count':r.get('visible_material_count',0),
+                  'gcn_bytes':r.get('gcn_bytes'),'usage':r.get('usage'),
+                  'image_instruction_count':len(image),'image_ops':sorted(set(image)),
+                  'scalar_load_count':len(loads),'scalar_load_ops':sorted(set(loads)),
+                  'instruction_count_approx':len(ops),'disassembly':str(p),
+              })
+          out={'status':'D1_TOWER_TOP40_PIXEL_SHADER_DISASSEMBLY_CENSUS','shaders':rows}
+          Path('reports/top40_disassembly_census.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps([{k:r[k] for k in ('shader','visible_material_count','gcn_bytes','image_instruction_count','image_ops')} for r in rows],indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-top40-pixel-shader-disassembly
+          path: |
+            reports/
+            disasm/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
