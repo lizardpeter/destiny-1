@@ -1,0 +1,90 @@
+name: D1 archive package inventory census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-archive-package-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Download final PS4 package index and inventory it
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import csv,json,re,collections
+          from pathlib import Path
+          lines=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip().endswith('.pkg')]
+          # Physical patch suffix: *_<packageid>_<patch>.pkg. Keep the semantic prefix intact.
+          rx=re.compile(r'^(?P<prefix>.+)_(?P<pkg>[0-9a-fA-F]{4})_(?P<patch>\d+)\.pkg$')
+          rows=[]
+          prefixes=collections.Counter(); first=collections.Counter(); second=collections.Counter(); pkgids=collections.Counter()
+          for name in lines:
+            m=rx.match(name)
+            if m:
+              prefix=m.group('prefix'); pkg=m.group('pkg').lower(); patch=int(m.group('patch'))
+            else:
+              prefix=name[:-4]; pkg=''; patch=None
+            toks=prefix.split('_')
+            rows.append({'name':name,'prefix':prefix,'package_id':pkg,'patch':patch,'tokens':toks})
+            prefixes[prefix]+=1
+            if toks:first[toks[0]]+=1
+            if len(toks)>1:second['_'.join(toks[:2])]+=1
+            if pkg:pkgids[pkg]+=1
+          # Broad candidate vocabulary only for discovery. This does NOT assert that a filename is a gameplay map.
+          map_words={
+            'world','map','zone','bubble','activity','destination','patrol','mission','story','strike','raid','crucible','pvp','social','tower','reef',
+            'earth','cosmodrome','moon','venus','mars','dreadnaught','plaguelands','mercury','vault','garden','crota','oryx','wrath','iron','banner','trials','srl'
+          }
+          candidates=[]
+          for r in rows:
+            low=r['prefix'].lower()
+            hits=sorted(w for w in map_words if w in low)
+            if hits:
+              candidates.append({**r,'matched_terms':hits})
+          families=[]
+          for prefix,count in sorted(prefixes.items()):
+            toks=prefix.split('_')
+            families.append({'prefix':prefix,'physical_members':count,'tokens':toks})
+          out={
+            'physical_package_count':len(lines),
+            'logical_prefix_count':len(prefixes),
+            'unique_package_id_count':len(pkgids),
+            'top_first_token_counts':first.most_common(),
+            'top_two_token_counts':second.most_common(),
+            'families':families,
+            'map_name_candidates':candidates,
+            'policy':'map_name_candidates are filename-vocabulary discovery only, not asserted gameplay-map identities.'
+          }
+          Path('reports/archive_package_inventory.json').write_text(json.dumps(out,indent=2)+'\n')
+          with open('reports/package_families.csv','w',newline='') as f:
+            w=csv.DictWriter(f,fieldnames=['prefix','physical_members']);w.writeheader();
+            for x in families:w.writerow({'prefix':x['prefix'],'physical_members':x['physical_members']})
+          with open('reports/map_name_candidates.csv','w',newline='') as f:
+            w=csv.DictWriter(f,fieldnames=['name','prefix','package_id','patch','matched_terms']);w.writeheader();
+            for x in candidates:w.writerow({k:(','.join(x[k]) if isinstance(x.get(k),list) else x.get(k)) for k in w.fieldnames})
+          md=['# Destiny 1 PS4 archive package inventory','',f'- physical .pkg files: **{len(lines):,}**',f'- logical package-name prefixes: **{len(prefixes):,}**',f'- unique package ids: **{len(pkgids):,}**','', '## Top filename namespaces','']
+          for k,v in second.most_common(30):md.append(f'- `{k}`: {v:,} physical members')
+          md += ['', '## Filename map/activity candidates', '', f'{len(candidates):,} physical package members matched broad map/activity vocabulary. These are discovery candidates only; proper gameplay-map enumeration must come from Activity/Destination/Director definitions or equivalent byte-proven package structures.']
+          Path('reports/archive_package_inventory.md').write_text('\n'.join(md)+'\n')
+          print(json.dumps({k:out[k] for k in ('physical_package_count','logical_prefix_count','unique_package_id_count')},indent=2))
+          print('top namespaces',second.most_common(30))
+          print('map filename candidates',len(candidates))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-archive-package-inventory
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
