@@ -6,6 +6,11 @@ on:
     paths:
       - '.github/workflows/d1-tower-common-layer-model-export.yml'
       - 'tools/d1_entity_model_corpus_export.py'
+      - 'tools/d1_world_map_data_layer_census.py'
+      - 'tools/d1_world_static_map_resource_chain_census.py'
+      - 'tools/d1_world_static_map_target_plan.py'
+      - 'tools/d1_world_static_map_decal_validate.py'
+      - 'tools/d1_world_table_scoped_decal_census.py'
 
 permissions:
   contents: read
@@ -23,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check numpy trimesh
-          mkdir -p runtime recovered reports models
+          mkdir -p runtime recovered reports models validation/source_driven
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -36,21 +41,68 @@ jobs:
           python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
             --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 \
             --out-dir recovered --report reports/common_model_global_recovery.json
-      - name: Export all 69 binary-confirmed common-layer models with retail map-decal selection
+      - name: Derive common-layer records and model set from map ownership
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          models=(
-            80CA0D0D 80CA0EFB 80CA0A55 80C98233 80C98234 80C98235 80C98236 80C98237 80C98238 80C98239
-            80CA025E 8093E1A3 80C9823A 80C9823B 8093E1A4 8093E1A2 80C9823C 80C9823D 80C98587 80C98588
-            80C98589 80C9858A 80CA0589 80C98A35 80CA058A 80CA058B 80C98D6C 8093E850 80C98D6D 80C98D6E
-            80C98A36 80C98D6F 80C98D70 80C98D71 80C98D72 80C98D73 80C98D74 80CA0F39 80C99AF4 80C99AF5
-            80C9939C 80C9939D 80C99AF7 80C99AF8 80C99567 80C99AFA 80C99AFB 80C9939E 80C99AFC 80C99AFD
-            80C9939F 80C99AFE 80CA11FB 80C993A0 80C993A1 80C998A0 80CA05CE 80CA05CF 80CA05D0 80CA05D1
-            80CA05D2 80CA05D3 80CA05D4 80CA0B95 80B9F669 80B9F663 80CA0B97 80B9F668 80CA0E39
+          tables=(
+            80C98028 80C984A0 80C9895C 80C989F7 80C997DF
+            80C99956 80CA0B0E 80CA0B11 80CA0C4E
           )
+          table_args=(); for h in "${tables[@]}"; do table_args+=(--map-data-table "$h"); done
+
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
+            "${table_args[@]}" --out reports/common_layer_resource_chain.json \
+            | tee reports/common_layer_resource_chain_stdout.txt
+
+          python tools/d1_world_static_map_target_plan.py \
+            --chain-json reports/common_layer_resource_chain.json \
+            --out reports/common_layer_target_plan.json \
+            --tsv reports/common_layer_target_plan.tsv \
+            | tee reports/common_layer_target_plan_stdout.txt
+
+          python tools/d1_world_table_scoped_decal_census.py "${args[@]}" --runtime runtime \
+            --target-plan reports/common_layer_target_plan.json \
+            --out reports/common_layer_source_census.json \
+            --validation-dir validation/source_driven \
+            | tee reports/common_layer_source_census_stdout.txt
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/common_layer_source_census.json'))
+          models=sorted(d.get('table_scoped_record_entity_model_histogram',{}))
+          expected={
+            'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE',
+            'table_scoped_target_count':9,
+            'table_scoped_decal_records':327,
+            'table_scoped_materialized_record_count':327,
+            'table_scoped_export_ready_singleton_records':327,
+            'table_scoped_unique_entity_models':69,
+          }
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('Tower source-driven common model census mismatch: '+json.dumps(bad,indent=2))
+          if len(models)!=69:
+              raise SystemExit(f'expected 69 discovered common models, got {len(models)}')
+          Path('reports/common_layer_models.txt').write_text('\n'.join(models)+'\n')
+          Path('reports/common_layer_model_discovery.json').write_text(json.dumps({
+              'status':'D1_TOWER_COMMON_MODELS_DISCOVERED_FROM_MAP_OWNERSHIP',
+              'model_count':len(models),
+              'models':models,
+              'source':'reports/common_layer_source_census.json:table_scoped_record_entity_model_histogram',
+          },indent=2)+'\n')
+          print('DISCOVERED_COMMON_MODELS',len(models),models)
+          PY
+      - name: Export discovered common-layer models with retail map-decal selection
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t models < reports/common_layer_models.txt
+          test "${#models[@]}" -eq 69
           margs=(); for h in "${models[@]}"; do margs+=(--model "$h"); done
           set +e
           python tools/d1_entity_model_corpus_export.py "${args[@]}" --runtime runtime "${margs[@]}" --mode map-decal --out-dir models --summary reports/common_layer_model_export.json | tee reports/common_layer_model_export_stdout.txt
@@ -87,5 +139,6 @@ jobs:
           path: |
             reports/
             models/
+            validation/source_driven/
           retention-days: 14
           compression-level: 6
