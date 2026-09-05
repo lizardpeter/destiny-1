@@ -94,10 +94,10 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_tower_merge_placements.py \
-            visual/TOWER_80C984D8_VISUAL.glb \
-            visual/TOWER_80C98A6B_VISUAL.glb \
-            visual/TOWER_80C993CD_VISUAL.glb \
-            -o visual/D1_TOWER_THREE_CELL_VISUAL_FILTERED.glb \
+            --input visual/TOWER_80C984D8_VISUAL.glb \
+            --input visual/TOWER_80C98A6B_VISUAL.glb \
+            --input visual/TOWER_80C993CD_VISUAL.glb \
+            --out visual/D1_TOWER_THREE_CELL_VISUAL_FILTERED.glb \
             --json visual/D1_TOWER_THREE_CELL_VISUAL_FILTERED.json
           python - <<'PY'
           import json
