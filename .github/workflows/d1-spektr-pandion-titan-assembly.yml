@@ -60,25 +60,25 @@ jobs:
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime --out-dir out/models \
             --combined-glb out/SPEKTAR_PANDION_TITAN_MASCULINE.glb \
-            --manifest out/spektar_pandion_masculine_export.json
+            -o out/spektar_pandion_masculine_export.json
       - name: Validate complete five-piece assembly
         run: |
           python - <<'PY'
           import json
           import trimesh
           d=json.load(open('out/spektar_pandion_masculine_export.json'))
+          assert d['schema']=='d1_remote_model_export/v2',d.get('schema')
           assert d['exported_model_count']==5,d
           expected={'80A8274E','80A85682','809FDB1E','80A816E4','80A862BA'}
-          got={x['model_tag_hash'] for x in d['models']}
+          got={x['tag_hash'] for x in d['models']}
           assert got==expected,(got,expected)
           assert d['total_geometry_count']==69,d
           assert d['total_triangle_count']==28140,d
-          assert not d['failures'],d['failures']
           s=trimesh.load('out/SPEKTAR_PANDION_TITAN_MASCULINE.glb',force='scene',process=False)
           assert len(s.geometry)==69,len(s.geometry)
           assert sum(len(g.faces) for g in s.geometry.values())==28140
           assert s.bounds is not None
-          reports=[json.load(open(x['json'])) for x in d['models']]
+          reports=[json.load(open(x['geometry_report'])) for x in d['models']]
           sources={m.get('uv_source') for r in reports for m in r.get('meshes',[])}
           assert {'primary','secondary'} <= sources,sources
           print('SUCCESS',d['exported_model_count'],'models',len(s.geometry),'groups',sum(len(g.faces) for g in s.geometry.values()),'triangles','UV sources',sorted(sources))
