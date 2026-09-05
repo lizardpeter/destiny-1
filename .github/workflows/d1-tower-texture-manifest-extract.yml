@@ -1,0 +1,84 @@
+name: D1 Tower texture manifest extract
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-texture-manifest-extract.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download full texture artifact internally
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p full compact
+          gh run download 33980537616 -n d1-tower-visible-material-textures-v1 -D full
+          test -f full/reports/material_texture_manifest.json
+      - name: Build compact dependency and shader report
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter,defaultdict
+          from pathlib import Path
+          d=json.load(open('full/reports/material_texture_manifest.json'))
+          missing=[]
+          for h,r in d['textures'].items():
+              if r.get('error'):
+                  missing.append({
+                    'texture':h,
+                    'package_id':r.get('package_id'),
+                    'error':r.get('error'),
+                    'header_info':r.get('header_info'),
+                    'chain':r.get('chain'),
+                    'references':d.get('texture_references',{}).get(h,[]),
+                  })
+          shader_materials=defaultdict(list)
+          shader_bindings=defaultdict(Counter)
+          for mh,m in d['materials'].items():
+              ps=m.get('pixel_shader')
+              if ps:
+                  shader_materials[ps].append(mh)
+                  for b in m.get('bindings',[]):
+                      if b.get('stage')=='ps':
+                          shader_bindings[ps][str(b.get('texture_index'))]+=1
+          compact={
+            'status':'D1_TOWER_VISIBLE_TEXTURE_MANIFEST_COMPACT',
+            'visible_material_count':d['visible_material_count'],
+            'material_decode_errors':d['material_decode_errors'],
+            'unique_texture_tags':d['unique_texture_tags'],
+            'decoded_texture_tags':d['decoded_texture_tags'],
+            'texture_errors':d['texture_errors'],
+            'png_outputs':d['png_outputs'],
+            'missing_texture_package_ids':d['missing_texture_package_ids'],
+            'missing_textures':missing,
+            'pixel_shader_frequency':d['pixel_shader_frequency'],
+            'shader_summary':{
+              ps:{'material_count':len(ms),'materials':ms,'ps_texture_index_frequency':dict(shader_bindings[ps])}
+              for ps,ms in sorted(shader_materials.items(),key=lambda kv:(-len(kv[1]),kv[0]))
+            },
+          }
+          Path('compact/tower_texture_compact.json').write_text(json.dumps(compact,indent=2)+'\n')
+          # The full manifest is useful and still small relative to the images.
+          Path('compact/material_texture_manifest.json').write_bytes(Path('full/reports/material_texture_manifest.json').read_bytes())
+          print(json.dumps({k:compact[k] for k in ('visible_material_count','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},indent=2))
+          print('pixel shader families',len(compact['shader_summary']))
+          print('top shaders',list(compact['pixel_shader_frequency'].items())[:20])
+          print('missing',[(x['texture'],x['package_id'],x['error']) for x in missing])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-texture-manifest-compact
+          path: compact/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 9
