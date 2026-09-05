@@ -1,0 +1,128 @@
+name: D1 Tower Oodle history reader validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-history-reader-validation.yml'
+      - 'tools/d1_entry_extract_history.py'
+      - 'tools/d1_tower_map_schema_validate_v4.py'
+      - 'tools/d1_tower_static_chunk_export_v4.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact 024C family
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_city_tower_destination_024c_0.pkg',7542949376,137527296,'ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2'),
+            ('ps4_city_tower_destination_024c_1.pkg',7680477184,12226560,'21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8'),
+            ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
+            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
+            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+          ]
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          for name,off,size,sha in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=sha.lower(): raise SystemExit(f'{name}: SHA mismatch')
+          PY
+
+      - name: Validate reader and current payload
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,re,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_entry_extract_history import HistoryEntryReader
+          import d1_tower_map_schema_validate_v4 as v4
+
+          runtime=Path('runtime').resolve()
+          p0=Path('recovered/ps4_city_tower_destination_024c_0.pkg')
+          p1=Path('recovered/ps4_city_tower_destination_024c_1.pkg')
+          p5=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+
+          # Independent-decode controls must remain exactly byte-identical.
+          controls=[]
+          for p,h in [(p0,'80C99F52'),(p1,'80C98258')]:
+              a=EntryReader(p,runtime); b=HistoryEntryReader(p,runtime)
+              ea={e['tag_hash'].upper():e for e in a.entries}[h]
+              eb={e['tag_hash'].upper():e for e in b.entries}[h]
+              ba=a.entry(ea['index']); bb=b.entry(eb['index'])
+              if ba!=bb: raise SystemExit(f'{p.name}:{h} history reader changed independent payload')
+              if b.history_fallbacks: raise SystemExit(f'{p.name}:{h} unexpectedly used history fallback')
+              controls.append({'snapshot':p.name,'tag_hash':h,'bytes':len(ba),'sha256':hashlib.sha256(ba).hexdigest()})
+
+          # Current secondary vertex payload must require and successfully use history.
+          r=HistoryEntryReader(p5,runtime); by={e['tag_hash'].upper():e for e in r.entries}
+          he=by['80C99BDF']; pe=by['80C99F52']
+          hb=r.entry(he['index']); payload=r.entry(pe['index'])
+          data_size=struct.unpack_from('<I',hb,0)[0]; stride=struct.unpack_from('<h',hb,4)[0]
+          if he['reference'].upper()!='80C99F52': raise SystemExit('80C99BDF no longer points to 80C99F52')
+          if pe['reference'].upper()!='FFFFFFFF': raise SystemExit('current 80C99F52 class/reference changed')
+          if len(payload)!=pe['file_size'] or data_size!=len(payload): raise SystemExit(f'payload/header size mismatch payload={len(payload)} entry={pe["file_size"]} header={data_size}')
+          if stride<=0 or len(payload)%stride: raise SystemExit(f'payload not divisible by stride {stride}')
+          if not r.history_fallbacks: raise SystemExit('current 80C99F52 decoded without expected history fallback')
+
+          snaps=sorted(Path('recovered').glob('ps4_city_tower_destination_024c_*.pkg'),key=lambda p:int(re.search(r'_(\d+)\.pkg$',p.name).group(1)))
+          c=v4.v3.base.Corpus([p.resolve() for p in snaps],runtime)
+          cb,src=c.payload('80C99F52')
+          if cb is None or src is None: raise SystemExit('v4 Corpus failed current 80C99F52')
+          if src['reference'].upper()!='FFFFFFFF' or src['snapshot']!='ps4_city_tower_destination_024c_5.pkg': raise SystemExit(f'v4 Corpus wrong 80C99F52 occurrence: {src}')
+          if hashlib.sha256(cb).hexdigest()!=hashlib.sha256(payload).hexdigest(): raise SystemExit('v4 Corpus payload differs from direct history reader')
+
+          # Current 80C98258 must remain unavailable: history failure cannot trigger
+          # class-crossing fallback to historical 80801A90/80801AF2 bytes.
+          bad,badsrc=c.payload('80C98258')
+          if bad is not None: raise SystemExit('v4 unexpectedly decoded current 80C98258')
+          if not badsrc or badsrc.get('newest_reference')!='80801B75': raise SystemExit(f'80C98258 safety metadata missing/wrong: {badsrc}')
+
+          out={
+            'evidence_status':'CONFIRMED_IMMEDIATE_PREVIOUS_BLOCK_OODLE_HISTORY_FOR_CURRENT_80C99F52',
+            'controls':controls,
+            'current_80C99F52':{
+              'snapshot':p5.name,'entry_index':pe['index'],'reference':pe['reference'],'bytes':len(payload),
+              'sha256':hashlib.sha256(payload).hexdigest(),'header_data_size':data_size,'stride':stride,
+              'vertex_count':len(payload)//stride,'history_fallbacks':r.history_fallbacks,
+              'corpus_source':src,
+            },
+            'current_80C98258':{'status':'REMAINS_UNAVAILABLE_WITH_ONE_BLOCK_HISTORY','payload_source':badsrc}
+          }
+          Path('reports/history_reader_validation.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-history-reader-validation
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
