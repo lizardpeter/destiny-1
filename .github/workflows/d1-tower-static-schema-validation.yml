@@ -1,0 +1,127 @@
+name: D1 Tower static-map schema validation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-static-schema-validation.yml'
+      - 'tools/d1_tower_map_schema_validate.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-tower-static-map:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports validation
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Discover exact Tower core and 009F architecture members
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          tower_rx=re.compile(r'^ps4_city_tower_.+_[0-9a-fA-F]{4}_[0-9]+\.pkg$')
+          arch_rx=re.compile(r'^ps4_arch_human_earth_city_009f_[0-9]+\.pkg$',re.I)
+          tower=sorted(x for x in names if tower_rx.match(x))
+          arch=sorted(x for x in names if arch_rx.match(x))
+          if not tower: raise SystemExit('no Tower core packages found')
+          if not arch: raise SystemExit('no ps4_arch_human_earth_city_009f snapshots found')
+          members=tower+arch
+          Path('reports/schema_target_members.txt').write_text('\n'.join(members)+'\n')
+          Path('reports/schema_target_members.json').write_text(json.dumps({
+            'tower_core_count':len(tower),
+            'arch_009f_count':len(arch),
+            'total_count':len(members),
+            'tower_core_members':tower,
+            'arch_009f_members':arch,
+          },indent=2)+'\n')
+          print('Tower core',len(tower),'009F architecture',len(arch),'total',len(members))
+          print('\n'.join(members))
+          PY
+
+      - name: Sparse-recover validation corpus from split TAR
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          wanted=set(Path('reports/schema_target_members.txt').read_text().splitlines())
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(wanted)
+          missing=sorted(wanted-set(found))
+          if missing: raise SystemExit(f'missing schema corpus members: {missing}')
+          rows=[]
+          for name in sorted(wanted):
+              r=found[name]
+              dst=Path('recovered')/name
+              sha=arc.copy_to(r['data_offset'],r['size'],dst)
+              rows.append({'name':name,**r,'sha256':sha})
+              print('RECOVERED',name,r['size'],sha,flush=True)
+          Path('reports/schema_member_catalog.json').write_text(json.dumps({'tar_headers_scanned':headers,'members':rows},indent=2)+'\n')
+          PY
+
+      - name: Validate D1 Tower static-map schema against shipped bytes
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate.py "${args[@]}" --runtime runtime --out validation | tee reports/schema_validator_stdout.txt
+
+      - name: Compact binary-validation result
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          s=d['summary']
+          out={
+            'evidence_status':d['evidence_status'],
+            'source_derived_class_occurrence_counts':s['source_derived_class_occurrence_counts'],
+            'unique_static_map_data_resources':s['unique_static_map_data_resources'],
+            'static_map_data_all_pass':s['static_map_data_all_pass'],
+            'unique_static_map_data_d1_resources':s['unique_static_map_data_d1_resources'],
+            'static_map_data_d1_all_pass':s['static_map_data_d1_all_pass'],
+            'unique_bubble_definitions':s['unique_bubble_definitions'],
+            'bubble_all_pass':s['bubble_all_pass'],
+            'total_static_mesh_records':s['total_static_mesh_records'],
+            'static_mesh_records_with_all_targets':s['static_mesh_records_with_all_targets'],
+            'consecutive_v0_v1_index_triples':s['consecutive_v0_v1_index_triples'],
+            'policy':'A source-derived layout is not promoted merely because some values look plausible. Exact array bounds, class links, transform backing, target existence and index bounds are retained in the full report.'
+          }
+          Path('reports/tower_static_schema_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-static-map-schema-validation
+          path: |
+            reports/
+            validation/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
