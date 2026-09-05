@@ -1,0 +1,114 @@
+name: Temporary resolve rocket launcher known state rig pairs
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-rocket-launcher-known-state-rigs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and 0151
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+      - name: Decode known states and prove compatible rig pairs
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,sys,tempfile
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from d1_entry_extract import EntryReader
+          from d1_animation_control_state_map import decode_control
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+
+          CONTROL='80AA3CC9'; PED=0xC410084A
+          PAIRS=[('80AA3C87','80AA3C88'),('80AA3C89','80AA3C8A'),('80AA3C8C','80AA3C8D'),('80AA3C91','80AA3C92'),
+                 ('80AA3CB2','80AA3CB3'),('80AA3CB8','80AA3CB9'),('80AA3CBE','80AA3CBF')]
+          names=['reload_empty','reload_full','fire','idle','ready','jump']
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime')); by={e['tag_hash'].upper():e for e in r.entries}
+          def raw(t): return r.entry(by[t]['index'])
+          sm=decode_control(raw(CONTROL),r,names)
+          states={s['state_name']:s for s in sm['state_table']['records'] if s.get('state_name') in names}
+          selected=[]
+          for name in names:
+              s=states[name]
+              for a in s['selected_animations']:
+                  if a['tag_hash'] not in [x['tag_hash'] for x in selected]:
+                      selected.append({'tag_hash':a['tag_hash'],'states':[]})
+              for a in s['selected_animations']:
+                  next(x for x in selected if x['tag_hash']==a['tag_hash'])['states'].append(name)
+          ver=Game_Version.D1_ROI
+          clips={}
+          for q in selected:
+              t=q['tag_hash']; b=raw(t)
+              with tempfile.NamedTemporaryFile() as f:
+                  f.write(b);f.flush();f.seek(0);a=read_animation(f,ver)
+              h=a.animation_header
+              clips[t]={'tag_hash':t,'states':q['states'],'frames':int(h.frame_count),'duration_s':max(0,int(h.frame_count)-1)/30,
+                        'node_count':int(h.node_count),'rig_control_count':int(h.rig_control_count)}
+          tests=[]
+          for rt,st in PAIRS:
+              q={'rig':rt,'skeleton':st}
+              try:
+                  rig=read_runtime_rig(io.BytesIO(raw(rt)),ver); sk=read_skeleton(io.BytesIO(raw(st)),ver)
+                  q['rig_controls']=len(rig.controls_relations); q['skeleton_nodes']=len(sk.node_defs)
+                  ped=[i for i,n in enumerate(sk.node_defs) if (int(n.bone_hash)&0xffffffff)==PED]
+                  q['pedestal_indices']=ped
+                  oks=[]
+                  for t,c in clips.items():
+                      if c['node_count']!=q['skeleton_nodes'] or c['rig_control_count']!=q['rig_controls']: continue
+                      try:
+                          with tempfile.NamedTemporaryFile() as f:
+                              f.write(raw(t));f.flush();f.seek(0);a=read_animation(f,ver)
+                          dec=decode_animation(a);ret=rig_retarget(a,dec,sk,rig);loc=convert_obj_to_local(a,ret,sk)
+                          oks.append({'clip':t,'states':c['states'],'local_tracks':len(loc)})
+                      except Exception as ex:
+                          oks.append({'clip':t,'states':c['states'],'error':repr(ex)})
+                  q['compatible_selected_clips']=oks
+              except Exception as ex:q['error']=repr(ex)
+              tests.append(q)
+          out={'control':CONTROL,'known_states':{k:{'hash':v['state_hash'],'selection_start':v['selection_start'],'selection_count':v['selection_count'],
+                 'clips':[a['tag_hash'] for a in v['selected_animations']]} for k,v in states.items()},'selected_clips':clips,'pair_tests':tests,
+               'evidence_policy':'Pair is considered usable only when skeleton/rig counts match clip header and actual decode->retarget->local conversion succeeds. Pedestal C410084A is reported literally from skeleton hashes.'}
+          Path('out/rocket_launcher_known_state_rigs.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('KNOWN_STATES',json.dumps(out['known_states'],separators=(',',':')))
+          print('SELECTED_CLIPS',json.dumps(clips,separators=(',',':')))
+          print('PAIR_TESTS',json.dumps(tests,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rocket-launcher-known-state-rigs
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
