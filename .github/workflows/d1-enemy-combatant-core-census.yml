@@ -1,0 +1,93 @@
+name: D1 enemy combatant core census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-enemy-combatant-core-census.yml'
+      - 'tools/d1_articulated_asset_census.py'
+      - 'tools/d1_character_family_census.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover verified runtime and four shared race architecture families
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0 \
+            --target ps4_arch_cabal_com01_0749_0.pkg --target ps4_arch_cabal_com01_0749_1.pkg \
+            --target ps4_arch_fallen_com01_0753_0.pkg --target ps4_arch_fallen_com01_0753_1.pkg \
+            --target ps4_arch_hive_com01_075d_0.pkg --target ps4_arch_hive_com01_075d_1.pkg \
+            --target ps4_arch_vex_com01_0767_0.pkg --target ps4_arch_vex_com01_0767_1.pkg --target ps4_arch_vex_com01_0767_4.pkg \
+            --out recovered --manifest reports/combatant_core_extract.json --retries 6 --timeout 90
+
+      - name: Census articulated resources and EntityResource class pairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_articulated_asset_census.py recovered/ps4_arch_cabal_com01_0749_1.pkg --runtime runtime --include-all-components -o reports/cabal_0749.json
+          python tools/d1_articulated_asset_census.py recovered/ps4_arch_fallen_com01_0753_1.pkg --runtime runtime --include-all-components -o reports/fallen_0753.json
+          python tools/d1_articulated_asset_census.py recovered/ps4_arch_hive_com01_075d_1.pkg --runtime runtime --include-all-components -o reports/hive_075d.json
+          python tools/d1_articulated_asset_census.py recovered/ps4_arch_vex_com01_0767_4.pkg --runtime runtime --include-all-components -o reports/vex_0767.json
+
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          rows=[]; pairs_by={}
+          for race,fn in [('cabal','cabal_0749.json'),('fallen','fallen_0753.json'),('hive','hive_075d.json'),('vex','vex_0767.json')]:
+              d=json.load(open('reports/'+fn)); fam=d['families'][0]
+              roles=fam['roles']
+              sk=sorted([(r.get('bone_count',0),h) for h,r in roles.items() if r.get('kind')=='skeleton'],reverse=True)
+              pairs=collections.Counter()
+              for h,r in roles.items():
+                  er=r.get('entity_resource') or {}
+                  a=er.get('unk10_class'); b=er.get('unk18_class')
+                  if a or b: pairs[(a or 'NULL',b or 'NULL')]+=1
+              pairs_by[race]=pairs
+              rows.append({
+                'race':race,
+                'package':fam['package'],
+                'entry_count':fam['entry_count'],
+                'kind_counts':fam['kind_counts'],
+                'skeletons':[{'tag_hash':h,'bone_count':n} for n,h in sk],
+                'candidate_count':fam['candidate_count'],
+                'top_entity_resource_pairs':[{'unk10':a,'unk18':b,'count':n} for (a,b),n in pairs.most_common(40)],
+              })
+          common=set.intersection(*(set(x) for x in pairs_by.values()))
+          shared=[]
+          for p in sorted(common):
+              shared.append({'unk10':p[0],'unk18':p[1],'counts':{r:pairs_by[r][p] for r in pairs_by}})
+          # Specifically track the two Vex-era pairs previously (over-)named combatant-specific.
+          watched=[('80802465','80802955'),('80802397','80802818')]
+          watch=[]
+          for p in watched:
+              watch.append({'unk10':p[0],'unk18':p[1],'counts':{r:pairs_by[r].get(p,0) for r in pairs_by}})
+          out={'races':rows,'class_pairs_shared_by_all_four':shared,'watched_prior_vex_pairs':watch,
+               'policy':'Shared architecture/package naming and class-pair recurrence are evidence, but gameplay combatant identity still requires exact entity/runtime ownership proof.'}
+          Path('reports/combatant_core_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-enemy-combatant-core-census
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
