@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evidence_status": "CONFIRMED_BINARY_TOWER_COMMON_DECAL_LAYER",
+  "workflow_run": 33974200735,
+  "artifact_id": 9971846577,
+  "artifact_digest": "sha256:b5c0bf31373bda9229fcd56098e114e1e4cbd64ba4fd54c48c162f5e07fd5d69",
+  "common_carriers": 9,
+  "baked_controls": 10,
+  "decal_records": 327,
+  "structurally_valid_records": 327,
+  "singleton_transform_model_records": 327,
+  "unique_entity_models": 69,
+  "common_resources": [
+    {"hash":"80C98191","decals":38,"unique_models":18},
+    {"hash":"80C984D7","decals":13,"unique_models":4},
+    {"hash":"80C98A69","decals":78,"unique_models":17},
+    {"hash":"80C993A2","decals":110,"unique_models":26},
+    {"hash":"80C997F4","decals":3,"unique_models":2},
+    {"hash":"80C99980","decals":21,"unique_models":9},
+    {"hash":"80CA0B6F","decals":9,"unique_models":2},
+    {"hash":"80CA0B71","decals":53,"unique_models":5},
+    {"hash":"80CA0C5F","decals":2,"unique_models":1}
+  ],
+  "interpretation": "The large/common 808008B4 resources are binary-confirmed decal carriers. Every shipped Tower decal record has valid arrays, a finite transform, and exactly one transform plus exactly one EntityModel. The paired 0x38 baked resources contain zero decals and a direct 80801B75 D1 static child.",
+  "policy": "This file records serialized/binary evidence only. It does not infer map ownership from adjacency or model naming."
+}
