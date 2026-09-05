@@ -1,0 +1,202 @@
+name: D1 Tower baked plus common texture-preserved
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-baked-plus-common-texture-preserved.yml'
+      - 'tools/d1_world_layer_merge.py'
+      - 'tools/d1_world_common_layer_scene.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install scene dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy trimesh
+          mkdir -p source_models source_decals common combined chunks reports
+
+      - name: Recover closed common-model and common-record artifacts
+        run: |
+          set -euo pipefail
+          # 33993891559 is the first strict 69/69 common-model export after the
+          # 0154/0155/0156 material dependency closure.  Keep this pinned until
+          # a later evidence commit deliberately supersedes it.
+          gh run download 33993891559 -n d1-tower-common-layer-model-export -D source_models
+          gh run download 33974200735 -n d1-tower-decal-layer-with-dependencies -D source_decals
+          test -f source_models/reports/common_layer_model_export_summary.json
+          test -f source_decals/reports/decal_layer_closure.json
+          python - <<'PY'
+          import json
+          s=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
+          if s.get('requested_models')!=69 or s.get('exported_models')!=69 or s.get('failed_models')!=0:
+              raise SystemExit('common model corpus not 69/69 closed: '+json.dumps(s))
+          if s.get('unavailable_material_parts'):
+              raise SystemExit('common material dependencies remain unresolved: '+json.dumps(s['unavailable_material_parts']))
+          if int((s.get('rejection_reason_histogram') or {}).get('material_unavailable',0))!=0:
+              raise SystemExit('material_unavailable rejection remains')
+          print('COMMON_MODEL_CORPUS_CLOSED',s['geometry_count'],s['triangle_count'])
+          PY
+
+      - name: Assemble exact table-scoped common layer
+        run: |
+          set -euo pipefail
+          vals=(); for p in source_decals/validation/common_*.json; do vals+=(--validation "$p"); done
+          test "${#vals[@]}" -eq 18
+          python tools/d1_world_common_layer_scene.py "${vals[@]}" --model-dir source_models/models \
+            --out common/D1_TOWER_COMMON_LAYER.glb --report reports/common_layer_scene.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_scene.json'))
+          if d['source_record_count']!=327 or d['unique_model_count']!=69 or d['source_resolved_records']!=327 or d['unresolved_records']!=0:
+              raise SystemExit('common layer source closure failed: '+json.dumps(d))
+          if d['geometry_emitting_record_placements']!=327 or d['valid_zero_geometry_records']!=0:
+              raise SystemExit('not all 327 common records emit source-valid geometry: '+json.dumps(d))
+          print('COMMON_LAYER_327_OF_327_GEOMETRY_OK',d['scene_geometry_variants'],d['scene_geometry_nodes'])
+          PY
+
+      - name: Recover pinned textured ten-cell baked-static model
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-ten-cell-r1/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' \
+            -o combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          echo 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa  combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' | sha256sum --check --strict
+
+      - name: Loss-preserving GLB layer merge
+        run: |
+          set -euo pipefail
+          python tools/d1_world_layer_merge.py \
+            --layer baked_static=combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --layer common_decal=common/D1_TOWER_COMMON_LAYER.glb \
+            --logical-count baked_static=11728 --logical-count common_decal=327 \
+            --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb \
+            --report reports/baked_plus_common_texture_preserved.json
+
+      - name: Prove textures, materials and geometry survived composition
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib,struct
+          from pathlib import Path
+          d=json.load(open('reports/baked_plus_common_texture_preserved.json'))
+          c=json.load(open('reports/common_layer_scene.json'))
+          ms=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
+          if d['status']!='D1_WORLD_LAYER_GLB_LOSS_PRESERVING_MERGE' or d['logical_source_records_total']!=12055:
+              raise SystemExit('loss-preserving merger status/count failed: '+json.dumps(d))
+          layers={x['name']:x for x in d['layers']}
+          b=layers['baked_static']['inventory']; cm=layers['common_decal']['inventory']; out=d['inventory']
+          expected_baked={'meshes':2071,'materials':400,'textures':537,'images':537}
+          for k,v in expected_baked.items():
+              if b.get(k)!=v: raise SystemExit(f'baked input inventory changed: {k}={b.get(k)} expected {v}')
+          for k in ('bufferViews','accessors','samplers','images','textures','materials','meshes','cameras','skins','animations','nodes'):
+              if out.get(k,0)!=b.get(k,0)+cm.get(k,0):
+                  raise SystemExit(f'GLB inventory not additive for {k}: {out.get(k)} != {b.get(k,0)}+{cm.get(k,0)}')
+          if d['textures']!=537 or d['embedded_images']!=537:
+              raise SystemExit(f'embedded baked textures/images were not preserved: {d["textures"]}/{d["embedded_images"]}')
+          if d['materials']!=b['materials']+cm['materials']:
+              raise SystemExit('material count was not preserved additively')
+          if d['geometry_nodes']!=11728+c['scene_geometry_nodes']:
+              raise SystemExit(f'geometry-node count mismatch {d["geometry_nodes"]} != {11728+c["scene_geometry_nodes"]}')
+          if d['geometry_variants']!=2071+c['scene_geometry_variants']:
+              raise SystemExit(f'geometry-variant count mismatch {d["geometry_variants"]} != {2071+c["scene_geometry_variants"]}')
+          p=Path('combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb')
+          if p.stat().st_size <= Path('combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb').stat().st_size:
+              raise SystemExit('combined file did not grow beyond textured baked source; likely payload loss')
+          final={
+            'schema_version':1,
+            'status':'D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED',
+            'baked_retail_visible_placements':11728,
+            'common_source_records':327,
+            'logical_source_records':12055,
+            'common_unique_models':69,
+            'common_model_geometry_parts':ms['geometry_count'],
+            'common_model_triangles':ms['triangle_count'],
+            'common_scene_geometry_variants':c['scene_geometry_variants'],
+            'common_scene_geometry_nodes':c['scene_geometry_nodes'],
+            'combined_geometry_variants':d['geometry_variants'],
+            'combined_geometry_nodes':d['geometry_nodes'],
+            'materials':d['materials'],'textures':d['textures'],'embedded_images':d['embedded_images'],
+            'bounds':d['bounds'],'bytes':d['glb_bytes'],'sha256':d['glb_sha256'],
+            'baked_source_inventory':b,'common_source_inventory':cm,'combined_inventory':out,
+            'texture_preservation':'The textured baked GLB is merged structurally; its mesh/accessor/material/texture/image BIN bytes are not decoded or re-exported.',
+            'common_material_scope':'Common/decal geometry and exact material identities are included; common-layer texture binding remains a later renderer/material stage.',
+            'remaining_world_layers':['entity/dynamic placements','terrain/natural geometry','sky/environment','lighting/probes','particles/VFX','activity/runtime conditional content'],
+          }
+          Path('reports/FINAL_TEXTURE_PRESERVED_MODEL.json').write_text(json.dumps(final,indent=2)+'\n')
+          print(json.dumps(final,indent=2))
+          PY
+
+      - name: Split model for reliable Actions handoff
+        run: |
+          set -euo pipefail
+          split -b 85M -d -a 2 combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb chunks/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb.part
+          cp reports/FINAL_TEXTURE_PRESERVED_MODEL.json reports/baked_plus_common_texture_preserved.json reports/common_layer_scene.json chunks/
+          python - <<'PY'
+          from pathlib import Path
+          parts=sorted(p.name for p in Path('chunks').glob('*.glb.part*'))
+          Path('chunks/REASSEMBLE_WINDOWS.cmd').write_text('@echo off\r\ncopy /b '+ '+'.join(parts)+' D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb\r\ncertutil -hashfile D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb SHA256\r\npause\r\n')
+          Path('chunks/README.txt').write_text('Texture-preserving Tower milestone. Extract every part artifact into one folder, then run REASSEMBLE_WINDOWS.cmd. The expected SHA256 is in FINAL_TEXTURE_PRESERVED_MODEL.json.\n')
+          print('PARTS',parts)
+          PY
+
+      - name: Publish canonical regression release asset
+        run: |
+          set -euo pipefail
+          tag='d1-tower-baked-plus-common-r1'
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title 'D1 Tower baked + common texture-preserved r1' --notes 'First Tower GLB combining 11,728 retail-visible baked-static placements with all 327 table-scoped common/decal source records while preserving the baked model embedded textures and normals. Common/decal texture binding is not yet complete.'
+          fi
+          gh release upload "$tag" \
+            combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb \
+            reports/FINAL_TEXTURE_PRESERVED_MODEL.json \
+            reports/baked_plus_common_texture_preserved.json \
+            --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-baked-plus-common-texture-preserved-meta
+          path: |
+            reports/
+            chunks/README.txt
+            chunks/REASSEMBLE_WINDOWS.cmd
+          retention-days: 14
+          compression-level: 6
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part00') != '' }}
+        with: {name: d1-tower-baked-plus-common-part00, path: chunks/*.part00, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part01') != '' }}
+        with: {name: d1-tower-baked-plus-common-part01, path: chunks/*.part01, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part02') != '' }}
+        with: {name: d1-tower-baked-plus-common-part02, path: chunks/*.part02, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part03') != '' }}
+        with: {name: d1-tower-baked-plus-common-part03, path: chunks/*.part03, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part04') != '' }}
+        with: {name: d1-tower-baked-plus-common-part04, path: chunks/*.part04, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part05') != '' }}
+        with: {name: d1-tower-baked-plus-common-part05, path: chunks/*.part05, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part06') != '' }}
+        with: {name: d1-tower-baked-plus-common-part06, path: chunks/*.part06, retention-days: 14, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('chunks/*.part07') != '' }}
+        with: {name: d1-tower-baked-plus-common-part07, path: chunks/*.part07, retention-days: 14, compression-level: 0}
