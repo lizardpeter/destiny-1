@@ -1,0 +1,97 @@
+name: Temporary evaluate CA2 shared action weapon motion
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-ca2-shared-action-motion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and 0151
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered out/proofs
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+      - name: Retarget exact CC9-selected actions on serialized CA2 rig and measure sockets
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,math,sys,tempfile
+          import numpy as np
+          from pathlib import Path
+          from pygltflib import GLTF2,Asset,Scene
+          sys.path.insert(0,'tools');sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget,calc_control_limit
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+          from animation_export.gltf_export import create_armature_hierarchy,add_animation
+          from animation_export.enums import Name_Convention
+          from d1_gltf_bake_rigid_weapon_motion import read_glb,animation_tracks,source_chain,eval_world,trs_matrix
+
+          RIG='80AA3CBE';SK='80AA3CBF'; PED='C410084A'; MOT='E6477C3B'
+          ACTIONS=[('idle','80AA3CD6'),('ready','80AA3CDA'),('reload_empty','80AA3D40'),('reload_full','80AA3D40'),('fire','80AA3D42'),('jump_a','80AA3CE2'),('jump_b','80AA3CE3')]
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          def raw(t):return r.entry(by[t]['index'])
+          ver=Game_Version.D1_ROI;rig=read_runtime_rig(io.BytesIO(raw(RIG)),ver);sk=read_skeleton(io.BytesIO(raw(SK)),ver)
+          hashes=[f'{int(n.bone_hash)&0xffffffff:08X}' for n in sk.node_defs]
+          assert PED in hashes and MOT in hashes
+          ped_i=hashes.index(PED);mot_i=hashes.index(MOT);assert int(sk.node_defs[mot_i].parent_node_index)==ped_i
+          rows=[]
+          for action,clip in ACTIONS:
+            with tempfile.NamedTemporaryFile() as f:
+              f.write(raw(clip));f.flush();f.seek(0);anim=read_animation(f,ver)
+            dec=decode_animation(anim);ret=rig_retarget(anim,dec,sk,rig);loc=convert_obj_to_local(anim,ret,sk)
+            g=GLTF2(asset=Asset(version='2.0'),scene=0,scenes=[Scene(nodes=[])],nodes=[],meshes=[],skins=[],animations=[],materials=[],textures=[],images=[],samplers=[],buffers=[],bufferViews=[],accessors=[])
+            root,bones=create_armature_hierarchy(g,sk,Name_Convention.FNV1BE);g.scenes[0].nodes.append(root);add_animation(g,bones,loc,Name_Convention.FNV1BE,fps=30);g.animations[-1].name=action+'_'+clip
+            p=Path('out/proofs')/(action+'_'+clip+'.glb');g.save_binary(str(p))
+            jj,bb=read_glb(p);tracks,times=animation_tracks(jj,bb,jj['animations'][0])
+            q={'action':action,'clip':clip,'frames':int(anim.animation_header.frame_count),'duration_s':max(0,int(anim.animation_header.frame_count)-1)/30,
+               'clip_nodes':int(anim.animation_header.node_count),'clip_controls':int(anim.animation_header.rig_control_count),'ca2_control_limit':int(calc_control_limit(rig,anim.runtime_rig_components)),
+               'ca2_nodes':len(sk.node_defs),'ca2_controls':len(rig.controls_relations)}
+            for label,node_hash in [('pedestal',PED),('weapon_motion',MOT)]:
+              ni=int(bones[node_hash]);chain=source_chain(jj,ni);mats=[]
+              for t in times:
+                tt,qq,ss=eval_world(jj,chain,tracks,float(t));mats.append(trs_matrix(tt,qq,ss))
+              inv=np.linalg.inv(mats[0]);ds=np.stack([m@inv for m in mats])
+              trans=np.linalg.norm(ds[:,:3,3],axis=1)
+              rots=[]
+              for m in ds:
+                R=m[:3,:3];scale=np.linalg.norm(R,axis=0);Rn=R/np.where(scale==0,1,scale);c=max(-1,min(1,(np.trace(Rn)-1)/2));rots.append(math.degrees(math.acos(c)))
+              q[label]={'gltf_node':ni,'max_translation_m':float(trans.max()),'max_rotation_deg':float(max(rots)),
+                         'max_translation_frame':int(np.argmax(trans)),'first_translations':[ds[i,:3,3].tolist() for i in range(min(5,len(ds)))]}
+            rows.append(q);print(json.dumps(q,separators=(',',':')))
+          Path('out/ca2_shared_action_motion.json').write_text(json.dumps({'rig':RIG,'skeleton':SK,'pedestal':PED,'weapon_motion':MOT,'actions':rows},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-ca2-shared-action-motion
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
