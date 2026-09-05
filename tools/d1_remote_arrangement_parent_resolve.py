@@ -29,6 +29,13 @@ from d1_investment_arrangement_probe import filehash_pkg_index, h32
 from d1_remote_investment_parent_probe import RemoteLogicalPackage, parse_member
 from d1_split_tar_extract import SplitHttpTar
 
+# Exact TAR header immediately preceding ps4_investment_assets_0135_0.pkg.
+# Its data begins at 0x5996C3200, so the ustar header is 0x200 bytes earlier.
+# This is the earliest package family referenced by the retail art-arrangement
+# parent set we have observed, and unlike a rounded address it is a validated
+# 512-byte TAR header boundary.
+DEFAULT_INVESTMENT_ASSETS_TAR_HEADER = 0x5996C3000
+
 
 def u32(b: bytes, o: int) -> int:
     return struct.unpack_from("<I", b, o)[0]
@@ -59,8 +66,8 @@ def main() -> int:
     ap.add_argument("--packages-list", type=Path, required=True)
     ap.add_argument("--base-url", required=True)
     ap.add_argument("--part-count", type=int, default=10)
-    ap.add_argument("--start-offset", type=lambda x: int(x, 0), default=0x5A0000000,
-                    help="validated/nearby TAR header offset before investment_assets region")
+    ap.add_argument("--start-offset", type=lambda x: int(x, 0), default=DEFAULT_INVESTMENT_ASSETS_TAR_HEADER,
+                    help="exact validated TAR header offset at/before required investment_assets families")
     ap.add_argument("--runtime", type=Path, required=True)
     ap.add_argument("-o", "--output", type=Path, required=True)
     args = ap.parse_args()
@@ -155,6 +162,7 @@ def main() -> int:
     out["remote_parent_resolution"] = {
         "required_package_ids": [f"{p:04X}" for p in sorted(package_ids)],
         "package_families": family_manifest,
+        "tar_start_header": f"0x{args.start_offset:X}",
         "tar_headers_scanned": headers,
         "unique_parent_count": len(parent_hashes),
         "resolved_parent_count": resolved_count,
