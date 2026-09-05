@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-common-layer-model-export.yml'
       - 'tools/d1_entity_model_corpus_export.py'
+      - 'tools/d1_world_map_root_census.py'
       - 'tools/d1_world_map_data_layer_census.py'
       - 'tools/d1_world_static_map_resource_chain_census.py'
       - 'tools/d1_world_static_map_target_plan.py'
@@ -48,10 +49,31 @@ jobs:
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          tables=(
-            80C98028 80C984A0 80C9895C 80C989F7 80C997DF
-            80C99956 80CA0B0E 80CA0B11 80CA0C4E
-          )
+
+          python tools/d1_world_map_root_census.py "${args[@]}" --runtime runtime \
+            --out reports/common_layer_map_roots.json \
+            | tee reports/common_layer_map_roots_stdout.txt
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.load(open('reports/common_layer_map_roots.json'))
+          expected_tables=sorted([
+            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
+            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
+          ])
+          actual=sorted(r.get('map_data_tables',[]))
+          if r.get('status')!='D1_WORLD_MAP_ROOT_CENSUS_COMPLETE':
+              raise SystemExit('Tower map-root census not complete: '+json.dumps(r.get('violations')))
+          if actual!=expected_tables:
+              raise SystemExit('Tower discovered map-table set changed: '+json.dumps({'expected':expected_tables,'actual':actual},indent=2))
+          if r.get('total_reachable_map_entries')!=337:
+              raise SystemExit(f'unexpected discovered Tower map-entry total {r.get("total_reachable_map_entries")}')
+          Path('reports/common_layer_map_tables.txt').write_text('\n'.join(r['map_data_tables'])+'\n')
+          print('DISCOVERED_MAP_TABLE_ROOTS',len(actual),actual)
+          PY
+
+          mapfile -t tables < reports/common_layer_map_tables.txt
           table_args=(); for h in "${tables[@]}"; do table_args+=(--map-data-table "$h"); done
 
           python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
