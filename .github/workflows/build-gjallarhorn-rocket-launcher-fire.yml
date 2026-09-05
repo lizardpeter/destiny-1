@@ -64,7 +64,6 @@ jobs:
           assert f['selection_count']==1 and f['selection_start']==33,f
           assert [x['tag_hash'] for x in f['selected_animations']]==['80AA3D42'],f
           assert f['selected_animations'][0]['entry']['reference']=='808005A1'
-          # Cross-state structural sanity for zero-based list selection.
           known={x['state_name']:x for x in r['state_table']['records'] if x['state_name']}
           assert known['idle']['selection_start']==1
           assert known['ready']['selection_start']==4
@@ -116,7 +115,10 @@ jobs:
                   scenes=[Scene(nodes=[])],nodes=[],meshes=[],skins=[],animations=[],materials=[],textures=[],images=[],samplers=[],buffers=[],bufferViews=[],accessors=[])
           root,gltf_bones=create_armature_hierarchy(g,sk,Name_Convention.FNV1BE);g.scenes[0].nodes.append(root)
           add_animation(g,gltf_bones,local,Name_Convention.FNV1BE,fps=30);g.animations[-1].name='rocket_launcher_fire_STATE_9FAC79C9_80AA3D42'
-          ped_skel=ped[0]['index'];ped_node=int(gltf_bones[ped_skel])
+          ped_skel=ped[0]['index']
+          ped_name=f'{PED:08X}'
+          assert ped_name in gltf_bones,(ped_name,sorted(gltf_bones))
+          ped_node=int(gltf_bones[ped_name])
           g.extras={'d1ActionStateHash':'9FAC79C9','d1ActionStateName':'fire','d1AnimationControl':'80AA3CC9','d1AnimationListIndex':33,
                     'd1Clip':CLIP,'d1Skeleton':SK,'d1RuntimeRig':RIG,'d1PedestalBoneHash':'C410084A','d1PedestalSkeletonIndex':ped_skel,
                     'd1PedestalGltfNode':ped_node,'semanticEvidence':'exact FNV1 fire state -> packed count/start -> FileHash clip'}
