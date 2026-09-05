@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "TENTH_TOWER_MAP_OWNED_D1_STATIC_CELL_CURRENT_LAYOUT_CONFIRMED",
+  "outer_chain": {
+    "map_data_table": "80C98028",
+    "static_map_parent": "80C98173",
+    "static_map_data": "80C98254",
+    "d1_static_map_data": "80C98258",
+    "outer_rotation": [0, 0, 0, 1],
+    "outer_translation": [0, 0, 0, 1],
+    "world_id": "FFFFFFFFFFFFFFFF",
+    "ownership_evidence": "evidence/d1_tower_map_owned_outer_chains_confirmed.json"
+  },
+  "current_d1_payload": {
+    "hash": "80C98258",
+    "class": "80801B75",
+    "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+    "entry_index": 600,
+    "payload_bytes": 48084,
+    "payload_sha256": "461e1f695f2413fadcd67deab441c7a992a85f879cb84759660abfbea3194209",
+    "reader_evidence": "evidence/d1_tiger_serialized_coverage_block_sizing_024c.json"
+  },
+  "confirmed_standard_d1_static_layout": {
+    "instance_count_offset": "0x20",
+    "instance_count": 1946,
+    "instance_transforms_offset": "0x24",
+    "instance_transforms": "80CA1496",
+    "instance_transform_payload_bytes": 124544,
+    "expected_instance_transform_bytes": 124544,
+    "transform_size_exact": true,
+    "static_arrays": [
+      {"field_offset": "0x38", "count": 1, "static_table": "80C9825A", "target_class": "80801A90"},
+      {"field_offset": "0x50", "count": 1, "static_table": "80C9825D", "target_class": "80801A90"},
+      {"field_offset": "0x68", "count": 1, "static_table": "80CA1494", "target_class": "80801A90"},
+      {"field_offset": "0x80", "count": 1, "static_table": "80CA1495", "target_class": "80801A90"}
+    ]
+  },
+  "probe": {
+    "workflow_run": 33986032564,
+    "artifact_id": 9975281808,
+    "artifact_digest": "sha256:80cac82bfa06492273eca21bc7514740b68f3d7f932ec2f9633a4325ab1e4222",
+    "artifact_name": "d1-tower-missing-static-cell-layout-probe"
+  },
+  "correction": "80C98258 is not an alternate-layout exception. The former blocker was stale cross-class/failing Oodle extraction. With the serialized-coverage sized reader, the current 80801B75 payload exposes the same canonical D1 static-map field layout as the other Tower cells.",
+  "pipeline_consequence": "The Tower baked-static regression set is ten confirmed map-owned cells. Nine-cell exports are incomplete by construction and must no longer be presented as the complete Tower baked-static layer."
+}
