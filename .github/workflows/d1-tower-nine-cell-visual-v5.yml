@@ -1,0 +1,217 @@
+name: D1 Tower nine-cell exact visual shell v5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-nine-cell-visual-v5.yml'
+      - 'tools/d1_tower_recover_current_corpus.py'
+      - 'tools/d1_entry_extract_sized.py'
+      - 'tools/d1_tower_map_schema_validate_v5.py'
+      - 'tools/d1_tower_static_chunk_export_v5.py'
+      - 'tools/d1_tower_visual_filter.py'
+      - 'tools/d1_tower_merge_placements.py'
+      - 'evidence/d1_tower_dependency_member_catalog.json'
+      - 'evidence/d1_tower_dependency_sha256_catalog.json'
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install numpy trimesh
+          mkdir -p runtime recovered validation proof visual reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact current Tower dependency corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt \
+            --out-dir recovered \
+            --report reports/current_corpus.json
+
+      - name: Validate all nine map-owned baked-static cells with v5 reader
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v5.py "${args[@]}" --runtime runtime --out validation | tee reports/validator_v5_stdout.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          expected={
+            '80C984D8':('80C9858B',372,570,1800),
+            '80C98A6B':('80C98A77',2346,2191,12498),
+            '80C993CD':('80C994B1',786,1056,5115),
+            '80C993CF':('80C994B2',2523,2825,13827),
+            '80C997F5':('80C9981A',444,567,2409),
+            '80C99981':('80C9999B',326,607,1800),
+            '80CA0B70':('80CA0B96',123,124,556),
+            '80CA0B72':('80CA0B98',258,141,772),
+            '80CA0C60':('80CA0C6B',304,471,1596),
+          }
+          out={}
+          for parent,(child,nx,nm,np_) in expected.items():
+              rows=[x for x in d.get('static_map_data',[]) if x.get('hash','').upper()==parent and x.get('ok')]
+              if len(rows)!=1: raise SystemExit(f'{parent}: expected one passing v5 row, got {len(rows)}')
+              c=rows[0]['d1_validation']
+              meshes=sum(t['summary']['meshes'] for t in c['static_tables'])
+              placements=sum(sum(i['instance_count'] for i in t['info_entries']) for t in c['static_tables'])
+              if c['hash'].upper()!=child or c['instance_count']!=nx or meshes!=nm or placements!=np_ or not c.get('transform_size_exact'):
+                  raise SystemExit(f'{parent}: invariant mismatch')
+              out[parent]={'d1':child,'transforms':nx,'meshes':meshes,'placements':placements}
+          if sum(x['placements'] for x in out.values())!=40373: raise SystemExit('nine-cell placement total changed')
+          Path('reports/nine_cell_v5_validation.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Export all nine proof cells with v5 reader
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          for h in 80C984D8 80C98A6B 80C993CD 80C993CF 80C997F5 80C99981 80CA0B70 80CA0B72 80CA0C60; do
+            echo "EXPORT_V5 $h"
+            python tools/d1_tower_static_chunk_export_v5.py "${args[@]}" --runtime runtime \
+              --validation-json validation/tower_map_schema_validation.json \
+              --static-map-data "$h" \
+              --out "proof/TOWER_${h}.glb" \
+              --json "proof/TOWER_${h}.json" | tee "reports/export_${h}.txt"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          expected={'80C984D8':1800,'80C98A6B':12498,'80C993CD':5115,'80C993CF':13827,'80C997F5':2409,'80C99981':1800,'80CA0B70':556,'80CA0B72':772,'80CA0C60':1596}
+          out={}
+          for h,n in expected.items():
+              d=json.load(open(f'proof/TOWER_{h}.json'))
+              if d['decode_failure_count']!=0: raise SystemExit(f'{h}: v5 still has {d["decode_failure_count"]} decode failures')
+              if d['node_instance_count']!=n: raise SystemExit(f'{h}: emitted {d["node_instance_count"]} != {n}')
+              out[h]={'placements':n,'geometry_variants':d['geometry_variant_count'],'decode_failures':0}
+          Path('reports/nine_cell_v5_export.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Apply exact D1 retail visibility selection to all nine cells
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          declare -A d1=(
+            [80C984D8]=80C9858B
+            [80C98A6B]=80C98A77
+            [80C993CD]=80C994B1
+            [80C993CF]=80C994B2
+            [80C997F5]=80C9981A
+            [80C99981]=80C9999B
+            [80CA0B70]=80CA0B96
+            [80CA0B72]=80CA0B98
+            [80CA0C60]=80CA0C6B
+          )
+          for h in 80C984D8 80C98A6B 80C993CD 80C993CF 80C997F5 80C99981 80CA0B70 80CA0B72 80CA0C60; do
+            echo "VISUAL_FILTER $h"
+            python tools/d1_tower_visual_filter.py "${args[@]}" --runtime runtime \
+              --validation-json validation/tower_map_schema_validation.json \
+              --d1-static-map-data "${d1[$h]}" \
+              --input-glb "proof/TOWER_${h}.glb" \
+              --out "visual/TOWER_${h}_VISUAL.glb" \
+              --json "visual/TOWER_${h}_VISUAL.json"
+          done
+
+      - name: Merge nine strict visual cells and verify
+        run: |
+          set -euo pipefail
+          expected=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(sum(json.load(open(p))['visual_placements'] for p in Path('visual').glob('TOWER_*_VISUAL.json')))
+          PY
+          )
+          python tools/d1_tower_merge_placements.py \
+            --input visual/TOWER_80C984D8_VISUAL.glb \
+            --input visual/TOWER_80C98A6B_VISUAL.glb \
+            --input visual/TOWER_80C993CD_VISUAL.glb \
+            --input visual/TOWER_80C993CF_VISUAL.glb \
+            --input visual/TOWER_80C997F5_VISUAL.glb \
+            --input visual/TOWER_80C99981_VISUAL.glb \
+            --input visual/TOWER_80CA0B70_VISUAL.glb \
+            --input visual/TOWER_80CA0B72_VISUAL.glb \
+            --input visual/TOWER_80CA0C60_VISUAL.glb \
+            --out visual/D1_TOWER_NINE_CELL_RETAIL_VISIBLE.glb \
+            --json visual/D1_TOWER_NINE_CELL_RETAIL_VISIBLE.json \
+            --expected-placements "$expected"
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import trimesh
+          rows=[]
+          for p in sorted(Path('visual').glob('TOWER_*_VISUAL.json')):
+              d=json.load(open(p)); rows.append(d)
+          total_visual=sum(x['visual_placements'] for x in rows)
+          total_detail=sum(x['removed']['detail_level'] for x in rows)
+          total_material=sum(x['removed']['material_unk08'] for x in rows)
+          total_unresolved=sum(x['removed']['unresolved'] for x in rows)
+          p=Path('visual/D1_TOWER_NINE_CELL_RETAIL_VISIBLE.glb')
+          s=trimesh.load(p,force='scene',process=False)
+          if len(s.graph.nodes_geometry)!=total_visual: raise SystemExit('merged visual node mismatch')
+          if total_detail+total_material+total_visual!=40373:
+              raise SystemExit(f'visibility partition mismatch {total_detail}+{total_material}+{total_visual} != 40373')
+          if total_unresolved!=0: raise SystemExit(f'unresolved material selections remain: {total_unresolved}')
+          out={
+            'status':'D1_TOWER_NINE_CELL_RETAIL_VISIBLE_EXACT',
+            'serialized_placements':40373,
+            'detail_level_rejected':total_detail,
+            'detail_level_candidates':40373-total_detail,
+            'material_unk08_rejected_after_detail_gate':total_material,
+            'retail_visible_placements':total_visual,
+            'unresolved_material_states':total_unresolved,
+            'merged_geometry_variants':len(s.geometry),
+            'bounds':s.bounds.tolist() if s.bounds is not None else None,
+            'glb_bytes':p.stat().st_size,
+            'glb_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'cells':[{
+              'd1':x['d1_static_map_data'],
+              'visual_placements':x['visual_placements'],
+              'visual_geometry_variants':x['visual_geometry_variants'],
+              'detail_level_rejected':x['removed']['detail_level'],
+              'material_unk08_rejected':x['removed']['material_unk08'],
+              'unique_materials':x['unique_materials'],
+              'visual_materials':x['visual_materials'],
+              'bounds':x['bounds']
+            } for x in rows],
+            'rule':{'detail_level':[0,1,2,3,10],'material_unk08':1},
+            'reader':'v5 serialized-coverage sized Tiger reader',
+          }
+          Path('reports/nine_cell_retail_visible_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-nine-cell-retail-visible-v5
+          path: |
+            visual/
+            reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
