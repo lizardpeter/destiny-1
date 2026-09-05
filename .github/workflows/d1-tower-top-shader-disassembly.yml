@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-top-shader-disassembly.yml'
       - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_recover_member_catalog.py'
       - 'evidence/d1_tower_shader_dependency_member_catalog.json'
       - 'evidence/d1_tower_texture_dependency_member_catalog.json'
@@ -139,6 +140,20 @@ jobs:
           Path('reports/top40_disassembly_census.json').write_text(json.dumps(out,indent=2)+'\n')
           print(json.dumps([{k:r[k] for k in ('shader','visible_material_count','extract_error','gcn_bytes','image_instruction_count','image_ops')} for r in rows],indent=2))
           PY
+
+      - name: Map native image instructions to exact D1 t registers
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report reports/top40_shader_extract.json \
+            --disasm-dir disasm --out reports/top40_gcn_image_usage.json \
+            | tee reports/top40_gcn_image_usage_stdout.txt
+          rc=$?
+          set -e
+          # Partial extraction is allowed while dependency coverage is still
+          # being expanded, but any available disassembly must remain auditable.
+          test "$rc" -eq 0 -o "$rc" -eq 2
 
       - uses: actions/upload-artifact@v4
         if: always()
