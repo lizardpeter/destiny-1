@@ -1,0 +1,112 @@
+name: D1 Tower three-cell textured preview
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-three-cell-textured-preview.yml'
+      - 'tools/d1_world_texture_manifest_fill.py'
+      - 'tools/d1_world_apply_preview_materials.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Dependencies, runtime and prior exact artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime recovered_texture prior_texture prior_world out reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          gh run download 33980537616 -n d1-tower-visible-material-textures-v1 -D prior_texture
+          gh run download 33980963388 -n d1-tower-three-cell-world-uv-affine-v1 -D prior_world
+          test -f prior_texture/textures/material_texture_manifest.json
+          test -d prior_texture/textures/textures
+          test -f prior_world/world/D1_TOWER_THREE_CELL_WORLD_UV_AFFINE.glb
+
+      - name: Recover texture families required by the 22 unresolved resources
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt \
+            --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir recovered_texture --report reports/preview_texture_family_recovery.json
+
+      - name: Fill only the unresolved texture rows
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered_texture -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_texture_manifest_fill.py \
+            "${args[@]}" --runtime runtime \
+            --manifest prior_texture/textures/material_texture_manifest.json \
+            --texture-dir prior_texture/textures/textures \
+            --out-manifest reports/material_texture_manifest_complete.json \
+            | tee reports/fill_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/material_texture_manifest_complete.json'))
+          assert d['decoded_texture_tags']==657, d['decoded_texture_tags']
+          assert d['texture_errors']==0, d['texture_errors']
+          print('full exact texture closure confirmed: 657/657')
+          PY
+
+      - name: Build preview-only role inventory
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py \
+            reports/material_texture_manifest_complete.json \
+            -o reports/texture_role_inventory.json \
+            | tee reports/role_stdout.txt
+
+      - name: Bind strong-confidence base textures
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb prior_world/world/D1_TOWER_THREE_CELL_WORLD_UV_AFFINE.glb \
+            --manifest reports/material_texture_manifest_complete.json \
+            --roles reports/texture_role_inventory.json \
+            --texture-dir prior_texture/textures/textures \
+            --out out/D1_TOWER_THREE_CELL_TEXTURED_STRONG_BASE.glb \
+            --report reports/preview_strong_base.json
+
+      - name: Bind broad base-color preview candidates
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb prior_world/world/D1_TOWER_THREE_CELL_WORLD_UV_AFFINE.glb \
+            --manifest reports/material_texture_manifest_complete.json \
+            --roles reports/texture_role_inventory.json \
+            --texture-dir prior_texture/textures/textures \
+            --include-medium-base \
+            --out out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE.glb \
+            --report reports/preview_broad_base.json
+          ls -lh out/*.glb
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-three-cell-textured-preview
+          path: |
+            out/
+            reports/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
