@@ -12,6 +12,10 @@ This tool deliberately separates three evidence levels:
 It is useful for prioritising shader families and for making a visibly textured
 world preview without contaminating the canonical reverse-engineering record with
 `t0 == albedo` guesses.
+
+A native-dataflow role is authoritative even when it has no portable glTF slot.
+In particular, a color-capable BC/RGBA texture proven to be an alpha/scalar/LOD
+mask must never fall back to the generic "sole color t0" preview heuristic.
 """
 from __future__ import annotations
 
@@ -96,7 +100,10 @@ def main()->int:
 
         # Canonically proven roles take precedence in the portable adapter. Only
         # when no instruction-proven direct base/normal exists do we fall back to
-        # format-based preview heuristics.
+        # format-based preview heuristics, and those heuristics may consider only
+        # rows whose semantics remain unproven. A proven non-portable mask/LOD/
+        # palette role is negative evidence against treating that same binding as
+        # base color or a normal merely because its storage format looks suitable.
         proven_base=[r for r in rows if r.get('proven_role') in PORTABLE_BASE_COLOR_ROLES]
         proven_normal=[r for r in rows if r.get('proven_role') in PORTABLE_NORMAL_ROLES]
         base=None;base_reason=None;base_conf='NONE'
@@ -111,28 +118,28 @@ def main()->int:
             normal_reason=f'native shader dataflow proves {proven_normal[0]["proven_role"]}'
 
         # Preview-only fallback selection. This is intentionally not canonical
-        # semantic promotion. Prefer a t0 color texture paired with a same-size
-        # BC5 resource; otherwise permit a sole color-capable t0.
+        # semantic promotion. Prefer an *unproven* t0 color texture paired with a
+        # same-size unproven BC5 resource; otherwise permit a sole unproven color
+        # t0. Proven non-portable roles are excluded from all fallback candidates.
         byidx={r['texture_index']:r for r in rows}
         t0=byidx.get(0)
-        if base is None and t0 and t0['resource_class']=='COLOR_CAPABLE_2D':
+        if base is None and t0 and not t0.get('proven_role') and t0['resource_class']=='COLOR_CAPABLE_2D':
             t0shape=t0['shape']
-            paired=[r for r in rows if r['texture_index']!=0 and r['resource_class']=='VECTOR_BC5_2D' and r['shape']==t0shape]
+            paired=[r for r in rows if r['texture_index']!=0 and not r.get('proven_role') and r['resource_class']=='VECTOR_BC5_2D' and r['shape']==t0shape]
             if paired:
-                base=t0['texture'];base_reason='t0 color-capable 2D paired with same-resolution BC5 vector resource';base_conf='STRONG_FORMAT_CANDIDATE'
+                base=t0['texture'];base_reason='unproven t0 color-capable 2D paired with same-resolution unproven BC5 vector resource';base_conf='STRONG_FORMAT_CANDIDATE'
             else:
-                color2d=[r for r in rows if r['resource_class']=='COLOR_CAPABLE_2D']
+                color2d=[r for r in rows if not r.get('proven_role') and r['resource_class']=='COLOR_CAPABLE_2D']
                 if len(color2d)==1:
-                    base=t0['texture'];base_reason='sole color-capable 2D PS resource and occupies t0';base_conf='MEDIUM_PREVIEW_CANDIDATE'
+                    base=t0['texture'];base_reason='sole unproven color-capable 2D PS resource and occupies t0';base_conf='MEDIUM_PREVIEW_CANDIDATE'
 
         # D1 frequently places scalar masks at t0 and the actual surface/normal
-        # pair in later registers.  For previews, recognize a *unique* exact-size
-        # COLOR_CAPABLE_2D + BC5 pair regardless of register number.  This is a
-        # format/topology candidate only: the exact t# bindings remain canonical,
-        # and no shader semantic is promoted from this heuristic.
+        # pair in later registers. For previews, recognize a *unique* exact-size
+        # unproven COLOR_CAPABLE_2D + BC5 pair regardless of register number. This
+        # remains format/topology evidence only.
         if base is None:
-            color_rows=[r for r in rows if r['resource_class']=='COLOR_CAPABLE_2D']
-            normal_rows=[r for r in rows if r['resource_class']=='VECTOR_BC5_2D']
+            color_rows=[r for r in rows if not r.get('proven_role') and r['resource_class']=='COLOR_CAPABLE_2D']
+            normal_rows=[r for r in rows if not r.get('proven_role') and r['resource_class']=='VECTOR_BC5_2D']
             pairs=[(c,n) for c in color_rows for n in normal_rows if c['shape']==n['shape']]
             # Deduplicate repeated bindings of the same texture pair (some D1
             # shaders bind one physical texture to multiple t# registers).
@@ -140,20 +147,20 @@ def main()->int:
             if len(uniq)==1:
                 c,n=next(iter(uniq.values()))
                 base=c['texture'];base_conf='STRONG_FORMAT_CANDIDATE'
-                base_reason=f'unique same-resolution color-capable/BC5 pair at t{c["texture_index"]}/t{n["texture_index"]}; preview-only'
+                base_reason=f'unique same-resolution unproven color-capable/BC5 pair at t{c["texture_index"]}/t{n["texture_index"]}; preview-only'
                 if normal is None:
                     normal=n['texture'];normal_conf='STRONG_FORMAT_CANDIDATE'
-                    normal_reason=f'unique same-resolution BC5 paired with preview color at t{c["texture_index"]}; preview-only'
+                    normal_reason=f'unique same-resolution unproven BC5 paired with preview color at t{c["texture_index"]}; preview-only'
 
         if normal is None and base:
             bs=tex_shape(textures.get(base,{}))
-            same=[r for r in rows if r['resource_class']=='VECTOR_BC5_2D' and r['shape']==bs]
+            same=[r for r in rows if not r.get('proven_role') and r['resource_class']=='VECTOR_BC5_2D' and r['shape']==bs]
             # Avoid silently selecting between genuinely distinct same-size normal
             # resources; duplicate t# bindings of one physical texture are fine.
             bytex={r['texture']:r for r in same}
             if len(bytex)==1:
                 r=next(iter(bytex.values()))
-                normal=r['texture'];normal_reason='unique BC5 PS resource matches preview base dimensions';normal_conf='STRONG_FORMAT_CANDIDATE'
+                normal=r['texture'];normal_reason='unique unproven BC5 PS resource matches preview base dimensions';normal_conf='STRONG_FORMAT_CANDIDATE'
 
         rec={
             'material':mh,'pixel_shader':ps,'bindings':rows,
@@ -182,14 +189,14 @@ def main()->int:
     base_counts=Counter(x['preview_base_confidence'] for x in material_semantics.values())
     norm_counts=Counter(x['preview_normal_confidence'] for x in material_semantics.values())
     out={
-        'schema_version':4,
+        'schema_version':5,
         'status':'D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED',
         'source_status':d.get('status'),
         'material_count':len(material_semantics),'pixel_shader_count':len(shader_inventory),
         'preview_base_coverage':dict(base_counts),'preview_normal_coverage':dict(norm_counts),
         'shader_inventory':dict(sorted(shader_inventory.items(),key=lambda kv:(-kv[1]['material_count'],kv[0]))),
         'materials':material_semantics,
-        'policy':'PROVEN roles are canonical instruction-level semantics. STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE remain adapter hints only and never overwrite exact shader t# bindings. Unique non-t0 color/BC5 format pairs may be used for preview fidelity without semantic promotion.',
+        'policy':'PROVEN roles are canonical instruction-level semantics and exclude incompatible preview fallbacks on the same binding. STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE apply only to still-unproven bindings and never overwrite exact shader t# semantics.',
     }
     a.output.parent.mkdir(parents=True,exist_ok=True)
     a.output.write_text(json.dumps(out,indent=2)+'\n')
