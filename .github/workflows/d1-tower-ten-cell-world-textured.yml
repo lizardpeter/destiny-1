@@ -1,0 +1,182 @@
+name: D1 Tower ten-cell corrected textured world
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-ten-cell-world-textured.yml'
+      - 'tools/d1_world_static_visual_export.py'
+      - 'tools/d1_world_static_vertex_decode.py'
+      - 'tools/d1_world_static_common.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_world_apply_preview_materials.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  world:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime recovered validation world reports texture_deps textures out chunks
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact current Tower corpus and validate ten map-owned cells
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v5.py "${args[@]}" --runtime runtime --out validation | tee reports/validator_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          wanted=['80C98254','80C984D8','80C98A6B','80C993CD','80C993CF','80C997F5','80C99981','80CA0B70','80CA0B72','80CA0C60']
+          rows={x['hash'].upper():x for x in d.get('static_map_data',[])}
+          bad=[]
+          for h in wanted:
+              r=rows.get(h)
+              if not r or not r.get('ok') or not r.get('d1_validation',{}).get('ok'):
+                  bad.append(h)
+          if bad: raise SystemExit('ten-cell validation failed: '+','.join(bad))
+          r=rows['80C98254']['d1_validation']
+          if r['instance_count']!=1946 or r['instance_transforms'].upper()!='80CA1496':
+              raise SystemExit(f'10th cell invariant changed: {r["instance_count"]} {r["instance_transforms"]}')
+          print('TEN_CELL_VALIDATION_OK')
+          PY
+
+      - name: Export all ten retail-visible cells with corrected affine transforms and UVs
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          cells='80C98254 80C984D8 80C98A6B 80C993CD 80C993CF 80C997F5 80C99981 80CA0B70 80CA0B72 80CA0C60'
+          for h in $cells; do
+            python tools/d1_world_static_visual_export.py "${args[@]}" --runtime runtime \
+              --validation-json validation/tower_map_schema_validation.json --static-map-data "$h" --basis gltf-y-up \
+              --out "world/TOWER_${h}_WORLD.glb" --json "world/TOWER_${h}_WORLD.json" | tee "reports/world_${h}.txt"
+          done
+          mergeargs=(); for h in $cells; do mergeargs+=(--input "world/TOWER_${h}_WORLD.glb"); done
+          python tools/d1_tower_merge_placements.py "${mergeargs[@]}" \
+            --out world/D1_TOWER_TEN_CELL_WORLD_UV_AFFINE.glb --json world/D1_TOWER_TEN_CELL_WORLD_UV_AFFINE.json
+          python - <<'PY'
+          import json
+          cells=['80C98254','80C984D8','80C98A6B','80C993CD','80C993CF','80C997F5','80C99981','80CA0B70','80CA0B72','80CA0C60']
+          rows=[json.load(open(f'world/TOWER_{h}_WORLD.json')) for h in cells]
+          merged=json.load(open('world/D1_TOWER_TEN_CELL_WORLD_UV_AFFINE.json'))
+          out={
+            'cell_count':10,
+            'serialized_placements':sum(x['serialized_placements'] for x in rows),
+            'retail_visible_placements':sum(x['retail_visible_placements'] for x in rows),
+            'merged_placements':merged['serialized_placement_nodes'],
+            'geometry_variants':sum(x['geometry_variants'] for x in rows),
+            'decode_errors':sum(x['decode_error_count'] for x in rows),
+            'attribute_undecoded_geometry':sum(sum(1 for g in x['geometry'] if g.get('layout',{}).get('secondary',{}).get('status')=='UNDECODED') for x in rows),
+            'per_cell':{h:{'serialized':r['serialized_placements'],'visible':r['retail_visible_placements'],'geometry_variants':r['geometry_variants'],'decode_errors':r['decode_error_count']} for h,r in zip(cells,rows)}
+          }
+          if out['decode_errors']!=0: raise SystemExit(f'geometry decode errors remain: {out}')
+          if out['retail_visible_placements']!=out['merged_placements']: raise SystemExit(f'merge mismatch: {out}')
+          if out['retail_visible_placements']<=9360: raise SystemExit(f'10th cell added no retail-visible geometry: {out}')
+          open('reports/ten_cell_geometry_summary.json','w').write(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Recover known texture dependency families
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir texture_deps --report reports/texture_family_recovery.json
+
+      - name: Extract exact ten-cell material and texture corpus
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered texture_deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          vis=(); for h in 80C98254 80C984D8 80C98A6B 80C993CD 80C993CF 80C997F5 80C99981 80CA0B70 80CA0B72 80CA0C60; do vis+=(--visual-json "world/TOWER_${h}_WORLD.json"); done
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime "${vis[@]}" --out textures | tee reports/texture_export_stdout.txt
+          cp textures/material_texture_manifest.json reports/material_texture_manifest_ten_cell.json
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o reports/texture_role_inventory_ten_cell.json
+          python - <<'PY'
+          import json
+          d=json.load(open('textures/material_texture_manifest.json'))
+          s={k:d[k] for k in ['visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids']}
+          open('reports/ten_cell_texture_summary.json','w').write(json.dumps(s,indent=2)+'\n')
+          print(json.dumps(s,indent=2))
+          PY
+
+      - name: Bind current broad base-color and normal preview to ten-cell scene
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb world/D1_TOWER_TEN_CELL_WORLD_UV_AFFINE.glb \
+            --manifest textures/material_texture_manifest.json --roles reports/texture_role_inventory_ten_cell.json \
+            --texture-dir textures/textures --include-medium-base --bind-normal-candidates \
+            --out out/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --report reports/ten_cell_textured_report.json
+          sha256sum out/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb | tee reports/ten_cell_textured_sha256.txt
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          import trimesh
+          p=Path('out/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb')
+          s=trimesh.load(p,force='scene',process=False)
+          geo=json.load(open('reports/ten_cell_geometry_summary.json'))
+          if len(s.graph.nodes_geometry)!=geo['retail_visible_placements']:
+              raise SystemExit(f'reload placement mismatch {len(s.graph.nodes_geometry)} != {geo["retail_visible_placements"]}')
+          rep=json.load(open('reports/ten_cell_textured_report.json'))
+          final={'status':'D1_TOWER_TEN_CELL_CURRENT_TEXTURED_REGRESSION','placements':len(s.graph.nodes_geometry),'geometry_variants':len(s.geometry),'bounds':s.bounds.tolist() if s.bounds is not None else None,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'material_report':rep}
+          open('reports/FINAL_TEN_CELL_MODEL.json','w').write(json.dumps(final,indent=2)+'\n')
+          print(json.dumps({k:final[k] for k in ['status','placements','geometry_variants','bounds','bytes','sha256']},indent=2))
+          PY
+
+      - name: Split final model for reliable handoff
+        run: |
+          set -euo pipefail
+          split -b 90M -d -a 2 out/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb chunks/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part
+          cp reports/ten_cell_textured_sha256.txt reports/FINAL_TEN_CELL_MODEL.json reports/ten_cell_geometry_summary.json reports/ten_cell_texture_summary.json chunks/
+          python - <<'PY'
+          from pathlib import Path
+          parts=sorted(p.name for p in Path('chunks').glob('*.glb.part*'))
+          out='D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb'
+          Path('chunks/REASSEMBLE_WINDOWS.cmd').write_text('@echo off\r\ncopy /b '+ '+'.join(parts)+' '+out+'\r\ncertutil -hashfile '+out+' SHA256\r\npause\r\n')
+          Path('chunks/README_REASSEMBLE.txt').write_text('Download and unzip every part archive into one folder, then run REASSEMBLE_WINDOWS.cmd. The script concatenates the exact GLB parts and prints its SHA256.\nParts:\n'+'\n'.join(parts)+'\n')
+          print('parts',parts)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-ten-cell-corrected-textured-reports
+          path: |
+            reports/
+            world/D1_TOWER_TEN_CELL_WORLD_UV_AFFINE.json
+            world/TOWER_80C98254_WORLD.json
+          retention-days: 14
+          compression-level: 6
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: d1-tower-ten-cell-current-model-chunks
+          path: chunks/
+          retention-days: 14
+          compression-level: 0
