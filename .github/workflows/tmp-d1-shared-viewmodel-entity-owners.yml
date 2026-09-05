@@ -1,0 +1,74 @@
+name: Temporary decode shared viewmodel entity owner resources
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-shared-viewmodel-entity-owners.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+      - name: Parse exact s_entity Resource arrays and compare
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          tags=['80AA3CA0','80AA3CA1','80AA3CA2']
+          def dyn(b,field):
+              count=struct.unpack_from('<I',b,field)[0];rel=struct.unpack_from('<q',b,field+8)[0];data=field+rel+0x18;return count,data,rel
+          rows=[]
+          for t in tags:
+              e=by[t];b=r.entry(e['index']);Path('out/raw',t+'.bin').write_bytes(b)
+              count,data,rel=dyn(b,0x20);items=[]
+              for i in range(count):
+                  o=data+i*0x0c;h=struct.unpack_from('<I',b,o)[0];x=by.get(f'{h:08X}')
+                  items.append({'resource_index':i,'offset':o,'file_hash':f'{h:08X}','entry':None if x is None else {'index':x['index'],'reference':x['reference'].upper(),'size':x['file_size'],'type':x['type'],'subtype':x['subtype']},
+                                'row_tail_hex':b[o+4:o+12].hex()})
+              rows.append({'entity':t,'entry_index':e['index'],'size':len(b),'sha256':hashlib.sha256(b).hexdigest(),
+                           'resource_count':count,'resource_data_offset':data,'resource_relative':rel,'resources':items})
+          # Compare resource hashes by slot and set.
+          slot=[]
+          mx=max(x['resource_count'] for x in rows)
+          for i in range(mx):
+              vals=[x['resources'][i]['file_hash'] if i<x['resource_count'] else None for x in rows]
+              slot.append({'slot':i,'values':vals,'all_equal':len(set(vals))==1})
+          sets=[set(y['file_hash'] for y in x['resources']) for x in rows]
+          rep={'entities':rows,'slot_comparison':slot,'common_resources':sorted(set.intersection(*sets)),
+               'unique_resources':{x['entity']:sorted(set(y['file_hash'] for y in x['resources'])-set.union(*(s for j,s in enumerate(sets) if j!=i))) for i,x in enumerate(rows)},
+               'policy':'s_entity Resource[] at +0x20, 0x0C rows. Hashes and slot order serialized exactly; row-tail semantics not guessed.'}
+          Path('out/shared_viewmodel_entity_owners.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-shared-viewmodel-entity-owners
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
