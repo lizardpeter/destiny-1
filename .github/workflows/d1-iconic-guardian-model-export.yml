@@ -1,0 +1,114 @@
+name: D1 iconic Guardian exact model exports
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-iconic-guardian-model-export.yml'
+      - 'tools/d1_model_joint_probe.py'
+      - 'tools/d1_entity_model_export.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - key: saint14_feminine
+            label: 'Helm of Saint-14 feminine'
+            family: '00fe'
+            start: '0x3FAF48600'
+            latest: 'ps4_gear_player_00fe_5.pkg'
+            model: '809FCB35'
+            targets: '--target ps4_gear_player_00fe_0.pkg --target ps4_gear_player_00fe_1.pkg --target ps4_gear_player_00fe_2.pkg --target ps4_gear_player_00fe_5.pkg'
+          - key: saint14_masculine
+            label: 'Helm of Saint-14 masculine'
+            family: '0103'
+            start: '0x406EAF600'
+            latest: 'ps4_gear_player_0103_5.pkg'
+            model: '80A074C2'
+            targets: '--target ps4_gear_player_0103_0.pkg --target ps4_gear_player_0103_1.pkg --target ps4_gear_player_0103_2.pkg --target ps4_gear_player_0103_5.pkg'
+          - key: praxic_feminine
+            label: 'Heart of the Praxic Fire feminine'
+            family: '0101'
+            start: '0x400D53E00'
+            latest: 'ps4_gear_player_0101_5.pkg'
+            model: '80A03B83'
+            targets: '--target ps4_gear_player_0101_0.pkg --target ps4_gear_player_0101_1.pkg --target ps4_gear_player_0101_2.pkg --target ps4_gear_player_0101_5.pkg'
+          - key: praxic_masculine
+            label: 'Heart of the Praxic Fire masculine'
+            family: '0102'
+            start: '0x40513EE00'
+            latest: 'ps4_gear_player_0102_5.pkg'
+            model: '80A044CF'
+            targets: '--target ps4_gear_player_0102_0.pkg --target ps4_gear_player_0102_1.pkg --target ps4_gear_player_0102_2.pkg --target ps4_gear_player_0102_5.pkg'
+          - key: nighthawk_feminine
+            label: 'Celestial Nighthawk feminine'
+            family: '013c'
+            start: '0x5A4FC5000'
+            latest: 'ps4_investment_assets_013c_5.pkg'
+            model: '80A7825D'
+            targets: '--target ps4_investment_assets_013c_1.pkg --target ps4_investment_assets_013c_2.pkg --target ps4_investment_assets_013c_3.pkg --target ps4_investment_assets_013c_5.pkg'
+          - key: nighthawk_masculine
+            label: 'Celestial Nighthawk masculine'
+            family: '013d'
+            start: '0x5A6846000'
+            latest: 'ps4_investment_assets_013d_5.pkg'
+            model: '80A7B854'
+            targets: '--target ps4_investment_assets_013d_1.pkg --target ps4_investment_assets_013d_2.pkg --target ps4_investment_assets_013d_3.pkg --target ps4_investment_assets_013d_4.pkg --target ps4_investment_assets_013d_5.pkg'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies
+        run: python -m pip install -q numpy trimesh
+      - name: Recover verified runtime and exact package family
+        env:
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          eval python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset '${{ matrix.start }}' $TARGETS \
+            --out recovered --manifest out/extract_${{ matrix.key }}.json --retries 6 --timeout 90
+      - name: Export exact model and inspect retail joints
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_entity_model_probe.py recovered/${{ matrix.latest }} --runtime runtime \
+            --tag-hash '${{ matrix.model }}' -o out/${{ matrix.key }}_model.json
+          python tools/d1_model_joint_probe.py recovered/${{ matrix.latest }} --runtime runtime \
+            --tag-hash '${{ matrix.model }}' -o out/${{ matrix.key }}_joints.json
+          python tools/d1_entity_model_export.py recovered/${{ matrix.latest }} --runtime runtime \
+            --tag-hash '${{ matrix.model }}' --out out/${{ matrix.key }}.glb --json out/${{ matrix.key }}_geometry.json
+          python - <<'PY'
+          import json,os
+          key=os.environ['KEY']
+          j=json.load(open(f'out/{key}_joints.json'))
+          g=json.load(open(f'out/{key}_geometry.json'))
+          print(os.environ['LABEL'])
+          print('model',os.environ['MODEL'],'joint_domain',j['joint_domain'])
+          print('geometry',g['geometry_count'],'triangles',g['triangle_count'],'bounds',g['bounds'])
+          PY
+        env:
+          KEY: ${{ matrix.key }}
+          LABEL: ${{ matrix.label }}
+          MODEL: ${{ matrix.model }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-guardian-model-${{ matrix.key }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
