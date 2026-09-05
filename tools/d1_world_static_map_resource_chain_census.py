@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
-"""Close D1 SMapDataEntry -> static-map ownership chains for a world.
+"""Close D1 SMapDataEntry -> SStaticMapData ownership chains for a world.
 
-This sits immediately above the baked-static parser.  It uses the now binary-
-validated D1 DynamicArray framing and 0x90 SMapDataEntry layout, then follows only
-the source-backed static-map resource class:
+This sits immediately above the baked-static/common-layer parsers. It uses the
+binary-validated D1 DynamicArray framing and 0x90 SMapDataEntry layout, then
+follows the source-backed map resource chain:
 
   SMapDataTable/808009A2
     -> SMapDataEntry[0x90].DataResource +0x88
     -> class 80801AEA / SMapDataResource
     -> +0x0C SStaticMapParent/80801AC6
     -> parent +0x08 SStaticMapData/808008B4
-    -> static-map +0x30 D1 static data/80801B75
 
-The tool also records the post-array resource sidecar exactly.  Tower's shipped
-files have a useful invariant: the 0x90 entry array is followed by one 0x18-spaced
-resource sidecar slot per entry.  This explains why whole-file size can be
-misleadingly factorized as 0x30 + count*0xA8; 0xA8 is NOT the SMapDataEntry stride.
+An SStaticMapData is then *classified*, not forced into one subtype. In shipped
+Tower data there are two proven families:
 
-Unknown/unavailable targets are retained as evidence rather than guessed.  A
-chain is "closed" only when every class-linked hop above resolves in the current
-class-stable corpus.
+- baked-static carriers whose +0x30 target is 80801B75 D1 static-map data;
+- large/common carriers with no direct 80801B75 child, handled separately by the
+  table-scoped embedded-model/decal pipeline.
+
+This distinction is essential: all 337 Tower map entries close through
+SStaticMapData, but only the 10 baked carriers have direct 80801B75 children.
+The 9 common carriers are legitimate map resources, not broken baked-static
+chains.
+
+The tool also records the post-array resource sidecar exactly. Tower's shipped
+files have one 0x18-spaced resource sidecar slot per 0x90 entry. Thus whole-file
+size can be factorized as 0x30 + count*0xA8, but 0xA8 is NOT the entry stride.
 """
 from __future__ import annotations
 
@@ -135,6 +141,7 @@ def main() -> int:
                 'resource_class': None,
                 'static_map_parent': None,
                 'static_map': None,
+                'static_map_kind': None,
                 'd1_static_map_data': None,
                 'chain_closed': False,
             }
@@ -180,20 +187,26 @@ def main() -> int:
                 r['error'] = 'static_map_missing_or_class_mismatch'
                 tr['entries'].append(r); rows.append(r); continue
 
+            # Ownership is now fully closed. Subtype classification is separate.
+            r['chain_closed'] = True
             sb, ssrc = c.payload(sm_hash)
             r['static_map_payload_source'] = ssrc
-            if sb is None or len(sb) < 0x34:
-                r['error'] = 'static_map_payload_unavailable_or_short'
-                tr['entries'].append(r); rows.append(r); continue
+            if sb is None:
+                r['static_map_kind'] = 'payload_unavailable'
+                r['classification_error'] = 'static_map_payload_unavailable'
+            elif len(sb) < 0x34:
+                r['static_map_kind'] = 'no_direct_d1_static_child'
+                r['direct_d1_field_available'] = False
+            else:
+                d1_hash = hx(u32(sb, 0x30))
+                d1 = target(c, d1_hash, D1_STATIC_MAP_DATA)
+                r['d1_static_map_data_candidate'] = d1
+                if d1['reference_matches']:
+                    r['static_map_kind'] = 'direct_d1_baked_static'
+                    r['d1_static_map_data'] = d1
+                else:
+                    r['static_map_kind'] = 'no_direct_d1_static_child'
 
-            d1_hash = hx(u32(sb, 0x30))
-            d1 = target(c, d1_hash, D1_STATIC_MAP_DATA)
-            r['d1_static_map_data'] = d1
-            if not d1['reference_matches']:
-                r['error'] = 'd1_static_map_data_missing_or_class_mismatch'
-                tr['entries'].append(r); rows.append(r); continue
-
-            r['chain_closed'] = True
             tr['entries'].append(r)
             rows.append(r)
 
@@ -217,53 +230,60 @@ def main() -> int:
             'entry_count': len(tr['entries']),
             'closed_chains': sum(bool(x.get('chain_closed')) for x in tr['entries']),
             'resource_classes': dict(Counter(x.get('resource_class') or 'NULL' for x in tr['entries'])),
+            'static_map_kinds': dict(Counter(x.get('static_map_kind') or 'UNCLASSIFIED' for x in tr['entries'] if x.get('chain_closed'))),
             'unique_static_map_parents': len({x['static_map_parent']['hash'] for x in tr['entries'] if x.get('static_map_parent')}),
             'unique_static_maps': len({x['static_map']['hash'] for x in tr['entries'] if x.get('static_map')}),
-            'unique_d1_static_map_data': len({x['d1_static_map_data']['hash'] for x in tr['entries'] if x.get('d1_static_map_data')}),
+            'unique_direct_d1_static_map_data': len({x['d1_static_map_data']['hash'] for x in tr['entries'] if x.get('d1_static_map_data')}),
         }
         tables.append(tr)
 
     closed = [x for x in rows if x.get('chain_closed')]
     static_maps = Counter(x['static_map']['hash'] for x in closed)
     parents = Counter(x['static_map_parent']['hash'] for x in closed)
-    d1_maps = Counter(x['d1_static_map_data']['hash'] for x in closed)
+    baked = [x for x in closed if x.get('static_map_kind') == 'direct_d1_baked_static']
+    nonbaked = [x for x in closed if x.get('static_map_kind') == 'no_direct_d1_static_child']
+    unclassified = [x for x in closed if x.get('static_map_kind') not in {'direct_d1_baked_static', 'no_direct_d1_static_child'}]
+    d1_maps = Counter(x['d1_static_map_data']['hash'] for x in baked)
     expected = [norm(x) for x in a.expected_static_map]
     expected_counts = {h: static_maps.get(h, 0) for h in expected}
 
-    # The static-map chain itself is a class-linked invariant.  A caller can pass
-    # known maps to make subset ownership fail closed without hard-coding Tower in
-    # this generic tool.
     if expected and any(v != 1 for v in expected_counts.values()):
         violations.append('one_or_more_expected_static_maps_not_unique:' + json.dumps(expected_counts, sort_keys=True))
+    if unclassified:
+        violations.append(f'unclassified_static_map_rows:{len(unclassified)}')
 
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED' if len(closed) == len(rows) and not violations else 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_PARTIAL',
         'pinned_source': PINNED_SOURCE,
         'map_data_table_count': len(tables),
         'entry_count': len(rows),
         'closed_chain_count': len(closed),
         'resource_class_counts': dict(Counter(x.get('resource_class') or 'NULL' for x in rows)),
+        'static_map_kind_counts': dict(Counter(x.get('static_map_kind') or 'UNCLASSIFIED' for x in closed)),
         'unique_static_map_parent_count': len(parents),
         'unique_static_map_count': len(static_maps),
-        'unique_d1_static_map_data_count': len(d1_maps),
+        'direct_d1_baked_entry_count': len(baked),
+        'no_direct_d1_static_child_entry_count': len(nonbaked),
+        'unique_direct_d1_static_map_data_count': len(d1_maps),
         'duplicate_parent_targets': {k: v for k, v in parents.items() if v != 1},
-        'duplicate_static_map_targets': {k: v for k, v in static_maps.items() if v != 1},
-        'duplicate_d1_static_map_targets': {k: v for k, v in d1_maps.items() if v != 1},
+        'static_map_reference_counts': dict(static_maps),
         'expected_static_map_counts': expected_counts,
         'static_maps': sorted(static_maps),
-        'd1_static_map_data': sorted(d1_maps),
+        'direct_d1_static_map_data': sorted(d1_maps),
         'tables': tables,
         'violations': violations,
-        'policy': 'Only class-linked source-backed fields are followed. 0x90 remains the SMapDataEntry stride; post-array sidecar bytes are reported separately and never reinterpreted as an enlarged entry stride.',
+        'policy': 'Ownership closes at SStaticMapData. +0x30 is used only to classify a direct 80801B75 baked-static child; common carriers without that child are valid and are not treated as broken chains. 0x90 remains the SMapDataEntry stride; the post-array 0x18-per-entry resource sidecar is separate.',
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({k: out[k] for k in (
         'status', 'map_data_table_count', 'entry_count', 'closed_chain_count',
-        'resource_class_counts', 'unique_static_map_parent_count',
-        'unique_static_map_count', 'unique_d1_static_map_data_count',
-        'expected_static_map_counts', 'violations')}, indent=2))
+        'resource_class_counts', 'static_map_kind_counts',
+        'unique_static_map_parent_count', 'unique_static_map_count',
+        'direct_d1_baked_entry_count', 'no_direct_d1_static_child_entry_count',
+        'unique_direct_d1_static_map_data_count', 'expected_static_map_counts',
+        'violations')}, indent=2))
     return 0 if out['status'] == 'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED' else 2
 
 
