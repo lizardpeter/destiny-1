@@ -1,0 +1,199 @@
+name: D1 Tower first two static cells direct-range
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-first-two-static-cells-direct.yml'
+      - 'tools/d1_tower_map_schema_validate_v3.py'
+      - 'tools/d1_tower_static_chunk_export_v3.py'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install numpy trimesh
+          mkdir -p runtime recovered validation export reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Verify current family names still match pinned corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names={Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()}
+          expected={
+            '009f': {'ps4_arch_human_earth_city_009f_0.pkg','ps4_arch_human_earth_city_009f_1.pkg','ps4_arch_human_earth_city_009f_2.pkg','ps4_arch_human_earth_city_009f_4.pkg'},
+            '0250': {f'ps4_city_tower_destination_0250_{i}.pkg' for i in range(6)},
+            '0157': {f'ps4_globals_0157_{i}.pkg' for i in range(7)},
+          }
+          current={
+            '009f': {x for x in names if re.match(r'^ps4_arch_human_earth_city_009f_[0-9]+\.pkg$',x,re.I)},
+            '0250': {x for x in names if re.match(r'^ps4_city_tower_destination_0250_[0-9]+\.pkg$',x,re.I)},
+            '0157': {x for x in names if re.match(r'^ps4_globals_0157_[0-9]+\.pkg$',x,re.I)},
+          }
+          for k in expected:
+              if current[k] != expected[k]:
+                  raise SystemExit(f'{k} current family changed: expected={sorted(expected[k])}, current={sorted(current[k])}')
+          Path('reports/current_family_check.json').write_text(json.dumps({k:sorted(v) for k,v in current.items()},indent=2)+'\n')
+          print(json.dumps({k:sorted(v) for k,v in current.items()},indent=2))
+          PY
+
+      - name: Direct-range recover pinned 009F/0250 plus all current 0157 snapshots
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          # 009F/0250 offsets + SHA-256: successful validator run 33944444030.
+          # 0157 offsets/sizes: evidence/d1_weapon_globals_member_catalog.json,
+          # sourced from successful split-TAR run 33928590037. 0157 SHA values are
+          # recorded now; archive identity is anchored first by the pinned SHA rows.
+          pinned=[
+            ('ps4_arch_human_earth_city_009f_0.pkg',2870153216,269680640,'7446d5c4b8c2ca3fed6bb0b13a649ff68052a8a2fcfa3aae1b38bf8356c54813'),
+            ('ps4_arch_human_earth_city_009f_1.pkg',3139834368,32270336,'e5907ac4b5ba8256c23b667b5f1b237b729db824503a225c9b39daad993d7719'),
+            ('ps4_arch_human_earth_city_009f_2.pkg',3172105216,203638784,'467047bcfab0281f0f1a69ea2e43038c9e1bc616b0214f1cdc62eb7666844b24'),
+            ('ps4_arch_human_earth_city_009f_4.pkg',3375744512,116736,'0f58f8042d96852a1641e4b4378d2b6f7316b15ba8c6294cd5674e5ac61dc504'),
+            ('ps4_city_tower_destination_0250_0.pkg',7882616320,294875136,'beb269a2673f1106e2eff20ff577d0221d7fa56a8b71f5f8763cf34272114b32'),
+            ('ps4_city_tower_destination_0250_1.pkg',8177491968,17983488,'87904a97ce9899305b6bdba9df960d220749b3b2398c4ba8bd97e6efb8f81f91'),
+            ('ps4_city_tower_destination_0250_2.pkg',8195475968,11143168,'7543c1926023ec76ff8949618e04e1d0a93609f8448a1f8f875fcfc505a6b219'),
+            ('ps4_city_tower_destination_0250_3.pkg',8206619648,206848,'1db9423081f922b78cce256641dfab195e6a4b4afb6020e4e0c5029234f19375'),
+            ('ps4_city_tower_destination_0250_4.pkg',8206827008,17901568,'5a9370d60724622fb6592a7bcfa2fc4dbb40a4fca5cd696ce8db086a5756e84f'),
+            ('ps4_city_tower_destination_0250_5.pkg',8224729088,1677312,'2066afe09503eee4c35d948f6749a6e7b7b02572dcd41d1d3ca679fa523ea22c'),
+          ]
+          globals157=[
+            ('ps4_globals_0157_0.pkg',18974578176,206192640),
+            ('ps4_globals_0157_1.pkg',19180771328,30326784),
+            ('ps4_globals_0157_2.pkg',19211098624,30464000),
+            ('ps4_globals_0157_3.pkg',19241563136,268288),
+            ('ps4_globals_0157_4.pkg',19241831936,546816),
+            ('ps4_globals_0157_5.pkg',19242379264,380928),
+            ('ps4_globals_0157_6.pkg',19242760704,356352),
+          ]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          rows=[]
+          for name,off,size,expected in pinned:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=expected.lower(): raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
+              rows.append({'name':name,'data_offset':off,'size':size,'sha256':got,'sha_pinned':True})
+              print('PINNED',name,size,got,flush=True)
+          for name,off,size in globals157:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              rows.append({'name':name,'data_offset':off,'size':size,'sha256':got,'sha_pinned':False,'offset_source':'evidence/d1_weapon_globals_member_catalog.json'})
+              print('0157',name,size,got,flush=True)
+          Path('reports/member_catalog_direct.json').write_text(json.dumps({'members':rows},indent=2)+'\n')
+          PY
+
+      - name: Resolve 80AAE174 across the complete current 0157 generation family
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          import d1_tower_map_schema_validate_v3 as v3
+          snaps=sorted(Path('recovered').glob('ps4_globals_0157_*.pkg'),key=lambda p:int(re.search(r'_(\d+)\.pkg$',p.name).group(1)))
+          rows=[]
+          for p in snaps:
+              r=EntryReader(p,Path('runtime'))
+              row={'snapshot':p.name,'entry_count':len(r.entries)}
+              if len(r.entries)>0x174:
+                  e=r.entries[0x174]
+                  row.update({k:e[k] for k in ('index','tag_hash','reference','type','subtype','starting_block','starting_block_offset','file_size')})
+                  row['available']=r.available(e['index'])
+                  if row['available']:
+                      try: row['payload_bytes']=len(r.entry(e['index'])); row['payload_ok']=True
+                      except Exception as ex: row['payload_ok']=False; row['payload_error']=repr(ex)
+              rows.append(row)
+          c=v3.base.Corpus([p.resolve() for p in Path('recovered').glob('*.pkg')],Path('runtime').resolve())
+          meta=c.entry_meta('80AAE174'); payload,src=c.payload('80AAE174')
+          out={'physical_history':rows,'current_meta':meta,'class_stable_payload_source':src,'class_stable_payload_bytes':None if payload is None else len(payload)}
+          Path('reports/80AAE174_current_history.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          if not meta or payload is None: raise SystemExit('80AAE174 current-class payload unresolved')
+          PY
+
+      - name: Validate exact current corpus with validator v3
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v3.py "${args[@]}" --runtime runtime --out validation | tee reports/validator_v3_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          expected={'80CA0B70':('80CA0B96',123,124,556),'80CA0C60':('80CA0C6B',304,471,1596)}
+          out={}
+          for parent,(child,nx,nm,np) in expected.items():
+              good=[x for x in d.get('static_map_data',[]) if x.get('hash','').upper()==parent and x.get('ok')]
+              if len(good)!=1: raise SystemExit(f'{parent}: passing rows={len(good)}')
+              c=good[0]['d1_validation']
+              meshes=sum(t['summary']['meshes'] for t in c['static_tables'])
+              placements=sum(sum(i['instance_count'] for i in t['info_entries']) for t in c['static_tables'])
+              if c['hash'].upper()!=child or c['instance_count']!=nx or meshes!=nm or placements!=np or not c.get('transform_size_exact'):
+                  raise SystemExit(f'{parent}: invariant mismatch')
+              if not all(t['summary']['all_required_mesh_targets_exist'] and t['summary']['all_info_indices_in_bounds'] for t in c['static_tables']):
+                  raise SystemExit(f'{parent}: static table invariant failed')
+              out[parent]={'d1':child,'transforms':nx,'meshes':meshes,'placements':placements}
+          Path('reports/two_cell_validation_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Export and verify both binary-passing cells
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          for h in 80CA0B70 80CA0C60; do
+            python tools/d1_tower_static_chunk_export_v3.py "${args[@]}" --runtime runtime --validation-json validation/tower_map_schema_validation.json \
+              --static-map-data "$h" --out "export/TOWER_${h}_V3.glb" --json "export/TOWER_${h}_V3.json" | tee "reports/export_${h}.txt"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import trimesh
+          expected={'80CA0B70':556,'80CA0C60':1596}; cells=[]
+          for h,n in expected.items():
+              g=Path(f'export/TOWER_{h}_V3.glb'); j=Path(f'export/TOWER_{h}_V3.json'); d=json.loads(j.read_text())
+              if d['decode_failure_count'] or d['node_instance_count']!=n: raise SystemExit(f'{h}: export failure')
+              s=trimesh.load(g,force='scene',process=False)
+              cells.append({'static_map':h,'d1':d['d1_static_map_data'],'placed_nodes':n,'geometry_variants':d['geometry_variant_count'],'bounds':s.bounds.tolist() if s.bounds is not None else None,'glb_bytes':g.stat().st_size})
+          out={'status':'TWO_CURRENT_BINARY_VALIDATED_STATIC_CELLS_EXPORTED','outer_transform':'identity, independently serialized/proven','total_placed_nodes':sum(x['placed_nodes'] for x in cells),'cells':cells}
+          Path('reports/two_cell_export_summary.json').write_text(json.dumps(out,indent=2)+'\n'); print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-first-two-static-cells-direct
+          path: |
+            export/
+            reports/
+            validation/tower_map_schema_validation.json
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
