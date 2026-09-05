@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/d1-tower-map-data-layer-census.yml'
       - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_recover_package_ids.py'
+      - 'tools/d1_tag_manifest_resolver.py'
       - 'tools/d1_world_activity_map_root_census.py'
       - 'tools/d1_world_map_root_census.py'
       - 'tools/d1_world_map_data_layer_census.py'
@@ -44,8 +46,14 @@ jobs:
             ln "$f" root_corpus/"$(basename "$f")"
           done
           test "$(find root_corpus -maxdepth 1 -name '*.pkg' -type f | wc -l)" -eq 24
+          python tools/d1_recover_package_ids.py \
+            --package-list reports/packages.txt \
+            --package-id 0430 --package-id 0431 \
+            --out-dir root_corpus \
+            --report reports/root_shared_manifest_recovery.json
+          test "$(find root_corpus -maxdepth 1 -name '*.pkg' -type f | wc -l)" -eq 38
 
-      - name: Discover Tower map tables through Activity ownership
+      - name: Discover Tower map tables through named Activity and manifest ownership
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -64,17 +72,24 @@ jobs:
           actual=sorted(r.get('map_data_tables',[]))
           if r.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
               raise SystemExit('Tower Activity root census incomplete: '+json.dumps(r.get('violations')))
+          if r.get('current_d1_activity_count')!=1 or r.get('current_d1_activity_named_row_count')!=2:
+              raise SystemExit('Tower Activity alias fixture changed: '+json.dumps({
+                  'unique':r.get('current_d1_activity_count'),
+                  'named_rows':r.get('current_d1_activity_named_row_count')}))
+          if r.get('selected_activities')!=['80C98019']:
+              raise SystemExit('Tower root Activity changed: '+json.dumps(r.get('selected_activities')))
           if actual!=expected:
               raise SystemExit('Tower Activity-owned table set changed: '+json.dumps({'expected':expected,'actual':actual},indent=2))
           if r.get('total_reachable_map_entries')!=337:
               raise SystemExit(f'Tower Activity-owned entry total changed: {r.get("total_reachable_map_entries")}')
-          if r.get('unowned_current_map_data_tables'):
-              raise SystemExit('Tower current tables outside Activity ownership: '+json.dumps(r['unowned_current_map_data_tables']))
           print('TOWER_ACTIVITY_MAP_ROOTS_CLOSED',json.dumps({
-              'activities':r.get('selected_activity_count'),
+              'activity':'80C98019',
+              'activity_alias_rows':r.get('current_d1_activity_named_row_count'),
               'bubbles':r.get('reachable_bubble_count'),
               'containers':r.get('reachable_map_container_count'),
-              'tables':len(actual),'entries':r.get('total_reachable_map_entries')
+              'tables':len(actual),
+              'entries':r.get('total_reachable_map_entries'),
+              'unowned_package_tables':len(r.get('unowned_current_map_data_tables',[])),
           },sort_keys=True))
           PY
 
@@ -155,8 +170,6 @@ jobs:
           }
           bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
           if bad: raise SystemExit('Tower source-driven target-plan mismatch: '+json.dumps(bad,indent=2))
-
-          # These hashes are now output-only regression evidence, never parser inputs.
           expected_baked=sorted([
             '80C98254','80C984D8','80C98A6B','80C993CD','80C993CF',
             '80C997F5','80C99981','80CA0B70','80CA0B72','80CA0C60',
