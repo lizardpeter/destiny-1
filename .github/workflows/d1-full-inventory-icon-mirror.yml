@@ -1,0 +1,68 @@
+name: D1 full inventory native icon mirror
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-full-inventory-icon-mirror.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  icons:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover full inventory presentation catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out/icons
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-full-inventory-presentation-catalog&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/catalog.zip
+          unzip -q input/catalog.zip -d input/catalog
+          test -f input/catalog/d1_full_inventory_catalog.json
+      - name: Mirror all native Bungie D1 inventory icons
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures,json,urllib.request
+          from pathlib import Path
+          d=json.load(open('input/catalog/d1_full_inventory_catalog.json'))
+          root=Path('out/icons'); root.mkdir(parents=True,exist_ok=True)
+          rows=[x for x in d['items'] if x.get('hasIcon') and x.get('icon')]
+          def one(x):
+              icon=x['icon']; ext=Path(icon).suffix or '.img'; dst=root/f"{x['hash']}{ext}"
+              if dst.exists(): return (x['hash'],dst.name,True,None)
+              req=urllib.request.Request('https://www.bungie.net'+icon,headers={'User-Agent':'d1-asset-browser/1.0'})
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as r: b=r.read()
+                  if not b:return (x['hash'],None,False,'empty')
+                  dst.write_bytes(b);return (x['hash'],dst.name,True,None)
+              except Exception as ex:return (x['hash'],None,False,repr(ex))
+          results={};errors=[];done=0
+          with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
+              fs={ex.submit(one,x):x for x in rows}
+              for f in concurrent.futures.as_completed(fs):
+                  h,name,ok,err=f.result(); results[h]=name; done+=1
+                  if err:errors.append({'hash':h,'icon':fs[f]['icon'],'error':err})
+                  if done%250==0:print('icons',done,'/',len(rows),'ok',sum(v is not None for v in results.values()),flush=True)
+          rep={'requested':len(rows),'downloaded':sum(v is not None for v in results.values()),'failed':len(errors),'files':results,'errors':errors}
+          Path('out/icon_manifest.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in rep.items() if k not in ('files','errors')},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-full-inventory-native-icons
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
