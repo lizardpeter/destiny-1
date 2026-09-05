@@ -1,0 +1,72 @@
+name: D1 Tower proper Drive chunks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-proper-drive-chunks.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  split-artifacts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download current proper ten-cell model chunks
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p src meta
+          gh run download 33987189885 -n d1-tower-ten-cell-current-model-chunks -D src
+          ls -lh src
+          cp src/README_REASSEMBLE.txt meta/ || true
+          cp src/REASSEMBLE_WINDOWS.cmd meta/ || true
+          cp src/ten_cell_textured_sha256.txt meta/ || true
+          cp src/ten_cell_geometry_summary.json meta/ || true
+          cp src/ten_cell_texture_summary.json meta/ || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_PART00
+          path: src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part00
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_PART01
+          path: src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part01
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_PART02
+          path: src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part02
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_PART03
+          path: src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part03
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_PART04
+          path: src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part04
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_PART05
+          path: src/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part05
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1_TOWER_TEN_CELL_MODEL_META
+          path: meta/
+          compression-level: 6
+          retention-days: 14
