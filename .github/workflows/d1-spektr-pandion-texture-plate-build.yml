@@ -1,0 +1,95 @@
+name: D1 Spektar Pandion exact texture-plate build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-texture-plate-build.yml'
+      - 'tools/d1_remote_texture_export.py'
+      - 'tools/d1_texture_plate_compose_set.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies, latest green plate census, and Oodle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh pillow
+          mkdir -p input runtime out/textures out/plates
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-texture-plate-census&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/plates.zip
+          unzip -q input/plates.zip -d input/plates
+          test -f input/plates/spektar_masculine_texture_plates.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/plates/spektar_masculine_texture_plates.json'))
+          assert d['header_count']==5,d
+          assert d['unique_source_texture_count']==159,d
+          assert not d['errors'],d['errors']
+          assert all(x['texture_present_in_catalog_views'] for h in d['headers'] for p in h['plates'].values() for x in p['transforms'])
+          print('PLATE INPUT VERIFIED',d['header_count'],'headers',d['unique_source_texture_count'],'source textures')
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Export every exact source texture
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_texture_export.py \
+            --plate-report input/plates/spektar_masculine_texture_plates.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --out out/textures
+      - name: Compose all five exact model plate sets without resampling
+        run: |
+          set -euo pipefail
+          python tools/d1_texture_plate_compose_set.py \
+            --plate-report input/plates/spektar_masculine_texture_plates.json \
+            --texture-dir out/textures --out out/plates \
+            --report out/spektar_masculine_composed_plates.json
+      - name: Validate complete atlas set
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          t=json.load(open('out/textures/remote_texture_manifest.json'))
+          p=json.load(open('out/spektar_masculine_composed_plates.json'))
+          assert t['requested_count']==159,t
+          assert t['resolved_count']==159,t
+          assert not t['missing_requested'],t
+          assert p['header_count']==5,p
+          assert p['plate_image_count']==15,p
+          assert not p['allow_resize'],p
+          assert all(not x['resized'] for q in p['plates'] for x in q['placements'])
+          roles={}
+          for q in p['plates']:
+              roles.setdefault(q['header_tag'],set()).add(q['role'])
+              f=pathlib.Path('out/plates')/q['output_png']; assert f.is_file() and f.stat().st_size>0,f
+          assert len(roles)==5,roles
+          assert all(v=={'albedo','normal','gstack'} for v in roles.values()),roles
+          print('SUCCESS',t['resolved_count'],'source textures ->',p['plate_image_count'],'exact plate images')
+          for h,v in sorted(roles.items()): print(h,sorted(v))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-exact-texture-plates
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 1
