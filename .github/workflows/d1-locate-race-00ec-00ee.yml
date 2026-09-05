@@ -1,0 +1,55 @@
+name: D1 locate race 00EC and 00EE shader families
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-locate-race-00ec-00ee.yml'
+      - 'tools/d1_split_tar_scan.py'
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan bounded archive window immediately before proven 00EF
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          # 00EC and 00EE are immediately before 00EF in current packages.txt.
+          # 00EF_0 header is byte-proven at data_offset-512 = 46023276032.
+          end=46023276032
+          start=$((end - 2147483648))
+          start=$((start / 512 * 512))
+          python tools/d1_split_tar_scan.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start "$start" --end "$end" --chunk-size 0x2000000 \
+            --contains '_00ec_' --contains '_00ee_' -o reports/race_00ec_00ee_scan.json
+      - name: Verify exact family membership against packages.txt
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          d=json.load(open('reports/race_00ec_00ee_scan.json'))
+          rows=d['matches']; names=[Path(x.strip()).name for x in open('reports/packages.txt',errors='replace') if x.strip()]
+          out={}
+          for pid in ('00ec','00ee'):
+              expected=sorted(n for n in names if re.search(rf'_{pid}_[0-9]+\.pkg$',n,re.I))
+              got=sorted(r['basename'] for r in rows if re.search(rf'_{pid}_[0-9]+\.pkg$',r['basename'],re.I))
+              if expected!=got: raise SystemExit(f'{pid} mismatch expected={expected} got={got}')
+              out[pid]=[r for r in rows if r['basename'] in expected]
+          Path('reports/race_00ec_00ee_member_catalog.json').write_text(json.dumps({'families':out},indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-race-00ec-00ee-member-catalog
+          path: reports/race_00ec_00ee_member_catalog.json
+          retention-days: 30
+          if-no-files-found: error
