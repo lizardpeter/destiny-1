@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate source-driven table-scoped decal/common targets for a D1 world.
+"""Validate and materialize source-driven table-scoped decal/common targets for a D1 world.
 
 Input is the execution plan from `d1_world_static_map_target_plan.py`. The plan is the
 only source of target hashes: this tool never accepts a hand-written common-carrier list.
@@ -7,8 +7,14 @@ It validates every table-scoped DataEntries[0] SStaticMapData and every independ
 classified baked-static target using the generic D1 SStaticMapData decal parser.
 
 The table-scoped subset models the exact D1 MapView behavior: decals are loaded once from
-the first SMapDataEntry for each table. Baked targets are retained as controls because an
-SStaticMapData can legally carry both decal data and a direct D1 baked-static child.
+the first SMapDataEntry for each table. In addition to aggregate census values, this tool
+emits the exact parsed table-scoped records needed by the next geometry-export stage:
+owning map table, SStaticMapData, source record offsets, transform matrices, unknown
+vectors, and EntityModel TagHashes. Non-singleton rows remain fully represented rather
+than being normalized into the current Tower singleton shape.
+
+Baked targets are retained as controls because an SStaticMapData can legally carry both
+decal data and a direct D1 baked-static child.
 """
 from __future__ import annotations
 
@@ -28,6 +34,69 @@ def norm(x: object) -> str:
     return str(x).upper().removeprefix('0X').zfill(8)
 
 
+def exporter_record(target_index: int, target: dict, decal: dict) -> dict:
+    """Preserve one parsed table-scoped BA048080 record for downstream export."""
+    transforms = []
+    for x in decal.get('transforms', []):
+        transforms.append({
+            'index': x.get('index'),
+            'offset': x.get('offset'),
+            'finite': x.get('finite'),
+            'rows': x.get('rows'),
+        })
+
+    vectors = []
+    for x in decal.get('unk18_vectors', []):
+        vectors.append({
+            'index': x.get('index'),
+            'offset': x.get('offset'),
+            'finite': x.get('finite'),
+            'value': x.get('value'),
+        })
+
+    models = []
+    for x in decal.get('models', []):
+        models.append({
+            'index': x.get('index'),
+            'offset': x.get('offset'),
+            'hash': x.get('hash'),
+            'exists': x.get('exists'),
+            'expected_reference': x.get('expected_reference'),
+            'reference_matches': x.get('reference_matches'),
+            'meta': x.get('meta'),
+        })
+
+    singleton = bool(decal.get('singleton_transform_model'))
+    export_ready = bool(
+        decal.get('ok') and singleton and len(transforms) == 1 and len(models) == 1
+        and transforms[0].get('finite') and models[0].get('reference_matches')
+    )
+    return {
+        'target_index': target_index,
+        'map_data_table': target.get('map_data_table'),
+        'static_map_data': norm(target.get('static_map_data', '')),
+        'static_map_kind': target.get('static_map_kind'),
+        'decal_index': decal.get('index'),
+        'record_offset': decal.get('record_offset'),
+        'record_end': decal.get('record_end'),
+        'declared_size': decal.get('declared_size'),
+        'singleton_transform_model': singleton,
+        'export_ready_singleton': export_ready,
+        'transform_count': len(transforms),
+        'model_count': len(models),
+        'transforms': transforms,
+        'unk18_vectors': vectors,
+        'models': models,
+        # Convenience fields for the current retail singleton case. The complete
+        # arrays above remain canonical and are never discarded.
+        'transform': transforms[0]['rows'] if len(transforms) == 1 else None,
+        'transform_offset': transforms[0]['offset'] if len(transforms) == 1 else None,
+        'entity_model': models[0]['hash'] if len(models) == 1 else None,
+        'entity_model_offset': models[0]['offset'] if len(models) == 1 else None,
+        'violations': decal.get('violations', []),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--snapshot', type=Path, action='append', required=True)
@@ -45,6 +114,7 @@ def main() -> int:
     c = Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
     rows = []
     model_union = set()
+    table_scoped_records = []
 
     for i, target in enumerate(plan.get('targets', [])):
         role = target.get('role')
@@ -55,6 +125,11 @@ def main() -> int:
         rep = validate_static_map(c, sm)
         summary = rep.get('summary', {})
         model_union.update(summary.get('entity_model_histogram', {}).keys())
+
+        if role == 'table_scoped_decal_target':
+            for decal in rep.get('decals', []):
+                table_scoped_records.append(exporter_record(i, target, decal))
+
         row = {
             'target_index': i,
             'role': role,
@@ -117,11 +192,26 @@ def main() -> int:
         h for x in baked_rows for h in x.get('entity_model_hashes', [])
     }
 
+    record_model_histogram = Counter(
+        m['hash']
+        for r in table_scoped_records
+        for m in r.get('models', [])
+        if m.get('reference_matches') and m.get('hash')
+    )
+    record_table_counts = Counter(r.get('map_data_table') for r in table_scoped_records)
+    export_ready_records = [r for r in table_scoped_records if r.get('export_ready_singleton')]
+
+    if len(table_scoped_records) != table_decal_records:
+        violations.append(
+            f'table_scoped_record_materialization_count_mismatch:'
+            f'{len(table_scoped_records)}!={table_decal_records}'
+        )
+
     role_counts = Counter(x['role'] for x in rows)
     kind_counts = Counter(x.get('static_map_kind') or 'UNCLASSIFIED' for x in rows)
 
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE' if not violations else 'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_PARTIAL',
         'source_target_plan_status': plan.get('status'),
         'target_count': len(rows),
@@ -137,16 +227,23 @@ def main() -> int:
         ),
         'table_scoped_model_reference_occurrences': table_model_occurrences,
         'table_scoped_unique_entity_models': len(table_model_union),
+        'table_scoped_materialized_record_count': len(table_scoped_records),
+        'table_scoped_export_ready_singleton_records': len(export_ready_records),
+        'table_scoped_record_counts_by_table': dict(record_table_counts),
+        'table_scoped_record_entity_model_histogram': dict(record_model_histogram),
         'baked_target_count': len(baked_rows),
         'baked_target_decal_records': baked_decal_records,
         'baked_target_unique_entity_models': len(baked_model_union),
         'all_target_unique_entity_models': len(model_union),
+        'table_scoped_records': table_scoped_records,
         'rows': rows,
         'violations': violations,
         'policy': (
             'Target hashes come only from the closed SMapDataTable ownership plan. '
             'DataEntries[0] is validated once per table for table-scoped decal/common '
-            'content; baked-static targets are validated independently as controls.'
+            'content; baked-static targets are validated independently as controls. '
+            'The table_scoped_records array preserves each parsed BA048080 record and '
+            'is the canonical handoff to downstream EntityModel geometry export.'
         ),
     }
 
@@ -158,9 +255,10 @@ def main() -> int:
         'table_scoped_decal_records', 'table_scoped_structurally_valid_decal_records',
         'table_scoped_singleton_transform_model_records',
         'table_scoped_all_records_singleton', 'table_scoped_model_reference_occurrences',
-        'table_scoped_unique_entity_models', 'baked_target_count',
-        'baked_target_decal_records', 'baked_target_unique_entity_models',
-        'all_target_unique_entity_models', 'violations'
+        'table_scoped_unique_entity_models', 'table_scoped_materialized_record_count',
+        'table_scoped_export_ready_singleton_records', 'table_scoped_record_counts_by_table',
+        'baked_target_count', 'baked_target_decal_records',
+        'baked_target_unique_entity_models', 'all_target_unique_entity_models', 'violations'
     )}, indent=2))
     return 0 if not violations else 2
 
