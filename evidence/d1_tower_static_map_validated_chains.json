@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "evidence_status": "CONFIRMED_BINARY_STRUCTURE",
+  "scope_warning": "This confirms one D1 Tower baked-static resource chain and placement/index structure. It does not yet prove vertex semantic decoding, material/texture semantics, or complete Tower world ownership/assembly.",
+  "validation_source": {
+    "workflow_run": 33944444030,
+    "artifact_id": 9962935387,
+    "artifact_name": "d1-tower-static-map-schema-validation",
+    "artifact_digest": "sha256:06ff1a409bfbaadb8fd7dbb9f7c3053de047817515a85b3e0d589b0a2902b70c",
+    "validator": "tools/d1_tower_map_schema_validate.py"
+  },
+  "candidate_census": {
+    "unique_static_map_data_resources": 31,
+    "fully_passing_resources": 1,
+    "failing_resources": 30,
+    "failure_reason_counts": {
+      "D1 static data invariants failed": 10,
+      "D1StaticMapData +0x30 target mismatch/unresolved": 13,
+      "child: instance transform FileHash unresolved": 1,
+      "child: instance transform payload unavailable": 1,
+      "child: one or more static tables failed invariants": 9,
+      "child: statics2 dynamic array bounds": 1,
+      "child: statics3 dynamic array bounds": 1,
+      "child: statics4 dynamic array bounds": 1,
+      "short payload": 7
+    }
+  },
+  "validated_chains": [
+    {
+      "static_map_data": "80CA0B70",
+      "source": {
+        "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+        "package_id": "0250",
+        "entry_index": 2928,
+        "reference": "808008B4",
+        "size": 56
+      },
+      "reference_class": "808008B4",
+      "d1_static_map_data": "80CA0B96",
+      "d1_source": {
+        "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+        "package_id": "0250",
+        "entry_index": 2966,
+        "reference": "80801B75",
+        "size": 2724
+      },
+      "d1_reference_class": "80801B75",
+      "instance_count": 123,
+      "instance_transforms": "80CA0BAE",
+      "instance_transform_target": {
+        "hash": "80CA0BAE",
+        "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+        "package_id": "0250",
+        "entry_index": 2990,
+        "type": 0,
+        "subtype": 0,
+        "reference": "FFFFFFFF",
+        "size": 7872,
+        "available": true
+      },
+      "instance_transform_payload_source": {
+        "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+        "package_id": "0250",
+        "entry_index": 2990,
+        "reference": "FFFFFFFF",
+        "size": 7872
+      },
+      "instance_transform_payload_size": 7872,
+      "expected_transform_bytes": 7872,
+      "transform_size_exact": true,
+      "transforms_all_finite": true,
+      "static_table_hashes": [
+        "80CA0BA0",
+        "80CA0BA1",
+        "80CA0BA2",
+        "80CA0BA3"
+      ],
+      "static_tables": [
+        {
+          "hash": "80CA0BA0",
+          "source": {
+            "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+            "package_id": "0250",
+            "entry_index": 2976,
+            "reference": "80801A90",
+            "size": 2216
+          },
+          "material_slot_count": 2,
+          "mesh_count": 43,
+          "info_count": 43,
+          "all_mesh_targets_exist": true,
+          "consecutive_v0_v1_index_triples": 43,
+          "all_info_indices_in_bounds": true,
+          "placed_instance_references": 194
+        },
+        {
+          "hash": "80CA0BA1",
+          "source": {
+            "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+            "package_id": "0250",
+            "entry_index": 2977,
+            "reference": "80801A90",
+            "size": 2600
+          },
+          "material_slot_count": 15,
+          "mesh_count": 49,
+          "info_count": 49,
+          "all_mesh_targets_exist": true,
+          "consecutive_v0_v1_index_triples": 49,
+          "all_info_indices_in_bounds": true,
+          "placed_instance_references": 232
+        },
+        {
+          "hash": "80CA0BA2",
+          "source": {
+            "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+            "package_id": "0250",
+            "entry_index": 2978,
+            "reference": "80801A90",
+            "size": 1104
+          },
+          "material_slot_count": 1,
+          "mesh_count": 20,
+          "info_count": 20,
+          "all_mesh_targets_exist": true,
+          "consecutive_v0_v1_index_triples": 20,
+          "all_info_indices_in_bounds": true,
+          "placed_instance_references": 118
+        },
+        {
+          "hash": "80CA0BA3",
+          "source": {
+            "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+            "package_id": "0250",
+            "entry_index": 2979,
+            "reference": "80801A90",
+            "size": 768
+          },
+          "material_slot_count": 6,
+          "mesh_count": 12,
+          "info_count": 12,
+          "all_mesh_targets_exist": true,
+          "consecutive_v0_v1_index_triples": 12,
+          "all_info_indices_in_bounds": true,
+          "placed_instance_references": 12
+        }
+      ],
+      "totals": {
+        "static_table_count": 4,
+        "mesh_records": 124,
+        "info_records": 124,
+        "placed_instance_references": 556,
+        "unique_transform_indices_referenced": 123,
+        "transform_index_min": 0,
+        "transform_index_max": 122,
+        "all_mesh_targets_exist": true,
+        "consecutive_v0_v1_index_triples": 124,
+        "all_info_indices_in_bounds": true,
+        "primitive_type_counts": {
+          "3": 124
+        },
+        "detail_level_counts": {
+          "1": 66,
+          "2": 3,
+          "7": 55
+        },
+        "buffer_header_package_triples": {
+          "009F/009F/009F": 12,
+          "0250/0250/0250": 112
+        },
+        "unique_material_hashes": 22
+      },
+      "material_hashes": [
+        "80CA0BD6",
+        "80CA0BD7",
+        "80CA0BD8",
+        "80CA0BD9",
+        "80CA0BDA",
+        "80CA0BDB",
+        "80CA0BDC",
+        "80CA0C37",
+        "80CA0C38",
+        "80CA0C39",
+        "80CA0C3A",
+        "80CA0CB1",
+        "80CA0CB2",
+        "80CA0D87",
+        "80CA0D8D",
+        "80CA0D90",
+        "80CA0D91",
+        "80CA0D93",
+        "80CA0DBC",
+        "80CA0E6E",
+        "80CA0F4B",
+        "80CA0F4C"
+      ],
+      "next_required_proofs": [
+        "Decode all referenced vertex/index backings with exact per-header layout; do not promote position semantics merely from successful geometry appearance.",
+        "Preserve and validate the 556 StaticInfo placement references against the 123 shipped 0x40 matrices in the exported proof scene.",
+        "Resolve 80801AD7 material payload semantics to shaders/textures by serialized fields only.",
+        "Recover the higher-level Tower world/bubble/container owner chain before claiming whole-Tower assembly."
+      ],
+      "material_resource_evidence_summary": {
+        "reference_class": "80801AD7",
+        "all_22_present_in_tower_census": true,
+        "payload_conflict_hashes": [
+          "80CA0C37",
+          "80CA0C3A",
+          "80CA0D87",
+          "80CA0D90",
+          "80CA0D93",
+          "80CA0E6E",
+          "80CA0F4C"
+        ]
+      }
+    }
+  ]
+}
