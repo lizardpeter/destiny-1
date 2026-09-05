@@ -6,8 +6,10 @@ on:
       - '.github/workflows/d1-weapons-characters-continuation.yml'
       - 'tools/d1_weapon_action_readiness.py'
       - 'tools/d1_character_family_census.py'
+      - 'tools/d1_character_owner_backlinks.py'
       - 'tests/test_weapon_action_readiness.py'
       - 'tests/test_character_family_census.py'
+      - 'tests/test_character_owner_backlinks.py'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
       - run: python -m pip install -q pytest
-      - run: python -m pytest -q tests/test_weapon_action_readiness.py tests/test_character_family_census.py
+      - run: python -m pytest -q tests/test_weapon_action_readiness.py tests/test_character_family_census.py tests/test_character_owner_backlinks.py
 
   weapon-action-readiness:
     runs-on: ubuntu-24.04
@@ -147,6 +149,38 @@ jobs:
           assert roles['816CE095']['kind']=='runtime_rig',roles.get('816CE095')
           assert roles['816CE09D']['kind']=='s_animation_clip',roles.get('816CE09D')
           assert roles['816CE09E']['kind']=='s_animation_clip',roles.get('816CE09E')
+          PY
+
+      - name: Scan every readable 0767 payload for exact articulated-resource backlinks
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_character_owner_backlinks.py \
+            recovered/ps4_arch_vex_com01_0767_4.pkg \
+            --runtime runtime \
+            --target 816CE12B --target 816CE09A \
+            --target 816CE092 --target 816CE095 --target 816CE096 --target 816CE097 \
+            --target 816CE09C --target 816CE099 --target 816CE09D --target 816CE09E \
+            --target 816CE0DC --target 816CE1A4 --target 816CE0DE --target 816CE122 \
+            --target 816CE109 --target 816CE10A --target 816CE113 --target 816CE114 --target 816CE115 \
+            --max-entry-size 8000000 \
+            -o reports/vex_0767_owner_backlinks.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/vex_0767_owner_backlinks.json'))
+          print(json.dumps({
+            'scanned_entry_count':d['scanned_entry_count'],
+            'source_with_hit_count':d['source_with_hit_count'],
+            'read_error_count':d['read_error_count'],
+            'backlink_counts':{k:len(v) for k,v in d['backlinks'].items()},
+            'cooccurrence_groups':d['cooccurrence_groups'][:30],
+          },indent=2))
+          # Calibration only: the already auto-connected three-bone cluster must
+          # produce at least some exact cross-resource literals. We deliberately
+          # do not assert that the 12-bone Vex fixture has a literal owner bridge;
+          # a clean absence is itself useful evidence for an indexed/cross-package edge.
+          auto={'816CE0DC','816CE1A4','816CE0DE','816CE122','816CE109','816CE10A','816CE113','816CE114','816CE115'}
+          assert any(len(auto.intersection(x['targets']))>=2 for x in d['cooccurrences']), d['cooccurrences'][:20]
           PY
       - uses: actions/upload-artifact@v4
         with:
