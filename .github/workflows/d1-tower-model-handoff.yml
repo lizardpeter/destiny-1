@@ -1,0 +1,37 @@
+name: D1 Tower current model handoff
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-model-handoff.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download latest completed textured preview and isolate best GLB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p prior handoff
+          gh run download 33984192806 -n d1-tower-three-cell-textured-preview -D prior
+          test -f prior/out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          cp prior/out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb handoff/
+          cp prior/reports/preview_broad_base_normal.json handoff/
+          sha256sum handoff/* | tee handoff/SHA256SUMS.txt
+          ls -lh handoff/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-current-textured-model
+          path: handoff/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
