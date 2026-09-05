@@ -1,0 +1,99 @@
+name: D1 pattern39 vs shared viewmodel controls
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-pattern39-shared-control-compare.yml'
+      - 'tools/d1_animation_control_state_map.py'
+      - 'tools/d1_action_control_signature_compare.py'
+      - 'tests/test_animation_control_state_map.py'
+      - 'tests/test_action_control_signature_compare.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Unit tests
+        run: |
+          python -m pip install -q pytest
+          python -m pytest -q tests/test_animation_control_state_map.py tests/test_action_control_signature_compare.py
+
+      - name: Recover verified runtime and globals 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+
+      - name: Decode pattern 39 and CA0 CA1 CA2 controls with one parser
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          pkg=recovered/ps4_globals_0151_6.pkg
+          python tools/d1_animation_control_state_map.py "$pkg" --runtime runtime --control-tag 80AA2DCD -o out/pattern39.json
+          python tools/d1_animation_control_state_map.py "$pkg" --runtime runtime --control-tag 80AA3CC2 -o out/CA0.json
+          python tools/d1_animation_control_state_map.py "$pkg" --runtime runtime --control-tag 80AA3CC5 -o out/CA1.json
+          python tools/d1_animation_control_state_map.py "$pkg" --runtime runtime --control-tag 80AA3CC9 -o out/CA2.json
+          python tools/d1_action_control_signature_compare.py out/pattern39.json out/CA0.json -o out/pattern39_vs_CA0.json
+          python tools/d1_action_control_signature_compare.py out/pattern39.json out/CA1.json -o out/pattern39_vs_CA1.json
+          python tools/d1_action_control_signature_compare.py out/pattern39.json out/CA2.json -o out/pattern39_vs_CA2.json
+
+      - name: Summarize exact action-state overlap
+        run: |
+          python - <<'PY'
+          import json
+          names=['idle','ready','reload_empty','reload_full','fire','jump','base','sprint','melee','aim','zoom','lower','raise']
+          reports={k:json.load(open(f'out/{k}.json')) for k in ['pattern39','CA0','CA1','CA2']}
+          def named(d):
+              return {x['state_name']:{
+                  'record_index':x['record_index'],
+                  'selection_kind':x['selection_kind'],
+                  'clips':[y['tag_hash'] for y in x['selected_animations']],
+              } for x in d['state_table']['records'] if x.get('state_name') in names}
+          summary={
+              'controls':{k:{
+                  'tag':v['control']['tag_hash'],
+                  'animation_count':v['animation_list']['count'],
+                  'state_count':v['state_table']['count'],
+                  'empty_sentinel_count':v['state_table']['empty_sentinel_count'],
+                  'known_actions':named(v),
+              } for k,v in reports.items()},
+              'comparisons':{
+                  ca:{k:v for k,v in json.load(open(f'out/pattern39_vs_{ca}.json')).items() if k in [
+                      'common_action_count','left_only_action_count','right_only_action_count','same_action_hash_set',
+                      'exact_clip_match_count','exact_record_index_match_count','ownership_equivalence_proven'
+                  ]} for ca in ['CA0','CA1','CA2']
+              },
+              'conclusion_policy':'Structural overlap can eliminate equivalence or produce a candidate signature, but cannot assign a shared viewmodel owner without a serialized/table ownership edge.'
+          }
+          print(json.dumps(summary,indent=2))
+          open('out/pattern39_shared_control_summary.json','w').write(json.dumps(summary,indent=2)+'\n')
+          # The parser generalization is calibrated against the three known CA0 empty sentinels.
+          assert reports['CA0']['state_table']['empty_sentinel_count']==3
+          assert reports['CA1']['state_table']['empty_sentinel_count']==0
+          assert reports['CA2']['state_table']['empty_sentinel_count']==0
+          # A pattern-owned control must never be promoted to a CA owner by this diagnostic.
+          assert all(summary['comparisons'][ca]['ownership_equivalence_proven'] is False for ca in ['CA0','CA1','CA2'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-pattern39-shared-control-compare
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
