@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "D1_THREE_CELL_VISUAL_SELECTION_EXACT_RELATIVE_TO_EXPORTED_PROOF_PLACEMENTS",
+  "render_rule": {
+    "detail_level_allowed": [0, 1, 2, 3, 10],
+    "material_class": "80801AD7",
+    "material_unk08_offset": "0x08",
+    "material_unk08_required": 1,
+    "source": "pinned D1 ROI StaticMapData_D1.GetStatics() semantics"
+  },
+  "placement_reduction": {
+    "serialized_proof_placements": 19389,
+    "detail_level_valid_candidates": 10495,
+    "removed_by_detail_level": 8894,
+    "removed_by_material_unk08_after_detail_gate": 5797,
+    "strict_visual_placements": 4698,
+    "total_removed_from_proof": 14691
+  },
+  "material_resolution": {
+    "unresolved_material_states": 0,
+    "policy": "current class-stable 80801AD7 payload bytes only; Unk08 read as little-endian u32 at +0x08"
+  },
+  "cells": [
+    {
+      "proof_cell": "80C984D8",
+      "d1_static_map_data": "80C9858B",
+      "proof_placements": 1800,
+      "detail_level_candidates": 994,
+      "removed_by_detail_level": 806,
+      "removed_by_material_unk08": 604,
+      "visual_placements": 390,
+      "visual_geometry_variants": 118,
+      "unique_materials": 69,
+      "visual_materials": 67
+    },
+    {
+      "proof_cell": "80C98A6B",
+      "d1_static_map_data": "80C98A77",
+      "proof_placements": 12498,
+      "detail_level_candidates": 6789,
+      "removed_by_detail_level": 5709,
+      "removed_by_material_unk08": 3887,
+      "visual_placements": 2902,
+      "visual_geometry_variants": 460,
+      "unique_materials": 215,
+      "visual_materials": 197
+    },
+    {
+      "proof_cell": "80C993CD",
+      "d1_static_map_data": "80C994B1",
+      "proof_placements": 5091,
+      "detail_level_candidates": 2712,
+      "removed_by_detail_level": 2379,
+      "removed_by_material_unk08": 1306,
+      "visual_placements": 1406,
+      "visual_geometry_variants": 194,
+      "unique_materials": 99,
+      "visual_materials": 93
+    }
+  ],
+  "merged_visual": {
+    "placement_nodes": 4698,
+    "geometry_variants": 772,
+    "bounds": [
+      [-175.03266211716024, -278.37792567016487, -54.85756136492773],
+      [175.03273278862298, 285.65370798530967, 149.81257614220067]
+    ],
+    "glb_bytes": 18114148,
+    "sha256": "a1c05a082bd255313f408ce22dc6bbb4af2ecf14744440696a9ed7aaeb76066a"
+  },
+  "scope_limit": {
+    "known_missing_theoretical_placements_in_these_three_cells": 24,
+    "note": "The strict visual selection is exact relative to the 19,389 placements successfully emitted by the current proof exporter. It does not claim the three-cell proof is yet placement-complete, nor that these three cells constitute the full Tower."
+  },
+  "implementation": {
+    "visual_filter": "tools/d1_tower_visual_filter.py",
+    "merge_tool": "tools/d1_tower_merge_placements.py",
+    "workflow": ".github/workflows/d1-tower-three-cell-visual-preview.yml",
+    "corpus_integration_fix_commit": "b4f48d5958d45923324745426b284e7e72bf0bdb",
+    "merge_workflow_fix_commit": "7f97fad7fa57599e3611ff78bfbfa2d610c0bfe5"
+  }
+}
