@@ -1,0 +1,116 @@
+name: D1 Tower source-driven common scene
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["D1 Tower common-layer model export"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  assemble:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install scene dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy trimesh
+          mkdir -p source_models common reports
+
+      - name: Recover source-driven common model artifact
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            model_run='${{ github.event.workflow_run.id }}'
+          else
+            model_run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$model_run"
+          echo "MODEL_RUN=$model_run"
+          gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
+          test -f source_models/reports/common_layer_source_census.json
+          test -f source_models/reports/common_layer_model_plan.json
+          test -f source_models/reports/common_layer_model_export_summary.json
+          python - <<'PY'
+          import json
+          c=json.load(open('source_models/reports/common_layer_source_census.json'))
+          p=json.load(open('source_models/reports/common_layer_model_plan.json'))
+          m=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
+          expected_c={
+            'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE',
+            'table_scoped_target_count':9,
+            'table_scoped_decal_records':327,
+            'table_scoped_materialized_record_count':327,
+            'table_scoped_export_ready_singleton_records':327,
+            'table_scoped_unique_entity_models':69,
+          }
+          expected_p={
+            'status':'D1_WORLD_COMMON_MODEL_PLAN_COMPLETE',
+            'source_record_count':327,
+            'resolved_model_reference_records':327,
+            'unique_model_count':69,
+          }
+          bad={k:(c.get(k),v) for k,v in expected_c.items() if c.get(k)!=v}
+          bad.update({f'plan.{k}':(p.get(k),v) for k,v in expected_p.items() if p.get(k)!=v})
+          if bad: raise SystemExit('source-driven common dependency fixture changed: '+json.dumps(bad))
+          if m.get('requested_models')!=69 or m.get('exported_models')!=69 or m.get('failed_models')!=0:
+              raise SystemExit('source-driven common model export not 69/69 closed: '+json.dumps(m))
+          if m.get('geometry_count')!=163 or m.get('triangle_count')!=15541:
+              raise SystemExit('common model geometry fixture changed: '+json.dumps(m))
+          print('SOURCE_DRIVEN_COMMON_DEPENDENCIES_CLOSED',p['unique_model_count'],m['geometry_count'],m['triangle_count'])
+          PY
+
+      - name: Assemble common layer directly from ownership-derived records
+        run: |
+          set -euo pipefail
+          python tools/d1_world_common_layer_scene.py \
+            --census source_models/reports/common_layer_source_census.json \
+            --model-dir source_models/models \
+            --out common/D1_TOWER_COMMON_LAYER_SOURCE_DRIVEN.glb \
+            --report reports/source_driven_common_scene.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/source_driven_common_scene.json'))
+          expected={
+            'status':'D1_WORLD_COMMON_LAYER_SCENE_COMPLETE_SOURCE_COVERAGE',
+            'source_record_count':327,
+            'unique_model_count':69,
+            'source_resolved_records':327,
+            'geometry_emitting_record_placements':327,
+            'valid_zero_geometry_records':0,
+            'unresolved_records':0,
+            'scene_geometry_variants':163,
+            'scene_geometry_nodes':709,
+          }
+          bad={k:(d.get(k),v) for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('source-driven common scene fixture changed: '+json.dumps(bad))
+          if (d.get('source') or {}).get('mode')!='source_driven_census':
+              raise SystemExit('common scene did not consume the source-driven census')
+          if len(d.get('map_data_tables',[]))!=9 or len(d.get('common_carriers',[]))!=9:
+              raise SystemExit('Tower table/carrier ownership count changed: '+json.dumps({
+                  'tables':d.get('map_data_tables'),'carriers':d.get('common_carriers')}))
+          print('SOURCE_DRIVEN_COMMON_SCENE_CLOSED',d['source_record_count'],d['scene_geometry_nodes'],d['glb_sha256'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-source-driven-common-scene
+          path: |
+            common/D1_TOWER_COMMON_LAYER_SOURCE_DRIVEN.glb
+            reports/source_driven_common_scene.json
+            source_models/reports/common_layer_source_census.json
+            source_models/reports/common_layer_model_plan.json
+            source_models/reports/common_layer_model_export_summary.json
+          retention-days: 14
+          compression-level: 6
