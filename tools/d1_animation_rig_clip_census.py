@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Census every D1 s_animation_clip in a package against one concrete rig/skeleton.
 
-This is a discovery companion to d1_animation_retarget_probe.py.  It parses all
+This is a discovery companion to d1_animation_retarget_probe.py. It parses all
 resident clips, compares their ordered runtime-rig component fingerprints to the
 supplied retail runtime rig, records the parser-native control limit, and can
 fully decode/retarget a bounded number of exact full-control matches.
@@ -16,6 +16,7 @@ import collections
 import io
 import json
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 
@@ -36,6 +37,15 @@ def get_entry(reader: EntryReader, tag: str):
                 raise RuntimeError(f'{wanted} is not readable in {reader.pkg}')
             return e, reader.entry(e['index'])
     raise KeyError(wanted)
+
+
+def read_animation_filebacked(read_animation, payload: bytes, version):
+    """Use a real file descriptor because the pinned parser uses numpy.fromfile."""
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(payload)
+        f.flush()
+        f.seek(0)
+        return read_animation(f, version)
 
 
 def main() -> int:
@@ -71,7 +81,6 @@ def main() -> int:
 
     rows = []
     signature_counts = collections.Counter()
-    exact_matches = []
     parse_errors = []
     retargeted = 0
 
@@ -86,7 +95,7 @@ def main() -> int:
             rows.append(row)
             continue
         try:
-            anim = read_animation(io.BytesIO(r.entry(e['index'])), ver)
+            anim = read_animation_filebacked(read_animation, r.entry(e['index']), ver)
             h = anim.animation_header
             comps = component_rows(anim.runtime_rig_components)
             sig = tuple((x['hash'], int(x['count'])) for x in comps)
@@ -108,28 +117,26 @@ def main() -> int:
                 'control_count_matches_rig': int(h.rig_control_count) == target_controls,
                 'parse_success': True,
             })
-            if exact and full:
-                exact_matches.append(row['tag_hash'])
-                if retargeted < max(0, a.retarget_limit):
-                    try:
-                        decoded = decode_animation(anim)
-                        ret = rig_retarget(anim, decoded, skeleton, rig)
-                        local = convert_obj_to_local(anim, ret, skeleton)
-                        row.update({
-                            'retarget_attempted': True,
-                            'retarget_success': True,
-                            'decoded_track_count': len(decoded),
-                            'retargeted_track_count': len(ret),
-                            'local_track_count': len(local),
-                        })
-                    except Exception as ex:
-                        row.update({
-                            'retarget_attempted': True,
-                            'retarget_success': False,
-                            'retarget_error': repr(ex),
-                            'retarget_trace_tail': traceback.format_exc().splitlines()[-8:],
-                        })
-                    retargeted += 1
+            if exact and full and retargeted < max(0, a.retarget_limit):
+                try:
+                    decoded = decode_animation(anim)
+                    ret = rig_retarget(anim, decoded, skeleton, rig)
+                    local = convert_obj_to_local(anim, ret, skeleton)
+                    row.update({
+                        'retarget_attempted': True,
+                        'retarget_success': True,
+                        'decoded_track_count': len(decoded),
+                        'retargeted_track_count': len(ret),
+                        'local_track_count': len(local),
+                    })
+                except Exception as ex:
+                    row.update({
+                        'retarget_attempted': True,
+                        'retarget_success': False,
+                        'retarget_error': repr(ex),
+                        'retarget_trace_tail': traceback.format_exc().splitlines()[-8:],
+                    })
+                retargeted += 1
         except Exception as ex:
             row.update({'parse_success': False, 'parse_error': repr(ex)})
             parse_errors.append({'tag_hash': row['tag_hash'], 'error': repr(ex)})
