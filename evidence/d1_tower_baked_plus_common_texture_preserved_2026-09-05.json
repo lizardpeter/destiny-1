@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED",
+  "date": "2026-09-05",
+  "source_workflow": {
+    "run_id": 33994856658,
+    "workflow": ".github/workflows/d1-tower-baked-plus-common-texture-preserved.yml",
+    "commit": "063c37933ab76d3cb000b1f1435851589b84b60b"
+  },
+  "release": {
+    "tag": "d1-tower-baked-plus-common-r1",
+    "asset": "D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb",
+    "asset_bytes": 532414008,
+    "asset_sha256": "64ae04c47b1e464f8d4f488ccbad035d778baf1ad972d52bdccd382e7f6892b1"
+  },
+  "source_layers": {
+    "baked_static": {
+      "retail_visible_placements": 11728,
+      "geometry_variants": 2071,
+      "materials": 400,
+      "textures": 537,
+      "embedded_images": 537,
+      "buffer_views": 4709,
+      "accessors": 4344,
+      "source_glb_bytes": 531652324,
+      "source_sha256": "dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa"
+    },
+    "table_scoped_common_decal": {
+      "source_records": 327,
+      "geometry_emitting_records": 327,
+      "unique_models": 69,
+      "model_geometry_parts": 163,
+      "model_triangles": 15541,
+      "scene_geometry_variants": 163,
+      "scene_geometry_nodes": 709,
+      "materials": 99,
+      "textures": 0,
+      "embedded_images": 0,
+      "buffer_views": 221,
+      "accessors": 221,
+      "source_glb_bytes": 757136
+    }
+  },
+  "combined": {
+    "logical_source_records": 12055,
+    "geometry_variants": 2234,
+    "geometry_nodes": 12437,
+    "materials": 499,
+    "textures": 537,
+    "embedded_images": 537,
+    "buffer_views": 4930,
+    "accessors": 4565,
+    "bounds_gltf": [
+      [-54560.36513502971, -3376.295045650884, -50794.81941392037],
+      [49943.516764050175, 14452.28020447831, 31800.935596532207]
+    ]
+  },
+  "composition_fix": {
+    "old_problem": "The previous trimesh scene round-trip kept geometry and transforms but stripped all embedded glTF images/textures from the already-textured baked-static layer.",
+    "new_policy": "tools/d1_world_layer_merge.py now merges glTF JSON/BIN structures directly, remapping glTF indices without decoding or re-exporting mesh/material/image payloads.",
+    "proof": "All source glTF inventories are additive after merge. The baked source contributes 537 textures and 537 embedded images and the combined output still contains exactly 537 textures and 537 embedded images; material count is 400 + 99 = 499 and geometry variants are 2071 + 163 = 2234."
+  },
+  "scope_boundary": {
+    "common_materials": "Exact common/decal material identities are present, but their texture bindings have not yet been reconstructed into the portable material adapter.",
+    "remaining_world_layers": [
+      "entity/dynamic placements",
+      "terrain/natural geometry",
+      "sky/environment",
+      "lighting/probes",
+      "particles/VFX",
+      "activity/runtime conditional content"
+    ]
+  }
+}
