@@ -1,0 +1,70 @@
+name: D1 Tower Drive chunks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-drive-chunks.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  chunk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download best current Tower model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p prior chunks
+          gh run download 33984841254 -n d1-tower-current-textured-model -D prior
+          test -f prior/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          cp prior/preview_broad_base_normal.json chunks/REPORT.json
+          sha256sum prior/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb > chunks/SHA256SUMS.txt
+          split -b 90M -d -a 2 prior/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb chunks/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part
+          test "$(find chunks -name '*.part*' | wc -l)" -eq 4
+          cat > chunks/REASSEMBLE_WINDOWS.cmd <<'EOF'
+          @echo off
+          copy /b D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part00+D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part01+D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part02+D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part03 D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          certutil -hashfile D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb SHA256
+          pause
+          EOF
+          ls -lh chunks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-drive-part00
+          path: chunks/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part00
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-drive-part01
+          path: chunks/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part01
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-drive-part02
+          path: chunks/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part02
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-drive-part03
+          path: chunks/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part03
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-drive-reassembly
+          path: |
+            chunks/REASSEMBLE_WINDOWS.cmd
+            chunks/SHA256SUMS.txt
+            chunks/REPORT.json
+          compression-level: 6
+          retention-days: 14
