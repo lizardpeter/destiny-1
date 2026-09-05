@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "evidence_status": "BINARY_CONFIRMED_TABLE_COMMON_LAYER_WITH_SOURCE_CROSSCHECK",
+  "date": "2026-09-05",
+  "binary_sources": {
+    "map_layer_run": 33989166179,
+    "map_layer_artifact": 9976184871,
+    "all_static_map_layers_run": 33991607815,
+    "all_static_map_layers_artifact": 9976897287,
+    "all_static_map_layers_digest": "sha256:e6e3bc3d5ff0fed6923864236701e47b3a3e00ad4d582a2ae97a5c6f3333e22f",
+    "direct_decal_validation_run": 33974200735,
+    "direct_decal_validation_artifact": 9971846577,
+    "direct_decal_validation_digest": "sha256:b5c0bf31373bda9229fcd56098e114e1e4cbd64ba4fd54c48c162f5e07fd5d69"
+  },
+  "source_crosscheck": {
+    "repository": "MontagueM/Charm",
+    "commit": "50d36ee1f9ecadad7522504c20b1f3f9c97e30af",
+    "file": "Charm/MapView.xaml.cs",
+    "method": "ExtractDataTables",
+    "d1_behavior": "For each SMapDataTable, D1 calls LoadDecalsIntoExporterScene exactly once on DataEntries[0]'s SMapDataResource/StaticMap; it then iterates all DataEntries separately for the static-map LoadIntoExporterScene path.",
+    "static_map_decal_method": "StaticMapData.LoadDecalsIntoExporterScene",
+    "model_selection": "Each embedded BA048080 record contributes its singleton model through EntityModel.Load(ExportDetailLevel.MostDetailed, null, true)."
+  },
+  "binary_invariants": {
+    "map_data_tables": 9,
+    "map_data_entries": 337,
+    "unique_static_map_parents": 337,
+    "unique_static_maps": 19,
+    "direct_d1_baked_static_rows": 10,
+    "first_entry_common_rows": 9,
+    "common_embedded_records_loaded_once_per_table": 327,
+    "common_records_structurally_valid": 327,
+    "common_records_singleton_transform_model": 327,
+    "unique_common_entity_models": 69,
+    "naive_per_map_entry_reexpansion_count": 23141,
+    "naive_per_map_entry_reexpansion_is_wrong": true
+  },
+  "tables": [
+    {"map_data_table":"80C98028","first_parent":"80C98061","common_static_map":"80C98191","common_records":38,"baked_static_maps":["80C98254"]},
+    {"map_data_table":"80C984A0","first_parent":"80C984B4","common_static_map":"80C984D7","common_records":13,"baked_static_maps":["80C984D8"]},
+    {"map_data_table":"80C9895C","first_parent":"80C98994","common_static_map":"80C98A69","common_records":78,"baked_static_maps":["80C98A6B"]},
+    {"map_data_table":"80C989F7","first_parent":"80C99297","common_static_map":"80C993A2","common_records":110,"baked_static_maps":["80C993CD","80C993CF"]},
+    {"map_data_table":"80C997DF","first_parent":"80C997EA","common_static_map":"80C997F4","common_records":3,"baked_static_maps":["80C997F5"]},
+    {"map_data_table":"80C99956","first_parent":"80C99965","common_static_map":"80C99980","common_records":21,"baked_static_maps":["80C99981"]},
+    {"map_data_table":"80CA0B0E","first_parent":"80CA0B22","common_static_map":"80CA0B6F","common_records":9,"baked_static_maps":["80CA0B70"]},
+    {"map_data_table":"80CA0B11","first_parent":"80CA0B2D","common_static_map":"80CA0B71","common_records":53,"baked_static_maps":["80CA0B72"]},
+    {"map_data_table":"80CA0C4E","first_parent":"80CA0C58","common_static_map":"80CA0C5F","common_records":2,"baked_static_maps":["80CA0C60"]}
+  ],
+  "assembly_consequence": "A Tower map-table adapter must load the first-entry common SStaticMapData embedded model/decal array once per table (327 records total across nine tables), and independently load the ten D1 baked-static resources selected from all table entries. Replaying the same common carrier once for every parent row would incorrectly expand 327 common records into 23,141 placements.",
+  "policy": "The 23,141 figure is retained only as a regression trap demonstrating naive repeated-carrier expansion. It is not a Tower placement count. No common record is associated to a particular repeated parent by guessed ordinal/index semantics."
+}
