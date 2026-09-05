@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_HIGHLIGHTED_ARCHITECTURE_VERTEX_CONTROL_CENSUS",
+  "date": "2026-09-05",
+  "cell": "80C984D8",
+  "source_table": "80C98662",
+  "transform_index": 368,
+  "materials": ["80C988A8", "80C988A9"],
+  "vertex_shader": "80CA0CB7",
+  "pixel_shaders": ["80C98908", "80C9890A"],
+  "source_secondary_vertex_buffer": "80C98741",
+  "secondary_stride": 24,
+  "source_layout": {
+    "branch_a": "UV@0, RGBA8@4, normal int16x4@8, tangent int16x4@16",
+    "branch_a_vertices": 18050,
+    "branch_b_vertices": 0,
+    "source": "Pinned D1 ReadD1VertexData stride-0x18 branch plus corrected world exporter"
+  },
+  "vertex_shader_export": "param3=(v16,v17,v10,v11)",
+  "pixel_attr3_w_source": "v11",
+  "source_glb_sha256": "e1bbd6488b42446cba1537135102d3f2502da830e345294768200b81d21e91ad",
+  "source_sidecar_sha256": "28cffed9315067a3db23c97cbe545da99ca434fb49064df6ad1714a05f5eba53",
+  "vertex_shader_gcn_sha256": "d9ed056abd71fb25800721e44dcc838b795b458f6466f177607900b9be39364d",
+  "pixel_shader_gcn_sha256": {
+    "80C98908": "e8755dbf9fefbedd4cf0e4cba75d55f1c6426af291dc3f49c4d08c09f18e062d",
+    "80C9890A": "7c5037406284c507fa9558f79876ee9c22032cc1825a7e8a08a9fce8fc93b778"
+  },
+  "parts": [
+    {
+      "geometry": "d1static_g00064_80C98740_80C98742_o333_n471_p3_m80C988A8_uv08751242",
+      "material": "80C988A8",
+      "selected_vertices": 272,
+      "rgba8_channel_summary": {
+        "R": {"unique": 1, "min": 0, "max": 0, "top": [[0,272]]},
+        "G": {"unique": 1, "min": 0, "max": 0, "top": [[0,272]]},
+        "B": {"unique": 63, "min": 0, "max": 255, "top": [[255,143],[0,13],[219,6],[34,5],[93,5],[90,4],[84,4],[243,4],[68,4]]},
+        "A": {"unique": 47, "min": 0, "max": 182, "top": [[127,147],[0,24],[34,8],[94,7],[124,6],[4,6],[17,6],[87,4],[68,4]]}
+      },
+      "top_rgba": [[[0,0,255,127],143],[[0,0,0,0],12],[[0,0,93,0],5],[[0,0,90,34],4],[[0,0,84,87],4],[[0,0,243,94],4],[[0,0,68,68],4]]
+    },
+    {
+      "geometry": "d1static_g00065_80C98740_80C98742_o4617_n18795_p3_m80C988A9_uv08751242",
+      "material": "80C988A9",
+      "selected_vertices": 5985,
+      "rgba8_channel_summary": {
+        "R": {"unique": 1, "min": 0, "max": 0, "top": [[0,5985]]},
+        "G": {"unique": 1, "min": 0, "max": 0, "top": [[0,5985]]},
+        "B": {"unique": 246, "min": 0, "max": 255, "top": [[255,2612],[0,1308],[1,171],[254,51],[134,31],[211,30],[179,28],[147,25],[233,24]]},
+        "A": {"unique": 128, "min": 0, "max": 255, "top": [[127,2715],[0,1200],[128,166],[64,140],[126,81],[7,53],[32,49],[63,46],[4,45]]}
+      },
+      "top_rgba": [[[0,0,255,127],2604],[[0,0,0,0],1138],[[0,0,1,128],166],[[0,0,0,64],138],[[0,0,254,126],40],[[0,0,134,42],22],[[0,0,179,29],22],[[0,0,211,7],22]]
+    },
+    {
+      "geometry": "d1static_g00066_80C98740_80C98742_o29040_n18228_p3_m80C988A9_uv08751242",
+      "material": "80C988A9",
+      "selected_vertices": 7091,
+      "rgba8_channel_summary": {
+        "R": {"unique": 1, "min": 0, "max": 0, "top": [[0,7091]]},
+        "G": {"unique": 1, "min": 0, "max": 0, "top": [[0,7091]]},
+        "B": {"unique": 256, "min": 0, "max": 255, "top": [[255,4347],[0,523],[241,22],[54,20],[1,19],[120,18],[3,18],[249,17],[131,17]]},
+        "A": {"unique": 153, "min": 0, "max": 255, "top": [[127,4420],[0,603],[1,63],[2,47],[5,39],[255,37],[9,36],[21,34],[7,33]]}
+      },
+      "top_rgba": [[[0,0,255,127],4340],[[0,0,0,0],469],[[0,0,0,48],23],[[0,0,0,64],16],[[0,0,241,41],12]]
+    }
+  ],
+  "interpretation": {
+    "confirmed": [
+      "The highlighted secondary stream uses the D1 stride-24 branch-A layout for all 18,050 vertices.",
+      "The three rendered parts preserve RGBA8 COLOR_0 from source offset +0x04.",
+      "On every selected vertex in all three parts, R and G are identically zero while B and A carry the varying control data.",
+      "Vertex shader 80CA0CB7 exports param3.zw directly from incoming v10/v11, and the pixel shader consumes attr3.w as the architectural blend control."
+    ],
+    "strongly_supported_not_yet_promoted": "Because the only varying two-component RGBA8 control payload is B/A and param3.zw is a raw two-VGPR pass-through, v10/v11 strongly align with COLOR.B/COLOR.A. Exact fetch-shader/input-layout VGPR mapping is still required before naming attr3.w specifically as COLOR.a in the canonical shader-role table.",
+    "why_it_matters": "Both 80C98908 and 80C9890A use attr3.w in high-gain texture-layer blend equations. Dropping COLOR_0, or binding the material as a simple single albedo, changes the intended architectural appearance even when geometry/scale are otherwise correct."
+  }
+}
