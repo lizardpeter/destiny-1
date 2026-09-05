@@ -38,15 +38,20 @@ jobs:
           import json,re
           from pathlib import Path
           names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
-          tower='ps4_city_tower_destination_0250_5.pkg'
-          if tower not in names:
-              raise SystemExit(f'missing exact validated Tower snapshot {tower}')
+          # 80CA0B70 is current in _5, but its payload graph uses patch backing from
+          # earlier 0250 siblings.  Preserve the whole physical family instead of
+          # pretending _5 is a standalone monolithic package.
+          tower=sorted(x for x in names if re.match(r'^ps4_city_tower_destination_0250_[0-9]+\.pkg$',x,re.I))
+          if len(tower)!=6:
+              raise SystemExit(f'expected six 0250 snapshots, found {len(tower)}: {tower}')
+          if 'ps4_city_tower_destination_0250_5.pkg' not in tower:
+              raise SystemExit('validated current _5 snapshot missing')
           arch=sorted(x for x in names if re.match(r'^ps4_arch_human_earth_city_009f_[0-9]+\.pkg$',x,re.I))
           if not arch:
               raise SystemExit('no ps4_arch_human_earth_city_009f snapshots')
-          members=[tower]+arch
+          members=tower+arch
           Path('reports/target_members.txt').write_text('\n'.join(members)+'\n')
-          Path('reports/target_members.json').write_text(json.dumps({'tower_snapshot':tower,'arch_009f_snapshots':arch,'members':members},indent=2)+'\n')
+          Path('reports/target_members.json').write_text(json.dumps({'tower_0250_snapshots':tower,'arch_009f_snapshots':arch,'members':members},indent=2)+'\n')
           print('\n'.join(members))
           PY
 
@@ -89,7 +94,8 @@ jobs:
           rows=[x for x in d.get('static_map_data',[]) if x.get('hash','').upper()=='80CA0B70']
           good=[x for x in rows if x.get('ok')]
           if len(good)!=1:
-              raise SystemExit(f'80CA0B70 expected exactly one passing row, got rows={len(rows)} good={len(good)}')
+              bad=rows[0] if rows else None
+              raise SystemExit(f'80CA0B70 expected exactly one passing row, rows={len(rows)} good={len(good)} detail={bad}')
           x=good[0]; c=x['d1_validation']
           assert c['hash'].upper()=='80CA0B96'
           assert c['ok']
