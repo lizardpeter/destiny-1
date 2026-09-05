@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "evidence_status": "CORRECTED_GENERATION_CLASS_BOUNDARY",
+  "source_census_run": 33943271839,
+  "source_census_artifact": 9963042289,
+  "tag_hash": "80C98258",
+  "entry_index": 600,
+  "physical_occurrences": [
+    {"snapshot":"ps4_city_tower_destination_024c_0.pkg","reference":"80801AF2","file_size":496,"starting_block":33,"starting_block_offset":40096,"entry_b":"000C0010","available":true,"payload_sha256":"a361214a483427d13cf4dd920379ff91c60bc6d6f2e7971da60206aa8592f2f3"},
+    {"snapshot":"ps4_city_tower_destination_024c_1.pkg","reference":"80801A90","file_size":19912,"starting_block":663,"starting_block_offset":214432,"entry_b":"000F0010","available":true,"payload_sha256":"77294d170d3274bf93c8f8435007b01c4e2727c8ba8178ea86a79f6bf26f940d"},
+    {"snapshot":"ps4_city_tower_destination_024c_2.pkg","reference":"80801A90","file_size":19912,"starting_block":618,"starting_block_offset":214432,"entry_b":"000F0010","available":true,"payload_sha256":"77294d170d3274bf93c8f8435007b01c4e2727c8ba8178ea86a79f6bf26f940d"},
+    {"snapshot":"ps4_city_tower_destination_024c_3.pkg","reference":"80801B75","file_size":48084,"starting_block":767,"starting_block_offset":71328,"entry_b":"000F0010","available":true,"payload_error":"OodleLZ_Decompress failed with return value 0"},
+    {"snapshot":"ps4_city_tower_destination_024c_4.pkg","reference":"80801B75","file_size":48084,"starting_block":725,"starting_block_offset":71328,"entry_b":"000F0010","available":true,"payload_error":"OodleLZ_Decompress failed with return value 0"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","reference":"80801B75","file_size":48084,"starting_block":725,"starting_block_offset":71328,"entry_b":"000F0010","available":true,"payload_error":"OodleLZ_Decompress failed with return value 0"}
+  ],
+  "bad_legacy_behavior": {
+    "validator_report_source":"ps4_city_tower_destination_024c_2.pkg",
+    "validator_report_reference":"80801A90",
+    "validator_report_payload_size":19912,
+    "misparsed_as":"80801B75 D1 static-map data",
+    "fake_symptoms":["instance transform FileHash 00000000","statics2 dynamic array bounds","statics3 dynamic array bounds","statics4 dynamic array bounds"]
+  },
+  "correction": {
+    "current_class":"80801B75",
+    "current_size":48084,
+    "status":"CURRENT_CLASS_PAYLOAD_UNRESOLVED_DUE_TO_OODLE_EXTRACTION_FAILURE",
+    "not_supported":"There is no evidence that 80C98258 uses an alternate D1 static-map layout. The apparent alternate layout came from cross-class generation fallback.",
+    "validator_fix":"tools/d1_tower_map_schema_validate_v3.py permits older-generation payload fallback only inside the newest occurrence's reference/class."
+  },
+  "next_proof":"Recover/decompress one _3/_4/_5 80801B75 payload without crossing the class boundary, then run normal D1 static-map validation on those current bytes."
+}
