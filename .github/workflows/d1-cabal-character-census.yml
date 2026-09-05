@@ -1,0 +1,84 @@
+name: D1 Cabal articulated character census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-cabal-character-census.yml'
+      - 'tools/d1_character_family_census.py'
+      - 'tools/d1_character_owner_backlinks.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover Cabal 005B patch family from retail archive
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          # 005B is an early arch package. Start at the TAR origin rather than
+          # relying on an unverified guessed byte offset; d1_split_tar_extract
+          # validates each member header while walking range requests.
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 0 \
+            --target ps4_arch_cabal_005b_0.pkg \
+            --target ps4_arch_cabal_005b_1.pkg \
+            --out recovered --manifest reports/005b_extract.json --retries 6 --timeout 90
+          ls -lh recovered/ps4_arch_cabal_005b_*.pkg
+
+      - name: Generic articulated-resource census
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_character_family_census.py \
+            recovered/ps4_arch_cabal_005b_1.pkg \
+            --runtime runtime --include-all-components \
+            -o reports/cabal_005b_character_family.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/cabal_005b_character_family.json'))
+          fam=d['families'][0]
+          summary={
+            'package':fam['package'],
+            'entry_count':fam['entry_count'],
+            'candidate_count':fam['candidate_count'],
+            'kind_counts':fam['kind_counts'],
+            'errors':len(fam['errors']),
+            'top_components':[
+              {
+                'classification':x['classification'],
+                'bone_counts':x['bone_counts'],
+                'facts':x['facts'],
+                'node_count':len(x['nodes']),
+                'edge_count':x['edge_count'],
+              } for x in fam['components'][:25]
+            ],
+          }
+          print(json.dumps(summary,indent=2))
+          open('reports/cabal_005b_character_summary.json','w').write(json.dumps(summary,indent=2)+'\n')
+          PY
+
+      - name: Upload census
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-cabal-character-census
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
