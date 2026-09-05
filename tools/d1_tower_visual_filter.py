@@ -11,6 +11,10 @@ This tool applies that exact selection to an already-exported proof GLB while pr
 its byte-derived placement matrices and geometry. Material.Unk08 is read from the
 current class-stable 80801AD7 material payload at offset +0x08; it is never inferred.
 
+The current implementation uses validator-v5's serialized-coverage Tiger reader so
+partial Oodle logical blocks are decoded at their proven raw size before the same
+class-stable occurrence policy is applied.
+
 Safety:
 - node -> table/info lookup comes from the validator report;
 - material hash comes from the serialized MaterialIndex;
@@ -25,7 +29,7 @@ import trimesh
 
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
-import d1_tower_map_schema_validate_v3 as v3
+import d1_tower_map_schema_validate_v5 as v5
 
 ALLOWED_DETAIL={0,1,2,3,10}
 MAT_CLASS='80801AD7'
@@ -49,9 +53,9 @@ def main():
     if rr is None: raise SystemExit(f'validator row {h} absent')
     if not rr.get('ok'): raise SystemExit(f'validator row {h} did not pass: {rr.get("violations")}')
 
-    # v3 deliberately layers its class-stable payload policy onto the base
-    # validator's Corpus rather than re-exporting Corpus as a top-level symbol.
-    c=v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
+    # v5 layers the serialized-coverage SizedEntryReader onto v3's class-stable
+    # occurrence policy and base Corpus.
+    c=v5.v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
     info={}
     materials={}
     for t in rr['static_tables']:
@@ -134,6 +138,7 @@ def main():
     report={
       'evidence_status':'D1_VISUAL_STATIC_SELECTION_FROM_BINARY_VALIDATED_PLACEMENTS_AND_CURRENT_MATERIAL_BYTES',
       'd1_static_map_data':h,
+      'reader_policy':'VALIDATOR_V5_SERIALIZED_COVERAGE_SIZED_READER_PLUS_CLASS_STABLE_OCCURRENCE_POLICY',
       'rule':{'detail_levels':sorted(ALLOWED_DETAIL),'material_class':MAT_CLASS,'material_unk08_required':1},
       'input_nodes_geometry':len(src_scene.graph.nodes_geometry),
       'visual_placements':len(survivors),
