@@ -33,17 +33,21 @@ KNOWN_RESOURCE_CLASSES={
 def norm(x): return str(x).upper().removeprefix('0X').zfill(8)
 def hx(x): return f'{x:08X}'
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+def i32(b,o): return struct.unpack_from('<i',b,o)[0]
 def u64(b,o): return struct.unpack_from('<Q',b,o)[0]
 def i64(b,o): return struct.unpack_from('<q',b,o)[0]
 def f4(b,o): return [float(x) for x in struct.unpack_from('<4f',b,o)]
 
 def dyn(b,off,stride):
-    # D1 DynamicArray descriptor: u64 relative pointer at +0, u32 count at +8.
-    if off+0x10>len(b): return {'ok':False,'error':'descriptor_oob'}
-    rel=i64(b,off); count=u32(b,off+8); absolute=off+rel if rel else 0
-    ok=(count==0 and rel==0) or (rel!=0 and absolute>=0 and absolute+count*stride<=len(b))
-    return {'ok':ok,'relative':rel,'count':count,'absolute':absolute,'stride':stride,
-            'end':absolute+count*stride if rel else absolute}
+    # Charm/D1 DynamicArray: i32 count +0, u32 unknown +4, RelativePointer +8.
+    # RelativePointer is based at its own field (off+8), then AddExtraOffset(0x10).
+    if off+0x10>len(b): return {'ok':False,'error':'descriptor_oob','field_offset':off}
+    count=i32(b,off); unk=u32(b,off+4); rel=i64(b,off+8)
+    absolute=off+8+rel+0x10
+    end=absolute+max(count,0)*stride
+    ok=count>=0 and absolute>=0 and end<=len(b)
+    return {'ok':ok,'field_offset':off,'count':count,'unknown04':unk,'relative':rel,
+            'absolute':absolute,'stride':stride,'end':end,'payload_size':len(b)}
 
 def target_meta(c,h):
     h=norm(h); m=c.entry_meta(h)
