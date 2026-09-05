@@ -1,0 +1,83 @@
+name: D1 Spektar Pandion texture-plate census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-texture-plate-census.yml'
+      - 'tools/d1_remote_texture_plate_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  plates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies, visual-context artifact, and Oodle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p input runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-visual-context-census&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/visual.zip
+          unzip -q input/visual.zip -d input/visual
+          test -f input/visual/spektar_masculine_visual_context.json
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Resolve every masculine Spektar texture-plate header and source texture
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          mapfile -t HEADERS < <(python - <<'PY'
+          import json
+          d=json.load(open('input/visual/spektar_masculine_visual_context.json'))
+          assert d['model_count']==5 and d['texture_plate_header_count']==5,d
+          for h in d['texture_plate_header_tags']:
+              print(h)
+          PY
+          )
+          args=()
+          for h in "${HEADERS[@]}"; do args+=(--header-tag "$h"); done
+          python tools/d1_remote_texture_plate_probe.py \
+            "${args[@]}" \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/spektar_masculine_texture_plates.json
+      - name: Validate plate roles and dimensions
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('out/spektar_masculine_texture_plates.json'))
+          assert d['header_count']==5,d
+          assert not d['errors'],d['errors']
+          for h in d['headers']:
+              assert set(h['plates'])=={'albedo','normal','gstack'},h
+              assert h['source_texture_hashes'],h
+              for role,p in h['plates'].items():
+                  assert p['plate_dimension_pow2']>0,(h['tag_hash'],role,p)
+                  assert p['transforms'],(h['tag_hash'],role,p)
+                  assert all(x['texture_present_in_catalog_views'] for x in p['transforms']),(h['tag_hash'],role,p)
+              print(h['tag_hash'],{r:(p['tag_hash'],p['plate_dimension_pow2'],len(p['transforms'])) for r,p in h['plates'].items()})
+          print('unique source textures',d['unique_source_texture_count'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-texture-plate-census
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
