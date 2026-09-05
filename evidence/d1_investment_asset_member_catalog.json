@@ -1,0 +1,102 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": ".github/workflows/tmp-investment-child-target-find.yml and prior validated split-TAR recovery runs",
+  "policy": "Each data_offset/size pair was previously located at a valid ustar member and used successfully as a RemoteLogicalPackage member. Package ownership is still derived from serialized FileHash package ids; this catalog only avoids rediscovering physical TAR locations.",
+  "families": {
+    "0135": [
+      {"name":"ps4_investment_assets_0135_0.pkg","data_offset":"0x5996C3200","size":13039616},
+      {"name":"ps4_investment_assets_0135_1.pkg","data_offset":"0x59A332C00","size":3268608},
+      {"name":"ps4_investment_assets_0135_2.pkg","data_offset":"0x59A650E00","size":3348480},
+      {"name":"ps4_investment_assets_0135_3.pkg","data_offset":"0x59A982800","size":167936},
+      {"name":"ps4_investment_assets_0135_4.pkg","data_offset":"0x59A9ABA00","size":167936},
+      {"name":"ps4_investment_assets_0135_5.pkg","data_offset":"0x59A9D4C00","size":247808}
+    ],
+    "0137": [
+      {"name":"ps4_investment_assets_0137_0.pkg","data_offset":"0x59AA11600","size":9207808},
+      {"name":"ps4_investment_assets_0137_1.pkg","data_offset":"0x59B2D9800","size":2756608},
+      {"name":"ps4_investment_assets_0137_2.pkg","data_offset":"0x59B57AA00","size":432128},
+      {"name":"ps4_investment_assets_0137_3.pkg","data_offset":"0x59B5E4400","size":141312},
+      {"name":"ps4_investment_assets_0137_5.pkg","data_offset":"0x59B606E00","size":141312}
+    ],
+    "0139": [
+      {"name":"ps4_investment_assets_0139_0.pkg","data_offset":"0x59B629800","size":10217472},
+      {"name":"ps4_investment_assets_0139_1.pkg","data_offset":"0x59BFE8200","size":3856384},
+      {"name":"ps4_investment_assets_0139_2.pkg","data_offset":"0x59C395C00","size":454656},
+      {"name":"ps4_investment_assets_0139_3.pkg","data_offset":"0x59C404E00","size":141312},
+      {"name":"ps4_investment_assets_0139_5.pkg","data_offset":"0x59C427800","size":180224}
+    ],
+    "013A": [
+      {"name":"ps4_investment_assets_013a_0.pkg","data_offset":"0x59C453A00","size":95760384},
+      {"name":"ps4_investment_assets_013a_1.pkg","data_offset":"0x5A1FA6C00","size":15149056},
+      {"name":"ps4_investment_assets_013a_2.pkg","data_offset":"0x5A2E19600","size":7192576},
+      {"name":"ps4_investment_assets_013a_3.pkg","data_offset":"0x5A34F5800","size":165888},
+      {"name":"ps4_investment_assets_013a_4.pkg","data_offset":"0x5A351E200","size":161792},
+      {"name":"ps4_investment_assets_013a_5.pkg","data_offset":"0x5A3545C00","size":165888}
+    ],
+    "013B": [
+      {"name":"ps4_investment_assets_013b_1.pkg","data_offset":"0x5A356E600","size":26503168},
+      {"name":"ps4_investment_assets_013b_2.pkg","data_offset":"0x5A4EB5000","size":1114112}
+    ],
+    "013C": [
+      {"name":"ps4_investment_assets_013c_1.pkg","data_offset":"0x5A4FC5200","size":24469504},
+      {"name":"ps4_investment_assets_013c_2.pkg","data_offset":"0x5A671B400","size":839680},
+      {"name":"ps4_investment_assets_013c_3.pkg","data_offset":"0x5A67E8600","size":145408},
+      {"name":"ps4_investment_assets_013c_5.pkg","data_offset":"0x5A680C000","size":237568}
+    ],
+    "013D": [
+      {"name":"ps4_investment_assets_013d_1.pkg","data_offset":"0x5A6846200","size":22304768},
+      {"name":"ps4_investment_assets_013d_2.pkg","data_offset":"0x5A7D8BC00","size":985088},
+      {"name":"ps4_investment_assets_013d_3.pkg","data_offset":"0x5A7E7C600","size":163840},
+      {"name":"ps4_investment_assets_013d_4.pkg","data_offset":"0x5A7EA4800","size":143360},
+      {"name":"ps4_investment_assets_013d_5.pkg","data_offset":"0x5A7EC7A00","size":196608}
+    ],
+    "013E": [
+      {"name":"ps4_investment_assets_013e_1.pkg","data_offset":"0x5A7EF7C00","size":21049344},
+      {"name":"ps4_investment_assets_013e_2.pkg","data_offset":"0x5A930AE00","size":704512},
+      {"name":"ps4_investment_assets_013e_3.pkg","data_offset":"0x5A93B7000","size":143360},
+      {"name":"ps4_investment_assets_013e_4.pkg","data_offset":"0x5A93DA200","size":145408},
+      {"name":"ps4_investment_assets_013e_5.pkg","data_offset":"0x5A93FDC00","size":145408}
+    ],
+    "0140": [
+      {"name":"ps4_investment_assets_0140_1.pkg","data_offset":"0x5AA95E000","size":775550976},
+      {"name":"ps4_investment_assets_0140_2.pkg","data_offset":"0x5D8CFDA00","size":15181824},
+      {"name":"ps4_investment_assets_0140_3.pkg","data_offset":"0x5D9B78400","size":538624},
+      {"name":"ps4_investment_assets_0140_5.pkg","data_offset":"0x5D9BFBE00","size":1605632}
+    ],
+    "0141": [
+      {"name":"ps4_investment_assets_0141_2.pkg","data_offset":"0x5D9D84000","size":28954624},
+      {"name":"ps4_investment_assets_0141_3.pkg","data_offset":"0x5DB921200","size":352256},
+      {"name":"ps4_investment_assets_0141_4.pkg","data_offset":"0x5DB977400","size":184320},
+      {"name":"ps4_investment_assets_0141_5.pkg","data_offset":"0x5DB9A4600","size":444416}
+    ],
+    "0142": [
+      {"name":"ps4_investment_assets_0142_2.pkg","data_offset":"0x5DBA11000","size":26355712},
+      {"name":"ps4_investment_assets_0142_3.pkg","data_offset":"0x5DD333A00","size":229376},
+      {"name":"ps4_investment_assets_0142_4.pkg","data_offset":"0x5DD36BC00","size":350208},
+      {"name":"ps4_investment_assets_0142_5.pkg","data_offset":"0x5DD3C1600","size":401408}
+    ],
+    "0143": [
+      {"name":"ps4_investment_assets_0143_2.pkg","data_offset":"0x5DD423800","size":25309184},
+      {"name":"ps4_investment_assets_0143_3.pkg","data_offset":"0x5DEC46A00","size":530432},
+      {"name":"ps4_investment_assets_0143_4.pkg","data_offset":"0x5DECC8400","size":176128},
+      {"name":"ps4_investment_assets_0143_5.pkg","data_offset":"0x5DECF3600","size":567296}
+    ],
+    "0144": [
+      {"name":"ps4_investment_assets_0144_2.pkg","data_offset":"0x5DED7E000","size":33804288},
+      {"name":"ps4_investment_assets_0144_3.pkg","data_offset":"0x5E0DBB200","size":655360},
+      {"name":"ps4_investment_assets_0144_4.pkg","data_offset":"0x5E0E5B400","size":221184},
+      {"name":"ps4_investment_assets_0144_5.pkg","data_offset":"0x5E0E91600","size":335872}
+    ],
+    "0145": [
+      {"name":"ps4_investment_assets_0145_2.pkg","data_offset":"0x5E0EE3800","size":653187072},
+      {"name":"ps4_investment_assets_0145_3.pkg","data_offset":"0x607DD1200","size":50792448},
+      {"name":"ps4_investment_assets_0145_4.pkg","data_offset":"0x60AE41C00","size":15742976},
+      {"name":"ps4_investment_assets_0145_5.pkg","data_offset":"0x60BD45600","size":3166208}
+    ],
+    "0146": [
+      {"name":"ps4_investment_assets_0146_4.pkg","data_offset":"0x60C04A800","size":82329600},
+      {"name":"ps4_investment_assets_0146_5.pkg","data_offset":"0x610ECEA00","size":76988416},
+      {"name":"ps4_investment_assets_0146_6.pkg","data_offset":"0x61583AC00","size":161792}
+    ]
+  }
+}
