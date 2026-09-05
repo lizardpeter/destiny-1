@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "D1_TOWER_NINE_CELL_DETAIL_SELECTION_EXACT_FROM_VALIDATED_STATIC_INFO_TABLES",
+  "rule": {
+    "allowed_detail_levels": [0, 1, 2, 3, 10],
+    "source": "D1 ROI StaticMapData_D1.GetStatics()",
+    "note": "This checkpoint covers only the DetailLevel half of the retail visibility rule. material.Unk08 == 1 is applied separately."
+  },
+  "totals": {
+    "serialized_placements": 40373,
+    "detail_level_valid_candidates": 22314,
+    "detail_level_rejected": 18059,
+    "detail_distribution": {
+      "0": 450,
+      "1": 18574,
+      "2": 3290,
+      "4": 162,
+      "7": 17897
+    }
+  },
+  "cells": [
+    {"static_map":"80C984D8","d1":"80C9858B","serialized":1800,"detail_candidates":994,"detail_rejected":806,"distribution":{"1":815,"2":179,"7":806}},
+    {"static_map":"80C98A6B","d1":"80C98A77","serialized":12498,"detail_candidates":6789,"detail_rejected":5709,"distribution":{"0":234,"1":5843,"2":712,"4":105,"7":5604}},
+    {"static_map":"80C993CD","d1":"80C994B1","serialized":5115,"detail_candidates":2724,"detail_rejected":2391,"distribution":{"0":8,"1":2537,"2":179,"7":2391}},
+    {"static_map":"80C993CF","d1":"80C994B2","serialized":13827,"detail_candidates":7523,"detail_rejected":6304,"distribution":{"0":130,"1":6463,"2":930,"4":35,"7":6269}},
+    {"static_map":"80C997F5","d1":"80C9981A","serialized":2409,"detail_candidates":1334,"detail_rejected":1075,"distribution":{"0":36,"1":1072,"2":226,"4":10,"7":1065}},
+    {"static_map":"80C99981","d1":"80C9999B","serialized":1800,"detail_candidates":965,"detail_rejected":835,"distribution":{"0":18,"1":850,"2":97,"4":10,"7":825}},
+    {"static_map":"80CA0B70","d1":"80CA0B96","serialized":556,"detail_candidates":305,"detail_rejected":251,"distribution":{"1":299,"2":6,"7":251}},
+    {"static_map":"80CA0B72","d1":"80CA0B98","serialized":772,"detail_candidates":772,"detail_rejected":0,"distribution":{"2":772}},
+    {"static_map":"80CA0C60","d1":"80CA0C6B","serialized":1596,"detail_candidates":908,"detail_rejected":688,"distribution":{"0":24,"1":695,"2":189,"4":2,"7":686}}
+  ],
+  "derivation": "For each validated D1 static table, each info row's serialized instance_count was accumulated under the DetailLevel of its referenced mesh record. No GLB geometry was required for this census."
+}
