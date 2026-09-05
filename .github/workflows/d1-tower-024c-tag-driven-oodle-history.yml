@@ -1,0 +1,136 @@
+name: D1 Tower 024C tag-driven Oodle history
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-024c-tag-driven-oodle-history.yml'
+      - 'tools/d1_oodle_history_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact 024C family
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_city_tower_destination_024c_0.pkg',7542949376,137527296,'ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2'),
+            ('ps4_city_tower_destination_024c_1.pkg',7680477184,12226560,'21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8'),
+            ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
+            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
+            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+          ]
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          for name,off,size,sha in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=sha.lower(): raise SystemExit(f'{name}: SHA mismatch')
+          PY
+
+      - name: Probe exact tag histories and Oodle dictionary behavior
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes, hashlib, json, re, sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_pkg_probe import BLOCK_SIZE, patch_path
+          from d1_oodle_probe import Oodle3
+
+          runtime=Path('runtime').resolve()
+          targets=['80C99F52','80C98258']
+          snapshots=sorted(Path('recovered').glob('ps4_city_tower_destination_024c_*.pkg'), key=lambda p:int(re.search(r'_(\d+)\.pkg$',p.name).group(1)))
+          rows=[]
+
+          def raw_stored(reader, bi):
+              b=reader.blocks[bi]; owner=patch_path(reader.pkg,b['patch_id'])
+              if not owner.exists(): return None,owner,b
+              with owner.open('rb') as f:
+                  f.seek(b['offset']); data=f.read(b['size'])
+              if hashlib.sha1(data).hexdigest().lower()!=b['sha1'].lower():
+                  raise RuntimeError(f'{reader.pkg.name}: block {bi} SHA mismatch')
+              return data,owner,b
+
+          def chained(reader, prev_i, cur_i):
+              oodle=reader.oodle
+              prev=reader.block(prev_i)
+              stored,owner,b=raw_stored(reader,cur_i)
+              if stored is None: return {'success':False,'error':'owner missing','owner':str(owner)}
+              if not b['compressed']:
+                  return {'success':True,'return':len(stored),'bytes':len(stored),'sha256':hashlib.sha256(stored).hexdigest(),'owner':str(owner),'compressed':False}
+              total=BLOCK_SIZE*2
+              buf=ctypes.create_string_buffer(total)
+              ctypes.memmove(ctypes.addressof(buf),prev,BLOCK_SIZE)
+              src=ctypes.create_string_buffer(stored)
+              base_addr=ctypes.addressof(buf); raw_addr=base_addr+BLOCK_SIZE
+              n=oodle.fn(ctypes.cast(src,ctypes.c_void_p),len(stored),ctypes.c_void_p(raw_addr),BLOCK_SIZE,1,0,1,ctypes.c_void_p(base_addr),total,None,None,None,0,3)
+              if n<=0:
+                  return {'success':False,'return':int(n),'owner':str(owner),'compressed':True}
+              produced=int(n)-BLOCK_SIZE if int(n)>BLOCK_SIZE else int(n)
+              cur=ctypes.string_at(raw_addr,produced)
+              return {'success':True,'return':int(n),'bytes':len(cur),'sha256':hashlib.sha256(cur).hexdigest(),'owner':str(owner),'compressed':True,'prefix':cur[:32].hex()}
+
+          for p in snapshots:
+              r=EntryReader(p,runtime)
+              by={e['tag_hash'].upper():e for e in r.entries}
+              for th in targets:
+                  e=by.get(th)
+                  if not e: continue
+                  row={'snapshot':p.name,'tag_hash':th,'reference':e['reference'],'entry_index':e['index'],'file_size':e['file_size'],'starting_block':e['starting_block'],'starting_block_offset':e['starting_block_offset'],'block_table_count':len(r.blocks),'available':False,'direct_ok':False}
+                  span=e['starting_block_offset']+e['file_size']; count=max(1,(span+BLOCK_SIZE-1)//BLOCK_SIZE)
+                  row['block_count']=count
+                  row['blocks']=[]
+                  for bi in range(e['starting_block'],e['starting_block']+count):
+                      if bi>=len(r.blocks):
+                          row['blocks'].append({'index':bi,'out_of_range':True}); continue
+                      b=r.blocks[bi]; owner=patch_path(r.pkg,b['patch_id'])
+                      row['blocks'].append({'index':bi,'patch_id':b['patch_id'],'owner':owner.name,'owner_exists':owner.exists(),'compressed':b['compressed'],'stored_size':b['size'],'sha1':b['sha1']})
+                  try:
+                      row['available']=r.available(e['index'])
+                      if row['available']:
+                          payload=r.entry(e['index']); row['direct_ok']=True; row['direct_sha256']=hashlib.sha256(payload).hexdigest(); row['direct_bytes']=len(payload)
+                  except Exception as ex:
+                      row['direct_error']=repr(ex)
+                  bi=e['starting_block']
+                  if bi>0 and bi<len(r.blocks):
+                      try: row['history_prev_to_first']=chained(r,bi-1,bi)
+                      except Exception as ex: row['history_prev_to_first']={'success':False,'error':repr(ex)}
+                  rows.append(row)
+
+          out={'targets':targets,'rows':rows}
+          Path('reports/tag_driven_oodle_history.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-024c-tag-driven-oodle-history
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
