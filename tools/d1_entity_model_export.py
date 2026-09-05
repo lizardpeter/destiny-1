@@ -30,18 +30,64 @@ def decode_vb0(data,stride):
     raw=np.frombuffer(data,dtype='<i2').reshape(n,stride//2)
     return snorm16(raw[:,:3])
 
-def decode_vb1(data,stride,uvscale,uvtrans):
+def transform_uv(uv,uvscale,uvtrans):
+    if uv is None: return None
+    uv=np.asarray(uv,dtype=np.float32)
+    return np.column_stack((uv[:,0]*uvscale[0]+uvtrans[0], uv[:,1]*(-uvscale[1])+1.0-uvtrans[1])).astype(np.float32)
+
+def decode_vb0_uv(data,stride,uvscale,uvtrans):
+    """Decode D1 ROI UV0 that is resident in the primary position stream.
+
+    For dynamic D1 mesh stride 0x0C the fourth int16 is position W. If W is
+    +/-0x7FFF, bytes 8..11 are inline two-bone skin data and UV0 is absent from
+    this stream. Otherwise bytes 8..11 are UV0. A mixed sentinel/non-sentinel
+    stream would make one UV list structurally inconsistent, so it is rejected
+    rather than guessed.
+    """
+    if stride!=0x0c: return None
+    if len(data)%stride: raise ValueError(f'buffer0 byte count {len(data)} not divisible by stride {stride:#x}')
+    raw=np.frombuffer(data,dtype='<i2').reshape((-1,6))
+    w=raw[:,3]
+    sentinel=np.logical_or(w==32767,w==-32767)
+    if np.all(sentinel): return None
+    if np.any(sentinel):
+        raise ValueError('mixed +/-0x7FFF and ordinary position-W values in one D1 0x0C primary stream; UV0 source is ambiguous')
+    return transform_uv(snorm16(raw[:,4:6]),uvscale,uvtrans)
+
+def decode_vb1(data,stride,uvscale,uvtrans,primary_uv_exists=False,other_stride=-1):
+    """Decode D1 ROI secondary vertex data with stream-pair UV state.
+
+    Charm's ROI path keeps whether UV0 was already populated by buffer0. This
+    matters for 0x14 and 0x18 secondary streams: with a pre-existing primary UV
+    they begin with normal/tangent data instead of another UV0. The old generic
+    exporter always assumed UV0 began buffer1, which is wrong for rigid Guardian
+    0x0C primary meshes.
+    """
     n=len(data)//stride
     raw=np.frombuffer(data,dtype='<i2').reshape(n,stride//2)
     uv=norm=None; tangent=None; color=None
     if stride==0x0c:
+        if primary_uv_exists:
+            raise ValueError('D1 stream pair exposes UV0 in both primary 0x0C and secondary 0x0C; refusing ambiguous UV set')
         uv=snorm16(raw[:,:2]); norm=snorm16(raw[:,2:5])
-    elif stride in (0x14,0x18):
-        # D1 bufferIndex=1, with no pre-existing UVs: UV + padded normal +
-        # tangent. Retail 0x18 adds one final int16 pair after the tangent;
-        # its semantic is intentionally left unresolved and is not consumed.
-        uv=snorm16(raw[:,:2]); norm=snorm16(raw[:,2:5]); tangent=snorm16(raw[:,6:9])
+    elif stride==0x14:
+        if primary_uv_exists:
+            norm=snorm16(raw[:,0:3]); tangent=snorm16(raw[:,4:7])
+            # Final four bytes are the D1 colour-slot lane in this layout.
+            color=np.frombuffer(data,dtype=np.uint8).reshape(n,stride)[:,16:20].astype(np.float32)/255.0
+        else:
+            uv=snorm16(raw[:,:2]); norm=snorm16(raw[:,2:5]); tangent=snorm16(raw[:,6:9])
+    elif stride==0x18:
+        if other_stride==0x0c and primary_uv_exists:
+            # D1 ROI _uvExists branch: normal + tangent + final unresolved/colour lane.
+            norm=snorm16(raw[:,0:3]); tangent=snorm16(raw[:,4:7])
+        else:
+            # When buffer0 did not supply UV0 (including inline-skinned 0x0C and
+            # 0x10 primary streams), the 0x18 secondary stream starts with UV0.
+            uv=snorm16(raw[:,:2]); norm=snorm16(raw[:,2:5]); tangent=snorm16(raw[:,6:9])
     elif stride==0x04:
+        if primary_uv_exists:
+            raise ValueError('D1 stream pair exposes UV0 in both primary 0x0C and secondary 0x04; refusing ambiguous UV set')
         uv=snorm16(raw[:,:2])
     elif stride==0x08:
         norm=snorm16(raw[:,:3])
@@ -49,8 +95,7 @@ def decode_vb1(data,stride,uvscale,uvtrans):
         norm=snorm16(raw[:,:3]); tangent=snorm16(raw[:,4:7])
     else:
         raise ValueError(f'unsupported D1 buffer1 stride {stride:#x}')
-    if uv is not None:
-        uv=np.column_stack((uv[:,0]*uvscale[0]+uvtrans[0], uv[:,1]*(-uvscale[1])+1.0-uvtrans[1])).astype(np.float32)
+    uv=transform_uv(uv,uvscale,uvtrans)
     return uv,norm,tangent,color
 
 def decode_indices(data,is32):
@@ -106,8 +151,14 @@ def export_model(r, tag_hash, out_glb, out_json=None, unique_ranges=True):
         pos=decode_vb0(v1d,s0)
         scale=np.asarray(mesh['model_scale'][:3],dtype=np.float32); trans=np.asarray(mesh['model_translation'][:3],dtype=np.float32)
         pos=(pos*scale+trans).astype(np.float32)
-        uv,norm,tan,color=decode_vb1(v2d,s1,mesh['texcoord_scale'],mesh['texcoord_translation'])
+        primary_uv=decode_vb0_uv(v1d,s0,mesh['texcoord_scale'],mesh['texcoord_translation'])
+        secondary_uv,norm,tan,color=decode_vb1(v2d,s1,mesh['texcoord_scale'],mesh['texcoord_translation'],primary_uv_exists=primary_uv is not None,other_stride=s0)
+        if primary_uv is not None and secondary_uv is not None:
+            raise ValueError(f'mesh {mi}: both vertex streams produced UV0')
+        uv=primary_uv if primary_uv is not None else secondary_uv
+        uv_source='primary' if primary_uv is not None else ('secondary' if secondary_uv is not None else None)
         if len(pos)!=len(v2d)//s1: raise ValueError(f'mesh {mi}: vertex stream count mismatch')
+        if uv is not None and len(uv)!=len(pos): raise ValueError(f'mesh {mi}: UV/position count mismatch')
         inds=decode_indices(idata,is32)
         ranges={}
         for pi,p in enumerate(mesh['parts']):
@@ -115,7 +166,7 @@ def export_model(r, tag_hash, out_glb, out_json=None, unique_ranges=True):
             ranges.setdefault(key,[]).append((pi,p))
         if not unique_ranges:
             ranges={(p['index_offset'],p['index_count'],p['primitive_type'],pi):[(pi,p)] for pi,p in enumerate(mesh['parts'])}
-        mrep={'mesh_index':mi,'model_scale':mesh['model_scale'],'model_translation':mesh['model_translation'],'texcoord_scale':mesh['texcoord_scale'],'texcoord_translation':mesh['texcoord_translation'],'uv_bounds':bounds2(uv),'vertices1':mesh['vertices1'],'vertices2':mesh['vertices2'],'indices':mesh['indices'],'vertex_count':len(pos),'vertex_stride0':s0,'vertex_stride1':s1,'index_width_bits':32 if is32 else 16,'stage_part_offsets':mesh.get('stage_part_offsets'),'stage_code':mesh.get('stage_code'),'primitive_groups':[]}
+        mrep={'mesh_index':mi,'model_scale':mesh['model_scale'],'model_translation':mesh['model_translation'],'texcoord_scale':mesh['texcoord_scale'],'texcoord_translation':mesh['texcoord_translation'],'uv_source':uv_source,'uv_bounds':bounds2(uv),'vertices1':mesh['vertices1'],'vertices2':mesh['vertices2'],'indices':mesh['indices'],'vertex_count':len(pos),'vertex_stride0':s0,'vertex_stride1':s1,'index_width_bits':32 if is32 else 16,'stage_part_offsets':mesh.get('stage_part_offsets'),'stage_code':mesh.get('stage_code'),'primitive_groups':[]}
         for gi,(key,candidates) in enumerate(ranges.items()):
             off,count,prim=key[:3]
             sl=inds[off:off+count]
@@ -132,7 +183,7 @@ def export_model(r, tag_hash, out_glb, out_json=None, unique_ranges=True):
             visual=trimesh.visual.TextureVisuals(uv=uu,material=material) if uu is not None else None
             tm=trimesh.Trimesh(vertices=vv,faces=faces,vertex_normals=nn,visual=visual,process=False,validate=False)
             name=f'{th}_mesh{mi}_range{off}_{count}'
-            tm.metadata={'model_tag_hash':th,'mesh_index':mi,'source_vertex_indices':used.tolist(),'candidate_materials':materials,'part_indices':[pi for pi,_ in candidates],'lod_values':sorted(set(p['lod'] for _,p in candidates)),'index_offset':off,'index_count':count,'primitive_type':prim}
+            tm.metadata={'model_tag_hash':th,'mesh_index':mi,'source_vertex_indices':used.tolist(),'candidate_materials':materials,'part_indices':[pi for pi,_ in candidates],'lod_values':sorted(set(p['lod'] for _,p in candidates)),'index_offset':off,'index_count':count,'primitive_type':prim,'uv_source':uv_source}
             scene.add_geometry(tm,geom_name=name,node_name=name)
             mrep['primitive_groups'].append({'name':name,'index_offset':off,'index_count':count,'primitive_type':prim,'triangle_count':len(faces_global),'unique_vertex_count':len(used),'candidate_materials':materials,'part_indices':[pi for pi,_ in candidates],'lod_values':sorted(set(p['lod'] for _,p in candidates))})
         report['meshes'].append(mrep)
