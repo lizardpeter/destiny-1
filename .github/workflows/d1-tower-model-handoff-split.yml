@@ -1,0 +1,62 @@
+name: D1 Tower current model handoff split
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-model-handoff-split.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download completed four-model preview bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p prior reports
+          gh run download 33984192806 -n d1-tower-three-cell-textured-preview -D prior
+          ls -lh prior/out/*.glb prior/reports/*.json
+          cp prior/reports/preview_strong_base.json reports/
+          cp prior/reports/preview_broad_base.json reports/
+          cp prior/reports/preview_strong_base_normal.json reports/
+          cp prior/reports/preview_broad_base_normal.json reports/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-strong-base
+          path: |
+            prior/out/D1_TOWER_THREE_CELL_TEXTURED_STRONG_BASE.glb
+            reports/preview_strong_base.json
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-broad-base
+          path: |
+            prior/out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE.glb
+            reports/preview_broad_base.json
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-strong-base-normal
+          path: |
+            prior/out/D1_TOWER_THREE_CELL_TEXTURED_STRONG_BASE_NORMAL.glb
+            reports/preview_strong_base_normal.json
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-broad-base-normal
+          path: |
+            prior/out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+            reports/preview_broad_base_normal.json
+          retention-days: 14
+          compression-level: 0
