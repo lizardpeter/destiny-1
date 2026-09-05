@@ -13,12 +13,12 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Recover exact current Tower corpus
+      - name: Recover only the exact 024C and 0250 table-owning packages
         run: |
           set -euo pipefail
           mkdir -p runtime recovered reports
@@ -26,8 +26,18 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
-          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          # Every target table's TagHash namespace is either 0x024C or 0x0250.
+          # Start at the exact TAR header immediately preceding 024C_0 instead of
+          # downloading the much larger all-Tower dependency corpus.
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x1C1984400 \
+            --target ps4_city_tower_destination_024c_0.pkg --target ps4_city_tower_destination_024c_1.pkg \
+            --target ps4_city_tower_destination_024c_2.pkg --target ps4_city_tower_destination_024c_3.pkg \
+            --target ps4_city_tower_destination_024c_4.pkg --target ps4_city_tower_destination_024c_5.pkg \
+            --target ps4_city_tower_destination_0250_0.pkg --target ps4_city_tower_destination_0250_1.pkg \
+            --target ps4_city_tower_destination_0250_2.pkg --target ps4_city_tower_destination_0250_3.pkg \
+            --target ps4_city_tower_destination_0250_4.pkg --target ps4_city_tower_destination_0250_5.pkg \
+            --out recovered --manifest reports/table_package_recovery.json
       - name: Probe all nine Tower SMapDataTable payloads
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
