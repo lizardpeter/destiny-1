@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "TOWER_PIXEL_SHADER_DEPENDENCY_PHYSICAL_MEMBER_LOCATIONS_CONFIRMED",
+  "policy": "These TAR offsets locate exact physical package members only. Shader ownership and relevance are established separately by D1 material FileHash references, shader-header/native-payload references, and OrbShdr metadata.",
+  "families": {
+    "00ec": [
+      {"name":"ps4_race_set_all_00ec_0.pkg","data_offset":45824346624,"size":82720768},
+      {"name":"ps4_race_set_all_00ec_1.pkg","data_offset":45907067904,"size":10065920},
+      {"name":"ps4_race_set_all_00ec_2.pkg","data_offset":45917134336,"size":2072576},
+      {"name":"ps4_race_set_all_00ec_3.pkg","data_offset":45919207424,"size":151552},
+      {"name":"ps4_race_set_all_00ec_4.pkg","data_offset":45919359488,"size":151552},
+      {"name":"ps4_race_set_all_00ec_5.pkg","data_offset":45919511552,"size":155648}
+    ],
+    "00ee": [
+      {"name":"ps4_race_set_all_00ee_0.pkg","data_offset":45919667712,"size":88512512},
+      {"name":"ps4_race_set_all_00ee_1.pkg","data_offset":46008180736,"size":9631744},
+      {"name":"ps4_race_set_all_00ee_2.pkg","data_offset":46017812992,"size":5148672},
+      {"name":"ps4_race_set_all_00ee_3.pkg","data_offset":46022962176,"size":151552},
+      {"name":"ps4_race_set_all_00ee_5.pkg","data_offset":46023114240,"size":161792}
+    ]
+  },
+  "provenance": {
+    "workflow_run": 33982905790,
+    "artifact_id": 9974297853,
+    "artifact_digest": "sha256:d44ea390667a166fd4f499257ad825c1f60b84dad8dac7f0dacaadc8e5f3bc41",
+    "method": "bounded validated split-TAR header scan immediately before byte-proven 00EF, followed by exact current packages.txt family-membership verification"
+  },
+  "related_dependencies": {
+    "0156": "Already byte-located in evidence/d1_tower_texture_dependency_member_catalog.json; required by several high-frequency Tower pixel-shader headers/native payloads."
+  }
+}
