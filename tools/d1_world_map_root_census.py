@@ -11,12 +11,14 @@ Pinned D1 Rise-of-Iron schema chain (MontagueM/Charm commit
           -> SMapDataTable / 808009A2
             +0x08 DynamicArray<SMapDataEntry>, elem 0x90
 
-This tool discovers table hashes from current-class package entries. It accepts no map
-container or map-data-table hashes as discovery inputs. Historical occurrences whose
-TagHash has since changed class are excluded by the Corpus current-entry policy.
+D1 global Tags may not expose these schema classes in their ordinary file-entry
+Reference. Class validation therefore uses d1_tag_manifest_resolver.py, which implements
+Charm's D1 FileHash.GetReferenceFromManifest path through S48018080. Class-direct entries
+remain supported as the fast path.
 
-The output is intentionally suitable as the upstream root manifest for
-`d1_world_static_map_resource_chain_census.py`.
+This tool accepts no bubble, map-container or map-data-table hashes as discovery inputs.
+Historical occurrences whose TagHash has since changed are excluded by the Corpus
+current-entry policy.
 """
 from __future__ import annotations
 
@@ -24,13 +26,13 @@ import argparse
 import json
 import sys
 import struct
-from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import d1_tower_map_schema_validate_v5 as v5
 import d1_world_map_data_layer_census as layer
+from d1_tag_manifest_resolver import resolve_tag_class, current_hashes_by_class
 
 BUBBLE_DEFINITION = '808091E0'
 MAP_CONTAINER = '80808A54'
@@ -38,7 +40,7 @@ MAP_DATA_TABLE = '808009A2'
 MAP_ENTRY_STRIDE = 0x90
 PINNED_SOURCE = (
     'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
-    'Tiger/Schema/Static/StaticMapData.cs'
+    'Tiger/Schema/Static/StaticMapData.cs + Tiger/TigerHash.cs::GetReferenceFromManifest'
 )
 
 
@@ -55,36 +57,25 @@ def hx(v: int) -> str:
 
 
 def current_hashes_by_ref(c, reference: str) -> list[str]:
-    out = []
-    for h in c.occ:
-        m = c.entry_meta(h)
-        if m and norm(m.get('reference')) == reference:
-            out.append(norm(h))
-    return sorted(set(out))
+    """Compatibility alias: D1 'reference' means resolved class, not raw entry ref."""
+    return current_hashes_by_class(c, reference)
 
 
 def target(c, h: str, expected: str) -> dict:
-    h = norm(h)
-    m = c.entry_meta(h)
-    return {
-        'hash': h,
-        'exists': m is not None,
-        'expected_reference': expected,
-        'reference_matches': bool(m and norm(m.get('reference')) == expected),
-        'meta': m,
-    }
+    return resolve_tag_class(c, norm(h), norm(expected))
 
 
 def parse_table(c, h: str) -> dict:
     h = norm(h)
-    meta = c.entry_meta(h)
+    resolved = target(c, h, MAP_DATA_TABLE)
     rep = {
         'map_data_table': h,
-        'meta': meta,
+        'meta': resolved.get('meta'),
+        'class_resolution': resolved,
         'validation_ok': False,
         'violations': [],
     }
-    if not meta or norm(meta.get('reference')) != MAP_DATA_TABLE:
+    if not resolved.get('reference_matches'):
         rep['violations'].append(f'class_mismatch_or_missing:{MAP_DATA_TABLE}')
         return rep
     b, src = c.payload(h)
@@ -105,15 +96,16 @@ def parse_table(c, h: str) -> dict:
 
 def parse_container(c, h: str) -> dict:
     h = norm(h)
-    meta = c.entry_meta(h)
+    resolved = target(c, h, MAP_CONTAINER)
     rep = {
         'map_container': h,
-        'meta': meta,
+        'meta': resolved.get('meta'),
+        'class_resolution': resolved,
         'map_data_tables': [],
         'validation_ok': False,
         'violations': [],
     }
-    if not meta or norm(meta.get('reference')) != MAP_CONTAINER:
+    if not resolved.get('reference_matches'):
         rep['violations'].append(f'class_mismatch_or_missing:{MAP_CONTAINER}')
         return rep
     b, src = c.payload(h)
@@ -153,15 +145,16 @@ def parse_container(c, h: str) -> dict:
 
 def parse_bubble(c, h: str) -> dict:
     h = norm(h)
-    meta = c.entry_meta(h)
+    resolved = target(c, h, BUBBLE_DEFINITION)
     rep = {
         'bubble_definition': h,
-        'meta': meta,
+        'meta': resolved.get('meta'),
+        'class_resolution': resolved,
         'map_containers': [],
         'validation_ok': False,
         'violations': [],
     }
-    if not meta or norm(meta.get('reference')) != BUBBLE_DEFINITION:
+    if not resolved.get('reference_matches'):
         rep['violations'].append(f'class_mismatch_or_missing:{BUBBLE_DEFINITION}')
         return rep
     b, src = c.payload(h)
@@ -207,9 +200,9 @@ def main() -> int:
     a = ap.parse_args()
 
     c = v5.v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
-    current_bubbles = current_hashes_by_ref(c, BUBBLE_DEFINITION)
-    current_containers = current_hashes_by_ref(c, MAP_CONTAINER)
-    current_tables = current_hashes_by_ref(c, MAP_DATA_TABLE)
+    current_bubbles = current_hashes_by_class(c, BUBBLE_DEFINITION)
+    current_containers = current_hashes_by_class(c, MAP_CONTAINER)
+    current_tables = current_hashes_by_class(c, MAP_DATA_TABLE)
 
     bubbles = [parse_bubble(c, h) for h in current_bubbles]
     reachable_containers = []
@@ -247,8 +240,20 @@ def main() -> int:
     if not reachable_tables:
         violations.append('no_reachable_map_data_tables')
 
+    resolution_modes = {}
+    for label, values, expected in (
+        ('bubbles', current_bubbles, BUBBLE_DEFINITION),
+        ('containers', current_containers, MAP_CONTAINER),
+        ('tables', current_tables, MAP_DATA_TABLE),
+    ):
+        counts = {}
+        for h in values:
+            mode = target(c, h, expected).get('resolution_mode') or 'UNRESOLVED'
+            counts[mode] = counts.get(mode, 0) + 1
+        resolution_modes[label] = counts
+
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_WORLD_MAP_ROOT_CENSUS_COMPLETE' if not violations else 'D1_WORLD_MAP_ROOT_CENSUS_PARTIAL',
         'pinned_source': PINNED_SOURCE,
         'current_class_counts': {
@@ -256,6 +261,7 @@ def main() -> int:
             MAP_CONTAINER: len(current_containers),
             MAP_DATA_TABLE: len(current_tables),
         },
+        'class_resolution_modes': resolution_modes,
         'bubble_definition_count': len(current_bubbles),
         'bubble_definitions': current_bubbles,
         'reachable_map_container_count': len(reachable_containers),
@@ -269,21 +275,23 @@ def main() -> int:
         'bubbles': bubbles,
         'violations': violations,
         'policy': (
-            'Map-data-table roots are discovered only by current-class '
-            'SBubbleDefinition -> SMapContainer -> SMapDataTable ownership. No table '
-            'hashes are accepted as discovery inputs. Orphan current-class resources '
-            'are reported rather than silently merged into the reachable world set.'
+            'Map-data-table roots are discovered only by resolved-current-class '
+            'SBubbleDefinition -> SMapContainer -> SMapDataTable ownership. D1 global '
+            'Tag classes are resolved through S48018080 manifest parents when ordinary '
+            'file-entry Reference values are FileHashes. No world hashes are accepted '
+            'as discovery inputs. Orphan current-class resources are reported rather '
+            'than silently merged into the reachable world set.'
         ),
     }
 
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({k: out[k] for k in (
-        'status', 'current_class_counts', 'bubble_definition_count',
-        'reachable_map_container_count', 'reachable_map_data_table_count',
-        'map_data_tables', 'map_data_table_entry_counts',
-        'total_reachable_map_entries', 'orphan_current_map_containers',
-        'orphan_current_map_data_tables', 'violations'
+        'status', 'current_class_counts', 'class_resolution_modes',
+        'bubble_definition_count', 'reachable_map_container_count',
+        'reachable_map_data_table_count', 'map_data_tables',
+        'map_data_table_entry_counts', 'total_reachable_map_entries',
+        'orphan_current_map_containers', 'orphan_current_map_data_tables', 'violations'
     )}, indent=2))
     return 0 if not violations else 2
 
