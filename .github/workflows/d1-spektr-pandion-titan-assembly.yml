@@ -49,7 +49,6 @@ jobs:
           assert arr_ids=={3867,3868,3869,3870,3871},arr_ids
           arr=[x for x in src['arrangements'] if x.get('className')=='Titan' and x.get('arrangement_index') in arr_ids]
           assert len(arr)==5,len(arr)
-          # Retain the entire exact branch data here; the exporter later selects masculine.
           out={**src,'arrangements':arr,'items':items,'arrangement_count':5,'named_item_count':5}
           json.dump(out,open('input/spektar_pandion_titan.json','w'),indent=2)
           for x in sorted(items,key=lambda z:z['itemTypeName']):
@@ -92,7 +91,8 @@ jobs:
           assert os.path.getsize('out/SPEKTAR_PANDION_TITAN_MASCULINE.glb')>1000
           print('COMPLETE TITAN',d['total_geometry_count'],'geometry groups',d['total_triangle_count'],'triangles',d['combined_bounds'])
           for x in d['models']:
-              print(x['examples'][0]['itemTypeName'],x['examples'][0]['name'],x['tag_hash'],f"pkg={x['package_id']:04X}",x['triangle_count'])
+              ex=(x.get('examples') or [{}])[0]
+              print(ex.get('name','unnamed item'),x['tag_hash'],f"pkg={x['package_id']:04X}",x['triangle_count'])
           PY
       - uses: actions/upload-artifact@v4
         if: always()
