@@ -3,13 +3,12 @@
 
 Canonical extraction remains untouched: this adapter consumes an already-exported
 world GLB plus the exact material->shader->t# manifest and a separate role
-inventory.  It can bind only STRONG_FORMAT_CANDIDATE base textures, or optionally
-include MEDIUM_PREVIEW_CANDIDATE materials.  No preview inference is written back
-as canonical D1 shader semantics.
+inventory. Instruction-PROVEN base/normal roles are always preferred; optional
+format candidates remain explicitly non-canonical preview fallbacks.
 
-BC5 normal candidates are converted from stored XY into a portable RGB tangent
-normal by reconstructing +Z.  Alpha is intentionally kept OPAQUE because D1
-surface alpha is not universally transparency.
+BC5 normal maps/candidates are converted from stored XY into a portable RGB
+tangent normal by reconstructing +Z. Alpha is intentionally kept OPAQUE because
+D1 surface alpha is not universally transparency.
 """
 from __future__ import annotations
 
@@ -59,8 +58,12 @@ def main()->int:
     scene=trimesh.load(a.input_glb,force='scene',process=False)
 
     image_cache={};normal_cache={};material_cache={};maps={};unresolved=[]
-    allowed={'STRONG_FORMAT_CANDIDATE'}
+    # Exact shader-dataflow semantics are always legal. Format-derived fallbacks
+    # remain opt-in according to their evidence tier.
+    allowed={'PROVEN','STRONG_FORMAT_CANDIDATE'}
     if a.include_medium_base: allowed.add('MEDIUM_PREVIEW_CANDIDATE')
+    allowed_normals={'PROVEN'}
+    if a.bind_normal_candidates:allowed_normals.add('STRONG_FORMAT_CANDIDATE')
 
     def load_base(th:str):
         if th in image_cache:return image_cache[th]
@@ -84,7 +87,8 @@ def main()->int:
         mh=mm.group(1).upper();r=sem.get(mh)
         if not r: unresolved.append({'geometry':gname,'material':mh,'reason':'role inventory missing'});continue
         conf=r.get('preview_base_confidence','NONE');base=r.get('preview_base_color') if conf in allowed else None
-        normal=r.get('preview_normal') if a.bind_normal_candidates and r.get('preview_normal_confidence')=='STRONG_FORMAT_CANDIDATE' else None
+        nconf=r.get('preview_normal_confidence','NONE')
+        normal=r.get('preview_normal') if nconf in allowed_normals else None
         if not base: continue
         key=(mh,base,normal)
         mat=material_cache.get(key)
@@ -100,7 +104,7 @@ def main()->int:
             maps[mh]={
                 'base_texture':base,'base_confidence':conf,
                 'normal_texture':normal if ni is not None else None,
-                'normal_confidence':r.get('preview_normal_confidence') if ni is not None else 'NONE',
+                'normal_confidence':nconf if ni is not None else 'NONE',
             }
         uv=getattr(g.visual,'uv',None)
         g.visual=trimesh.visual.TextureVisuals(uv=uv,material=mat)
@@ -110,7 +114,7 @@ def main()->int:
     a.out.parent.mkdir(parents=True,exist_ok=True);scene.export(a.out,file_type='glb')
     chk=trimesh.load(a.out,force='scene',process=False)
     rep={
-      'schema_version':1,'status':'D1_WORLD_TEXTURED_PREVIEW_ADAPTER',
+      'schema_version':2,'status':'D1_WORLD_TEXTURED_PREVIEW_ADAPTER',
       'input_glb':str(a.input_glb),'input_sha256':hashlib.sha256(a.input_glb.read_bytes()).hexdigest(),
       'output_glb':str(a.out),'output_sha256':hashlib.sha256(a.out.read_bytes()).hexdigest(),'output_bytes':a.out.stat().st_size,
       'geometry_count':len(scene.geometry),'node_count':len(scene.graph.nodes_geometry),
@@ -119,7 +123,7 @@ def main()->int:
       'textured_material_count':len(maps),'material_mappings':maps,'unresolved_geometry':unresolved,
       'include_medium_base':a.include_medium_base,'bind_normal_candidates':a.bind_normal_candidates,
       'preview_fallback_pbr':{'metallicFactor':0.0,'roughnessFactor':1.0,'alphaMode':'OPAQUE'},
-      'policy':'Preview role hints never replace exact D1 shader/register semantics. Alpha stays opaque until per-shader transparency/blend behavior is proven. BC5 normal candidates are portable +Z reconstructions only when explicitly enabled.',
+      'policy':'PROVEN shader roles are preferred. Preview role hints never replace exact D1 shader/register semantics. Alpha stays opaque until per-shader transparency/blend behavior is proven. BC5 normals are portable +Z reconstructions.',
     }
     if rep['reload_node_count']!=rep['node_count']:raise SystemExit('reload node count mismatch')
     a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(rep,indent=2)+'\n')
