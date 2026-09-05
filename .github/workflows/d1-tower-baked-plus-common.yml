@@ -1,11 +1,6 @@
 name: D1 Tower baked plus common world layers
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-tower-baked-plus-common.yml'
-      - 'tools/d1_world_common_layer_scene.py'
-      - 'tools/d1_world_layer_merge.py'
   workflow_run:
     workflows: ["D1 Tower common-layer model export"]
     types: [completed]
@@ -16,7 +11,7 @@ permissions:
 
 jobs:
   assemble:
-    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -33,12 +28,28 @@ jobs:
       - name: Recover exact common model and binary decal evidence artifacts
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = workflow_run ]; then model_run='${{ github.event.workflow_run.id }}'; else model_run='33993408545'; fi
+          model_run='${{ github.event.workflow_run.id }}'
           echo "MODEL_RUN=$model_run"
           gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
           gh run download 33974200735 -n d1-tower-decal-layer-with-dependencies -D source_decals
           test -f source_models/reports/common_layer_model_export.json
+          test -f source_models/reports/common_layer_model_export_summary.json
           test -f source_decals/reports/decal_layer_closure.json
+          python - <<'PY'
+          import json
+          s=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
+          if s.get('requested_models') != 69 or s.get('exported_models') != 69 or s.get('failed_models') != 0:
+              raise SystemExit('common model corpus is not 69/69 closed: '+json.dumps(s))
+          # This key is deliberately required. Older artifacts that predate the
+          # full 0154/0155/0156 material dependency census must fail closed.
+          if 'unavailable_material_parts' not in s:
+              raise SystemExit('common model artifact predates material-dependency closure')
+          if s['unavailable_material_parts']:
+              raise SystemExit('unresolved common material parts remain: '+json.dumps(s['unavailable_material_parts']))
+          if int((s.get('rejection_reason_histogram') or {}).get('material_unavailable',0)) != 0:
+              raise SystemExit('material_unavailable rejection remains: '+json.dumps(s))
+          print('COMMON_MODEL_AND_MATERIAL_CORPUS_CLOSED',s['geometry_count'],s['triangle_count'],s.get('zero_geometry_models'))
+          PY
       - name: Assemble exactly nine table-scoped common carriers
         run: |
           set -euo pipefail
@@ -74,12 +85,17 @@ jobs:
           if d['logical_source_records_total']!=12055 or d['layer_count']!=2:
               raise SystemExit('combined logical count mismatch')
           c=json.load(open('reports/common_layer_scene.json'))
+          ms=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
           out={
             'status':'D1_TOWER_BAKED_PLUS_COMMON_STRUCTURAL_MILESTONE',
             'baked_retail_visible_placements':11728,
             'common_source_records':327,
+            'common_unique_models':69,
+            'common_model_geometry_parts':ms['geometry_count'],
+            'common_model_triangles':ms['triangle_count'],
             'common_geometry_emitting_records':c['geometry_emitting_record_placements'],
             'common_valid_zero_geometry_records':c['valid_zero_geometry_records'],
+            'common_zero_geometry_models':ms.get('zero_geometry_models',[]),
             'logical_source_records':12055,
             'combined_geometry_nodes':d['geometry_nodes'],
             'combined_geometry_variants':d['geometry_variants'],
@@ -93,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           split -b 90M -d -a 2 combined/D1_TOWER_BAKED_PLUS_COMMON.glb chunks/D1_TOWER_BAKED_PLUS_COMMON.glb.part
-          cp reports/FINAL_BAKED_PLUS_COMMON.json reports/common_layer_scene.json reports/baked_plus_common.json chunks/
+          cp reports/FINAL_BAKED_PLUS_COMMON.json reports/common_layer_scene.json reports/baked_plus_common.json source_models/reports/common_layer_model_export_summary.json chunks/
           python - <<'PY'
           from pathlib import Path
           parts=sorted(p.name for p in Path('chunks').glob('*.glb.part*'))
@@ -106,6 +122,7 @@ jobs:
           path: |
             common/D1_TOWER_COMMON_LAYER.glb
             reports/common_layer_scene.json
+            source_models/reports/common_layer_model_export_summary.json
           retention-days: 14
           compression-level: 6
       - uses: actions/upload-artifact@v4
