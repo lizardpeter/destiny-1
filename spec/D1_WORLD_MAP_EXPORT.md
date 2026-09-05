@@ -1,6 +1,6 @@
 # Destiny 1 World / Map Export Pipeline — Living Specification
 
-Status: **Tower baked-static placement/visibility solved across 10 map-owned cells; affine/UV record correction solved; exact ten-cell visible texture dependency corpus closed.**  
+Status: **Tower baked-static placement/visibility solved across 10 map-owned cells; table-scoped common embedded model/decal layer structurally solved; affine/UV record correction solved; exact ten-cell visible texture dependency corpus closed.**  
 Target: a reusable final-era D1/Rise of Iron exporter that can reconstruct every world/map without Tower-specific guesses.
 
 ## Design rule
@@ -26,6 +26,60 @@ The tenth current cell is `80C98254 -> 80C98258`; it was previously excluded onl
 its current `80801B75` payload could not be decoded by the legacy fixed-size Oodle reader.
 The serialized-coverage sized reader recovers its exact current 48,084-byte payload and the
 cell now validates and exports normally.
+
+### Layer 2A — D1 table-scoped common embedded model/decal layer
+
+The D1 `SMapDataTable`/`SStaticMapData` relationship has a second world-geometry layer that
+must **not** be treated as additional baked statics.
+
+For the nine Tower map-data tables, binary validation proves:
+
+- **337** serialized `SMapDataEntry` rows;
+- **337** distinct `SStaticMapParent` resources;
+- only **19** unique `SStaticMapData` resources;
+- **10** small/baked `SStaticMapData` resources with direct `80801B75` children;
+- **9** large/common `SStaticMapData` resources with no direct `80801B75` child;
+- those nine common resources contain **327** valid `BA048080` embedded records total;
+- **327 / 327** records contain exactly one transform and one `s_entity_model` reference;
+- those records reference **69 unique `s_entity_model` resources**.
+
+Pinned D1 source behavior in `MapView.ExtractDataTables` is important here: for each D1
+`SMapDataTable`, the exporter calls `LoadDecalsIntoExporterScene` **once**, on the
+`DataEntries[0]` static-map resource, and then walks all map entries independently for the
+baked-static `LoadIntoExporterScene` path. Shipped Tower bytes match that structure exactly:
+each table's first row resolves to its large/common carrier.
+
+Tower table/common-carrier fixture:
+
+```text
+80C98028 -> first 80C98191 :  38 records
+80C984A0 -> first 80C984D7 :  13 records
+80C9895C -> first 80C98A69 :  78 records
+80C989F7 -> first 80C993A2 : 110 records
+80C997DF -> first 80C997F4 :   3 records
+80C99956 -> first 80C99980 :  21 records
+80CA0B0E -> first 80CA0B6F :   9 records
+80CA0B11 -> first 80CA0B71 :  53 records
+80CA0C4E -> first 80CA0C5F :   2 records
+                                    ---
+                                    327
+```
+
+**Regression trap:** naively reloading each repeated common carrier once for every one of
+its map-parent rows expands these 327 records to **23,141 false placements**. That number
+is not a scene count and must never be exported. The common carrier is loaded once per
+map-data table.
+
+For each common embedded model, the source-crosschecked D1 selection is:
+
+```text
+EntityModel.Load(ExportDetailLevel.MostDetailed, parentResource=null, transparentsOnly=true)
+```
+
+Therefore the portable map adapter selects highest LOD categories `{0,1,2,3,10}`, requires
+a directly resolvable material/VS/PS, and requires D1 material `Unk20 != 0`. External
+variant-material entries are retained as unresolved when no parent EntityResource exists;
+they are not guessed.
 
 ## Layer 3 — retail visibility
 
@@ -134,6 +188,11 @@ Current ten-cell Tower exact texture census:
 - **0** texture decode errors;
 - **561** PNG outputs including cubemap faces.
 
+Material constants are preserved independently of role interpretation. Current ten-cell
+visible-material census has **264** unique external constant containers, of which **235**
+are byte-decoded in the current dependency corpus; the remaining 29 are explicit dependency
+resolution gaps, not zero/default constants.
+
 Semantic rule: do not call arbitrary `t0` an albedo map. Shader/register roles are
 named only after shader dataflow proves them. The exact register binding remains
 usable even before the higher-level PBR interpretation is solved.
@@ -158,8 +217,9 @@ to canonical D1 shader semantics.
 Baked statics are only one layer of a D1 destination. A complete world exporter must
 also enumerate and reconstruct, without guessed ownership:
 
-- entity/model placements and animated/dynamic props;
-- decals;
+- the now-identified table-scoped embedded/common model layer;
+- entity/model placements and animated/dynamic props outside that layer;
+- standalone map decals;
 - terrain/natural geometry families;
 - sky/environment resources;
 - lighting/probes/environment maps;
@@ -174,13 +234,17 @@ Tower is the first full regression world. A change is not accepted if it breaks 
 of these proven invariants:
 
 - **10** map-owned baked-static cells;
-- **50,148** serialized placements;
-- **11,728** retail-visible placements;
-- **2,071** visual geometry variants;
-- zero geometry decode holes;
-- only 5 variants currently lacking secondary UV/normal enrichment, with geometry preserved;
-- affine-only node matrices;
-- exact per-instance UV metadata retained;
+- **50,148** serialized baked-static placements;
+- **11,728** retail-visible baked-static placements;
+- **2,071** baked-static visual geometry variants;
+- zero baked-static geometry decode holes;
+- only 5 baked-static variants currently lacking secondary UV/normal enrichment, with geometry preserved;
+- **9** table-scoped common carriers loaded once per table;
+- **327** structurally valid singleton transform/model common records;
+- **69** unique common-layer `s_entity_model` references;
+- never expand the common layer into the false **23,141** repeated-parent count;
+- affine-only baked-static node matrices;
+- exact per-instance baked-static UV metadata retained;
 - D1 source Z-up retained canonically;
-- **400 visible materials / 506 unique texture resources / 506 reconstructed**;
+- **400 baked-static visible materials / 506 unique texture resources / 506 reconstructed**;
 - visible material/texture dependencies remain exact TagHash/register relationships.
