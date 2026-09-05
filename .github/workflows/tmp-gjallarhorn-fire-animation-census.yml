@@ -1,0 +1,143 @@
+name: Temporary census Gjallarhorn firing animation candidates
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-fire-animation-census.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies runtime and 0151
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered reports out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest reports/0151_extract.json --retries 6 --timeout 90
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+      - name: Scan controls and decode 7-control candidates against exact Gjallarhorn rig
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,math,struct,sys,tempfile
+          from collections import defaultdict
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+
+          SKELETON='80AA3C97'; RIG='80AA2D6D'; DIRECT='80AA2DCD'
+          CONTROL_CLASS='80802C0E'; CLIP_CLASS='808005A1'; WRAPPER_CLASS='8080222A'
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          ver=Game_Version.D1_ROI
+          def raw(tag): return r.entry(by[tag]['index'])
+          sk=read_skeleton(io.BytesIO(raw(SKELETON)),ver)
+          rig=read_runtime_rig(io.BytesIO(raw(RIG)),ver)
+          def brief(e): return {'index':e['index'],'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'size':e['file_size']}
+
+          controls=[]; clip_to_controls=defaultdict(list)
+          for e in r.entries:
+            if e['reference'].upper()!=CONTROL_CLASS: continue
+            try:b=r.entry(e['index'])
+            except Exception: continue
+            refs=[]
+            for off in range(0,len(b)-(len(b)%4),4):
+              h=f'{struct.unpack_from("<I",b,off)[0]:08X}'
+              x=by.get(h)
+              if x and x['reference'].upper()==CLIP_CLASS:
+                refs.append({'offset':off,'tag_hash':h,'clip_index':x['index'],'clip_size':x['file_size']})
+                clip_to_controls[h].append({'control':e['tag_hash'].upper(),'control_index':e['index'],'offset':off})
+            if refs: controls.append({'control':brief(e),'clip_refs':refs})
+
+          # Inspect wrappers for literal references to controls; this is only a literal aligned-dword test.
+          control_tags={int(x['control']['tag_hash'],16):x['control']['tag_hash'] for x in controls}
+          wrapper_links=[]
+          for e in r.entries:
+            if e['reference'].upper()!=WRAPPER_CLASS: continue
+            try:b=r.entry(e['index'])
+            except Exception: continue
+            hits=[]
+            for off in range(0,len(b)-(len(b)%4),4):
+              v=struct.unpack_from('<I',b,off)[0]
+              if v in control_tags:hits.append({'offset':off,'control':control_tags[v]})
+            if hits: wrapper_links.append({'wrapper':brief(e),'control_hits':hits})
+
+          candidates=[]
+          for tag in sorted(clip_to_controls, key=lambda h:by[h]['index']):
+            b=raw(tag)
+            try:
+              with tempfile.NamedTemporaryFile() as f:
+                f.write(b);f.flush();f.seek(0); anim=read_animation(f,ver)
+              h=anim.animation_header
+              row={'tag_hash':tag,'index':by[tag]['index'],'bytes':len(b),'frame_count':int(h.frame_count),
+                   'duration_s':float(max(0,int(h.frame_count)-1)/30.0),'node_count':int(h.node_count),
+                   'rig_control_count':int(h.rig_control_count),'controls':clip_to_controls[tag]}
+              if int(h.node_count)==7 and int(h.rig_control_count)==7:
+                try:
+                  dec=decode_animation(anim); ret=rig_retarget(anim,dec,sk,rig); loc=convert_obj_to_local(anim,ret,sk)
+                  row['gjallarhorn_retarget_ok']=True
+                  row['decoded_tracks']=len(dec);row['retargeted_tracks']=len(ret);row['local_tracks']=len(loc)
+                  # JSON-safe introspection of per-track key data. Keep semantics conservative.
+                  track_summ=[]
+                  for i,t in enumerate(loc):
+                    d=vars(t) if hasattr(t,'__dict__') else {}
+                    ts={}
+                    for k,v in d.items():
+                      if isinstance(v,(str,int,float,bool)) or v is None: ts[k]=v
+                      elif hasattr(v,'__len__') and not isinstance(v,(bytes,bytearray,str)):
+                        try: ts[k+'_len']=len(v)
+                        except Exception: pass
+                    track_summ.append({'track_index':i,'fields':ts})
+                  row['local_track_field_summary']=track_summ
+                except Exception as ex:
+                  row['gjallarhorn_retarget_ok']=False;row['retarget_error']=repr(ex)
+              candidates.append(row)
+            except Exception as ex:
+              candidates.append({'tag_hash':tag,'index':by[tag]['index'],'bytes':len(b),'parse_error':repr(ex),'controls':clip_to_controls[tag]})
+
+          seven=[x for x in candidates if x.get('node_count')==7 and x.get('rig_control_count')==7]
+          short=[x for x in seven if x.get('frame_count',999)<=45]
+          report={'skeleton':SKELETON,'runtime_rig':RIG,'direct_control':DIRECT,
+                  'control_count_with_clip_refs':len(controls),'unique_control_referenced_clips':len(clip_to_controls),
+                  'controls':controls,'wrapper_literal_control_links':wrapper_links,'candidates':candidates,
+                  'seven_by_seven_candidates':seven,'short_seven_by_seven_candidates':short,
+                  'evidence_policy':'7/7 counts plus successful retarget prove structural compatibility, not semantic ownership. Literal control/wrapper links are reported separately.'}
+          Path('reports/gjallarhorn_fire_animation_census.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('GJ_CONTROL_COUNT',len(controls),'UNIQUE_CLIPS',len(clip_to_controls))
+          print('GJ_7X7',json.dumps([{k:x.get(k) for k in ('tag_hash','index','frame_count','duration_s','gjallarhorn_retarget_ok','controls')} for x in seven],separators=(',',':')))
+          print('GJ_SHORT_7X7',json.dumps([{k:x.get(k) for k in ('tag_hash','index','frame_count','duration_s','gjallarhorn_retarget_ok','controls')} for x in short],separators=(',',':')))
+          print('GJ_WRAPPER_LITERAL_LINKS',json.dumps(wrapper_links,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-fire-animation-census
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
