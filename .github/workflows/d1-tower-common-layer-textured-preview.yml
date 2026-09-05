@@ -1,0 +1,165 @@
+name: D1 Tower common-layer textured preview
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-layer-textured-preview.yml'
+      - 'tools/d1_world_apply_preview_materials.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_shader_texture_roles.py'
+      - 'tools/d1_gltf_layer_merge.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install texture and scene dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime recovered texture_deps source_models source_decals selector common textures reports combined
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover closed common-model and placement evidence
+        run: |
+          set -euo pipefail
+          gh run download 33993891559 -n d1-tower-common-layer-model-export -D source_models
+          gh run download 33974200735 -n d1-tower-decal-layer-with-dependencies -D source_decals
+          test -f source_models/reports/common_layer_model_export.json
+          test -f source_decals/reports/decal_layer_closure.json
+          vals=(); for p in source_decals/validation/common_*.json; do vals+=(--validation "$p"); done
+          test "${#vals[@]}" -eq 18
+          python tools/d1_world_common_layer_scene.py "${vals[@]}" --model-dir source_models/models \
+            --out common/D1_TOWER_COMMON_LAYER.glb --report reports/common_layer_scene.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_scene.json'))
+          if d.get('source_record_count')!=327 or d.get('unique_model_count')!=69 or d.get('scene_geometry_variants')!=163 or d.get('scene_geometry_nodes')!=709:
+              raise SystemExit('common scene fixture changed: '+json.dumps({k:d.get(k) for k in ('source_record_count','unique_model_count','scene_geometry_variants','scene_geometry_nodes')}))
+          m=json.load(open('source_models/reports/common_layer_model_export.json'))
+          mats=set();parts=0
+          for model in m.get('models',[]):
+              if not model.get('ok'): continue
+              for mesh in model.get('meshes',[]):
+                  for p in mesh.get('parts',[]):
+                      if not p.get('selected'): continue
+                      parts+=1;h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                      if h:mats.add(str(h).upper())
+          if parts!=163 or len(mats)!=99: raise SystemExit(f'common material selector mismatch {parts=} {len(mats)=}')
+          json.dump({'status':'D1_COMMON_LAYER_MATERIAL_SELECTOR','selected_parts':parts,'material_count':len(mats),'materials':{h:{'visual':True} for h in sorted(mats)}},open('selector/common_material_selector.json','w'),indent=2)
+          PY
+
+      - name: Recover exact common texture dependency corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir texture_deps --report reports/texture_family_recovery.json
+
+      - name: Reconstruct all exact common-layer textures and current role inventory
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered texture_deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime \
+            --visual-json selector/common_material_selector.json --out textures | tee reports/common_texture_export_stdout.txt
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o reports/common_texture_role_inventory.json
+          python - <<'PY'
+          import json
+          m=json.load(open('textures/material_texture_manifest.json'));r=json.load(open('reports/common_texture_role_inventory.json'))
+          if m['visible_material_count']!=99 or m['material_decode_errors']!=0 or m['unique_texture_tags']!=50 or m['decoded_texture_tags']!=50 or m['texture_errors']!=0:
+              raise SystemExit('common exact texture fixture changed: '+json.dumps({k:m.get(k) for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','missing_texture_package_ids')}))
+          s={'materials':99,'texture_tags':50,'decoded_texture_tags':50,'png_outputs':m['png_outputs'],
+             'pixel_shader_count':r['pixel_shader_count'],'preview_base_coverage':r['preview_base_coverage'],'preview_normal_coverage':r['preview_normal_coverage']}
+          json.dump(s,open('reports/common_texture_summary.json','w'),indent=2)
+          print(json.dumps(s,indent=2))
+          PY
+
+      - name: Build evidence-scoped textured common/decal preview
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb common/D1_TOWER_COMMON_LAYER.glb \
+            --manifest textures/material_texture_manifest.json --roles reports/common_texture_role_inventory.json \
+            --texture-dir textures/textures --include-medium-base --bind-normal-candidates \
+            --out common/D1_TOWER_COMMON_LAYER_TEXTURED_PREVIEW.glb \
+            --report reports/common_layer_textured_preview.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_textured_preview.json'))
+          if d['node_count']!=709 or d['geometry_count']!=163 or d['reload_node_count']!=709 or d['reload_geometry_count']!=163:
+              raise SystemExit('textured common scene changed structural counts: '+json.dumps({k:d.get(k) for k in ('node_count','geometry_count','reload_node_count','reload_geometry_count')}))
+          if d['textured_material_count']<=0 or d['textured_geometry_count']<=0:
+              raise SystemExit('common preview bound no textures')
+          print('COMMON_TEXTURED_PREVIEW_OK',d['textured_material_count'],d['textured_geometry_count'],d['normal_mapped_geometry_count'])
+          PY
+
+      - name: Merge textured common layer onto exact textured baked Tower
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-ten-cell-r1/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' \
+            -o combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          echo 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa  combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' | sha256sum --check --strict
+          python tools/d1_gltf_layer_merge.py \
+            --base combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --layer common_decal=common/D1_TOWER_COMMON_LAYER_TEXTURED_PREVIEW.glb \
+            --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_PREVIEW.glb \
+            --report reports/combined_textured_gltf.json
+          python - <<'PY'
+          import json
+          g=json.load(open('reports/combined_textured_gltf.json'));p=json.load(open('reports/common_layer_textured_preview.json'))
+          if not g.get('base_bin_exact_prefix') or not all(x.get('exact') for x in g.get('base_json_exact_prefixes',{}).values()):
+              raise SystemExit('base visual resources were not preserved exactly')
+          b=g['base_counts'];f=g['final_counts']
+          if b.get('images')!=537 or b.get('textures')!=537 or b.get('materials')!=400 or b.get('meshes')!=2071:
+              raise SystemExit('base visual fixture changed')
+          if f.get('meshes')!=2234 or f.get('materials')!=499 or f.get('images',0)<=537 or f.get('textures',0)<=537:
+              raise SystemExit('textured common layer did not survive glTF merge: '+json.dumps(f))
+          out={'schema_version':1,'status':'D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_PREVIEW',
+               'logical_source_records':12055,'baked_placements':11728,'common_source_records':327,
+               'common_rendered_nodes':709,'common_geometry_parts':163,
+               'common_textured_materials':p['textured_material_count'],'common_textured_geometry_parts':p['textured_geometry_count'],
+               'common_normal_mapped_geometry_parts':p['normal_mapped_geometry_count'],
+               'base_images':b['images'],'combined_images':f['images'],'base_textures':b['textures'],'combined_textures':f['textures'],
+               'bytes':g['output_bytes'],'sha256':g['output_sha256'],
+               'scope':'Visual preview: exact baked resources are preserved; common-layer base/normal bindings use current instruction-proven roles plus explicitly labeled strong/medium preview candidates. Exact D1 shader/register manifest remains canonical.'}
+          json.dump(out,open('reports/FINAL_COMMON_TEXTURED_PREVIEW.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish single-file visual preview
+        run: |
+          set -euo pipefail
+          tag=d1-tower-baked-common-textured-r3
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title 'D1 Tower baked + common textured r3' \
+              --notes 'Visual Tower milestone: the exact 10-cell textured baked scene plus all 327 table-scoped common/decal records. Existing baked GLB resources are preserved exactly; common-layer texture bindings are an evidence-scoped preview and remain separate from canonical D1 shader semantics.'
+          fi
+          gh release upload "$tag" combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_PREVIEW.glb reports/FINAL_COMMON_TEXTURED_PREVIEW.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-common-layer-textured-preview-reports
+          path: reports/
+          retention-days: 14
+          compression-level: 6
