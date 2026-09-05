@@ -1,0 +1,106 @@
+name: D1 Tower nine-cell corrected textured world
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-nine-cell-world-textured.yml'
+      - 'tools/d1_world_static_visual_export.py'
+      - 'tools/d1_world_static_common.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_world_apply_preview_materials.py'
+      - 'tools/d1_world_material_texture_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  world:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and runtime
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          python -m pip install numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime recovered validation world reports prior_texture recovered_texture out chunks
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          gh run download 33980537616 -n d1-tower-visible-material-textures-v1 -D prior_texture
+          test -f prior_texture/textures/material_texture_manifest.json
+          test -d prior_texture/textures/textures
+      - name: Recover current Tower corpus and validate
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v5.py "${args[@]}" --runtime runtime --out validation > reports/validator_stdout.txt
+      - name: Export all nine validated retail-visible cells with UVs
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          for h in 80C984D8 80C98A6B 80C993CD 80C993CF 80C997F5 80C99981 80CA0B70 80CA0B72 80CA0C60; do
+            python tools/d1_world_static_visual_export.py "${args[@]}" --runtime runtime \
+              --validation-json validation/tower_map_schema_validation.json --static-map-data "$h" --basis gltf-y-up \
+              --out "world/TOWER_${h}_WORLD.glb" --json "world/TOWER_${h}_WORLD.json"
+          done
+          python tools/d1_tower_merge_placements.py \
+            $(for h in 80C984D8 80C98A6B 80C993CD 80C993CF 80C997F5 80C99981 80CA0B70 80CA0B72 80CA0C60; do printf '%s ' "--input world/TOWER_${h}_WORLD.glb"; done) \
+            --out world/D1_TOWER_NINE_CELL_WORLD_UV_AFFINE.glb --json world/D1_TOWER_NINE_CELL_WORLD_UV_AFFINE.json --expected-placements 9360
+      - name: Complete exact texture manifest
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir recovered_texture --report reports/texture_family_recovery.json
+          mapfile -t files < <(find recovered_texture -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          LINOODLE_SKIP_DLLMAIN=1 python tools/d1_world_texture_manifest_fill.py "${args[@]}" --runtime runtime \
+            --manifest prior_texture/textures/material_texture_manifest.json --texture-dir prior_texture/textures/textures \
+            --out-manifest reports/material_texture_manifest_complete.json
+          python tools/d1_world_texture_role_inventory.py reports/material_texture_manifest_complete.json -o reports/texture_role_inventory.json
+      - name: Bind broad current texture and normal preview to full nine-cell world
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb world/D1_TOWER_NINE_CELL_WORLD_UV_AFFINE.glb \
+            --manifest reports/material_texture_manifest_complete.json --roles reports/texture_role_inventory.json \
+            --texture-dir prior_texture/textures/textures --include-medium-base --bind-normal-candidates \
+            --out out/D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --report reports/nine_cell_textured_report.json
+          sha256sum out/D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb | tee reports/nine_cell_textured_sha256.txt
+          ls -lh world/D1_TOWER_NINE_CELL_WORLD_UV_AFFINE.glb out/D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+      - name: Split current full model into Drive/chat-safe chunks
+        run: |
+          set -euo pipefail
+          split -b 90M -d -a 2 out/D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb chunks/D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part
+          cp reports/nine_cell_textured_sha256.txt chunks/
+          printf '%s\n' 'Windows: copy /b D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part00+D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part01+D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb.part02 D1_TOWER_NINE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' > chunks/README_REASSEMBLE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-nine-cell-corrected-textured-reports
+          path: |
+            reports/
+            world/D1_TOWER_NINE_CELL_WORLD_UV_AFFINE.json
+          retention-days: 14
+          compression-level: 6
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-nine-cell-current-model-chunks
+          path: chunks/
+          retention-days: 14
+          compression-level: 0
