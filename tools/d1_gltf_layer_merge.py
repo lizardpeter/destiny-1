@@ -12,7 +12,8 @@ Contract:
 - one embedded BIN buffer per input, no external URI;
 - base indices are never renumbered;
 - appended default-scene roots are attached under one identity layer node;
-- base materials/textures/images/samplers must never shrink.
+- the entire original base BIN payload is an exact prefix of the output BIN;
+- base core resource arrays are exact unchanged prefixes of the output arrays.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ MAGIC=0x46546C67
 JSON_CHUNK=0x4E4F534A
 BIN_CHUNK=0x004E4942
 ARRAYS=('accessors','animations','bufferViews','cameras','images','materials','meshes','nodes','samplers','skins','textures')
+PRESERVE_PREFIX=('accessors','animations','bufferViews','cameras','images','materials','meshes','nodes','samplers','skins','textures')
 
 
 def digest(p:Path)->str:
@@ -30,6 +32,14 @@ def digest(p:Path)->str:
     with p.open('rb') as f:
         for b in iter(lambda:f.read(8<<20),b''): h.update(b)
     return h.hexdigest()
+
+
+def bytes_digest(b:bytes)->str:
+    return hashlib.sha256(b).hexdigest()
+
+
+def json_digest(v)->str:
+    return hashlib.sha256(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
 
 
 def pad4(b:bytes,fill:bytes)->bytes:
@@ -40,8 +50,7 @@ def read_glb(p:Path):
     raw=p.read_bytes()
     if len(raw)<20: raise ValueError(f'{p}: too short for GLB')
     magic,ver,total=struct.unpack_from('<III',raw,0)
-    if magic!=MAGIC or ver!=2 or total!=len(raw):
-        raise ValueError(f'{p}: invalid GLB header')
+    if magic!=MAGIC or ver!=2 or total!=len(raw): raise ValueError(f'{p}: invalid GLB header')
     pos=12;chunks=[]
     while pos<total:
         if pos+8>total: raise ValueError(f'{p}: truncated chunk header')
@@ -52,8 +61,7 @@ def read_glb(p:Path):
         raise ValueError(f'{p}: expected exactly JSON+BIN chunks')
     doc=json.loads(chunks[0][1].rstrip(b' \t\r\n\x00'))
     bufs=doc.get('buffers',[])
-    if len(bufs)!=1 or bufs[0].get('uri') is not None:
-        raise ValueError(f'{p}: expected one embedded buffer')
+    if len(bufs)!=1 or bufs[0].get('uri') is not None: raise ValueError(f'{p}: expected one embedded buffer')
     declared=int(bufs[0].get('byteLength',-1));bin_chunk=chunks[1][1]
     if declared<0 or declared>len(bin_chunk) or len(bin_chunk)-declared>3:
         raise ValueError(f'{p}: embedded buffer length mismatch')
@@ -97,8 +105,7 @@ def remap_material_extensions(ext:dict,tex_off:int):
 
 
 def counts(d:dict):
-    x={k:len(d.get(k,[])) for k in ARRAYS}
-    x['scenes']=len(d.get('scenes',[]))
+    x={k:len(d.get(k,[])) for k in ARRAYS};x['scenes']=len(d.get('scenes',[]))
     x['lights']=len((((d.get('extensions') or {}).get('KHR_lights_punctual') or {}).get('lights',[])))
     return x
 
@@ -108,14 +115,12 @@ def remap_doc(src:dict,off:dict,bin_off:int):
     for x in d.get('bufferViews',[]):
         x['buffer']=0;x['byteOffset']=int(x.get('byteOffset',0))+bin_off
     for x in d.get('accessors',[]):
-        add_idx(x,'bufferView',off['bufferViews'])
-        sp=x.get('sparse')
+        add_idx(x,'bufferView',off['bufferViews']);sp=x.get('sparse')
         if isinstance(sp,dict):
             if isinstance(sp.get('indices'),dict): add_idx(sp['indices'],'bufferView',off['bufferViews'])
             if isinstance(sp.get('values'),dict): add_idx(sp['values'],'bufferView',off['bufferViews'])
     for x in d.get('images',[]): add_idx(x,'bufferView',off['bufferViews'])
-    for x in d.get('textures',[]):
-        add_idx(x,'sampler',off['samplers']);add_idx(x,'source',off['images'])
+    for x in d.get('textures',[]): add_idx(x,'sampler',off['samplers']);add_idx(x,'source',off['images'])
     for x in d.get('materials',[]):
         p=x.get('pbrMetallicRoughness')
         if isinstance(p,dict):
@@ -146,17 +151,15 @@ def remap_doc(src:dict,off:dict,bin_off:int):
 
 
 def main()->int:
-    ap=argparse.ArgumentParser()
-    ap.add_argument('--base',type=Path,required=True)
+    ap=argparse.ArgumentParser();ap.add_argument('--base',type=Path,required=True)
     ap.add_argument('--layer',action='append',required=True,help='NAME=PATH')
-    ap.add_argument('--out',type=Path,required=True)
-    ap.add_argument('--report',type=Path,required=True)
+    ap.add_argument('--out',type=Path,required=True);ap.add_argument('--report',type=Path,required=True)
     a=ap.parse_args()
 
-    base,bin_data=read_glb(a.base);out=copy.deepcopy(base)
+    base,base_bin_data=read_glb(a.base);bin_data=base_bin_data;out=copy.deepcopy(base)
     if not out.get('scenes'): out['scenes']=[{'nodes':[]}];out['scene']=0
     scene_idx=int(out.get('scene',0));out['scenes'][scene_idx].setdefault('nodes',[])
-    base_counts=counts(out);base_bin=len(bin_data);rows=[]
+    base_counts=counts(base);base_prefix_hashes={k:json_digest(base.get(k,[])) for k in PRESERVE_PREFIX};rows=[]
 
     for spec in a.layer:
         if '=' not in spec: raise SystemExit('--layer must be NAME=PATH')
@@ -164,11 +167,9 @@ def main()->int:
         c0=counts(out);off={k:c0.get(k,0) for k in ARRAYS};off['lights']=c0.get('lights',0)
         aligned=(len(bin_data)+3)&~3
         if aligned!=len(bin_data): bin_data+=b'\x00'*(aligned-len(bin_data))
-        bin_off=len(bin_data);bin_data+=src_bin
-        r=remap_doc(src,off,bin_off)
+        bin_off=len(bin_data);bin_data+=src_bin;r=remap_doc(src,off,bin_off)
         lights=((((r.get('extensions') or {}).get('KHR_lights_punctual') or {}).get('lights',[])))
-        if lights:
-            out.setdefault('extensions',{}).setdefault('KHR_lights_punctual',{}).setdefault('lights',[]).extend(lights)
+        if lights: out.setdefault('extensions',{}).setdefault('KHR_lights_punctual',{}).setdefault('lights',[]).extend(lights)
         for k in ARRAYS:
             vals=r.get(k,[])
             if vals: out.setdefault(k,[]).extend(vals)
@@ -186,17 +187,21 @@ def main()->int:
                      'scene_root_count':len(roots),'layer_parent_node':parent_i})
 
     write_glb(a.out,out,bin_data);check,check_bin=read_glb(a.out);final_counts=counts(check)
-    for k in ('materials','textures','images','samplers'):
-        if final_counts[k]<base_counts[k]: raise SystemExit(f'{k} regressed: {final_counts[k]} < {base_counts[k]}')
-    rep={'schema_version':1,'status':'D1_GLTF_LAYER_MERGE_PRESERVE_RESOURCES',
+    if check_bin[:len(base_bin_data)]!=base_bin_data: raise SystemExit('base BIN payload is not an exact output prefix')
+    prefix={}
+    for k in PRESERVE_PREFIX:
+        n=len(base.get(k,[]));got=check.get(k,[])[:n];same=(got==base.get(k,[]))
+        prefix[k]={'count':n,'base_sha256':base_prefix_hashes[k],'output_prefix_sha256':json_digest(got),'exact':same}
+        if not same: raise SystemExit(f'base {k} JSON prefix changed')
+    rep={'schema_version':2,'status':'D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION',
          'base':str(a.base),'base_bytes':a.base.stat().st_size,'base_sha256':digest(a.base),
-         'base_counts':base_counts,'base_bin_payload_bytes':base_bin,'layers':rows,
-         'final_counts':final_counts,'final_bin_payload_bytes':len(check_bin),'output':str(a.out),
-         'output_bytes':a.out.stat().st_size,'output_sha256':digest(a.out),
-         'resource_preservation':{k:{'base':base_counts[k],'final':final_counts[k],'preserved':final_counts[k]>=base_counts[k]} for k in ('materials','textures','images','samplers')},
-         'policy':'Base GLB JSON/BIN resources stay in place; appended layer indices are remapped directly in glTF, with no material/image round-trip.'}
+         'base_counts':base_counts,'base_bin_payload_bytes':len(base_bin_data),'base_bin_sha256':bytes_digest(base_bin_data),
+         'layers':rows,'final_counts':final_counts,'final_bin_payload_bytes':len(check_bin),
+         'base_bin_exact_prefix':True,'base_json_exact_prefixes':prefix,
+         'output':str(a.out),'output_bytes':a.out.stat().st_size,'output_sha256':digest(a.out),
+         'policy':'Base GLB resource arrays and BIN bytes remain exact prefixes; appended layer indices are remapped directly in glTF, with no material/image round-trip.'}
     a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(rep,indent=2)+'\n')
-    print(json.dumps({k:rep[k] for k in ('status','base_counts','final_counts','output_bytes','output_sha256','resource_preservation')},indent=2))
+    print(json.dumps({k:rep[k] for k in ('status','base_counts','final_counts','base_bin_exact_prefix','output_bytes','output_sha256')},indent=2))
     return 0
 
 if __name__=='__main__': raise SystemExit(main())
