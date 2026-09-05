@@ -1,0 +1,71 @@
+name: D1 CA2 weapon animation retarget validation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-ca2-animation-retarget-validation.yml'
+      - 'tools/d1_animation_retarget_probe.py'
+      - 'tests/test_animation_retarget_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies
+        run: |
+          python -m pip install -q pytest numpy scipy pygltflib pyglm
+          python -m pytest -q tests/test_animation_retarget_probe.py
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+
+      - name: Recover runtime and globals 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+
+      - name: Validate CA2 reload and fire on exact shared rig
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_animation_retarget_probe.py \
+            recovered/ps4_globals_0151_6.pkg \
+            --runtime runtime --parser-root tiger-animation-parser \
+            --skeleton 80AA3CBF --rig 80AA3CBE \
+            --clip 80AA3D40 --clip 80AA3D42 \
+            -o out/ca2_reload_fire_retarget.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/ca2_reload_fire_retarget.json'))
+          print(json.dumps(d,indent=2))
+          assert d['target']['skeleton_node_count']==75,d['target']
+          assert d['target']['runtime_rig_control_count']==73,d['target']
+          assert d['summary']=={'clip_count':2,'success_count':2,'failure_count':0},d['summary']
+          assert all(x['native_control_limit']==73 for x in d['clips']),d['clips']
+          assert all(x['local_track_count']==75 for x in d['clips']),d['clips']
+          frames={x['tag_hash']:x['frame_count'] for x in d['clips']}
+          assert frames['80AA3D42']==19,frames
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-ca2-animation-retarget-validation
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
