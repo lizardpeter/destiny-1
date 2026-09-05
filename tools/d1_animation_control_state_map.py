@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Decode the D1 ROI 80802C0E animation-control action/state selector table.
 
-This parser was calibrated on retail PS4 rocket-launcher control 80AA3CC9.
+This parser was originally calibrated on retail PS4 rocket-launcher control
+80AA3CC9 and has since been generalized across the sibling CA0/CA1/CA2 controls.
 It deliberately exposes the binary structure separately from semantic naming:
 
   +0x08 u32 animation-list count
@@ -21,8 +22,10 @@ Selector record fields used here:
   +0x14 f32 transition/duration-like scalar (semantic name intentionally unset)
   +0x18 u32 packed selection: high16=count, low16=start index
 
-The packed-selection interpretation is structurally validated by all selector ranges
-remaining inside the referenced animation list, including records with count=2.
+Ordinary selections require start+count to stay inside the animation list. Retail
+CA0 also proves one explicit empty selector encoding: packed 0x0000FFFF means
+count=0/start=0xFFFF and selects no clips. It is preserved as an
+``empty_sentinel`` rather than rejected as an out-of-range array slice.
 """
 from __future__ import annotations
 import argparse,json,struct,sys
@@ -34,6 +37,7 @@ from d1_fnv1_action_probe import DEFAULTS,fnv1
 
 CONTROL_REF='80802C0E'
 CLIP_REF='808005A1'
+EMPTY_SELECTION_SENTINEL=0x0000FFFF
 
 def _u32(b,o): return struct.unpack_from('<I',b,o)[0]
 def _f32(b,o): return struct.unpack_from('<f',b,o)[0]
@@ -65,23 +69,38 @@ def decode_control(payload:bytes,reader:EntryReader|None=None,names:list[str]|No
             row['entry']={'index':e['index'],'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size']}
         animations.append(row)
     states=[]
+    invalid=[]
+    empty_sentinels=0
     for i in range(state_count):
         base=state_data+i*0x20
         h=_u32(payload,base+0x10); packed=_u32(payload,base+0x18)
         count=(packed>>16)&0xffff; start=packed&0xffff
-        selected=[]
-        if start+count<=len(animations): selected=animations[start:start+count]
+        is_empty_sentinel=packed==EMPTY_SELECTION_SENTINEL
+        range_valid=is_empty_sentinel or start+count<=len(animations)
+        if is_empty_sentinel:
+            selected=[]
+            selection_kind='empty_sentinel'
+            empty_sentinels+=1
+        elif range_valid:
+            selected=animations[start:start+count]
+            selection_kind='range'
+        else:
+            selected=[]
+            selection_kind='invalid_range'
+            invalid.append({'record_index':i,'state_hash':f'{h:08X}','packed_selection':f'{packed:08X}','selection_start':start,'selection_count':count})
         states.append({
             'record_index':i,'record_offset':base,'state_hash':f'{h:08X}',
             'state_name':hash_to_name.get(h),'scalar_f32':_f32(payload,base+0x14),
             'packed_selection':f'{packed:08X}','selection_count':count,'selection_start':start,
-            'selection_range_valid':start+count<=len(animations),'selected_animations':selected,
+            'selection_kind':selection_kind,'selection_range_valid':range_valid,
+            'selected_animations':selected,
         })
-    if any(not s['selection_range_valid'] for s in states): raise ValueError('one or more selector ranges exceed animation list')
+    if invalid:
+        raise ValueError(f'{len(invalid)} selector ranges exceed animation list: {invalid[:3]}')
     return {
         'animation_list':{'count':anim_count,'header_offset':anim_hdr,'data_offset':anim_data,'element_class':f'{anim_elem_class:08X}','items':animations},
-        'state_table':{'count':state_count,'header_offset':state_hdr,'data_offset':state_data,'element_class':f'{state_elem_class:08X}','record_stride':0x20,'records':states},
-        'evidence_policy':'FileHash list, state hashes, packed count/start indices, and selected ranges are binary decoded. Names appear only when exact FNV1 preimages are known. scalar_f32 semantics are intentionally not named.',
+        'state_table':{'count':state_count,'header_offset':state_hdr,'data_offset':state_data,'element_class':f'{state_elem_class:08X}','record_stride':0x20,'empty_sentinel_count':empty_sentinels,'records':states},
+        'evidence_policy':'FileHash list, state hashes, packed count/start indices, selected ranges, and the retail-proven 0x0000FFFF empty sentinel are binary decoded. Names appear only when exact FNV1 preimages are known. scalar_f32 semantics are intentionally not named.',
     }
 
 def main():
