@@ -29,6 +29,17 @@ def package_id(name: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def catalog_int(value) -> int:
+    """Accept decimal JSON numbers and decimal/0x-prefixed string literals."""
+    if isinstance(value, bool):
+        raise ValueError('boolean is not a valid catalog integer')
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value, 0)
+    raise ValueError(f'unsupported catalog integer value: {value!r}')
+
+
 def load_rows(doc: dict, families: set[str] | None) -> list[tuple[str, dict]]:
     if 'families' not in doc or not isinstance(doc['families'], dict):
         raise SystemExit('catalog must contain a families object')
@@ -44,6 +55,12 @@ def load_rows(doc: dict, families: set[str] | None) -> list[tuple[str, dict]]:
                 raise SystemExit(f'catalog family {fid} has malformed member row: {r!r}')
             if package_id(str(r['name'])) != fid:
                 raise SystemExit(f'catalog family/name mismatch: {fid} / {r["name"]}')
+            # Validate numeric fields here so malformed evidence fails before any
+            # remote byte request begins. Hex strings are intentionally allowed.
+            try:
+                catalog_int(r['data_offset']); catalog_int(r['size'])
+            except Exception as ex:
+                raise SystemExit(f'catalog family {fid} has invalid numeric member row {r!r}: {ex}')
             out.append((fid,r))
     if families is not None:
         present={fid for fid,_ in out}
@@ -89,7 +106,7 @@ def main() -> int:
     arc=SplitHttpTar([f'{a.base_url.rstrip("/")}/packages.tar.{i:03d}' for i in range(1,a.part_count+1)],retries=6,timeout=120)
     recovered=[]
     for fid,r in rows:
-        name=str(r['name']);off=int(r['data_offset']);size=int(r['size'])
+        name=str(r['name']);off=catalog_int(r['data_offset']);size=catalog_int(r['size'])
         dst=a.out_dir/name
         got=arc.copy_to(off,size,dst)
         # copy_to already returns SHA-256, but re-check the local file so the
