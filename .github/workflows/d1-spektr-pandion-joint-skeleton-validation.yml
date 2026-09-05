@@ -112,13 +112,21 @@ jobs:
               for x in mapped:
                   print(x['itemTypeName'],x['name'],x['model'],'=>',[(b['index'],b['name']) for b in x['bones']],
                         'non-skeleton',x['non_skeleton_values'],'rigid',x['rigid_mesh_count'],'weighted',x['weighted_mesh_count'])
-          # Two independent named retail helmets must land on b_head if this direct index mapping is correct.
+          Path('out/809D8613_spektar_joint_validation.json').write_text(json.dumps(result,indent=2)+'\n')
+          # Both independently resolved body variants must attach their named helmet exactly to b_head.
           for role in ('masculine','feminine'):
-              helmets=[x for x in result['body_roles'][role] if x['itemTypeName']=='Helmet']
+              helmets=[x for x in result['body_roles'][role] if (x.get('name') or '').endswith('Helmet')]
               assert len(helmets)==1,helmets
               assert helmets[0]['joint_indices']==[18],helmets[0]
               assert [b['name'] for b in helmets[0]['bones']]==['b_head'],helmets[0]
-          Path('out/809D8613_spektar_joint_validation.json').write_text(json.dumps(result,indent=2)+'\n')
+          # Major slot anatomy must agree in both body variants.
+          for role in ('masculine','feminine'):
+              rows={x['name']:x for x in result['body_roles'][role]}
+              assert {'b_l_calf','b_r_calf','b_l_foot','b_r_foot'} <= {b['name'] for b in rows['Spektar Pandion Greaves']['bones']}
+              assert {'b_l_upperarm','b_r_upperarm','b_l_hand','b_r_hand'} <= {b['name'] for b in rows['Spektar Pandion Gauntlets']['bones']}
+              assert 'b_spine_3' in {b['name'] for b in rows['Spektar Pandion Plate']['bones']}
+              assert rows['Spektar Pandion Mark']['joint_indices']==[] and rows['Spektar Pandion Mark']['non_skeleton_values']==[32767]
+          print('ANATOMICAL VALIDATION SUCCESS: both Guardian body variants agree with 809D8613')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
