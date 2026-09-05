@@ -1,0 +1,94 @@
+name: D1 Guardian shared 80AA9EFD probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-guardian-shared-80AA9EFD-probe.yml'
+      - 'tools/d1_remote_target_backlinks.py'
+      - 'tools/d1_entity_resource_probe.py'
+      - 'evidence/d1_weapon_globals_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode exact 80AA9EFD entry and aligned references
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_investment_parent_probe import Member,RemoteLogicalPackage
+          from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS,parse_resource
+          from d1_remote_s_entity_resource_package_find import S_ENTITY_REF,parse_entity_resources
+          from d1_entry_extract import decode_known
+
+          cat=json.load(open('evidence/d1_weapon_globals_member_catalog.json'))['families']['0154']
+          fam={}
+          for row in cat:
+              name=row['name']; patch=int(name.rsplit('_',1)[1].split('.',1)[0])
+              fam[patch]=Member(name,int(row['data_offset'],0),int(row['size']),0x0154,patch)
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          r=RemoteLogicalPackage(arc,fam,Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          e=by['80AA9EFD']; b=r.entry(e['index'])
+          out={
+            'tag_hash':'80AA9EFD','package_id':'0154','logical_view':r.view.name,
+            'entry_index':e['index'],'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],
+            'size':e['file_size'],'sha256':hashlib.sha256(b).hexdigest(),'prefix_hex':b[:256].hex(),
+            'decoded_known':decode_known(e,b,'PS4'),
+          }
+          if e['reference'].upper()==ENTITY_RESOURCE_CLASS:
+              out['entity_resource']=parse_resource(b,'PS4')
+          if e['reference'].upper()==S_ENTITY_REF:
+              out['s_entity_resources']=parse_entity_resources(b)
+          # Preserve every aligned FileHash-like dword by package/index decode, but
+          # only when its package/index resolves to a real entry in known 0154 view.
+          refs=[]
+          for off in range(0,len(b)-3,4):
+              v=struct.unpack_from('<I',b,off)[0]
+              hx=f'{v:08X}'
+              hit=by.get(hx)
+              if hit:
+                  refs.append({'offset':off,'hash':hx,'reference':hit['reference'].upper(),'entry_index':hit['index'],'size':hit['file_size']})
+          out['aligned_local_entry_refs']=refs
+          Path('out/80AA9EFD_exact.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in out.items() if k not in ('prefix_hex','decoded_known','aligned_local_entry_refs')},indent=2))
+          print('LOCAL REFS',json.dumps(refs[:100],indent=2))
+          PY
+      - name: Scan 0154 for exact backlinks and humanoid-rig co-serialization
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          MEMBERS="--member ps4_globals_0154_0.pkg:0x45B642400:82126848 --member ps4_globals_0154_1.pkg:0x460494E00:14962688 --member ps4_globals_0154_2.pkg:0x4612DA000:7340032 --member ps4_globals_0154_3.pkg:0x4619DA200:163840 --member ps4_globals_0154_4.pkg:0x461A02400:157696 --member ps4_globals_0154_5.pkg:0x461A28E00:157696"
+          eval python tools/d1_remote_target_backlinks.py \
+            --package-id 0x0154 --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime $MEMBERS \
+            --target 80AA9EFD --target 809D80C9 --target 809D80D3 \
+            --max-entry-size 4000000 -o out/0154_guardian_shared_backlinks.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-guardian-shared-80AA9EFD-probe
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
