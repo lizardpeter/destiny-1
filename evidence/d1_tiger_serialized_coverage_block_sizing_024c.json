@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "evidence_status": "CONFIRMED_D1_TIGER_SERIALIZED_COVERAGE_BLOCK_SIZING_ON_CURRENT_024C",
+  "workflow_run": 33975755493,
+  "artifact_id": 9972260411,
+  "artifact_digest": "sha256:ea634ed29419eb1c667ea57e5f12c74299fadd6d8d02d3b69c26698ec71d1244",
+  "rule": {
+    "compressed_logical_block_max_raw_size": 262144,
+    "raw_size_quantum": 16384,
+    "derived_raw_size": "min(0x40000, align_up(highest serialized FileEntry byte used in block, 0x4000))",
+    "logical_addressing_padding": "After Oodle returns the exact derived raw size, reader may zero-pad only the unused logical address tail to 0x40000 so FileEntry block offsets keep their existing addressing semantics."
+  },
+  "current_024c_regression": {
+    "used_blocks": 776,
+    "decoded_used_blocks": 776,
+    "decode_failures": 0,
+    "full_size_blocks_byte_identical_to_legacy_reader": 682,
+    "legacy_full_size_decode_failures": 0
+  },
+  "proven_partial_blocks": [
+    {
+      "block_index": 636,
+      "patch_id": 1,
+      "owner": "ps4_city_tower_destination_024c_1.pkg",
+      "stored_size": 4228,
+      "stored_sha1": "b41b3082c7bb0a381813e5a964117cdf0b6827cb",
+      "max_serialized_used_end": 9440,
+      "derived_raw_size": 16384,
+      "decoded_raw_sha256": "b58bbf2de6c465bac6f8036f70c3303cc40d7968c57c045dbcfe62666af2cd01"
+    },
+    {
+      "block_index": 725,
+      "patch_id": 3,
+      "owner": "ps4_city_tower_destination_024c_3.pkg",
+      "stored_size": 81894,
+      "stored_sha1": "022bdc3b143ee468dc302d4bd3633ebf485a60b0",
+      "max_serialized_used_end": 191296,
+      "derived_raw_size": 196608,
+      "decoded_raw_sha256": "91787d1d67606f4dde01f6fef8e193308a2639cd4b8d9661a4f5b4e03d70adad"
+    }
+  ],
+  "recovered_resources": {
+    "80C99F52": {
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "reference": "FFFFFFFF",
+      "payload_bytes": 40416,
+      "payload_sha256": "50eeec29c8afe339430025c81817027764c4d0af47d7904a8bac33a8ebde23a2",
+      "vertex_header": "80C99BDF",
+      "header_data_size": 40416,
+      "stride": 24,
+      "vertex_count": 1684
+    },
+    "80C98258": {
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "reference": "80801B75",
+      "payload_bytes": 48084,
+      "payload_sha256": "461e1f695f2413fadcd67deab441c7a992a85f879cb84759660abfbea3194209"
+    }
+  },
+  "safety": "Stored block SHA-1 remains mandatory. No bytes inside the decoded raw range are invented. TagHash generation/class fallback remains validator-v3 class-stable and is not changed by block sizing."
+}
