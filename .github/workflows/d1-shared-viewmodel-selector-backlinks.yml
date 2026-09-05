@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Recover verified runtime and globals 0157 family
+      - name: Recover verified runtime and globals 0156/0157 families
         run: |
           set -euo pipefail
           mkdir -p runtime recovered reports
@@ -29,64 +29,75 @@ jobs:
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
           base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 0x46711B000 \
+            --target ps4_globals_0156_0.pkg --target ps4_globals_0156_1.pkg \
+            --target ps4_globals_0156_2.pkg --target ps4_globals_0156_3.pkg \
+            --target ps4_globals_0156_4.pkg --target ps4_globals_0156_5.pkg \
+            --out recovered --manifest reports/0156_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
             --start-offset 0x46AF91400 \
-            --target ps4_globals_0157_0.pkg \
-            --target ps4_globals_0157_1.pkg \
-            --target ps4_globals_0157_2.pkg \
-            --target ps4_globals_0157_3.pkg \
-            --target ps4_globals_0157_4.pkg \
-            --target ps4_globals_0157_5.pkg \
+            --target ps4_globals_0157_0.pkg --target ps4_globals_0157_1.pkg \
+            --target ps4_globals_0157_2.pkg --target ps4_globals_0157_3.pkg \
+            --target ps4_globals_0157_4.pkg --target ps4_globals_0157_5.pkg \
             --target ps4_globals_0157_6.pkg \
             --out recovered --manifest reports/0157_extract.json --retries 6 --timeout 90
 
-      - name: Scan all readable 0157 payloads for CA profile roots and weapon-type co-occurrence
+      - name: Scan globals for CA selector roots, weapon types, and unresolved Vex rig hashes
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
+          targets=(
+            80AAF411 80AAF412 80AAF413 80AAF414 80AAF415 80AAF416 80AAF417 80AAF418 80AAF419
+            80AAF41A 80AAF41B 80AAF41C 80AAF5AE
+            80AA3CA0 80AA3CA1 80AA3CA2 80AA3CC2 80AA3CC4 80AA3CC5 80AA3CC7 80AA3CC9 80AA3CCB 80AA3CD0 80AA3CD1
+            B44A3287 C8CC993A 2A3EAABB B1DF40E2 0314A289 08D2C38F 1FC493D2 8A5D6623 C9EB0270 3EB02F1A 924E78C4
+            816CE12B 816CE09A 816CE092 816CE095 816CE096 816CE097 816CE09C 816CE099 816CE09D 816CE09E
+          )
+          args=()
+          for t in "${targets[@]}"; do args+=(--target "$t"); done
           python tools/d1_character_owner_backlinks.py \
-            recovered/ps4_globals_0157_6.pkg --runtime runtime \
-            --target 80AAF411 --target 80AAF412 --target 80AAF413 \
-            --target 80AAF414 --target 80AAF415 --target 80AAF416 \
-            --target 80AAF417 --target 80AAF418 --target 80AAF419 \
-            --target 80AAF41A --target 80AAF41B --target 80AAF41C --target 80AAF5AE \
-            --target 80AA3CA0 --target 80AA3CA1 --target 80AA3CA2 \
-            --target 80AA3CC2 --target 80AA3CC4 --target 80AA3CC5 --target 80AA3CC7 \
-            --target 80AA3CC9 --target 80AA3CCB --target 80AA3CD0 --target 80AA3CD1 \
-            --target B44A3287 --target C8CC993A --target 2A3EAABB --target B1DF40E2 \
-            --target 0314A289 --target 08D2C38F --target 1FC493D2 --target 8A5D6623 \
-            --target C9EB0270 --target 3EB02F1A --target 924E78C4 \
-            --max-entry-size 8000000 \
-            -o reports/shared_viewmodel_selector_backlinks_0157.json
+            recovered/ps4_globals_0156_5.pkg --runtime runtime "${args[@]}" \
+            --max-entry-size 8000000 -o reports/cross_backlinks_0156.json
+          python tools/d1_character_owner_backlinks.py \
+            recovered/ps4_globals_0157_6.pkg --runtime runtime "${args[@]}" \
+            --max-entry-size 8000000 -o reports/cross_backlinks_0157.json
 
           python - <<'PY'
           import json
-          d=json.load(open('reports/shared_viewmodel_selector_backlinks_0157.json'))
-          ctx={f'80AAF41{x:X}' for x in range(1,10)} | {'80AAF41A','80AAF41B','80AAF41C','80AAF5AE'}
+          ctx={'80AAF411','80AAF412','80AAF413','80AAF414','80AAF415','80AAF416','80AAF417','80AAF418','80AAF419','80AAF41A','80AAF41B','80AAF41C','80AAF5AE'}
+          vex={'816CE12B','816CE09A','816CE092','816CE095','816CE096','816CE097','816CE09C','816CE099','816CE09D','816CE09E'}
           types={
             'B44A3287':'auto_rifle','C8CC993A':'hand_cannon','2A3EAABB':'pulse_rifle','B1DF40E2':'scout_rifle',
             '0314A289':'shotgun','08D2C38F':'sniper_rifle','1FC493D2':'fusion_rifle','8A5D6623':'machine_gun',
             'C9EB0270':'rocket_launcher','3EB02F1A':'sidearm','924E78C4':'sword',
           }
-          mixed=[]
-          for row in d['cooccurrences']:
-              ts=set(row['targets'])
-              if ts & ctx and ts & set(types):
-                  mixed.append({
-                    'source':row['source'],
-                    'contexts':sorted(ts & ctx),
-                    'weapon_types':[types[x] for x in sorted(ts & set(types))],
-                    'hits':row['hits'],
-                  })
-          summary={
-            'scanned_entry_count':d['scanned_entry_count'],
-            'source_with_hit_count':d['source_with_hit_count'],
-            'read_error_count':d['read_error_count'],
-            'context_backlink_counts':{k:len(d['backlinks'][k]) for k in sorted(ctx)},
-            'mixed_context_weapon_type_sources':mixed,
-            'cooccurrence_groups':d['cooccurrence_groups'][:50],
-          }
-          print(json.dumps(summary,indent=2))
-          open('reports/shared_viewmodel_selector_summary_0157.json','w').write(json.dumps(summary,indent=2)+'\n')
+          out={}
+          for fam in ['0156','0157']:
+              d=json.load(open(f'reports/cross_backlinks_{fam}.json'))
+              mixed=[]; vex_cross=[]
+              for row in d['cooccurrences']:
+                  ts=set(row['targets'])
+                  if ts & ctx and ts & set(types):
+                      mixed.append({
+                        'source':row['source'],
+                        'contexts':sorted(ts & ctx),
+                        'weapon_types':[types[x] for x in sorted(ts & set(types))],
+                        'hits':row['hits'],
+                      })
+                  if len(ts & vex) >= 2 or (ts & vex and (ts- vex)):
+                      vex_cross.append({'source':row['source'],'targets':sorted(ts),'hits':row['hits']})
+              out[fam]={
+                'scanned_entry_count':d['scanned_entry_count'],
+                'source_with_hit_count':d['source_with_hit_count'],
+                'read_error_count':d['read_error_count'],
+                'context_backlink_counts':{k:len(d['backlinks'][k]) for k in sorted(ctx)},
+                'vex_backlink_counts':{k:len(d['backlinks'][k]) for k in sorted(vex)},
+                'mixed_context_weapon_type_sources':mixed,
+                'vex_cross_sources':vex_cross,
+                'cooccurrence_groups':d['cooccurrence_groups'][:80],
+              }
+          print(json.dumps(out,indent=2))
+          open('reports/cross_selector_summary.json','w').write(json.dumps(out,indent=2)+'\n')
           PY
 
       - uses: actions/upload-artifact@v4
