@@ -1,0 +1,85 @@
+name: D1 Vex articulated asset identity census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-vex-articulated-asset-identity-census.yml'
+      - 'tools/d1_articulated_asset_census.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover runtime and Vex 0767 family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 0x105C6E000 \
+            --target ps4_arch_vex_com01_0767_0.pkg \
+            --target ps4_arch_vex_com01_0767_1.pkg \
+            --target ps4_arch_vex_com01_0767_4.pkg \
+            --out recovered --manifest out/0767_extract.json --retries 6 --timeout 90
+
+      - name: Asset-first census and skeleton inventory
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_articulated_asset_census.py \
+            recovered/ps4_arch_vex_com01_0767_4.pkg \
+            --runtime runtime --include-all-components \
+            -o out/0767_articulated_asset_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/0767_articulated_asset_census.json'))
+          fam=d['families'][0]
+          roles=fam['roles']
+          skeletons=[]
+          for h,r in roles.items():
+              if r.get('kind')=='skeleton':
+                  skeletons.append({
+                      'tag_hash':h,
+                      'bone_count':r.get('bone_count'),
+                      'bone_hashes':r.get('bone_hashes',[]),
+                      'entry_index':r.get('entry_index'),
+                  })
+          skeletons.sort(key=lambda x:(-(x['bone_count'] or 0),x['tag_hash']))
+          comps=[]
+          for c in fam['components']:
+              if c['facts']['skeletons']:
+                  comps.append({
+                      'classification':c['classification'],
+                      'bone_counts':c['bone_counts'],
+                      'model_parents':c['facts']['model_parents'],
+                      'models':c['facts']['models'],
+                      'skeletons':c['facts']['skeletons'],
+                      'runtime_rigs':c['facts']['runtime_rigs'],
+                      'animation_clips':c['facts']['animation_clips'],
+                      'observed_0767_combatant_components':c['facts'].get('observed_0767_combatant_components',[]),
+                  })
+          rep={'skeletons':skeletons,'components_with_skeletons':comps,
+               'policy':'Bone count and package family are descriptive only; neither proves character/combatant identity.'}
+          open('out/0767_skeleton_identity_summary.json','w').write(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-vex-articulated-asset-identity-census
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
