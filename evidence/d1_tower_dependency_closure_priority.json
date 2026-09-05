@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "evidence_status": "DERIVED_FROM_PRESERVED_BINARY_VALIDATOR_REPORT",
+  "source_validator_run": 33944444030,
+  "source_validator_artifact": 9962935387,
+  "source_validator_artifact_digest": "sha256:06ff1a409bfbaadb8fd7dbb9f7c3053de047817515a85b3e0d589b0a2902b70c",
+  "scope": "Nine parseable map-owned D1 static children; the structurally different 80C98258 cell remains excluded from these placement percentages until its layout is decoded.",
+  "optional_v1_rule": "Vertices1 == FFFFFFFF is a valid null secondary stream; V0 and indices remain mandatory.",
+  "baseline": {
+    "parseable_placed_geometry_references": 40373,
+    "ready_placed_geometry_references": 38276,
+    "ready_percent": 94.80593465930201
+  },
+  "single_family_gain": [
+    {"package_id":"0157","prefix":"ps4_globals","ready":39276,"gain":1000,"ready_percent":97.28283753994006,"new_complete_cells":["80CA0C6B"]},
+    {"package_id":"01CF","prefix":"ps4_env_skies","ready":38983,"gain":707,"ready_percent":96.55710499591311},
+    {"package_id":"00EF","prefix":"ps4_race_set_all","ready":38496,"gain":220,"ready_percent":95.35085329304238},
+    {"package_id":"01D1","prefix":"ps4_env_skies","ready":38352,"gain":76,"ready_percent":94.9941792782305},
+    {"package_id":"01E3","prefix":"ps4_globals_cinematic","ready":38291,"gain":15,"ready_percent":94.84308820251158},
+    {"package_id":"01C5","prefix":"ps4_env_natural","ready":38288,"gain":12,"ready_percent":94.83565749386966},
+    {"package_id":"013A","prefix":"ps4_investment_assets","ready":38285,"gain":9,"ready_percent":94.82822678522776},
+    {"package_id":"0169","prefix":"ps4_globals_pvp","ready":38280,"gain":4,"ready_percent":94.81584227082456}
+  ],
+  "best_combinations": [
+    {"package_ids":["0157","01CF"],"ready":40009,"gain":1733,"ready_percent":99.09840735640155,"complete_cells":["80C9981A","80C9999B","80CA0B96","80CA0C6B"]},
+    {"package_ids":["0157","01CF","01D1"],"ready":40113,"gain":1837,"ready_percent":99.35600525004335,"complete_cells":["80C9981A","80C9999B","80CA0B96","80CA0B98","80CA0C6B"]},
+    {"package_ids":["00EF","0157","01CF","01D1"],"ready":40333,"gain":2057,"ready_percent":99.90091843509277,"complete_cells":["80C9981A","80C9999B","80C98A77","80CA0B96","80CA0B98","80CA0C6B"]}
+  ],
+  "recommended_recovery_order": ["0157","01CF","01D1","00EF","01C5","01E3","013A","0169"],
+  "interpretation": "Outer placement is already confirmed and identity for the ten minority map entries. Therefore these percentages now directly measure the remaining baked-static geometry dependency tail, not an unresolved placement problem."
+}
