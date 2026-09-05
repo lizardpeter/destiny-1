@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """Resolve all D1 art-arrangement EntityParent FileHashes remotely.
 
-Input is the JSON produced by d1_investment_arrangement_probe.py.  The parent
-FileHashes already encode their package id and entry index.  This tool:
+Input is the JSON produced by d1_investment_arrangement_probe.py. The parent
+FileHashes already encode their package id and entry index. This tool derives
+every required package family from those hashes, opens the exact logical package
+families remotely, and reads EntityParent +0x10 -> EntityDataROI FileHash.
 
-  1. derives every required package family from those FileHashes,
-  2. discovers every physical patch member for those families from packages.txt,
-  3. locates those members in the split TAR,
-  4. opens one logical RemoteLogicalPackage per package id, and
-  5. resolves EntityParent +0x10 -> EntityDataROI FileHash.
-
-No filename affinity or package adjacency is used to decide ownership: package
-ids and file indices come directly from the serialized parent FileHashes.
+Physical split-TAR locations may come from a previously validated --member-catalog
+(preferred for bulk ripping) or may be rediscovered from packages.txt + a valid
+TAR header. The catalog changes only how bytes are reached; ownership still comes
+from the serialized FileHash package id/index.
 """
 from __future__ import annotations
 
@@ -29,11 +27,6 @@ from d1_investment_arrangement_probe import filehash_pkg_index, h32
 from d1_remote_investment_parent_probe import RemoteLogicalPackage, parse_member
 from d1_split_tar_extract import SplitHttpTar
 
-# Exact TAR header immediately preceding ps4_investment_assets_0135_0.pkg.
-# Its data begins at 0x5996C3200, so the ustar header is 0x200 bytes earlier.
-# This is the earliest package family referenced by the retail art-arrangement
-# parent set we have observed, and unlike a rounded address it is a validated
-# 512-byte TAR header boundary.
 DEFAULT_INVESTMENT_ASSETS_TAR_HEADER = 0x5996C3000
 
 
@@ -60,17 +53,48 @@ def discover_family_names(packages_txt: str, package_ids: set[int]) -> dict[int,
     return out
 
 
+def members_from_catalog(path: Path, package_ids: set[int]):
+    src = json.loads(path.read_text())
+    families = src.get("families", {})
+    out = {}
+    missing = []
+    for pkg in sorted(package_ids):
+        key = f"{pkg:04X}"
+        rows = families.get(key)
+        if not rows:
+            missing.append(key)
+            continue
+        specs = []
+        manifest = []
+        for row in rows:
+            name = row["name"]
+            off = int(str(row["data_offset"]), 0)
+            size = int(row["size"])
+            spec = parse_member(f"{name}:0x{off:X}:{size}")
+            if spec.pkg_id != pkg:
+                raise ValueError(f"catalog {key} contains mismatched member {name}")
+            specs.append(spec)
+            manifest.append({"name": name, "data_offset": off, "size": size, "patch_id": spec.patch_id})
+        out[pkg] = (specs, manifest)
+    if missing:
+        raise ValueError(f"member catalog missing required package ids: {missing}")
+    return out, src
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("arrangements_json", type=Path)
-    ap.add_argument("--packages-list", type=Path, required=True)
+    ap.add_argument("--packages-list", type=Path, help="packages.txt; required only when no --member-catalog is supplied")
+    ap.add_argument("--member-catalog", type=Path, help="validated remote member catalog; preferred for bulk runs")
     ap.add_argument("--base-url", required=True)
     ap.add_argument("--part-count", type=int, default=10)
     ap.add_argument("--start-offset", type=lambda x: int(x, 0), default=DEFAULT_INVESTMENT_ASSETS_TAR_HEADER,
-                    help="exact validated TAR header offset at/before required investment_assets families")
+                    help="exact validated TAR header used only in discovery mode")
     ap.add_argument("--runtime", type=Path, required=True)
     ap.add_argument("-o", "--output", type=Path, required=True)
     args = ap.parse_args()
+    if args.member_catalog is None and args.packages_list is None:
+        ap.error("one of --member-catalog or --packages-list is required")
 
     src = json.loads(args.arrangements_json.read_text())
     rows = src.get("arrangements", [])
@@ -81,28 +105,40 @@ def main() -> int:
         if ph not in (None, "00000000", "FFFFFFFF")
     })
     package_ids = {filehash_pkg_index(int(ph, 16))[0] for ph in parent_hashes}
-    family_names = discover_family_names(args.packages_list.read_text(errors="replace"), package_ids)
-    wanted = {n for names in family_names.values() for n in names}
 
     base = args.base_url.rstrip("/")
     arc = SplitHttpTar([f"{base}/packages.tar.{i:03d}" for i in range(1, args.part_count + 1)], retries=6, timeout=90)
-    found, headers = arc.find(wanted, start_offset=args.start_offset)
-    missing_members = sorted(wanted - set(found))
-    if missing_members:
-        raise RuntimeError(f"split TAR did not locate required package members: {missing_members}")
-
     remotes: dict[int, RemoteLogicalPackage] = {}
     family_manifest = {}
-    for pkg, names in sorted(family_names.items()):
-        specs = []
-        member_rows = []
-        for name in names:
-            f = found[name]
-            spec = parse_member(f"{name}:0x{f['data_offset']:X}:{f['size']}")
-            specs.append(spec)
-            member_rows.append({"name": name, "header_offset": f["header_offset"], "data_offset": f["data_offset"], "size": f["size"], "patch_id": spec.patch_id})
-        remotes[pkg] = RemoteLogicalPackage(arc, {m.patch_id: m for m in specs}, args.runtime)
-        family_manifest[f"{pkg:04X}"] = {"members": member_rows, "logical_view": remotes[pkg].view.name}
+    discovery_headers = 0
+    location_mode = None
+
+    if args.member_catalog is not None:
+        member_sets, catalog = members_from_catalog(args.member_catalog, package_ids)
+        location_mode = "validated_member_catalog"
+        for pkg, (specs, member_rows) in sorted(member_sets.items()):
+            rr = RemoteLogicalPackage(arc, {m.patch_id: m for m in specs}, args.runtime)
+            remotes[pkg] = rr
+            family_manifest[f"{pkg:04X}"] = {"members": member_rows, "logical_view": rr.view.name}
+    else:
+        location_mode = "tar_discovery"
+        family_names = discover_family_names(args.packages_list.read_text(errors="replace"), package_ids)
+        wanted = {n for names in family_names.values() for n in names}
+        found, discovery_headers = arc.find(wanted, start_offset=args.start_offset)
+        missing_members = sorted(wanted - set(found))
+        if missing_members:
+            raise RuntimeError(f"split TAR did not locate required package members: {missing_members}")
+        for pkg, names in sorted(family_names.items()):
+            specs = []
+            member_rows = []
+            for name in names:
+                f = found[name]
+                spec = parse_member(f"{name}:0x{f['data_offset']:X}:{f['size']}")
+                specs.append(spec)
+                member_rows.append({"name": name, "header_offset": f["header_offset"], "data_offset": f["data_offset"], "size": f["size"], "patch_id": spec.patch_id})
+            rr = RemoteLogicalPackage(arc, {m.patch_id: m for m in specs}, args.runtime)
+            remotes[pkg] = rr
+            family_manifest[f"{pkg:04X}"] = {"members": member_rows, "logical_view": rr.view.name}
 
     parent_resolution = {}
     errors = []
@@ -162,15 +198,17 @@ def main() -> int:
     out["remote_parent_resolution"] = {
         "required_package_ids": [f"{p:04X}" for p in sorted(package_ids)],
         "package_families": family_manifest,
-        "tar_start_header": f"0x{args.start_offset:X}",
-        "tar_headers_scanned": headers,
+        "location_mode": location_mode,
+        "member_catalog": str(args.member_catalog) if args.member_catalog else None,
+        "tar_start_header": f"0x{args.start_offset:X}" if location_mode == "tar_discovery" else None,
+        "tar_headers_scanned": discovery_headers,
         "unique_parent_count": len(parent_hashes),
         "resolved_parent_count": resolved_count,
         "unresolved_parent_count": len(parent_hashes) - resolved_count,
         "unresolved_arrangement_slots": unresolved_slots,
         "remote_blocks_read": {f"{p:04X}": len(rr.block_cache) for p, rr in sorted(remotes.items())},
         "errors": errors[:500],
-        "evidence_policy": "Every package family/index is derived from the serialized EntityParent FileHash. EntityDataROI is read directly from parent +0x10.",
+        "evidence_policy": "Every package family/index is derived from the serialized EntityParent FileHash. EntityDataROI is read directly from parent +0x10. A member catalog affects byte location only, never semantic ownership.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(out, indent=2) + "\n")
