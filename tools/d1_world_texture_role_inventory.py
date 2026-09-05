@@ -20,13 +20,15 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from d1_world_material_texture_export import KNOWN_PIXEL_SHADER_ROLES
+from d1_shader_texture_roles import (
+    PROVEN_PIXEL_SHADER_ROLES,
+    PORTABLE_BASE_COLOR_ROLES,
+    PORTABLE_NORMAL_ROLES,
+)
 
 COLOR_FORMATS={'BC1','BC2','BC3','RGBA8','BGRA8'}
 NORMAL_VECTOR_FORMATS={'BC5'}
 SCALAR_FORMATS={'BC4'}
-PROVEN_BASE_ROLES={'surface_rgb','surface_rgb_alpha_deferred_normal_control'}
-PROVEN_NORMAL_ROLES={'primary_normal_rg'}
 
 
 def tex_shape(t:dict):
@@ -71,11 +73,11 @@ def main()->int:
             idx=int(b['texture_index'])
             t=textures.get(b['texture'],{})
             rc=resource_class(t)
-            # New manifests carry the semantic on each binding.  Older exact
-            # manifests remain usable by looking up the same instruction-proven
-            # shader/t# table; this changes only the semantic annotation, never
-            # the serialized binding itself.
-            proven=b.get('semantic_role') if b.get('semantic_status')=='PROVEN' else KNOWN_PIXEL_SHADER_ROLES.get(ps,{}).get(idx)
+            # New manifests may carry the semantic on each binding. Older exact
+            # manifests remain valid by looking up the same independently proven
+            # shader/t# table; this annotates semantics without changing the exact
+            # serialized binding.
+            proven=b.get('semantic_role') if b.get('semantic_status')=='PROVEN' else PROVEN_PIXEL_SHADER_ROLES.get(ps,{}).get(idx)
             row={
                 'texture_index':idx,'texture':b['texture'],
                 'format_name':t.get('format_name'),'shape':tex_shape(t),
@@ -92,11 +94,11 @@ def main()->int:
                     row.update({'evidence_status':'STRONG_FORMAT_CANDIDATE','preview_role':'scalar_mask_candidate'})
             rows.append(row)
 
-        # Canonically proven roles take precedence in the adapter.  Only when
-        # no instruction-proven base/normal exists do we fall back to the old
-        # format-based preview heuristic.
-        proven_base=[r for r in rows if r.get('proven_role') in PROVEN_BASE_ROLES]
-        proven_normal=[r for r in rows if r.get('proven_role') in PROVEN_NORMAL_ROLES]
+        # Canonically proven roles take precedence in the portable adapter. Only
+        # when no instruction-proven direct base/normal exists do we fall back to
+        # the old format-based preview heuristic.
+        proven_base=[r for r in rows if r.get('proven_role') in PORTABLE_BASE_COLOR_ROLES]
+        proven_normal=[r for r in rows if r.get('proven_role') in PORTABLE_NORMAL_ROLES]
         base=None;base_reason=None;base_conf='NONE'
         normal=None;normal_reason=None;normal_conf='NONE'
         if proven_base:
@@ -156,7 +158,7 @@ def main()->int:
     base_counts=Counter(x['preview_base_confidence'] for x in material_semantics.values())
     norm_counts=Counter(x['preview_normal_confidence'] for x in material_semantics.values())
     out={
-        'schema_version':2,
+        'schema_version':3,
         'status':'D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED',
         'source_status':d.get('status'),
         'material_count':len(material_semantics),'pixel_shader_count':len(shader_inventory),
