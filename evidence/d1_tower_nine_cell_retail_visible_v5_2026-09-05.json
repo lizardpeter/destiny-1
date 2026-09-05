@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "D1_TOWER_NINE_CELL_RETAIL_VISIBLE_EXACT",
+  "source_workflow_run": 33978906679,
+  "artifact_id": 9973271927,
+  "render_rule": {
+    "detail_level_allowed": [0, 1, 2, 3, 10],
+    "material_class": "80801AD7",
+    "material_unk08_offset": "0x08",
+    "material_unk08_required": 1,
+    "source": "D1 ROI StaticMapData_D1.GetStatics() semantics"
+  },
+  "reader": "v5 serialized-coverage sized Tiger reader",
+  "proof_export": {
+    "validated_map_owned_cells": 9,
+    "serialized_placements": 40373,
+    "geometry_decode_failures": 0,
+    "old_80C99F52_hole_closed": true
+  },
+  "visibility_partition": {
+    "serialized_placements": 40373,
+    "detail_level_rejected": 18059,
+    "detail_level_candidates": 22314,
+    "material_unk08_rejected_after_detail_gate": 12954,
+    "retail_visible_placements": 9360,
+    "unresolved_material_states": 0
+  },
+  "cells": [
+    {"static_map":"80C984D8","d1":"80C9858B","serialized":1800,"detail_rejected":806,"material_rejected":604,"visible":390,"visual_geometry_variants":118},
+    {"static_map":"80C98A6B","d1":"80C98A77","serialized":12498,"detail_rejected":5709,"material_rejected":3887,"visible":2902,"visual_geometry_variants":460},
+    {"static_map":"80C993CD","d1":"80C994B1","serialized":5115,"detail_rejected":2391,"material_rejected":1314,"visible":1410,"visual_geometry_variants":195},
+    {"static_map":"80C993CF","d1":"80C994B2","serialized":13827,"detail_rejected":6304,"material_rejected":4692,"visible":2831,"visual_geometry_variants":548},
+    {"static_map":"80C997F5","d1":"80C9981A","serialized":2409,"detail_rejected":1075,"material_rejected":847,"visible":487,"visual_geometry_variants":111},
+    {"static_map":"80C99981","d1":"80C9999B","serialized":1800,"detail_rejected":835,"material_rejected":572,"visible":393,"visual_geometry_variants":118},
+    {"static_map":"80CA0B70","d1":"80CA0B96","serialized":556,"detail_rejected":251,"material_rejected":161,"visible":144,"visual_geometry_variants":26},
+    {"static_map":"80CA0B72","d1":"80CA0B98","serialized":772,"detail_rejected":0,"material_rejected":353,"visible":419,"visual_geometry_variants":76},
+    {"static_map":"80CA0C60","d1":"80CA0C6B","serialized":1596,"detail_rejected":688,"material_rejected":524,"visible":384,"visual_geometry_variants":91}
+  ],
+  "three_cell_scope_superseding_old_19389_preview": {
+    "source_cells": ["80C984D8", "80C98A6B", "80C993CD"],
+    "serialized_placements": 19413,
+    "detail_level_rejected": 8906,
+    "detail_level_candidates": 10507,
+    "material_unk08_rejected_after_detail_gate": 5805,
+    "retail_visible_placements": 4702,
+    "visual_geometry_variants": 773,
+    "note": "This supersedes the earlier 4698 count that was exact only relative to the old 19389-node proof export. The v5 reader recovered the 24 formerly missing placements; four of those survive both retail visibility gates."
+  },
+  "merged_nine_cell_glb": {
+    "placement_nodes": 9360,
+    "geometry_variants": 1743,
+    "bytes": 32125896,
+    "sha256": "8d5ba1ba52d2f31aafb885c87989b3527025f8df09fe29ff4969d3f90f3480db",
+    "bounds": [[-54142.65210855349,-30751.191848287413,-3376.2947820667814],[47935.068431986816,49100.22476174154,12882.177762578336]]
+  },
+  "notes": [
+    "The nine-cell merged bounds are dominated by D1 cell 80CA0B98, whose 419 retail-visible placements span tens of thousands of units. Blender Frame All on the nine-cell file will therefore zoom far away from the compact Tower core.",
+    "The three-cell v5 visual file is the direct corrected replacement for the old 19389-placement forensic preview and has compact bounds roughly +/-175 x +/-286 x -55..150."
+  ]
+}
