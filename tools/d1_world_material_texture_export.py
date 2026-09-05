@@ -38,14 +38,33 @@ from d1_dds_to_png import decode_dds
 
 MAT_CLASS='80801AD7'
 
-# Only roles that have already been dataflow-proven in this project are named.
-# Everything else remains exact t# without a semantic guess.
+# Only roles independently proven by exact native GCN dataflow are named here.
+# The Tower families below were promoted after complete top-40 disassembly and
+# Sony InputUsageSlot -> native descriptor provenance recovery.  See
+# notes/TOWER_TOP_SHADER_DATAFLOW.md.  Everything else remains exact t# without
+# a semantic guess.
 KNOWN_PIXEL_SHADER_ROLES={
     '80AAE14B': {
         0:'surface_rgb', 1:'primary_normal_rg', 2:'detail_normal_rg',
         3:'environment_cubemap', 4:'surface_alpha_reflection_control'
     },
     '816CE0A8': {0:'height_pre_displacement',1:'displaced_image'},
+
+    # Common Tower deferred surface family: t0 RGB reaches MRT0; t0 alpha sets
+    # deferred-normal packing magnitude; t1.xy is decoded as a tangent-space
+    # two-component normal with reconstructed +Z.
+    '809DF9A4': {0:'surface_rgb_alpha_deferred_normal_control',1:'primary_normal_rg'},
+    '80AADCB3': {0:'surface_rgb_alpha_deferred_normal_control',1:'primary_normal_rg'},
+
+    # Common Tower colored-surface family: t0 RGB reaches MRT0.  t1 is sampled
+    # only with dmask:Y and changes only the deferred normal-vector packing
+    # magnitude (0.375 + 0.125*t1.y); it is not a second color map.
+    '8093EB1E': {0:'surface_rgb',1:'deferred_normal_magnitude_control_y'},
+    '80AAE1C6': {0:'surface_rgb',1:'deferred_normal_magnitude_control_y'},
+
+    # Simple Tower surface pass: t0 RGB goes directly to MRT0; MRT1 is built
+    # solely from the interpolated geometric normal.
+    '80AADC40': {0:'surface_rgb'},
 }
 
 # D1 Rise of Iron PS4 ROI stores a GCN surface format in the texture header.
