@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-activity-map-root-census.yml'
+      - 'tools/d1_tower_recover_map_activity_root_corpus.py'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_tower_recover_current_corpus.py'
       - 'tools/d1_world_activity_map_root_census.py'
       - 'tools/d1_world_map_root_census.py'
       - 'tools/d1_world_map_data_layer_census.py'
@@ -31,43 +34,14 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Recover established 24-package Tower map/activity core
+      - name: Recover SHA-pinned 24-package Tower map/activity root corpus
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
-          python - <<'PY'
-          import json,re,sys
-          from pathlib import Path
-          sys.path.insert(0,'tools')
-          from d1_split_tar_extract import SplitHttpTar
-
-          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
-          # This is a Tower regression corpus fixture, not semantic map discovery.
-          # The generic parser below receives only bytes and class ownership.
-          rx=re.compile(r'^ps4_city_tower_(?:activities_act_023d|ambient_activi_0244|destination_024c|destination_0250)_[0-9]+\.pkg$',re.I)
-          wanted=sorted(x for x in names if rx.match(x))
-          if len(wanted)!=24:
-              raise SystemExit(f'expected established 24-member Tower core, found {len(wanted)}: {wanted}')
-          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
-          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
-          found,headers=arc.find(set(wanted))
-          missing=sorted(set(wanted)-set(found))
-          if missing: raise SystemExit('missing Tower core members: '+json.dumps(missing))
-          rows=[]
-          for name in wanted:
-              r=found[name]
-              sha=arc.copy_to(r['data_offset'],r['size'],Path('recovered')/name)
-              rows.append({'name':name,**r,'sha256':sha})
-              print('RECOVERED',name,r['size'],sha,flush=True)
-          Path('reports/tower_core_member_catalog.json').write_text(json.dumps({
-              'schema_version':1,
-              'status':'D1_TOWER_ESTABLISHED_MAP_ACTIVITY_CORE_RECOVERED',
-              'tar_headers_scanned':headers,
-              'member_count':len(rows),
-              'members':rows,
-              'policy':'Physical regression fixture only; semantic world roots are discovered from D1 class ownership after recovery.'
-          },indent=2)+'\n')
-          PY
+          python tools/d1_tower_recover_map_activity_root_corpus.py \
+            --package-list reports/packages.txt \
+            --out-dir recovered \
+            --report reports/tower_map_activity_root_corpus.json
 
       - name: Trace current D1 activities through bubbles to map tables
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
@@ -103,8 +77,6 @@ jobs:
               raise SystemExit('activity-owned Tower table set changed: '+json.dumps({'expected':expected,'actual':actual},indent=2))
           if a.get('total_reachable_map_entries')!=337:
               raise SystemExit(f'activity-owned Tower entry total changed: {a.get("total_reachable_map_entries")}')
-          # The exact Tower map/activity core should not need package-level orphan
-          # bubble roots to recover the static destination tables.
           all_tables=sorted(b.get('map_data_tables',[]))
           if all_tables!=expected:
               raise SystemExit('all current bubble roots disagree with Tower fixture: '+json.dumps(all_tables))
