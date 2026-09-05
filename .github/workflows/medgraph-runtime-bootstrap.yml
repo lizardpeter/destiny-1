@@ -1,0 +1,25 @@
+name: MedGraph runtime bootstrap
+
+on:
+  push:
+    branches:
+      - medgraph-runtime-bootstrap-20260905
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact FalkorDBLite wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://files.pythonhosted.org/packages/2e/cf/d792cf46292f7756f96727916e77ebf9821371e22bff65ed8e90db6b80b9/falkordblite-0.10.0-cp313-cp313-manylinux_2_39_x86_64.whl'
+          file='falkordblite-0.10.0-cp313-cp313-manylinux_2_39_x86_64.whl'
+          curl -fL --retry 5 --retry-delay 2 "$url" -o "$file"
+          echo '7d52a3665f6de30cbffc5809a1c6d722492c95bf8dae4a7ee108ca58da939b25  '"$file" | sha256sum -c -
+      - name: Upload exact runtime wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: medgraph-falkordblite-0.10.0-cp313-x64
+          path: falkordblite-0.10.0-cp313-cp313-manylinux_2_39_x86_64.whl
+          retention-days: 1
