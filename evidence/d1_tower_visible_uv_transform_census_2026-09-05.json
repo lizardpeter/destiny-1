@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "status": "D1_TOWER_VISIBLE_INSTANCE_UV_TRANSFORM_CENSUS",
+  "scope": "9360 retail-visible placements from the nine validated baked-static Tower cells",
+  "record_semantics": {
+    "uv_scale": "instance record +0x30",
+    "uv_translate_x": "instance record +0x34",
+    "uv_translate_y": "instance record +0x38",
+    "application": "u=u*scale+tx; v=v*(-scale)+1-ty"
+  },
+  "totals": {
+    "visible_placements": 9360,
+    "visual_geometry_variants": 1743,
+    "unique_instance_uv_transforms": 552,
+    "unique_geometry_plus_uv_transform_combinations": 1744,
+    "geometry_variants_with_exactly_one_uv_transform": 1742,
+    "geometry_variants_with_two_uv_transforms": 1
+  },
+  "important_export_consequence": "For 1742/1743 visual geometry variants the shipped per-instance UV transform is invariant across every visible placement of that geometry. A glTF adapter can therefore bake the D1 UV transform once per shared geometry without destroying instancing. Only one geometry variant requires a two-way geometry split.",
+  "source": "fourth serialized float4 row retained in the older proof GLBs; now reinterpreted correctly as UV metadata rather than a homogeneous matrix row",
+  "canonical_policy": "The source/native representation must preserve UV transform per instance even though the glTF adapter may bake the overwhelmingly invariant geometry-level value."
+}
