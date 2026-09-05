@@ -6,6 +6,10 @@ world GLB plus the exact material->shader->t# manifest and a separate role
 inventory. Instruction-PROVEN base/normal roles are always preferred; optional
 format candidates remain explicitly non-canonical preview fallbacks.
 
+The adapter accepts both baked-static material names (``TigerMaterial_<hash>``)
+and entity/common-model names (``D1_<hash>``), so the same generic material stage
+can be reused across D1 world layers.
+
 BC5 normal maps/candidates are converted from stored XY into a portable RGB
 tangent normal by reconstructing +Z. Alpha is intentionally kept OPAQUE because
 D1 surface alpha is not universally transparency.
@@ -22,7 +26,7 @@ import numpy as np
 import trimesh
 from PIL import Image
 
-MAT_RE=re.compile(r'TigerMaterial_([0-9A-Fa-f]{8})')
+MAT_RE=re.compile(r'(?:TigerMaterial_|D1_)([0-9A-Fa-f]{8})')
 
 
 def image_path(texrec:dict,root:Path)->Path|None:
@@ -58,8 +62,6 @@ def main()->int:
     scene=trimesh.load(a.input_glb,force='scene',process=False)
 
     image_cache={};normal_cache={};material_cache={};maps={};unresolved=[]
-    # Exact shader-dataflow semantics are always legal. Format-derived fallbacks
-    # remain opt-in according to their evidence tier.
     allowed={'PROVEN','STRONG_FORMAT_CANDIDATE'}
     if a.include_medium_base: allowed.add('MEDIUM_PREVIEW_CANDIDATE')
     allowed_normals={'PROVEN'}
@@ -107,14 +109,21 @@ def main()->int:
                 'normal_confidence':nconf if ni is not None else 'NONE',
             }
         uv=getattr(g.visual,'uv',None)
-        g.visual=trimesh.visual.TextureVisuals(uv=uv,material=mat)
+        # Preserve any decoded COLOR_0 attached to TextureVisuals while replacing
+        # only the material object. This matters for D1 shaders that consume a
+        # vertex colour/control channel in addition to UV textures.
+        old_va=getattr(g.visual,'vertex_attributes',None)
+        nv=trimesh.visual.TextureVisuals(uv=uv,material=mat)
+        if old_va is not None and 'color' in old_va:
+            nv.vertex_attributes['color']=old_va['color']
+        g.visual=nv
         textured_geom+=1
         if maps[mh].get('normal_texture'):normal_geom+=1
 
     a.out.parent.mkdir(parents=True,exist_ok=True);scene.export(a.out,file_type='glb')
     chk=trimesh.load(a.out,force='scene',process=False)
     rep={
-      'schema_version':2,'status':'D1_WORLD_TEXTURED_PREVIEW_ADAPTER',
+      'schema_version':3,'status':'D1_WORLD_TEXTURED_PREVIEW_ADAPTER',
       'input_glb':str(a.input_glb),'input_sha256':hashlib.sha256(a.input_glb.read_bytes()).hexdigest(),
       'output_glb':str(a.out),'output_sha256':hashlib.sha256(a.out.read_bytes()).hexdigest(),'output_bytes':a.out.stat().st_size,
       'geometry_count':len(scene.geometry),'node_count':len(scene.graph.nodes_geometry),
@@ -122,8 +131,9 @@ def main()->int:
       'textured_geometry_count':textured_geom,'normal_mapped_geometry_count':normal_geom,
       'textured_material_count':len(maps),'material_mappings':maps,'unresolved_geometry':unresolved,
       'include_medium_base':a.include_medium_base,'bind_normal_candidates':a.bind_normal_candidates,
+      'accepted_material_name_prefixes':['TigerMaterial_','D1_'],
       'preview_fallback_pbr':{'metallicFactor':0.0,'roughnessFactor':1.0,'alphaMode':'OPAQUE'},
-      'policy':'PROVEN shader roles are preferred. Preview role hints never replace exact D1 shader/register semantics. Alpha stays opaque until per-shader transparency/blend behavior is proven. BC5 normals are portable +Z reconstructions.',
+      'policy':'PROVEN shader roles are preferred. Preview role hints never replace exact D1 shader/register semantics. Alpha stays opaque until per-shader transparency/blend behavior is proven. BC5 normals are portable +Z reconstructions. Existing decoded COLOR_0 is retained while materials are rebound.',
     }
     if rep['reload_node_count']!=rep['node_count']:raise SystemExit('reload node count mismatch')
     a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(rep,indent=2)+'\n')
