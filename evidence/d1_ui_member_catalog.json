@@ -1,0 +1,48 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": "D1 UI art census run 33941453431; all offsets were discovered from checksum-valid ustar headers and then successfully extracted",
+  "policy": "These physical locations only optimize byte access. Logical ownership still comes from package tables and serialized TagHashes.",
+  "families": {
+    "000A": [
+      {"name":"ps4_ui_core_000a_0.pkg","data_offset":"0xB59766400","size":172032},
+      {"name":"ps4_ui_core_000a_1.pkg","data_offset":"0xB59790600","size":9342976},
+      {"name":"ps4_ui_core_000a_2.pkg","data_offset":"0xB5A079800","size":9046016},
+      {"name":"ps4_ui_core_000a_4.pkg","data_offset":"0xB5A91A200","size":26624},
+      {"name":"ps4_ui_core_000a_5.pkg","data_offset":"0xB5A920C00","size":26624},
+      {"name":"ps4_ui_core_000a_6.pkg","data_offset":"0xB5A927600","size":26624}
+    ],
+    "0018": [
+      {"name":"ps4_ui_menus_0018_0.pkg","data_offset":"0xB5AD0E400","size":96256},
+      {"name":"ps4_ui_menus_0018_1.pkg","data_offset":"0xB5AD25E00","size":167936},
+      {"name":"ps4_ui_menus_0018_2.pkg","data_offset":"0xB5AD4F000","size":182272},
+      {"name":"ps4_ui_menus_0018_4.pkg","data_offset":"0xB5AD7BA00","size":24576},
+      {"name":"ps4_ui_menus_0018_5.pkg","data_offset":"0xB5AD81C00","size":24576},
+      {"name":"ps4_ui_menus_0018_6.pkg","data_offset":"0xB5AD87E00","size":24576}
+    ],
+    "0026": [
+      {"name":"ps4_ui_orbit_0026_0.pkg","data_offset":"0xB5ADA1C00","size":42958848},
+      {"name":"ps4_ui_orbit_0026_1.pkg","data_offset":"0xB5D699E00","size":38785024},
+      {"name":"ps4_ui_orbit_0026_2.pkg","data_offset":"0xB5FB97000","size":19619840},
+      {"name":"ps4_ui_orbit_0026_3.pkg","data_offset":"0xB60E4D200","size":83968},
+      {"name":"ps4_ui_orbit_0026_4.pkg","data_offset":"0xB60E61C00","size":4737024},
+      {"name":"ps4_ui_orbit_0026_5.pkg","data_offset":"0xB612E6600","size":3827712},
+      {"name":"ps4_ui_orbit_0026_6.pkg","data_offset":"0xB6168D000","size":1533952}
+    ],
+    "002D": [
+      {"name":"ps4_ui_pve_002d_0.pkg","data_offset":"0xB61803A00","size":20480},
+      {"name":"ps4_ui_pve_002d_1.pkg","data_offset":"0xB61808C00","size":24576},
+      {"name":"ps4_ui_pve_002d_2.pkg","data_offset":"0xB6180EE00","size":24576},
+      {"name":"ps4_ui_pve_002d_4.pkg","data_offset":"0xB61815000","size":22528},
+      {"name":"ps4_ui_pve_002d_5.pkg","data_offset":"0xB6181AA00","size":22528},
+      {"name":"ps4_ui_pve_002d_6.pkg","data_offset":"0xB61820400","size":22528}
+    ],
+    "0034": [
+      {"name":"ps4_ui_pvp_0034_0.pkg","data_offset":"0xB61825E00","size":20480},
+      {"name":"ps4_ui_pvp_0034_1.pkg","data_offset":"0xB6182B000","size":24576},
+      {"name":"ps4_ui_pvp_0034_2.pkg","data_offset":"0xB61831200","size":24576},
+      {"name":"ps4_ui_pvp_0034_4.pkg","data_offset":"0xB61837400","size":22528},
+      {"name":"ps4_ui_pvp_0034_5.pkg","data_offset":"0xB6183CE00","size":22528},
+      {"name":"ps4_ui_pvp_0034_6.pkg","data_offset":"0xB61842800","size":22528}
+    ]
+  }
+}
