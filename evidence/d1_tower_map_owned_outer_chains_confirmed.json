@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "evidence_status": "CONFIRMED_SERIALIZED_OUTER_MAP_CHAINS",
+  "source_run": 33945026693,
+  "source_artifact": 9963094560,
+  "source_artifact_digest": "sha256:daf9aadd23c5c2c5bf59f07025d7074401fd2a069643e476175abe754bd5a7a4",
+  "source_tool": "tools/d1_tower_map_entry_chain_resolve.py",
+  "source_workflow": ".github/workflows/d1-tower-map-entry-chain-resolution.yml",
+  "policy": "A row is promoted only when the serialized SMapDataEntry +0x88 ResourcePointer resolves to class 80801AEA, the pointed resource +0x0C resolves to an 80801AC6 SStaticMapParent, and that parent payload +0x08 resolves to an 808008B4 SStaticMapData. Rotation/translation/world_id are read from the same shipped SMapDataEntry bytes. No visual/plausibility ownership inference is used.",
+  "summary": {
+    "target_rows": 10,
+    "all_resource_pointers_non_null": true,
+    "all_resource_classes": "80801AEA",
+    "all_chain_status": "serialized_static_map_chain",
+    "all_outer_rotations_identity_quaternion": true,
+    "all_outer_translations_zero_xyz_w1": true,
+    "all_world_ids": "FFFFFFFFFFFFFFFF",
+    "assembly_consequence": "The ten minority baked-static resources are already authored in the same map coordinate frame; no additional per-cell outer transform is required before merging their inner static placements."
+  },
+  "rows": [
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C98028","map_entry_index":19,"entry_absolute_offset":2784,"pointer_field_offset":2920,"pointer_relative":3208,"resource_absolute_offset":6128,"resource_class":"80801AEA","static_map_parent":"80C98173","static_map":"80C98254","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C984A0","map_entry_index":7,"entry_absolute_offset":1056,"pointer_field_offset":1192,"pointer_relative":1048,"resource_absolute_offset":2240,"resource_class":"80801AEA","static_map_parent":"80C984BB","static_map":"80C984D8","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C9895C","map_entry_index":39,"entry_absolute_offset":5664,"pointer_field_offset":5800,"pointer_relative":6568,"resource_absolute_offset":12368,"resource_class":"80801AEA","static_map_parent":"80C989BB","static_map":"80C98A6B","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C989F7","map_entry_index":1,"entry_absolute_offset":192,"pointer_field_offset":328,"pointer_relative":15880,"resource_absolute_offset":16208,"resource_class":"80801AEA","static_map_parent":"80C9929A","static_map":"80C993CD","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C989F7","map_entry_index":56,"entry_absolute_offset":8112,"pointer_field_offset":8248,"pointer_relative":9280,"resource_absolute_offset":17528,"resource_class":"80801AEA","static_map_parent":"80C992DD","static_map":"80C993CF","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C997DF","map_entry_index":3,"entry_absolute_offset":480,"pointer_field_offset":616,"pointer_relative":88,"resource_absolute_offset":704,"resource_class":"80801AEA","static_map_parent":"80C997ED","static_map":"80C997F5","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_024c_5.pkg","map_data_table":"80C99956","map_entry_index":11,"entry_absolute_offset":1632,"pointer_field_offset":1768,"pointer_relative":1720,"resource_absolute_offset":3488,"resource_class":"80801AEA","static_map_parent":"80C99970","static_map":"80C99981","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_0250_5.pkg","map_data_table":"80CA0B0E","map_entry_index":5,"entry_absolute_offset":768,"pointer_field_offset":904,"pointer_relative":712,"resource_absolute_offset":1616,"resource_class":"80801AEA","static_map_parent":"80CA0B27","static_map":"80CA0B70","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_0250_5.pkg","map_data_table":"80CA0B11","map_entry_index":27,"entry_absolute_offset":3936,"pointer_field_offset":4072,"pointer_relative":4408,"resource_absolute_offset":8480,"resource_class":"80801AEA","static_map_parent":"80CA0B48","static_map":"80CA0B72","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"},
+    {"snapshot":"ps4_city_tower_destination_0250_5.pkg","map_data_table":"80CA0C4E","map_entry_index":2,"entry_absolute_offset":336,"pointer_field_offset":472,"pointer_relative":64,"resource_absolute_offset":536,"resource_class":"80801AEA","static_map_parent":"80CA0C5A","static_map":"80CA0C60","rotation":[0,0,0,1],"translation":[0,0,0,1],"world_id":"FFFFFFFFFFFFFFFF"}
+  ]
+}
