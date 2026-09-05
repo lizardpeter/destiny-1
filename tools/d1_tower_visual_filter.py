@@ -49,7 +49,9 @@ def main():
     if rr is None: raise SystemExit(f'validator row {h} absent')
     if not rr.get('ok'): raise SystemExit(f'validator row {h} did not pass: {rr.get("violations")}')
 
-    c=v3.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
+    # v3 deliberately layers its class-stable payload policy onto the base
+    # validator's Corpus rather than re-exporting Corpus as a top-level symbol.
+    c=v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
     info={}
     materials={}
     for t in rr['static_tables']:
