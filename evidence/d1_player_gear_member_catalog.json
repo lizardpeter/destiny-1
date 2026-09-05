@@ -1,0 +1,63 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": ".github/workflows/d1-player-guardian-family-census.yml and successful sparse player-family scans",
+  "policy": "Each data_offset/size pair is a verified PS4 gear_player package member location. Offsets are PKG data starts for RemoteLogicalPackage; a TAR header is 0x200 bytes earlier when using d1_split_tar_extract --start-offset.",
+  "families": {
+    "00FC": [
+      {"name":"ps4_gear_player_00fc_0.pkg","data_offset":"0x3F8DB4800","size":29204480},
+      {"name":"ps4_gear_player_00fc_1.pkg","data_offset":"0x3FA98EA00","size":4681728},
+      {"name":"ps4_gear_player_00fc_2.pkg","data_offset":"0x3FAE05C00","size":1040384},
+      {"name":"ps4_gear_player_00fc_5.pkg","data_offset":"0x3FAF03E00","size":280576}
+    ],
+    "00FE": [
+      {"name":"ps4_gear_player_00fe_0.pkg","data_offset":"0x3FAF48800","size":27312128},
+      {"name":"ps4_gear_player_00fe_1.pkg","data_offset":"0x3FC954A00","size":4452352},
+      {"name":"ps4_gear_player_00fe_2.pkg","data_offset":"0x3FCD93C00","size":978944},
+      {"name":"ps4_gear_player_00fe_5.pkg","data_offset":"0x3FCE82E00","size":331776}
+    ],
+    "00FF": [
+      {"name":"ps4_gear_player_00ff_0.pkg","data_offset":"0x3FCED4000","size":24981504},
+      {"name":"ps4_gear_player_00ff_1.pkg","data_offset":"0x3FE6A7200","size":4032512},
+      {"name":"ps4_gear_player_00ff_2.pkg","data_offset":"0x3FEA7FC00","size":946176},
+      {"name":"ps4_gear_player_00ff_5.pkg","data_offset":"0x3FEB66E00","size":348160}
+    ],
+    "0100": [
+      {"name":"ps4_gear_player_0100_0.pkg","data_offset":"0x3FEBBC000","size":30646272},
+      {"name":"ps4_gear_player_0100_1.pkg","data_offset":"0x4008F6200","size":3969024},
+      {"name":"ps4_gear_player_0100_2.pkg","data_offset":"0x400CBF400","size":389120},
+      {"name":"ps4_gear_player_0100_5.pkg","data_offset":"0x400D1E600","size":219136}
+    ],
+    "0101": [
+      {"name":"ps4_gear_player_0101_0.pkg","data_offset":"0x400D54000","size":25647104},
+      {"name":"ps4_gear_player_0101_1.pkg","data_offset":"0x4025C9A00","size":40380416},
+      {"name":"ps4_gear_player_0101_2.pkg","data_offset":"0x404C4C400","size":1634304},
+      {"name":"ps4_gear_player_0101_5.pkg","data_offset":"0x404DDB600","size":3553280}
+    ],
+    "0102": [
+      {"name":"ps4_gear_player_0102_0.pkg","data_offset":"0x40513F000","size":28991488},
+      {"name":"ps4_gear_player_0102_1.pkg","data_offset":"0x406CE5200","size":1409024},
+      {"name":"ps4_gear_player_0102_2.pkg","data_offset":"0x406E3D400","size":145408},
+      {"name":"ps4_gear_player_0102_5.pkg","data_offset":"0x406E60E00","size":321536}
+    ],
+    "0103": [
+      {"name":"ps4_gear_player_0103_0.pkg","data_offset":"0x406EAF800","size":26697728},
+      {"name":"ps4_gear_player_0103_1.pkg","data_offset":"0x408825A00","size":1630208},
+      {"name":"ps4_gear_player_0103_2.pkg","data_offset":"0x4089B3C00","size":323584},
+      {"name":"ps4_gear_player_0103_5.pkg","data_offset":"0x408A02E00","size":225280}
+    ],
+    "0104": [
+      {"name":"ps4_gear_player_0104_0.pkg","data_offset":"0x408A3A000","size":56281088},
+      {"name":"ps4_gear_player_0104_1.pkg","data_offset":"0x40BFE6A00","size":823296},
+      {"name":"ps4_gear_player_0104_2.pkg","data_offset":"0x40C0AFC00","size":237568},
+      {"name":"ps4_gear_player_0104_3.pkg","data_offset":"0x40C0E9E00","size":593920},
+      {"name":"ps4_gear_player_0104_4.pkg","data_offset":"0x40C17B000","size":598016},
+      {"name":"ps4_gear_player_0104_5.pkg","data_offset":"0x40C20D200","size":182272}
+    ],
+    "0105": [
+      {"name":"ps4_gear_player_0105_0.pkg","data_offset":"0x40C239C00","size":597002240},
+      {"name":"ps4_gear_player_0105_1.pkg","data_offset":"0x42FB92600","size":7645184},
+      {"name":"ps4_gear_player_0105_2.pkg","data_offset":"0x4302DD000","size":1808384},
+      {"name":"ps4_gear_player_0105_5.pkg","data_offset":"0x430496A00","size":5777408}
+    ]
+  }
+}
