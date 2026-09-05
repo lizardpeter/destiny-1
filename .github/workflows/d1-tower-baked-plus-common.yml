@@ -1,6 +1,11 @@
 name: D1 Tower baked plus common world layers
 
 on:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-baked-plus-common.yml'
+      - 'tools/d1_world_common_layer_scene.py'
+      - 'tools/d1_world_layer_merge.py'
   workflow_run:
     workflows: ["D1 Tower common-layer model export"]
     types: [completed]
@@ -11,7 +16,7 @@ permissions:
 
 jobs:
   assemble:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -28,7 +33,9 @@ jobs:
       - name: Recover exact common model and binary decal evidence artifacts
         run: |
           set -euo pipefail
-          gh run download "${{ github.event.workflow_run.id }}" -n d1-tower-common-layer-model-export -D source_models
+          if [ "${{ github.event_name }}" = workflow_run ]; then model_run='${{ github.event.workflow_run.id }}'; else model_run='33993408545'; fi
+          echo "MODEL_RUN=$model_run"
+          gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
           gh run download 33974200735 -n d1-tower-decal-layer-with-dependencies -D source_decals
           test -f source_models/reports/common_layer_model_export.json
           test -f source_decals/reports/decal_layer_closure.json
