@@ -9,6 +9,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
+      - 'tools/d1_split_tar_extract.py'
 
 permissions:
   contents: read
@@ -49,6 +50,15 @@ jobs:
               --package-list reports/packages.txt --family 00ec --family 00ee \
               --out-dir shader_deps --report reports/race_shader_dep_recovery.json
           fi
+          # The only first-pass gap was native shader 80A3D3AE.  Its exact D1
+          # TagHash namespace is package 011E: (80A3D3AE-80800000)>>13 == 0x011E.
+          # Reuse the already source-closed weapon-family TAR start used by the
+          # 011E weapon workflows rather than guessing a package from the shader name.
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x439A04A00 \
+            --target ps4_gear_weapons_011e_0.pkg --target ps4_gear_weapons_011e_1.pkg \
+            --target ps4_gear_weapons_011e_2.pkg --target ps4_gear_weapons_011e_3.pkg \
+            --target ps4_gear_weapons_011e_5.pkg --out shader_deps --manifest reports/011e_shader_dep_recovery.json
 
       - name: Extract all 65 exact common-layer pixel shader families
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
@@ -62,7 +72,7 @@ jobs:
             --out-dir shader --report reports/common65_shader_extract.json
           rc=$?
           set -e
-          test "$rc" -eq 0 -o "$rc" -eq 2
+          test "$rc" -eq 0
           python - <<'PY'
           import json
           d=json.load(open('reports/common65_shader_extract.json'))
@@ -72,7 +82,8 @@ jobs:
              'failed_rows':[{'shader':r['shader'],'visible_material_count':r.get('visible_material_count'),'error':r.get('error'),'native_shader':r.get('native_shader')} for r in bad]}
           open('reports/common65_shader_extract_summary.json','w').write(json.dumps(s,indent=2)+'\n')
           print(json.dumps(s,indent=2))
-          if len(ok)<50: raise SystemExit('fewer than 50/65 common shaders resolved; dependency closure regressed')
+          if s != {'requested':65,'exact':65,'failed':0,'failed_rows':[]}:
+              raise SystemExit('common shader corpus is not 65/65 exact')
           PY
 
       - name: Build pinned CLRX disassembler
@@ -98,7 +109,7 @@ jobs:
             grep -q 's_endpgm' "disasm/${b}.s" || failures=$((failures+1))
           done
           echo "DISASSEMBLED=$count FAILURES=$failures"
-          test "$count" -gt 0
+          test "$count" -eq 65
           test "$failures" -eq 0
 
       - name: Map every native image instruction to exact D1 texture register
@@ -111,15 +122,17 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/common65_gcn_image_usage.json'))
-          # Preserve a compact prioritization list for semantic dataflow work.
-          rows=d.get('shaders',[])
+          e=json.load(open('reports/common65_shader_extract.json'))
+          freq={r['shader']:int(r.get('visible_material_count',0)) for r in e['shaders']}
           pr=[]
-          for r in rows:
-              pr.append({'shader':r.get('shader'),'visible_material_count':r.get('visible_material_count',0),
+          for r in d.get('shaders',[]):
+              pr.append({'shader':r.get('shader'),'visible_material_count':freq.get(r.get('shader'),0),
                          'image_instruction_count':r.get('image_instruction_count',0),
-                         'image_ops':r.get('image_ops',[]),'texture_registers':r.get('texture_registers',[])})
+                         'image_ops':r.get('image_opcodes',[]),'texture_registers':r.get('used_texture_indices',[])})
           pr.sort(key=lambda x:(-x['visible_material_count'],x['shader'] or ''))
           open('reports/common_shader_semantic_priority.json','w').write(json.dumps(pr,indent=2)+'\n')
+          if len(pr)!=65: raise SystemExit(f'expected 65 usage rows, got {len(pr)}')
+          print(json.dumps(pr[:15],indent=2))
           PY
 
       - name: Validate already-proven roles against common shader corpus
@@ -129,7 +142,7 @@ jobs:
             --image-usage reports/common65_gcn_image_usage.json \
             --manifest prior/compact/common_material_texture_manifest.json \
             --out reports/common65_shader_texture_role_validation.json \
-            | tee reports/common65_shader_texture_role_validation_stdout.txt || true
+            | tee reports/common65_shader_texture_role_validation_stdout.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
