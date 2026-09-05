@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "evidence_status": "SOURCE_DERIVED_BYTE_CORRELATED_NOT_DECAL_ARRAY_BINARY_VALIDATED",
+  "scope": "Nine strict 0x18-cadence Tower map-data-table families in destination 024c and 0250",
+  "pinned_schema_source": {
+    "repository": "MontagueM/Charm",
+    "commit": "50d36ee1f9ecadad7522504c20b1f3f9c97e30af",
+    "file": "Tiger/Schema/Static/StaticMapData.cs",
+    "facts": {
+      "SStaticMapData_class_canonical": "808008B4",
+      "SStaticMapData_size_D1": 56,
+      "Decals_field": "+0x08 DynamicArray<BA048080>",
+      "ModelOcclusionBounds_field": "+0x18 Tag<80800583>",
+      "D1StaticMapData_field": "+0x30 Tag<80801B75>",
+      "Decal_record_size": 128,
+      "Decal_Transforms": "+0x08 DynamicArray<75018080>, elem 0x40",
+      "Decal_Unk18": "+0x18 DynamicArray<C1018080>, elem 0x10",
+      "Decal_Models": "+0x28 DynamicArray<A5438080>, elem 0x04 EntityModel TagHash"
+    }
+  },
+  "observed_split": [
+    {"map_data_table":"80C98028","common":"80C98191","common_size":11636,"common_plus_0x30":"FFFFFFFF","baked":"80C98254","baked_size":56,"baked_plus_0x30":"80C98258"},
+    {"map_data_table":"80C984A0","common":"80C984D7","common_size":4036,"common_plus_0x30":"FFFFFFFF","baked":"80C984D8","baked_size":56,"baked_plus_0x30":"80C9858B"},
+    {"map_data_table":"80C9895C","common":"80C98A69","common_size":23796,"common_plus_0x30":"FFFFFFFF","baked":"80C98A6B","baked_size":56,"baked_plus_0x30":"80C98A77"},
+    {"map_data_table":"80C989F7","common":"80C993A2","common_size":33524,"common_plus_0x30":"FFFFFFFF","baked":"80C993CD","baked_size":56,"baked_plus_0x30":"80C994B1"},
+    {"map_data_table":"80C989F7","common":"80C993A2","common_size":33524,"common_plus_0x30":"FFFFFFFF","baked":"80C993CF","baked_size":56,"baked_plus_0x30":"80C994B2"},
+    {"map_data_table":"80C997DF","common":"80C997F4","common_size":996,"common_plus_0x30":"FFFFFFFF","baked":"80C997F5","baked_size":56,"baked_plus_0x30":"80C9981A"},
+    {"map_data_table":"80C99956","common":"80C99980","common_size":6468,"common_plus_0x30":"FFFFFFFF","baked":"80C99981","baked_size":56,"baked_plus_0x30":"80C9999B"},
+    {"map_data_table":"80CA0B0E","common":"80CA0B6F","common_size":2820,"common_plus_0x30":"FFFFFFFF","baked":"80CA0B70","baked_size":56,"baked_plus_0x30":"80CA0B96"},
+    {"map_data_table":"80CA0B11","common":"80CA0B71","common_size":16196,"common_plus_0x30":"FFFFFFFF","baked":"80CA0B72","baked_size":56,"baked_plus_0x30":"80CA0B98"},
+    {"map_data_table":"80CA0C4E","common":"80CA0C5F","common_size":692,"common_plus_0x30":"FFFFFFFF","baked":"80CA0C60","baked_size":56,"baked_plus_0x30":"80CA0C6B"}
+  ],
+  "additional_byte_correlation": {
+    "common_resources": "Contain repeated aligned literal s_entity_model TagHashes; model-reference spacing is predominantly/exactly 0xB0 in the examined current snapshots.",
+    "common_plus_0x18": "Resolves to class 80800583 occlusion bounds in the examined focus resources.",
+    "minority_resources": "Are exactly the D1 SStaticMapData base size 0x38 and carry a non-null +0x30 80801B75 child.",
+    "focus_pair": {
+      "table":"80CA0B0E",
+      "common":"80CA0B6F",
+      "common_model_literals":["80CA0F39","80CA0B95"],
+      "baked":"80CA0B70",
+      "baked_child":"80CA0B96",
+      "baked_binary_status":"80CA0B70 -> 80CA0B96 passes the current strict static-table/transform validator"
+    }
+  },
+  "candidate_interpretation": {
+    "common_large_resource":"decal/transparent model carrier using SStaticMapData.Decals with null D1StaticMapData",
+    "minority_0x38_resource":"opaque baked-static carrier using SStaticMapData.D1StaticMapData, with zero/empty Decals likely but not yet byte-parsed",
+    "cell_reconstruction_requirement":"A final cell probably needs both resources/layers under their independently validated MapDataEntry transforms. Do not substitute one for the other."
+  },
+  "promotion_gate": {
+    "tool":"tools/d1_tower_static_map_decal_validate.py",
+    "workflow":".github/workflows/d1-tower-static-map-decal-census.yml",
+    "requirements":[
+      "Decals +0x08 dynamic array bounds pass with elem size 0x80",
+      "each decal Transforms +0x08 / Unk18 +0x18 / Models +0x28 arrays stay in bounds",
+      "all transform matrix floats are finite",
+      "all model TagHashes resolve as class 80801AB5",
+      "singleton transform/model counts are reported rather than assumed",
+      "minority controls are parsed by the same code path"
+    ]
+  },
+  "policy":"This file records a strong source-derived + byte-correlated layer hypothesis. It does not promote literal model references or the common/minority pairing to final map ownership until the nested arrays and outer ResourcePointer chain pass against raw package bytes."
+}
