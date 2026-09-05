@@ -1,0 +1,76 @@
+name: D1 iconic Guardian exact render models
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-iconic-guardian-render-models.yml'
+      - 'tools/d1_playable_guardian_entity_resource_resolve.py'
+      - 'evidence/d1_player_gear_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover iconic Guardian entity-resolution artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-iconic-guardian-entity-sample&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/sample.zip
+          unzip -q input/sample.zip -d input/sample
+          test -f input/sample/iconic_guardian_entities.json
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Follow six final entities to retail model resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_playable_guardian_entity_resource_resolve.py
+          python tools/d1_playable_guardian_entity_resource_resolve.py \
+            input/sample/iconic_guardian_entities.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/iconic_guardian_render_models.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/iconic_guardian_render_models.json'))
+          assert d['entity_count']==6,d['entity_count']
+          assert d['resolved_entity_count']==6,d['resolved_entity_count']
+          Path=None
+          print('s_entity',d['s_entity_count'],'resources',d['resource_occurrence_count'],'models',d['unique_embedded_model_count'])
+          for a in d['arrangements']:
+              print('\n',a['className'],a['arrangement_index'],a['examples'][0]['name'])
+              for b in a['resolved_body_assignments']:
+                  e=b.get('entity_resolution') or {}
+                  print(' ',b['body_role'],b.get('entity_data_hash'),'ref',e.get('reference'),'resources',e.get('resource_count'))
+                  for r in e.get('resources',[]):
+                      m=r.get('embedded_model') or {}
+                      if m.get('tag_hash'):
+                          print('   MODEL',r.get('resource_hash'),'->',m.get('tag_hash'),'pkg',f"{m.get('package_id'):04X}")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-iconic-guardian-render-models
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
