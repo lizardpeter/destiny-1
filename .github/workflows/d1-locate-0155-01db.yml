@@ -20,15 +20,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p reports
+          # Start at the TAR header immediately after proven 0154_5, not its
+          # following data-aligned byte. 0155_0 begins exactly at this boundary.
           python tools/d1_split_tar_scan.py \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start 0x461A4F800 --end 0x46711B000 --chunk-size 0x2000000 \
+            --start 0x461A4F600 --end 0x46711B000 --chunk-size 0x2000000 \
             --contains '_0155_' -o reports/0155_scan.json
       - name: Locate 01DB env_shared between proven env_natural and env_skies anchors
         run: |
           set -euo pipefail
-          # Exact end of proven ps4_env_natural_01c5_2 and the TAR header
-          # immediately preceding proven ps4_env_skies_01cf_0 bound this gap.
           python tools/d1_split_tar_scan.py \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --start 0x340F98C00 --end 0x34F58EC00 --chunk-size 0x2000000 \
