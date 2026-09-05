@@ -1,0 +1,49 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": "successful pattern-39 cross-package resource run 33928590037",
+  "policy": "Validated split-TAR data offsets used only to locate bytes. Semantic ownership must come from serialized FileHashes/resources.",
+  "families": {
+    "0151": [
+      {"name":"ps4_globals_0151_0.pkg","data_offset":"0x45190B200","size":45594624},
+      {"name":"ps4_globals_0151_1.pkg","data_offset":"0x454486C00","size":12720128},
+      {"name":"ps4_globals_0151_2.pkg","data_offset":"0x4550A8600","size":10653696},
+      {"name":"ps4_globals_0151_3.pkg","data_offset":"0x455AD1800","size":178176},
+      {"name":"ps4_globals_0151_4.pkg","data_offset":"0x455AFD200","size":180224},
+      {"name":"ps4_globals_0151_5.pkg","data_offset":"0x455B29400","size":194560},
+      {"name":"ps4_globals_0151_6.pkg","data_offset":"0x455B58E00","size":161792}
+    ],
+    "0154": [
+      {"name":"ps4_globals_0154_0.pkg","data_offset":"0x45B642400","size":82126848},
+      {"name":"ps4_globals_0154_1.pkg","data_offset":"0x460494E00","size":14962688},
+      {"name":"ps4_globals_0154_2.pkg","data_offset":"0x4612DA000","size":7340032},
+      {"name":"ps4_globals_0154_3.pkg","data_offset":"0x4619DA200","size":163840},
+      {"name":"ps4_globals_0154_4.pkg","data_offset":"0x461A02400","size":157696},
+      {"name":"ps4_globals_0154_5.pkg","data_offset":"0x461A28E00","size":157696}
+    ],
+    "0156": [
+      {"name":"ps4_globals_0156_0.pkg","data_offset":"0x46711B200","size":51275776},
+      {"name":"ps4_globals_0156_1.pkg","data_offset":"0x46A201C00","size":5599232},
+      {"name":"ps4_globals_0156_2.pkg","data_offset":"0x46A758E00","size":8103936},
+      {"name":"ps4_globals_0156_3.pkg","data_offset":"0x46AF13800","size":165888},
+      {"name":"ps4_globals_0156_4.pkg","data_offset":"0x46AF3C200","size":176128},
+      {"name":"ps4_globals_0156_5.pkg","data_offset":"0x46AF67400","size":172032}
+    ],
+    "0157": [
+      {"name":"ps4_globals_0157_0.pkg","data_offset":"0x46AF91600","size":206192640},
+      {"name":"ps4_globals_0157_1.pkg","data_offset":"0x477435800","size":30326784},
+      {"name":"ps4_globals_0157_2.pkg","data_offset":"0x479121A00","size":30464000},
+      {"name":"ps4_globals_0157_3.pkg","data_offset":"0x47AE2F400","size":268288},
+      {"name":"ps4_globals_0157_4.pkg","data_offset":"0x47AE70E00","size":546816},
+      {"name":"ps4_globals_0157_5.pkg","data_offset":"0x47AEF6800","size":380928},
+      {"name":"ps4_globals_0157_6.pkg","data_offset":"0x47AF53A00","size":356352}
+    ],
+    "0158": [
+      {"name":"ps4_globals_0158_1.pkg","data_offset":"0x47AFAAC00","size":16465920},
+      {"name":"ps4_globals_0158_2.pkg","data_offset":"0x47BF5EE00","size":121954304},
+      {"name":"ps4_globals_0158_3.pkg","data_offset":"0x4833AD000","size":5095424},
+      {"name":"ps4_globals_0158_4.pkg","data_offset":"0x483889200","size":4018176},
+      {"name":"ps4_globals_0158_5.pkg","data_offset":"0x483C5E400","size":3821568},
+      {"name":"ps4_globals_0158_6.pkg","data_offset":"0x484003600","size":122880}
+    ]
+  }
+}
