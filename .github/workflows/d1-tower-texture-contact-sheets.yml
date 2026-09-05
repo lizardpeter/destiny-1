@@ -1,0 +1,49 @@
+name: D1 Tower top shader texture contact sheets
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-texture-contact-sheets.yml'
+      - 'tools/d1_world_texture_contact_sheets.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sheets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Download existing exact 635-texture corpus internally
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install pillow
+          mkdir -p prior sheets reports
+          gh run download 33980537616 -n d1-tower-visible-material-textures-v1 -D prior
+          test -f prior/textures/material_texture_manifest.json
+          test -d prior/textures/textures
+      - name: Render top 50 pixel-shader texture contact sheets
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_contact_sheets.py \
+            prior/textures/material_texture_manifest.json \
+            --texture-dir prior/textures/textures \
+            --out-dir sheets --top-shaders 50 --materials-per-shader 5 --thumb 192
+          cp sheets/index.json reports/contact_sheet_index.json
+          du -sh sheets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-top50-texture-contact-sheets
+          path: |
+            sheets/
+            reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
