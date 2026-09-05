@@ -28,11 +28,14 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Recover exact current Tower/dependency corpus
+      - name: Recover exact current Tower/dependency corpus including globals 0156
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
           python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 0156 \
+            --out-dir recovered --report reports/common_model_0156_recovery.json
       - name: Export all 69 binary-confirmed common-layer models with retail map-decal selection
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
@@ -62,8 +65,13 @@ jobs:
           s['zero_geometry_models']=[r['model'] for r in d['models'] if r.get('ok') and r.get('geometry_count',0)==0]
           open('reports/common_layer_model_export_summary.json','w').write(json.dumps(s,indent=2)+'\n')
           print(json.dumps(s,indent=2))
-          if d['exported_models'] < 50:
-              raise SystemExit('cross-package exporter regressed: fewer than 50/69 models exported')
+          if d['requested_models'] != 69:
+              raise SystemExit(f'unexpected requested model count {d["requested_models"]}')
+          if d['failed_models'] != 0 or d['exported_models'] != 69:
+              raise SystemExit('common-layer model dependency closure incomplete: '+json.dumps(s))
+          # A valid model can intentionally contribute zero geometry after exact
+          # D1 MostDetailed + transparentsOnly selection.  Keep that diagnostic,
+          # but never fabricate geometry simply to make the count nonzero.
           PY
       - uses: actions/upload-artifact@v4
         if: always()
