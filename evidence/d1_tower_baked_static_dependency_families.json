@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "evidence_status": "FILEHASH_PACKAGE_ID_DERIVED_DEPENDENCY_PLAN",
+  "source_validation_run": 33944444030,
+  "source_validation_artifact": 9962935387,
+  "filehash_rule": "0x80800000 + (package_id << 13) + entry_index",
+  "policy": "Package IDs are decoded from the exact unresolved required buffer FileHashes. Package filenames come from the preserved retail packages.txt. This identifies where bytes must be recovered; it does not create ownership edges beyond the serialized static-table references.",
+  "summary": {
+    "unique_missing_required_buffer_hashes": 177,
+    "package_families": 8,
+    "highest_leverage_family": "0157",
+    "reason": "Every incomplete parseable strict-cadence cell references at least one missing 0157 buffer; 80CA0C6B is missing only 80AAE174 from 0157."
+  },
+  "families": {
+    "00EF": {"prefix":"ps4_race_set_all","physical_members":["ps4_race_set_all_00ef_0.pkg","ps4_race_set_all_00ef_1.pkg","ps4_race_set_all_00ef_2.pkg","ps4_race_set_all_00ef_3.pkg","ps4_race_set_all_00ef_5.pkg"],"unique_missing_hashes":1},
+    "013A": {"prefix":"ps4_investment_assets","physical_members":["ps4_investment_assets_013a_0.pkg","ps4_investment_assets_013a_1.pkg","ps4_investment_assets_013a_2.pkg","ps4_investment_assets_013a_3.pkg","ps4_investment_assets_013a_4.pkg","ps4_investment_assets_013a_5.pkg"],"unique_missing_hashes":1},
+    "0157": {"prefix":"ps4_globals","physical_members":["ps4_globals_0157_0.pkg","ps4_globals_0157_1.pkg","ps4_globals_0157_2.pkg","ps4_globals_0157_3.pkg","ps4_globals_0157_4.pkg","ps4_globals_0157_5.pkg","ps4_globals_0157_6.pkg"],"unique_missing_hashes":5,"known_prior_required_subset":["ps4_globals_0157_0.pkg","ps4_globals_0157_1.pkg"],"known_offsets_source":"evidence/d1_weapon_globals_member_catalog.json"},
+    "0169": {"prefix":"ps4_globals_pvp","physical_members":["ps4_globals_pvp_0169_0.pkg","ps4_globals_pvp_0169_1.pkg","ps4_globals_pvp_0169_2.pkg","ps4_globals_pvp_0169_3.pkg","ps4_globals_pvp_0169_5.pkg"],"unique_missing_hashes":1},
+    "01C5": {"prefix":"ps4_env_natural","physical_members":["ps4_env_natural_01c5_0.pkg","ps4_env_natural_01c5_1.pkg","ps4_env_natural_01c5_2.pkg"],"unique_missing_hashes":6},
+    "01CF": {"prefix":"ps4_env_skies","physical_members":["ps4_env_skies_01cf_0.pkg","ps4_env_skies_01cf_1.pkg","ps4_env_skies_01cf_2.pkg"],"unique_missing_hashes":144},
+    "01D1": {"prefix":"ps4_env_skies","physical_members":["ps4_env_skies_01d1_0.pkg","ps4_env_skies_01d1_1.pkg","ps4_env_skies_01d1_2.pkg","ps4_env_skies_01d1_4.pkg"],"unique_missing_hashes":4},
+    "01E3": {"prefix":"ps4_globals_cinematic","physical_members":["ps4_globals_cinematic_01e3_0.pkg","ps4_globals_cinematic_01e3_1.pkg","ps4_globals_cinematic_01e3_2.pkg"],"unique_missing_hashes":15}
+  },
+  "cell_dependencies": {
+    "80C9858B":{"0157":1,"01CF":1,"01E3":15},
+    "80C98A77":{"00EF":1,"0157":3,"01CF":1,"01D1":2},
+    "80C994B1":{"0157":2,"01C5":6},
+    "80C994B2":{"013A":1,"0157":3,"0169":1},
+    "80C9981A":{"0157":2,"01CF":1},
+    "80C9999B":{"0157":2,"01CF":1},
+    "80CA0B96":{},
+    "80CA0B98":{"0157":2,"01CF":140,"01D1":2},
+    "80CA0C6B":{"0157":1}
+  },
+  "priority": [
+    "0157 first: exact prior TAR offsets already known; expected to close 80CA0C6B and reduce blockers everywhere.",
+    "01CF second: resolves the dominant sky/environment dependency cluster and is especially important for 80CA0B98.",
+    "Then resolve 01C5, 01D1, 01E3, 00EF, 013A and 0169 as required by individual cells."
+  ]
+}
