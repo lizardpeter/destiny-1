@@ -1,7 +1,7 @@
 {
   "schema": "d1_remote_package_member_catalog/v1",
-  "source": ".github/workflows/tmp-investment-child-target-find.yml and prior validated split-TAR recovery runs",
-  "policy": "Each data_offset/size pair was previously located at a valid ustar member and used successfully as a RemoteLogicalPackage member. Package ownership is still derived from serialized FileHash package ids; this catalog only avoids rediscovering physical TAR locations.",
+  "source": ".github/workflows/tmp-investment-child-target-find.yml, d1-investment-013f-family-recovery.yml, and prior validated split-TAR recovery runs",
+  "policy": "Each data_offset/size pair was located at a checksum-valid ustar member and used or independently extracted as a verified RemoteLogicalPackage member. Package ownership is still derived from serialized FileHash package ids; this catalog only avoids rediscovering physical TAR locations.",
   "families": {
     "0135": [
       {"name":"ps4_investment_assets_0135_0.pkg","data_offset":"0x5996C3200","size":13039616},
@@ -56,6 +56,13 @@
       {"name":"ps4_investment_assets_013e_3.pkg","data_offset":"0x5A93B7000","size":143360},
       {"name":"ps4_investment_assets_013e_4.pkg","data_offset":"0x5A93DA200","size":145408},
       {"name":"ps4_investment_assets_013e_5.pkg","data_offset":"0x5A93FDC00","size":145408}
+    ],
+    "013F": [
+      {"name":"ps4_investment_assets_013f_1.pkg","data_offset":"0x5A9421600","size":17747968},
+      {"name":"ps4_investment_assets_013f_2.pkg","data_offset":"0x5AA50E800","size":3614720},
+      {"name":"ps4_investment_assets_013f_3.pkg","data_offset":"0x5AA881200","size":301056},
+      {"name":"ps4_investment_assets_013f_4.pkg","data_offset":"0x5AA8CAC00","size":284672},
+      {"name":"ps4_investment_assets_013f_5.pkg","data_offset":"0x5AA910600","size":317440}
     ],
     "0140": [
       {"name":"ps4_investment_assets_0140_1.pkg","data_offset":"0x5AA95E000","size":775550976},
