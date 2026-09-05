@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "evidence_status": "BINARY_VALIDATED_STATIC_ASSEMBLY_PROOF",
+  "workflow_run": 33972473873,
+  "artifact_id": 9971388367,
+  "artifact_name": "d1-tower-two-cell-export-v4",
+  "artifact_digest": "sha256:dff56748298c473b10a0d3e448f2a9fbe5050de4fd1919c254872314961cc8f3",
+  "source_commit": "03c250da008615ee388ca4b82432ab53044f3d9c",
+  "matrix_convention": "raw Tiger column-vector 0x40 matrices",
+  "outer_transform_evidence": {
+    "status": "CONFIRMED_BINARY",
+    "source_run": 33945026693,
+    "result": "Both exported map-owned cells have serialized identity outer transforms and therefore share the same Tower map coordinate frame."
+  },
+  "summary": {
+    "cells": 2,
+    "serialized_placements": 2152,
+    "merged_glb_bytes": 7778436,
+    "merged_geometry_count": 2660,
+    "merged_graph_nodes": 2661,
+    "merged_vertices": 1022140,
+    "merged_triangles": 739449,
+    "decode_failures": 0,
+    "merged_bounds": [[-163.80485788683154,-531.0884552689313,-795.0606079101562],[181.91320422444326,307.39269838680076,218.9948272705078]]
+  },
+  "cells": [
+    {
+      "static_map": "80CA0B70",
+      "d1_static_map_data": "80CA0B96",
+      "transform_records": 123,
+      "mesh_records": 124,
+      "serialized_placements": 556,
+      "geometry_variants": 97,
+      "null_vertices1_records": 0,
+      "glb_bytes": 791552,
+      "decode_failures": 0,
+      "bounds": [[-163.80485788683154,-531.0884552689313,-795.0606079101562],[181.91320422444326,130.33174395661578,218.9948272705078]]
+    },
+    {
+      "static_map": "80CA0C60",
+      "d1_static_map_data": "80CA0C6B",
+      "transform_records": 304,
+      "mesh_records": 471,
+      "serialized_placements": 1596,
+      "geometry_variants": 411,
+      "null_vertices1_records": 24,
+      "glb_bytes": 2415056,
+      "decode_failures": 0,
+      "bounds": [[-67.89433503701792,-24.25705978001091,-281.1109062801395],[69.75036212003008,307.39269838680076,27.735809614330023]]
+    }
+  ],
+  "current_0157_dependency": {
+    "hash": "80AAE174",
+    "reference": "80AAE175",
+    "entry_index": 372,
+    "file_size": 24,
+    "physical_snapshots_checked": 7,
+    "current_snapshot": "ps4_globals_0157_6.pkg",
+    "class_stable_payload_bytes": 24,
+    "status": "CONFIRMED_CURRENT"
+  },
+  "scope_boundary": "This is the first real merged baked-static Tower geometry proof. It is not yet the complete Tower: the remaining map-owned cells, common/decal layers, material/texture binding, dynamic entities/props, effects, collision and other non-static resources remain separate workstreams."
+}
