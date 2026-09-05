@@ -1,0 +1,97 @@
+name: D1 shared viewmodel selector backlinks
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-viewmodel-selector-backlinks.yml'
+      - 'tools/d1_character_owner_backlinks.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover verified runtime and globals 0157 family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 0x46AF91400 \
+            --target ps4_globals_0157_0.pkg \
+            --target ps4_globals_0157_1.pkg \
+            --target ps4_globals_0157_2.pkg \
+            --target ps4_globals_0157_3.pkg \
+            --target ps4_globals_0157_4.pkg \
+            --target ps4_globals_0157_5.pkg \
+            --target ps4_globals_0157_6.pkg \
+            --out recovered --manifest reports/0157_extract.json --retries 6 --timeout 90
+
+      - name: Scan all readable 0157 payloads for CA profile roots and weapon-type co-occurrence
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_character_owner_backlinks.py \
+            recovered/ps4_globals_0157_6.pkg --runtime runtime \
+            --target 80AAF411 --target 80AAF412 --target 80AAF413 \
+            --target 80AAF414 --target 80AAF415 --target 80AAF416 \
+            --target 80AAF417 --target 80AAF418 --target 80AAF419 \
+            --target 80AAF41A --target 80AAF41B --target 80AAF41C --target 80AAF5AE \
+            --target 80AA3CA0 --target 80AA3CA1 --target 80AA3CA2 \
+            --target 80AA3CC2 --target 80AA3CC4 --target 80AA3CC5 --target 80AA3CC7 \
+            --target 80AA3CC9 --target 80AA3CCB --target 80AA3CD0 --target 80AA3CD1 \
+            --target B44A3287 --target C8CC993A --target 2A3EAABB --target B1DF40E2 \
+            --target 0314A289 --target 08D2C38F --target 1FC493D2 --target 8A5D6623 \
+            --target C9EB0270 --target 3EB02F1A --target 924E78C4 \
+            --max-entry-size 8000000 \
+            -o reports/shared_viewmodel_selector_backlinks_0157.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/shared_viewmodel_selector_backlinks_0157.json'))
+          ctx={f'80AAF41{x:X}' for x in range(1,10)} | {'80AAF41A','80AAF41B','80AAF41C','80AAF5AE'}
+          types={
+            'B44A3287':'auto_rifle','C8CC993A':'hand_cannon','2A3EAABB':'pulse_rifle','B1DF40E2':'scout_rifle',
+            '0314A289':'shotgun','08D2C38F':'sniper_rifle','1FC493D2':'fusion_rifle','8A5D6623':'machine_gun',
+            'C9EB0270':'rocket_launcher','3EB02F1A':'sidearm','924E78C4':'sword',
+          }
+          mixed=[]
+          for row in d['cooccurrences']:
+              ts=set(row['targets'])
+              if ts & ctx and ts & set(types):
+                  mixed.append({
+                    'source':row['source'],
+                    'contexts':sorted(ts & ctx),
+                    'weapon_types':[types[x] for x in sorted(ts & set(types))],
+                    'hits':row['hits'],
+                  })
+          summary={
+            'scanned_entry_count':d['scanned_entry_count'],
+            'source_with_hit_count':d['source_with_hit_count'],
+            'read_error_count':d['read_error_count'],
+            'context_backlink_counts':{k:len(d['backlinks'][k]) for k in sorted(ctx)},
+            'mixed_context_weapon_type_sources':mixed,
+            'cooccurrence_groups':d['cooccurrence_groups'][:50],
+          }
+          print(json.dumps(summary,indent=2))
+          open('reports/shared_viewmodel_selector_summary_0157.json','w').write(json.dumps(summary,indent=2)+'\n')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-shared-viewmodel-selector-backlinks
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
