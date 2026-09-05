@@ -90,6 +90,7 @@ def resolve_chain(c, h:str, max_depth:int=4):
 
 def export_texture(c, th:str, outdir:Path):
     th=norm(th)
+    outdir.mkdir(parents=True,exist_ok=True)
     chain=resolve_chain(c,th)
     row={'texture':th,'package_id':pkg_id_from_tag(th),
          'chain':[{'hash':x['hash'],'meta':x['meta'],'source':x['source'],
@@ -185,18 +186,44 @@ def main()->int:
         if not meta or norm(meta.get('reference',''))!=MAT_CLASS or b is None:
             rec['error']='material unavailable/non-80801AD7';errors.append(rec);materials[mh]=rec;continue
         try:
-            parsed=parse_material(b)
-            rec.update({k:parsed[k] for k in ('file_size','unk08','vertex_shader','pixel_shader','vs_texture_count','ps_texture_count','textures','vs_texture_tags','ps_texture_tags','constants','samplers','tfx')})
+            parsed=parse_material(b,'PS4')
+            vs_items=list(parsed['vs_textures']['items'])
+            ps_items=list(parsed['ps_textures']['items'])
+            # Preserve a stable flattened manifest view for existing world tools,
+            # while retaining the current material parser's structured records.
+            rec.update({
+                'file_size':parsed['declared_file_size'],
+                'declared_file_size':parsed['declared_file_size'],
+                'actual_file_size':parsed['actual_file_size'],
+                'unk08':parsed['unk08'],
+                'unk0c':parsed['unk0c'],
+                'unk10':parsed['unk10'],
+                'vertex_shader':norm(parsed['vertex_shader']),
+                'pixel_shader':norm(parsed['pixel_shader']),
+                'vs_texture_count':parsed['vs_textures']['count'],
+                'ps_texture_count':parsed['ps_textures']['count'],
+                'textures':[{'stage':'vs',**x} for x in vs_items]+[{'stage':'ps',**x} for x in ps_items],
+                'vs_texture_tags':vs_items,
+                'ps_texture_tags':ps_items,
+                'constants':{
+                    'vs_vector4_container':norm(parsed['vs_vector4_container']),
+                    'ps_vector4_container':norm(parsed['ps_vector4_container']),
+                },
+                'samplers':{'vs':parsed['vs_samplers'],'ps':parsed['ps_samplers']},
+                'tfx':{'vs':parsed['vs_tfx_bytecode'],'ps':parsed['ps_tfx_bytecode']},
+                'parsed_material_schema':'d1_material_decode.parse_material/PS4',
+            })
             bindings=[]
             ps=norm(parsed['pixel_shader']);shader_freq[ps]+=1
-            for stage,key in [('vs','vs_texture_tags'),('ps','ps_texture_tags')]:
-                for tr in parsed[key]:
+            for stage,items in [('vs',vs_items),('ps',ps_items)]:
+                for tr in items:
                     th=norm(tr['texture']);idx=int(tr['texture_index'])
                     role=KNOWN_PIXEL_SHADER_ROLES.get(ps,{}).get(idx) if stage=='ps' else None
                     br={'stage':stage,'texture_index':idx,'texture':th}
                     if role:
                         br['semantic_role']=role;br['semantic_status']='PROVEN'
-                    bindings.append(br);texture_refs[th].append({'material':mh,'stage':stage,'texture_index':idx,'pixel_shader':ps,'role':role})
+                    bindings.append(br)
+                    texture_refs[th].append({'material':mh,'stage':stage,'texture_index':idx,'pixel_shader':ps,'role':role})
             rec['bindings']=bindings
         except Exception as ex:
             rec['error']=repr(ex);errors.append(rec)
