@@ -1,0 +1,14 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": "validated split-TAR extraction in bulk weapon-pattern runs",
+  "policy": "Physical byte-location evidence only; semantic ownership still comes from serialized FileHashes.",
+  "families": {
+    "013F": [
+      {"name":"ps4_investment_assets_013f_1.pkg","data_offset":"0x5A9421600","size":17747968},
+      {"name":"ps4_investment_assets_013f_2.pkg","data_offset":"0x5AA50E800","size":3614720},
+      {"name":"ps4_investment_assets_013f_3.pkg","data_offset":"0x5AA881200","size":301056},
+      {"name":"ps4_investment_assets_013f_4.pkg","data_offset":"0x5AA8CAC00","size":284672},
+      {"name":"ps4_investment_assets_013f_5.pkg","data_offset":"0x5AA910600","size":317440}
+    ]
+  }
+}
