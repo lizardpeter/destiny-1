@@ -96,7 +96,7 @@ def main()->int:
 
         # Canonically proven roles take precedence in the portable adapter. Only
         # when no instruction-proven direct base/normal exists do we fall back to
-        # the old format-based preview heuristic.
+        # format-based preview heuristics.
         proven_base=[r for r in rows if r.get('proven_role') in PORTABLE_BASE_COLOR_ROLES]
         proven_normal=[r for r in rows if r.get('proven_role') in PORTABLE_NORMAL_ROLES]
         base=None;base_reason=None;base_conf='NONE'
@@ -124,12 +124,36 @@ def main()->int:
                 color2d=[r for r in rows if r['resource_class']=='COLOR_CAPABLE_2D']
                 if len(color2d)==1:
                     base=t0['texture'];base_reason='sole color-capable 2D PS resource and occupies t0';base_conf='MEDIUM_PREVIEW_CANDIDATE'
+
+        # D1 frequently places scalar masks at t0 and the actual surface/normal
+        # pair in later registers.  For previews, recognize a *unique* exact-size
+        # COLOR_CAPABLE_2D + BC5 pair regardless of register number.  This is a
+        # format/topology candidate only: the exact t# bindings remain canonical,
+        # and no shader semantic is promoted from this heuristic.
+        if base is None:
+            color_rows=[r for r in rows if r['resource_class']=='COLOR_CAPABLE_2D']
+            normal_rows=[r for r in rows if r['resource_class']=='VECTOR_BC5_2D']
+            pairs=[(c,n) for c in color_rows for n in normal_rows if c['shape']==n['shape']]
+            # Deduplicate repeated bindings of the same texture pair (some D1
+            # shaders bind one physical texture to multiple t# registers).
+            uniq={ (c['texture'],n['texture']):(c,n) for c,n in pairs }
+            if len(uniq)==1:
+                c,n=next(iter(uniq.values()))
+                base=c['texture'];base_conf='STRONG_FORMAT_CANDIDATE'
+                base_reason=f'unique same-resolution color-capable/BC5 pair at t{c["texture_index"]}/t{n["texture_index"]}; preview-only'
+                if normal is None:
+                    normal=n['texture'];normal_conf='STRONG_FORMAT_CANDIDATE'
+                    normal_reason=f'unique same-resolution BC5 paired with preview color at t{c["texture_index"]}; preview-only'
+
         if normal is None and base:
             bs=tex_shape(textures.get(base,{}))
             same=[r for r in rows if r['resource_class']=='VECTOR_BC5_2D' and r['shape']==bs]
-            if same:
-                same.sort(key=lambda r:r['texture_index'])
-                normal=same[0]['texture'];normal_reason='BC5 PS resource matches preview base dimensions';normal_conf='STRONG_FORMAT_CANDIDATE'
+            # Avoid silently selecting between genuinely distinct same-size normal
+            # resources; duplicate t# bindings of one physical texture are fine.
+            bytex={r['texture']:r for r in same}
+            if len(bytex)==1:
+                r=next(iter(bytex.values()))
+                normal=r['texture'];normal_reason='unique BC5 PS resource matches preview base dimensions';normal_conf='STRONG_FORMAT_CANDIDATE'
 
         rec={
             'material':mh,'pixel_shader':ps,'bindings':rows,
@@ -158,14 +182,14 @@ def main()->int:
     base_counts=Counter(x['preview_base_confidence'] for x in material_semantics.values())
     norm_counts=Counter(x['preview_normal_confidence'] for x in material_semantics.values())
     out={
-        'schema_version':3,
+        'schema_version':4,
         'status':'D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED',
         'source_status':d.get('status'),
         'material_count':len(material_semantics),'pixel_shader_count':len(shader_inventory),
         'preview_base_coverage':dict(base_counts),'preview_normal_coverage':dict(norm_counts),
         'shader_inventory':dict(sorted(shader_inventory.items(),key=lambda kv:(-kv[1]['material_count'],kv[0]))),
         'materials':material_semantics,
-        'policy':'PROVEN roles are canonical instruction-level semantics. STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE remain adapter hints only and never overwrite exact shader t# bindings.',
+        'policy':'PROVEN roles are canonical instruction-level semantics. STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE remain adapter hints only and never overwrite exact shader t# bindings. Unique non-t0 color/BC5 format pairs may be used for preview fidelity without semantic promotion.',
     }
     a.output.parent.mkdir(parents=True,exist_ok=True)
     a.output.write_text(json.dumps(out,indent=2)+'\n')
