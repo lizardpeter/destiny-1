@@ -95,3 +95,4 @@ if __name__ == '__main__':
     raise SystemExit(base.main())
 
 # Public Actions retrigger: 2026-09-05
+# Summary-writer compatibility rerun marker.
