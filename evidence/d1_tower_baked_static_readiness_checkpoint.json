@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "evidence_status": "READINESS_REINTERPRETATION_NOT_NEW_PACKAGE_VALIDATION",
+  "generated_from": {
+    "static_validator_run": 33944444030,
+    "static_validator_artifact": 9962935387,
+    "static_validator_artifact_digest": "sha256:06ff1a409bfbaadb8fd7dbb9f7c3053de047817515a85b3e0d589b0a2902b70c",
+    "map_census_run": 33943271839,
+    "map_census_artifact": 9963042289,
+    "map_chain_evidence": "evidence/d1_tower_map_resource_chain_census.json",
+    "reinterpretation_tool": "tools/d1_tower_baked_static_readiness.py",
+    "validator_v2": "tools/d1_tower_map_schema_validate_v2.py"
+  },
+  "policy": {
+    "optional_secondary_stream": "Only Vertices1 == FFFFFFFF is treated as a valid null secondary stream. Vertices0 and Indices remain mandatory.",
+    "ownership": "The strict-cadence map-table -> parent -> static-map links remain literal/field-coherence evidence until MapDataEntry +0x88 ResourcePointer validation passes.",
+    "partial_export": "Ready mesh/placement counts measure recoverable baked-static content in the preserved corpus; they do not promote an incomplete cell to complete."
+  },
+  "summary": {
+    "strict_0x18_map_tables": 9,
+    "direct_d1_child_cells": 10,
+    "parseable_cells": 9,
+    "layout_blocked_cells": 1,
+    "parseable_mesh_records": 8552,
+    "ready_mesh_records": 8255,
+    "ready_mesh_percent": 96.52712815715623,
+    "parseable_placed_geometry_references": 40373,
+    "ready_placed_geometry_references": 38276,
+    "ready_placed_percent": 94.80593465930201,
+    "fully_buffer_complete_map_owned_cells_under_v2_semantics": 1
+  },
+  "cells": [
+    {"map_data_table":"80C98028","static_map":"80C98254","d1":"80C98258","status":"STRUCTURAL_OR_LAYOUT_BLOCKER","instance_count":208,"mesh_records":0,"ready_mesh_records":0,"placed_refs":0,"ready_placed_refs":0,"structural_blockers":["instance transform FileHash unresolved","instance transform payload unavailable","statics2 dynamic array bounds","statics3 dynamic array bounds","statics4 dynamic array bounds"]},
+    {"map_data_table":"80C984A0","static_map":"80C984D8","d1":"80C9858B","status":"DEPENDENCY_INCOMPLETE","instance_count":372,"mesh_records":570,"ready_mesh_records":550,"placed_refs":1800,"ready_placed_refs":1754,"unique_missing_required_targets":17},
+    {"map_data_table":"80C9895C","static_map":"80C98A6B","d1":"80C98A77","status":"DEPENDENCY_INCOMPLETE","instance_count":2346,"mesh_records":2191,"ready_mesh_records":2152,"placed_refs":12498,"ready_placed_refs":12026,"unique_missing_required_targets":7},
+    {"map_data_table":"80C989F7","static_map":"80C993CD","d1":"80C994B1","status":"DEPENDENCY_INCOMPLETE","instance_count":786,"mesh_records":1056,"ready_mesh_records":1035,"placed_refs":5115,"ready_placed_refs":5094,"unique_missing_required_targets":8},
+    {"map_data_table":"80C989F7","static_map":"80C993CF","d1":"80C994B2","status":"DEPENDENCY_INCOMPLETE","instance_count":2523,"mesh_records":2825,"ready_mesh_records":2776,"placed_refs":13827,"ready_placed_refs":13399,"unique_missing_required_targets":5},
+    {"map_data_table":"80C997DF","static_map":"80C997F5","d1":"80C9981A","status":"DEPENDENCY_INCOMPLETE","instance_count":444,"mesh_records":567,"ready_mesh_records":554,"placed_refs":2409,"ready_placed_refs":2210,"unique_missing_required_targets":3},
+    {"map_data_table":"80C99956","static_map":"80C99981","d1":"80C9999B","status":"DEPENDENCY_INCOMPLETE","instance_count":326,"mesh_records":607,"ready_mesh_records":597,"placed_refs":1800,"ready_placed_refs":1724,"unique_missing_required_targets":3},
+    {"map_data_table":"80CA0B0E","static_map":"80CA0B70","d1":"80CA0B96","status":"WOULD_PASS_V2_SEMANTICS_FROM_PRESERVED_BINARY_REPORT","legacy_validator_status":"PASS","instance_count":123,"static_tables":4,"mesh_records":124,"ready_mesh_records":124,"placed_refs":556,"ready_placed_refs":556,"unique_missing_required_targets":0},
+    {"map_data_table":"80CA0B11","static_map":"80CA0B72","d1":"80CA0B98","status":"DEPENDENCY_INCOMPLETE","instance_count":258,"mesh_records":141,"ready_mesh_records":9,"placed_refs":772,"ready_placed_refs":34,"unique_missing_required_targets":144},
+    {"map_data_table":"80CA0C4E","static_map":"80CA0C60","d1":"80CA0C6B","status":"DEPENDENCY_INCOMPLETE","instance_count":304,"mesh_records":471,"ready_mesh_records":458,"placed_refs":1596,"ready_placed_refs":1479,"unique_missing_required_targets":1}
+  ],
+  "important_auxiliary_static_resource": {
+    "static_map":"80C997CB",
+    "d1":"80C997CE",
+    "map_table_owned_by_strict_cadence_census":false,
+    "legacy_failure":"three mesh records had Vertices1 == FFFFFFFF",
+    "v2_reinterpretation":"All required V0/index targets and info indices are present; this resource should pass the optional-V1 correction when raw v2 validation executes.",
+    "instance_count":18,
+    "mesh_records":9,
+    "placed_refs":69
+  },
+  "next_blockers": [
+    "Recover/resolve the small cross-package buffer dependency set for the eight parseable incomplete map-owned cells.",
+    "Resolve the different 80C98258 transform/static-array layout rather than force-fitting it.",
+    "Run MapDataEntry +0x88 ResourcePointer validation to obtain authoritative outer cell rotation/translation.",
+    "Regenerate the 80CA0B70/80CA0B96 proof GLB with the corrected raw Tiger matrix convention.",
+    "Validate and export the common SStaticMapData decal layers, then bind material/texture stages from serialized material arrays."
+  ]
+}
