@@ -1,32 +1,28 @@
 #!/usr/bin/env python3
 """Export D1 ROI s_entity_model geometry through a cross-package Tiger Corpus.
 
-The historical entity-model exporter was intentionally package-local.  That is
+The historical entity-model exporter was intentionally package-local. That is
 insufficient for maps: Tower's binary-confirmed embedded model layer routinely
 stores model headers in a destination package while vertex/index resources live
 in shared architecture/global packages.
 
-This exporter keeps the existing byte-decoder conventions but resolves every
-TagHash through the v5 class-stable, serialized-coverage-sized Corpus.  Its
-default selection matches the source-crosschecked D1 map-decal call:
+Default selection matches the source-crosschecked D1 map-decal call:
 
     Model.Load(ExportDetailLevel.MostDetailed, null, true)
 
-which means:
-  * LOD category in {0,1,2,3,10} (ELod.IsHighestLevel), and
-  * an inline D1 material with both VS and PS, and material.Unk20 != 0.
+which means highest LOD categories {0,1,2,3,10} plus an inline D1 material with
+VS+PS and material.Unk20 != 0. External variant materials are not guessed when
+the caller has no parent EntityResource.
 
-Parts that use an external variant shader are not guessed because the map-decal
-caller supplies no parent EntityResource.  Null secondary vertex buffers are
-accepted and produce position-only geometry rather than failing the model.
-
-The canonical report preserves source hashes, selected/rejected parts, strides,
-material flags and every decode error.  glTF is only an adapter.
+D1 vertex COLOR_0 is preserved even on textured geometry. Decoded D1 tangents
+are retained as custom glTF attribute ``_D1_TANGENT`` until the native tangent-W
+handedness mapping is independently closed. Secondary stride 0x18 follows the
+conditional per-vertex layout in Charm ReadD1VertexData rather than assuming one
+fixed normal/color offset.
 """
 from __future__ import annotations
 
-import argparse, json, math, struct, sys, traceback
-from collections import Counter
+import argparse, json, struct, sys, traceback
 from pathlib import Path
 
 import numpy as np
@@ -56,13 +52,11 @@ def linked(c,h):
     h=norm(h)
     if h in NULLS: return {'hash':h,'null':True},None,None,None
     meta=c.entry_meta(h); head,src=c.payload(h)
-    if meta is None or head is None:
-        raise KeyError(f'header {h} unavailable')
+    if meta is None or head is None: raise KeyError(f'header {h} unavailable')
     ref=norm(meta.get('reference','FFFFFFFF'))
     if ref in NULLS: raise KeyError(f'header {h} has null backing {ref}')
     pmeta=c.entry_meta(ref); data,psrc=c.payload(ref)
-    if pmeta is None or data is None:
-        raise KeyError(f'backing {h}->{ref} unavailable')
+    if pmeta is None or data is None: raise KeyError(f'backing {h}->{ref} unavailable')
     return {'hash':h,'meta':meta,'source':src,'backing':ref,'backing_meta':pmeta,'backing_source':psrc},head,pmeta,data
 
 
@@ -73,17 +67,15 @@ def primary_attrs(data,stride):
     if stride in (0x08,0x0C,0x10,0x1C,0x20):
         raw=np.frombuffer(data,dtype='<i2').reshape(n,stride//2)
         pos=snorm16(raw[:,0:3])
-        if stride==0x0C:
-            pass
-        elif stride in (0x1C,0x20):
+        if stride in (0x1C,0x20):
             uv=snorm16(raw[:,4:6])
             normal=snorm16(raw[:,6:9])
-            tangent=snorm16(raw[:,10:13])
+            tangent=snorm16(raw[:,10:14])
             if stride==0x20:
                 color=np.frombuffer(data,dtype=np.uint8).reshape(n,stride)[:,28:32].astype(np.float32)/255.0
     elif stride==0x30:
         raw=np.frombuffer(data,dtype='<f4').reshape(n,12)
-        pos=raw[:,0:3].astype(np.float32); normal=raw[:,4:7].astype(np.float32); tangent=raw[:,8:11].astype(np.float32)
+        pos=raw[:,0:3].astype(np.float32); normal=raw[:,4:7].astype(np.float32); tangent=raw[:,8:12].astype(np.float32)
     else:
         raise ValueError(f'unsupported D1 primary stride 0x{stride:X}')
     return pos,uv,normal,tangent,color
@@ -95,29 +87,47 @@ def secondary_attrs(data,stride,primary_uv_exists,other_stride):
     raw16=np.frombuffer(data,dtype='<i2').reshape(n,stride//2)
     raw8=np.frombuffer(data,dtype=np.uint8).reshape(n,stride)
     uv=normal=tangent=color=None
+    layout={'stride':stride,'source':'Charm ReadD1VertexData bufferIndex=1'}
     if stride==0x04:
-        uv=snorm16(raw16[:,0:2])
+        uv=snorm16(raw16[:,0:2]);layout['uv0_offset']=0
     elif stride==0x08:
-        normal=snorm16(raw16[:,0:3])
+        normal=snorm16(raw16[:,0:3]);layout['normal_offset']=0
     elif stride==0x0C:
-        uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5])
+        uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]);layout.update({'uv0_offset':0,'normal_offset':4})
     elif stride==0x10:
-        normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:7])
+        normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:8]);layout.update({'normal_offset':0,'tangent_offset':8})
     elif stride==0x14:
         if primary_uv_exists:
-            normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:7]); color=raw8[:,16:20].astype(np.float32)/255.0
+            normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:8]); color=raw8[:,16:20].astype(np.float32)/255.0
+            layout.update({'normal_offset':0,'tangent_offset':8,'color_offset':16})
         else:
-            uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]); tangent=snorm16(raw16[:,6:9])
+            uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]); tangent=snorm16(raw16[:,6:10])
+            layout.update({'uv0_offset':0,'normal_offset':4,'tangent_offset':12})
     elif stride==0x18:
         if other_stride==0x0C and primary_uv_exists:
-            normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:7])
+            normal=snorm16(raw16[:,0:3]); tangent=snorm16(raw16[:,4:8])
+            layout.update({'normal_offset':0,'tangent_offset':8,'source_color_offset':16,
+                           'source_color_storage':'int16x4','portable_color_status':'WITHHELD_PENDING_INT16_COLOR_SEMANTICS'})
         else:
-            uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]); tangent=snorm16(raw16[:,6:9]); color=raw8[:,20:24].astype(np.float32)/255.0
+            uv=snorm16(raw16[:,0:2])
+            check=raw16[:,7];check2=raw16[:,11]
+            branch_a=(check==0)&((check2==32767)|(check2==-32767))
+            na=snorm16(raw16[:,4:7]);ta=snorm16(raw16[:,8:12]);ca=raw8[:,4:8].astype(np.float32)/255.0
+            nb=snorm16(raw16[:,2:5]);tb=snorm16(raw16[:,6:10]);cb=raw8[:,20:24].astype(np.float32)/255.0
+            normal=np.where(branch_a[:,None],na,nb).astype(np.float32)
+            tangent=np.where(branch_a[:,None],ta,tb).astype(np.float32)
+            color=np.where(branch_a[:,None],ca,cb).astype(np.float32)
+            layout.update({'uv0_offset':0,'conditional_layout':True,
+                           'selector':'int16@0x0E == 0 && int16@0x16 in {+32767,-32767}',
+                           'branch_a':{'color_offset':4,'normal_offset':8,'tangent_offset':16},
+                           'branch_b':{'normal_offset':4,'tangent_offset':12,'color_offset':20},
+                           'branch_a_vertices':int(branch_a.sum()),'branch_b_vertices':int((~branch_a).sum())})
     elif stride==0x1C:
-        uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]); tangent=snorm16(raw16[:,6:9]); color=raw8[:,20:24].astype(np.float32)/255.0
+        uv=snorm16(raw16[:,0:2]); normal=snorm16(raw16[:,2:5]); tangent=snorm16(raw16[:,6:10]); color=raw8[:,20:24].astype(np.float32)/255.0
+        layout.update({'uv0_offset':0,'normal_offset':4,'tangent_offset':12,'color_offset':20})
     else:
         raise ValueError(f'unsupported D1 secondary stride 0x{stride:X}')
-    return uv,normal,tangent,color
+    return uv,normal,tangent,color,layout
 
 
 def material_info(c,h):
@@ -161,10 +171,10 @@ def export_one(c,h,out_dir,mode='map-decal'):
     scene=trimesh.Scene(); selected_parts=0; rejected_parts=0
     for mi,mesh in enumerate(model['meshes']):
         lr0,h0,_,d0=linked(c,mesh['vertices1']); s0=hdr_stride(h0); pos,uv0,n0,t0,col0=primary_attrs(d0,s0)
-        lr1=h1=d1=None; s1=None; uv1=n1=t1=col1=None
+        lr1=h1=d1=None; s1=None; uv1=n1=t1=col1=None; secondary_layout=None
         if norm(mesh['vertices2']) not in NULLS:
             lr1,h1,_,d1=linked(c,mesh['vertices2']); s1=hdr_stride(h1)
-            uv1,n1,t1,col1=secondary_attrs(d1,s1,uv0 is not None,s0)
+            uv1,n1,t1,col1,secondary_layout=secondary_attrs(d1,s1,uv0 is not None,s0)
         lri,ih,_,idata=linked(c,mesh['indices']); is32=index_is32(ih); inds=np.frombuffer(idata,dtype='<u4' if is32 else '<u2').astype(np.int64)
         scale=np.asarray(mesh['model_scale'][:3],dtype=np.float32);trans=np.asarray(mesh['model_translation'][:3],dtype=np.float32)
         pos=(pos*scale+trans).astype(np.float32)
@@ -173,7 +183,9 @@ def export_one(c,h,out_dir,mode='map-decal'):
             ts=np.asarray(mesh['texcoord_scale'],dtype=np.float32);tt=np.asarray(mesh['texcoord_translation'],dtype=np.float32)
             uv=np.column_stack((uv[:,0]*ts[0]+tt[0],uv[:,1]*(-ts[1])+1.0-tt[1])).astype(np.float32)
         if s1 is not None and len(pos)!=len(d1)//s1: raise ValueError(f'{h} mesh {mi}: stream vertex count mismatch')
-        mrep={'mesh_index':mi,'vertices1':lr0,'vertices2':lr1,'indices':lri,'stride0':s0,'stride1':s1,'vertex_count':len(pos),'uv_bounds':bounds(uv),'parts':[]}
+        mrep={'mesh_index':mi,'vertices1':lr0,'vertices2':lr1,'indices':lri,'stride0':s0,'stride1':s1,'vertex_count':len(pos),'uv_bounds':bounds(uv),
+              'has_uv':uv is not None,'has_normals':normal is not None,'has_tangents':tangent is not None,'has_colors':color is not None,
+              'secondary_layout':secondary_layout,'parts':[]}
         selected=[]
         for pi,p in enumerate(mesh['parts']):
             keep,reasons,minfo=part_selection(c,p,mode)
@@ -189,15 +201,27 @@ def export_one(c,h,out_dir,mode='map-decal'):
             if facesg.max()>=len(pos): raise ValueError(f'{h} mesh {mi} part {pi}: vertex index OOB')
             used,inv=np.unique(facesg.reshape(-1),return_inverse=True);faces=inv.reshape((-1,3));vv=pos[used]
             nn=normal[used] if normal is not None else None;uu=uv[used] if uv is not None else None
+            tt=tangent[used] if tangent is not None else None;cc=color[used] if color is not None else None
             mat=trimesh.visual.material.PBRMaterial(name=f'D1_{minfo["hash"]}')
-            visual=trimesh.visual.TextureVisuals(uv=uu,material=mat) if uu is not None else trimesh.visual.ColorVisuals()
+            visual=trimesh.visual.TextureVisuals(uv=uu,material=mat)
+            if cc is not None:
+                visual.vertex_attributes['color']=np.clip(cc*255.0+0.5,0,255).astype(np.uint8)
             tm=trimesh.Trimesh(vertices=vv,faces=faces,vertex_normals=nn,visual=visual,process=False,validate=False)
+            if tt is not None: tm.vertex_attributes['D1_TANGENT']=tt.astype(np.float32)
             name=f'{h}_mesh{mi}_part{pi}_lod{p["lod"]}'
-            tm.metadata={'model':h,'mesh_index':mi,'part_index':pi,'material':minfo['hash'],'lod':p['lod'],'primitive_type':prim,'index_offset':off,'index_count':count}
+            tm.metadata={'model':h,'mesh_index':mi,'part_index':pi,'material':minfo['hash'],'lod':p['lod'],'primitive_type':prim,
+                         'index_offset':off,'index_count':count,'has_uv':uu is not None,'has_normals':nn is not None,
+                         'has_tangents':tt is not None,'has_colors':cc is not None}
             scene.add_geometry(tm,geom_name=name,node_name=name)
         rep['meshes'].append(mrep)
     rep['selected_part_count']=selected_parts;rep['rejected_part_count']=rejected_parts;rep['geometry_count']=len(scene.geometry);rep['bounds']=None if scene.bounds is None else scene.bounds.tolist()
     rep['triangle_count']=sum(len(g.faces) for g in scene.geometry.values())
+    rep['attribute_mesh_coverage']={
+        'uv':sum(bool(m.get('has_uv')) for m in rep['meshes']),
+        'normals':sum(bool(m.get('has_normals')) for m in rep['meshes']),
+        'tangents':sum(bool(m.get('has_tangents')) for m in rep['meshes']),
+        'colors':sum(bool(m.get('has_colors')) for m in rep['meshes']),
+    }
     glb=out_dir/f'{h}.glb';js=out_dir/f'{h}.json';out_dir.mkdir(parents=True,exist_ok=True)
     if len(scene.geometry):
         scene.export(glb);rep['glb']=str(glb);rep['zero_selected_geometry']=False
@@ -217,7 +241,11 @@ def main()->int:
         except Exception as ex:
             r={'model':h,'ok':False,'error':repr(ex),'traceback':traceback.format_exc()};(a.out_dir/f'{h}.error.json').parent.mkdir(parents=True,exist_ok=True);(a.out_dir/f'{h}.error.json').write_text(json.dumps(r,indent=2)+'\n')
         rows.append(r)
-    out={'schema_version':1,'status':'D1_ENTITY_MODEL_CORPUS_EXPORT' if all(r['ok'] for r in rows) else 'D1_ENTITY_MODEL_CORPUS_EXPORT_PARTIAL','mode':a.mode,'requested_models':len(rows),'exported_models':sum(r['ok'] for r in rows),'failed_models':sum(not r['ok'] for r in rows),'geometry_count':sum(r.get('geometry_count',0) for r in rows),'triangle_count':sum(r.get('triangle_count',0) for r in rows),'zero_selected_geometry_models':[r['model'] for r in rows if r.get('ok') and r.get('zero_selected_geometry')],'models':rows,'policy':'Cross-package v5 Corpus resolution; map-decal mode reproduces Charm D1 MostDetailed + transparentsOnly selection without guessing external parent materials. A source-valid model with zero selected map-decal geometry is preserved as a successful diagnostic record and emits no fake GLB.'}
+    out={'schema_version':2,'status':'D1_ENTITY_MODEL_CORPUS_EXPORT' if all(r['ok'] for r in rows) else 'D1_ENTITY_MODEL_CORPUS_EXPORT_PARTIAL','mode':a.mode,
+         'requested_models':len(rows),'exported_models':sum(r['ok'] for r in rows),'failed_models':sum(not r['ok'] for r in rows),
+         'geometry_count':sum(r.get('geometry_count',0) for r in rows),'triangle_count':sum(r.get('triangle_count',0) for r in rows),
+         'zero_selected_geometry_models':[r['model'] for r in rows if r.get('ok') and r.get('zero_selected_geometry')],
+         'models':rows,'policy':'Cross-package v5 Corpus resolution; map-decal mode reproduces Charm D1 MostDetailed + transparentsOnly selection without guessing external parent materials. D1 COLOR_0 and exact decoded tangents are preserved when present; tangent remains custom _D1_TANGENT pending portable handedness proof.'}
     sp=a.summary or a.out_dir/'summary.json';sp.parent.mkdir(parents=True,exist_ok=True);sp.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({k:out[k] for k in ('status','requested_models','exported_models','failed_models','geometry_count','triangle_count','zero_selected_geometry_models')},indent=2));return 0 if out['failed_models']==0 else 2
 
 if __name__=='__main__': raise SystemExit(main())
