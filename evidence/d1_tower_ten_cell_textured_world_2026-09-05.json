@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_TEN_CELL_TEXTURED_WORLD_CURRENT",
+  "date": "2026-09-05",
+  "scope": "Current map-owned baked-static Tower layer only; not yet the complete retail destination.",
+  "source_workflow": {
+    "run_id": 33987189885,
+    "commit": "4f05871ec6412a26430ae3816785f44f0f02bca4",
+    "model_artifact_id": 9975733562,
+    "reports_artifact_id": 9975732666
+  },
+  "ownership": {
+    "map_owned_static_cells": 10,
+    "cells": [
+      "80C98254",
+      "80C984D8",
+      "80C98A6B",
+      "80C993CD",
+      "80C993CF",
+      "80C997F5",
+      "80C99981",
+      "80CA0B70",
+      "80CA0B72",
+      "80CA0C60"
+    ],
+    "recovered_tenth_chain": "80C98028 -> 80C98173 -> 80C98254 -> 80C98258",
+    "recovered_tenth_current_payload_bytes": 48084,
+    "recovered_tenth_current_class": "80801B75"
+  },
+  "geometry": {
+    "serialized_placements": 50148,
+    "retail_visible_placements": 11728,
+    "geometry_variants": 2071,
+    "geometry_decode_failures": 0,
+    "attribute_undecoded_geometry_variants": 5,
+    "attribute_policy": "Unsupported secondary attribute layouts do not delete valid position/index geometry; UV/normal enrichment fails closed per variant."
+  },
+  "per_cell": {
+    "80C98254": {"serialized": 9775, "visible": 2368, "geometry_variants": 327},
+    "80C984D8": {"serialized": 1800, "visible": 390, "geometry_variants": 118},
+    "80C98A6B": {"serialized": 12498, "visible": 2902, "geometry_variants": 460},
+    "80C993CD": {"serialized": 5115, "visible": 1410, "geometry_variants": 195},
+    "80C993CF": {"serialized": 13827, "visible": 2831, "geometry_variants": 549},
+    "80C997F5": {"serialized": 2409, "visible": 487, "geometry_variants": 111},
+    "80C99981": {"serialized": 1800, "visible": 393, "geometry_variants": 118},
+    "80CA0B70": {"serialized": 556, "visible": 144, "geometry_variants": 26},
+    "80CA0B72": {"serialized": 772, "visible": 419, "geometry_variants": 76},
+    "80CA0C60": {"serialized": 1596, "visible": 384, "geometry_variants": 91}
+  },
+  "texture_corpus": {
+    "visible_materials": 400,
+    "material_decode_errors": 0,
+    "unique_texture_tags": 506,
+    "decoded_texture_tags": 506,
+    "texture_errors": 0,
+    "png_outputs": 561
+  },
+  "portable_preview": {
+    "textured_geometry_variants": 1786,
+    "normal_mapped_geometry_variants": 1469,
+    "textured_materials": 321,
+    "policy": "Instruction-proven roles are preferred; strong/medium format candidates remain preview-only and never overwrite exact D1 shader/register bindings."
+  },
+  "output": {
+    "file": "D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb",
+    "bytes": 531652324,
+    "sha256": "dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa",
+    "reload_verified_nodes": 11728,
+    "reload_verified_geometry": 2071,
+    "bounds_gltf": [
+      [-54142.65210855349, -3376.2947820667814, -49100.22476174154],
+      [47935.068431986816, 12882.177762578336, 30751.191848287413]
+    ]
+  },
+  "highlighted_large_composite": {
+    "cell": "80C984D8",
+    "transform_index": 368,
+    "d1_source_translation": [0.0, 3.5, 54.75],
+    "uniform_scale_approx": 282.429535,
+    "materials": ["80C988A8", "80C988A9"],
+    "pixel_shaders": ["80C98908", "80C9890A"],
+    "preview_texture_pairs": {
+      "80C988A8": {"base": "80C9855E", "normal": "80C9855F"},
+      "80C988A9": {"base": "80C98563", "normal": "80C98565"}
+    },
+    "note": "No placement, geometry, scale, or visibility was removed or cosmetically changed. The large composite remains under active higher-level ownership/renderer-semantic investigation."
+  },
+  "handoff": {
+    "drive_folder_id": "1GUFaSuofA1ThMZdsGhiWS4Un5ZLbZChw",
+    "drive_folder_title": "Destiny 1 Reversal - Tower Proper 10 Cell",
+    "drive_parts": 6,
+    "drive_meta_bundle": true,
+    "github_drive_chunk_workflow_run": 33988263705
+  },
+  "remaining_complete_world_layers": [
+    "entity/model placements and animated/dynamic props",
+    "decals",
+    "terrain/natural geometry families",
+    "sky/environment resources",
+    "lighting/probes/environment maps",
+    "particles/VFX",
+    "activity/runtime variants and conditional scene content",
+    "collision/nav/physics optional products",
+    "locale/UI/signage where relevant"
+  ]
+}
