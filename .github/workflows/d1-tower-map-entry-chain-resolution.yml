@@ -1,0 +1,102 @@
+name: D1 Tower map-entry resource chain resolution
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-map-entry-chain-resolution.yml'
+      - 'tools/d1_tower_map_entry_chain_resolve.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-map-entry-chains:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports chains
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Discover exact 24-package Tower core corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          rx=re.compile(r'^ps4_city_tower_(?:activities_act_023d|ambient_activi_0244|destination_024c|destination_0250)_[0-9]+\.pkg$',re.I)
+          members=sorted(x for x in names if rx.match(x))
+          if len(members)!=24:
+              raise SystemExit(f'expected exact 24 Tower core snapshots, found {len(members)}: {members}')
+          Path('reports/target_members.txt').write_text('\n'.join(members)+'\n')
+          Path('reports/target_members.json').write_text(json.dumps({'count':len(members),'members':members},indent=2)+'\n')
+          print('\n'.join(members))
+          PY
+
+      - name: Sparse-recover Tower core packages
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          wanted=set(Path('reports/target_members.txt').read_text().splitlines())
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(wanted)
+          missing=sorted(wanted-set(found))
+          if missing: raise SystemExit(f'missing core members: {missing}')
+          rows=[]
+          for name in sorted(wanted):
+              r=found[name]
+              dst=Path('recovered')/name
+              sha=arc.copy_to(r['data_offset'],r['size'],dst)
+              rows.append({'name':name,**r,'sha256':sha})
+              print('RECOVERED',name,r['size'],sha,flush=True)
+          Path('reports/member_catalog.json').write_text(json.dumps({'tar_headers_scanned':headers,'members':rows},indent=2)+'\n')
+          PY
+
+      - name: Resolve serialized MapDataEntry ResourcePointer chains
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_entry_chain_resolve.py "${args[@]}" --runtime runtime --out chains | tee reports/map_entry_chain_stdout.txt
+
+      - name: Assert exact evidence output is nonempty
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('chains/tower_map_entry_summary.json'))
+          if d['physical_map_data_table_occurrences'] < 1: raise SystemExit('no map data tables parsed')
+          if d['parsed_map_entry_occurrences'] < 1: raise SystemExit('no map entries parsed')
+          print(json.dumps(d,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-map-entry-resource-chains
+          path: |
+            chains/
+            reports/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
