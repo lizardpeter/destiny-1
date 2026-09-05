@@ -1,0 +1,95 @@
+name: D1 bulk weapon pattern action bundle census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-bulk-weapon-pattern-action-bundles.yml'
+      - 'tools/d1_weapon_pattern_action_bundle_resolve.py'
+      - 'tools/d1_weapon_pattern_assignment_probe.py'
+      - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_weapon_globals_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and master weapon-pattern tables
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+      - name: Decode all 208 weapon-pattern entity assignments
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_weapon_pattern_assignment_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime -o reports/weapon_patterns.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/weapon_patterns.json'))
+          assert d['join']['joined_pattern_count']==208
+          assert d['join']['resolved_assignment_count']==208
+          assert d['join']['missing_assignment_count']==0
+          PY
+      - name: Resolve serialized action/context bundles for all patterns
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_weapon_pattern_action_bundle_resolve.py reports/weapon_patterns.json \
+            --investment-member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --globals-member-catalog evidence/d1_weapon_globals_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o reports/weapon_pattern_action_bundles.json
+          python - <<'PY'
+          import json,collections
+          d=json.load(open('reports/weapon_pattern_action_bundles.json'))
+          controls=collections.Counter();contexts=collections.Counter();wrappers=collections.Counter();carrier=collections.Counter();types=collections.Counter()
+          for p in d['patterns']:
+            types[p['weapon_type_hash']]+=1
+            for b in p['action_bundles']:
+              carrier[b['carrier_resource']]+=1
+              controls.update(b['action_controls']);contexts.update(b['context_tables']);wrappers.update(b['wrappers'])
+          summary={
+            'pattern_count':d['pattern_count'],
+            'patterns_with_action_bundle':d['patterns_with_action_bundle'],
+            'patterns_without_action_bundle':d['patterns_without_action_bundle'],
+            'total_action_bundle_candidates':d['total_action_bundle_candidates'],
+            'unique_action_controls':len(controls),'unique_context_tables':len(contexts),'unique_wrappers':len(wrappers),'unique_carriers':len(carrier),
+            'top_action_controls':controls.most_common(20),'top_context_tables':contexts.most_common(20),'top_wrappers':wrappers.most_common(20),
+            'weapon_type_hash_counts':dict(types),
+          }
+          json.dump(summary,open('reports/weapon_pattern_action_bundle_summary.json','w'),indent=2)
+          print(json.dumps(summary,indent=2))
+          gj=[p for p in d['patterns'] if p['weapon_pattern_index']==39]
+          assert len(gj)==1 and gj[0]['pattern_entity']=='80A6A017',gj
+          assert any('80AA2DCD' in x['action_controls'] and '80AADE4C' in x['context_tables'] and '80AA2DDB' in x['wrappers'] for x in gj[0]['action_bundles']),gj[0]
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-bulk-weapon-pattern-action-bundles
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
