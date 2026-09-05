@@ -1,0 +1,120 @@
+name: D1 playable Guardian arrangement join
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-playable-guardian-arrangement-join.yml'
+      - 'tools/d1_investment_arrangement_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified runtime and assignment tables
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports input
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg --target ps4_investment_globals_012f_2.pkg \
+            --target ps4_investment_globals_012f_3.pkg --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json --retries 6 --timeout 90
+          # 013F begins immediately after the already checkpointed 013E family.
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg --target ps4_investment_assets_013f_3.pkg \
+            --target ps4_investment_assets_013f_4.pkg --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+      - name: Decode full retail art-arrangement assignment table
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_investment_arrangement_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime -o reports/all_arrangements.json
+      - name: Recover named historical D1 inventory catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-full-inventory-presentation-catalog&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/catalog.zip
+          unzip -q input/catalog.zip -d input/catalog
+          test -f input/catalog/d1_full_inventory_catalog.json
+      - name: Join Guardian-class items to masculine/feminine assignments
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,'tools')
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          cat=json.load(open('input/catalog/d1_full_inventory_catalog.json'))
+          arr=json.load(open('reports/all_arrangements.json'))
+          by={x['arrangement_index']:x for x in arr['arrangements']}
+          class_names={0:'Titan',1:'Hunter',2:'Warlock',3:'Unknown'}
+          weapon_types={'Auto Rifle','Scout Rifle','Hand Cannon','Pulse Rifle','Sniper Rifle','Shotgun','Fusion Rifle','Rocket Launcher','Machine Gun','Sidearm','Sword'}
+          rows=[]; types=collections.Counter(); parent_pkgs=collections.Counter(); by_class=collections.Counter(); unresolved=[]
+          for it in cat['items']:
+              art=it.get('gearArtArrangementIndex')
+              cls=it.get('classType')
+              if cls not in (0,1,2) or not isinstance(art,int) or art<0 or not it.get('hasGeometry'):
+                  continue
+              typ=it.get('itemTypeName') or ''
+              if typ in weapon_types: continue
+              a=by.get(art)
+              if not a:
+                  unresolved.append({'hash':it['hash'],'name':it.get('name'),'classType':cls,'arrangement':art,'type':typ});continue
+              parents=[p for p in a.get('entity_parent_hashes',[]) if p]
+              pp=[]
+              for p in parents:
+                  pkg,idx=filehash_pkg_index(int(p,16)); pp.append({'hash':p,'package_id':pkg,'file_index':idx});parent_pkgs[f'{pkg:04X}']+=1
+              row={'hash':it['hash'],'name':it.get('name'),'itemTypeName':typ,'tier':it.get('tierTypeName'),
+                   'classType':cls,'className':class_names[cls],'arrangement_index':art,'arrangement_source':a.get('source'),
+                   'masculine_single_assignment':a.get('masculine_single_assignment'),'feminine_single_assignment':a.get('feminine_single_assignment'),
+                   'assignment_hashes':a.get('assignment_hashes',[]),'entity_parents':pp}
+              rows.append(row);types[(class_names[cls],typ)]+=1;by_class[class_names[cls]]+=1
+          # Deduplicate arrangement-level facts while preserving named item examples.
+          argrp={}
+          for r in rows:
+              k=(r['className'],r['arrangement_index'])
+              g=argrp.setdefault(k,{'className':r['className'],'arrangement_index':r['arrangement_index'],
+                                    'masculine_single_assignment':r['masculine_single_assignment'],'feminine_single_assignment':r['feminine_single_assignment'],
+                                    'assignment_hashes':r['assignment_hashes'],'entity_parents':r['entity_parents'],'item_count':0,'examples':[],'types':set()})
+              g['item_count']+=1;g['types'].add(r['itemTypeName'])
+              if len(g['examples'])<5:g['examples'].append({'hash':r['hash'],'name':r['name'],'type':r['itemTypeName'],'tier':r['tier']})
+          groups=[]
+          for g in argrp.values():g['types']=sorted(g['types']);groups.append(g)
+          groups.sort(key=lambda x:(x['className'],x['arrangement_index']))
+          out={'schema':'d1_playable_guardian_arrangement_join/v1','item_count':len(rows),'unique_class_arrangements':len(groups),
+               'items_by_class':dict(by_class),'item_types':{f'{a}|{b}':n for (a,b),n in sorted(types.items())},
+               'entity_parent_package_counts':dict(parent_pkgs.most_common()),'arrangements':groups,'items':rows,'unresolved':unresolved,
+               'policy':'Names/class/type are historical manifest metadata. Arrangement index and masculine/feminine assignment/EntityParent hashes are joined to the decoded retail D1 art-arrangement table.'}
+          Path('reports/playable_guardian_arrangements.json').write_text(json.dumps(out,indent=2)+'\n')
+          summary={k:v for k,v in out.items() if k not in ('arrangements','items','unresolved')}
+          summary['sample_arrangements']=groups[:30]
+          Path('reports/playable_guardian_arrangements_summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-playable-guardian-arrangement-join
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
