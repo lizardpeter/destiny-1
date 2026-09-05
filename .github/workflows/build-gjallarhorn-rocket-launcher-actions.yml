@@ -1,0 +1,252 @@
+name: Build byte-proven Gjallarhorn rocket-launcher shared actions
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-gjallarhorn-rocket-launcher-actions.yml'
+      - 'tools/d1_animation_control_state_map.py'
+      - 'tools/d1_fnv1_action_probe.py'
+      - 'tools/d1_gltf_add_external_root_motion.py'
+      - 'tools/d1_gltf_animation_subset.py'
+      - 'tools/d1_gltf_bake_rigid_weapon_motion.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered inputs out reports work
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+      - name: Recover exact shared animation package and proven Gjallarhorn fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest reports/0151_extract.json --retries 6 --timeout 90
+          gh run download 33930517073 --repo "$GITHUB_REPOSITORY" \
+            -n D1-Gjallarhorn-Year3-FULL-TEXTURED-ANIMATED -D inputs
+          test -f inputs/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED_ANIMATED.glb
+          echo '52aadfab799ad377287065b5b19154b43ddba14f106548599d3e4f4feb7ce3f3  inputs/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED_ANIMATED.glb' | sha256sum --check --strict
+      - name: Decode exact CA2 action selector
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_animation_control_state_map.py recovered/ps4_globals_0151_6.pkg --runtime runtime \
+            --control-tag 80AA3CC9 -o reports/80AA3CC9_state_map.json
+          python - <<'PY'
+          import json
+          r=json.load(open('reports/80AA3CC9_state_map.json'))
+          known={x['state_name']:x for x in r['state_table']['records'] if x['state_name']}
+          expected={
+            'idle':(1,1,['80AA3CD6']),
+            'ready':(4,1,['80AA3CDA']),
+            'reload_empty':(19,1,['80AA3D40']),
+            'reload_full':(19,1,['80AA3D40']),
+            'fire':(33,1,['80AA3D42']),
+            'jump':(8,2,['80AA3CE2','80AA3CE3']),
+          }
+          for name,(start,count,clips) in expected.items():
+            q=known[name]
+            assert q['selection_start']==start and q['selection_count']==count,(name,q)
+            assert [x['tag_hash'] for x in q['selected_animations']]==clips,(name,q)
+          print(json.dumps({k:{'start':known[k]['selection_start'],'count':known[k]['selection_count'],'clips':[x['tag_hash'] for x in known[k]['selected_animations']]} for k in expected},indent=2))
+          PY
+      - name: Build exact CA2 shared-action viewmodel proof
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,sys,tempfile
+          from pathlib import Path
+          from pygltflib import GLTF2,Asset,Scene
+          sys.path.insert(0,'tools');sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget,calc_control_limit
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+          from animation_export.gltf_export import create_armature_hierarchy,add_animation
+          from animation_export.enums import Name_Convention
+
+          SK='80AA3CBF';RIG='80AA3CBE';PED='C410084A';MOTION='E6477C3B'
+          ACTIONS=[
+            ('idle','6FB760FF','80AA3CD6'),
+            ('ready','DCA2827A','80AA3CDA'),
+            ('reload_empty','6D507AD8','80AA3D40'),
+            ('fire','9FAC79C9','80AA3D42'),
+          ]
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          def raw(t):return r.entry(by[t]['index'])
+          def comps(xs):return [{'hash':f'{int(x.hash)&0xffffffff:08X}','count':int(x.count)} for x in xs]
+          ver=Game_Version.D1_ROI;sk=read_skeleton(io.BytesIO(raw(SK)),ver);rig=read_runtime_rig(io.BytesIO(raw(RIG)),ver)
+          assert len(sk.node_defs)==75 and len(rig.controls_relations)==73
+          hashes=[f'{int(n.bone_hash)&0xffffffff:08X}' for n in sk.node_defs]
+          assert hashes.count(PED)==1 and hashes.count(MOTION)==1
+          ped_i=hashes.index(PED);mot_i=hashes.index(MOTION);assert int(sk.node_defs[mot_i].parent_node_index)==ped_i
+          g=GLTF2(asset=Asset(version='2.0',generator='destiny-1 exact CA2 rocket_launcher shared actions'),scene=0,
+                  scenes=[Scene(nodes=[])],nodes=[],meshes=[],skins=[],animations=[],materials=[],textures=[],images=[],samplers=[],buffers=[],bufferViews=[],accessors=[])
+          root,bones=create_armature_hierarchy(g,sk,Name_Convention.FNV1BE);g.scenes[0].nodes.append(root)
+          report={'owner':'80AA3CA2','control':'80AA3CC9','wrapper':'80AA3CCB','skeleton':SK,'runtime_rig':RIG,
+                  'rig_components':comps(rig.rig_components),'pedestal':PED,'weapon_motion':MOTION,'actions':[]}
+          for name,state_hash,clip in ACTIONS:
+            with tempfile.NamedTemporaryFile() as f:
+              f.write(raw(clip));f.flush();f.seek(0);anim=read_animation(f,ver)
+            h=anim.animation_header;dec=decode_animation(anim);ret=rig_retarget(anim,dec,sk,rig);loc=convert_obj_to_local(anim,ret,sk)
+            out_name=f'rocket_launcher_{name}_STATE_{state_hash}_{clip}'
+            add_animation(g,bones,loc,Name_Convention.FNV1BE,fps=30);g.animations[-1].name=out_name
+            report['actions'].append({'name':name,'state_hash':state_hash,'clip':clip,'proof_animation':out_name,'frames':int(h.frame_count),
+                                      'duration_s':(int(h.frame_count)-1)/30.0,'clip_nodes':int(h.node_count),'clip_controls':int(h.rig_control_count),
+                                      'clip_rig_components':comps(anim.runtime_rig_components),'ca2_control_limit':int(calc_control_limit(rig,anim.runtime_rig_components)),
+                                      'retargeted_tracks':len(ret)})
+          g.extras={'d1Owner':'80AA3CA2','d1AnimationControl':'80AA3CC9','d1Wrapper':'80AA3CCB','d1Skeleton':SK,'d1RuntimeRig':RIG,
+                    'd1PedestalBoneHash':PED,'d1WeaponMotionBoneHash':MOTION,'d1WeaponMotionGltfNode':int(bones[MOTION]),
+                    'evidence':'CA2 Resource[] owns CBE/CBF + CC9/CCB. Generic 76/74 clips retarget through the native 70-control common component prefix; CA2 reload/fire use all 73 controls.'}
+          p=Path('out/ROCKET_LAUNCHER_CA2_SHARED_ACTIONS_PROOF.glb');g.save_binary(str(p))
+          report['weapon_motion_gltf_node']=int(bones[MOTION]);report['proof_glb']=str(p);report['proof_bytes']=p.stat().st_size
+          Path('reports/ca2_shared_actions_proof.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Bake exact shared actions onto standalone Gjallarhorn
+        run: |
+          set -euo pipefail
+          SRC=out/ROCKET_LAUNCHER_CA2_SHARED_ACTIONS_PROOF.glb
+          NODE=$(python -c "import json;print(json.load(open('reports/ca2_shared_actions_proof.json'))['weapon_motion_gltf_node'])")
+          ROOT=RocketLauncherViewmodelMotionRoot
+
+          python tools/d1_gltf_add_external_root_motion.py \
+            inputs/GJALLARHORN_YEAR3_ARRANGEMENT_1229_TEXTURED_ANIMATED.glb "$SRC" \
+            --source-node "$NODE" --source-animation rocket_launcher_idle_STATE_6FB760FF_80AA3CD6 \
+            --animation-name rocket_launcher_idle_STATE_6FB760FF_80AA3CD6_VIEWMODEL_MOTION \
+            --root-name "$ROOT" --out work/01_idle.glb --report reports/idle_motion.json
+
+          python tools/d1_gltf_add_external_root_motion.py work/01_idle.glb "$SRC" \
+            --source-node "$NODE" --source-animation rocket_launcher_ready_STATE_DCA2827A_80AA3CDA \
+            --animation-name rocket_launcher_ready_STATE_DCA2827A_80AA3CDA_VIEWMODEL_MOTION \
+            --reuse-root-name "$ROOT" --out work/02_ready.glb --report reports/ready_motion.json
+
+          python tools/d1_gltf_add_external_root_motion.py work/02_ready.glb "$SRC" \
+            --source-node "$NODE" --source-animation rocket_launcher_reload_empty_STATE_6D507AD8_80AA3D40 \
+            --animation-name rocket_launcher_reload_empty_STATE_6D507AD8_80AA3D40_VIEWMODEL_MOTION \
+            --reuse-root-name "$ROOT" --out work/03_reload_empty.glb --report reports/reload_empty_motion.json
+
+          python tools/d1_gltf_add_external_root_motion.py work/03_reload_empty.glb "$SRC" \
+            --source-node "$NODE" --source-animation rocket_launcher_reload_empty_STATE_6D507AD8_80AA3D40 \
+            --animation-name rocket_launcher_reload_full_STATE_28F43BD2_80AA3D40_VIEWMODEL_MOTION \
+            --reuse-root-name "$ROOT" --out work/04_reload_full.glb --report reports/reload_full_motion.json
+
+          python tools/d1_gltf_add_external_root_motion.py work/04_reload_full.glb "$SRC" \
+            --source-node "$NODE" --source-animation rocket_launcher_fire_STATE_9FAC79C9_80AA3D42 \
+            --animation-name rocket_launcher_fire_STATE_9FAC79C9_80AA3D42_VIEWMODEL_MOTION \
+            --reuse-root-name "$ROOT" --out out/GJALLARHORN_YEAR3_TEXTURED_ANIMATED_WITH_SHARED_ACTIONS.glb --report reports/fire_motion.json
+
+          sha256sum out/GJALLARHORN_YEAR3_TEXTURED_ANIMATED_WITH_SHARED_ACTIONS.glb | tee reports/final_sha256.txt
+      - name: Validate motion and common-root animation layout
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from pygltflib import GLTF2
+          p=Path('out/GJALLARHORN_YEAR3_TEXTURED_ANIMATED_WITH_SHARED_ACTIONS.glb');g=GLTF2().load_binary(str(p))
+          names=[a.name for a in g.animations]
+          expected=['80AA2E4A','80AA2E4B',
+            'rocket_launcher_idle_STATE_6FB760FF_80AA3CD6_VIEWMODEL_MOTION',
+            'rocket_launcher_ready_STATE_DCA2827A_80AA3CDA_VIEWMODEL_MOTION',
+            'rocket_launcher_reload_empty_STATE_6D507AD8_80AA3D40_VIEWMODEL_MOTION',
+            'rocket_launcher_reload_full_STATE_28F43BD2_80AA3D40_VIEWMODEL_MOTION',
+            'rocket_launcher_fire_STATE_9FAC79C9_80AA3D42_VIEWMODEL_MOTION']
+          assert names==expected,names
+          assert len(g.meshes)==8 and len(g.images)==18 and len(g.textures)==12
+          assert len(g.skins)==1 and len(g.skins[0].joints)==7
+          ext=g.animations[2:];targets=[]
+          for a in ext:
+            t={c.target.node for c in a.channels};assert len(t)==1,(a.name,t);targets.extend(t)
+          assert len(set(targets))==1,targets
+          root=targets[0];assert g.nodes[root].name=='RocketLauncherViewmodelMotionRoot'
+          idle=json.load(open('reports/idle_motion.json'));ready=json.load(open('reports/ready_motion.json'))
+          re=json.load(open('reports/reload_empty_motion.json'));rf=json.load(open('reports/reload_full_motion.json'));fire=json.load(open('reports/fire_motion.json'))
+          assert idle['max_translation']<1e-5 and ready['max_translation']<1e-5,(idle,ready)
+          assert 1.8<re['max_translation']<2.3 and 80<re['max_rotation_deg']<100,re
+          assert abs(re['max_translation']-rf['max_translation'])<1e-7 and abs(re['max_rotation_deg']-rf['max_rotation_deg'])<1e-5
+          assert 0.030<fire['max_translation']<0.050 and fire['source_node_name']=='E6477C3B',fire
+          print(json.dumps({'bytes':p.stat().st_size,'animations':names,'shared_root':root,
+                            'idle_translation_m':idle['max_translation'],'ready_translation_m':ready['max_translation'],
+                            'reload_translation_m':re['max_translation'],'reload_rotation_deg':re['max_rotation_deg'],
+                            'fire_translation_m':fire['max_translation'],'fire_rotation_deg':fire['max_rotation_deg']},indent=2))
+          PY
+      - name: Create viewer-friendly previews
+        run: |
+          set -euo pipefail
+          FULL=out/GJALLARHORN_YEAR3_TEXTURED_ANIMATED_WITH_SHARED_ACTIONS.glb
+          python tools/d1_gltf_animation_subset.py "$FULL" \
+            --animation rocket_launcher_fire_STATE_9FAC79C9_80AA3D42_VIEWMODEL_MOTION \
+            --out out/GJALLARHORN_YEAR3_FIRE_PREVIEW.glb
+          python tools/d1_gltf_animation_subset.py "$FULL" \
+            --animation rocket_launcher_reload_empty_STATE_6D507AD8_80AA3D40_VIEWMODEL_MOTION \
+            --out out/GJALLARHORN_YEAR3_RELOAD_PREVIEW.glb
+      - name: Bundle evidence
+        run: |
+          set -euo pipefail
+          cp reports/*.json reports/final_sha256.txt out/
+          cat > out/README_SHARED_ACTIONS.txt <<'EOF'
+          Destiny 1 Rise of Iron - Gjallarhorn Year 3, exact CA2 shared weapon actions
+
+          Exact owner path:
+            80AA3CA2 -> skeleton/rig 80AA3CBF/80AA3CBE -> control/wrapper 80AA3CC9/80AA3CCB
+
+          Action selections:
+            idle         -> 80AA3CD6
+            ready        -> 80AA3CDA
+            reload_empty -> 80AA3D40
+            reload_full  -> 80AA3D40
+            fire         -> 80AA3D42
+
+          Runtime-component rule:
+            CA2 rig = D59A5FE6:8 + 7CB60FEC:62 + A5D99EA7:3 = 73 controls.
+            Generic idle/ready clips = D59A5FE6:8 + 7CB60FEC:62 + 4FE5F61B:4.
+            D1 therefore retargets their exact 70-control common prefix onto CA2; it does not switch owners.
+            CA2 reload/fire match all 73 controls.
+
+          Standalone weapon behavior:
+            idle/ready are intentionally almost static at the weapon attachment because their visible work is primarily the arms/viewmodel.
+            reload has large native weapon motion (~2.07 m / ~90.8 degrees evaluated attachment delta).
+            fire uses E6477C3B, the CA2 weapon-motion child, preserving the native ~3.34 cm one-frame recoil impulse.
+
+          Viewer previews:
+            GJALLARHORN_YEAR3_FIRE_PREVIEW.glb contains only the corrected fire animation record.
+            GJALLARHORN_YEAR3_RELOAD_PREVIEW.glb contains only reload_empty.
+            This avoids viewers that silently auto-play animation 0 of the complete multi-animation asset.
+
+          No recoil/reload curve, rig choice, clip identity, geometry, or texture is synthesized.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-Gjallarhorn-Year3-TEXTURED-ANIMATED-SHARED-ACTIONS
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
