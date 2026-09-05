@@ -1,4 +1,5 @@
 name: D1 Tower static-map decal binary census
+# Re-run after public Actions became available; byte-validation logic unchanged.
 
 on:
   workflow_dispatch:
@@ -57,16 +58,14 @@ jobs:
           for name,off,size,expected in members:
               dst=Path('recovered')/name
               got=arc.copy_to(off,size,dst)
-              if got.lower()!=expected.lower():
-                  raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
+              if got.lower()!=expected.lower(): raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
               rows.append({'name':name,'data_offset':off,'size':size,'sha256':got})
               print('RECOVERED',name,size,got,flush=True)
           Path('reports/member_catalog.json').write_text(json.dumps({'source_run':33943271839,'source_artifact':9963042289,'members':rows},indent=2)+'\n')
           PY
 
       - name: Validate common decal carriers and minority baked-static controls
-        env:
-          LINOODLE_SKIP_DLLMAIN: '1'
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
@@ -96,10 +95,7 @@ jobs:
           while IFS=$'\t' read -r role h; do
             echo "VALIDATE $role $h"
             set +e
-            python tools/d1_tower_static_map_decal_validate.py \
-              "${args[@]}" --runtime runtime --static-map-data "$h" \
-              --out "validation/${role}_${h}.json" \
-              | tee "reports/${role}_${h}.stdout.txt"
+            python tools/d1_tower_static_map_decal_validate.py "${args[@]}" --runtime runtime --static-map-data "$h" --out "validation/${role}_${h}.json" | tee "reports/${role}_${h}.stdout.txt"
             rc=${PIPESTATUS[0]}
             set -e
             printf '%s\t%s\t%s\n' "$role" "$h" "$rc" >> reports/validator_exit_codes.tsv
@@ -110,45 +106,15 @@ jobs:
         run: |
           python - <<'PY'
           import glob,json
-          from collections import Counter
           from pathlib import Path
           rows=[]
           for p in sorted(glob.glob('validation/*.json')):
-              d=json.load(open(p)); stem=Path(p).stem; role,h=stem.split('_',1)
-              s=d.get('summary',{})
-              rows.append({
-                'role':role,'static_map_data':h,'ok':d.get('ok'),
-                'evidence_status':d.get('evidence_status'),
-                'payload_size':d.get('payload_size'),
-                'decal_count':s.get('decal_count'),
-                'decal_records_structurally_valid':s.get('decal_records_structurally_valid'),
-                'all_decal_records_singleton_transform_model':s.get('all_decal_records_singleton_transform_model'),
-                'model_reference_occurrences':s.get('model_reference_occurrences'),
-                'unique_entity_models':s.get('unique_entity_models'),
-                'has_direct_d1_static_child':s.get('has_direct_d1_static_child'),
-                'd1_static_child':s.get('d1_static_child'),
-                'occlusion_bounds':s.get('occlusion_bounds'),
-                'violations':d.get('violations',[]),
-              })
+              d=json.load(open(p)); role,h=Path(p).stem.split('_',1); s=d.get('summary',{})
+              rows.append({'role':role,'static_map_data':h,'ok':d.get('ok'),'evidence_status':d.get('evidence_status'),'payload_size':d.get('payload_size'),'decal_count':s.get('decal_count'),'decal_records_structurally_valid':s.get('decal_records_structurally_valid'),'all_decal_records_singleton_transform_model':s.get('all_decal_records_singleton_transform_model'),'model_reference_occurrences':s.get('model_reference_occurrences'),'unique_entity_models':s.get('unique_entity_models'),'has_direct_d1_static_child':s.get('has_direct_d1_static_child'),'d1_static_child':s.get('d1_static_child'),'occlusion_bounds':s.get('occlusion_bounds'),'violations':d.get('violations',[])})
           common=[x for x in rows if x['role']=='common']; baked=[x for x in rows if x['role']=='baked']
-          rep={
-            'evidence_status':'BINARY_DECAL_LAYER_CENSUS' if len(rows)==19 else 'PARTIAL_BINARY_DECAL_LAYER_CENSUS',
-            'targets_expected':19,'targets_emitted':len(rows),
-            'common_count':len(common),'baked_control_count':len(baked),
-            'common_structurally_valid':sum(bool(x['ok']) for x in common),
-            'baked_structurally_valid':sum(bool(x['ok']) for x in baked),
-            'common_with_decals':sum((x['decal_count'] or 0)>0 for x in common),
-            'baked_with_decals':sum((x['decal_count'] or 0)>0 for x in baked),
-            'common_with_direct_d1_child':sum(bool(x['has_direct_d1_static_child']) for x in common),
-            'baked_with_direct_d1_child':sum(bool(x['has_direct_d1_static_child']) for x in baked),
-            'total_decal_records_common':sum(x['decal_count'] or 0 for x in common),
-            'total_decal_records_baked':sum(x['decal_count'] or 0 for x in baked),
-            'rows':rows,
-          }
-          Path('reports/tower_static_map_decal_census.json').write_text(json.dumps(rep,indent=2)+'\n')
-          print(json.dumps(rep,indent=2))
-          if len(rows)!=19:
-              raise SystemExit(f'expected 19 outputs, got {len(rows)}')
+          rep={'evidence_status':'BINARY_DECAL_LAYER_CENSUS' if len(rows)==19 else 'PARTIAL_BINARY_DECAL_LAYER_CENSUS','targets_expected':19,'targets_emitted':len(rows),'common_count':len(common),'baked_control_count':len(baked),'common_structurally_valid':sum(bool(x['ok']) for x in common),'baked_structurally_valid':sum(bool(x['ok']) for x in baked),'common_with_decals':sum((x['decal_count'] or 0)>0 for x in common),'baked_with_decals':sum((x['decal_count'] or 0)>0 for x in baked),'common_with_direct_d1_child':sum(bool(x['has_direct_d1_static_child']) for x in common),'baked_with_direct_d1_child':sum(bool(x['has_direct_d1_static_child']) for x in baked),'total_decal_records_common':sum(x['decal_count'] or 0 for x in common),'total_decal_records_baked':sum(x['decal_count'] or 0 for x in baked),'rows':rows}
+          Path('reports/tower_static_map_decal_census.json').write_text(json.dumps(rep,indent=2)+'\n'); print(json.dumps(rep,indent=2))
+          if len(rows)!=19: raise SystemExit(f'expected 19 outputs, got {len(rows)}')
           PY
 
       - uses: actions/upload-artifact@v4
