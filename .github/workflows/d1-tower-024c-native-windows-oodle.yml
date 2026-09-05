@@ -22,11 +22,12 @@ jobs:
           python-version: '3.13'
 
       - name: Recover 024C patch siblings 2-5 and verified Oodle DLL
-        shell: pwsh
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force recovered,runtime,reports | Out-Null
+          set -euo pipefail
+          mkdir -p recovered runtime reports
           python - <<'PY'
-          import hashlib,sys
+          import sys
           from pathlib import Path
           sys.path.insert(0,'tools')
           from d1_split_tar_extract import SplitHttpTar
@@ -43,21 +44,22 @@ jobs:
               if got.lower()!=expected.lower(): raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
               print('RECOVERED',name,size,got)
           PY
-          Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -OutFile runtime/oo2core_3_win64.dll
-          $got=(Get-FileHash runtime/oo2core_3_win64.dll -Algorithm SHA256).Hash.ToLower()
-          if ($got -ne '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62') { throw "Oodle DLL SHA mismatch: $got" }
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
 
       - name: Probe control and failing patched blocks with native Oodle
-        shell: pwsh
+        shell: bash
         run: |
+          set -euo pipefail
           python tools/d1_oodle_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --block 709 --block 710 --block 724 --block 725 --block 763 -o reports/native_windows_oodle_blocks.json
-          Get-Content reports/native_windows_oodle_blocks.json
+          cat reports/native_windows_oodle_blocks.json
 
       - name: Decode target 80C98258 with native Oodle if block probe succeeds
-        shell: pwsh
+        shell: bash
         run: |
+          set -euo pipefail
           python tools/d1_entry_extract.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --tag-hash 80C98258 --dump-dir reports/raw -o reports/80C98258_native_windows.json
-          Get-Content reports/80C98258_native_windows.json
+          cat reports/80C98258_native_windows.json
 
       - uses: actions/upload-artifact@v4
         if: always()
