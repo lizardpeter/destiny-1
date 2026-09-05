@@ -35,37 +35,45 @@ jobs:
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python - <<'PY'
-          import json,sys
+          import json,struct,sys
           from pathlib import Path
           sys.path.insert(0,'tools')
           from d1_entry_extract import EntryReader
-          from d1_animation_control_state_map import decode_control
+          from d1_fnv1_action_probe import fnv1
+
           controls={'CA0':'80AA3CC2','CA1':'80AA3CC5','CA2':'80AA3CC9'}
           names=['idle','ready','reload_empty','reload_full','fire','jump','base']
+          hnames={fnv1(x):x for x in names}
           r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          def u32(b,o):return struct.unpack_from('<I',b,o)[0]
+          def relarr(b,count_off,ptr_off,stride):
+            n=u32(b,count_off); rel=u32(b,ptr_off); hdr=ptr_off+rel
+            assert u32(b,hdr)==n,(count_off,ptr_off,n,hdr,u32(b,hdr))
+            return n,hdr,hdr+0x10,stride
           out={}
           for owner,tag in controls.items():
-            sm=decode_control(r.entry(by[tag]['index']),r,names)
-            rows=[]
-            for i,s in enumerate(sm['state_table']['records']):
-              if s.get('state_name') in names:
-                rows.append({'record_index':i,'state_name':s['state_name'],'state_hash':s['state_hash'],'selection_start':s['selection_start'],
-                             'selection_count':s['selection_count'],'clips':[a['tag_hash'] for a in s['selected_animations']]})
-            out[owner]={'control':tag,'animation_count':sm['animation_list']['count'],'state_count':sm['state_table']['count'],'known':rows}
-          # Action-centric comparison, preserving absence rather than guessing.
-          matrix={}
-          for name in names:
-            matrix[name]={}
-            for owner,q in out.items():
-              xs=[x for x in q['known'] if x['state_name']==name]
-              matrix[name][owner]=xs
+            b=r.entry(by[tag]['index'])
+            an,ah,ad,_=relarr(b,0x08,0x10,4)
+            sn,sh,sd,_=relarr(b,0x68,0x70,0x20)
+            anim=[u32(b,ad+4*i) for i in range(an)]
+            rows=[]; invalid=[]
+            for i in range(sn):
+              o=sd+i*0x20; h=u32(b,o+0x10); packed=u32(b,o+0x18); count=(packed>>16)&0xffff; start=packed&0xffff
+              valid=start+count<=an
+              if not valid: invalid.append({'record_index':i,'state_hash':f'{h:08X}','packed':f'{packed:08X}','start':start,'count':count})
+              if h in hnames:
+                rows.append({'record_index':i,'state_name':hnames[h],'state_hash':f'{h:08X}','selection_start':start,
+                             'selection_count':count,'range_valid':valid,'clips':[f'{x:08X}' for x in anim[start:start+count]] if valid else []})
+            out[owner]={'control':tag,'animation_count':an,'state_count':sn,'known':rows,'invalid_selector_ranges':invalid}
+          matrix={name:{owner:[x for x in q['known'] if x['state_name']==name] for owner,q in out.items()} for name in names}
           rep={'owners':{'CA0':{'entity':'80AA3CA0','rig':'80AA3CB2','skeleton':'80AA3CB3','control':'80AA3CC2','wrapper':'80AA3CC4'},
                          'CA1':{'entity':'80AA3CA1','rig':'80AA3CB8','skeleton':'80AA3CB9','control':'80AA3CC5','wrapper':'80AA3CC7'},
                          'CA2':{'entity':'80AA3CA2','rig':'80AA3CBE','skeleton':'80AA3CBF','control':'80AA3CC9','wrapper':'80AA3CCB'}},
                'controls':out,'action_matrix':matrix,
-               'policy':'Clip equivalence across sibling controls is reported literally. It is not by itself called a rig handoff unless the owner/wrapper path also supports that interpretation.'}
+               'policy':'Known action records are decoded even if unrelated sibling-control records use packed values outside the calibrated animation-list interpretation. No invalid record is used as evidence.'}
           Path('out/sibling_control_action_compare.json').write_text(json.dumps(rep,indent=2)+'\n')
           print(json.dumps(matrix,indent=2))
+          for owner,q in out.items(): print(owner,'invalid_ranges',len(q['invalid_selector_ranges']))
           PY
       - uses: actions/upload-artifact@v4
         with:
