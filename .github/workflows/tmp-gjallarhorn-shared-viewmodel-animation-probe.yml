@@ -1,0 +1,170 @@
+name: Temporary probe Gjallarhorn shared viewmodel animation layer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-gjallarhorn-shared-viewmodel-animation-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies runtime and source packages
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered reports out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x43779C800 \
+            --target ps4_gear_weapons_011c_0.pkg --target ps4_gear_weapons_011c_1.pkg --target ps4_gear_weapons_011c_2.pkg --target ps4_gear_weapons_011c_3.pkg --target ps4_gear_weapons_011c_5.pkg \
+            --out recovered --manifest reports/011c_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest reports/0151_extract.json --retries 6 --timeout 90
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git tiger-animation-parser
+          git -C tiger-animation-parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+      - name: Decode shared-viewmodel candidates and Pedestal motion
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,math,struct,sys,tempfile
+          from collections import defaultdict
+          from pathlib import Path
+          import numpy as np
+          from pygltflib import GLTF2,Asset,Scene
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,str(Path('tiger-animation-parser').resolve()))
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+          from tag_readers.read_rig import read_runtime_rig
+          from tag_readers.read_animation import read_animation
+          from animation_decoding.decode_animation import decode_animation
+          from runtime_rig.rig_retarget import rig_retarget
+          from animation_export.convert_animation_object_to_local import convert_obj_to_local
+          from animation_export.gltf_export import create_armature_hierarchy,add_animation
+          from animation_export.enums import Name_Convention
+          from d1_gltf_bake_rigid_weapon_motion import read_glb,animation_tracks,source_chain,eval_world
+
+          PLAYER_SK='80A39DF2'; PLAYER_RIG='80A39DF1'; PED_HASH=0xC410084A
+          BANK='80AA3CC9'; WEAPON_TYPE=0xC9EB0270; CONTENT_GROUP=0x15A56325
+          CONTROL='80802C0E'; CLIP='808005A1'; WRAPPER='8080222A'
+          roi=Game_Version.D1_ROI
+          rr=EntryReader(Path('recovered/ps4_gear_weapons_011c_5.pkg'),Path('runtime'))
+          gr=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'))
+          rby={e['tag_hash'].upper():e for e in rr.entries}; gby={e['tag_hash'].upper():e for e in gr.entries}
+          def raw(reader,by,tag): return reader.entry(by[tag]['index'])
+          sk=read_skeleton(io.BytesIO(raw(rr,rby,PLAYER_SK)),roi)
+          rig=read_runtime_rig(io.BytesIO(raw(rr,rby,PLAYER_RIG)),roi)
+          # Calibrate the exact first-person signature on a known 011C clip.
+          with tempfile.NamedTemporaryFile() as f:
+              f.write(raw(rr,rby,'80A39DF7')); f.flush(); f.seek(0); a0=read_animation(f,roi)
+          sig=(int(a0.animation_header.node_count),int(a0.animation_header.rig_control_count))
+
+          # Exact BANK metadata / neighborhood.
+          be=gby[BANK]; bi=be['index']
+          bank={'entry':{k:be[k] for k in ('index','tag_hash','reference','type','subtype','file_size')},'neighborhood':[],'resolved_dwords':[]}
+          bb=raw(gr,gby,BANK)
+          for off in range(0,len(bb)-(len(bb)%4),4):
+              h=f'{struct.unpack_from("<I",bb,off)[0]:08X}'; x=gby.get(h)
+              if x: bank['resolved_dwords'].append({'offset':off,'tag_hash':h,'reference':x['reference'].upper(),'index':x['index'],'size':x['file_size']})
+          for i in range(max(0,bi-180),min(len(gr.entries),bi+220)):
+              e=gr.entries[i]
+              if e['reference'].upper() in {CONTROL,CLIP,WRAPPER,'80800861'} or abs(i-bi)<=12:
+                  bank['neighborhood'].append({'rel':i-bi,'index':i,'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'size':e['file_size']})
+
+          # Scan exact weapon type/content hashes across all readable structured 0151 entries.
+          hash_hits=[]
+          needles={WEAPON_TYPE:'WeaponTypeHash',CONTENT_GROUP:'WeaponContentGroupHash',int(BANK,16):'BankFileHash'}
+          for e in gr.entries:
+              if e['type']!=16 or not gr.available(e['index']): continue
+              try:b=gr.entry(e['index'])
+              except Exception: continue
+              hits=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                  v=struct.unpack_from('<I',b,off)[0]
+                  if v in needles:hits.append({'offset':off,'kind':needles[v],'value':f'{v:08X}'})
+              if hits: hash_hits.append({'entry':{'index':e['index'],'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'size':e['file_size']},'hits':hits})
+
+          # Map every control -> serialized animation clips.
+          clip_controls=defaultdict(list); controls=[]
+          for e in gr.entries:
+              if e['reference'].upper()!=CONTROL or not gr.available(e['index']): continue
+              try:b=gr.entry(e['index'])
+              except Exception: continue
+              refs=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                  h=f'{struct.unpack_from("<I",b,off)[0]:08X}'; x=gby.get(h)
+                  if x and x['reference'].upper()==CLIP:
+                      refs.append({'offset':off,'tag_hash':h,'index':x['index'],'size':x['file_size']}); clip_controls[h].append(e['tag_hash'].upper())
+              if refs: controls.append({'tag_hash':e['tag_hash'].upper(),'index':e['index'],'refs':refs})
+
+          # Parse all referenced clips. First keep exact same header signature as the known 73-node player/viewmodel clips.
+          candidates=[]
+          for tag in sorted(clip_controls,key=lambda h:gby[h]['index']):
+              try:
+                  b=raw(gr,gby,tag)
+                  with tempfile.NamedTemporaryFile() as f:
+                      f.write(b);f.flush();f.seek(0);anim=read_animation(f,roi)
+                  h=anim.animation_header
+                  row={'tag_hash':tag,'index':gby[tag]['index'],'frames':int(h.frame_count),'duration_s':max(0,int(h.frame_count)-1)/30.0,
+                       'node_count':int(h.node_count),'rig_control_count':int(h.rig_control_count),'controls':clip_controls[tag]}
+                  if (row['node_count'],row['rig_control_count'])!=sig:
+                      continue
+                  dec=decode_animation(anim); ret=rig_retarget(anim,dec,sk,rig); loc=convert_obj_to_local(anim,ret,sk)
+                  # Export a single temporary GLB so we can evaluate exact world-space Pedestal and Grip.R motion.
+                  g=GLTF2(asset=Asset(version='2.0'),scene=0,scenes=[Scene(nodes=[])],nodes=[],meshes=[],skins=[],animations=[],materials=[],textures=[],images=[],samplers=[],buffers=[],bufferViews=[],accessors=[])
+                  root,bones=create_armature_hierarchy(g,sk,Name_Convention.FNV1BE);g.scenes[0].nodes.append(root)
+                  add_animation(g,bones,loc,Name_Convention.FNV1BE,fps=30);g.animations[-1].name=tag
+                  with tempfile.NamedTemporaryFile(suffix='.glb') as tf:
+                      g.save_binary(tf.name); j,binb=read_glb(Path(tf.name))
+                  animj=j['animations'][0]; tracks,times=animation_tracks(j,binb,animj)
+                  def metric(node):
+                      chain=source_chain(j,node);T=[];Q=[]
+                      for t in times:
+                          tt,qq,ss=eval_world(j,chain,tracks,float(t));T.append(tt);Q.append(qq)
+                      T=np.asarray(T);Q=np.asarray(Q);q0=Q[0]/max(np.linalg.norm(Q[0]),1e-12);qn=Q/np.maximum(np.linalg.norm(Q,axis=1,keepdims=True),1e-12)
+                      td=np.linalg.norm(T-T[0],axis=1);dots=np.clip(np.abs(qn@q0),0,1);rd=np.degrees(2*np.arccos(dots))
+                      end_t=float(np.linalg.norm(T[-1]-T[0]));end_r=float(rd[-1]);mx=float(td.max());mr=float(rd.max())
+                      peak=int(np.argmax(td+rd/180.0)); frac=float(peak/max(1,len(times)-1))
+                      return {'max_translation':mx,'max_rotation_deg':mr,'end_translation':end_t,'end_rotation_deg':end_r,'peak_fraction':frac}
+                  row['pedestal']=metric(int(bones[72]));row['grip_r']=metric(int(bones[24]));row['retarget_ok']=True
+                  # Ranking feature only; it is NOT a semantic label.
+                  dur=row['duration_s']; p=row['pedestal']; gmet=row['grip_r']
+                  return_score=(p['max_translation']+p['max_rotation_deg']/90.0)/(1e-6+p['end_translation']+p['end_rotation_deg']/90.0)
+                  row['short_returning_motion_score']=float((1.0 if dur<=1.0 else 0.2)*(p['max_translation']+gmet['max_translation']+(p['max_rotation_deg']+gmet['max_rotation_deg'])/180.0)*min(return_score,100.0))
+                  candidates.append(row)
+              except Exception as ex:
+                  candidates.append({'tag_hash':tag,'parse_or_retarget_error':repr(ex),'controls':clip_controls[tag]})
+          good=[x for x in candidates if x.get('retarget_ok')]
+          good.sort(key=lambda x:x.get('short_returning_motion_score',0),reverse=True)
+          out={'player_reference':{'skeleton':PLAYER_SK,'runtime_rig':PLAYER_RIG,'known_clip':'80A39DF7','signature':{'node_count':sig[0],'rig_control_count':sig[1]},'pedestal_bone_index':72,'grip_r_bone_index':24},
+               'gjallarhorn':{'weapon_type_hash':f'{WEAPON_TYPE:08X}','weapon_content_group_hash':f'{CONTENT_GROUP:08X}','pattern_entity':'80A6A017'},
+               'bank':bank,'exact_hash_hits_0151':hash_hits,'control_count':len(controls),'unique_control_clips':len(clip_controls),
+               'compatible_candidate_count':len(good),'ranked_compatible_candidates':good,'candidate_errors':[x for x in candidates if not x.get('retarget_ok')]}
+          Path('reports/gjallarhorn_shared_viewmodel_probe.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('REFERENCE_SIGNATURE',sig)
+          print('BANK_META',json.dumps(bank['entry']))
+          print('HASH_HITS',json.dumps(hash_hits,separators=(',',':')))
+          print('COMPATIBLE_COUNT',len(good))
+          print('TOP_CANDIDATES',json.dumps(good[:30],separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gjallarhorn-shared-viewmodel-animation-probe
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
