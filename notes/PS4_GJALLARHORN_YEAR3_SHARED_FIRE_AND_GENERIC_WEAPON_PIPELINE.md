@@ -9,7 +9,7 @@ Canonical calibration item: Year 3 Gjallarhorn
 This note records the first byte-closed path from a retail D1 weapon inventory item through both of Destiny's weapon animation layers:
 
 1. the weapon-specific internal mechanism rig, and
-2. the shared weapon-type first-person/viewmodel action graph.
+2. the shared first-person/viewmodel action graph used by the calibrated rocket-launcher fixture.
 
 The distinction is required for correct exports. A weapon's pattern-local skeleton does not necessarily own fire/recoil/equip/idle motion.
 
@@ -54,28 +54,27 @@ The weapon visual geometry encodes rigid joint assignment directly in the fourth
 
 An exhaustive scan of 17 animation-control records and 342 control-referenced clips in `ps4_globals_0151` proved that only `80AA2E4A` and `80AA2E4B` have the 7-node / 7-control signature compatible with the Gjallarhorn internal rig. This is the hard boundary proving that the missing firing recoil is not another omitted clip on the seven-bone weapon rig.
 
-## Shared rocket-launcher action layer
+## Shared first-person action layer
 
 Gjallarhorn weapon pattern 39 carries:
 
 - WeaponTypeHash: `C9EB0270`
+- exact lowercase D1 FNV1 preimage: `FNV1("rocket_launcher") = C9EB0270`
 
-The exact lowercase D1 FNV1 preimage is:
-
-- `FNV1("rocket_launcher") = C9EB0270`
-
-The shared rocket-launcher control cluster is anchored by animation control:
+The calibrated shared action control is:
 
 - `80AA3CC9`
 - class/reference `80802C0E`
 
-`80AA3CD1` contains the exact `C9EB0270` value in the same action-graph cluster, independently tying this family to `rocket_launcher`.
+A generic `80800368` taxonomy record, `80AA3CD1`, contains `C9EB0270`, but this is **not** sufficient by itself to prove that `80AA3CC9` is selected from WeaponTypeHash. The same weapon-type taxonomy is also serialized in `80AA3005`; its first major hash groups are byte-for-byte shared with `80AA3CD1`. Therefore the `80800368` occurrence is treated as generic classification evidence, not as a direct WeaponTypeHash -> control ownership edge.
 
-## Reusable 80802C0E state selector structure
+The remaining automation task is to byte-close the higher-level context/selector record that chooses the correct shared control family for a given weapon type or runtime context.
+
+## Reusable `80802C0E` state selector structure
 
 `tools/d1_animation_control_state_map.py` byte-decodes the D1 ROI action selector table.
 
-For the calibrated control `80AA3CC9`:
+For calibrated control `80AA3CC9`:
 
 - `+0x08`: animation-list count
 - `+0x10`: relative pointer to animation-list dynamic-array header
@@ -94,7 +93,7 @@ Within each selector:
 
 Every decoded selection range remains inside the serialized animation list, including records selecting two animations.
 
-Known exact action hashes in the rocket-launcher control include:
+Known exact action hashes in `80AA3CC9` include:
 
 - `fire` -> `9FAC79C9`
 - `idle` -> `6FB760FF`
@@ -106,12 +105,28 @@ Known exact action hashes in the rocket-launcher control include:
 
 Names are assigned only when the exact FNV1 preimage is known.
 
-## Byte-proven fire selection
+## Byte-proven known action selections
 
 For control `80AA3CC9`:
 
 - animation-list count = 91
 - state-table count = 72
+
+Exact selected actions currently closed:
+
+| state | hash | selection | clip(s) | clip signature |
+|---|---|---:|---|---|
+| `idle` | `6FB760FF` | start 1, count 1 | `80AA3CD6` | 97 frames, 76 nodes / 74 controls |
+| `ready` | `DCA2827A` | start 4, count 1 | `80AA3CDA` | 30 frames, 76 / 74 |
+| `jump` | `E480E089` | start 8, count 2 | `80AA3CE2`, `80AA3CE3` | 42 / 26 frames, 76 / 74 |
+| `reload_empty` | `6D507AD8` | start 19, count 1 | `80AA3D40` | 105 frames, 75 / 73 |
+| `reload_full` | `28F43BD2` | start 19, count 1 | `80AA3D40` | same clip |
+| `fire` | `9FAC79C9` | start 33, count 1 | `80AA3D42` | 19 frames, 75 / 73 |
+
+There are 11 selectors in this control that choose two clips, independently validating the packed count/start interpretation.
+
+### Fire record detail
+
 - exactly one selector hashes to `FNV1("fire") = 9FAC79C9`
 - selector record index = 5
 - selector record offset = 1216 (`0x4C0`)
@@ -124,30 +139,93 @@ For control `80AA3CC9`:
 
 This is direct binary selection, not a duration/name heuristic.
 
-Cross-state sanity from the same table:
+## Shared viewmodel rigs
 
-- idle starts at list index 1
-- ready starts at index 4
-- reload_empty starts at index 19
-- reload_full starts at index 19
-- 11 selectors choose two clips
+Two action-signature families are present in the known states.
 
-## Shared fire clip and viewmodel rig
+### 75-node / 73-control family
 
-The selected `80AA3D42` clip is:
-
-- 19 frames
-- 0.6 seconds at 30 fps
-- 75 animation nodes
-- 73 rig controls
-
-Matching shared rocket-launcher viewmodel resources:
+Exact compatible pair:
 
 - skeleton: `80AA3CBF`
 - runtime rig: `80AA3CBE`
-- weapon Pedestal bone hash: `C410084A`
+- weapon Pedestal `C410084A`: skeleton index 72
 
-`C410084A` is present literally in the 75-node skeleton. It is the same weapon Pedestal identity previously recovered under `Grip.R` in the 73-node first-person/player weapon fixture.
+Actual decode -> retarget -> local conversion succeeds for:
+
+- `80AA3D40` (`reload_empty` / `reload_full`)
+- `80AA3D42` (`fire`)
+
+### 76-node / 74-control family
+
+Two candidate pairs both pass structural counts, contain Pedestal `C410084A` at skeleton index 72, and successfully decode -> retarget -> local-convert all currently selected 76/74 clips:
+
+- `80AA3CB2` rig + `80AA3CB3` skeleton
+- `80AA3CB8` rig + `80AA3CB9` skeleton
+
+Both successfully retarget:
+
+- `80AA3CD6` (`idle`)
+- `80AA3CDA` (`ready`)
+- `80AA3CE2`, `80AA3CE3` (`jump`)
+
+**No semantic choice is made between these two 76/74 pairs yet.** Count compatibility is not enough to assign runtime ownership. Their surrounding wrapper/context structures must decide which pair is correct for each layer/variant.
+
+## `8080222A` wrapper evidence
+
+Three large wrappers in the calibrated cluster are:
+
+- `80AA3CC4`
+- `80AA3CC7`
+- `80AA3CCB`
+
+Each begins with a sorted action-hash -> local-index map and contains nested resource arrays for those states. Exact known local indices differ by wrapper, for example:
+
+| state | CC4 | CC7 | CCB |
+|---|---:|---:|---:|
+| idle | 0 | 11 | 11 |
+| ready | 4 | 15 | 12 |
+| fire | 11 | 4 | 5 |
+| reload_empty | 5 | 0 | 0 |
+| reload_full | 6 | 1 | 1 |
+| jump | 29 | 29 | 28 |
+
+The nested arrays and embedded resource classes are now under active decoding. Their existence is useful for separating multiple control/rig contexts, but the exact semantics of the wrapper variants are not yet claimed.
+
+## `80802750` shared state-index resource
+
+`80AA3CC2` and `80AA3CC9` both literally reference `80AA3CD4` at payload offset `+0x84`.
+
+`80AA3CD4` has reference `80802750`, size 912, and contains a sorted exact action-hash -> small-index table. Known entries include:
+
+- `idle` -> 0
+- `fire` -> 1
+- `jump` -> 3
+- `ready` -> 14
+
+This proves `80AA3CD4` participates in shared action-state indexing for the controls that reference it. The exact semantic names of its additional arrays/fields remain unresolved.
+
+## Generic `80800368` taxonomy evidence
+
+There are exactly two `80800368` entries in the final logical `0151` view:
+
+- `80AA3005`, 1,632 bytes
+- `80AA3CD1`, 1,936 bytes
+
+Both serialize the same major hash taxonomy. Exact FNV1 weapon-type names recovered from that hierarchy include:
+
+- `sniper_rifle` = `08D2C38F`
+- `shotgun` = `0314A289`
+- `machine_gun` = `8A5D6623`
+- `sidearm` = `3EB02F1A`
+- `rocket_launcher` = `C9EB0270`
+- `sword` = `924E78C4`
+
+`rifle` = `FE13412D`, `pistol` = `13569C00`, and `launcher` = `AB32428D` also have exact FNV1 matches in the hierarchy.
+
+The first major group is a 53-row hash/value array plus a 53-row sorted lookup array. The first groups in `80AA3005` and `80AA3CD1` are byte-for-byte identical. `80AA3CD1` additionally contains a third top-level group. The second words in the hash/value rows are intentionally not named yet; they are not assumed to be parent indices or control IDs without further proof.
+
+This is promising for a generic weapon-type resolver, but it is not yet the missing direct type -> action-control bridge.
 
 ## Standalone Gjallarhorn fire export
 
@@ -179,10 +257,10 @@ For a standalone weapon file, the shared viewmodel skeleton is not grafted into 
 Measured fire delta:
 
 - sample count: 19
-- duration: 0.6000000238 s
-- max translation from first sample: 0.0080270236
-- max rotation from first sample: 0.4731251 degrees
-- max scale delta: ~6.85e-7
+- duration: `0.6000000238` s
+- max translation from first sample: `0.0080270236`
+- max rotation from first sample: `0.4731251` degrees
+- max scale delta: ~`6.85e-7`
 
 No recoil curve is generated or tuned by hand.
 
@@ -214,9 +292,9 @@ weaponSandboxPatternIndex
   -> pattern s_entity
   -> weapon-specific skeleton / runtime rig / internal action resources
 
-WeaponTypeHash
-  -> shared weapon-type action graph
-  -> 80802C0E state selector
+WeaponTypeHash / shared context
+  -> generic taxonomy/context resolver [last ownership bridge still being decoded]
+  -> 80802C0E action control
   -> exact FNV1 action state
   -> zero-based animation-list selection
   -> s_animation_clip
@@ -228,7 +306,7 @@ This separation is important for broad extraction:
 
 - visual arrangement answers **which model pieces make this inventory item?**
 - sandbox pattern answers **which weapon-specific internal rig/resources does it use?**
-- weapon type/action graph answers **which shared first-person actions does the weapon use?**
+- shared action graph answers **which first-person actions move the weapon socket?**
 
 ## Reusable code already in the repository
 
@@ -240,7 +318,7 @@ This separation is important for broad extraction:
 - `tools/d1_gltf_add_external_root_motion.py`
 - model / texture-plate / material / skeleton / animation exporters from earlier reversals
 
-The next engineering target is to remove Gjallarhorn-specific constants from the orchestration layer so a caller can supply an InventoryItemHash and receive a machine-readable extraction recipe plus the resolved visual/internal/shared-animation resources.
+The next engineering target is to remove item-specific constants from orchestration so a caller can supply an InventoryItemHash and receive a machine-readable extraction recipe plus the resolved visual/internal/shared-animation resources.
 
 ## Evidence boundary
 
@@ -249,14 +327,19 @@ CONFIRMED_BINARY:
 - all FileHash links and arrangement/pattern selections listed above
 - FNV1 hashes where an exact preimage is stated
 - `80AA3CC9` list/selector structure and packed selection ranges
+- exact known-state clip selections listed above
 - fire -> list index 33 -> `80AA3D42`
-- fire clip frame/node/control counts
-- `80AA3CBF`/`80AA3CBE` structural compatibility and Pedestal identity
+- clip frame/node/control counts
+- successful retarget compatibility results and literal Pedestal identities
+- `80AA3CD4` literal linkage from controls and its known action hash/index rows
+- `80800368` generic taxonomy rows and exact FNV1 matches
 - measured Pedestal motion applied to the standalone weapon
 
 NOT YET CLAIMED:
 
-- complete semantic names for all 72 selector hashes
+- complete semantic names for all selector hashes
+- ownership choice between the two 76/74 shared viewmodel rig pairs
+- exact WeaponTypeHash -> action-control selection edge
 - that every D1 model category uses the weapon Investment/action pipeline
 - exact final D1 deferred/dye rendering in core glTF PBR
 - camera-only recoil/VFX/projectile/audio behavior as part of the skeletal fire clip
