@@ -1,0 +1,68 @@
+name: D1 race-set player assembly frontier
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-raceset-player-assembly-frontier.yml'
+      - 'tools/d1_articulated_asset_census.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and frontier packages
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          # Start at the header immediately after the known 00EF_5 payload.
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 \
+            --start-offset 46275074048 \
+            --target ps4_race_set_all_00f0_2.pkg --target ps4_race_set_all_00f0_3.pkg --target ps4_race_set_all_00f0_4.pkg \
+            --target ps4_race_set_all_com01_0771_0.pkg --target ps4_race_set_all_com01_0771_1.pkg --target ps4_race_set_all_com01_0771_2.pkg --target ps4_race_set_all_com01_0771_4.pkg \
+            --target ps4_race_set_all_com01_0773_0.pkg --target ps4_race_set_all_com01_0773_1.pkg --target ps4_race_set_all_com01_0773_2.pkg --target ps4_race_set_all_com01_0773_3.pkg --target ps4_race_set_all_com01_0773_4.pkg \
+            --out recovered --manifest reports/extract.json --retries 6 --timeout 90
+      - name: Structural census on highest snapshots
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          for p in recovered/ps4_race_set_all_00f0_4.pkg recovered/ps4_race_set_all_com01_0771_4.pkg recovered/ps4_race_set_all_com01_0773_4.pkg; do
+            test -f "$p" || continue
+            n="$(basename "$p" .pkg)"
+            python tools/d1_articulated_asset_census.py "$p" --runtime runtime --include-all-components -o "reports/${n}_census.json"
+          done
+          python - <<'PY'
+          from pathlib import Path
+          import json,collections
+          rows=[]
+          for p in sorted(Path('reports').glob('*_census.json')):
+              d=json.loads(p.read_text()); fam=d['families'][0]; roles=fam['roles']
+              sk=sorted([(r.get('bone_count',0),h) for h,r in roles.items() if r.get('kind')=='skeleton'],reverse=True)
+              pairs=collections.Counter()
+              for r in roles.values():
+                  er=r.get('entity_resource') or {}; a=er.get('unk10_class'); b=er.get('unk18_class')
+                  if a or b:pairs[(a or 'NULL',b or 'NULL')]+=1
+              rows.append({'file':p.name,'entry_count':fam['entry_count'],'kind_counts':fam['kind_counts'],
+                           'skeletons':[{'hash':h,'bones':n} for n,h in sk],
+                           'top_pairs':[{'unk10':a,'unk18':b,'count':n} for (a,b),n in pairs.most_common(50)]})
+          Path('reports/frontier_summary.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-raceset-player-assembly-frontier
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
