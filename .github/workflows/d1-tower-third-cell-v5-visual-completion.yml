@@ -1,0 +1,206 @@
+name: D1 Tower third-cell v5 visual completion
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-third-cell-v5-visual-completion.yml'
+      - 'tools/d1_entry_extract_sized.py'
+      - 'tools/d1_tower_static_chunk_export.py'
+      - 'tools/d1_tower_merge_placements.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  complete:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install numpy trimesh
+          mkdir -p runtime recovered prior proof patch final reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Download prior strict visual cells and proof metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 33978410183 -n d1-tower-three-cell-visual-preview -D prior
+          gh run download 33974062363 -n d1-tower-nine-cell-baked-static-shell -D proof
+          for h in 80C984D8 80C98A6B 80C993CD; do
+            test -f "prior/visual/TOWER_${h}_VISUAL.glb"
+            test -f "prior/visual/TOWER_${h}_VISUAL.json"
+          done
+          test -f proof/export/TOWER_80C993CD.json
+
+      - name: Recover exact current 024C patch package
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(f'SHA mismatch {got} != {expected}')
+          print(name,got)
+          PY
+
+      - name: Prove visibility of old misses and emit recovered four-node patch
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          import numpy as np
+          import trimesh
+          sys.path.insert(0,'tools')
+          from d1_entry_extract_sized import SizedEntryReader
+          from d1_tower_static_chunk_export import decode_static_positions, matrix_records
+          from d1_entity_model_export import decode_indices, hdr_stride, index_is32, primitive_faces
+
+          old=json.load(open('proof/export/TOWER_80C993CD.json'))
+          failures=old['decode_failures']
+          expected_failures={
+            ('80C997F1',281,7,'80CA0CB1'),('80C997F1',282,1,'80CA0CB1'),
+            ('80C997FC',343,7,'80CA0024'),('80C997FC',344,1,'80CA0024'),
+            ('80C99803',214,7,'80CA0CB2'),('80C99803',215,1,'80CA0CB2'),
+          }
+          got_failures={(x['table_hash'],int(x['info_index']),int(x['mesh']['detail_level']),x['material_hash']) for x in failures}
+          if got_failures!=expected_failures: raise SystemExit(f'old failure set changed: {got_failures}')
+          if sum(4 for _ in failures)!=24: raise SystemExit('old missing placement count changed')
+
+          strict=json.load(open('prior/visual/TOWER_80C993CD_VISUAL.json'))
+          states={h:strict['materials'][h]['unk08'] for h in ('80CA0CB1','80CA0024','80CA0CB2')}
+          if states!={'80CA0CB1':2,'80CA0024':1,'80CA0CB2':2}: raise SystemExit(f'material states changed: {states}')
+          # Exact D1 visibility leaves only table 80C997FC/info344: DetailLevel 1, Unk08 1.
+
+          runtime=Path('runtime').resolve()
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg').resolve()
+          r=SizedEntryReader(pkg,runtime)
+          by={e['tag_hash'].upper():e for e in r.entries}
+          def ent(h):
+              e=by[h]
+              return r.entry(e['index']),e
+
+          v0h,v0e=ent('80C99BDD')
+          v1h,v1e=ent('80C99BDF')
+          ibh,ibe=ent('80C99BE1')
+          if v0e['reference'].upper()!='80C99E09': raise SystemExit('V0 backing changed')
+          if v1e['reference'].upper()!='80C99F52': raise SystemExit('V1 backing changed')
+          if ibe['reference'].upper()!='80CA0022': raise SystemExit('index backing changed')
+          v0,_=ent('80C99E09')
+          v1,_=ent('80C99F52')
+          ib,_=ent('80CA0022')
+          if len(v1)!=40416: raise SystemExit(f'80C99F52 size {len(v1)} != 40416')
+          if struct.unpack_from('<I',v1h,0)[0]!=40416 or struct.unpack_from('<h',v1h,4)[0]!=24:
+              raise SystemExit('80C99BDF header no longer describes 40416-byte stride-24 stream')
+
+          stride0=hdr_stride(v0h)
+          pos=decode_static_positions(v0,stride0)
+          is32=index_is32(ibh)
+          indices=decode_indices(ib,is32)
+          off=981; cnt=4206; prim=3
+          if off+cnt>len(indices): raise SystemExit('recovered index slice OOB')
+          fg=primitive_faces(indices[off:off+cnt],prim,is32)
+          if len(fg)==0 or fg.min()<0 or fg.max()>=len(pos): raise SystemExit('recovered geometry index range invalid')
+          used,inv=np.unique(fg.reshape(-1),return_inverse=True)
+          faces=inv.reshape((-1,3)); verts=pos[used]
+          mat=trimesh.visual.material.PBRMaterial(name='TigerMaterial_80CA0024')
+          mesh=trimesh.Trimesh(vertices=verts,faces=faces,visual=trimesh.visual.TextureVisuals(material=mat),process=False)
+
+          tb,te=ent('80C99844')
+          if len(tb)!=786*0x40: raise SystemExit(f'transform payload wrong size {len(tb)}')
+          transforms=matrix_records(tb,786)
+          scene=trimesh.Scene()
+          gname='recovered_static_80C99BDD_80C99BE1_o981_n4206_p3_m80CA0024'
+          scene.geometry[gname]=mesh
+          for i,ti in enumerate(range(637,641)):
+              scene.graph.update(frame_to=f'80C997FC_info344_xform{ti}',frame_from=scene.graph.base_frame,matrix=transforms[ti],geometry=gname)
+          out=Path('patch/TOWER_80C993CD_RECOVERED_VISIBLE_4.glb')
+          scene.export(out,file_type='glb')
+          check=trimesh.load(out,force='scene',process=False)
+          if len(check.graph.nodes_geometry)!=4 or len(check.geometry)!=1: raise SystemExit('patch reload count mismatch')
+          rep={
+            'status':'RECOVERED_FINAL_FOUR_VISIBLE_PLACEMENTS_FROM_FORMER_80C99F52_DECODE_HOLE',
+            'old_decode_failures':6,
+            'old_missing_placements':24,
+            'newly_detail_valid_missing':12,
+            'newly_material_rejected':8,
+            'newly_visual_placements':4,
+            'visible_group':{'table':'80C997FC','info_index':344,'detail_level':1,'material':'80CA0024','material_unk08':1,'transform_indices':[637,638,639,640]},
+            'recovered_stream':{'hash':'80C99F52','bytes':len(v1),'sha256':hashlib.sha256(v1).hexdigest(),'stride':24},
+            'patch_geometry':{'vertices':len(mesh.vertices),'triangles':len(mesh.faces),'bounds':check.bounds.tolist()},
+            'patch_glb_bytes':out.stat().st_size,
+            'patch_glb_sha256':hashlib.sha256(out.read_bytes()).hexdigest(),
+          }
+          Path('reports/recovered_visible_patch.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps(rep,indent=2))
+          PY
+
+      - name: Merge complete strict three-cell visual and verify 4702
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_merge_placements.py \
+            --input prior/visual/TOWER_80C984D8_VISUAL.glb \
+            --input prior/visual/TOWER_80C98A6B_VISUAL.glb \
+            --input prior/visual/TOWER_80C993CD_VISUAL.glb \
+            --input patch/TOWER_80C993CD_RECOVERED_VISIBLE_4.glb \
+            --out final/D1_TOWER_THREE_CELL_VISUAL_COMPLETE_4702.glb \
+            --json final/D1_TOWER_THREE_CELL_VISUAL_COMPLETE_4702.json \
+            --expected-placements 4702
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import trimesh
+          p=Path('final/D1_TOWER_THREE_CELL_VISUAL_COMPLETE_4702.glb')
+          s=trimesh.load(p,force='scene',process=False)
+          if len(s.graph.nodes_geometry)!=4702: raise SystemExit('final node count mismatch')
+          if len(s.geometry)!=773: raise SystemExit(f'final geometry count {len(s.geometry)} != 773')
+          report={
+            'status':'D1_THREE_CELL_VISUAL_COMPLETE_WITH_V5_RECOVERED_STREAM',
+            'theoretical_serialized_placements':19413,
+            'detail_level_rejected':8906,
+            'detail_level_candidates':10507,
+            'material_unk08_rejected_after_detail_gate':5805,
+            'visual_placements':4702,
+            'geometry_variants':len(s.geometry),
+            'bounds':s.bounds.tolist(),
+            'glb_bytes':p.stat().st_size,
+            'glb_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'unresolved_material_states':0,
+            'remaining_known_decode_holes_in_three_cells':0,
+          }
+          Path('reports/final_three_cell_visual_summary.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-three-cell-visual-complete-4702
+          path: |
+            patch/
+            final/
+            reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
