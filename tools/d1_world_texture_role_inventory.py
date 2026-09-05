@@ -23,6 +23,8 @@ from pathlib import Path
 COLOR_FORMATS={'BC1','BC2','BC3','RGBA8','BGRA8'}
 NORMAL_VECTOR_FORMATS={'BC5'}
 SCALAR_FORMATS={'BC4'}
+PROVEN_BASE_ROLES={'surface_rgb','surface_rgb_alpha_deferred_normal_control'}
+PROVEN_NORMAL_ROLES={'primary_normal_rg'}
 
 
 def tex_shape(t:dict):
@@ -83,14 +85,28 @@ def main()->int:
                     row.update({'evidence_status':'STRONG_FORMAT_CANDIDATE','preview_role':'scalar_mask_candidate'})
             rows.append(row)
 
-        # Preview-only base-color candidate selection. This is intentionally not
-        # canonical semantic promotion. Prefer a t0 color texture paired with a
-        # same-resolution BC5 vector map; otherwise permit a sole color-capable
-        # t0 as a medium-confidence preview source.
+        # Canonically proven roles take precedence in the adapter.  Only when
+        # no instruction-proven base/normal exists do we fall back to the old
+        # format-based preview heuristic.
+        proven_base=[r for r in rows if r.get('proven_role') in PROVEN_BASE_ROLES]
+        proven_normal=[r for r in rows if r.get('proven_role') in PROVEN_NORMAL_ROLES]
+        base=None;base_reason=None;base_conf='NONE'
+        normal=None;normal_reason=None;normal_conf='NONE'
+        if proven_base:
+            proven_base.sort(key=lambda r:r['texture_index'])
+            base=proven_base[0]['texture'];base_conf='PROVEN'
+            base_reason=f'native shader dataflow proves {proven_base[0]["proven_role"]}'
+        if proven_normal:
+            proven_normal.sort(key=lambda r:r['texture_index'])
+            normal=proven_normal[0]['texture'];normal_conf='PROVEN'
+            normal_reason=f'native shader dataflow proves {proven_normal[0]["proven_role"]}'
+
+        # Preview-only fallback selection. This is intentionally not canonical
+        # semantic promotion. Prefer a t0 color texture paired with a same-size
+        # BC5 resource; otherwise permit a sole color-capable t0.
         byidx={r['texture_index']:r for r in rows}
         t0=byidx.get(0)
-        base=None;base_reason=None;base_conf='NONE'
-        if t0 and t0['resource_class']=='COLOR_CAPABLE_2D':
+        if base is None and t0 and t0['resource_class']=='COLOR_CAPABLE_2D':
             t0shape=t0['shape']
             paired=[r for r in rows if r['texture_index']!=0 and r['resource_class']=='VECTOR_BC5_2D' and r['shape']==t0shape]
             if paired:
@@ -99,18 +115,17 @@ def main()->int:
                 color2d=[r for r in rows if r['resource_class']=='COLOR_CAPABLE_2D']
                 if len(color2d)==1:
                     base=t0['texture'];base_reason='sole color-capable 2D PS resource and occupies t0';base_conf='MEDIUM_PREVIEW_CANDIDATE'
-        normal=None;normal_reason=None
-        if base:
+        if normal is None and base:
             bs=tex_shape(textures.get(base,{}))
             same=[r for r in rows if r['resource_class']=='VECTOR_BC5_2D' and r['shape']==bs]
             if same:
                 same.sort(key=lambda r:r['texture_index'])
-                normal=same[0]['texture'];normal_reason='BC5 PS resource matches preview base dimensions'
+                normal=same[0]['texture'];normal_reason='BC5 PS resource matches preview base dimensions';normal_conf='STRONG_FORMAT_CANDIDATE'
 
         rec={
             'material':mh,'pixel_shader':ps,'bindings':rows,
             'preview_base_color':base,'preview_base_confidence':base_conf,'preview_base_reason':base_reason,
-            'preview_normal':normal,'preview_normal_confidence':'STRONG_FORMAT_CANDIDATE' if normal else 'NONE',
+            'preview_normal':normal,'preview_normal_confidence':normal_conf,
             'preview_normal_reason':normal_reason,
         }
         material_semantics[mh]=rec
@@ -134,14 +149,14 @@ def main()->int:
     base_counts=Counter(x['preview_base_confidence'] for x in material_semantics.values())
     norm_counts=Counter(x['preview_normal_confidence'] for x in material_semantics.values())
     out={
-        'schema_version':1,
-        'status':'D1_WORLD_TEXTURE_ROLE_INVENTORY_NON_CANONICAL_PREVIEW_LAYER',
+        'schema_version':2,
+        'status':'D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED',
         'source_status':d.get('status'),
         'material_count':len(material_semantics),'pixel_shader_count':len(shader_inventory),
         'preview_base_coverage':dict(base_counts),'preview_normal_coverage':dict(norm_counts),
         'shader_inventory':dict(sorted(shader_inventory.items(),key=lambda kv:(-kv[1]['material_count'],kv[0]))),
         'materials':material_semantics,
-        'policy':'PROVEN roles may be canonical. STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE are adapter hints only and must never overwrite exact shader t# bindings or be represented as solved D1 shader semantics.',
+        'policy':'PROVEN roles are canonical instruction-level semantics. STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE remain adapter hints only and never overwrite exact shader t# bindings.',
     }
     a.output.parent.mkdir(parents=True,exist_ok=True)
     a.output.write_text(json.dumps(out,indent=2)+'\n')
