@@ -7,6 +7,7 @@ on:
       - 'tools/d1_weapon_pattern_action_bundle_resolve.py'
       - 'tools/d1_weapon_pattern_assignment_probe.py'
       - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_investment_assets_013f_member_catalog.json'
       - 'evidence/d1_weapon_globals_member_catalog.json'
   workflow_dispatch:
 
@@ -59,6 +60,7 @@ jobs:
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_weapon_pattern_action_bundle_resolve.py reports/weapon_patterns.json \
             --investment-member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --investment-member-catalog evidence/d1_investment_assets_013f_member_catalog.json \
             --globals-member-catalog evidence/d1_weapon_globals_member_catalog.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
             -o reports/weapon_pattern_action_bundles.json
