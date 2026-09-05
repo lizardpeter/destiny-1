@@ -16,10 +16,10 @@ from d1_entry_extract import EntryReader
 
 DEFAULTS=[
  'base','fire','fire_1','fire_2','fire_3','recoil','reload','reload_1','reload_2','reload_3',
- 'idle','ready','equip','stow','sprint','zoom','aim','ads','melee','inspect','lower','raise',
- 'charge','release','shoot','firing','trigger','primary_fire','secondary_fire','fire_primary',
- 'fire_secondary','hip_fire','aim_fire','fire_hip','fire_ads','ads_fire','zoom_fire',
- 'rocket_launcher','first_person','weapon'
+ 'reload_empty','reload_full','idle','ready','ready_1','ready_2','equip','stow','sprint','zoom',
+ 'aim','ads','melee','inspect','lower','raise','charge','release','shoot','firing','trigger',
+ 'primary_fire','secondary_fire','fire_primary','fire_secondary','hip_fire','aim_fire','fire_hip',
+ 'fire_ads','ads_fire','zoom_fire','jump','land','walk','run','rocket_launcher','first_person','weapon'
 ]
 
 def fnv1(s:str)->int:
@@ -47,6 +47,8 @@ def main()->int:
     assert fnv1('rocket_launcher')==0xC9EB0270
     assert fnv1('reload_1')==0xEB22859A
     assert fnv1('fire')==0x9FAC79C9
+    assert fnv1('reload_empty')==0x6D507AD8
+    assert fnv1('reload_full')==0x28F43BD2
     r=EntryReader(a.pkg,a.runtime)
     hits=[]
     for e in r.entries:
