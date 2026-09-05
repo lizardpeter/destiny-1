@@ -1,0 +1,134 @@
+name: Temporary trace shared viewmodel context resources
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-shared-viewmodel-context-resources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and package index
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports/raw
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Resolve 0156/0157 owner-context resources and reachable tags
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,re,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage,parse_member
+          from d1_investment_arrangement_probe import filehash_pkg_index
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          families={'0151':0x0151,'0156':0x0156,'0157':0x0157}
+          roots={
+            'shared':'80AACB59',
+            '80AA3CA0':['80AAF413','80AAF411','80AAF412'],
+            '80AA3CA1':['80AAF416','80AAF414','80AAF415'],
+            '80AA3CA2':['80AAF419','80AAF417','80AAF418'],
+          }
+          targets=['80AACB59','80AAF413','80AAF411','80AAF412','80AAF416','80AAF414','80AAF415','80AAF419','80AAF417','80AAF418']
+          lines=Path('reports/packages.txt').read_text(errors='replace').splitlines()
+          wanted=[];family_names={k:[] for k in families}
+          for line in lines:
+            name=Path(line.strip()).name
+            m=re.fullmatch(r'ps4_globals_(0151|0156|0157)_(\d+)\.pkg',name,re.I)
+            if m:
+              fam=m.group(1).lower();family_names[fam].append(name);wanted.append(name)
+          if not wanted: raise SystemExit('no target globals packages in index')
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(set(wanted),start_offset=0x44EE5D200)
+          missing=sorted(set(wanted)-set(found))
+          if missing: raise SystemExit(f'missing package members: {missing}')
+          Path('reports/member_locations.json').write_text(json.dumps({'headers_scanned':headers,'members':found},indent=2)+'\n')
+          remotes={}
+          for fam,pkgid in families.items():
+            specs=[]
+            for name in family_names[fam]:
+              row=found[name];specs.append(f"{name}:0x{row['data_offset']:X}:{row['size']}")
+            remotes[pkgid]=RemoteLogicalPackage(arc,{m.patch_id:m for m in map(parse_member,specs)},Path('runtime'))
+
+          # Exact FNV-1 hashes for names already proven elsewhere in the weapon taxonomy/state work.
+          def fnv1(s):
+            h=0x811c9dc5
+            for ch in s.encode(): h=((h*0x01000193)&0xffffffff)^ch
+            return h
+          vocabulary=['idle','ready','reload_empty','reload_full','fire','jump','rocket_launcher','shotgun','sniper_rifle','machine_gun','sidearm','sword','rifle','pistol','launcher']
+          known={fnv1(x):x for x in vocabulary}
+
+          def meta_for(v):
+            pkg,idx=filehash_pkg_index(v);r=remotes.get(pkg)
+            if r is None or idx>=len(r.entries): return None
+            e=r.entries[idx]
+            if int(e['tag_hash'],16)!=v: return None
+            return {'package':f'{pkg:04X}','index':idx,'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size']}
+
+          rows=[]
+          for tag in targets:
+            v=int(tag,16);m=meta_for(v)
+            if m is None: raise SystemExit(f'cannot resolve {tag}')
+            r=remotes[int(m['package'],16)];b=r.entry(m['index']);Path('reports/raw',tag+'.bin').write_bytes(b)
+            matches=[];fnv=[]
+            for off in range(0,len(b)-3,4):
+              x=struct.unpack_from('<I',b,off)[0]
+              mm=meta_for(x)
+              if mm is not None: matches.append({'offset':off,**mm})
+              if x in known: fnv.append({'offset':off,'value':f'{x:08X}','name':known[x]})
+            nb=[]
+            for j in range(max(0,m['index']-10),min(len(r.entries),m['index']+11)):
+              e=r.entries[j];nb.append({'relative_index':j-m['index'],'index':j,'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size']})
+            q={'target':tag,'entry':m,'payload_size':len(b),'sha256':hashlib.sha256(b).hexdigest(),'prefix256':b[:256].hex(),
+               'aligned_exact_tag_matches':matches,'known_fnv_matches':fnv,'neighborhood':nb}
+            rows.append(q)
+            print('CONTEXT_RESOURCE',json.dumps({k:v for k,v in q.items() if k not in ('prefix256','neighborhood')},separators=(',',':')))
+
+          # Two-hop exact-tag graph. Edges are intentionally labeled only as aligned exact FileHash candidates.
+          graph={};front={int(x,16) for x in targets}
+          seen=set()
+          for depth in range(3):
+            nxt=set()
+            for v in sorted(front-seen):
+              m=meta_for(v)
+              if m is None: continue
+              r=remotes[int(m['package'],16)]
+              try:b=r.entry(m['index'])
+              except Exception:continue
+              edges=[]
+              for off in range(0,len(b)-3,4):
+                x=struct.unpack_from('<I',b,off)[0];mm=meta_for(x)
+                if mm is not None and x!=v:
+                  edges.append({'offset':off,**mm});nxt.add(x)
+              graph[f'{v:08X}']={'depth':depth,'entry':m,'edges':edges[:512]}
+            seen|=front;front=nxt
+          report={'owner_resource_sets':roots,'resources':rows,'reachable_exact_tag_graph':graph,
+                  'known_fnv_values':{f'{k:08X}':v for k,v in known.items()},
+                  'policy':'Follow only FileHashes serialized by owner Resource[] first. Aligned exact-tag matches are reported as candidates, not assigned semantics without structure.'}
+          Path('reports/shared_viewmodel_context_resources.json').write_text(json.dumps(report,indent=2)+'\n')
+          assert len(rows)==10
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-shared-viewmodel-context-resources
+          path: reports/
+          retention-days: 7
+          if-no-files-found: error
