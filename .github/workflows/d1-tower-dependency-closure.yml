@@ -1,0 +1,121 @@
+name: D1 Tower cross-package dependency closure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-dependency-closure.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports recovered dependency_scan
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Build archive package-id allowlist and exact Tower core target list
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          idrx=re.compile(r'_([0-9a-fA-F]{4})(?:_([a-zA-Z0-9-]+))?_(\d+)\.pkg$')
+          ids={}
+          for n in names:
+              m=idrx.search(n)
+              if not m: continue
+              pid=m.group(1).upper(); ids.setdefault(pid,[]).append(n)
+          Path('reports/archive_package_ids.txt').write_text('\n'.join(sorted(ids))+'\n')
+          Path('reports/archive_package_id_members.json').write_text(json.dumps(ids,indent=2)+'\n')
+          core_rx=re.compile(r'^ps4_city_tower_.+_[0-9a-fA-F]{4}_\d+\.pkg$')
+          core=sorted(n for n in names if core_rx.match(n))
+          if len(core)!=24: raise SystemExit(f'expected 24 non-localized Tower core members, got {len(core)}')
+          Path('reports/tower_core_members.txt').write_text('\n'.join(core)+'\n')
+          print('archive package ids',len(ids),'Tower core members',len(core))
+          PY
+      - name: Sparse recover Tower core packages
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          wanted=set(Path('reports/tower_core_members.txt').read_text().splitlines())
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(wanted)
+          missing=sorted(wanted-set(found))
+          if missing: raise SystemExit(f'missing {missing}')
+          rows=[]
+          for name in sorted(wanted):
+              r=found[name]; dst=Path('recovered')/name; sha=arc.copy_to(r['data_offset'],r['size'],dst)
+              rows.append({'name':name,**r,'sha256':sha}); print('RECOVERED',name,r['size'],flush=True)
+          Path('reports/recovered_tower_core.json').write_text(json.dumps({'tar_headers_scanned':headers,'members':rows},indent=2)+'\n')
+          PY
+      - name: Scan structured Tower payloads for archive-valid FileHash literals
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name 'ps4_city_tower_*.pkg' -type f | sort)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_structured_filehash_scan.py "${args[@]}" --runtime runtime --valid-package-ids reports/archive_package_ids.txt --out dependency_scan
+      - name: Resolve target package IDs back to archive filenames
+        run: |
+          python - <<'PY'
+          import collections,json,re
+          from pathlib import Path
+          scan=json.load(open('dependency_scan/structured_filehash_scan.json'))
+          idmembers=json.load(open('reports/archive_package_id_members.json'))
+          source_ids={'023D','0244','024C','0250'}
+          rows=[]
+          for pid,count in scan['summary']['target_package_hit_counts'].items():
+              members=idmembers.get(pid,[])
+              nonlocalized=[x for x in members if re.search(r'_[0-9a-fA-F]{4}_\d+\.pkg$',x)]
+              rows.append({
+                'package_id':pid,'literal_hit_count':count,'is_tower_core_id':pid in source_ids,
+                'archive_member_count':len(members),'nonlocalized_members':nonlocalized,'all_members':members,
+              })
+          rows.sort(key=lambda x:(-x['literal_hit_count'],x['package_id']))
+          cross=[x for x in rows if not x['is_tower_core_id']]
+          prefix_counts=collections.Counter()
+          for x in cross:
+              for n in x['nonlocalized_members'] or x['all_members'][:1]:
+                  # presentation-only filename bucket; the dependency evidence itself is the FileHash/package id.
+                  prefix='_'.join(n.removesuffix('.pkg').split('_')[:-2])
+                  prefix_counts[prefix]+=x['literal_hit_count']
+          out={
+            'policy':'Target package IDs come from aligned serialized FileHash-shaped literals validated against package IDs that exist in the shipped archive. Filename labels are presentation/navigation metadata; semantic dependency role remains unresolved until field schemas are decoded.',
+            'target_package_ids':rows,
+            'cross_package_targets':cross,
+            'cross_package_target_count':len(cross),
+            'filename_bucket_hit_counts':dict(prefix_counts.most_common()),
+          }
+          Path('reports/tower_dependency_targets.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({'target_ids':len(rows),'cross_package_ids':len(cross),'top_cross_targets':cross[:30]},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-cross-package-dependency-closure
+          path: |
+            reports/
+            dependency_scan/
+          retention-days: 14
+          if-no-files-found: warn
