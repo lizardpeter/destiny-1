@@ -1,0 +1,150 @@
+name: D1 bulk weapon resolution census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-bulk-weapon-resolution-census.yml'
+      - 'tools/d1_inventory_item_map.py'
+      - 'tools/d1_remote_inventory_art_arrangement_find.py'
+      - 'tools/d1_remote_arrangement_parent_resolve.py'
+      - 'tools/d1_weapon_manifest_join.py'
+      - 'tools/d1_investment_arrangement_probe.py'
+      - 'tools/d1_weapon_pattern_assignment_probe.py'
+      - 'evidence/d1_weapon_shared_context_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Runtime, package index, and retail master tables
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          curl --fail --location --retry 3 "$base/packages.txt" -o reports/packages.txt
+
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg \
+            --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest reports/012f_extract.json --retries 6 --timeout 90
+
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg \
+            --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest reports/013f_extract.json --retries 6 --timeout 90
+
+      - name: Decode global inventory, art arrangement, and weapon pattern tables
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_inventory_item_map.py recovered/ps4_investment_globals_012f_6.pkg \
+            --runtime runtime -o reports/inventory_item_map.json
+          python tools/d1_investment_arrangement_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime -o reports/art_arrangements.json
+          python tools/d1_weapon_pattern_assignment_probe.py \
+            recovered/ps4_investment_globals_012f_6.pkg recovered/ps4_investment_assets_013f_5.pkg \
+            --runtime runtime -o reports/weapon_patterns.json
+
+          python - <<'PY'
+          import json
+          inv=json.load(open('reports/inventory_item_map.json'))
+          art=json.load(open('reports/art_arrangements.json'))
+          pat=json.load(open('reports/weapon_patterns.json'))
+          assert inv['row_count']==8609,inv['row_count']
+          assert inv['package_counts']=={'0131':4092,'0132':4517},inv['package_counts']
+          assert art['arrangement_count']==4473,art['arrangement_count']
+          print(json.dumps({'inventory_items':inv['row_count'],'inventory_packages':inv['package_counts'],
+                            'art_arrangements':art['arrangement_count'],'weapon_patterns':pat['weapon_pattern_table']['row_count'],
+                            'pattern_join':pat['join']},indent=2))
+          PY
+
+      - name: Resolve every art-arrangement parent remotely
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_arrangement_parent_resolve.py reports/art_arrangements.json \
+            --packages-list reports/packages.txt \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x5A0000000 --runtime runtime \
+            -o reports/art_arrangements_resolved.json
+
+      - name: Census all 8,609 retail inventory definitions
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          BASE='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+
+          python tools/d1_remote_inventory_art_arrangement_find.py reports/inventory_item_map.json \
+            --package-id 0x0131 --base-url "$BASE" --part-count 10 --runtime runtime \
+            --member ps4_investment_globals_0131_1.pkg:0x622A43600:1550336 \
+            --member ps4_investment_globals_0131_2.pkg:0x622BBE000:1386496 \
+            --member ps4_investment_globals_0131_3.pkg:0x622D10A00:200704 \
+            --member ps4_investment_globals_0131_4.pkg:0x622D41C00:1482752 \
+            --member ps4_investment_globals_0131_5.pkg:0x622EABE00:7544832 \
+            --member ps4_investment_globals_0131_6.pkg:0x6235DE000:196608 \
+            -o reports/inventory_census_0131.json
+
+          python tools/d1_remote_inventory_art_arrangement_find.py reports/inventory_item_map.json \
+            --package-id 0x0132 --base-url "$BASE" --part-count 10 --runtime runtime \
+            --member ps4_investment_globals_0132_2.pkg:0x62360E200:1138688 \
+            --member ps4_investment_globals_0132_3.pkg:0x623724400:430080 \
+            --member ps4_investment_globals_0132_4.pkg:0x62378D600:3534848 \
+            --member ps4_investment_globals_0132_5.pkg:0x623AEC800:407552 \
+            --member ps4_investment_globals_0132_6.pkg:0x623B50200:147456 \
+            -o reports/inventory_census_0132.json
+
+      - name: Build all weapon-candidate manifests
+        run: |
+          set -euo pipefail
+          python tools/d1_weapon_manifest_join.py \
+            --inventory-census reports/inventory_census_0131.json \
+            --inventory-census reports/inventory_census_0132.json \
+            --arrangements reports/art_arrangements_resolved.json \
+            --weapon-patterns reports/weapon_patterns.json \
+            --shared-context-catalog evidence/d1_weapon_shared_context_catalog.json \
+            --only-with-pattern -o reports/resolved_weapon_manifests.json
+
+          python - <<'PY'
+          import json,collections
+          d=json.load(open('reports/resolved_weapon_manifests.json'))
+          s=d['summary']
+          ms=d['manifests']
+          types=collections.Counter((m.get('internal_weapon_pattern') or {}).get('weapon_type_hash') for m in ms)
+          patterns=collections.Counter((m.get('internal_weapon_pattern') or {}).get('weapon_pattern_index') for m in ms)
+          report={'summary':s,'weapon_type_hash_counts':dict(sorted((k,v) for k,v in types.items() if k)),
+                  'unique_weapon_pattern_indices':len([k for k in patterns if k is not None]),
+                  'gjallarhorn':[m for m in ms if m['inventory_item_hash']=='D471D331']}
+          json.dump(report,open('reports/bulk_weapon_resolution_summary.json','w'),indent=2)
+          print(json.dumps({k:v for k,v in report.items() if k!='gjallarhorn'},indent=2))
+          assert len(report['gjallarhorn'])==1,report['gjallarhorn']
+          g=report['gjallarhorn'][0]
+          assert g['equipping']['weapon_pattern_index']==39,g
+          assert any(x['art_arrangement_index']==1229 for x in g['equipping']['art_arrangements']),g
+          assert g['shared_viewmodel']['profile']=='CA2',g
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-bulk-weapon-resolution-census
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
