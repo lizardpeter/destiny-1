@@ -1,0 +1,58 @@
+name: D1 locate 0155 and 01DB
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-locate-0155-01db.yml'
+      - 'tools/d1_split_tar_scan.py'
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate 0155 globals between proven 0154 and 0156 anchors
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python tools/d1_split_tar_scan.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start 0x461A4F800 --end 0x46711B000 --chunk-size 0x2000000 \
+            --contains '_0155_' -o reports/0155_scan.json
+      - name: Locate 01DB env_shared between proven env_natural and env_skies anchors
+        run: |
+          set -euo pipefail
+          # End of ps4_env_natural_01c5_2 rounded down/up to 512 and the header
+          # immediately preceding proven ps4_env_skies_01cf_0 bound this gap.
+          python tools/d1_split_tar_scan.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start 0x3419F6C00 --end 0x34F847600 --chunk-size 0x2000000 \
+            --contains '_01db_' -o reports/01db_scan.json
+      - name: Verify current family names exactly match scans
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          out={}
+          for pid,fp in [('0155','reports/0155_scan.json'),('01db','reports/01db_scan.json')]:
+              expected=sorted(n for n in names if re.search(rf'_{pid}_[0-9]+\.pkg$',n,re.I))
+              d=json.load(open(fp)); found=sorted(x['basename'] for x in d['matches'])
+              if expected!=found: raise SystemExit(f'{pid}: scan mismatch expected={expected} found={found}')
+              out[pid]=d['matches']
+          Path('reports/final_missing_family_offsets.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-final-tower-texture-family-offsets
+          path: reports/final_missing_family_offsets.json
+          retention-days: 14
+          if-no-files-found: error
