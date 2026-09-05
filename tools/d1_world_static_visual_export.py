@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """Reusable D1 ROI retail-visible baked-static world exporter.
 
-This is the first map-generic exporter stage extracted from the Tower work. It
-consumes any validator-passing StaticMapData parent and emits only the static
-placements that D1's retail GetStatics() selects, with:
+Consumes any validator-passing StaticMapData parent and emits only placements
+selected by D1's retail GetStatics() path, with proven affine transforms, exact
+per-instance UV transforms, source vertex attributes, material hashes and source
+provenance. D1 source space remains canonical; glTF is an adapter.
 
-- correct 3x4 affine instance transforms;
-- per-instance D1 UV transform parsed separately from the 0x40 record;
-- source-crosschecked static UV/normal/vertex-colour decoding;
-- UV transform baked only into the glTF geometry adapter;
-- exact D1 material hashes preserved;
-- optional D1 Z-up -> glTF Y-up adapter;
-- source node provenance retained as table/info/transform indices.
-
-It does not guess shader t# roles or bind arbitrary textures as PBR albedo. That
-is handled by the material/texture stage so canonical scene extraction remains
-lossless and reusable for every world/map.
+Vertex COLOR_0 is retained even when the mesh also has UV/material data. Exact D1
+tangent vectors are retained as the custom glTF vertex attribute ``_D1_TANGENT``
+until their direct portable TANGENT handedness semantics are independently closed.
+No shader t# role is guessed here.
 """
 from __future__ import annotations
 import argparse, hashlib, json, struct, sys
@@ -85,9 +79,8 @@ def main()->int:
         if h not in ref_cache: ref_cache[h]=base.read_reference_file(c,h)
         return ref_cache[h]
 
-    # Collect exact visible placement groups first. glTF has no per-node UV transform,
-    # so the adapter geometry key includes the shipped UV triple. Source provenance
-    # still records the original mesh/material and per-instance transform separately.
+    # glTF has no per-node UV transform, so the adapter geometry key includes the
+    # exact serialized UV triple. Source identity remains mesh/material + instance.
     groups=defaultdict(list)
     rejected={'detail_level':0,'material_unk08':0}
     theoretical=0
@@ -107,7 +100,6 @@ def main()->int:
                       int(mesh['index_offset']),int(mesh['index_count']),int(mesh['primitive_type']),mh)
             for li in range(n):
                 ti=start+li;r=inst[ti]
-                # exact float32 identity of the serialized UV triple
                 uv_key=struct.pack('<3f',r.uv_scale,r.uv_translate_x,r.uv_translate_y).hex()
                 groups[(mesh_key,uv_key)].append({
                     'table_hash':norm(table['hash']),'info_index':int(info['index']),
@@ -129,20 +121,25 @@ def main()->int:
             if len(fg)==0 or fg.min()<0 or fg.max()>=len(attrs.positions):raise ValueError('decoded face range invalid')
             used,inv=np.unique(fg.reshape(-1),return_inverse=True);faces=inv.reshape((-1,3))
             verts=attrs.positions[used]
-            uv=None
-            r0=placements[0]['instance']
+            uv=None;r0=placements[0]['instance']
             if attrs.uv0 is not None:
                 uv=apply_d1_instance_uv(attrs.uv0[used],r0.uv_scale,r0.uv_translate_x,r0.uv_translate_y)
             normals=attrs.normals[used] if attrs.normals is not None else None
+            tangents=attrs.tangents[used] if attrs.tangents is not None else None
             colors=attrs.colors[used] if attrs.colors is not None else None
+
             mat=trimesh.visual.material.PBRMaterial(name=f'TigerMaterial_{mh}')
             visual=trimesh.visual.TextureVisuals(uv=uv,material=mat) if uv is not None else trimesh.visual.TextureVisuals(material=mat)
+            # trimesh's glTF exporter maps TextureVisuals.vertex_attributes['color']
+            # to standard COLOR_0, allowing UV + vertex colour simultaneously.
+            if colors is not None:
+                visual.vertex_attributes['color']=np.clip(colors*255.0+0.5,0,255).astype(np.uint8)
             tm=trimesh.Trimesh(vertices=verts,faces=faces,visual=visual,process=False,validate=False)
             if normals is not None and len(normals)==len(verts): tm.vertex_normals=normals
-            if colors is not None and uv is None:
-                # Keep colour when no TextureVisuals UV is required; exact colour is
-                # also retained in the sidecar for textured variants.
-                tm.visual=trimesh.visual.ColorVisuals(mesh=tm,vertex_colors=np.clip(colors*255,0,255).astype(np.uint8))
+            if tangents is not None and len(tangents)==len(verts):
+                # Preserve exact decoded D1 tangent as an application-specific
+                # attribute; do not falsely promote its W to glTF handedness yet.
+                tm.vertex_attributes['D1_TANGENT']=tangents.astype(np.float32)
             gname=f'd1static_g{gi:05d}_{v0h}_{ibh}_o{off}_n{cnt}_p{prim}_m{mh}_uv{uv_key[:8]}'
             scene.geometry[gname]=tm
             geom_reports.append({
@@ -152,7 +149,9 @@ def main()->int:
                 'uv_transform_key':uv_key,'placement_count':len(placements),
                 'vertices':len(verts),'triangles':len(faces),'stride0':s0,'stride1':s1,
                 'layout':attrs.layout,'has_uv':uv is not None,'has_normals':normals is not None,
-                'has_colors':colors is not None,'source_vertex_indices':used.tolist(),
+                'has_tangents':tangents is not None,'tangent_gltf_attribute':'_D1_TANGENT' if tangents is not None else None,
+                'has_colors':colors is not None,'color_gltf_attribute':'COLOR_0' if colors is not None else None,
+                'source_vertex_indices':used.tolist(),
             })
             for p in placements:
                 ir=p['instance'];m=ir.affine
@@ -172,7 +171,6 @@ def main()->int:
     a.out.parent.mkdir(parents=True,exist_ok=True);scene.export(a.out,file_type='glb')
     check=trimesh.load(a.out,force='scene',process=False)
     if len(check.graph.nodes_geometry)!=len(node_reports):raise SystemExit('reload node count mismatch')
-    # Every glTF node must now be affine.
     bad=[]
     for n in check.graph.nodes_geometry:
         m,_=check.graph.get(n)
@@ -186,12 +184,16 @@ def main()->int:
       'rejected':rejected,'geometry_variants':len(geom_reports),'decode_error_count':len(decode_errors),
       'decode_errors':decode_errors,'instance_transform_hash':th,'instance_transform_source':tsrc,
       'materials':material_cache,'geometry':geom_reports,'nodes':node_reports,
+      'attribute_coverage':{
+          'uv':sum(g['has_uv'] for g in geom_reports),'normals':sum(g['has_normals'] for g in geom_reports),
+          'tangents':sum(g['has_tangents'] for g in geom_reports),'colors':sum(g['has_colors'] for g in geom_reports),
+      },
       'bounds':check.bounds.tolist() if check.bounds is not None else None,
       'glb_bytes':a.out.stat().st_size,'glb_sha256':hashlib.sha256(a.out.read_bytes()).hexdigest(),
-      'adapter_policy':'D1 source affine/UV metadata canonical; glTF UV transform baked per geometry+UV variant; arbitrary t# roles not guessed.'
+      'adapter_policy':'D1 source affine/UV/vertex attributes canonical; glTF UV transform baked per geometry+UV variant; COLOR_0 retained; exact D1 tangent retained as _D1_TANGENT pending portable handedness closure; arbitrary t# roles not guessed.'
     }
     jp=a.json or a.out.with_suffix('.json');jp.write_text(json.dumps(rep,indent=2)+'\n')
-    print(json.dumps({k:rep[k] for k in ('static_map_data','d1_static_map_data','serialized_placements','retail_visible_placements','rejected','geometry_variants','decode_error_count','bounds','glb_bytes')},indent=2))
+    print(json.dumps({k:rep[k] for k in ('static_map_data','d1_static_map_data','serialized_placements','retail_visible_placements','rejected','geometry_variants','decode_error_count','attribute_coverage','bounds','glb_bytes')},indent=2))
     return 0 if not decode_errors else 2
 
 if __name__=='__main__':raise SystemExit(main())
