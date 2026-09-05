@@ -1,4 +1,5 @@
 name: D1 Tower 024C5 block flag diagnostic
+# Rerun after repository became public so the hosted runner can execute.
 
 on:
   workflow_dispatch:
