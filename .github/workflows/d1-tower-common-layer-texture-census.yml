@@ -1,0 +1,130 @@
+name: D1 Tower common-layer material texture census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-layer-texture-census.yml'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_shader_texture_roles.py'
+      - 'evidence/d1_tower_texture_dependency_member_catalog.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install texture dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder
+          mkdir -p runtime recovered texture_deps source_models selector textures reports compact
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact common-model material selection
+        run: |
+          set -euo pipefail
+          gh run download 33993891559 -n d1-tower-common-layer-model-export -D source_models
+          test -f source_models/reports/common_layer_model_export.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('source_models/reports/common_layer_model_export.json'))
+          mats=set(); selected_parts=0
+          for model in d.get('models',[]):
+              if not model.get('ok'): continue
+              for mesh in model.get('meshes',[]):
+                  for p in mesh.get('parts',[]):
+                      if not p.get('selected'): continue
+                      selected_parts+=1
+                      h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                      if h: mats.add(str(h).upper())
+          if selected_parts!=163:
+              raise SystemExit(f'expected 163 selected common model parts, got {selected_parts}')
+          if len(mats)!=99:
+              raise SystemExit(f'expected 99 unique common materials, got {len(mats)}')
+          out={'status':'D1_COMMON_LAYER_MATERIAL_SELECTOR','selected_parts':selected_parts,'material_count':len(mats),'materials':{h:{'visual':True} for h in sorted(mats)}}
+          Path('selector/common_material_selector.json').write_text(json.dumps(out,indent=2)+'\n')
+          Path('reports/common_material_hashes.json').write_text(json.dumps({'material_count':len(mats),'materials':sorted(mats)},indent=2)+'\n')
+          print(json.dumps({'selected_parts':selected_parts,'material_count':len(mats),'materials':sorted(mats)},indent=2))
+          PY
+
+      - name: Recover current Tower and known global texture dependency corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir texture_deps --report reports/texture_family_recovery.json
+
+      - name: Extract exact common material shader texture dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered texture_deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime \
+            --visual-json selector/common_material_selector.json --out textures \
+            | tee reports/common_texture_export_stdout.txt
+          cp textures/material_texture_manifest.json reports/common_material_texture_manifest.json
+          python tools/d1_world_texture_role_inventory.py reports/common_material_texture_manifest.json \
+            -o reports/common_texture_role_inventory.json
+
+      - name: Summarize dependency closure and portable preview coverage
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.load(open('reports/common_material_texture_manifest.json'))
+          r=json.load(open('reports/common_texture_role_inventory.json'))
+          s={
+            'status':'D1_TOWER_COMMON_LAYER_TEXTURE_CENSUS',
+            'visible_materials':m['visible_material_count'],
+            'material_decode_errors':m['material_decode_errors'],
+            'unique_texture_tags':m['unique_texture_tags'],
+            'decoded_texture_tags':m['decoded_texture_tags'],
+            'texture_errors':m['texture_errors'],
+            'png_outputs':m['png_outputs'],
+            'missing_texture_package_ids':m['missing_texture_package_ids'],
+            'pixel_shader_count':r['pixel_shader_count'],
+            'preview_base_coverage':r['preview_base_coverage'],
+            'preview_normal_coverage':r['preview_normal_coverage'],
+            'top_pixel_shaders':list(m['pixel_shader_frequency'].items())[:25],
+          }
+          Path('reports/COMMON_TEXTURE_CENSUS_SUMMARY.json').write_text(json.dumps(s,indent=2)+'\n')
+          # Compact manifest retains exact relationships and header metadata but
+          # omits large per-texture chain payload annotations only when absent;
+          # no semantic bindings are changed.
+          Path('compact/common_material_texture_manifest.json').write_text(json.dumps(m,indent=2)+'\n')
+          Path('compact/common_texture_role_inventory.json').write_text(json.dumps(r,indent=2)+'\n')
+          Path('compact/COMMON_TEXTURE_CENSUS_SUMMARY.json').write_text(json.dumps(s,indent=2)+'\n')
+          print(json.dumps(s,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-common-layer-texture-census
+          path: |
+            compact/
+            reports/common_material_hashes.json
+            reports/common_texture_export_stdout.txt
+            reports/texture_family_recovery.json
+          retention-days: 14
+          compression-level: 6
