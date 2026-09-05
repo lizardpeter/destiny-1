@@ -37,17 +37,16 @@ jobs:
           set -euo pipefail
           mkdir -p input/manifests input/actions reports
           python - <<'PY' > /tmp/artifacts.txt
-          import json,os,urllib.request
+          import json,os,urllib.parse,urllib.request
           repo=os.environ['GITHUB_REPOSITORY']
           token=os.environ['GH_TOKEN']
-          req=urllib.request.Request(
-              f'https://api.github.com/repos/{repo}/actions/artifacts?per_page=100',
-              headers={'Authorization':f'Bearer {token}','X-GitHub-Api-Version':'2022-11-28'},
-          )
-          with urllib.request.urlopen(req) as r:
-              data=json.load(r)
+          headers={'Authorization':f'Bearer {token}','X-GitHub-Api-Version':'2022-11-28'}
           wanted=['d1-bulk-weapon-resolution-census','d1-bulk-weapon-pattern-action-bundles']
           for name in wanted:
+              q=urllib.parse.urlencode({'name':name,'per_page':20})
+              req=urllib.request.Request(f'https://api.github.com/repos/{repo}/actions/artifacts?{q}',headers=headers)
+              with urllib.request.urlopen(req) as r:
+                  data=json.load(r)
               rows=[x for x in data['artifacts'] if x['name']==name and not x['expired']]
               if not rows:
                   raise SystemExit(f'no live artifact named {name}')
@@ -141,9 +140,6 @@ jobs:
               for x in fam['candidates'][:5]
             ]
           },indent=2))
-          # The census must at minimum recover the already byte-proven Vex fixture
-          # somewhere in the exact local graph. We do not require all of these
-          # tags to be one connected component until that graph edge is proven.
           roles=fam['roles']
           assert roles['816CE12B']['kind']=='model_parent',roles.get('816CE12B')
           assert roles['816CE12B']['embedded_model_tag_hash']=='816CE09A'
