@@ -1,0 +1,69 @@
+name: D1 Tower 024C native Windows Oodle
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-024c-native-windows-oodle.yml'
+      - 'tools/d1_oodle_probe.py'
+      - 'tools/d1_entry_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  native-oodle:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover 024C patch siblings 2-5 and verified Oodle DLL
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force recovered,runtime,reports | Out-Null
+          python - <<'PY'
+          import hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
+            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
+            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+          ]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          for name,off,size,expected in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=expected.lower(): raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
+              print('RECOVERED',name,size,got)
+          PY
+          Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -OutFile runtime/oo2core_3_win64.dll
+          $got=(Get-FileHash runtime/oo2core_3_win64.dll -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62') { throw "Oodle DLL SHA mismatch: $got" }
+
+      - name: Probe control and failing patched blocks with native Oodle
+        shell: pwsh
+        run: |
+          python tools/d1_oodle_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --block 709 --block 710 --block 724 --block 725 --block 763 -o reports/native_windows_oodle_blocks.json
+          Get-Content reports/native_windows_oodle_blocks.json
+
+      - name: Decode target 80C98258 with native Oodle if block probe succeeds
+        shell: pwsh
+        run: |
+          python tools/d1_entry_extract.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --tag-hash 80C98258 --dump-dir reports/raw -o reports/80C98258_native_windows.json
+          Get-Content reports/80C98258_native_windows.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-024c-native-windows-oodle
+          path: reports/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
