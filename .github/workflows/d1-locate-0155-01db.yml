@@ -27,11 +27,11 @@ jobs:
       - name: Locate 01DB env_shared between proven env_natural and env_skies anchors
         run: |
           set -euo pipefail
-          # End of ps4_env_natural_01c5_2 rounded down/up to 512 and the header
+          # Exact end of proven ps4_env_natural_01c5_2 and the TAR header
           # immediately preceding proven ps4_env_skies_01cf_0 bound this gap.
           python tools/d1_split_tar_scan.py \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start 0x3419F6C00 --end 0x34F847600 --chunk-size 0x2000000 \
+            --start 0x340F98C00 --end 0x34F58EC00 --chunk-size 0x2000000 \
             --contains '_01db_' -o reports/01db_scan.json
       - name: Verify current family names exactly match scans
         run: |
