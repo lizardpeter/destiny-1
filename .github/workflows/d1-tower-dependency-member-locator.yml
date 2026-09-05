@@ -1,0 +1,79 @@
+name: D1 Tower dependency member locator
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-dependency-member-locator.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Resolve exact dependency member names
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names={Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()}
+          specs={
+            '00EF': r'^ps4_race_set_all_00ef_[0-9]+\.pkg$',
+            '013A': r'^ps4_investment_assets_013a_[0-9]+\.pkg$',
+            '0169': r'^ps4_globals_pvp_0169_[0-9]+\.pkg$',
+            '01C5': r'^ps4_env_natural_01c5_[0-9]+\.pkg$',
+            '01CF': r'^ps4_env_skies_01cf_[0-9]+\.pkg$',
+            '01D1': r'^ps4_env_skies_01d1_[0-9]+\.pkg$',
+            '01E3': r'^ps4_globals_cinematic_01e3_[0-9]+\.pkg$',
+          }
+          expected_counts={'00EF':5,'013A':6,'0169':5,'01C5':3,'01CF':3,'01D1':4,'01E3':3}
+          fam={pid:sorted(n for n in names if re.match(rx,n,re.I)) for pid,rx in specs.items()}
+          for pid,c in expected_counts.items():
+            if len(fam[pid])!=c: raise SystemExit(f'{pid}: expected {c} members, got {fam[pid]}')
+          wanted=sorted({n for xs in fam.values() for n in xs})
+          Path('reports/dependency_member_names.json').write_text(json.dumps({'families':fam,'members':wanted},indent=2)+'\n')
+          Path('reports/dependency_member_names.txt').write_text('\n'.join(wanted)+'\n')
+          print(json.dumps({k:len(v) for k,v in fam.items()},indent=2))
+          PY
+
+      - name: Scan split TAR headers and record exact offsets
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          wanted=set(Path('reports/dependency_member_names.txt').read_text().splitlines())
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(wanted)
+          missing=sorted(wanted-set(found))
+          if missing: raise SystemExit(f'missing dependency members: {missing}')
+          rows=[]
+          for name in sorted(wanted):
+            r=found[name]
+            rows.append({'name':name,'header_offset':r['header_offset'],'data_offset':r['data_offset'],'size':r['size']})
+          out={'tar_headers_scanned':headers,'member_count':len(rows),'members':rows}
+          Path('reports/tower_dependency_member_catalog.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('located',len(rows),'members after',headers,'tar headers')
+          for r in rows: print(r['name'],r['data_offset'],r['size'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-dependency-member-locator
+          path: reports/
+          retention-days: 14
+          compression-level: 6
