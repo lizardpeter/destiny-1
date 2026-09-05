@@ -1,0 +1,102 @@
+name: Temporary resolve rocket launcher fire state to native clips
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-rocket-launcher-fire-state-layout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+      - name: Dump and structurally correlate fire state
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys,hashlib
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          tags=['80AA3CC2','80AA3CC4','80AA3CC5','80AA3CC7','80AA3CC9','80AA3CCB','80AA3CD1','80AA3CD4','80AA3CB2','80AA3CB3','80AA3CB8','80AA3CB9','80AA3CBE','80AA3CBF']
+          FIRE=0x9FAC79C9; states={0x9FAC79C9:'fire',0x6FB760FF:'idle',0xDCA2827A:'ready',0x6D507AD8:'reload_empty',0x28F43BD2:'reload_full',0x4CF9B596:'base',0xE480E089:'jump'}
+          CLIP='808005A1'
+          report={}
+          for tag in tags:
+              e=by[tag];b=r.entry(e['index']);Path('out',tag+'.bin').write_bytes(b)
+              dws=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                  v=struct.unpack_from('<I',b,off)[0]; row={'offset':off,'value':f'{v:08X}'}
+                  if v in states:row['state']=states[v]
+                  x=by.get(f'{v:08X}')
+                  if x:row['entry']={'tag_hash':x['tag_hash'].upper(),'reference':x['reference'].upper(),'index':x['index'],'size':x['file_size']}
+                  dws.append(row)
+              report[tag]={'entry':{'index':e['index'],'reference':e['reference'].upper(),'size':e['file_size']},'sha256':hashlib.sha256(b).hexdigest(),'dwords':dws}
+          # For each control, inspect the regular 32-byte records surrounding each state hash.
+          # We do not assume record semantics yet; output raw words plus any resolved FileHashes/indices.
+          correlations=[]
+          for tag in ['80AA3CC2','80AA3CC5','80AA3CC9']:
+              b=Path('out',tag+'.bin').read_bytes()
+              for off in range(0,len(b)-3,4):
+                  v=struct.unpack_from('<I',b,off)[0]
+                  if v not in states:continue
+                  lo=max(0,off-48);hi=min(len(b),off+64)
+                  words=[]
+                  for p in range(lo-(lo%4),hi-(hi%4),4):
+                      x=struct.unpack_from('<I',b,p)[0]; q={'offset':p,'rel':p-off,'value':f'{x:08X}'}
+                      if x in states:q['state']=states[x]
+                      xe=by.get(f'{x:08X}')
+                      if xe:q['entry']={'tag_hash':xe['tag_hash'].upper(),'reference':xe['reference'].upper(),'index':xe['index'],'size':xe['file_size']}
+                      # Interpret small ints as potential array indices only, without asserting semantics.
+                      if x < 256:q['small_uint']=x
+                      words.append(q)
+                  correlations.append({'control':tag,'state':states[v],'state_offset':off,'window':words})
+          # Search wrappers and CD4 for each state, and show adjacent small integers/pointers.
+          for tag in ['80AA3CC4','80AA3CC7','80AA3CCB','80AA3CD4']:
+              b=Path('out',tag+'.bin').read_bytes()
+              for off in range(0,len(b)-3,4):
+                  v=struct.unpack_from('<I',b,off)[0]
+                  if v not in states:continue
+                  lo=max(0,off-32);hi=min(len(b),off+48);words=[]
+                  for p in range(lo-(lo%4),hi-(hi%4),4):
+                      x=struct.unpack_from('<I',b,p)[0];q={'offset':p,'rel':p-off,'value':f'{x:08X}'}
+                      if x in states:q['state']=states[x]
+                      xe=by.get(f'{x:08X}')
+                      if xe:q['entry']={'tag_hash':xe['tag_hash'].upper(),'reference':xe['reference'].upper(),'index':xe['index'],'size':xe['file_size']}
+                      if x<256:q['small_uint']=x
+                      words.append(q)
+                  correlations.append({'control':tag,'state':states[v],'state_offset':off,'window':words})
+          Path('out/fire_state_layout.json').write_text(json.dumps({'entries':report,'correlations':correlations},indent=2)+'\n')
+          # Concise fire-only terminal evidence.
+          print('FIRE_WINDOWS')
+          for c in correlations:
+              if c['state']=='fire':print(json.dumps(c,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rocket-launcher-fire-state-layout
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
