@@ -27,9 +27,11 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          # Checkpointed member offset 0xAAB580A00 is the PKG data start;
+          # the TAR header is exactly 0x200 bytes earlier.
           python tools/d1_split_tar_extract.py \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start-offset 45824346624 \
+            --start-offset 0xAAB580800 \
             --target ps4_race_set_all_00ec_0.pkg --target ps4_race_set_all_00ec_1.pkg \
             --target ps4_race_set_all_00ec_2.pkg --target ps4_race_set_all_00ec_3.pkg \
             --target ps4_race_set_all_00ec_4.pkg --target ps4_race_set_all_00ec_5.pkg \
