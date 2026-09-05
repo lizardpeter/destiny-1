@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "evidence_status": "LITERAL_COHERENCE_CENSUS_NOT_RESOURCE_POINTER_VALIDATION",
+  "source_artifact": {
+    "run": 33943271839,
+    "artifact_id": 9963042289,
+    "file": "tower_census/everything_census.json"
+  },
+  "classes": {
+    "map_data_table": "808009A2",
+    "static_map_parent": "80801AC6",
+    "static_map_data": "808008B4",
+    "static_map_d1": "80801B75"
+  },
+  "summary": {
+    "unique_map_data_table_candidates": 183,
+    "unique_static_map_parent_candidates": 408,
+    "unique_static_map_data_candidates": 31,
+    "unique_parent_plus_0x08_static_map_pairs": 672,
+    "static_maps_with_parent_plus_0x08": 31,
+    "unique_static_plus_0x30_d1_child_pairs": 18,
+    "static_maps_with_direct_plus_0x30_d1_child": 18,
+    "latest_map_tables_with_parent_literals": 30,
+    "latest_map_tables_with_strict_0x18_parent_literal_cadence": 9
+  },
+  "strict_0x18_cadence_tables": [
+    {
+      "map_data_table": "80C98028",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "parent_literal_count": 39,
+      "first_parent_literal_offset": 5684,
+      "last_parent_literal_offset": 6596,
+      "static_map_distribution": {"80C98191": 38, "80C98254": 1},
+      "direct_d1_child_rows": [{"parent":"80C98173","static_map":"80C98254","d1_children":["80C98258"],"literal_offset":6140}]
+    },
+    {
+      "map_data_table": "80C984A0",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "parent_literal_count": 14,
+      "first_parent_literal_offset": 2084,
+      "last_parent_literal_offset": 2396,
+      "static_map_distribution": {"80C984D7": 13, "80C984D8": 1},
+      "direct_d1_child_rows": [{"parent":"80C984BB","static_map":"80C984D8","d1_children":["80C9858B"],"literal_offset":2252}]
+    },
+    {
+      "map_data_table": "80C9895C",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "parent_literal_count": 79,
+      "first_parent_literal_offset": 11444,
+      "last_parent_literal_offset": 13316,
+      "static_map_distribution": {"80C98A69": 78, "80C98A6B": 1},
+      "direct_d1_child_rows": [{"parent":"80C989BB","static_map":"80C98A6B","d1_children":["80C98A77"],"literal_offset":12380}]
+    },
+    {
+      "map_data_table": "80C989F7",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "parent_literal_count": 112,
+      "first_parent_literal_offset": 16196,
+      "last_parent_literal_offset": 18860,
+      "static_map_distribution": {"80C993A2": 110, "80C993CD": 1, "80C993CF": 1},
+      "direct_d1_child_rows": [
+        {"parent":"80C9929A","static_map":"80C993CD","d1_children":["80C994B1"],"literal_offset":16220},
+        {"parent":"80C992DD","static_map":"80C993CF","d1_children":["80C994B2"],"literal_offset":17540}
+      ]
+    },
+    {
+      "map_data_table": "80C997DF",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "parent_literal_count": 4,
+      "first_parent_literal_offset": 644,
+      "last_parent_literal_offset": 716,
+      "static_map_distribution": {"80C997F4": 3, "80C997F5": 1},
+      "direct_d1_child_rows": [{"parent":"80C997ED","static_map":"80C997F5","d1_children":["80C9981A"],"literal_offset":716}]
+    },
+    {
+      "map_data_table": "80C99956",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "parent_literal_count": 22,
+      "first_parent_literal_offset": 3236,
+      "last_parent_literal_offset": 3740,
+      "static_map_distribution": {"80C99980": 21, "80C99981": 1},
+      "direct_d1_child_rows": [{"parent":"80C99970","static_map":"80C99981","d1_children":["80C9999B"],"literal_offset":3500}]
+    },
+    {
+      "map_data_table": "80CA0B0E",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "parent_literal_count": 10,
+      "first_parent_literal_offset": 1508,
+      "last_parent_literal_offset": 1724,
+      "static_map_distribution": {"80CA0B6F": 9, "80CA0B70": 1},
+      "direct_d1_child_rows": [{"parent":"80CA0B27","static_map":"80CA0B70","d1_children":["80CA0B96"],"literal_offset":1628}]
+    },
+    {
+      "map_data_table": "80CA0B11",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "parent_literal_count": 54,
+      "first_parent_literal_offset": 7844,
+      "last_parent_literal_offset": 9116,
+      "static_map_distribution": {"80CA0B71": 53, "80CA0B72": 1},
+      "direct_d1_child_rows": [{"parent":"80CA0B48","static_map":"80CA0B72","d1_children":["80CA0B98"],"literal_offset":8492}]
+    },
+    {
+      "map_data_table": "80CA0C4E",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "parent_literal_count": 3,
+      "first_parent_literal_offset": 500,
+      "last_parent_literal_offset": 548,
+      "static_map_distribution": {"80CA0C5F": 2, "80CA0C60": 1},
+      "direct_d1_child_rows": [{"parent":"80CA0C5A","static_map":"80CA0C60","d1_children":["80CA0C6B"],"literal_offset":548}]
+    }
+  ],
+  "focus_80CA0B0E": {
+    "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+    "parent_literal_offsets": [1508,1532,1556,1580,1604,1628,1652,1676,1700,1724],
+    "parents": ["80CA0B22","80CA0B23","80CA0B24","80CA0B25","80CA0B26","80CA0B27","80CA0B28","80CA0B29","80CA0B2A","80CA0B2B"],
+    "parent_static_maps": {
+      "80CA0B22":"80CA0B6F","80CA0B23":"80CA0B6F","80CA0B24":"80CA0B6F","80CA0B25":"80CA0B6F","80CA0B26":"80CA0B6F",
+      "80CA0B27":"80CA0B70","80CA0B28":"80CA0B6F","80CA0B29":"80CA0B6F","80CA0B2A":"80CA0B6F","80CA0B2B":"80CA0B6F"
+    },
+    "only_direct_d1_child_row": {"parent":"80CA0B27","static_map":"80CA0B70","d1_child":"80CA0B96"}
+  },
+  "observed_repeated_shape": "Every strict 0x18-cadence table is dominated by one shared static-map target and contains one or two minority parent rows whose static map exposes a direct +0x30 80801B75 child.",
+  "policy": "Class membership comes from physical entry reference hashes. Edges are aligned literal TagHash evidence only unless field offsets are independently validated. +0x08 parent and +0x30 child offsets are structural coherence; MapDataEntry ResourcePointer ownership remains unpromoted until raw-pointer validation.",
+  "next_binary_proof": "Run tools/d1_tower_map_data_resource_validate.py against strict-cadence tables and require MapDataEntry +0x88 ResourcePointer -> class 80801AEA -> +0x0C parent -> parent +0x08 static map before promoting outer transforms."
+}
