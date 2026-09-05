@@ -1,0 +1,86 @@
+name: D1 Tower 024C persistent Oodle stream-chain probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-024c-stream-chain-probe.yml'
+      - 'tools/d1_oodle_stream_chain_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover exact 024C family
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_city_tower_destination_024c_0.pkg',7542949376,137527296,'ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2'),
+            ('ps4_city_tower_destination_024c_1.pkg',7680477184,12226560,'21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8'),
+            ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
+            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
+            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+          ]
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          for name,off,size,sha in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=sha.lower(): raise SystemExit(f'{name}: SHA mismatch')
+          PY
+      - name: Probe current two-block vertex payload with persistent history
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set +e
+          python tools/d1_oodle_stream_chain_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --tag-hash 80C99F52 --history-depth 1 --history-depth 2 --history-depth 4 --history-depth 8 --history-depth 16 -o reports/80C99F52_stream_chain.json | tee reports/80C99F52_stream_chain.stdout.txt
+          echo ${PIPESTATUS[0]} > reports/80C99F52_exit.txt
+          python tools/d1_oodle_stream_chain_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --tag-hash 80C98258 --history-depth 1 --history-depth 2 --history-depth 4 --history-depth 8 --history-depth 16 -o reports/80C98258_stream_chain.json | tee reports/80C98258_stream_chain.stdout.txt
+          echo ${PIPESTATUS[0]} > reports/80C98258_exit.txt
+          exit 0
+      - name: Verify recovered 80C99F52 against header if any attempt succeeds
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          d=json.load(open('reports/80C99F52_stream_chain.json'))
+          good=[x for x in d['attempts'] if x.get('success')]
+          out={'successful_depths':[x['history_depth'] for x in good]}
+          if good:
+              r=EntryReader(Path('recovered/ps4_city_tower_destination_024c_5.pkg'),Path('runtime'))
+              by={e['tag_hash'].upper():e for e in r.entries}; h=r.entry(by['80C99BDF']['index'])
+              size=struct.unpack_from('<I',h,0)[0]; stride=struct.unpack_from('<h',h,4)[0]
+              out.update({'header_data_size':size,'stride':stride,'entry_size':d['entry']['file_size'],'all_entry_payload_sizes_match':all(x.get('entry_payload_bytes')==size==d['entry']['file_size'] for x in good),'payload_hashes':sorted(set(x.get('entry_payload_sha256') for x in good))})
+              if not out['all_entry_payload_sizes_match']: raise SystemExit('successful chain did not reconstruct declared payload size')
+              if stride<=0 or size%stride: raise SystemExit('recovered payload size not stride divisible')
+          Path('reports/stream_chain_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-024c-stream-chain-probe
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
