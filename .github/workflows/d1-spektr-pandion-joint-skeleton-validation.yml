@@ -88,25 +88,36 @@ jobs:
               nodes.append({'index':i,'bone_hash':int(n.bone_hash),'name':hash_to_bungie_name.get(n.bone_hash,'???'),
                             'parent':int(n.parent_node_index)})
           assert len(nodes)==67,len(nodes)
+          assert nodes[18]['name']=='b_head',nodes[18]
           print('SKELETON 809D8613 nodes',len(nodes),'node18',nodes[18])
 
-          result={'schema':'d1_guardian_joint_skeleton_validation/v1','skeleton':'809D8613','node_count':67,
-                  'nodes':nodes,'body_roles':{}}
+          result={'schema':'d1_guardian_joint_skeleton_validation/v2','skeleton':'809D8613','node_count':67,
+                  'nodes':nodes,'body_roles':{},
+                  'policy':'Values in [0,node_count) are mapped directly to the candidate skeleton. Out-of-range stored lane values are preserved separately and are not assigned a bone or given a semantic label.'}
           for role in ('masculine','feminine'):
               d=json.load(open(f'out/spektar_{role}_joints.json'))
               mapped=[]
               for m in d['models']:
                   vals=m.get('joint_domain') or []
-                  assert all(0 <= j < len(nodes) for j in vals),(m['tag_hash'],vals)
+                  joint_vals=[j for j in vals if 0 <= j < len(nodes)]
+                  non_skeleton=[j for j in vals if not (0 <= j < len(nodes))]
                   ex=(m.get('examples') or [{}])[0]
                   mapped.append({'name':ex.get('name'),'itemTypeName':ex.get('itemTypeName'),'model':m['tag_hash'],
-                                 'joint_indices':vals,'bones':[nodes[j] for j in vals],
+                                 'stored_lane_values':vals,'joint_indices':joint_vals,
+                                 'non_skeleton_values':non_skeleton,
+                                 'bones':[nodes[j] for j in joint_vals],
                                  'rigid_mesh_count':m.get('rigid_mesh_count'),'weighted_mesh_count':m.get('weighted_mesh_count')})
               result['body_roles'][role]=mapped
               print('\nROLE',role)
               for x in mapped:
                   print(x['itemTypeName'],x['name'],x['model'],'=>',[(b['index'],b['name']) for b in x['bones']],
-                        'rigid',x['rigid_mesh_count'],'weighted',x['weighted_mesh_count'])
+                        'non-skeleton',x['non_skeleton_values'],'rigid',x['rigid_mesh_count'],'weighted',x['weighted_mesh_count'])
+          # Two independent named retail helmets must land on b_head if this direct index mapping is correct.
+          for role in ('masculine','feminine'):
+              helmets=[x for x in result['body_roles'][role] if x['itemTypeName']=='Helmet']
+              assert len(helmets)==1,helmets
+              assert helmets[0]['joint_indices']==[18],helmets[0]
+              assert [b['name'] for b in helmets[0]['bones']]==['b_head'],helmets[0]
           Path('out/809D8613_spektar_joint_validation.json').write_text(json.dumps(result,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v4
