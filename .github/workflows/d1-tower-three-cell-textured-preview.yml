@@ -7,7 +7,10 @@ on:
       - '.github/workflows/d1-tower-three-cell-textured-preview.yml'
       - 'tools/d1_recover_member_catalog.py'
       - 'tools/d1_world_texture_manifest_fill.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
       - 'tools/d1_world_apply_preview_materials.py'
+      - 'notes/TOWER_TOP_SHADER_DATAFLOW.md'
 
 permissions:
   contents: read
@@ -69,7 +72,7 @@ jobs:
           print('full exact texture closure confirmed: 657/657')
           PY
 
-      - name: Build preview-only role inventory
+      - name: Build evidence-scoped role inventory
         run: |
           set -euo pipefail
           python tools/d1_world_texture_role_inventory.py \
@@ -77,7 +80,7 @@ jobs:
             -o reports/texture_role_inventory.json \
             | tee reports/role_stdout.txt
 
-      - name: Bind strong-confidence base textures
+      - name: Bind proven plus strong-confidence base textures
         run: |
           set -euo pipefail
           python tools/d1_world_apply_preview_materials.py \
@@ -88,7 +91,7 @@ jobs:
             --out out/D1_TOWER_THREE_CELL_TEXTURED_STRONG_BASE.glb \
             --report reports/preview_strong_base.json
 
-      - name: Bind broad base-color preview candidates
+      - name: Bind proven plus broad base-color preview candidates
         run: |
           set -euo pipefail
           python tools/d1_world_apply_preview_materials.py \
@@ -100,7 +103,7 @@ jobs:
             --out out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE.glb \
             --report reports/preview_broad_base.json
 
-      - name: Bind strong-confidence base plus BC5 normal candidates
+      - name: Bind proven normals plus strong BC5 normal candidates
         run: |
           set -euo pipefail
           python tools/d1_world_apply_preview_materials.py \
@@ -112,7 +115,7 @@ jobs:
             --out out/D1_TOWER_THREE_CELL_TEXTURED_STRONG_BASE_NORMAL.glb \
             --report reports/preview_strong_base_normal.json
 
-      - name: Bind broad base plus BC5 normal candidates
+      - name: Bind broad base plus proven and candidate normals
         run: |
           set -euo pipefail
           python tools/d1_world_apply_preview_materials.py \
