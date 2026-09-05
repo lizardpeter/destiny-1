@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-map-data-layer-census.yml'
       - 'tools/d1_world_map_data_layer_census.py'
+      - 'tools/d1_world_static_map_resource_chain_census.py'
 
 permissions:
   contents: read
@@ -28,23 +29,45 @@ jobs:
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
           python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
-      - name: Census every entry in the map-data tables owning the ten static cells
+      - name: Census every entry in the Tower map-data tables
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          tables=(
+            80C98028 80C984A0 80C9895C 80C989F7 80C997DF
+            80C99956 80CA0B0E 80CA0B11 80CA0C4E
+          )
+          table_args=(); for h in "${tables[@]}"; do table_args+=(--map-data-table "$h"); done
           python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
-            --map-data-table 80C98028 \
-            --map-data-table 80C984A0 \
-            --map-data-table 80C9895C \
-            --map-data-table 80C989F7 \
-            --map-data-table 80C997DF \
-            --map-data-table 80C99956 \
-            --map-data-table 80CA0B0E \
-            --map-data-table 80CA0B11 \
-            --map-data-table 80CA0C4E \
+            "${table_args[@]}" \
             --out reports/tower_map_data_layer_census.json | tee reports/tower_map_data_layer_census_stdout.txt
+      - name: Close every static-map ResourcePointer chain
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          tables=(
+            80C98028 80C984A0 80C9895C 80C989F7 80C997DF
+            80C99956 80CA0B0E 80CA0B11 80CA0C4E
+          )
+          table_args=(); for h in "${tables[@]}"; do table_args+=(--map-data-table "$h"); done
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
+            "${table_args[@]}" \
+            --expected-static-map 80C98254 \
+            --expected-static-map 80C984D8 \
+            --expected-static-map 80C98A6B \
+            --expected-static-map 80C993CD \
+            --expected-static-map 80C993CF \
+            --expected-static-map 80C997F5 \
+            --expected-static-map 80C99981 \
+            --expected-static-map 80CA0B70 \
+            --expected-static-map 80CA0B72 \
+            --expected-static-map 80CA0C60 \
+            --out reports/tower_static_map_resource_chain_census.json \
+            | tee reports/tower_static_map_resource_chain_census_stdout.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
