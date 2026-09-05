@@ -38,9 +38,13 @@ jobs:
           set -euo pipefail
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          set +e
           python tools/d1_world_material_constant_export.py "${args[@]}" --runtime runtime \
             --manifest prior/reports/material_texture_manifest_ten_cell.json \
             --out reports/ten_cell_material_constants.json
+          rc=$?
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
           python - <<'PY'
           import json
           d=json.load(open('reports/ten_cell_material_constants.json'))
@@ -50,8 +54,11 @@ jobs:
               out[mh]={'container':c,'record':d['containers'].get(c)}
           open('reports/highlighted_material_constants.json','w').write(json.dumps(out,indent=2)+'\n')
           print(json.dumps(out,indent=2))
+          if any(not v.get('record') or v['record'].get('error') for v in out.values()):
+              raise SystemExit('highlighted material PS constants are not fully decoded')
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: d1-tower-ten-cell-material-constants
           path: reports/
