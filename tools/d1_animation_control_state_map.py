@@ -55,16 +55,14 @@ def decode_control(payload:bytes,reader:EntryReader|None=None,names:list[str]|No
     if anim_data+4*anim_count>len(payload): raise ValueError('animation list exceeds payload')
     if state_data+0x20*state_count>len(payload): raise ValueError('state table exceeds payload')
     hash_to_name={fnv1(s):s for s in (names or DEFAULTS)}
+    by_hash={int(e['tag_hash'],16):e for e in reader.entries} if reader is not None else {}
     animations=[]
     for i in range(anim_count):
         h=_u32(payload,anim_data+i*4); tag=f'{h:08X}'
         row={'index':i,'tag_hash':tag}
-        if reader is not None:
-            idx=reader.tag_hash_to_index(h)
-            if idx is not None and idx < len(reader.entries):
-                e=reader.entries[idx]
-                if int(e['tag_hash'],16)==h:
-                    row['entry']={'index':idx,'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size']}
+        e=by_hash.get(h)
+        if e is not None:
+            row['entry']={'index':e['index'],'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size']}
         animations.append(row)
     states=[]
     for i in range(state_count):
@@ -94,9 +92,11 @@ def main():
     ap.add_argument('--name',action='append',default=[])
     ap.add_argument('-o','--output',type=Path)
     a=ap.parse_args()
-    r=EntryReader(a.pkg,a.runtime); tag=a.control_tag.upper(); h=int(tag,16); idx=r.tag_hash_to_index(h)
-    if idx is None: raise SystemExit(f'{tag} does not map into package {r.h["pkg_id"]:04X}')
-    e=r.entries[idx]
+    r=EntryReader(a.pkg,a.runtime); tag=a.control_tag.upper(); h=int(tag,16)
+    by_hash={int(e['tag_hash'],16):e for e in r.entries}
+    e=by_hash.get(h)
+    if e is None: raise SystemExit(f'{tag} is not present in package {r.h["pkg_id"]:04X}')
+    idx=e['index']
     if e['tag_hash'].upper()!=tag: raise SystemExit(f'entry mismatch: expected {tag}, got {e["tag_hash"]}')
     if e['reference'].upper()!=CONTROL_REF: raise SystemExit(f'{tag} ref {e["reference"]}, expected {CONTROL_REF}')
     names=list(dict.fromkeys(DEFAULTS+a.name))
