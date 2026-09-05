@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Loss-preserving D1 ROI SMapDataTable layer census.
 
-This is the next world layer above baked statics.  It parses every shipped
-SMapDataEntry (0x90 bytes in ROI), preserving its entity hash, outer transform,
-WorldID and relative ResourcePointer.  Known resource classes are named only from
-a pinned external schema and their immediate +0x0C TagHash is reported without
-assuming that every unknown class has the same layout.
+This is the next world layer above root ownership. It parses every shipped SMapDataEntry
+(0x90 bytes in ROI), preserving its entity hash, outer transform, WorldID and relative
+ResourcePointer. Known resource classes are named only from a pinned external schema and
+their immediate +0x0C TagHash is reported without assuming that every unknown class has
+the same layout.
 
-The tool is generic: repeat --map-data-table for every table owned by a world.
-It does not require that an entry be a static map and it never discards unknown
-resource classes.
+Preferred input is --map-root-json from d1_world_activity_map_root_census.py or
+d1_world_map_root_census.py. Legacy/direct use may repeat --map-data-table. The parser
+never requires that an entry be a static map and it never discards unknown resource
+classes.
 """
 from __future__ import annotations
 import argparse, json, math, struct, sys
@@ -53,16 +54,38 @@ def target_meta(c,h):
     h=norm(h); m=c.entry_meta(h)
     return {'hash':h,'exists':m is not None,'meta':m}
 
+def load_table_roots(a):
+    if a.map_root_json:
+        d=json.loads(a.map_root_json.read_text())
+        vals=d.get('map_data_tables')
+        if not isinstance(vals,list) or not vals:
+            raise SystemExit(f'{a.map_root_json}: missing non-empty map_data_tables list')
+        return list(dict.fromkeys(norm(x) for x in vals)), {
+            'mode':'ownership_root_manifest',
+            'path':str(a.map_root_json),
+            'status':d.get('status'),
+            'schema_version':d.get('schema_version'),
+            'selection_mode':d.get('selection_mode'),
+            'selected_activities':d.get('selected_activities'),
+            'bubble_definitions':d.get('bubble_definitions'),
+            'map_containers':d.get('map_containers'),
+        }
+    vals=list(dict.fromkeys(norm(x) for x in (a.map_data_table or [])))
+    return vals, {'mode':'explicit_map_data_tables'}
+
 def main()->int:
     ap=argparse.ArgumentParser()
     ap.add_argument('--snapshot',type=Path,action='append',required=True)
     ap.add_argument('--runtime',type=Path,required=True)
-    ap.add_argument('--map-data-table',action='append',required=True)
+    roots=ap.add_mutually_exclusive_group(required=True)
+    roots.add_argument('--map-data-table',action='append')
+    roots.add_argument('--map-root-json',type=Path)
     ap.add_argument('--out',type=Path,required=True)
     a=ap.parse_args()
+    table_roots,root_source=load_table_roots(a)
     c=v5.v3.base.Corpus([p.resolve() for p in a.snapshot],a.runtime.resolve())
     tables=[]; all_rows=[]; violations=[]
-    for th0 in a.map_data_table:
+    for th0 in table_roots:
         th=norm(th0); meta=c.entry_meta(th); b,src=c.payload(th)
         tr={'map_data_table':th,'meta':meta,'source':src,'entries':[]}
         if not meta or norm(meta.get('reference',''))!=MAP_DATA_TABLE_CLASS:
@@ -106,14 +129,15 @@ def main()->int:
         if len(class_examples[r['resource_class']])<8:
             class_examples[r['resource_class']].append({k:r.get(k) for k in ('map_data_table','index','entity_hash','translation','world_id','resource_target')})
     out={
-        'schema_version':1,'status':'D1_WORLD_MAP_DATA_LAYER_CENSUS' if not violations else 'D1_WORLD_MAP_DATA_LAYER_CENSUS_PARTIAL',
-        'pinned_source':PINNED_SOURCE,'map_data_table_count':len(tables),'entry_count':len(all_rows),
+        'schema_version':2,'status':'D1_WORLD_MAP_DATA_LAYER_CENSUS' if not violations else 'D1_WORLD_MAP_DATA_LAYER_CENSUS_PARTIAL',
+        'pinned_source':PINNED_SOURCE,'root_source':root_source,'map_data_tables':table_roots,
+        'map_data_table_count':len(tables),'entry_count':len(all_rows),
         'entity_hash_non_null_entries':len(entities),'resource_pointer_non_null_entries':len(resource_rows),
         'resource_class_counts':dict(classes),'known_resource_classes':KNOWN_RESOURCE_CLASSES,
         'resource_class_examples':dict(class_examples),'tables':tables,'violations':violations,
-        'policy':'All SMapDataEntry rows are retained. Unknown resource classes remain exact class hashes; only pinned known class layouts receive names/target-field decoding.',
+        'policy':'Map roots may be supplied by an ownership manifest. All SMapDataEntry rows are retained. Unknown resource classes remain exact class hashes; only pinned known class layouts receive names/target-field decoding.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
-    print(json.dumps({k:out[k] for k in ('status','map_data_table_count','entry_count','entity_hash_non_null_entries','resource_pointer_non_null_entries','resource_class_counts','violations')},indent=2))
+    print(json.dumps({k:out[k] for k in ('status','root_source','map_data_table_count','entry_count','entity_hash_non_null_entries','resource_pointer_non_null_entries','resource_class_counts','violations')},indent=2))
     return 0 if not violations else 2
 if __name__=='__main__': raise SystemExit(main())
