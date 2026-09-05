@@ -99,6 +99,30 @@ jobs:
             --include-medium-base \
             --out out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE.glb \
             --report reports/preview_broad_base.json
+
+      - name: Bind strong-confidence base plus BC5 normal candidates
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb prior_world/world/D1_TOWER_THREE_CELL_WORLD_UV_AFFINE.glb \
+            --manifest reports/material_texture_manifest_complete.json \
+            --roles reports/texture_role_inventory.json \
+            --texture-dir prior_texture/textures/textures \
+            --bind-normal-candidates \
+            --out out/D1_TOWER_THREE_CELL_TEXTURED_STRONG_BASE_NORMAL.glb \
+            --report reports/preview_strong_base_normal.json
+
+      - name: Bind broad base plus BC5 normal candidates
+        run: |
+          set -euo pipefail
+          python tools/d1_world_apply_preview_materials.py \
+            --input-glb prior_world/world/D1_TOWER_THREE_CELL_WORLD_UV_AFFINE.glb \
+            --manifest reports/material_texture_manifest_complete.json \
+            --roles reports/texture_role_inventory.json \
+            --texture-dir prior_texture/textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --out out/D1_TOWER_THREE_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --report reports/preview_broad_base_normal.json
           ls -lh out/*.glb
 
       - uses: actions/upload-artifact@v4
