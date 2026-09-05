@@ -4,10 +4,8 @@
 Pinned source: MontagueM/Charm commit
 50d36ee1f9ecadad7522504c20b1f3f9c97e30af.
 
-The important D1 distinction is that Activities are *named/package-global tags*. They
-must not be discovered by scanning ordinary file-entry Reference values for the
-SActivity_ROI schema class. D1 Package.GetAllActivities() reads the package named-tag
-table instead:
+D1 Activities are package named/global tags, not ordinary entries classified by their
+file-entry Reference. D1 Package.GetAllActivities() reads the named-tag table:
 
   PackageHeader +0xEC NamedTagTableCount
                 +0xF0 NamedTagTableOffset
@@ -16,24 +14,23 @@ table instead:
        +0x04 TagClassHash
        +0x08 null-terminated name bytes
 
-For a named tag whose TagClassHash is SActivity_ROI (Charm display 2E058080; project
-raw/canonical uint 8080052E), the TagHash payload is deserialized directly as:
+A single TagHash may deliberately appear more than once with different names. Charm
+separates its hash->class and hash->name caches, so these are aliases, not duplicate
+assets. This census preserves every physical row and merges same-hash/same-class current
+rows into one semantic Tag with an aliases[] list. Conflicting classes remain failures.
+
+A named tag whose TagClassHash is SActivity_ROI (Charm display 2E058080; project raw
+uint 8080052E) is opened directly by TagHash and deserialized as:
 
   SActivity_ROI / 0x28
     +0x10 DynamicArray<S0A418080>, elem 0x04
       -> ChildMapReference: SBubbleDefinition / 808091E0
-        +0x08 DynamicArray<SMapContainerEntry>, elem 0x04
-          -> SMapContainer / 80808A54
-            +0x18 DynamicArray<SMapDataTableEntry>, elem 0x04
-              -> SMapDataTable / 808009A2
+        -> SMapContainer / 80808A54
+          -> SMapDataTable / 808009A2
 
+The lower Tag class checks are D1-manifest-aware through d1_world_map_root_census.py.
 Only the highest physical patch generation for each package id contributes the current
-named-tag table, mirroring Charm's one-current-Package-per-package-id behavior. All
-physical named-tag tables are still inventoried so patch history is loss-preserving.
-
-When --activity is omitted, every current named SActivity_ROI in the supplied corpus is
-walked. Explicit --activity values are legitimate caller-selected world roots; they must
-still resolve to a current named SActivity_ROI entry.
+named-tag table; older tables remain loss-preserving evidence.
 """
 from __future__ import annotations
 
@@ -59,9 +56,9 @@ BUBBLE_DEFINITION = roots.BUBBLE_DEFINITION
 NAMED_SLOT_STRIDE = 0x44
 PINNED_SOURCE = (
     'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
-    'Tiger/DESTINY1_RISE_OF_IRON/Package.cs + '
-    'Tiger/PackageResourcer.cs + Tiger/Schema/Activity/Activity.cs + '
-    'ActivityStructsROI.cs + Tiger/Schema/Static/StaticMapData.cs'
+    'Tiger/DESTINY1_RISE_OF_IRON/Package.cs + Tiger/PackageResourcer.cs + '
+    'Tiger/Schema/Activity/Activity.cs + ActivityStructsROI.cs + '
+    'Tiger/Schema/Static/StaticMapData.cs + Tiger/TigerHash.cs::GetReferenceFromManifest'
 )
 
 
@@ -83,13 +80,11 @@ def generation(path: Path) -> int:
 
 
 def charm_display(raw_uint_hex: str) -> str:
-    """Charm schema strings display the uint bytes in the opposite textual order."""
     h = norm(raw_uint_hex)
     return ''.join(reversed([h[i:i + 2] for i in range(0, 8, 2)]))
 
 
 def canonical_named_class(raw_uint_hex: str) -> str:
-    """Normalize either project/raw uint or Charm byte-display notation."""
     h = norm(raw_uint_hex)
     aliases = {
         ACTIVITY_ROI: ACTIVITY_ROI,
@@ -101,16 +96,47 @@ def canonical_named_class(raw_uint_hex: str) -> str:
 
 
 def current_hashes_by_ref(c, reference: str) -> list[str]:
-    out = []
-    for h in c.occ:
-        m = c.entry_meta(h)
-        if m and norm(m.get('reference')) == reference:
-            out.append(norm(h))
-    return sorted(set(out))
+    return roots.current_hashes_by_ref(c, reference)
+
+
+def merge_current_named_rows(rows: list[dict]) -> tuple[list[dict], list[str]]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for x in rows:
+        grouped[x['tag_hash']].append(x)
+
+    merged = []
+    violations = []
+    for h in sorted(grouped):
+        xs = grouped[h]
+        classes = sorted({x['class_hash_canonical'] for x in xs})
+        packages = sorted({x['source_package_id'] for x in xs})
+        if len(classes) != 1:
+            violations.append(f'current_named_tag_class_conflict:{h}:{classes}')
+        # A FileHash encodes its package id, so cross-package ownership for the same
+        # current hash would be contradictory even if the class happened to match.
+        if len(packages) != 1:
+            violations.append(f'current_named_tag_package_conflict:{h}:{packages}')
+
+        aliases = []
+        named_indices = []
+        for x in xs:
+            if x.get('name') not in aliases:
+                aliases.append(x.get('name'))
+            named_indices.append(int(x['index']))
+        # Match Charm's activity-name preference: keep the longest alias as display
+        # name while retaining all aliases and source row indices losslessly.
+        display_name = max((x for x in aliases if x is not None), key=len, default=None)
+        base = dict(xs[0])
+        base['name'] = display_name
+        base['aliases'] = aliases
+        base['named_table_indices'] = named_indices
+        base['alias_count'] = len(xs)
+        merged.append(base)
+    return merged, violations
 
 
 def scan_named_tag_tables(paths: list[Path]) -> dict:
-    """Inventory all physical named tables and choose the highest patch per package id."""
+    """Inventory all physical named tables and choose highest patch per package id."""
     physical = []
     by_pkg: dict[int, list[dict]] = defaultdict(list)
     violations = []
@@ -124,7 +150,13 @@ def scan_named_tag_tables(paths: list[Path]) -> dict:
         entries = parse_named(raw)
         actual_sha = hashlib.sha1(raw).hexdigest()
         expected_sha = str(h.get('named_tag_table_hash') or '').lower()
-        sha_matches = actual_sha.lower() == expected_sha if expected_sha else None
+        absent_zero_table = count == 0 and off == 0 and expected_sha == ('0' * 40)
+        if absent_zero_table:
+            sha_matches = True
+            hash_policy = 'ABSENT_TABLE_ZERO_HEADER_HASH'
+        else:
+            sha_matches = actual_sha.lower() == expected_sha if expected_sha else None
+            hash_policy = 'SHA1_OF_SERIALIZED_NAMED_TABLE'
         if sha_matches is False:
             violations.append(f'{p.name}:named_tag_table_sha1_mismatch')
         row = {
@@ -138,16 +170,15 @@ def scan_named_tag_tables(paths: list[Path]) -> dict:
             'named_tag_table_sha1_expected': expected_sha,
             'named_tag_table_sha1_actual': actual_sha,
             'named_tag_table_sha1_matches': sha_matches,
+            'named_tag_table_hash_policy': hash_policy,
             'entries': entries,
         }
         physical.append(row)
         by_pkg[int(h['pkg_id'])].append(row)
 
     current_packages = []
-    current_entries = []
+    current_rows = []
     for pkg_id, rows in sorted(by_pkg.items()):
-        # Header patch id is authoritative; filename generation is a deterministic
-        # secondary key for equal/odd historical headers.
         chosen = max(rows, key=lambda r: (r['header_patch_id'], r['generation']))
         current_packages.append({
             'package_id': f'{pkg_id:04X}',
@@ -155,10 +186,11 @@ def scan_named_tag_tables(paths: list[Path]) -> dict:
             'generation': chosen['generation'],
             'header_patch_id': chosen['header_patch_id'],
             'named_tag_table_count': chosen['named_tag_table_count'],
+            'named_tag_table_hash_policy': chosen['named_tag_table_hash_policy'],
         })
         for e in chosen['entries']:
             raw_cls = norm(e['class_hash'])
-            current_entries.append({
+            current_rows.append({
                 **e,
                 'tag_hash': norm(e['tag_hash']),
                 'class_hash_raw_uint': raw_cls,
@@ -170,19 +202,20 @@ def scan_named_tag_tables(paths: list[Path]) -> dict:
                 'source_patch_id': chosen['header_patch_id'],
             })
 
-    # FileHash includes package id, so duplicate current TagHashes are not expected.
-    dup = Counter(x['tag_hash'] for x in current_entries)
-    duplicate_current = {h: n for h, n in dup.items() if n != 1}
-    if duplicate_current:
-        violations.append('duplicate_current_named_tag_hashes:' + json.dumps(duplicate_current, sort_keys=True))
+    current_entries, merge_violations = merge_current_named_rows(current_rows)
+    violations.extend(merge_violations)
 
     return {
         'physical_tables': physical,
         'current_packages': current_packages,
+        'current_rows': current_rows,
         'current_entries': current_entries,
+        'current_named_row_count': len(current_rows),
+        'current_unique_tag_count': len(current_entries),
+        'current_alias_row_count': len(current_rows) - len(current_entries),
         'current_class_counts': dict(Counter(x['class_hash_canonical'] for x in current_entries)),
+        'current_class_row_counts': dict(Counter(x['class_hash_canonical'] for x in current_rows)),
         'current_raw_class_counts': dict(Counter(x['class_hash_raw_uint'] for x in current_entries)),
-        'duplicate_current_tag_hashes': duplicate_current,
         'violations': violations,
     }
 
@@ -194,6 +227,8 @@ def parse_activity(c, named: dict) -> dict:
     rep = {
         'activity': h,
         'activity_name': named.get('name'),
+        'activity_aliases': named.get('aliases', [named.get('name')]),
+        'named_table_indices': named.get('named_table_indices', [named.get('index')]),
         'named_tag': named,
         'named_tag_class': named_class,
         'meta': meta,
@@ -208,10 +243,7 @@ def parse_activity(c, named: dict) -> dict:
         rep['violations'].append('named_activity_tag_hash_not_present_in_file_entries')
         return rep
 
-    # D1 named/global tags are not classed by the ordinary file-entry Reference.
-    # Preserve that reference as evidence, but do not require it to equal 8080052E.
     rep['file_entry_reference'] = norm(meta.get('reference', ''))
-    rep['file_entry_reference_is_activity_class'] = rep['file_entry_reference'] == ACTIVITY_ROI
 
     b, src = c.payload(h)
     rep['payload_source'] = src
@@ -224,8 +256,6 @@ def parse_activity(c, named: dict) -> dict:
         return rep
 
     rep['declared_file_size'] = struct.unpack_from('<q', b, 0)[0]
-    # LocationNames is a Tag at +0x08. It is retained as evidence but is not
-    # required for map ownership closure.
     rep['location_names_raw'] = hx(u32(b, 0x08))
 
     arr = layer.dyn(b, 0x10, 0x04)
@@ -292,13 +322,13 @@ def component_summary(activity: dict) -> dict:
                 if tv.get('validation_ok'):
                     table_entry_counts.setdefault(th, int(tv.get('entry_count', 0)))
 
-    # Preserve source order while deduplicating shared roots.
     bubbles = list(dict.fromkeys(bubbles))
     containers = list(dict.fromkeys(containers))
     tables = list(dict.fromkeys(tables))
     return {
         'activity': activity['activity'],
         'activity_name': activity.get('activity_name'),
+        'activity_aliases': activity.get('activity_aliases'),
         'validation_ok': activity.get('validation_ok'),
         'bubble_count': len(bubbles),
         'bubbles': bubbles,
@@ -338,9 +368,7 @@ def main() -> int:
                 violations.append(f'explicit_activity_not_in_current_named_table:{h}')
                 continue
             if n['class_hash_canonical'] != ACTIVITY_ROI:
-                violations.append(
-                    f'explicit_activity_wrong_named_class:{h}:{n["class_hash_canonical"]}'
-                )
+                violations.append(f'explicit_activity_wrong_named_class:{h}:{n["class_hash_canonical"]}')
                 continue
             selected_named.append(n)
         selection_mode = 'explicit_current_named_activity_roots'
@@ -348,7 +376,6 @@ def main() -> int:
         selected_named = current_activity_named
         selection_mode = 'all_current_named_SActivity_ROI_in_corpus'
 
-    # Deduplicate explicit arguments without changing named-table source order.
     selected_named = list({x['tag_hash']: x for x in selected_named}.values())
     selected = [x['tag_hash'] for x in selected_named]
     if not selected:
@@ -361,15 +388,9 @@ def main() -> int:
         if not x.get('validation_ok'):
             violations.append(f"activity:{x['activity']}:validation_failed")
 
-    all_bubbles = list(dict.fromkeys(
-        h for cpt in components for h in cpt.get('bubbles', [])
-    ))
-    all_containers = list(dict.fromkeys(
-        h for cpt in components for h in cpt.get('map_containers', [])
-    ))
-    all_tables = list(dict.fromkeys(
-        h for cpt in components for h in cpt.get('map_data_tables', [])
-    ))
+    all_bubbles = list(dict.fromkeys(h for cpt in components for h in cpt.get('bubbles', [])))
+    all_containers = list(dict.fromkeys(h for cpt in components for h in cpt.get('map_containers', [])))
+    all_tables = list(dict.fromkeys(h for cpt in components for h in cpt.get('map_data_tables', [])))
     table_entry_counts = {}
     table_activity_owners: dict[str, list[str]] = defaultdict(list)
     bubble_activity_owners: dict[str, list[str]] = defaultdict(list)
@@ -378,19 +399,14 @@ def main() -> int:
     for cpt in components:
         ah = cpt['activity']
         for h in cpt.get('bubbles', []):
-            if ah not in bubble_activity_owners[h]:
-                bubble_activity_owners[h].append(ah)
+            if ah not in bubble_activity_owners[h]: bubble_activity_owners[h].append(ah)
         for h in cpt.get('map_containers', []):
-            if ah not in container_activity_owners[h]:
-                container_activity_owners[h].append(ah)
+            if ah not in container_activity_owners[h]: container_activity_owners[h].append(ah)
         for h in cpt.get('map_data_tables', []):
-            if ah not in table_activity_owners[h]:
-                table_activity_owners[h].append(ah)
+            if ah not in table_activity_owners[h]: table_activity_owners[h].append(ah)
         for h, n in cpt.get('map_data_table_entry_counts', {}).items():
             if h in table_entry_counts and table_entry_counts[h] != n:
-                violations.append(
-                    f'table_entry_count_conflict:{h}:{table_entry_counts[h]}!={n}'
-                )
+                violations.append(f'table_entry_count_conflict:{h}:{table_entry_counts[h]}!={n}')
             table_entry_counts[h] = n
 
     current_bubbles = current_hashes_by_ref(c, roots.BUBBLE_DEFINITION)
@@ -405,25 +421,29 @@ def main() -> int:
         violations.append('activity_containers_reach_no_map_data_tables')
 
     out = {
-        'schema_version': 2,
+        'schema_version': 3,
         'status': 'D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE' if not violations else 'D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_PARTIAL',
         'pinned_source': PINNED_SOURCE,
         'selection_mode': selection_mode,
         'named_tag_discovery': {
             'physical_named_table_count': len(named_scan['physical_tables']),
             'current_package_count': len(named_scan['current_packages']),
-            'current_named_tag_count': len(current_named),
+            'current_named_tag_row_count': named_scan['current_named_row_count'],
+            'current_unique_named_tag_count': named_scan['current_unique_tag_count'],
+            'current_alias_row_count': named_scan['current_alias_row_count'],
             'current_named_class_counts': named_scan['current_class_counts'],
+            'current_named_class_row_counts': named_scan['current_class_row_counts'],
             'current_raw_named_class_counts': named_scan['current_raw_class_counts'],
             'current_SActivity_ROI_count': len(current_activity_named),
+            'current_SActivity_ROI_named_row_count': sum(x['alias_count'] for x in current_activity_named),
             'current_SUnkActivity_ROI_count': len(current_unk_activity_named),
             'current_packages': named_scan['current_packages'],
             'current_activities': current_activity_named,
             'current_unknown_activities': current_unk_activity_named,
-            'duplicate_current_tag_hashes': named_scan['duplicate_current_tag_hashes'],
             'physical_tables': named_scan['physical_tables'],
         },
         'current_d1_activity_count': len(current_activity_named),
+        'current_d1_activity_named_row_count': sum(x['alias_count'] for x in current_activity_named),
         'current_d1_activities': [x['tag_hash'] for x in current_activity_named],
         'current_unknown_activity_count': len(current_unk_activity_named),
         'current_unknown_activities': [x['tag_hash'] for x in current_unk_activity_named],
@@ -447,12 +467,12 @@ def main() -> int:
         'activities': activities,
         'violations': violations,
         'policy': (
-            'D1 Activities are discovered from the current physical package named-tag '
-            'tables, not from ordinary file-entry Reference classes. Only current named '
-            'SActivity_ROI tags are walked by default. Their payloads are interpreted '
-            'using the pinned +0x10 Bubbles schema, then ownership is followed through '
-            'SBubbleDefinition -> SMapContainer -> SMapDataTable. Unknown named '
-            'activity-class tags are preserved but are not coerced into SActivity_ROI.'
+            'D1 Activities are discovered from current physical package named-tag '
+            'tables. Same-TagHash/same-class rows are preserved as naming aliases, '
+            'not duplicated Activities. Zero-count/zero-offset named tables with a '
+            'zero header hash are valid absent tables. Selected SActivity_ROI payloads '
+            'are walked through D1 manifest-aware Bubble -> MapContainer -> MapDataTable '
+            'ownership. Unknown named activity classes remain preserved and separate.'
         ),
     }
 
@@ -460,13 +480,13 @@ def main() -> int:
     a.out.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({k: out[k] for k in (
         'status', 'selection_mode', 'current_d1_activity_count',
-        'current_unknown_activity_count', 'selected_activity_count', 'selected_activities',
-        'reachable_bubble_count', 'bubble_definitions',
-        'reachable_map_container_count', 'reachable_map_data_table_count',
-        'map_data_tables', 'map_data_table_entry_counts',
-        'total_reachable_map_entries', 'unowned_current_bubble_definitions',
-        'unowned_current_map_containers', 'unowned_current_map_data_tables',
-        'violations'
+        'current_d1_activity_named_row_count', 'current_unknown_activity_count',
+        'selected_activity_count', 'selected_activities', 'reachable_bubble_count',
+        'bubble_definitions', 'reachable_map_container_count',
+        'reachable_map_data_table_count', 'map_data_tables',
+        'map_data_table_entry_counts', 'total_reachable_map_entries',
+        'unowned_current_bubble_definitions', 'unowned_current_map_containers',
+        'unowned_current_map_data_tables', 'violations'
     )}, indent=2))
     return 0 if not violations else 2
 
