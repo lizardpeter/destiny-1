@@ -1,0 +1,75 @@
+name: Temporary trace D1 shared weapon action control backlinks
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-shared-control-backlinks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and 0151
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+      - name: Scan aligned literal backlinks and co-occurrences
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          r=EntryReader(Path('recovered/ps4_globals_0151_6.pkg'),Path('runtime'))
+          targets=['80AA3CC2','80AA3CC4','80AA3CC5','80AA3CC7','80AA3CC9','80AA3CCB','80AA3CD1','80AA3CD4',
+                   '80AA3CB2','80AA3CB3','80AA3CB8','80AA3CB9','80AA3CBE','80AA3CBF']
+          tv={int(x,16):x for x in targets}
+          wh={0xC9EB0270:'rocket_launcher',0x0314A289:'shotgun',0x08D2C38F:'sniper_rifle',0x8A5D6623:'machine_gun',0x3EB02F1A:'sidearm',0x924E78C4:'sword'}
+          backlinks={x:[] for x in targets}; co=[]; scanned=0;errors=0
+          for e in r.entries:
+              if not r.available(e['index']):continue
+              # Structured payloads are highest value. Include non-type16 small records too because ownership tables can use other types.
+              if e['file_size']<=0 or e['file_size']>2_000_000:continue
+              try:b=r.entry(e['index'])
+              except Exception:
+                  errors+=1;continue
+              scanned+=1; hits=[];types=[]
+              for off in range(0,len(b)-(len(b)%4),4):
+                  v=struct.unpack_from('<I',b,off)[0]
+                  if v in tv:hits.append({'offset':off,'target':tv[v]})
+                  if v in wh:types.append({'offset':off,'hash':f'{v:08X}','name':wh[v]})
+              if hits:
+                  src={'index':e['index'],'tag_hash':e['tag_hash'].upper(),'reference':e['reference'].upper(),'type':e['type'],'subtype':e['subtype'],'size':e['file_size']}
+                  for h in hits:backlinks[h['target']].append({'source':src,'offset':h['offset'],'weapon_type_hits':types})
+                  if types:co.append({'source':src,'target_hits':hits,'weapon_type_hits':types})
+          rep={'targets':targets,'scanned_entries':scanned,'read_errors':errors,'backlinks':backlinks,'cooccurrences':co,
+               'evidence_policy':'Aligned literal dword backlinks only. Absence does not rule out table-relative or hash-index ownership.'}
+          Path('out/d1_shared_control_backlinks.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('COUNTS',json.dumps({k:len(v) for k,v in backlinks.items()},separators=(',',':')))
+          print('CO',json.dumps(co,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-shared-control-backlinks
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
