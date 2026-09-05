@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Reverse D1 ROI gearArtArrangementIndex -> inventory item hashes.
+"""Decode D1 ROI inventory equipping blocks remotely.
 
-Input is a decoded 80A5FFBE inventory-item map.  Each map row supplies the API
+Input is a decoded 80A5FFBE inventory-item map. Each map row supplies the API
 InventoryItemHash and the FileHash of the corresponding D1 inventory item
-definition.  For one investment-assets package family this tool opens the
+definition. For one investment-assets package family this tool opens the
 logical patched package remotely, reads only referenced item definitions, and
 parses the D1 equippingBlock ResourcePointer at item +0x60.
 
@@ -13,6 +13,11 @@ Charm's retail D1 schema establishes:
   equippingBlock +0x00 DynamicArray<1A108080>
     row: int16 classHash, int16 gearArtArrangementIndex
   equippingBlock +0x60 int16 weaponSandboxPatternIndex
+
+With one or more --target-arrangement values this retains the historical
+reverse-search behavior. With no target-arrangement arguments it performs a
+full census and emits every successfully decoded inventory item in the package
+family, which is the bulk-ripper mode.
 
 No item-name or weapon-type inference is performed here.
 """
@@ -64,7 +69,8 @@ def main()->int:
     ap=argparse.ArgumentParser()
     ap.add_argument('inventory_map_json',type=Path)
     ap.add_argument('--package-id',type=lambda x:int(x,0),required=True)
-    ap.add_argument('--target-arrangement',action='append',type=int,required=True)
+    ap.add_argument('--target-arrangement',action='append',type=int,default=[],
+                    help='optional art arrangement filter; repeatable. Omit for full package-family census.')
     ap.add_argument('--base-url',required=True)
     ap.add_argument('--part-count',type=int,default=10)
     ap.add_argument('--runtime',type=Path,required=True)
@@ -76,6 +82,7 @@ def main()->int:
     rows=src['rows'] if isinstance(src,dict) else src
     candidates=[r for r in rows if int(r['item_package_id'])==a.package_id]
     targets=set(a.target_arrangement)
+    full_census=not targets
 
     base=a.base_url.rstrip('/')
     arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,a.part_count+1)],retries=6,timeout=90)
@@ -84,6 +91,8 @@ def main()->int:
     rr=RemoteLogicalPackage(arc,siblings,a.runtime)
 
     matches=[]; errors=[]; parsed=0; equipping=0
+    arrangement_item_count=0; weapon_pattern_item_count=0
+    arrangement_counts={}; pattern_counts={}
     for n,r in enumerate(candidates,1):
         fh=int(r['item_file_hash'],16); pkg,idx=filehash_pkg_index(fh)
         try:
@@ -95,25 +104,37 @@ def main()->int:
             b=rr.entry(idx); parsed+=1
             p=parse_item(b)
             if p.get('equipping_block_class')==f'{D1_EQUIPPING_BLOCK:08X}': equipping+=1
-            arts=[x['art_arrangement_index'] for x in p.get('arrangements',[])]
-            hit=sorted(targets.intersection(arts))
-            if hit:
+            arts=[x['art_arrangement_index'] for x in p.get('arrangements',[]) if x['art_arrangement_index']>=0]
+            if arts:
+                arrangement_item_count+=1
+                for art in arts: arrangement_counts[str(art)]=arrangement_counts.get(str(art),0)+1
+            pat=p.get('weapon_pattern_index')
+            if isinstance(pat,int) and pat>=0:
+                weapon_pattern_item_count+=1
+                pattern_counts[str(pat)]=pattern_counts.get(str(pat),0)+1
+            hit=sorted(targets.intersection(arts)) if targets else arts
+            if full_census or hit:
                 row={**r,'entry_reference':e['reference'].upper(),'entry_size':len(b),**p,'matched_arrangements':hit}
                 matches.append(row)
-                print('INVENTORY_ARRANGEMENT_MATCH',json.dumps(row,separators=(',',':')),flush=True)
+                if not full_census:
+                    print('INVENTORY_ARRANGEMENT_MATCH',json.dumps(row,separators=(',',':')),flush=True)
         except Exception as ex:
             errors.append({**r,'error':repr(ex)})
         if n%500==0:
-            print(f'{a.package_id:04X}: {n}/{len(candidates)} candidate items parsed={parsed} matches={len(matches)} blocks={len(rr.block_cache)}',flush=True)
+            print(f'{a.package_id:04X}: {n}/{len(candidates)} candidate items parsed={parsed} emitted={len(matches)} blocks={len(rr.block_cache)}',flush=True)
 
     rep={
-      'package_id':a.package_id,'logical_view':rr.view.name,'target_arrangements':sorted(targets),
-      'candidate_item_count':len(candidates),'parsed_item_count':parsed,'equipping_block_count':equipping,
-      'match_count':len(matches),'matches':matches,'remote_blocks_read':len(rr.block_cache),
+      'package_id':a.package_id,'logical_view':rr.view.name,'full_census':full_census,
+      'target_arrangements':sorted(targets),'candidate_item_count':len(candidates),'parsed_item_count':parsed,
+      'equipping_block_count':equipping,'arrangement_item_count':arrangement_item_count,
+      'weapon_pattern_item_count':weapon_pattern_item_count,'emitted_item_count':len(matches),
+      'match_count':len(matches),'matches':matches,'arrangement_counts':arrangement_counts,
+      'weapon_pattern_counts':pattern_counts,'remote_blocks_read':len(rr.block_cache),
       'error_count':len(errors),'errors':errors[:200],
+      'evidence_policy':'Equipping block, art arrangement indices, and weapon pattern index are parsed directly from each retail inventory definition. Full-census mode emits all decoded items without semantic guessing.',
     }
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(rep,indent=2)+'\n')
-    print(json.dumps({k:v for k,v in rep.items() if k not in ('matches','errors')},indent=2))
+    print(json.dumps({k:v for k,v in rep.items() if k not in ('matches','errors','arrangement_counts','weapon_pattern_counts')},indent=2))
     return 0
 
 if __name__=='__main__': raise SystemExit(main())
