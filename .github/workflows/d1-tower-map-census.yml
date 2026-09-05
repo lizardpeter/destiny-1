@@ -1,0 +1,149 @@
+name: D1 Tower map census v1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-map-census.yml'
+      - 'tools/d1_everything_family_census.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tower-census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pillow texture2ddecoder numpy trimesh
+          mkdir -p runtime reports recovered tower_census tower_textures tower_models contact_sheets
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Discover exact Tower package members
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          rx=re.compile(r'^ps4_city_tower_[0-9a-fA-F]{4}_\d+\.pkg$')
+          hits=sorted(x for x in names if rx.match(x))
+          if not hits: raise SystemExit('no ps4_city_tower package members found')
+          Path('reports/tower_target_members.json').write_text(json.dumps({'count':len(hits),'members':hits},indent=2)+'\n')
+          Path('reports/tower_target_members.txt').write_text('\n'.join(hits)+'\n')
+          print('\n'.join(hits))
+          PY
+      - name: Locate and recover only Tower members from split TAR
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          wanted=set(Path('reports/tower_target_members.txt').read_text().splitlines())
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(wanted)
+          missing=sorted(wanted-set(found))
+          if missing: raise SystemExit(f'missing Tower TAR members: {missing}')
+          rows=[]
+          for name in sorted(wanted):
+              r=found[name]; dst=Path('recovered')/name
+              sha=arc.copy_to(r['data_offset'],r['size'],dst)
+              rows.append({'name':name,**r,'sha256':sha})
+              print('RECOVERED',name,r['size'],sha,flush=True)
+          Path('reports/tower_member_catalog.json').write_text(json.dumps({'tar_headers_scanned':headers,'members':rows},indent=2)+'\n')
+          PY
+      - name: Census every Tiger entry in Tower family
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name 'ps4_city_tower_*.pkg' -type f | sort)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_everything_family_census.py "${args[@]}" --runtime runtime --out tower_census
+      - name: Recover every directly decodable Tower texture
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name 'ps4_city_tower_*.pkg' -type f | sort -r)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_texture_census_tolerant.py "${args[@]}" --runtime runtime --out tower_textures
+          if compgen -G 'tower_textures/*.png' > /dev/null; then
+            python tools/d1_contact_sheet.py tower_textures --out contact_sheets/tower_textures.jpg --columns 6 --max-images 1000
+          fi
+      - name: Export every resident s_entity_model candidate without assigning ownership
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,subprocess,sys
+          from pathlib import Path
+          census=json.load(open('tower_census/everything_census.json'))
+          snapshots=[Path('recovered')/x['snapshot'] for x in census['snapshots']]
+          model_hashes=sorted({u['tag_hash'] for u in census['union_entries'] if '80801AB5' in u['references']})
+          attempts=[]; ok=[]
+          for h in model_hashes:
+              success=None; errs=[]
+              # Recovery fallback only: this does not declare retail patch precedence.
+              for p in reversed(snapshots):
+                  out=Path('tower_models')/f'{h}.glb'; rep=Path('tower_models')/f'{h}.json'
+                  q=subprocess.run([sys.executable,'tools/d1_entity_model_export.py',str(p),'--runtime','runtime','--tag-hash',h,'--out',str(out),'--json',str(rep)],text=True,capture_output=True)
+                  if q.returncode==0:
+                      success=p.name; ok.append({'tag_hash':h,'source_snapshot':p.name,'glb':str(out),'report':str(rep)}); break
+                  errs.append({'snapshot':p.name,'returncode':q.returncode,'stderr':q.stderr[-2000:]})
+              attempts.append({'tag_hash':h,'success_snapshot':success,'errors':errs})
+              print('MODEL',h,'OK '+success if success else 'FAILED',flush=True)
+          Path('reports/tower_model_export_summary.json').write_text(json.dumps({'candidate_count':len(model_hashes),'exported_count':len(ok),'exported':ok,'attempts':attempts,'policy':'s_entity_model class membership/export success does not establish world placement or ownership'},indent=2)+'\n')
+          PY
+      - name: Compact Tower summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.load(open('tower_census/everything_census.json'))
+          t=json.load(open('tower_textures/texture_manifest.json'))
+          m=json.load(open('reports/tower_model_export_summary.json'))
+          members=json.load(open('reports/tower_member_catalog.json'))
+          out={
+            'physical_tower_pkg_members':len(members['members']),
+            **c['summary'],
+            'texture_headers':t['unique_texture_header_count'],
+            'textures_resolved':t['resolved_count'],
+            'textures_failed':t['failed_count'],
+            's_entity_model_candidates':m['candidate_count'],
+            's_entity_models_exported':m['exported_count'],
+            'next_boundary':'World placement/assembly and any non-s_entity_model static-world geometry classes must be identified from the Tower class/reference and literal-edge census; no placement is inferred from successful model decoding.'
+          }
+          Path('reports/tower_summary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-map-census-v1
+          path: |
+            reports/
+            tower_census/
+            tower_textures/texture_manifest.json
+            tower_textures/*.png
+            contact_sheets/
+            tower_models/*.json
+            tower_models/*.glb
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
