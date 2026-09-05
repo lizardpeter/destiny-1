@@ -1,0 +1,110 @@
+name: D1 UI art and Director texture census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-ui-art-census.yml'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_dds_to_png.py'
+      - 'tools/d1_contact_sheet.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-art:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pillow texture2ddecoder
+          mkdir -p runtime recovered reports exports contact_sheets
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Recover all physical siblings for key UI families
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          rx=re.compile(r'^ps4_ui_(core_000a|menus_0018|orbit_0026|pve_002d|pvp_0034)_([0-9]+)\.pkg$',re.I)
+          names=[]; families={}
+          for line in Path('reports/packages.txt').read_text(errors='replace').splitlines():
+              name=Path(line.strip()).name
+              m=rx.fullmatch(name)
+              if not m: continue
+              fam=m.group(1).lower(); patch=int(m.group(2))
+              names.append(name); families.setdefault(fam,[]).append((patch,name))
+          if not names: raise SystemExit('no target UI package names found')
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(set(names),start_offset=0)
+          missing=sorted(set(names)-set(found))
+          if missing: raise SystemExit(f'missing UI members: {missing}')
+          for name,row in found.items():
+              sha=arc.copy_to(row['data_offset'],row['size'],Path('recovered')/name)
+              row['sha256']=sha
+          manifest={'headers_scanned':headers,'families':{},'members':found}
+          for fam,rows in sorted(families.items()):
+              rows=sorted(rows)
+              manifest['families'][fam]={'members':[n for _,n in rows],'final_snapshot':rows[-1][1]}
+          Path('reports/ui_package_recovery.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print(json.dumps(manifest['families'],indent=2))
+          PY
+      - name: Export all resident UI textures and contact sheets
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,subprocess,sys
+          from pathlib import Path
+          m=json.load(open('reports/ui_package_recovery.json'))
+          summary={}
+          for fam,row in m['families'].items():
+              out=Path('exports')/fam; out.mkdir(parents=True,exist_ok=True)
+              pkg=Path('recovered')/row['final_snapshot']
+              print('EXPORT',fam,pkg,flush=True)
+              subprocess.run([sys.executable,'tools/d1_texture_export.py',str(pkg),'--runtime','runtime','--out',str(out)],check=True)
+              dds=list(out.glob('*.dds'))
+              if dds:
+                  subprocess.run([sys.executable,'tools/d1_dds_to_png.py','--overwrite',*map(str,dds)],check=False)
+              png=list(out.glob('*.png'))
+              if png:
+                  subprocess.run([sys.executable,'tools/d1_contact_sheet.py',str(out),'--out',f'contact_sheets/{fam}.jpg','--columns','6','--max-images','800'],check=True)
+              rep=json.load(open(out/'texture_manifest.json'))
+              summary[fam]={
+                  'texture_headers':rep['texture_count'],
+                  'png_count':len(list(out.glob('*.png'))),
+                  'dds_count':len(list(out.glob('*.dds'))),
+                  'backing_unavailable':sum(1 for x in rep['textures'] if x.get('error')=='backing unavailable'),
+                  'formats':{},
+              }
+              for x in rep['textures']:
+                  f=x.get('format_name','unknown'); summary[fam]['formats'][f]=summary[fam]['formats'].get(f,0)+1
+          Path('reports/ui_texture_summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-ui-art-census
+          path: |
+            reports/
+            contact_sheets/
+            exports/*/texture_manifest.json
+            exports/*/*.png
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
