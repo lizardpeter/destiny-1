@@ -1,0 +1,167 @@
+name: D1 Tower first binary-validated static chunk
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-first-validated-static-chunk.yml'
+      - 'tools/d1_tower_static_chunk_export.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-validated-chunk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install Python dependencies and Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install numpy trimesh
+          mkdir -p runtime recovered reports validation export
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Discover exact validated Tower chunk corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          tower='ps4_city_tower_destination_0250_5.pkg'
+          if tower not in names:
+              raise SystemExit(f'missing exact validated Tower snapshot {tower}')
+          arch=sorted(x for x in names if re.match(r'^ps4_arch_human_earth_city_009f_[0-9]+\.pkg$',x,re.I))
+          if not arch:
+              raise SystemExit('no ps4_arch_human_earth_city_009f snapshots')
+          members=[tower]+arch
+          Path('reports/target_members.txt').write_text('\n'.join(members)+'\n')
+          Path('reports/target_members.json').write_text(json.dumps({'tower_snapshot':tower,'arch_009f_snapshots':arch,'members':members},indent=2)+'\n')
+          print('\n'.join(members))
+          PY
+
+      - name: Sparse-recover only required package members
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          wanted=set(Path('reports/target_members.txt').read_text().splitlines())
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          found,headers=arc.find(wanted)
+          missing=sorted(wanted-set(found))
+          if missing: raise SystemExit(f'missing members: {missing}')
+          rows=[]
+          for name in sorted(wanted):
+              r=found[name]
+              dst=Path('recovered')/name
+              sha=arc.copy_to(r['data_offset'],r['size'],dst)
+              rows.append({'name':name,**r,'sha256':sha})
+              print('RECOVERED',name,r['size'],sha,flush=True)
+          Path('reports/member_catalog.json').write_text(json.dumps({'tar_headers_scanned':headers,'members':rows},indent=2)+'\n')
+          PY
+
+      - name: Revalidate the target chain in the exact export corpus
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate.py "${args[@]}" --runtime runtime --out validation | tee reports/validator_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          rows=[x for x in d.get('static_map_data',[]) if x.get('hash','').upper()=='80CA0B70']
+          good=[x for x in rows if x.get('ok')]
+          if len(good)!=1:
+              raise SystemExit(f'80CA0B70 expected exactly one passing row, got rows={len(rows)} good={len(good)}')
+          x=good[0]; c=x['d1_validation']
+          assert c['hash'].upper()=='80CA0B96'
+          assert c['ok']
+          assert c['instance_count']==123
+          assert c.get('transform_size_exact') is True
+          assert len(c['static_tables'])==4
+          assert sum(t['summary']['meshes'] for t in c['static_tables'])==124
+          assert sum(t['summary']['infos'] for t in c['static_tables'])==124
+          assert all(t['summary']['all_mesh_targets_exist'] for t in c['static_tables'])
+          assert all(t['summary']['all_info_indices_in_bounds'] for t in c['static_tables'])
+          print('TARGET_CHAIN_BINARY_VALIDATED 80CA0B70 -> 80CA0B96')
+          PY
+
+      - name: Export exact placed baked-static proof scene
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=()
+          for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_static_chunk_export.py \
+            "${args[@]}" \
+            --runtime runtime \
+            --validation-json validation/tower_map_schema_validation.json \
+            --static-map-data 80CA0B70 \
+            --out export/TOWER_80CA0B70_STATIC_ASSEMBLY_PROOF.glb \
+            --json export/TOWER_80CA0B70_STATIC_ASSEMBLY_PROOF.json \
+            | tee reports/export_stdout.txt
+
+      - name: Verify GLB and summarize scene
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import trimesh
+          from pathlib import Path
+          p=Path('export/TOWER_80CA0B70_STATIC_ASSEMBLY_PROOF.json')
+          d=json.loads(p.read_text())
+          if d['decode_failure_count'] != 0:
+              raise SystemExit(f"decode failures: {d['decode_failure_count']}")
+          if d['node_instance_count'] != 556:
+              raise SystemExit(f"unexpected node count {d['node_instance_count']} != 556")
+          glb=Path('export/TOWER_80CA0B70_STATIC_ASSEMBLY_PROOF.glb')
+          s=trimesh.load(glb,force='scene',process=False)
+          bounds=s.bounds.tolist() if s.bounds is not None else None
+          summary={
+            'static_map_data':d['static_map_data'],
+            'd1_static_map_data':d['d1_static_map_data'],
+            'instance_transform_count':d['instance_count'],
+            'static_table_count':len(d['static_table_hashes']),
+            'geometry_variant_count':d['geometry_variant_count'],
+            'placed_node_count':d['node_instance_count'],
+            'decode_failure_count':d['decode_failure_count'],
+            'loaded_scene_geometry_count':len(s.geometry),
+            'loaded_scene_graph_node_count':len(s.graph.nodes),
+            'bounds':bounds,
+            'glb_bytes':glb.stat().st_size,
+            'status':'BINARY_VALIDATED_STATIC_ASSEMBLY_PROOF'
+          }
+          Path('reports/tower_80ca0b70_export_summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80ca0b70-binary-validated-static-proof
+          path: |
+            export/
+            reports/
+            validation/tower_map_schema_validation.json
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
