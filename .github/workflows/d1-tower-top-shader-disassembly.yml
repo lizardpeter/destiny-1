@@ -7,6 +7,8 @@ on:
       - '.github/workflows/d1-tower-top-shader-disassembly.yml'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_shader_texture_roles.py'
+      - 'tools/d1_validate_shader_texture_roles.py'
       - 'tools/d1_recover_member_catalog.py'
       - 'evidence/d1_tower_shader_dependency_member_catalog.json'
       - 'evidence/d1_tower_texture_dependency_member_catalog.json'
@@ -144,16 +146,19 @@ jobs:
       - name: Map native image instructions to exact D1 t registers
         run: |
           set -euo pipefail
-          set +e
           python tools/d1_gcn_image_usage_analyze.py \
             --extract-report reports/top40_shader_extract.json \
             --disasm-dir disasm --out reports/top40_gcn_image_usage.json \
             | tee reports/top40_gcn_image_usage_stdout.txt
-          rc=$?
-          set -e
-          # Partial extraction is allowed while dependency coverage is still
-          # being expanded, but any available disassembly must remain auditable.
-          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Validate instruction-proven texture-role table
+        run: |
+          set -euo pipefail
+          python tools/d1_validate_shader_texture_roles.py \
+            --image-usage reports/top40_gcn_image_usage.json \
+            --manifest prior/material_texture_manifest.json \
+            --out reports/top40_shader_texture_role_validation.json \
+            | tee reports/top40_shader_texture_role_validation_stdout.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
