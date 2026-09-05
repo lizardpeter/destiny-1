@@ -1,17 +1,23 @@
 name: D1 Tower baked plus common world layers
 
 on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-baked-plus-common.yml'
+      - 'tools/d1_gltf_layer_merge.py'
+      - 'tools/d1_world_common_layer_scene.py'
   workflow_run:
     workflows: ["D1 Tower common-layer model export"]
     types: [completed]
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
   assemble:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -28,7 +34,12 @@ jobs:
       - name: Recover exact common model and binary decal evidence artifacts
         run: |
           set -euo pipefail
-          model_run='${{ github.event.workflow_run.id }}'
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            model_run='${{ github.event.workflow_run.id }}'
+          else
+            model_run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$model_run"
           echo "MODEL_RUN=$model_run"
           gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
           gh run download 33974200735 -n d1-tower-decal-layer-with-dependencies -D source_decals
@@ -40,15 +51,15 @@ jobs:
           s=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
           if s.get('requested_models') != 69 or s.get('exported_models') != 69 or s.get('failed_models') != 0:
               raise SystemExit('common model corpus is not 69/69 closed: '+json.dumps(s))
-          # This key is deliberately required. Older artifacts that predate the
-          # full 0154/0155/0156 material dependency census must fail closed.
           if 'unavailable_material_parts' not in s:
               raise SystemExit('common model artifact predates material-dependency closure')
           if s['unavailable_material_parts']:
               raise SystemExit('unresolved common material parts remain: '+json.dumps(s['unavailable_material_parts']))
           if int((s.get('rejection_reason_histogram') or {}).get('material_unavailable',0)) != 0:
               raise SystemExit('material_unavailable rejection remains: '+json.dumps(s))
-          print('COMMON_MODEL_AND_MATERIAL_CORPUS_CLOSED',s['geometry_count'],s['triangle_count'],s.get('zero_geometry_models'))
+          if s.get('geometry_count') != 163 or s.get('triangle_count') != 15541:
+              raise SystemExit('closed common-model geometry fixture changed: '+json.dumps(s))
+          print('COMMON_MODEL_AND_MATERIAL_CORPUS_CLOSED',s['geometry_count'],s['triangle_count'])
           PY
       - name: Assemble exactly nine table-scoped common carriers
         run: |
@@ -60,9 +71,12 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/common_layer_scene.json'))
-          if d['source_record_count']!=327 or d['unique_model_count']!=69 or d['source_resolved_records']!=327 or d['unresolved_records']!=0:
-              raise SystemExit('common layer invariant failed: '+json.dumps({k:d.get(k) for k in ['source_record_count','unique_model_count','source_resolved_records','unresolved_records','zero_selected_geometry_models','valid_zero_geometry_records']}))
-          print('COMMON_LAYER_SOURCE_COVERAGE_OK',d['source_record_count'],d['geometry_emitting_record_placements'],d['valid_zero_geometry_records'])
+          expected={'source_record_count':327,'unique_model_count':69,'source_resolved_records':327,
+                    'unresolved_records':0,'geometry_emitting_record_placements':327,
+                    'valid_zero_geometry_records':0,'scene_geometry_variants':163,'scene_geometry_nodes':709}
+          bad={k:(d.get(k),v) for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('common layer invariant failed: '+json.dumps(bad))
+          print('COMMON_LAYER_SOURCE_COVERAGE_OK',d['source_record_count'],d['scene_geometry_nodes'])
           PY
       - name: Recover current ten-cell textured baked-static reference
         run: |
@@ -71,63 +85,90 @@ jobs:
             'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-ten-cell-r1/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' \
             -o combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
           echo 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa  combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' | sha256sum --check --strict
-      - name: Merge independently validated baked and common layers
+      - name: Merge at glTF JSON/BIN level without stripping baked textures
         run: |
           set -euo pipefail
-          python tools/d1_world_layer_merge.py \
-            --layer baked_static=combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+          python tools/d1_gltf_layer_merge.py \
+            --base combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
             --layer common_decal=common/D1_TOWER_COMMON_LAYER.glb \
-            --logical-count baked_static=11728 --logical-count common_decal=327 \
-            --out combined/D1_TOWER_BAKED_PLUS_COMMON.glb --report reports/baked_plus_common.json
+            --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb \
+            --report reports/baked_plus_common_gltf.json
           python - <<'PY'
           import json
-          d=json.load(open('reports/baked_plus_common.json'))
-          if d['logical_source_records_total']!=12055 or d['layer_count']!=2:
-              raise SystemExit('combined logical count mismatch')
+          g=json.load(open('reports/baked_plus_common_gltf.json'))
           c=json.load(open('reports/common_layer_scene.json'))
           ms=json.load(open('source_models/reports/common_layer_model_export_summary.json'))
+          if g.get('status')!='D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION':
+              raise SystemExit('unexpected glTF merge status')
+          if not g.get('base_bin_exact_prefix'):
+              raise SystemExit('base embedded BIN was not preserved exactly')
+          bad_prefix=[k for k,v in g.get('base_json_exact_prefixes',{}).items() if not v.get('exact')]
+          if bad_prefix: raise SystemExit('base JSON resource prefix changed: '+','.join(bad_prefix))
+          b=g['base_counts'];f=g['final_counts']
+          expected_base={'materials':400,'textures':537,'images':537,'meshes':2071}
+          bad={k:(b.get(k),v) for k,v in expected_base.items() if b.get(k)!=v}
+          if bad: raise SystemExit('base visual fixture changed: '+json.dumps(bad))
+          expected_final={'materials':499,'textures':537,'images':537,'meshes':2234}
+          bad={k:(f.get(k),v) for k,v in expected_final.items() if f.get(k)!=v}
+          if bad: raise SystemExit('combined glTF resource counts wrong: '+json.dumps(bad))
+          if g['output_bytes'] <= 531652324:
+              raise SystemExit('combined output unexpectedly no larger than textured base')
           out={
-            'status':'D1_TOWER_BAKED_PLUS_COMMON_STRUCTURAL_MILESTONE',
+            'schema_version':1,
+            'status':'D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED',
             'baked_retail_visible_placements':11728,
             'common_source_records':327,
+            'logical_source_records':12055,
             'common_unique_models':69,
             'common_model_geometry_parts':ms['geometry_count'],
             'common_model_triangles':ms['triangle_count'],
-            'common_geometry_emitting_records':c['geometry_emitting_record_placements'],
-            'common_valid_zero_geometry_records':c['valid_zero_geometry_records'],
-            'common_zero_geometry_models':ms.get('zero_geometry_models',[]),
-            'logical_source_records':12055,
-            'combined_geometry_nodes':d['geometry_nodes'],
-            'combined_geometry_variants':d['geometry_variants'],
-            'bounds':d['bounds'],'bytes':d['glb_bytes'],'sha256':d['glb_sha256'],
-            'scope':'Baked-static + table-scoped common/decal model layers only; terrain/entities/sky/lights/runtime layers remain separate future layers.',
+            'common_rendered_geometry_nodes':c['scene_geometry_nodes'],
+            'base_visual_resources':{k:b[k] for k in ('materials','textures','images','meshes')},
+            'combined_visual_resources':{k:f[k] for k in ('materials','textures','images','meshes')},
+            'base_bin_exact_prefix':g['base_bin_exact_prefix'],
+            'base_json_exact_prefixes':all(v['exact'] for v in g['base_json_exact_prefixes'].values()),
+            'bytes':g['output_bytes'],'sha256':g['output_sha256'],
+            'scope':'Ten baked-static cells plus the complete 327-record table-scoped common/decal geometry layer. Existing baked textures/normals are byte/resource preserved; common-layer material texturing remains a separate enrichment pass.'
           }
-          open('reports/FINAL_BAKED_PLUS_COMMON.json','w').write(json.dumps(out,indent=2)+'\n')
+          open('reports/FINAL_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.json','w').write(json.dumps(out,indent=2)+'\n')
           print(json.dumps(out,indent=2))
           PY
-      - name: Split combined GLB for artifact handoff
+      - name: Split fallback artifact and prepare release
         run: |
           set -euo pipefail
-          split -b 90M -d -a 2 combined/D1_TOWER_BAKED_PLUS_COMMON.glb chunks/D1_TOWER_BAKED_PLUS_COMMON.glb.part
-          cp reports/FINAL_BAKED_PLUS_COMMON.json reports/common_layer_scene.json reports/baked_plus_common.json source_models/reports/common_layer_model_export_summary.json chunks/
+          model=combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb
+          split -b 90M -d -a 2 "$model" chunks/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb.part
+          cp reports/FINAL_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.json reports/common_layer_scene.json reports/baked_plus_common_gltf.json source_models/reports/common_layer_model_export_summary.json chunks/
           python - <<'PY'
           from pathlib import Path
           parts=sorted(p.name for p in Path('chunks').glob('*.glb.part*'))
-          Path('chunks/REASSEMBLE_WINDOWS.cmd').write_text('@echo off\r\ncopy /b '+ '+'.join(parts)+' D1_TOWER_BAKED_PLUS_COMMON.glb\r\ncertutil -hashfile D1_TOWER_BAKED_PLUS_COMMON.glb SHA256\r\npause\r\n')
-          Path('chunks/README.txt').write_text('Structural Tower milestone: 11,728 baked-static placements plus 327 table-scoped common/decal source records. Common materials are not yet fully texture-baked.\n')
+          Path('chunks/REASSEMBLE_WINDOWS.cmd').write_text('@echo off\r\ncopy /b '+ '+'.join(parts)+' D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb\r\ncertutil -hashfile D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb SHA256\r\npause\r\n')
+          Path('chunks/README.txt').write_text('Texture-preserved structural Tower milestone: 11,728 baked placements + 327 common/decal records. The original baked GLB resources are exact prefixes of this GLB.\n')
           PY
+      - name: Publish single-file proper model
+        run: |
+          set -euo pipefail
+          tag=d1-tower-baked-common-r2
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title 'D1 Tower baked + common r2' \
+              --notes 'Texture-preserved Tower structural milestone: 11,728 retail-visible baked-static placements plus all 327 table-scoped common/decal source records. Existing baked textures and normals are preserved exactly. Common/decal materials are not yet fully texture-baked.'
+          fi
+          gh release upload "$tag" \
+            combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.glb \
+            reports/FINAL_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.json --clobber
       - uses: actions/upload-artifact@v4
         with:
-          name: d1-tower-common-layer-scene
+          name: d1-tower-baked-plus-common-texture-preserved-reports
           path: |
-            common/D1_TOWER_COMMON_LAYER.glb
+            reports/FINAL_BAKED_PLUS_COMMON_TEXTURE_PRESERVED.json
+            reports/baked_plus_common_gltf.json
             reports/common_layer_scene.json
             source_models/reports/common_layer_model_export_summary.json
           retention-days: 14
           compression-level: 6
       - uses: actions/upload-artifact@v4
         with:
-          name: d1-tower-baked-plus-common-chunks
+          name: d1-tower-baked-plus-common-texture-preserved-chunks
           path: chunks/
           retention-days: 14
           compression-level: 0
