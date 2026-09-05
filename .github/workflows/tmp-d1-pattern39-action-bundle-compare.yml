@@ -1,0 +1,93 @@
+name: Temporary compare D1 pattern39 action bundle to CA2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-d1-pattern39-action-bundle-compare.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and global packages
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x45190B000 \
+            --target ps4_globals_0151_0.pkg --target ps4_globals_0151_1.pkg --target ps4_globals_0151_2.pkg \
+            --target ps4_globals_0151_3.pkg --target ps4_globals_0151_4.pkg --target ps4_globals_0151_5.pkg --target ps4_globals_0151_6.pkg \
+            --out recovered --manifest out/0151_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x44EE5D200 \
+            --target ps4_globals_0156_0.pkg --target ps4_globals_0156_1.pkg --target ps4_globals_0156_2.pkg \
+            --target ps4_globals_0156_3.pkg --target ps4_globals_0156_4.pkg --target ps4_globals_0156_5.pkg --target ps4_globals_0156_6.pkg \
+            --out recovered --manifest out/0156_extract.json --retries 6 --timeout 90
+      - name: Decode pattern-owned and CA2 action controls
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_animation_control_state_map.py recovered/ps4_globals_0151_6.pkg --runtime runtime \
+            --control-tag 80AA2DCD -o out/pattern39_80AA2DCD_state_map.json
+          python tools/d1_animation_control_state_map.py recovered/ps4_globals_0151_6.pkg --runtime runtime \
+            --control-tag 80AA3CC9 -o out/ca2_80AA3CC9_state_map.json
+          python tools/d1_animation_wrapper_state_map.py recovered/ps4_globals_0151_6.pkg --runtime runtime \
+            --wrapper-tag 80AA2DDB -o out/pattern39_80AA2DDB_wrapper.json
+          python tools/d1_animation_wrapper_state_map.py recovered/ps4_globals_0151_6.pkg --runtime runtime \
+            --wrapper-tag 80AA3CCB -o out/ca2_80AA3CCB_wrapper.json
+      - name: Compare known action selections and context table
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entry_extract import EntryReader
+          from d1_fnv1_action_probe import fnv1
+
+          names=['idle','ready','reload_empty','reload_full','fire','jump','base','sprint','melee','aim','zoom','lower','raise']
+          known={fnv1(x):x for x in names}
+          pa=json.load(open('out/pattern39_80AA2DCD_state_map.json'))
+          ca=json.load(open('out/ca2_80AA3CC9_state_map.json'))
+          def action_rows(d):
+            return {x['state_name']:{'record_index':x['record_index'],'state_hash':x['state_hash'],'start':x['selection_start'],'count':x['selection_count'],
+                                      'clips':[a['tag_hash'] for a in x['selected_animations']]} for x in d['state_table']['records'] if x.get('state_name')}
+          p=action_rows(pa);c=action_rows(ca)
+          matrix={name:{'pattern39':p.get(name),'ca2':c.get(name),'same_clips':bool(p.get(name) and c.get(name) and p[name]['clips']==c[name]['clips'])} for name in sorted(set(p)|set(c))}
+
+          r=EntryReader(Path('recovered/ps4_globals_0156_6.pkg'),Path('runtime'));by={e['tag_hash'].upper():e for e in r.entries}
+          e=by['80AADE4C'];b=r.entry(e['index'])
+          dwords=[]
+          for o in range(0,len(b)-3,4):
+            v=struct.unpack_from('<I',b,o)[0]
+            row={'offset':o,'value':f'{v:08X}'}
+            if v in known: row['fnv_name']=known[v]
+            dwords.append(row)
+          rep={'pattern_entity':'80A6A017','pattern_index':39,'pattern_bundle_resource':'80AAECD6',
+               'pattern_control':'80AA2DCD','pattern_context':'80AADE4C','pattern_wrapper':'80AA2DDB',
+               'ca2_owner':'80AA3CA2','ca2_control':'80AA3CC9','ca2_wrapper':'80AA3CCB',
+               'action_matrix':matrix,'pattern_control_counts':{'animations':pa['animation_list']['count'],'states':pa['state_table']['count']},
+               'ca2_control_counts':{'animations':ca['animation_list']['count'],'states':ca['state_table']['count']},
+               'pattern_context_entry':{'reference':e['reference'].upper(),'size':len(b),'dwords':dwords},
+               'policy':'Pattern bundle references are serialized together in 80AAECD6. Action equality/difference is reported literally; no ownership equivalence is inferred merely from matching clips.'}
+          Path('out/pattern39_vs_ca2_action_bundle.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in rep.items() if k not in ('pattern_context_entry',)},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-pattern39-action-bundle-compare
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
