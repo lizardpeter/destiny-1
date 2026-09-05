@@ -18,10 +18,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+        with: {python-version: '3.13'}
 
-      - name: Recover 024C patch siblings 2-5 and verified Oodle DLL
+      - name: Recover complete 024C family and verified Oodle DLL
         shell: bash
         run: |
           set -euo pipefail
@@ -32,6 +31,8 @@ jobs:
           sys.path.insert(0,'tools')
           from d1_split_tar_extract import SplitHttpTar
           rows=[
+            ('ps4_city_tower_destination_024c_0.pkg',7542949376,137527296,'ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2'),
+            ('ps4_city_tower_destination_024c_1.pkg',7680477184,12226560,'21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8'),
             ('ps4_city_tower_destination_024c_2.pkg',7692704256,13574144,'681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45'),
             ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
             ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
@@ -47,19 +48,38 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
 
-      - name: Probe control and failing patched blocks with native Oodle
+      - name: Prove native Oodle control blocks
         shell: bash
         run: |
           set -euo pipefail
-          python tools/d1_oodle_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --block 709 --block 710 --block 724 --block 725 --block 763 -o reports/native_windows_oodle_blocks.json
-          cat reports/native_windows_oodle_blocks.json
+          python tools/d1_oodle_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --count 5 -o reports/native_windows_controls.json
+          cat reports/native_windows_controls.json
 
-      - name: Decode target 80C98258 with native Oodle if block probe succeeds
+      - name: Probe suspect blocks independently
         shell: bash
         run: |
-          set -euo pipefail
-          python tools/d1_entry_extract.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --tag-hash 80C98258 --dump-dir reports/raw -o reports/80C98258_native_windows.json
-          cat reports/80C98258_native_windows.json
+          set -u
+          for b in 709 710 724 725 763; do
+            echo "=== BLOCK $b ==="
+            set +e
+            python tools/d1_oodle_probe.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --block "$b" -o "reports/block_${b}.json" >"reports/block_${b}.log" 2>&1
+            rc=$?
+            set -e
+            echo "$rc" > "reports/block_${b}.rc"
+            cat "reports/block_${b}.log"
+            if [ -f "reports/block_${b}.json" ]; then cat "reports/block_${b}.json"; fi
+          done
+
+      - name: Decode target 80C98258 if block 725 passed
+        shell: bash
+        run: |
+          set -u
+          if [ "$(cat reports/block_725.rc)" = "0" ]; then
+            python tools/d1_entry_extract.py recovered/ps4_city_tower_destination_024c_5.pkg --runtime runtime --tag-hash 80C98258 --dump-dir reports/raw -o reports/80C98258_native_windows.json
+            cat reports/80C98258_native_windows.json
+          else
+            echo 'block 725 did not decode; target extraction deliberately not attempted' | tee reports/80C98258_native_windows_skipped.txt
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
