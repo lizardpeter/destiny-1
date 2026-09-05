@@ -1,0 +1,92 @@
+name: D1 character and playable Guardian package discovery
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-character-package-discovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Query final PS4 package index and classify character candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 3 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+
+          python - <<'PY'
+          from pathlib import Path
+          import collections, json, re
+
+          text=Path('reports/packages.txt').read_text(errors='replace')
+          raw=re.findall(r'[^\s]+\.pkg', text, flags=re.I)
+          names=sorted({Path(x).name for x in raw})
+
+          groups={
+            'player_guardian_explicit': re.compile(r'(guardian|player|playable|character|avatar)', re.I),
+            'player_body_customization': re.compile(r'(armor|armour|body|head|face|hair|male|female|gender|exo|awoken|human|race|custom|appearance|helmet|class)', re.I),
+            'player_class': re.compile(r'(titan|hunter|warlock)', re.I),
+            'enemy_race_arch': re.compile(r'(cabal|vex|hive|fallen|eliksni|taken)', re.I),
+            'combatant_semantic': re.compile(r'(combatant|enemy|npc|ai|creature|actor|pawn)', re.I),
+          }
+
+          out={'package_count':len(names),'groups':{},'prefix_counts':{}}
+          for g,rx in groups.items():
+              vals=[n for n in names if rx.search(n)]
+              out['groups'][g]=vals
+
+          # Keep architecture prefixes visible; these are useful for choosing full logical families.
+          prefixes=collections.Counter()
+          for n in names:
+              stem=n[:-4]
+              toks=stem.split('_')
+              prefixes['_'.join(toks[:4])] += 1
+          out['prefix_counts']=dict(prefixes.most_common(500))
+
+          # Stronger prioritized candidates. Filename score is discovery-only, never gameplay proof.
+          scored=[]
+          weights=[
+            (re.compile(r'(guardian|player|playable|avatar)',re.I),100),
+            (re.compile(r'(titan|hunter|warlock)',re.I),80),
+            (re.compile(r'(combatant|enemy|npc|ai|creature|actor|pawn)',re.I),70),
+            (re.compile(r'(armor|armour|body|head|face|hair|male|female|exo|awoken|custom|appearance)',re.I),45),
+            (re.compile(r'(cabal|vex|hive|fallen|eliksni|taken)',re.I),25),
+            (re.compile(r'arch_human',re.I),20),
+          ]
+          for n in names:
+              score=sum(w for rx,w in weights if rx.search(n))
+              if score:
+                  scored.append((score,n))
+          scored.sort(key=lambda x:(-x[0],x[1]))
+          out['ranked_candidates']=[{'score':s,'name':n} for s,n in scored[:1500]]
+
+          Path('reports/character_package_discovery.json').write_text(json.dumps(out,indent=2)+'\n')
+          with Path('reports/character_package_discovery.txt').open('w') as f:
+              f.write(f"total packages: {len(names)}\n")
+              for g in groups:
+                  vals=out['groups'][g]
+                  f.write(f"\n=== {g} ({len(vals)}) ===\n")
+                  for n in vals[:800]: f.write(n+'\n')
+              f.write('\n=== ranked candidates ===\n')
+              for row in out['ranked_candidates'][:800]:
+                  f.write(f"{row['score']:3d}  {row['name']}\n")
+
+          print(Path('reports/character_package_discovery.txt').read_text())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-character-package-discovery
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
