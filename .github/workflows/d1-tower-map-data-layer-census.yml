@@ -8,6 +8,7 @@ on:
       - 'tools/d1_world_map_data_layer_census.py'
       - 'tools/d1_world_static_map_resource_chain_census.py'
       - 'tools/d1_world_static_map_content_census.py'
+      - 'tools/d1_world_static_map_target_plan.py'
 
 permissions:
   contents: read
@@ -69,6 +70,34 @@ jobs:
             --expected-static-map 80CA0C60 \
             --out reports/tower_static_map_resource_chain_census.json \
             | tee reports/tower_static_map_resource_chain_census_stdout.txt
+      - name: Derive source-driven table/decal and baked target plan
+        run: |
+          set -euo pipefail
+          python tools/d1_world_static_map_target_plan.py \
+            --chain-json reports/tower_static_map_resource_chain_census.json \
+            --out reports/tower_static_map_target_plan.json \
+            --tsv reports/tower_static_map_target_plan.tsv \
+            | tee reports/tower_static_map_target_plan_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_static_map_target_plan.json'))
+          expected={
+            'status':'D1_WORLD_STATIC_MAP_TARGET_PLAN_COMPLETE',
+            'map_data_table_count':9,
+            'source_entry_count':337,
+            'table_scoped_decal_target_count':9,
+            'table_scoped_target_kind_counts':{'no_direct_d1_static_child':9},
+            'table_scoped_target_row_reference_count':327,
+            'baked_static_target_count':10,
+            'direct_d1_baked_row_count':10,
+            'no_direct_d1_static_child_row_count':327,
+            'unique_table_scoped_static_maps':9,
+            'unique_baked_static_maps':10,
+          }
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('Tower source-driven target-plan mismatch: '+json.dumps(bad,indent=2))
+          print('TOWER_SOURCE_DRIVEN_TARGET_PLAN_CLOSED',json.dumps(expected,sort_keys=True))
+          PY
       - name: Census baked-static content across all unique map resources
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
