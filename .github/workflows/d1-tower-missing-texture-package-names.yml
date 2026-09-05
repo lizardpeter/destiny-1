@@ -1,0 +1,37 @@
+name: D1 Tower missing texture package names
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-missing-texture-package-names.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  names:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve current physical family names
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          ids=['0154','0155','0156','0157','0158','01db']
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          out={i:sorted(n for n in names if re.search(rf'_{i}_[0-9]+\.pkg$',n,re.I)) for i in ids}
+          Path('reports/missing_texture_package_names.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-missing-texture-package-names
+          path: reports/missing_texture_package_names.json
+          retention-days: 14
+          if-no-files-found: error
