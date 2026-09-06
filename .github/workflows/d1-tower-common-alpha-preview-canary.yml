@@ -1,0 +1,134 @@
+name: D1 Tower common transparent-pass alpha preview canary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-alpha-preview-canary.yml'
+      - 'tools/d1_gltf_apply_map_decal_alpha_preview.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v2.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_world_common_layer_scene.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime recovered texture_deps source_models selector common textures reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover latest closed common model artifact and isolate reported offenders
+        run: |
+          set -euo pipefail
+          model_run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$model_run"
+          gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
+          python tools/d1_world_common_layer_scene.py \
+            --census source_models/reports/common_layer_source_census.json \
+            --model-dir source_models/models \
+            --out common/COMMON_UNTEXTURED.glb --report reports/common_scene.json
+          python - <<'PY'
+          import json,collections
+          c=json.load(open('source_models/reports/common_layer_source_census.json'))
+          m=json.load(open('source_models/reports/common_layer_model_export.json'))
+          by={x['model']:x for x in m['models']}
+          records=[r for r in c['table_scoped_records'] if str(r.get('map_data_table','')).upper()=='80C989F7']
+          hist=collections.Counter(str(r.get('entity_model','')).upper() for r in records)
+          target='80CA0B97';tr=by.get(target)
+          selected=[]
+          if tr:
+            for mesh in tr.get('meshes',[]):
+              for p in mesh.get('parts',[]):
+                if p.get('selected'):
+                  selected.append({'mesh':mesh['mesh_index'],'part':p['part_index'],'lod':p['lod'],'material':(p.get('material_info') or {}).get('hash') or p.get('material'),'index_count':p.get('index_count'),'triangle_count':p.get('triangle_count')})
+          out={'status':'D1_TOWER_COMMON_VISUAL_OFFENDER_CENSUS','table_80C989F7_record_count':len(records),'table_80C989F7_model_histogram':dict(hist),'model_80CA0B97_present':tr is not None,'model_80CA0B97_selected_parts':selected,'model_80CA0B97_geometry_count':None if tr is None else tr.get('geometry_count'),'model_80CA0B97_bounds':None if tr is None else tr.get('bounds')}
+          json.dump(out,open('reports/common_visual_offenders.json','w'),indent=2);print(json.dumps(out,indent=2))
+          mats=set();parts=0
+          for model in m.get('models',[]):
+            if not model.get('ok'):continue
+            for mesh in model.get('meshes',[]):
+              for p in mesh.get('parts',[]):
+                if not p.get('selected'):continue
+                parts+=1;h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                if h:mats.add(str(h).upper())
+          assert parts==163 and len(mats)==99,(parts,len(mats))
+          json.dump({'status':'D1_COMMON_LAYER_MATERIAL_SELECTOR','selected_parts':parts,'material_count':len(mats),'materials':{h:{'visual':True} for h in sorted(mats)}},open('selector/common_material_selector.json','w'),indent=2)
+          PY
+      - name: Recover current exact texture corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json --package-list reports/packages.txt \
+            --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db --out-dir texture_deps --report reports/texture_family_recovery.json
+          mapfile -t files < <(find recovered texture_deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=();for f in "${files[@]}";do args+=(--snapshot "$f");done
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime --visual-json selector/common_material_selector.json --out textures | tee reports/texture_export_stdout.txt
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o reports/common_texture_roles.json
+      - name: Measure alpha actually present in portable base candidates
+        run: |
+          python - <<'PY'
+          import json,os
+          from PIL import Image
+          man=json.load(open('textures/material_texture_manifest.json'));roles=json.load(open('reports/common_texture_roles.json'))
+          rows=[]
+          for mh,r in sorted((roles.get('materials') or {}).items()):
+            tag=r.get('preview_base_color');conf=r.get('preview_base_confidence')
+            if not tag or conf not in {'PROVEN','STRONG_FORMAT_CANDIDATE','MEDIUM_PREVIEW_CANDIDATE'}:continue
+            tr=(man.get('textures') or {}).get(str(tag).upper()) or {};rel=tr.get('png')
+            if not rel:continue
+            p=os.path.join('textures','textures',rel)
+            with Image.open(p) as im:
+              rgba=im.convert('RGBA');a=list(rgba.getchannel('A').getdata());n=len(a);amin=min(a);amax=max(a);nonopaque=sum(x<255 for x in a);zero=sum(x==0 for x in a)
+            rows.append({'material':mh,'base_texture':str(tag).upper(),'confidence':conf,'alpha_min':amin,'alpha_max':amax,'nonopaque_fraction':nonopaque/n,'zero_alpha_fraction':zero/n})
+          out={'material_count':len(rows),'materials_with_nonopaque_alpha':sum(x['alpha_min']<255 for x in rows),'materials_with_zero_alpha':sum(x['alpha_min']==0 for x in rows),'rows':rows}
+          json.dump(out,open('reports/common_base_alpha_census.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+      - name: Build exact-texture common GLB then stop forcing transparents opaque
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb common/COMMON_UNTEXTURED.glb --manifest textures/material_texture_manifest.json --roles reports/common_texture_roles.json --texture-dir textures/textures \
+            --include-medium-base --bind-normal-candidates --expect-exact-textures 50 --expect-derived-normals 1 \
+            --out common/COMMON_EXACT_TEXTURES_OLD_ALPHA.glb --report reports/common_exact_textures_old_alpha.json
+          python tools/d1_gltf_apply_map_decal_alpha_preview.py \
+            --input-glb common/COMMON_EXACT_TEXTURES_OLD_ALPHA.glb --expect-materials 99 \
+            --out common/COMMON_EXACT_TEXTURES_TRANSPARENT_PREVIEW.glb --report reports/common_alpha_preview.json
+          python - <<'PY'
+          import json
+          from tools.d1_gltf_layer_merge import read_glb
+          d=json.load(open('reports/common_alpha_preview.json'));assert d['status']=='D1_GLTF_MAP_DECAL_ALPHA_PREVIEW_APPLIED' and d['material_count']==99 and d['binary_exact'] is True,d
+          doc,_=read_glb('common/COMMON_EXACT_TEXTURES_TRANSPARENT_PREVIEW.glb');assert len(doc['materials'])==99 and all(m.get('alphaMode')=='BLEND' for m in doc['materials'])
+          print('COMMON_ALPHA_PREVIEW_GREEN',d['output_sha256'],d['output_bytes'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-common-alpha-preview-canary
+          path: |
+            common/COMMON_EXACT_TEXTURES_TRANSPARENT_PREVIEW.glb
+            reports/common_visual_offenders.json
+            reports/common_base_alpha_census.json
+            reports/common_alpha_preview.json
+            reports/common_exact_textures_old_alpha.json
+          retention-days: 14
+          compression-level: 6
