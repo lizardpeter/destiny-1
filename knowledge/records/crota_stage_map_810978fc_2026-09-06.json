@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "record_type": "d1_exact_reverse_engineering_evidence",
+  "subject": "Crota-stage SMapDataTable 810978FC",
+  "date": "2026-09-06",
+  "status": "SOURCE_CLOSED_STAGE_MAP_COMPOSITION_NOT_PROVEN_CROTA_BODY",
+  "proof_chain": [
+    "moon_raid_1 location 083EC0AD",
+    "S6E 8108E17C stage 7",
+    "literal source string dark_lens.sq_crota",
+    "literal source string dark_lens.sq_crota__boss",
+    "stage dependency 810978FC class 808009A2 / source-pinned SMapDataTable",
+    "SMapDataTable +0x08 DynamicArray<SMapDataEntry>, exact stride 0x90"
+  ],
+  "map_data_table": {
+    "tag_hash": "810978FC",
+    "class_hash": "808009A2",
+    "payload_bytes": 24672,
+    "entry_count": 171,
+    "unique_entity_hashes": ["810978FD", "810978FE", "810978FF", "81097900", "81097901"],
+    "unique_data_resource_classes": [],
+    "violations": []
+  },
+  "placed_entity_families": [
+    {"entity_hash": "810978FD", "model": "8109790F", "skeletons": [], "source_mapped_names": []},
+    {"entity_hash": "810978FE", "model": "808EEF7F", "skeletons": [], "source_mapped_names": []},
+    {"entity_hash": "810978FF", "model": "808EEF7D", "skeletons": [], "source_mapped_names": []},
+    {"entity_hash": "81097900", "model": null, "skeletons": [], "source_mapped_names": [], "unresolved_entity_resource": "81097903", "unresolved_inner_class_pair": ["80800493", "8080081D"]},
+    {"entity_hash": "81097901", "model": "808EEF7B", "skeletons": [], "source_mapped_names": []}
+  ],
+  "unresolved_helper_resources_with_same_inner_class_pair": [
+    "81097903", "81097906", "8109790B", "8109790C", "8109790D"
+  ],
+  "helper_inner_class_pair": {
+    "manifest_or_discriminator_class": "80800493",
+    "parent_or_resource_class": "8080081D",
+    "pinned_charm_schema_name": null,
+    "policy": "Remain unknown. Direct searches of pinned MontagueM/Charm commit 50d36ee1f9ecadad7522504c20b1f3f9c97e30af EntityResource.cs and EntityStructs.cs did not define 93048080 or 1D088080."
+  },
+  "comparison": {
+    "ultra_knight_stage_table": "8108E2FF",
+    "entry_count": 7,
+    "unique_entity_hashes": ["80BB602C", "8108E35F", "81097863"],
+    "models": ["8108E4E6"],
+    "combatant_skeletons": []
+  },
+  "workflow_evidence": {
+    "run_id": 34065142199,
+    "artifact_id": 9998697670,
+    "artifact_zip_sha256": "27b39fdba8d22595b1ce09d8bc2dd6ca660002e410f3d2a5961451f4681ed574"
+  },
+  "conclusion": "810978FC is exactly owned by the Crota encounter stage and exactly contains 171 placements, but none of its five EntitySK families exposes a combatant skeleton or source-mapped Crota identity. The table is therefore retained as Crota-stage map composition evidence and must not be promoted as Crota's articulated body without an additional exact semantic and rig ownership edge.",
+  "policy": "No semantic identity is inferred from geometry, transforms, package locality, repeated placement patterns, model appearance, or proximity to Crota-named strings."
+}
