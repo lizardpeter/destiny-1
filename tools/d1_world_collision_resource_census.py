@@ -84,6 +84,12 @@ def parse_occlusion(c, h: str) -> dict:
         return rep
     rep['payload_bytes'] = len(b)
     arr = layer.dyn(b, 0x08, 0x30)
+    # D1 permits a zero-count DynamicArray to carry an unused relative pointer whose
+    # computed target lies beyond this short payload. No element bytes are dereferenced,
+    # so count==0 is a valid empty table rather than a bounds failure.
+    if arr.get('count') == 0:
+        arr['ok'] = True
+        arr['empty_array_pointer_ignored'] = True
     rep['instance_bounds_array'] = arr
     if not arr['ok']:
         rep['violations'].append('instance_bounds_array_bounds')
