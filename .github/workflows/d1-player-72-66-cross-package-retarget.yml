@@ -25,7 +25,7 @@ jobs:
       - name: Install pinned parser and verified Oodle runtime
         run: |
           set -euo pipefail
-          python -m pip install -q numpy scipy pyglm
+          python -m pip install -q numpy scipy pyglm trimesh
           git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
           git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
           test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
