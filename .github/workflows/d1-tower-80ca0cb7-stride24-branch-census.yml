@@ -46,8 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json,struct,sys
-          from collections import Counter,defaultdict
+          import json,sys
+          from collections import Counter
           from pathlib import Path
           import numpy as np
           sys.path.insert(0,'tools')
@@ -59,14 +59,23 @@ jobs:
           t=schema.parse_static_table(c,'80C99827')
           assert t.get('mesh_entries') and t.get('info_entries') and t.get('material_hashes')
 
-          ref_cache={}
-          def ref(h):
+          ref_cache={}; unavailable=set()
+          def try_ref(h):
               h=str(h).upper()
-              if h not in ref_cache: ref_cache[h]=base.read_reference_file(c,h)
+              if h=='FFFFFFFF': return None
+              if h in unavailable: return None
+              if h not in ref_cache:
+                  try: ref_cache[h]=base.read_reference_file(c,h)
+                  except KeyError:
+                      unavailable.add(h); return None
               return ref_cache[h]
+          def strict_ref(h):
+              r=try_ref(h)
+              if r is None: raise AssertionError(f'target-family reference unexpectedly unavailable: {h}')
+              return r
           def stride(h):
-              if str(h).upper()=='FFFFFFFF': return None
-              return base.hdr_stride(ref(h)['header'])
+              r=try_ref(h)
+              return None if r is None else base.hdr_stride(r['header'])
 
           mat_cache={}
           def material_shader(h):
@@ -77,31 +86,33 @@ jobs:
                   p=parse_material(b,'PS4'); row.update(vs=str(p['vertex_shader']).upper(),ps=str(p['pixel_shader']).upper())
               mat_cache[h]=row;return row
 
-          # Static records are referenced one-for-one by the info table in this table.
           draws=[]
           for info in t['info_entries']:
               si=int(info['static_index']);mi=int(info['material_index'])
               if not (0<=si<len(t['mesh_entries']) and 0<=mi<len(t['material_hashes'])): continue
               m=t['mesh_entries'][si]
+              # Some unrelated table records point outside the recovered Tower family.
+              # They are not candidates for the already-proven 8+24 population.  Only
+              # skip while classifying; once a row is classified as 8+24, every backing
+              # reference below is strict and must resolve.
               if (stride(m['vertices0']),stride(m['vertices1'])) != (8,24): continue
               mh=t['material_hashes'][mi]; sh=material_shader(mh)
               assert sh['vs']=='80CA0CB7',(si,mh,sh)
-              v1=ref(m['vertices1'])
+              v1=strict_ref(m['vertices1'])
               raw=np.frombuffer(v1['backing'],dtype=np.uint8).reshape(-1,24)
               check=np.frombuffer(raw[:,0x0E:0x10].copy().tobytes(),dtype='<i2')
               check2=np.frombuffer(raw[:,0x16:0x18].copy().tobytes(),dtype='<i2')
               branch_a=(check==0)&((check2==32767)|(check2==-32767))
 
-              ib=ref(m['indices']); inds=base.decode_indices(ib['backing'],base.index_is32(ib['header']))
+              ib=strict_ref(m['indices']); inds=base.decode_indices(ib['backing'],base.index_is32(ib['header']))
               off=int(m['index_offset']);cnt=int(m['index_count'])
               faces=base.primitive_faces(inds[off:off+cnt],int(m['primitive_type']),base.index_is32(ib['header']))
               used=np.unique(faces.reshape(-1)) if len(faces) else np.array([],dtype=np.int64)
               assert len(used)>0,(si,off,cnt)
               assert int(used.max())<len(raw),(si,int(used.max()),len(raw))
               ua=branch_a[used]
-              rgba04=raw[used,4:8]
-              words04=np.frombuffer(rgba04.copy().tobytes(),dtype='<i2').reshape(-1,2)
-              pos=ref(m['vertices0']); raw0=np.frombuffer(pos['backing'],dtype='<i2').reshape(-1,4)
+              words04=np.frombuffer(raw[used,4:8].copy().tobytes(),dtype='<i2').reshape(-1,2)
+              pos=strict_ref(m['vertices0']); raw0=np.frombuffer(pos['backing'],dtype='<i2').reshape(-1,4)
               assert int(used.max())<len(raw0)
               draws.append({
                 'info_index':info['index'],'static_index':si,'material':mh,'vs':sh['vs'],'ps':sh['ps'],
@@ -115,12 +126,13 @@ jobs:
                 'primary_w_min':int(raw0[used,3].min()),'primary_w_max':int(raw0[used,3].max()),
               })
 
-          assert len(draws)==59,len(draws)
+          # Independent prior table census proved exactly 59 resolved 8+24 draws.
+          assert len(draws)==59,(len(draws),sorted(unavailable))
           unique_v1={r['vertices1'] for r in draws}
           by_v1={}
           for h in sorted(unique_v1):
               rr=[r for r in draws if r['vertices1']==h]
-              v1=ref(h);raw=np.frombuffer(v1['backing'],dtype=np.uint8).reshape(-1,24)
+              raw=np.frombuffer(strict_ref(h)['backing'],dtype=np.uint8).reshape(-1,24)
               check=np.frombuffer(raw[:,0x0E:0x10].copy().tobytes(),dtype='<i2')
               check2=np.frombuffer(raw[:,0x16:0x18].copy().tobytes(),dtype='<i2')
               a=(check==0)&((check2==32767)|(check2==-32767))
@@ -131,11 +143,10 @@ jobs:
           target=[r for r in draws if r['material']=='80C9993C']
           assert sorted(r['static_index'] for r in target)==[578,579,798,799]
           visible=[r for r in target if r['detail_level'] in (0,1,2,3,10)]
-          all_used_a=sum(r['used_branch_a'] for r in draws)
-          all_used_b=sum(r['used_branch_b'] for r in draws)
+          all_used_a=sum(r['used_branch_a'] for r in draws);all_used_b=sum(r['used_branch_b'] for r in draws)
           out={
-            'schema_version':1,'status':'D1_80CA0CB7_STRIDE8_24_BRANCH_CENSUS','table':'80C99827',
-            'draw_count':len(draws),'unique_secondary_buffers':len(unique_v1),
+            'schema_version':2,'status':'D1_80CA0CB7_STRIDE8_24_BRANCH_CENSUS','table':'80C99827',
+            'draw_count':len(draws),'unique_secondary_buffers':len(unique_v1),'nonfamily_unavailable_headers':sorted(unavailable),
             'used_vertex_references':all_used_a+all_used_b,'used_branch_a_references':all_used_a,'used_branch_b_references':all_used_b,
             'draws_with_used_branch_b':sum(r['used_branch_b']>0 for r in draws),
             'buffers_with_any_branch_b':sum(x['branch_b']>0 for x in by_v1.values()),
@@ -148,7 +159,7 @@ jobs:
             'policy':'The Charm branch selector is measured, not assumed. Native fetch mapping may only be promoted for a scope in which the indexed retail vertices have one unambiguous serialized packing.'
           }
           Path('reports/80CA0CB7_stride8_24_branch_census.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps({k:out[k] for k in ('status','draw_count','unique_secondary_buffers','used_vertex_references','used_branch_a_references','used_branch_b_references','draws_with_used_branch_b','buffers_with_any_branch_b','promotion_gate','target_80C9993C_visible')},indent=2))
+          print(json.dumps({k:out[k] for k in ('status','draw_count','unique_secondary_buffers','nonfamily_unavailable_headers','used_vertex_references','used_branch_a_references','used_branch_b_references','draws_with_used_branch_b','buffers_with_any_branch_b','promotion_gate','target_80C9993C_visible')},indent=2))
           PY
 
       - uses: actions/upload-artifact@v4
