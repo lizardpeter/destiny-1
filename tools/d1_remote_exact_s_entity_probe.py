@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Resolve one or more exact D1 PS4 s_entity records and all serialized Resource[] children.
+"""Resolve exact D1 PS4 s_entity records and their serialized Resource[] children.
 
-This is a targeted source-proof tool. For each requested s_entity FileHash it:
+For every requested FileHash this source-proof tool:
 - validates class 0x80800734,
 - decodes the validated Resource[] array,
-- resolves each child FileHash through the verified universal member catalog,
+- resolves every child FileHash through the verified universal member catalog,
 - parses child EntityResources with the validated PS4 parser,
-- exposes exact semantic roles and embedded s_entity_model FileHashes when present,
-- resolves embedded model metadata without inferring ownership from locality or naming.
-
-No adjacency, appearance, package-name, or semantic-name heuristic participates.
+- exposes exact semantic roles and embedded s_entity_model FileHashes,
+- source-closes skeleton node counts/hashes when the EntityResource role is
+  entity_skeleton,
+- resolves embedded model metadata without inferring ownership from locality,
+  adjacency, naming, package names, or appearance.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from d1_crota_raid_candidate_probe import LazyExactHashResolver, meta_row, norm
 from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_s_entity_resource_package_find import S_ENTITY_REF, parse_entity_resources
+from d1_skeleton_probe import parse_skeleton_resource
 from d1_split_tar_extract import SplitHttpTar
 
 ENTITY_MODEL_CLASS = '80801AB5'
@@ -84,7 +86,8 @@ def main() -> int:
                     rrow['entry'] = meta_row(re)
                     ref = re['reference'].upper()
                     if ref == ENTITY_RESOURCE_CLASS and re['type'] == 16 and re['subtype'] == 0:
-                        parsed = parse_resource(rv.entry(re['index']), 'PS4')
+                        child_payload = rv.entry(re['index'])
+                        parsed = parse_resource(child_payload, 'PS4')
                         er = {
                             'semantic_role': parsed.get('semantic_role'),
                             'unk10_class': (parsed.get('unk10') or {}).get('class_hash'),
@@ -97,7 +100,7 @@ def main() -> int:
                         if model and norm(model) not in ('00000000', 'FFFFFFFF'):
                             mh = norm(model)
                             try:
-                                mv, me = resolver.locate(mh)
+                                _mv, me = resolver.locate(mh)
                                 rrow['embedded_model_entry'] = meta_row(me)
                                 if me['reference'].upper() != ENTITY_MODEL_CLASS:
                                     rrow['embedded_model_class_violation'] = (
@@ -105,6 +108,16 @@ def main() -> int:
                                     )
                             except Exception as ex:
                                 rrow['embedded_model_resolution_error'] = repr(ex)
+                        if er.get('semantic_role') == 'entity_skeleton':
+                            try:
+                                sk = parse_skeleton_resource(child_payload)
+                                info = sk['skeleton_info']
+                                rrow['skeleton'] = {
+                                    'node_count': int(info['node_hierarchy']['count']),
+                                    'bone_hashes': [x['node_hash'] for x in info.get('bones', [])],
+                                }
+                            except Exception as ex:
+                                rrow['skeleton_parse_error'] = repr(ex)
                     elif ref == ENTITY_MODEL_CLASS:
                         rrow['direct_entity_model'] = True
                 except Exception as ex:
@@ -113,6 +126,18 @@ def main() -> int:
                 resolved_resources.append(rrow)
 
             row['resources'] = resolved_resources
+            row['embedded_models'] = sorted({
+                norm((r.get('entity_resource') or {}).get('embedded_model_tag_hash'))
+                for r in resolved_resources
+                if (r.get('entity_resource') or {}).get('embedded_model_tag_hash')
+                and norm((r.get('entity_resource') or {}).get('embedded_model_tag_hash')) not in ('00000000', 'FFFFFFFF')
+            } | {
+                norm(r['resource_hash']) for r in resolved_resources if r.get('direct_entity_model')
+            })
+            row['skeletons'] = [
+                {'resource_hash': norm(r['resource_hash']), **r['skeleton']}
+                for r in resolved_resources if r.get('skeleton')
+            ]
         except Exception as ex:
             msg = repr(ex)
             row['violations'].append(msg)
@@ -120,14 +145,15 @@ def main() -> int:
         entries.append(row)
 
     report = {
-        'schema': 'd1_remote_exact_s_entity_probe/v1',
+        'schema': 'd1_remote_exact_s_entity_probe/v2',
         'status': 'D1_EXACT_S_ENTITY_PROBE' if not violations else 'D1_EXACT_S_ENTITY_PROBE_WITH_VIOLATIONS',
         'entries': entries,
         'violation_count': len(violations),
         'violations': violations,
         'policy': (
             'Every child edge comes from the validated s_entity Resource[] serialization and exact FileHash routing. '
-            'EntityResource roles come only from the validated PS4 parser. No locality, adjacency, appearance, or name '
+            'EntityResource roles and embedded models come only from the validated PS4 parser; skeleton metadata comes '
+            'only from the validated skeleton parser. No locality, adjacency, appearance, package-name, or semantic-name '
             'heuristics are used.'
         ),
     }
@@ -136,13 +162,17 @@ def main() -> int:
 
     for x in entries:
         print('S_ENTITY', x['tag_hash'], 'ENTRY', x.get('entry'), 'RESOURCES', x.get('resource_count'),
+              'MODELS', x.get('embedded_models'),
+              'SKELETONS', [(s['resource_hash'], s['node_count']) for s in x.get('skeletons', [])],
               'VIOLATIONS', x.get('violations'))
         for rr in x.get('resources', []):
             e = rr.get('entry') or {}
             er = rr.get('entity_resource') or {}
+            sk = rr.get('skeleton') or {}
             print('  RESOURCE', rr.get('resource_index'), rr.get('resource_hash'),
                   'REF', e.get('reference'), 'ROLE', er.get('semantic_role'),
-                  'MODEL', er.get('embedded_model_tag_hash'))
+                  'CLASSES', (er.get('unk10_class'), er.get('unk18_class')),
+                  'MODEL', er.get('embedded_model_tag_hash'), 'SKEL_NODES', sk.get('node_count'))
     print('STATUS', report['status'], 'VIOLATIONS', report['violations'])
     return 0 if not violations else 2
 
