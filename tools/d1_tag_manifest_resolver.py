@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
-"""Resolve Destiny 1 ROI global Tag identity without conflating tag class and schema.
+"""Resolve Destiny 1 ROI Tag identity without conflating entry class and schema type.
 
-Pinned Charm source gives two independent kinds of evidence for D1 global Tags:
+Pinned Charm source gives three distinct pieces of evidence for a D1 typed Tag edge:
 
-1. A typed serialized edge, e.g. `Tag<SBubbleDefinition>`, tells the deserializer which
-   SchemaStruct to use for the target payload.
-2. `FileHash.GetReferenceFromManifest()` follows the target's ordinary file-entry
-   Reference to an `S48018080` manifest parent. That parent stores a TagClassHash at
-   +0x0C and the target FileHash backlink at +0x10.
+1. The serialized field type, e.g. `Tag<SBubbleDefinition>` or `Tag<SMapContainer>`,
+   tells `GetSchemaTag<T>` which SchemaStruct to use for the target FileHash.
+2. Some global Tags have an ordinary file-entry Reference that is itself a FileHash to
+   an `S48018080` manifest parent. That parent stores a TagClassHash at +0x0C and the
+   target FileHash backlink at +0x10.
+3. Other typed Tags have an ordinary file-entry Reference that is a non-schema class
+   value. Charm does not require that value to equal the SchemaStruct id before opening
+   `Tag<T>`; the source-typed field chooses T and the target payload is then deserialized.
 
-Those values are NOT interchangeable. Tower proves this directly: five source-typed
-`Tag<SBubbleDefinition>` children have structurally valid S48018080 parents/backlinks,
-but every parent stores manifest TagClassHash 80800580 while the D1 SBubbleDefinition
-SchemaStruct identifier is 808091E0 (Charm E0918080).
+Those values are NOT interchangeable. Tower proves both non-equalities directly:
 
-Therefore this module exposes two APIs:
+- five source-typed `Tag<SBubbleDefinition>` children have valid S48018080 parents with
+  manifest TagClassHash 80800580 while SBubbleDefinition SchemaStruct is 808091E0;
+- their source-typed `Tag<SMapContainer>` children exist with ordinary Reference
+  80800343 while SMapContainer SchemaStruct is 80808A54.
 
-- `resolve_manifest_identity`: prove the D1 global-tag parent/backlink and preserve its
-  manifest TagClassHash exactly.
-- `resolve_typed_tag`: validate a source-typed Tag<T>. A direct file-entry schema class
-  is accepted directly; otherwise a valid S48018080 identity/backlink proves the target
-  identity while the caller's typed schema supplies the expected payload interpretation.
+Therefore:
 
-`resolve_tag_class` remains the strict manifest-tag-class comparison helper for cases
-where the caller genuinely wants TagClassHash equality. It must not be used to reject a
-source-typed Tag<T> merely because TagClassHash differs from SchemaStruct class hash.
+- `resolve_manifest_identity` proves only the optional D1 global manifest parent/backlink;
+- `resolve_tag_class` is a strict helper for callers that genuinely need class equality;
+- `resolve_typed_tag` mirrors Charm's typed `GetSchemaTag<T>` semantics. Existence plus
+  the pinned source-typed edge is enough to attempt the target schema. Direct schema or
+  valid manifest identity are stronger identity evidence, but not prerequisites. The
+  caller must still validate the target payload structurally before promoting the edge.
 """
 from __future__ import annotations
 
@@ -50,7 +52,7 @@ def i64(b: bytes, o: int) -> int:
 
 
 def resolve_manifest_identity(c, tag_hash: str) -> dict:
-    """Prove a D1 global Tag's S48018080 parent and +0x10 backlink."""
+    """Prove a D1 global Tag's S48018080 parent and +0x10 backlink when present."""
     h = norm(tag_hash)
     meta = c.entry_meta(h)
     out = {
@@ -179,13 +181,15 @@ def resolve_tag_class(c, tag_hash: str, expected: str | None = None) -> dict:
 
 
 def resolve_typed_tag(c, tag_hash: str, expected_schema: str) -> dict:
-    """Validate identity for a source-typed D1 `Tag<T>` edge.
+    """Resolve a source-typed D1 `Tag<T>` target for structural validation.
 
-    The caller supplies `expected_schema` from the pinned serialized field type. A direct
-    ordinary Reference equal to that schema is complete class-direct evidence. If the
-    ordinary Reference is a FileHash instead, a valid S48018080 parent/backlink proves
-    the target identity; its manifest TagClassHash is preserved but is not required to
-    equal the SchemaStruct identifier.
+    This mirrors Charm's `GetSchemaTag<T>(FileHash)`: once a serialized source field is
+    known to be `Tag<T>`, the FileHash is opened as T without first requiring the package
+    entry Reference or manifest TagClassHash to equal T's SchemaStruct identifier.
+
+    The returned `typed_target_valid` therefore means "the typed target exists and may be
+    deserialized as the source-declared schema". It is not final schema proof by itself;
+    callers must validate schema-specific payload bounds/fields before promotion.
     """
     h = norm(tag_hash)
     expected = norm(expected_schema)
@@ -199,12 +203,15 @@ def resolve_typed_tag(c, tag_hash: str, expected_schema: str) -> dict:
         'resolution_mode': None,
         'resolved_schema': None,
         'resolved_class': None,
-        'reference_matches': False,      # compatibility: means typed target accepted
+        'reference_matches': False,      # compatibility: typed target accepted
         'typed_target_valid': False,
+        'requires_payload_validation': True,
         'manifest_parent': None,
+        'manifest_identity_valid': False,
         'manifest_tag_class': None,
         'manifest_tag_class_matches_schema': None,
         'schema_evidence': None,
+        'ordinary_reference_matches_schema': None,
         'violations': [],
     }
     if not meta:
@@ -213,29 +220,36 @@ def resolve_typed_tag(c, tag_hash: str, expected_schema: str) -> dict:
 
     direct = norm(meta.get('reference', ''))
     out['ordinary_reference'] = direct
+    out['ordinary_reference_matches_schema'] = direct == expected
+    out['resolved_schema'] = expected
+    out['resolved_class'] = expected
+
     if direct == expected:
         out['resolution_mode'] = 'direct_file_entry_schema_reference'
-        out['resolved_schema'] = expected
-        out['resolved_class'] = expected
-        out['schema_evidence'] = 'DIRECT_FILE_ENTRY_REFERENCE'
+        out['schema_evidence'] = 'PINNED_SOURCE_TYPED_TAG_EDGE_PLUS_DIRECT_SCHEMA_REFERENCE'
         out['typed_target_valid'] = True
         out['reference_matches'] = True
         return out
 
+    # Try to strengthen identity through the optional global-tag manifest path. Failure
+    # here is not a typed-edge failure: the ordinary Reference may simply be a direct
+    # non-schema tag-class value, as Tower SMapContainer children demonstrate (80800343).
     identity = resolve_manifest_identity(c, h)
     out['manifest_parent'] = identity.get('manifest_parent')
+    out['manifest_identity_valid'] = bool(identity.get('manifest_identity_valid'))
     out['manifest_tag_class'] = identity.get('manifest_tag_class')
-    if not identity.get('manifest_identity_valid'):
-        out['violations'].extend(identity.get('violations', []))
-        return out
+    if identity.get('manifest_identity_valid'):
+        manifest_cls = norm(identity['manifest_tag_class'])
+        out['manifest_tag_class_matches_schema'] = manifest_cls == expected
+        out['resolution_mode'] = 'd1_manifest_identity_plus_source_typed_schema'
+        out['schema_evidence'] = 'PINNED_SOURCE_TYPED_TAG_EDGE_PLUS_S48018080_BACKLINK'
+    else:
+        # Do not copy the manifest-probe violations into typed-edge violations: a failed
+        # S48018080 probe is expected for class-direct typed Tags. Preserve the probe in
+        # manifest_parent for diagnostics and require the caller's payload validation.
+        out['resolution_mode'] = 'source_typed_schema_plus_existing_target'
+        out['schema_evidence'] = 'PINNED_SOURCE_TYPED_TAG_EDGE_TARGET_EXISTS_PAYLOAD_MUST_VALIDATE'
 
-    manifest_cls = norm(identity['manifest_tag_class'])
-    out['manifest_tag_class_matches_schema'] = manifest_cls == expected
-    out['resolution_mode'] = 'd1_manifest_identity_plus_source_typed_schema'
-    out['resolved_schema'] = expected
-    # Keep compatibility while making the semantic distinction visible.
-    out['resolved_class'] = expected
-    out['schema_evidence'] = 'PINNED_SOURCE_TYPED_TAG_EDGE_PLUS_S48018080_BACKLINK'
     out['typed_target_valid'] = True
     out['reference_matches'] = True
     return out
