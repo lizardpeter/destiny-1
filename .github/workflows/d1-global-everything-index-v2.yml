@@ -1,0 +1,116 @@
+name: D1 global everything index v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_remote_everything_index_v2.py'
+      - 'evidence/d1_export_class_registry.json'
+      - '.github/workflows/d1-global-everything-index-v2.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  index:
+    runs-on: ubuntu-24.04
+    env:
+      COMPLETE_LOCATION_ARTIFACT_ID: '9994964717'
+      COMPLETE_LOCATION_ZIP_SHA256: '0b6df62c3385e3250271be0c57876351e7b2a5076c6a2de056092a4d98446955'
+      COMPLETE_LOCATION_JSON_SHA256: '00cf59176c30217c5134fe42f9862b7717fb751ef2b34fd395bd60d995959ef0'
+      PACKAGES_TXT_SHA256: '9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+      ACTIVITY_INDEX_SHA256: '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact archive inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/location reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${COMPLETE_LOCATION_ARTIFACT_ID}/zip" -o input/location.zip
+          echo "${COMPLETE_LOCATION_ZIP_SHA256}  input/location.zip" | sha256sum --check --strict
+          unzip -q input/location.zip -d input/location
+          echo "${COMPLETE_LOCATION_JSON_SHA256}  input/location/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          echo "${PACKAGES_TXT_SHA256}  reports/packages.txt" | sha256sum --check --strict
+          curl --fail --location --retry 4 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          echo "${ACTIVITY_INDEX_SHA256}  input/D1_CURRENT_ACTIVITY_INDEX.json" | sha256sum --check --strict
+
+      - name: Build namespace-qualified current entry index
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_everything_index_v2.py
+          python tools/d1_remote_everything_index_v2.py \
+            --package-list reports/packages.txt \
+            --activity-index input/D1_CURRENT_ACTIVITY_INDEX.json \
+            --location-index input/location/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json \
+            --registry evidence/d1_export_class_registry.json \
+            --sqlite reports/D1_CURRENT_EVERYTHING_V2.sqlite \
+            --summary reports/D1_CURRENT_EVERYTHING_V2.json \
+            --queue reports/D1_CURRENT_EVERYTHING_V2.tsv \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --retries 6 --timeout 120 | tee reports/everything_v2_stdout.txt
+
+      - name: Validate all namespaces and canaries
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee reports/validation.txt
+          import json,sqlite3,hashlib
+          s=json.load(open('reports/D1_CURRENT_EVERYTHING_V2.json'))
+          assert s['status']=='D1_REMOTE_EVERYTHING_INDEX_V2_COMPLETE',s.get('violations')
+          assert not s['violations'],s['violations'][:20]
+          assert s['physical_member_count']==2105,s['physical_member_count']
+          assert s['namespace_kind_physical_counts']=={'base':1275,'localized':821,'special':9},s['namespace_kind_physical_counts']
+          assert s['namespace_count']==822,s['namespace_count']
+          assert s['current_namespace_count']==822,s['current_namespace_count']
+          assert s['current_namespace_kind_counts']=={'base':337,'localized':476,'special':9},s['current_namespace_kind_counts']
+          assert s['source']['packages_txt_sha256']=='9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+          assert s['source']['physical_location_index_sha256']=='00cf59176c30217c5134fe42f9862b7717fb751ef2b34fd395bd60d995959ef0'
+          assert s['current_entry_count']>1437333,s['current_entry_count']
+          assert s['current_logical_resource_count']>0
+          assert s['current_unknown_entry_count']>0
+          db=sqlite3.connect('reports/D1_CURRENT_EVERYTHING_V2.sqlite')
+          assert db.execute('select count(*) from physical_packages').fetchone()[0]==2105
+          assert db.execute('select count(*) from physical_packages where is_current=1').fetchone()[0]==822
+          assert db.execute('select count(*) from current_entries').fetchone()[0]==s['current_entry_count']
+          # Base player canaries must survive namespace qualification exactly.
+          for h in ('80A7F90B','80AD27B2'):
+              rows=db.execute("select namespace_key,tag_hash,reference,export_route from current_entries where namespace_kind='base' and tag_hash=?",(h,)).fetchall()
+              assert rows,(h,'missing base canary')
+              print('BASE_CANARY',h,rows)
+          # Locale FileHash collisions are expected and must remain distinct by namespace.
+          collision=db.execute('''select tag_hash,count(distinct namespace_key) n from current_entries
+                                  where namespace_kind='localized' group by tag_hash having n>1 order by n desc limit 1''').fetchone()
+          assert collision, 'expected at least one locale tag hash occurring in multiple namespaces'
+          print('LOCALE_NAMESPACE_COLLISION_PRESERVED',collision)
+          db.close()
+          print('D1_EVERYTHING_V2_CLOSED',json.dumps({
+            'physical_members':s['physical_member_count'],
+            'namespaces':s['namespace_count'],
+            'current_namespaces':s['current_namespace_count'],
+            'current_namespace_kinds':s['current_namespace_kind_counts'],
+            'current_entries':s['current_entry_count'],
+            'logical_resources':s['current_logical_resource_count'],
+            'named_tags':s['current_named_tag_count'],
+            'routes':s['current_export_route_counts'],
+            'unknown':s['current_unknown_entry_count']
+          },sort_keys=True))
+          PY
+          sha256sum reports/D1_CURRENT_EVERYTHING_V2.sqlite reports/D1_CURRENT_EVERYTHING_V2.json reports/D1_CURRENT_EVERYTHING_V2.tsv > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GLOBAL-EVERYTHING-INDEX-V2
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
