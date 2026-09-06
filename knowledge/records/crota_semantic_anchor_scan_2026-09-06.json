@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "record_type": "d1_exact_reverse_engineering_evidence",
+  "subject": "Crota semantic StringHash and aligned-literal scan",
+  "date": "2026-09-06",
+  "status": "EXACT_SCAN_COMPLETE_POSTPROCESS_JOIN_FAILED_NO_EVIDENCE_LOST",
+  "targets": {
+    "2F28D739": "HiveUltraKnightA",
+    "1FD437C8": "R1S2RaidMoon0Ultra0",
+    "ECBF97D6": "RaidMoon0",
+    "E0265F7C": "OversoulThrone",
+    "2EA84559": "Crota, Son of Oryx",
+    "2CF43F68": "Crota",
+    "ACC65F88": "crota",
+    "7B1F58EE": "UltraKnight",
+    "6C64AE47": "ultra_knight",
+    "E8EDA4A9": "Cleaver",
+    "17842842": "Shredder"
+  },
+  "scan_packages": ["0447", "044B", "0450", "0458", "0075", "0077", "075D", "0151", "0154", "0155", "0156", "0157", "0158", "0169", "018D", "01E3", "072B", "072F", "0735"],
+  "printable_preimage_scan": {
+    "structured_entries_scanned": 48605,
+    "printable_runs_scanned": 2408724,
+    "target_hits": {},
+    "contains_hits": {},
+    "errors": 0,
+    "conclusion": "No exact retail printable preimage for any target string hash was present in this selected raid/Hive/global structured corpus."
+  },
+  "aligned_literal_scan": {
+    "errors": 0,
+    "only_target_with_hits": "ACC65F88",
+    "sources": [
+      {"package_id": "0154", "source_tag_hash": "80AA9C0D", "reference": "80800861", "size": 3968, "offsets": [788, 3884]},
+      {"package_id": "0156", "source_tag_hash": "80AADD3E", "reference": "80800861", "size": 9296, "offsets": [6916]},
+      {"package_id": "0158", "source_tag_hash": "80AB026E", "reference": "80800861", "size": 9296, "offsets": [6916]},
+      {"package_id": "018D", "source_tag_hash": "80B1A004", "reference": "80802257", "size": 5171, "offsets": [2172]},
+      {"package_id": "0735", "source_tag_hash": "8166A3E8", "reference": "80800861", "size": 5024, "offsets": [3620]}
+    ],
+    "negative_targets": ["2F28D739", "1FD437C8", "ECBF97D6", "E0265F7C", "2EA84559", "2CF43F68", "7B1F58EE", "6C64AE47", "E8EDA4A9", "17842842"]
+  },
+  "workflow": {
+    "run_id": 34064868432,
+    "artifact_id": 9998944993,
+    "artifact_zip_sha256": "18dad0e49277141e12a1a47948f0bc58588acef34039eb30381fa7eed8392a72",
+    "expensive_scan_steps": "SUCCESS",
+    "final_join": "FAILED_KEYERROR_PACKAGE_ID",
+    "join_failure_scope": "Post-processing only. Each per-package backlink JSON and the complete preimage JSON were uploaded and independently inspected."
+  },
+  "next_proof_gate": "Classify the five exact ACC65F88 source resources and their serialized owners. ACC65F88 remains an untyped aligned scalar until an enclosing source schema proves the field meaning.",
+  "policy": "Exact FNV1 equality or aligned scalar occurrence alone does not prove Crota actor identity. No resource may be promoted as Crota's body without a typed serialized ownership edge to a compatible articulated model/skeleton."
+}
