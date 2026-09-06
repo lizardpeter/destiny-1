@@ -1,0 +1,154 @@
+name: D1 Tower Family E child assembly probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-family-e-child-assembly-probe.yml'
+      - 'tools/d1_remote_entity_child_find.py'
+      - 'tools/d1_remote_investment_parent_probe.py'
+      - 'tools/d1_entity_resource_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Decode every exact 00EC EntityChildren resource
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_entity_child_find.py \
+            --package-id 0x00ec \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --member 'ps4_race_set_all_00ec_0.pkg:45824346624:82720768' \
+            --member 'ps4_race_set_all_00ec_1.pkg:45907067904:10065920' \
+            --member 'ps4_race_set_all_00ec_2.pkg:45917134336:2072576' \
+            --member 'ps4_race_set_all_00ec_3.pkg:45919207424:151552' \
+            --member 'ps4_race_set_all_00ec_4.pkg:45919359488:151552' \
+            --member 'ps4_race_set_all_00ec_5.pkg:45919511552:155648' \
+            -o reports/00ec_entity_children.json
+
+      - name: Resolve Family E child resource 809D8566 and child transforms
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage, parse_member
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_entity_child_find import parse_children_resource
+          from d1_entity_resource_probe import parse_resource
+
+          members=[parse_member(x) for x in [
+            'ps4_race_set_all_00ec_0.pkg:45824346624:82720768',
+            'ps4_race_set_all_00ec_1.pkg:45907067904:10065920',
+            'ps4_race_set_all_00ec_2.pkg:45917134336:2072576',
+            'ps4_race_set_all_00ec_3.pkg:45919207424:151552',
+            'ps4_race_set_all_00ec_4.pkg:45919359488:151552',
+            'ps4_race_set_all_00ec_5.pkg:45919511552:155648',
+          ]]
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          r=RemoteLogicalPackage(arc,{m.patch_id:m for m in members},Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+
+          def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+          def i64(b,o): return struct.unpack_from('<q',b,o)[0]
+          def dyn(b,o):
+              count=u32(b,o); rel=i64(b,o+8); data=(o+8)+rel+0x10
+              if count<0 or data<0 or data>len(b): raise ValueError((count,data,len(b)))
+              return count,data
+          def package_id(h):
+              x=int(h,16)
+              return f'{((x-0x80800000)>>13)&0xffff:04x}' if x>=0x80800000 else None
+          def entity_resources(tag):
+              e=by.get(tag.upper())
+              if not e or e['reference'].upper()!='80800734': return {'available':False,'resources':[]}
+              try:b=r.entry(e['index'])
+              except Exception as ex:return {'available':False,'error':repr(ex),'resources':[]}
+              n,data=dyn(b,0x20); out=[]
+              for i in range(n):
+                  o=data+i*0x0c
+                  if o+4>len(b): raise ValueError(f'SEntity resource {i}/{n} OOB')
+                  h=f'{u32(b,o):08X}'; row={'index':i,'resource_hash':h,'package_id':package_id(h)}
+                  re=by.get(h)
+                  if re and re['reference'].upper()=='80800861':
+                      try:
+                          rb=r.entry(re['index']); pr=parse_resource(rb,r.h['platform'])
+                          row['entity_resource_role']=pr.get('semantic_role')
+                          row['embedded_model_tag_hash']=pr.get('embedded_model_tag_hash')
+                          row['unk10_class']=pr.get('unk10',{}).get('class_hash')
+                          row['unk18_class']=pr.get('unk18',{}).get('class_hash')
+                      except Exception as ex: row['parse_error']=repr(ex)
+                  out.append(row)
+              return {'available':True,'entry_index':e['index'],'size':e['file_size'],'resources':out}
+
+          target='809D8566'
+          e=by.get(target)
+          if not e: raise SystemExit(f'{target} absent from logical 00EC entry table')
+          b=r.entry(e['index'])
+          ch=parse_children_resource(b)
+          if ch is None: raise SystemExit(f'{target} is not an EntityChildren resource')
+          rows=[]
+          for child in ch['children']:
+              row=dict(child)
+              co=child['entry_offset']
+              tn,td=dyn(b,co+0x88)
+              transforms=[]
+              for ti in range(tn):
+                  to=td+ti*0x40
+                  if to+0x40>len(b): raise ValueError(f'transform {ti}/{tn} OOB')
+                  transforms.append({
+                    'index':ti,
+                    'entry_offset':to,
+                    'rotation_xyzw':list(struct.unpack_from('<4f',b,to+0x10)),
+                    'translation_xyzw':list(struct.unpack_from('<4f',b,to+0x20)),
+                  })
+              row['transforms']=transforms
+              row['child_entity_package_id']=package_id(row['entity_hash'])
+              row['local_sentity']=entity_resources(row['entity_hash']) if row['child_entity_package_id']=='00ec' else {'available':False,'reason':'child belongs to another package family'}
+              rows.append(row)
+
+          census=json.load(open('reports/00ec_entity_children.json'))
+          focused={
+            'schema_version':1,
+            'status':'D1_TOWER_FAMILY_E_CHILD_RESOURCE_EXACT',
+            'resource_tag':target,
+            'resource_entry_index':e['index'],
+            'resource_size':e['file_size'],
+            'logical_view':r.view.name,
+            'child_count':ch['child_count'],
+            'children':rows,
+            'all_00ec_entity_children_resource_count':census['entity_children_resource_count'],
+            'all_00ec_child_package_counts':census['child_package_counts'],
+            'policy':'809D8566 is decoded only through the exact D1 EntityChildren schema. Child Entity FileHashes and per-child transform arrays are source bytes; child semantics such as broom/vendor prop are not inferred from appearance.'
+          }
+          Path('reports/TOWER_FAMILY_E_CHILD_809D8566.json').write_text(json.dumps(focused,indent=2)+'\n')
+          print(json.dumps(focused,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-family-e-child-assembly-probe
+          path: reports/
+          retention-days: 14
+          compression-level: 6
