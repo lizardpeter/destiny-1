@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
+      - name: Install dependencies
+        run: python -m pip install -q numpy trimesh
       - name: Recover verified Oodle and 00EC family
         run: |
           set -euo pipefail
@@ -49,11 +51,11 @@ jobs:
       - name: Compare ordered hierarchy and bind transforms
         run: |
           python - <<'PY'
-          import json,math
+          import json
           a=json.load(open('out/809D8613_skeleton.json'))
           b=json.load(open('out/80AD27B2_skeleton.json'))
           ar=[x for x in a['resources'] if x['tag_hash'].upper()=='809D8613'][0]
-          ai=ar['skeleton_info']; ab=ai['bones']; bb=b['bones']
+          ab=ar['skeleton_info']['bones']; bb=b['bones']
           print('NODE_COUNTS',len(ab),len(bb))
           common=min(len(ab),len(bb))
           hash_equal=[ab[i]['node_hash']==bb[i]['node_hash'] for i in range(common)]
