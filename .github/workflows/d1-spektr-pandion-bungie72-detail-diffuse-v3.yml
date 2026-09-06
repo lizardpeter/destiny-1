@@ -1,0 +1,166 @@
+name: D1 Spektar Bungie72 Spasm detail-diffuse diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie72-detail-diffuse-v3.yml'
+      - 'tools/d1_guardian_spasm_detail_diffuse_bake.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install bake dependencies and exact evidence artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pillow opencv-python-headless trimesh
+          mkdir -p input/material_v2 input/stage_dyes input/dyes input/detail input/canonical out
+
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+
+          fetch_artifact 'D1-SPEKTAR-BUNGIE72-ACTIVE-SOURCE-MATERIAL-V2' input/material_v2.zip input/material_v2
+          fetch_artifact 'd1-spektr-pandion-stage-part-dyes' input/stage_dyes.zip input/stage_dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dyes' input/dyes.zip input/dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dye-detail-textures' input/detail.zip input/detail
+
+          resolve_one () {
+            root="$1"; filename="$2"; dst="$3"
+            src=$(find "$root" -type f -name "$filename" -print -quit)
+            test -n "$src"
+            cp "$src" "$dst"
+          }
+          resolve_one input/material_v2 'SPEKTAR_PANDION_TITAN_BUNGIE72_ACTIVE_SOURCE_NORMALS_DETAILUV.glb' input/canonical/source_attrs.glb
+          resolve_one input/stage_dyes 'spektar_masculine_stage_part_dyes.json' input/canonical/stage_dyes.json
+          resolve_one input/dyes 'spektar_pandion_exact_dyes.json' input/canonical/exact_dyes.json
+          resolve_one input/detail 'spektar_dye_detail_textures.json' input/canonical/detail_manifest.json
+          mkdir -p input/canonical/detail
+          find input/detail -type f -name '*.png' -exec cp '{}' input/canonical/detail/ \;
+          test "$(find input/canonical/detail -type f -name '*.png' | wc -l)" -eq 6
+
+      - name: Bake archived Spasm detail diffuse plus exact change-color path
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_spasm_detail_diffuse_bake.py \
+            input/canonical/source_attrs.glb \
+            --stage-dyes input/canonical/stage_dyes.json \
+            --exact-dyes input/canonical/exact_dyes.json \
+            --detail-manifest input/canonical/detail_manifest.json \
+            --detail-dir input/canonical/detail \
+            --report out/spasm_detail_diffuse.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_DETAIL_DIFFUSE_UNLIT_V3.glb
+
+      - name: Prove geometry, skin, and animation are unchanged
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib,trimesh
+          src='input/canonical/source_attrs.glb'
+          out='out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_DETAIL_DIFFUSE_UNLIT_V3.glb'
+          def graph(path):
+              raw=open(path,'rb').read(); jl=struct.unpack_from('<I',raw,12)[0]
+              return json.loads(raw[20:20+jl].decode().rstrip('\x00 ')),raw
+          a,ra=graph(src); b,rb=graph(out)
+          assert a['nodes']==b['nodes']
+          assert a['accessors']==b['accessors']
+          assert a['skins']==b['skins']
+          assert a['animations']==b['animations']
+          def strip_materials(meshes):
+              x=json.loads(json.dumps(meshes))
+              for m in x:
+                  for p in m.get('primitives',[]): p.pop('material',None)
+              return x
+          assert strip_materials(a['meshes'])==strip_materials(b['meshes'])
+          active=[n for n in b['nodes'] if n.get('mesh') is not None]
+          assert len(active)==28,len(active)
+          assert len(b['skins'])==1 and len(b['skins'][0]['joints'])==72
+          assert len(b['animations'])==1 and len(b['animations'][0]['channels'])==216
+          for n in active:
+              p=b['meshes'][n['mesh']]['primitives'][0]
+              assert {'POSITION','NORMAL','TEXCOORD_0','TEXCOORD_1','JOINTS_0','WEIGHTS_0'} <= set(p['attributes'])
+              mat=b['materials'][p['material']]
+              assert 'KHR_materials_unlit' in (mat.get('extensions') or {})
+          report=json.load(open('out/spasm_detail_diffuse.json'))
+          assert report['active_primitive_count']==28,report
+          assert report['baked_material_count']==18,report
+          assert report['overlap_conflict_pixels']==0,report
+          scene=trimesh.load(out,force='scene',process=False)
+          assert len(scene.geometry)==69,len(scene.geometry)
+          print('SPASM DETAIL DIFFUSE V3 VALIDATION PASSED')
+          print('bytes',len(rb),'sha256',hashlib.sha256(rb).hexdigest())
+          print('active',len(active),'joints',len(b['skins'][0]['joints']),'channels',len(b['animations'][0]['channels']))
+          print('baked materials',report['baked_material_count'],'overlap conflicts',report['overlap_conflict_pixels'])
+          PY
+
+          python tools/d1_gltf_skin_deformation_bounds.py \
+            out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_DETAIL_DIFFUSE_UNLIT_V3.glb \
+            --frame 0 --frame 30 --frame 60 --frame 100 --frame 145 \
+            -o out/deformation_bounds.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/deformation_bounds.json'))
+          assert d['skin_joint_count']==72,d
+          assert d['bind_identity_max_error'] < 1e-4,d
+          for s in d['samples']:
+              x,y,z=s['span']
+              assert 0.5<x<1.3 and 1.5<y<2.2 and 0.3<z<1.3,s
+          print('DEFORMATION STILL VALID')
+          for s in d['samples']: print(s)
+          PY
+          sha256sum out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_DETAIL_DIFFUSE_UNLIT_V3.glb > out/SHA256SUMS.txt
+
+      - name: Evidence README and exact detail textures
+        run: |
+          set -euo pipefail
+          mkdir -p out/exact_dye_detail_textures
+          cp input/canonical/detail/*.png out/exact_dye_detail_textures/
+          cp input/canonical/detail_manifest.json out/exact_dye_detail_textures/spektar_dye_detail_textures.json
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion Titan — Bungie 72-bone Spasm detail-diffuse diagnostic v3
+
+          This is the first checkpoint in this chain that applies the exact retail dye-detail diffuse textures rather
+          than only preserving them beside the model. It retains the exact 28 Bungie stage-0 gear ranges, exact source
+          NORMAL, exact D1 a_texcoord2 multiplier as TEXCOORD_1, and exact published Bungie 72-node skin/animation.
+
+          The baked diffuse path follows archived Bungie Spasm shader order:
+            base diffuse gamma decode
+            -> exact dye-detail texture at ((UV0 * a_texcoord2) * exact detailTransform + offset)
+            -> exact alpha normalization and blend_overlay
+            -> exact GStack.R change-color mask with exact Spektar primary/secondary dye color
+            -> gamma encode
+
+          Every triangle was proven to have a constant a_texcoord2 multiplier, and the bake fails if different multiplier
+          regions overlap one base plate texel. This exact Spektar stage-0 build has zero overlap-conflict pixels.
+
+          The GLB is KHR_materials_unlit so Blender/Cycles lighting cannot obscure the color diagnostic. This remains a
+          material diagnostic rather than final PS4 shading: detail normal, exact tangent handedness, full specular and
+          screen-dependent mip selection are not yet reproduced.
+
+          Missing hands are still a separate full-character/default-armor composition problem and are not guessed here.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-BUNGIE72-SPASM-DETAIL-DIFFUSE-V3
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
