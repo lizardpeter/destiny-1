@@ -1,0 +1,79 @@
+name: D1 Spektar Pandion exact dye detail textures
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-dye-detail-textures.yml'
+      - 'tools/d1_remote_texture_export.py'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_entry_extract.py'
+      - 'evidence/d1_player_gear_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Export six exact SDye_D1 detail textures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_texture_export.py \
+            --tag-hash 80A083DD --tag-hash 80A08252 \
+            --tag-hash 80A07D96 --tag-hash 80A07D98 \
+            --tag-hash 80A083E1 --tag-hash 80A083DF \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --out out/textures
+      - name: Validate exact dye texture set
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          d=json.load(open('out/textures/remote_texture_manifest.json'))
+          expected={'80A083DD','80A08252','80A07D96','80A07D98','80A083E1','80A083DF'}
+          assert d['requested_count']==6,d
+          assert d['resolved_count']==6,d
+          assert not d['missing_requested'],d
+          assert set(d['requested_texture_hashes'])==expected,d
+          rows=[]
+          for x in d['textures']:
+              p=Path('out/textures')/x['png']
+              assert p.is_file() and p.stat().st_size>0,(x,p)
+              rows.append({'header':x['header'],'png':x['png'],'bytes':p.stat().st_size,
+                           'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+                           'owner_package':x.get('owner_package'),'backing':x.get('backing')})
+          rep={'schema':'d1_spektar_dye_detail_texture_set/v1','textures':rows,
+               'roles':{
+                 '8752_ArmorPlate':{'detail_diffuse':'80A083DD','detail_normal':'80A08252'},
+                 '8753_ArmorSuit':{'detail_diffuse':'80A07D96','detail_normal':'80A07D98'},
+                 '8754_ArmorCloth':{'detail_diffuse':'80A083E1','detail_normal':'80A083DF'}
+               },
+               'decal_policy':'All three exact Spektar SDye_D1 records serialize decal FFFFFFFF; no decal image exists for this default state.',
+               'policy':'All six texture FileHashes come directly from the three exact F41A8080 SDye_D1 records. No filename, visual, or neighboring-resource inference is used.'}
+          Path('out/spektar_dye_detail_textures.json').write_text(json.dumps(rep,indent=2)+'\n')
+          for r in rows: print('TEXTURE',r)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-spektr-pandion-exact-dye-detail-textures
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
