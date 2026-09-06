@@ -1,0 +1,206 @@
+name: D1 Tower integrated Family E animated r8
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-integrated-family-e-animated-r8.yml'
+      - 'tools/d1_gltf_layer_merge.py'
+      - 'notes/D1_TOWER_FAMILY_E_ANIMATED_R8_CLOSED_2026-09-06.md'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover exact r6 static/common baseline
+        run: |
+          set -euo pipefail
+          mkdir -p base layer combined alternate reports
+          curl --fail --location --retry 12 --retry-delay 5 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r6-exact-resources/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb' \
+            -o base/static_common_r6.glb
+          echo 'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb  base/static_common_r6.glb' | sha256sum --check --strict
+
+      - name: Recover exact animated articulated r8 layer
+        run: |
+          set -euo pipefail
+          tag=d1-tower-articulated-family-e-animated-r8-exact-resources
+          gh release download "$tag" \
+            -p 'D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb' \
+            -p 'TOWER_FAMILY_E_ANIMATED_LAYER.json' \
+            -D layer
+          test -f layer/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb
+          test -f layer/TOWER_FAMILY_E_ANIMATED_LAYER.json
+          echo '8a68c4e18578824e3799cbbea13def8f828c60b6ad21e6658b8f390f6485caa2  layer/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb' | sha256sum --check --strict
+          cp layer/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb alternate/different_name_and_path.glb
+          cmp --silent layer/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb alternate/different_name_and_path.glb
+          python - <<'PY'
+          import json
+          d=json.load(open('layer/TOWER_FAMILY_E_ANIMATED_LAYER.json'))
+          assert d['schema_version']==2,d
+          assert d['status']=='D1_TOWER_FAMILY_E_ANIMATED_LAYER_COMPLETE',d
+          assert d['output_sha256']=='8a68c4e18578824e3799cbbea13def8f828c60b6ad21e6658b8f390f6485caa2',d
+          assert d['output_bytes']==75876040,d
+          assert d['raw_u8_weight_sum_exact_255'] is True,d
+          assert d['float32_conversion_bit_exact'] is True,d
+          assert d['portable_float_weights_renormalized'] is False,d
+          assert d['float32_weight_sum_abs_error_max']==1.1920928955078125e-07,d
+          assert d['runtime_placement_count']==6 and d['placement_geometry_node_count']==156,d
+          assert d['final_counts']['skins']==6 and d['final_counts']['animations']==6,d
+          print('ANIMATED_R8_LAYER_PINNED')
+          PY
+
+      - name: Merge full Tower twice for path-independence
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_layer_merge.py \
+            --base base/static_common_r6.glb \
+            --layer articulated_family_e_animated=layer/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb \
+            --out combined/D1_TOWER_BAKED_COMMON_PLUS_FAMILY_E_ANIMATED_R8_EXACT_RESOURCES.glb \
+            --report reports/tower_integrated_family_e_animated_r8_merge.json
+          python tools/d1_gltf_layer_merge.py \
+            --base base/static_common_r6.glb \
+            --layer articulated_family_e_animated=alternate/different_name_and_path.glb \
+            --out combined/path_independence_control.glb \
+            --report reports/tower_integrated_family_e_animated_r8_merge_path_control.json
+          cmp --silent \
+            combined/D1_TOWER_BAKED_COMMON_PLUS_FAMILY_E_ANIMATED_R8_EXACT_RESOURCES.glb \
+            combined/path_independence_control.glb
+
+      - name: Validate full Tower r8 skin animation and prefix contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          from tools.d1_gltf_layer_merge import read_glb
+
+          merge=json.load(open('reports/tower_integrated_family_e_animated_r8_merge.json'))
+          control=json.load(open('reports/tower_integrated_family_e_animated_r8_merge_path_control.json'))
+          layer=json.load(open('layer/TOWER_FAMILY_E_ANIMATED_LAYER.json'))
+          out=Path('combined/D1_TOWER_BAKED_COMMON_PLUS_FAMILY_E_ANIMATED_R8_EXACT_RESOURCES.glb')
+          sha=hashlib.sha256(out.read_bytes()).hexdigest()
+          sha2=hashlib.sha256(Path('combined/path_independence_control.glb').read_bytes()).hexdigest()
+
+          assert sha==sha2==merge['output_sha256']==control['output_sha256'],(sha,sha2,merge['output_sha256'],control['output_sha256'])
+          assert merge['base_bin_exact_prefix'] is True and control['base_bin_exact_prefix'] is True
+          assert all(x['exact'] for x in merge['base_json_exact_prefixes'].values()),merge['base_json_exact_prefixes']
+          assert all(x['exact'] for x in control['base_json_exact_prefixes'].values()),control['base_json_exact_prefixes']
+
+          b=merge['base_counts'];f=merge['final_counts'];li=merge['layers'][0]['input_counts']
+          assert (b['meshes'],b['materials'],b['textures'],b['images'],b['nodes'],b['skins'],b['animations'])==(2234,499,588,588,12438,0,0),b
+          assert (li['meshes'],li['materials'],li['textures'],li['images'],li['nodes'],li['skins'],li['animations'])==(86,35,70,70,740,6,6),li
+          assert (f['meshes'],f['materials'],f['textures'],f['images'],f['nodes'],f['skins'],f['animations'])==(2320,534,658,658,13179,6,6),f
+          assert control['final_counts']==f,(control['final_counts'],f)
+
+          doc,bin_data=read_glb(out)
+          assert len(doc.get('skins',[]))==6 and len(doc.get('animations',[]))==6
+          assert len(doc.get('nodes',[]))==13179
+          assert len(doc.get('meshes',[]))==2320
+          assert len(doc.get('materials',[]))==534
+          assert len(doc.get('textures',[]))==658
+          assert len(doc.get('images',[]))==658
+
+          # Validate every remapped skin reference after the r6 offsets are applied.
+          for si,skin in enumerate(doc['skins']):
+            joints=skin.get('joints',[])
+            assert len(joints)==67,(si,len(joints))
+            assert all(0 <= int(j) < len(doc['nodes']) for j in joints),(si,joints)
+            assert 0 <= int(skin['skeleton']) < len(doc['nodes']),(si,skin)
+            assert 0 <= int(skin['inverseBindMatrices']) < len(doc['accessors']),(si,skin)
+
+          # Validate every remapped animation sampler and target node.
+          world_ids=set()
+          clips=[]
+          for ai,anim in enumerate(doc['animations']):
+            ex=anim.get('extras',{})
+            wid=str(ex.get('d1WorldID','')).upper()
+            clip=str(ex.get('d1OwnerSelectedClip','')).upper()
+            assert wid and clip,(ai,ex)
+            world_ids.add(wid);clips.append(clip)
+            samplers=anim.get('samplers',[])
+            channels=anim.get('channels',[])
+            assert samplers and channels,(ai,len(samplers),len(channels))
+            for s in samplers:
+              assert 0 <= int(s['input']) < len(doc['accessors']),s
+              assert 0 <= int(s['output']) < len(doc['accessors']),s
+            for c in channels:
+              assert 0 <= int(c['sampler']) < len(samplers),c
+              assert 0 <= int(c['target']['node']) < len(doc['nodes']),c
+              assert c['target']['path'] in ('translation','rotation','scale'),c
+          assert world_ids==set(layer['world_id_owner_map']),world_ids
+          assert clips.count('80C7AE98')==1 and clips.count('809D8572')==5,clips
+
+          # Original static/common r6 BIN stays byte-exact at the front of the merged BIN.
+          base_doc,base_bin=read_glb(Path('base/static_common_r6.glb'))
+          assert bin_data[:len(base_bin)]==base_bin
+
+          final={
+            'schema_version':1,
+            'status':'D1_TOWER_INTEGRATED_FAMILY_E_ANIMATED_R8_COMPLETE',
+            'static_common':{
+              'release':'d1-tower-baked-common-textured-r6-exact-resources',
+              'sha256':'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb',
+              'counts':b,
+            },
+            'articulated_animated':{
+              'release':'d1-tower-articulated-family-e-animated-r8-exact-resources',
+              'sha256':'8a68c4e18578824e3799cbbea13def8f828c60b6ad21e6658b8f390f6485caa2',
+              'all_proven_articulated_placements_retained':37,
+              'animated_family_e_placements':6,
+              'other_bind_pose_articulated_placements':31,
+              'skins':6,'animations':6,
+              'owner_selected_clip_counts':{'80C7AE98':1,'809D8572':5},
+              'raw_u8_weight_sum_exact_255':True,
+              'float32_conversion_bit_exact':True,
+              'portable_float_weights_renormalized':False,
+            },
+            'merge_path_independence_proven':True,
+            'base_bin_exact_prefix':True,
+            'base_json_exact_prefixes':merge['base_json_exact_prefixes'],
+            'final_counts':f,
+            'bytes':out.stat().st_size,
+            'sha256':sha,
+            'blender_target':'Blender 5.2.1 LTS',
+            'blender_dependency':'None for generation; direct glTF 2.0 container merge. Output is the project Blender target.',
+            'semantic_scope':'Family E clip ownership is exact. NPC/vendor/state/loop/synchronization semantics remain unresolved. The other 31 articulated placements remain bind-pose only.',
+          }
+          json.dump(final,open('reports/FINAL_TOWER_INTEGRATED_FAMILY_E_ANIMATED_R8.json','w'),indent=2)
+          print(json.dumps(final,indent=2))
+          PY
+
+      - name: Publish durable full Tower r8 checkpoint
+        run: |
+          set -euo pipefail
+          tag=d1-tower-baked-common-family-e-animated-r8-exact-resources
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title 'D1 Tower baked + common + Family E animated r8 exact resources' \
+              --notes 'Full Tower checkpoint for Blender 5.2.1 LTS. Exact r6 static/common Tower plus all 37 proven articulated placements. The six 67-bone Family-E placements now carry exact source-indexed retail skinning and owner-selected retail animations; the other 31 articulated placements remain bind pose. The merge preserves the r6 BIN and resource arrays as exact prefixes and is proven byte-identical across different temporary input paths. No vendor/NPC/state/loop/synchronization semantics are inferred.'
+          fi
+          gh release upload "$tag" \
+            combined/D1_TOWER_BAKED_COMMON_PLUS_FAMILY_E_ANIMATED_R8_EXACT_RESOURCES.glb \
+            reports/FINAL_TOWER_INTEGRATED_FAMILY_E_ANIMATED_R8.json \
+            reports/tower_integrated_family_e_animated_r8_merge.json \
+            layer/TOWER_FAMILY_E_ANIMATED_LAYER.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-integrated-family-e-animated-r8
+          path: |
+            combined/D1_TOWER_BAKED_COMMON_PLUS_FAMILY_E_ANIMATED_R8_EXACT_RESOURCES.glb
+            reports/FINAL_TOWER_INTEGRATED_FAMILY_E_ANIMATED_R8.json
+            reports/tower_integrated_family_e_animated_r8_merge.json
+            layer/TOWER_FAMILY_E_ANIMATED_LAYER.json
+          retention-days: 14
+          compression-level: 6
