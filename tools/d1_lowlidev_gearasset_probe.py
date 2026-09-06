@@ -7,11 +7,13 @@ manifest and intentionally shaped like Bungie's former D1 GearAsset response:
     https://lowlidev.com.au/destiny/api/gearasset/{itemHash}?destiny
 
 This tool treats the service only as a historical *secondary evidence source*.
-Nothing is promoted merely because the mirror returns it.  The exact requestedId,
-gear ``reference_id``, content selection, filenames, hashes and response bytes are
-preserved so they can be cross-checked against already-proven retail PS4 data.
+Nothing is promoted merely because the mirror returns it. The exact requestedId,
+gear ``reference_id``, explicitly selected content platform, filenames, hashes and
+response bytes are preserved so they can be cross-checked against proven retail
+PS4 data.
 
-No nearby item, class substitute, visual match, or guessed default armor is used.
+No nearby item, class substitute, visual match, guessed default armor, or implicit
+platform fallback is used.
 """
 from __future__ import annotations
 
@@ -22,13 +24,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from d1_bungie_web_gearasset_probe import (
-    art_content,
-    geometry_ids,
-    index_sets,
-    selected,
-    web_content,
-)
+from d1_bungie_web_gearasset_probe import geometry_ids, index_sets, selected
 
 BASE = 'https://lowlidev.com.au'
 GEAR_ROOT = 'https://www.bungie.net/common/destiny_content/geometry/gear'
@@ -51,11 +47,20 @@ def parse_hash(s: str) -> int:
     return (int(s, 16) if s.lower().startswith('0x') or any(c in 'abcdefABCDEF' for c in s) else int(s, 10)) & 0xffffffff
 
 
+def exact_platform_content(ga: dict, platform: str) -> dict:
+    rows = [x for x in (ga.get('content') or []) if isinstance(x, dict) and x.get('platform') == platform]
+    if len(rows) != 1:
+        available = [x.get('platform') for x in (ga.get('content') or []) if isinstance(x, dict)]
+        raise ValueError(f'exact GearAsset platform={platform!r} count {len(rows)}; available={available!r}')
+    return rows[0]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--item-hash', action='append', required=True)
     ap.add_argument('--class-hash', type=lambda x: int(x, 0), default=3655393761)
     ap.add_argument('--female', action='store_true')
+    ap.add_argument('--platform', choices=('web', 'mobile'), required=True)
     ap.add_argument('--download-dir', type=Path)
     ap.add_argument('-o', '--output', type=Path, required=True)
     a = ap.parse_args()
@@ -74,6 +79,7 @@ def main() -> int:
             'response_size': len(body),
             'response_sha256': hashlib.sha256(body).hexdigest(),
             'content_type': headers.get('Content-Type'),
+            'requested_platform': a.platform,
         }
         if a.download_dir:
             a.download_dir.mkdir(parents=True, exist_ok=True)
@@ -88,7 +94,7 @@ def main() -> int:
             if requested != item:
                 raise ValueError(f'requestedId mismatch {requested} != {item}')
             ga = obj['gearAsset']
-            content = web_content(ga)
+            content = exact_platform_content(ga, a.platform)
             sets = index_sets(content, a.female)
             files = selected(content, sets)
             gear_rows = []
@@ -119,8 +125,9 @@ def main() -> int:
             row.update({
                 'requested_id': requested,
                 'gearasset': ga,
-                'web_index_sets': sets,
-                'web_selected_files': files,
+                'selected_platform': content.get('platform'),
+                'platform_index_sets': sets,
+                'platform_selected_files': files,
                 'gear_json': gear_rows,
                 'exact_requested_id_match': True,
                 'all_gear_reference_ids_match': all(x['reference_id'] == item for x in gear_rows),
@@ -129,19 +136,20 @@ def main() -> int:
             row['parse_error'] = repr(ex)
             failures.append(row['item_hash_hex'])
         rows.append(row)
-        print(row['item_hash_hex'], 'HTTP', status, 'bytes', len(body), 'transport', transport_error, 'parse', row.get('parse_error'))
+        print(row['item_hash_hex'], 'HTTP', status, 'bytes', len(body), 'platform', a.platform, 'transport', transport_error, 'parse', row.get('parse_error'))
         if row.get('gear_json'):
             print(' gear', [(x['file_name'], x['reference_id'], x['geometry_identifiers']) for x in row['gear_json']])
-            print(' selected geometry', [(x['index'], x['file_name']) for x in row['web_selected_files']['geometry']])
+            print(' selected geometry', [(x['index'], x['file_name']) for x in row['platform_selected_files']['geometry']])
 
     report = {
-        'schema': 'd1_lowlidev_gearasset_probe/v1',
+        'schema': 'd1_lowlidev_gearasset_probe/v2',
         'source': 'lowlines historical D1 manifest testing endpoint documented in Porting Bungie Spasm to Three.js (2018)',
         'class_hash': a.class_hash,
         'is_female': a.female,
+        'requested_platform': a.platform,
         'items': rows,
         'failure_item_hashes': failures,
-        'promotion_policy': 'Secondary evidence only. Exact requestedId and gear reference_id are required. Returned filenames/geometry must still be cross-checked against independent retail PS4 evidence before promotion.',
+        'promotion_policy': 'Secondary evidence only. Exact requestedId, explicitly selected platform, and gear reference_id are required. Returned filenames/geometry must still be cross-checked against independent retail PS4 evidence before promotion.',
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(report, indent=2) + '\n')
