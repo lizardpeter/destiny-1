@@ -1,0 +1,60 @@
+name: D1 Common Crawl Titan Armory default composition
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-armory-commoncrawl-titan-default.yml'
+      - 'tools/d1_commoncrawl_armory_page_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact historical Titan Armory page
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # The Taikonaut is only a control page. If recovered, only class-global
+          # defaultArmor may be carried forward; its item-specific gear data is never
+          # substituted for Spektar.
+          python tools/d1_commoncrawl_armory_page_probe.py \
+            --item 591060261 --name 'The Taikonaut (Titan control)' \
+            --start-year 2015 --end-year 2017 --max-collections 60 --max-records 30 \
+            -o out/taikonaut
+      - name: Extract literal defaultArmor candidates without interpreting them
+        run: |
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          r=json.load(open('out/taikonaut/report.json'))
+          rows=[]
+          p=r.get('selected_file')
+          if p:
+              text=(Path('out/taikonaut')/p).read_text(errors='replace')
+              # Preserve bounded source neighborhoods around every literal. Do not
+              # assume JavaScript object syntax until the exact page is inspected.
+              low=text.lower(); key='defaultarmor'; pos=0
+              while True:
+                  i=low.find(key,pos)
+                  if i<0: break
+                  rows.append({'offset':i,'context':text[max(0,i-2500):i+5000]})
+                  pos=i+len(key)
+          Path('out/defaultArmor_contexts.json').write_text(json.dumps({'schema':'d1_armory_defaultarmor_contexts/v1','contexts':rows},indent=2)+'\n')
+          print('candidate captures',r.get('candidate_count',0),'selected',r.get('selected_file'),'defaultArmor contexts',len(rows))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-COMMONCRAWL-TITAN-DEFAULT-ARMOR
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
