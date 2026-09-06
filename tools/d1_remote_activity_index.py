@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build a current D1 Activity index directly from the remote split package TAR.
+"""Build a current D1 Activity + package-family index from the remote split TAR.
 
-This is the archive-wide entry point for a reusable world/map exporter.  It does
-not download package bodies.  Instead it:
+This is the archive-wide entry point for a reusable world/map exporter. It does
+not download package bodies. Instead it:
 
 * walks the public split TAR once to locate every current ``packages.txt`` member;
 * reads only the 0x140-byte Tiger package header from each physical member;
@@ -13,11 +13,12 @@ not download package bodies.  Instead it:
 * SHA-1 validates the serialized named-tag table against the package header;
 * canonicalizes the D1 ROI Activity named TagClassHash without guessing from names;
 * losslessly merges same-TagHash aliases while rejecting class/package conflicts;
-* emits exact split-TAR offsets for every Activity-owning package family so a
-  downstream exporter can recover only the bytes needed for a chosen Activity.
+* preserves the exact split-TAR location of every current physical package member,
+  not only Activity-owning families, so any later FileHash package dependency can
+  be range-recovered without rescanning TAR headers.
 
-Semantic selection never uses package or Activity display-name text.  The named
-TagClassHash is the authority for Activity identity.  Package filenames are used
+Semantic selection never uses package or Activity display-name text. The named
+TagClassHash is the authority for Activity identity. Package filenames are used
 only to group physical patch siblings and validate package-id consistency.
 """
 from __future__ import annotations
@@ -97,6 +98,15 @@ def merge_alias_rows(rows: list[dict]) -> tuple[list[dict], list[str]]:
     return merged, violations
 
 
+def compact_family(rows: list[dict]) -> list[dict]:
+    keys = (
+        'name', 'package_id', 'filename_generation', 'header_patch_id',
+        'tar_header_offset', 'data_offset', 'size', 'platform_code', 'language_code',
+        'named_tag_table_count', 'named_tag_table_offset', 'named_tag_table_hash',
+    )
+    return [{k: x[k] for k in keys} for x in rows]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--package-list', type=Path, required=True)
@@ -108,9 +118,11 @@ def main() -> int:
     ap.add_argument('--timeout', type=int, default=120)
     a = ap.parse_args()
 
+    package_list_bytes = a.package_list.read_bytes()
+    package_list_sha256 = hashlib.sha256(package_list_bytes).hexdigest()
     listed = []
     seen = set()
-    for raw in a.package_list.read_text(errors='replace').splitlines():
+    for raw in package_list_bytes.decode('utf-8', errors='replace').splitlines():
         name = Path(raw.strip()).name
         if not name or name in seen or not filename_identity(name):
             continue
@@ -223,28 +235,29 @@ def main() -> int:
             continue
         pkg_id = row['source_package_id']
         outrow = dict(row)
-        outrow['physical_family_members'] = [
-            {k: x[k] for k in ('name','header_patch_id','filename_generation','tar_header_offset','data_offset','size')}
-            for x in family_members[pkg_id]
-        ]
+        outrow['physical_family_members'] = compact_family(family_members[pkg_id])
         if cls == ACTIVITY_ROI:
             activities.append(outrow)
         else:
             unk_activities.append(outrow)
 
+    family_catalog = {pkg_id: compact_family(rows) for pkg_id, rows in sorted(family_members.items())}
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_REMOTE_ACTIVITY_INDEX_COMPLETE' if not violations else 'D1_REMOTE_ACTIVITY_INDEX_PARTIAL',
         'source': {
             'package_list': str(a.package_list),
+            'package_list_sha256': package_list_sha256,
             'base_url': a.base_url,
             'part_count': a.part_count,
+            'part_sizes': archive.sizes,
             'logical_split_tar_bytes': archive.logical_size,
             'tar_headers_scanned': tar_headers,
         },
         'physical_member_count': len(physical),
         'package_family_count': len(families),
         'current_package_count': len(current_packages),
+        'package_families': family_catalog,
         'current_packages_with_named_tags': sum(int(x['named_tag_table_count']) > 0 for x in current_packages),
         'current_named_row_count': len(current_named_rows),
         'current_unique_named_tag_count': len(merged),
@@ -260,7 +273,8 @@ def main() -> int:
         'policy': (
             'Activity identity comes only from the current package named-tag TagClassHash. '
             'Package display names and Activity names are not semantic selection inputs. '
-            'The remote index reads package headers and named-tag tables only; no asset payload bodies are downloaded.'
+            'The remote index reads package headers and named-tag tables only; no asset payload bodies are downloaded. '
+            'The package_families table is a physical byte-location index only and may be reused only when the exact packages.txt SHA-256 matches.'
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
@@ -290,6 +304,7 @@ def main() -> int:
         'current_named_row_count': out['current_named_row_count'],
         'current_d1_activity_count': out['current_d1_activity_count'],
         'current_unknown_activity_count': out['current_unknown_activity_count'],
+        'package_list_sha256': package_list_sha256,
         'violations': out['violations'][:20],
     }, indent=2))
     return 0 if not violations else 2
