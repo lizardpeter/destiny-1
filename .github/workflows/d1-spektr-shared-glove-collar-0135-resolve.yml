@@ -1,0 +1,85 @@
+name: D1 Spektar shared glove-collar 0135 dependency resolve
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-shared-glove-collar-0135-resolve.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies
+        run: python -m pip install -q numpy trimesh
+
+      - name: Recover exact shared glove-collar TGXM and verified Oodle runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/historical runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-SPEKTAR-HISTORICAL-GEARASSET-EXACT-TGXM&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/historical.zip
+          unzip -q input/historical.zip -d input/historical
+          target=$(find input/historical -type f -path '*/tgxm_male/B4BD27A2/2943ee229ea8c0c44dd610a4dd68ace3.tgxm' -print -quit)
+          test -n "$target"
+          cp "$target" input/shared_glove_collar_984938936-0.tgxm
+          echo 'f5e7b2efae7d7737f87997c16dbc36047e0e685bc39f36c311435afc8c47d977  input/shared_glove_collar_984938936-0.tgxm' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Resolve 0135 candidate with 0169 dependency catalog
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_model_tgxm_active_signature_match.py \
+            --scan-package-id 0x0135 \
+            --target-tgxm input/shared_glove_collar_984938936-0.tgxm \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_tower_shader_dependency_member_catalog.json \
+            --member-catalog evidence/d1_tower_00ef_member_catalog.json \
+            --member-catalog evidence/d1_tower_dependency_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime --vertex-tolerance 3 --keep-top 100 \
+            -o out/shared_glove_collar_calibrated_0135_resolved.json
+
+      - name: Lock candidate resolution
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('out/shared_glove_collar_calibrated_0135_resolved.json'))
+          assert d['schema']=='d1_remote_model_tgxm_active_signature_match/v1'
+          assert d['scan_package_ids']==['0135']
+          assert d['target']['tgxm_sha256']=='f5e7b2efae7d7737f87997c16dbc36047e0e685bc39f36c311435afc8c47d977'
+          assert d['target_active_signature']['stage0_highest_part_counts']==[5,4]
+          assert d['target_active_signature']['vertex_counts']==[6921,760]
+          print('MODELS',d['scanned_entity_model_count'])
+          print('PART_SEQUENCE',d['active_part_sequence_prefilter_count'])
+          print('RESOLVED',d['resolved_part_sequence_candidate_count'])
+          print('MATCHES',d['calibrated_active_structure_match_count'],'ERRORS',d['error_count'])
+          for x in d['top_part_sequence_candidates']:
+              c=x['comparison']
+              print('CANDIDATE',x['tag_hash'],'active',x['active_mesh_indices'],'verts',c['candidate_active_vertex_counts'],'delta',c['active_vertex_count_deltas_candidate_minus_target'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-shared-glove-collar-0135-resolved
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
