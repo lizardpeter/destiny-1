@@ -1,4 +1,4 @@
-name: D1 Tower Family E neighbor prop probe
+name: D1 Tower articulated neighbor prop probe
 
 on:
   workflow_dispatch:
@@ -53,20 +53,22 @@ jobs:
           assert not d['violations'],d['violations'][:20]
           assert d['unique_runtime_world_placement_count']==1215,d['unique_runtime_world_placement_count']
           PY
-      - name: Census every dynamic placement within five metres of Family E
+      - name: Census dynamic placements around articulated and broom-sized candidates
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find recovered roots -maxdepth 1 -name '*.pkg' -type f | sort -u)
           args=();for f in "${files[@]}";do args+=(--snapshot "$f");done
           python tools/d1_tower_articulated_neighbor_census.py --placements reports/runtime_placements.json "${args[@]}" --runtime runtime --radius 5 \
+            --world-id 592D3113E2C5BDB4 --world-id 1A02E90A214E971E \
+            --world-id 5E06BDC97DF9D098 --world-id 9E77C6D0D56C72CD --world-id EF4477B8C14FFAC8 \
             --world-id 1F763204E6BF153E --world-id 288E250AFDC06BC7 --world-id 28F88CAFCCE615AC \
             --world-id 5A9D48129FB3D22A --world-id 5F523A4A340754A7 --world-id C588D8EE0F1F493D \
-            -o reports/TOWER_FAMILY_E_SPATIAL_NEIGHBORS.json | tee reports/TOWER_FAMILY_E_SPATIAL_NEIGHBORS_stdout.txt
+            -o reports/TOWER_ARTICULATED_SPATIAL_NEIGHBORS.json | tee reports/TOWER_ARTICULATED_SPATIAL_NEIGHBORS_stdout.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: d1-tower-family-e-neighbor-prop-probe
+          name: d1-tower-articulated-neighbor-prop-probe
           path: reports/
           retention-days: 14
           compression-level: 6
