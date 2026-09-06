@@ -1,0 +1,105 @@
+name: D1 Crota A705 owner global
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-a705-owner-global.yml'
+      - 'tools/d1_remote_class_locator.py'
+      - 'tools/d1_remote_catalog_backlinks.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Locate every current base family containing SA705
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_class_locator.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --reference 0x808005A7 \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/A705_CLASS_LOCATIONS.json | tee out/class_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/A705_CLASS_LOCATIONS.json'))
+          assert not d['errors'],d['errors']
+          assert d['hit_package_count']>0,d
+          print('A705_HIT_PACKAGES',[x['package_id'] for x in d['hits']])
+          print('A705_OCCURRENCES',d['occurrence_counts'])
+          PY
+
+      - name: Search only A705-bearing families for 8108EF3A at source-pinned +0x68
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          mapfile -t pkgs < <(python - <<'PY'
+          import json
+          d=json.load(open('out/A705_CLASS_LOCATIONS.json'))
+          print('\n'.join(sorted({x['package_id'] for x in d['hits']})))
+          PY
+          )
+          args=(); for p in "${pkgs[@]}"; do args+=(--scan-package-id "0x$p"); done
+          python tools/d1_remote_catalog_backlinks.py \
+            "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --target 0x8108EF3A --reference 0x808005A7 \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_8108EF3A_A705_GLOBAL_BACKLINKS.json | tee out/backlink_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_8108EF3A_A705_GLOBAL_BACKLINKS.json'))
+          assert d['error_count']==0,d['errors']
+          exact=[]
+          for row in d['hits']:
+              for off in row['targets'].get('8108EF3A',[]):
+                  if off==0x68:
+                      exact.append({'package_id':row['package_id'],'owner':row['source_tag_hash']})
+          print('SOURCE_PINNED_PLUS_68_OWNERS',exact)
+          print('ALL_HITS',d['hits'])
+          # A zero result is a valid bounded negative result; do not fail the census.
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-A705-OWNER-GLOBAL
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
