@@ -16,14 +16,22 @@ The five exact D1 inventory definitions are consecutive records in `ps4_investme
 
 All five serialize the same three dye indices in their D1 `20108080` equipping blocks. The Mark locks channel 1 / dye 8753 and defaults channels 0 and 2; the other four default all three.
 
-## Exact channel table
+## Exact channel table and semantic correction
 
-The D1 global dye-channel table is on-disk FileHash `80A5E249` (Charm display literal `49E2A580`).
+The D1 global dye-channel table is on-disk FileHash `80A5E249` (Charm display literal `49E2A580`). The canonical armor mapping is:
 
 ```text
 channel 0  27785BD2  ArmorPlate
-channel 1  5180A26B  ArmorSuit
-channel 2  0D07754A  ArmorCloth
+channel 1  5180A26B  ArmorCloth
+channel 2  0D07754A  ArmorSuit
+```
+
+This corrects one historical Charm `ChannelNames` dictionary that swaps the names of the two non-plate armor hashes. The correction is independently consistent with the retail Spektar data: dye 8753 is selected by channel index 1 and its exact `SDye_D1` has `SlotTypeIndex=1`; dye 8754 is selected by channel index 2 and has `SlotTypeIndex=2`. Charm's own `DyeSlot` enum is `Armor=0, Cloth=1, Suit=2`. `SolUnshadowed/tgxm-loader` and `Destiny-Collada-Generator` independently map `1367384683` to ArmorCloth and `218592586` to ArmorSuit. Numeric channel indices/hashes were never affected.
+
+Canonical semantic mapping is now isolated in:
+
+```text
+tools/d1_dye_channel_semantics.py
 ```
 
 ## Exact D1 resolution chain
@@ -72,7 +80,7 @@ subsurface            [32.29999923706055, 1.0, 1.0, 1.0]
 detail texture pkg    0104
 ```
 
-## Dye 8753 — ArmorSuit
+## Dye 8753 — ArmorCloth
 
 ```text
 DyeManifestHash       AA575EE9
@@ -95,7 +103,7 @@ subsurface            [32.29999923706055, 1.0, 1.0, 1.0]
 detail texture pkg    0103
 ```
 
-## Dye 8754 — ArmorCloth
+## Dye 8754 — ArmorSuit
 
 ```text
 DyeManifestHash       72E1A6C0
@@ -134,7 +142,7 @@ Thus the previously planned `render parent -> external material -> shader` path 
 
 ## Validation
 
-Green exact-dye workflow:
+First green exact-byte dye closure before semantic-name correction:
 
 ```text
 .github/workflows/d1-spektr-pandion-dye-resolve.yml
@@ -144,6 +152,8 @@ artifact d1-spektr-pandion-exact-dyes
 ID       9980216842
 ZIP SHA  e2ce2d4f8e349b2ca1bee9af3d53abccc0ff4125a1604185041ad4a4e381e818
 ```
+
+The byte data in that artifact is authoritative; only its human-readable channel 1/2 labels inherited the Charm dictionary swap. The workflow now uses `tools/d1_investment_dye_exact_resolver_v2.py` and explicitly validates `ArmorPlate / ArmorCloth / ArmorSuit` plus `SlotTypeIndex 0 / 1 / 2`.
 
 Green external-material census:
 
