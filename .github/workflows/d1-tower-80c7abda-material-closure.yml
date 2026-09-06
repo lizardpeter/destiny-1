@@ -1,0 +1,135 @@
+name: D1 Tower 80C7ABDA material closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80c7abda-material-closure.yml'
+      - 'tools/d1_expand_world_material_dependencies.py'
+      - 'tools/d1_world_entity_model_material_bindings.py'
+      - 'tools/d1_expand_world_entity_dependencies.py'
+      - 'tools/d1_entity_model_probe.py'
+      - 'tools/d1_entity_resource_probe.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime and current package list
+        run: |
+          set -euo pipefail
+          mkdir -p runtime initial material_expanded reports/material_dependency_passes
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Recover only the already-proven parent/model and material families
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+
+          ids={'023d','0154','0156','0157','0158','0169'}
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          def pid(n):
+              m=re.search(r'_([0-9a-fA-F]{4})_[0-9]+\.pkg$',n)
+              return m.group(1).lower() if m else None
+          wanted=sorted(n for n in names if pid(n) in ids)
+          present={i:sorted(n for n in wanted if pid(n)==i) for i in sorted(ids)}
+          missing=[i for i,v in present.items() if not v]
+          if missing: raise SystemExit('current package ids absent: '+repr(missing))
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=120)
+          found,headers=arc.find(set(wanted))
+          absent=sorted(set(wanted)-set(found))
+          if absent: raise SystemExit('split TAR missing current members: '+repr(absent))
+          rows=[]
+          out=Path('initial')
+          for name in wanted:
+              info=found[name]
+              sha=arc.copy_to(int(info['data_offset']),int(info['size']),out/name)
+              rows.append({'name':name,'package_id':pid(name),'data_offset':int(info['data_offset']),'size':int(info['size']),'sha256':sha})
+              print('RECOVERED',name,info['size'],sha,flush=True)
+          json.dump({'schema_version':1,'status':'TARGETED_80C7ABDA_INITIAL_CORPUS','package_ids':sorted(ids),'tar_headers_scanned':headers,'members':rows},open('reports/initial_corpus.json','w'),indent=2)
+          PY
+
+      - name: Build exact single-family articulated plan fixture
+        run: |
+          cat > reports/80C7ABDA_plan.json <<'JSON'
+          {
+            "schema_version": 1,
+            "status": "TARGETED_80C7ABDA_MATERIAL_CLOSURE_FIXTURE",
+            "candidates": [
+              {
+                "entity": "80C7ABCF",
+                "models": ["80C7ABDA"],
+                "model_parent_resources": ["80C7ABD2"]
+              }
+            ]
+          }
+          JSON
+
+      - name: Recursively close selected external material package dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t snaps < <(find initial -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${snaps[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_expand_world_material_dependencies.py "${args[@]}" \
+            --runtime runtime \
+            --articulated-plan reports/80C7ABDA_plan.json \
+            --package-list reports/packages.txt \
+            --expansion-dir material_expanded \
+            --work-dir reports/material_dependency_passes \
+            --out reports/80C7ABDA_material_bindings.json \
+            --report reports/80C7ABDA_material_expansion.json \
+            | tee reports/80C7ABDA_material_expansion_stdout.txt
+
+      - name: Assert exact closure and 0050 derivation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/80C7ABDA_material_expansion.json'))
+          b=json.load(open('reports/80C7ABDA_material_bindings.json'))
+          assert e['status']=='D1_WORLD_MATERIAL_DEPENDENCY_EXPANSION_CLOSED',e
+          assert e['recovered_package_ids']==['0050'],e['recovered_package_ids']
+          assert b['status']=='D1_WORLD_ENTITY_MODEL_MATERIAL_BINDINGS_COMPLETE',b['violations']
+          assert b['model_parent_pair_count']==1 and b['validated_pair_count']==1
+          assert not b['violations']
+          p0=e['passes'][0]
+          assert '808A048B' in p0['unresolved_selected_material_hashes'],p0
+          assert p0['new_package_ids']==['0050'],p0
+          selected=b['selected_material_reference_counts']
+          assert selected.get('808A048B',0)==6,selected.get('808A048B')
+          print(json.dumps({
+            'status':e['status'],
+            'recovered_package_ids':e['recovered_package_ids'],
+            'recovered_member_count':e['recovered_member_count'],
+            'material_binding_status':b['status'],
+            'validated_pair_count':b['validated_pair_count'],
+            'selected_808A048B_part_count':selected['808A048B'],
+            'violations':b['violations'],
+          },indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80c7abda-material-closure
+          path: reports/
+          retention-days: 14
+          compression-level: 6
