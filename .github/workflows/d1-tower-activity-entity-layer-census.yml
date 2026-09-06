@@ -8,7 +8,9 @@ on:
       - 'tools/d1_world_activity_entity_table_census.py'
       - 'tools/d1_world_activity_entity_resource_census.py'
       - 'tools/d1_world_entity_dependency_census.py'
+      - 'tools/d1_expand_world_entity_dependencies.py'
       - 'tools/d1_entity_resource_probe.py'
+      - 'tools/d1_skeleton_probe.py'
       - 'tools/d1_tower_recover_activity_root_corpus.py'
       - 'tools/d1_tower_recover_current_corpus.py'
       - 'tools/d1_split_tar_extract.py'
@@ -27,7 +29,7 @@ jobs:
       - name: Install verified Oodle runtime
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered root_corpus reports
+          mkdir -p runtime recovered root_corpus entity_expanded reports/entity_dependency_passes
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -73,7 +75,7 @@ jobs:
           json.dump(compact,open('reports/TOWER_ACTIVITY_ENTITY_LAYER_SUMMARY.json','w'),indent=2)
           print(json.dumps(compact,indent=2))
           PY
-      - name: Collapse F603 entity resources into exact placements
+      - name: Materialize direct and F603 entity placements
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -94,14 +96,16 @@ jobs:
           if d['f603_count']<=0: raise SystemExit('no Activity-owned F603 tables reached collapse pass')
           if d['collapsed_f603_count']<=0: raise SystemExit('no F603 EntityResource collapsed into SMapDataEntry records')
           if d['real_entity_entry_count']<=0: raise SystemExit('no real entity placements materialized')
+          if d['violations']: raise SystemExit('placement framing still has violations: '+repr(d['violations'][:20]))
           compact={k:d[k] for k in ('status','f603_count','collapsed_f603_count','collapse_reason_counts',
-              'unique_entity_resource_tags','collapsed_entry_count','real_entity_entry_count','unique_entity_hash_count',
+              'unique_entity_resource_tags','direct_map_data_table_count','direct_map_entry_count','f603_collapsed_entry_count',
+              'collapsed_entry_count','source_kind_counts','real_entity_entry_count','unique_entity_hash_count',
               'resolved_entity_entry_count','entity_class_match_entry_count','unique_world_id_count','data_resource_class_counts','violations')}
           compact['unique_entity_hashes']=d['unique_entity_hashes']
           json.dump(compact,open('reports/TOWER_ACTIVITY_ENTITY_PLACEMENT_SUMMARY.json','w'),indent=2)
           print(json.dumps(compact,indent=2))
           PY
-      - name: Trace placed entities into model skeleton physics and child resources
+      - name: Recursively close placed entity dependencies
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -109,20 +113,36 @@ jobs:
           mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
           set +e
-          python tools/d1_world_entity_dependency_census.py "${args[@]}" --runtime runtime \
+          python tools/d1_expand_world_entity_dependencies.py "${args[@]}" \
+            --runtime runtime \
             --placements reports/tower_activity_entity_resource_census.json \
+            --package-list reports/packages.txt \
+            --expansion-dir entity_expanded \
+            --work-dir reports/entity_dependency_passes \
             --out reports/tower_entity_dependency_census.json \
-            | tee reports/tower_entity_dependency_census_stdout.txt
+            --report reports/tower_entity_dependency_expansion.json \
+            | tee reports/tower_entity_dependency_expansion_stdout.txt
           rc=${PIPESTATUS[0]}
           set -e
           test "$rc" -eq 0 -o "$rc" -eq 2
           python - <<'PY'
           import json
           d=json.load(open('reports/tower_entity_dependency_census.json'))
+          x=json.load(open('reports/tower_entity_dependency_expansion.json'))
           if d['placed_unique_entity_count']<=0: raise SystemExit('no placed entity hashes reached dependency pass')
-          compact={k:d[k] for k in ('status','placed_unique_entity_count','parsed_entity_count',
-              'entity_resource_reference_count','unique_entity_resource_hash_count','resource_reference_class_counts',
-              'entity_resource_role_counts','unique_embedded_model_count','unique_embedded_models','violations')}
+          if x['status']!='D1_WORLD_ENTITY_DEPENDENCY_EXPANSION_CLOSED':
+              raise SystemExit('entity dependency expansion did not close: '+repr(x.get('final_unresolved_dependency_package_ids')))
+          compact={k:d[k] for k in ('status','placed_unique_entity_count','parsed_entity_count','unresolved_entity_count',
+              'entity_resource_reference_count','unique_entity_resource_hash_count','unresolved_resource_hash_count',
+              'resource_reference_class_counts','entity_resource_role_counts','entity_resource_class_pair_counts',
+              'entity_composition_class_counts','articulated_candidate_count','articulated_candidate_entities',
+              'named_articulated_candidate_count','named_articulated_candidate_entities','unique_entity_name_hash_count',
+              'entity_name_hash_reference_counts','specific_name_hash_reference_counts','generic_name_hash_reference_counts',
+              'unique_embedded_model_count','unique_embedded_models','unique_embedded_physics_model_count',
+              'unique_embedded_physics_models','unresolved_dependency_package_ids','violations')}
+          compact['dependency_expansion']={k:x[k] for k in ('status','stop_reason','initial_snapshot_count','final_snapshot_count',
+              'initial_package_ids','final_package_ids','recovered_package_ids','recovered_member_count','final_dependency_status',
+              'final_unresolved_dependency_package_ids')}
           json.dump(compact,open('reports/TOWER_ENTITY_DEPENDENCY_SUMMARY.json','w'),indent=2)
           print(json.dumps(compact,indent=2))
           PY
