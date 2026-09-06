@@ -1,0 +1,76 @@
+name: WinDV End Capture Build
+
+on:
+  push:
+    branches: [windv-end-capture-build-20260906]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone pinned WinDV source
+        shell: pwsh
+        run: |
+          git clone https://github.com/Wachhund/WinDV.git windv
+          git -C windv checkout 5a8e6f37258bb053cefa253b2effcb5a2a0c22a0
+          $actual = (git -C windv rev-parse HEAD).Trim()
+          if ($actual -ne "5a8e6f37258bb053cefa253b2effcb5a2a0c22a0") { throw "Unexpected upstream commit: $actual" }
+
+      - name: Apply End Capture patch
+        shell: pwsh
+        run: |
+          python tools/windv_end_capture_patch.py windv
+          git -C windv diff --check
+
+      - name: Verify finalization path
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path windv/WinDV.rc -SimpleMatch '"End Capture",IDC_END_CAPTURE')) { throw "End Capture resource missing" }
+          if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'void CDVToolsDlg::OnEndCapture()')) { throw "handler missing" }
+          if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'm_video.Destroy();')) { throw "Destroy finalization missing" }
+
+      - name: Configure Win32 Release
+        run: cmake -S windv -B build -G "Visual Studio 17 2022" -A Win32
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Smoke test
+        shell: cmd
+        run: |
+          build\Release\WinDV.exe --version > version_out.txt 2>&1
+          if %ERRORLEVEL% NEQ 0 exit /b 1
+          type version_out.txt
+          findstr /C:"WinDV" version_out.txt
+          if %ERRORLEVEL% NEQ 0 exit /b 1
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item build/Release/WinDV.exe artifact/WinDV_1.6.0_EndCapture_x86.exe
+          Copy-Item tools/windv_end_capture_patch.py artifact/windv_end_capture_patch.py
+          Copy-Item windv/LICENSE artifact/LICENSE
+          git -C windv diff -- Resource.h WinDV.rc DVToolsDlg.h DVToolsDlg.cpp | Out-File -Encoding utf8 artifact/WinDV_EndCapture.patch
+          "5a8e6f37258bb053cefa253b2effcb5a2a0c22a0" | Out-File -Encoding ascii artifact/UPSTREAM_COMMIT.txt
+          $hash = (Get-FileHash artifact/WinDV_1.6.0_EndCapture_x86.exe -Algorithm SHA256).Hash
+          "SHA256=$hash" | Out-File -Encoding ascii artifact/SHA256.txt
+          @"
+          WinDV 1.6.0 End Capture custom build
+
+          Base: Wachhund/WinDV commit 5a8e6f37258bb053cefa253b2effcb5a2a0c22a0
+          Platform: Win32/x86, Windows 7+ toolchain (VS 2022)
+
+          Capture remains Pause/Resume.
+          End Capture performs synchronous CDV::Destroy() finalization, which joins the capture thread and destroys CAVIWriter. CAVIWriter sends EOS to the AVI mux and waits for completion so the AVI index is committed. WinDV then rebuilds the capture graph and is ready for another capture.
+          "@ | Out-File -Encoding utf8 artifact/README_EndCapture.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinDV-1.6.0-EndCapture-x86
+          path: artifact/*
+          if-no-files-found: error
