@@ -1,0 +1,123 @@
+name: D1 Tower 80C9993C static input canary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80c9993c-static-input-canary.yml'
+      - 'tools/d1_tower_80ca0cb7_static_inputs.py'
+      - 'tests/test_d1_tower_80ca0cb7_static_inputs.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Run synthetic scoped-mapping tests
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy pytest trimesh
+          pytest -q tests/test_d1_tower_80ca0cb7_static_inputs.py
+
+      - name: Recover exact Tower source families and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p index runtime packages reports
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Replay exact visible 80C9993C source words through mapper
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate as schema
+          import d1_tower_static_chunk_export as base
+          from d1_tower_80ca0cb7_static_inputs import decode_static_inputs
+
+          c=schema.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          d1=schema.validate_static_data_d1(c,'80C994B2')
+          assert d1['instance_transforms']=='80C99845'
+          transforms,_=c.payload(d1['instance_transforms'])
+          assert transforms is not None
+          t=schema.parse_static_table(c,'80C99827',d1['instance_count'])
+
+          rows=[]
+          for ii in (976,978):
+              info=t['info_entries'][ii]; m=t['mesh_entries'][info['static_index']]
+              mh=t['material_hashes'][info['material_index']]
+              assert mh=='80C9993C' and m['detail_level']==1 and m['primitive_type']==3,(ii,mh,m)
+              v0=base.read_reference_file(c,m['vertices0']); v1=base.read_reference_file(c,m['vertices1']); ib=base.read_reference_file(c,m['indices'])
+              assert (base.hdr_stride(v0['header']),base.hdr_stride(v1['header']))==(8,24)
+              inds=base.decode_indices(ib['backing'],base.index_is32(ib['header']))
+              faces=base.primitive_faces(inds[m['index_offset']:m['index_offset']+m['index_count']],m['primitive_type'],base.index_is32(ib['header']))
+              used=np.unique(faces.reshape(-1))
+              d=decode_static_inputs(v0['backing'],v1['backing'])
+              assert d.branch_a.all()
+              assert np.all(d.raw_v8_v11_uv_control[used,2]==0)
+              assert int(d.raw_v8_v11_uv_control[used,3].min())==0
+              assert int(d.raw_v8_v11_uv_control[used,3].max())==32767
+              assert np.all(d.raw_v20_scalar[used]==32767)
+              assert np.all(d.attr0_w[used]==np.float32(1.0))
+              ti=info['transform_index']; constants=struct.unpack_from('<4f',transforms,ti*0x40+0x30)
+              attr3=d.attr3(constants)[used]
+              assert np.isfinite(attr3).all()
+              assert float(attr3[:,2].min())==0.0 and float(attr3[:,2].max())==0.0
+              assert float(attr3[:,3].min())==0.0 and float(attr3[:,3].max())==1.0
+              rows.append({
+                'info_index':ii,'static_index':info['static_index'],'transform_index':ti,
+                'vertices0':m['vertices0'],'vertices1':m['vertices1'],'indices':m['indices'],
+                'used_vertices':int(len(used)),'triangles':int(len(faces)),
+                'instance_dwords12_15':list(constants),
+                'raw_v10_range':[int(d.raw_v8_v11_uv_control[used,2].min()),int(d.raw_v8_v11_uv_control[used,2].max())],
+                'raw_v11_range':[int(d.raw_v8_v11_uv_control[used,3].min()),int(d.raw_v8_v11_uv_control[used,3].max())],
+                'raw_v20_range':[int(d.raw_v20_scalar[used].min()),int(d.raw_v20_scalar[used].max())],
+                'attr3_range':[[float(attr3[:,j].min()),float(attr3[:,j].max())] for j in range(4)],
+                'attr0_w_range':[float(d.attr0_w[used].min()),float(d.attr0_w[used].max())],
+              })
+          out={
+            'schema_version':1,'status':'D1_80C9993C_SCOPED_STATIC_INPUT_CANARY_PASS',
+            'material':'80C9993C','vertex_shader':'80CA0CB7','pixel_shader':'80C9994A',
+            'scope':'Tower 80C99827 visible detail-1 8+24 draws after 59-draw/26-buffer branch-A census',
+            'rows':rows,
+            'mapping':{
+              'v4_v6':'stream0 +0x00 int16x3 /32767','v20':'stream0 +0x06 int16 /32767',
+              'v8_v11':'stream1 +0x00 int16x4 /32767','v12_v14':'stream1 +0x08 int16x3 /32767',
+              'stored_normal_w':'stream1 +0x0E not consumed by semantic2','v16_v19':'stream1 +0x10 int16x4 /32767',
+            },
+            'descriptor_boundary':'Exact Sony GnmBuffer descriptor bytes/numformat enum remain uncaptured; this is a scoped source-word reconstruction closed by VS component counts, byte layout, retail branch census and instance-UV behavior.'
+          }
+          Path('reports/80C9993C_static_input_canary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80c9993c-static-input-canary
+          path: reports/
+          retention-days: 14
