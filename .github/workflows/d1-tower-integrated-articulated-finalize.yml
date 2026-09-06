@@ -23,11 +23,7 @@ jobs:
       - name: Recover already-proven articulated exact-resource layer
         run: |
           set -euo pipefail
-          mkdir -p prior combined reports
-          # Run 34010062329 passed every articulated geometry/material/texture stage.
-          # Its only failure was an assertion that forgot d1_gltf_layer_merge adds one
-          # explicit D1_LAYER_* parent node. Reuse the proven layer instead of repeating
-          # multi-gigabyte package recovery.
+          mkdir -p prior combined reports alternate/path
           gh run download 34010062329 -n d1-tower-integrated-articulated-preview-fast -D prior
           art="$(find prior -name D1_TOWER_ARTICULATED_SOURCE_OWNED_EXACT_TEXTURE_RESOURCES.glb -print -quit)"
           scene="$(find prior -name tower_articulated_scene.json -print -quit)"
@@ -37,56 +33,73 @@ jobs:
           texres="$(find prior -name tower_articulated_exact_texture_resources.json -print -quit)"
           for p in "$art" "$scene" "$model" "$mat" "$texclose" "$texres"; do test -n "$p" -a -f "$p"; done
           cp "$art" combined/articulated.glb
+          cp "$art" alternate/path/completely_different_filename.glb
           cp "$scene" reports/tower_articulated_scene.json
           cp "$model" reports/tower_articulated_model_export.json
           cp "$mat" reports/tower_articulated_material_bindings_complete.json
           cp "$texclose" reports/tower_articulated_texture_dependency_closure.json
           cp "$texres" reports/tower_articulated_exact_texture_resources.json
           echo 'cea9dadacf0eb62c5aa9dc940f7a0fe27958b2d2e0bce7070762d22cbce7dfd4  combined/articulated.glb' | sha256sum --check --strict
+          echo 'cea9dadacf0eb62c5aa9dc940f7a0fe27958b2d2e0bce7070762d22cbce7dfd4  alternate/path/completely_different_filename.glb' | sha256sum --check --strict
 
-      - name: Merge onto reproducible r6 exact-resource static/common Tower
+      - name: Recover reproducible r6 static/common baseline
         run: |
           set -euo pipefail
           curl --fail --location --retry 12 --retry-delay 5 \
             'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r6-exact-resources/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb' \
             -o combined/static_r6.glb
           echo 'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb  combined/static_r6.glb' | sha256sum --check --strict
+
+      - name: Merge twice from different filesystem paths
+        run: |
+          set -euo pipefail
           python tools/d1_gltf_layer_merge.py \
             --base combined/static_r6.glb \
             --layer articulated_bind_pose=combined/articulated.glb \
             --out combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb \
             --report reports/tower_integrated_articulated_merge.json
+          python tools/d1_gltf_layer_merge.py \
+            --base combined/static_r6.glb \
+            --layer articulated_bind_pose=alternate/path/completely_different_filename.glb \
+            --out combined/path_independence_control.glb \
+            --report reports/tower_integrated_articulated_merge_path_control.json
+          cmp --silent \
+            combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb \
+            combined/path_independence_control.glb
+          echo "PATH_INDEPENDENT_MERGE $(sha256sum combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb | cut -d' ' -f1)"
 
-      - name: Validate exact additive topology including merger parent node
+      - name: Validate exact additive topology and deterministic merge contract
         run: |
           set -euo pipefail
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
           m=json.load(open('reports/tower_integrated_articulated_merge.json'))
+          mc=json.load(open('reports/tower_integrated_articulated_merge_path_control.json'))
           s=json.load(open('reports/tower_articulated_scene.json'))
           a=json.load(open('reports/tower_articulated_exact_texture_resources.json'))
           t=json.load(open('reports/tower_articulated_texture_dependency_closure.json'))
           b=m['base_counts'];f=m['final_counts'];l=a['final_counts']
+          assert m['schema_version']==3 and mc['schema_version']==3,(m['schema_version'],mc['schema_version'])
           assert m['base_bin_exact_prefix'] and all(x['exact'] for x in m['base_json_exact_prefixes'].values())
+          assert mc['base_bin_exact_prefix'] and all(x['exact'] for x in mc['base_json_exact_prefixes'].values())
           assert (b['meshes'],b['materials'],b['textures'],b['images'],b['nodes'])==(2234,499,588,588,12438),b
           for key in ('meshes','materials','textures','images'):
               assert f[key]==b[key]+l[key],(key,b[key],l[key],f[key])
-          # d1_gltf_layer_merge creates one explicit D1_LAYER_articulated_bind_pose
-          # parent node around the appended layer roots. This is intentional topology,
-          # not a source-geometry node.
           assert f['nodes']==b['nodes']+l['nodes']+1,(b['nodes'],l['nodes'],f['nodes'])
           assert (f['meshes'],f['materials'],f['textures'],f['images'],f['nodes'])==(2320,534,658,658,12771),f
+          assert mc['final_counts']==f,(mc['final_counts'],f)
           assert (s['unique_model_count'],s['runtime_placement_count'],s['scene_geometry_variants'],s['scene_geometry_nodes'])==(7,37,86,332),s
           assert a['exact_source_texture_count']==55 and a['derived_portable_normal_count']==15,a
           assert a['portable_base_bound_material_count']==23 and a['portable_normal_bound_material_count']==16,a
           assert t['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE' and t['recovered_package_ids']==['003b'],t
           p=Path('combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb')
-          sha=hashlib.sha256(p.read_bytes()).hexdigest()
-          assert p.stat().st_size==632642976,p.stat().st_size
-          assert sha=='54331e3ff0da4b1f8d7e17c9ea62c6fe72be08cee9940cc357006b7ae5f4cd34',sha
+          pc=Path('combined/path_independence_control.glb')
+          sha=hashlib.sha256(p.read_bytes()).hexdigest();sha2=hashlib.sha256(pc.read_bytes()).hexdigest()
+          assert sha==sha2 and p.read_bytes()==pc.read_bytes(),(sha,sha2)
+          assert m['output_sha256']==mc['output_sha256']==sha,(m['output_sha256'],mc['output_sha256'],sha)
           out={
-            'schema_version':3,
+            'schema_version':4,
             'status':'D1_TOWER_INTEGRATED_ARTICULATED_EXACT_TEXTURE_CHECKPOINT',
             'static_baseline':{
               'release':'d1-tower-baked-common-textured-r6-exact-resources',
@@ -98,12 +111,13 @@ jobs:
               'scene_geometry_variants':86,'scene_geometry_nodes':332,
               'active_materials':35,'native_texture_resources':55,
               'derived_portable_normals':15,'portable_base_materials':23,
-              'portable_normal_materials':16,
-              'texture_dependency_added_package_ids':['003b']
+              'portable_normal_materials':16,'texture_dependency_added_package_ids':['003b'],
+              'source_layer_sha256':'cea9dadacf0eb62c5aa9dc940f7a0fe27958b2d2e0bce7070762d22cbce7dfd4'
             },
             'merge_adapter_parent_nodes':1,
-            'final_counts':f,
-            'bytes':p.stat().st_size,'sha256':sha,
+            'merge_path_independence_proven':True,
+            'merge_determinism_inputs':'base content + layer content + logical layer name; filesystem paths are excluded from emitted metadata',
+            'final_counts':f,'bytes':p.stat().st_size,'sha256':sha,
             'visual_scope':'Exact r6 static/common Tower plus all 37 presently proven source-owned articulated placements. Articulated geometry uses retail stage-0/highest-detail selection, exact owning-parent material resolution, closed 55/55 texture dependencies, and all exact native material texture resources. Bind-pose visual integration only; validated skins/animations are not misrepresented as embedded.',
             'semantic_scope':'No appearance-based NPC/vendor labels.'
           }
@@ -111,18 +125,19 @@ jobs:
           print(json.dumps(out,indent=2))
           PY
 
-      - name: Publish durable r7 integrated checkpoint
+      - name: Publish durable deterministic r7 integrated checkpoint
         run: |
           set -euo pipefail
           tag=d1-tower-baked-common-articulated-r7-exact-resources
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title 'D1 Tower baked + common + articulated r7 exact resources' \
-              --notes 'Integrated Tower visual checkpoint. Exact r6 588-resource static/common Tower plus all 37 presently proven source-owned articulated placements across 7 model/skeleton families. Articulated texture closure is 55/55 exact native resources plus 15 explicitly derived portable normals. The extra final node is the intentional D1_LAYER parent created by the loss-preserving glTF merger. Bind-pose visual integration only; validated skins/animations are not misrepresented as embedded.'
+              --notes 'Integrated Tower visual checkpoint. Exact r6 588-resource static/common Tower plus all 37 presently proven source-owned articulated placements across 7 model/skeleton families. Articulated texture closure is 55/55 exact native resources plus 15 explicitly derived portable normals. GLB merge output is proven byte-identical across different temporary input filenames. Bind-pose visual integration only; validated skins/animations are not misrepresented as embedded.'
           fi
           gh release upload "$tag" \
             combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb \
             reports/FINAL_TOWER_INTEGRATED_ARTICULATED.json \
+            reports/tower_integrated_articulated_merge.json \
             reports/tower_articulated_scene.json \
             reports/tower_articulated_model_export.json \
             reports/tower_articulated_material_bindings_complete.json \
