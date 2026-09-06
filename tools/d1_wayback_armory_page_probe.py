@@ -7,19 +7,21 @@ equal the requested unsigned D1 inventory hash exactly. No nearby item, name,
 timestamp, or database version is substituted.
 """
 from __future__ import annotations
-import argparse,hashlib,json,time,urllib.error,urllib.parse,urllib.request
+import argparse,hashlib,json,socket,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 
 UA='d1-reversal-evidence/1.0 (+https://github.com/lizardpeter/destiny-1)'
 KEYWORDS=('ArmoryDetailPage.model','defaultArmor','gearAndDefaultArmor')
 
-def req(url:str,timeout:int=90):
+def req(url:str,timeout:int=20):
     r=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'*/*'})
     try:
         with urllib.request.urlopen(r,timeout=timeout) as x:
-            return int(getattr(x,'status',200)),dict(x.headers.items()),x.read()
+            return int(getattr(x,'status',200)),dict(x.headers.items()),x.read(),None
     except urllib.error.HTTPError as e:
-        return int(e.code),dict(e.headers.items()),e.read()
+        return int(e.code),dict(e.headers.items()),e.read(),f'HTTPError:{e.code}'
+    except (urllib.error.URLError,TimeoutError,socket.timeout,OSError) as e:
+        return 0,{},b'',f'{type(e).__name__}:{e}'
 
 def exact_item_url(url:str,item:int)->bool:
     u=urllib.parse.urlsplit(url)
@@ -43,14 +45,12 @@ def snippets(text:str,radius:int=700):
 def cdx_query(prefix:str):
     params={'url':prefix,'matchType':'prefix','output':'json','fl':'timestamp,original,statuscode,digest,length,mimetype','filter':'statuscode:200','collapse':'digest'}
     url='https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode(params)
-    st,hh,bb=req(url)
-    return url,st,bb
+    st,hh,bb,err=req(url)
+    return url,st,bb,err
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--item',required=True,type=int); ap.add_argument('--name',default=''); ap.add_argument('-o','--out-dir',type=Path,required=True); ap.add_argument('--attempts',type=int,default=12); a=ap.parse_args()
     a.out_dir.mkdir(parents=True,exist_ok=True)
-    # Historical public links exist in both forms below; HTTP/HTTPS and www/non-www
-    # are queried separately. Discovery is broad, acceptance remains exact by parsed item id.
     prefixes=[]
     for scheme in ('https','http'):
         for host in ('www.bungie.net','bungie.net'):
@@ -58,12 +58,13 @@ def main():
                 f'{scheme}://{host}/en/Armory/Detail?type=item&item={a.item}',
                 f'{scheme}://{host}/en/Armory/Detail?item={a.item}',
             ]
-    report={'schema':'d1_wayback_armory_page_probe/v2','item':a.item,'name':a.name,'prefixes':prefixes,'cdx_queries':[],'captures':[],'selected':None,'snippets':[]}
+    report={'schema':'d1_wayback_armory_page_probe/v3','item':a.item,'name':a.name,'prefixes':prefixes,'cdx_queries':[],'captures':[],'selected':None,'snippets':[],
+            'policy':'Archive transport failures are recorded and skipped. Only exact parsed item-id captures can be accepted.'}
     candidates=[]; seen=set()
     for qi,prefix in enumerate(prefixes):
-        url,st,body=cdx_query(prefix)
+        url,st,body,err=cdx_query(prefix)
         (a.out_dir/f'cdx_response_{qi}.bin').write_bytes(body)
-        qrec={'prefix':prefix,'cdx_url':url,'status':st,'bytes':len(body)}; report['cdx_queries'].append(qrec)
+        qrec={'prefix':prefix,'cdx_url':url,'status':st,'bytes':len(body),'error':err}; report['cdx_queries'].append(qrec)
         if st!=200: continue
         try: rows=json.loads(body.decode('utf-8-sig'))
         except Exception as e: qrec['parse_error']=repr(e); continue
@@ -79,17 +80,18 @@ def main():
     report['capture_count']=len(candidates); report['captures']=candidates[:200]
     for c in candidates[:max(1,a.attempts)]:
         replay=f"https://web.archive.org/web/{c['timestamp']}id_/{c['original']}"
-        st,hh,bb=req(replay)
-        attempt={'timestamp':c['timestamp'],'original':c['original'],'replay':replay,'http_status':st,'bytes':len(bb),'sha256':hashlib.sha256(bb).hexdigest(),'content_type':hh.get('Content-Type')}
+        st,hh,bb,err=req(replay)
+        attempt={'timestamp':c['timestamp'],'original':c['original'],'replay':replay,'http_status':st,'bytes':len(bb),'sha256':hashlib.sha256(bb).hexdigest(),'content_type':hh.get('Content-Type'),'error':err}
         report.setdefault('attempts',[]).append(attempt)
-        if st!=200: time.sleep(.3); continue
+        if st!=200: time.sleep(.2); continue
         p=a.out_dir/f"capture_{c['timestamp']}.html"; p.write_bytes(bb)
         text=bb.decode('utf-8',errors='replace'); ss=snippets(text)
         if report['selected'] is None or ss:
             report['selected']=attempt; report['snippets']=ss; report['selected_file']=p.name
         if ss: break
-        time.sleep(.3)
+        time.sleep(.2)
     (a.out_dir/'report.json').write_text(json.dumps(report,indent=2)+'\n')
-    print(json.dumps({'item':a.item,'name':a.name,'capture_count':report['capture_count'],'selected':report['selected'],'snippet_keywords':[x['keyword'] for x in report['snippets']],'cdx_statuses':[x['status'] for x in report['cdx_queries']]},indent=2))
+    print(json.dumps({'item':a.item,'name':a.name,'capture_count':report['capture_count'],'selected':report['selected'],'snippet_keywords':[x['keyword'] for x in report['snippets']],
+                      'cdx_statuses':[x['status'] for x in report['cdx_queries']],'cdx_errors':[x['error'] for x in report['cdx_queries'] if x['error']]},indent=2))
     return 0
 if __name__=='__main__': raise SystemExit(main())
