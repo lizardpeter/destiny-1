@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_01D1_EXACT_MEMBER_CATALOG",
+  "families": {
+    "01d1": [
+      {"name":"ps4_env_skies_01d1_0.pkg","data_offset":14585293824,"size":640131072,"sha256":"53c44b9db0a7982fa3c7848097c954ae1292126dcc8ff0dcdb3f8da9a905d91e"},
+      {"name":"ps4_env_skies_01d1_1.pkg","data_offset":15225425408,"size":133412864,"sha256":"88a2737751ad99786a1a8fa8bd8db1f1a2adc7bc9d579e53e476e2d4100cb6b3"},
+      {"name":"ps4_env_skies_01d1_2.pkg","data_offset":15358838784,"size":511522816,"sha256":"0df892ef421b3ce293849a8a784bff2495a47aace47734ca8362239d02254bc8"},
+      {"name":"ps4_env_skies_01d1_4.pkg","data_offset":15870362112,"size":256000,"sha256":"fe790b1d736708cfa583eb59b970ea098fbecdfaf9afba51e3e81a2552140102"}
+    ]
+  },
+  "provenance": {
+    "member_locations": "evidence/d1_tower_dependency_member_catalog.json",
+    "member_sha256": "evidence/d1_tower_dependency_sha256_catalog.json"
+  },
+  "policy": "Exact current physical 01D1 members only; no semantic ownership is inferred from package membership."
+}
