@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_01CF_EXACT_MEMBER_CATALOG",
+  "families": {
+    "01cf": [
+      {"name":"ps4_env_skies_01cf_0.pkg","data_offset":14216130048,"size":277645312,"sha256":"f45d85c89f46e5ba9585073f105b8a1c1229c4d543b56e38ccc840a0010d297a"},
+      {"name":"ps4_env_skies_01cf_1.pkg","data_offset":14493775872,"size":3885056,"sha256":"16a54200f04680d06ed3936afc44aac1eaea8f111cc44acac2fa18cdd394b34f"},
+      {"name":"ps4_env_skies_01cf_2.pkg","data_offset":14497661440,"size":87631872,"sha256":"1999fa9d728ef75393f59171325b397cb1356d94322694b6fedd60e339f171f9"}
+    ]
+  },
+  "provenance": {
+    "member_locations": "evidence/d1_tower_dependency_member_catalog.json",
+    "member_sha256": "evidence/d1_tower_dependency_sha256_catalog.json"
+  },
+  "policy": "Exact current physical 01CF members only; no semantic ownership is inferred from package membership."
+}
