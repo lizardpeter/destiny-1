@@ -30,30 +30,31 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          out={}
-          allm=set()
+          out={}; allm=set()
           for role in ('masculine','feminine'):
-              p=Path(f'input/visual/spektar_{role}_visual_context.json')
-              d=json.load(open(p))
+              d=json.load(open(f'input/visual/spektar_{role}_visual_context.json'))
               rows=[]
               for m in d['models']:
+                  parent=m.get('render_parent') or {}
+                  plates=[x.get('texture_plate_header_tag_hash') for x in parent.get('texture_plates_roi_entries',[])]
+                  mats=parent.get('external_material_tag_hashes',[])
                   r={
-                    'model_hash':m['model_hash'],
-                    'model_parent_hash':m['model_parent_hash'],
-                    'texture_plate_header_tag':m['model_parent'].get('texture_plate_header_tag'),
-                    'external_material_tag_hashes':m['model_parent'].get('external_material_tag_hashes',[]),
-                    'external_material_count':m['model_parent'].get('external_material_count',0),
+                    'model_hash':m['tag_hash'],
+                    'entity_resource_hash':m.get('entity_resource_hash'),
+                    'texture_plate_header_tags':plates,
+                    'external_material_tag_hashes':mats,
+                    'external_material_count':len(mats),
                   }
-                  rows.append(r); allm.update(r['external_material_tag_hashes'])
+                  rows.append(r); allm.update(mats)
               out[role]=rows
           rep={'schema':'d1_spektar_external_material_census/v1','body_roles':out,
                'distinct_external_material_count':len(allm),'distinct_external_material_tag_hashes':sorted(allm),
-               'policy':'Hashes come only from exact model-parent resources in the already validated Spektar visual-context artifact.'}
+               'policy':'Hashes come only from exact render-parent resources in the already validated Spektar visual-context artifact.'}
           Path('out/spektar_external_material_hashes.json').write_text(json.dumps(rep,indent=2)+'\n')
           print('DISTINCT',len(allm),sorted(allm))
           for role,rows in out.items():
               print('===',role,'===')
-              for r in rows: print(r['model_hash'],r['model_parent_hash'],'materials',r['external_material_tag_hashes'])
+              for r in rows: print(r['model_hash'],r['entity_resource_hash'],'plates',r['texture_plate_header_tags'],'materials',r['external_material_tag_hashes'])
           PY
       - uses: actions/upload-artifact@v4
         with:
