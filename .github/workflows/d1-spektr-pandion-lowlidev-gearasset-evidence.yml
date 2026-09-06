@@ -20,25 +20,25 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Probe exact masculine Titan hashes
+      - name: Probe exact masculine Titan hashes from explicit mobile content
         run: |
           set -euo pipefail
           mkdir -p out/male out/female
           set +e
           python tools/d1_lowlidev_gearasset_probe.py \
-            --class-hash 3655393761 \
+            --platform mobile --class-hash 3655393761 \
             --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
             --download-dir out/male \
             -o out/spektar_lowlidev_masculine.json
           echo $? > out/male_exit_code.txt
           set -e
 
-      - name: Probe exact feminine Titan hashes for composition contrast
+      - name: Probe exact feminine Titan hashes from explicit mobile content
         run: |
           set -euo pipefail
           set +e
           python tools/d1_lowlidev_gearasset_probe.py \
-            --class-hash 3655393761 --female \
+            --platform mobile --class-hash 3655393761 --female \
             --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
             --download-dir out/female \
             -o out/spektar_lowlidev_feminine.json
@@ -53,6 +53,9 @@ jobs:
           ids=['B4BD27A2','1DF65286','4A37316F','4A2AD693','4A5B75DC']
           m=json.load(open('out/spektar_lowlidev_masculine.json'))
           f=json.load(open('out/spektar_lowlidev_feminine.json'))
+          assert m['schema']=='d1_lowlidev_gearasset_probe/v2'
+          assert f['schema']=='d1_lowlidev_gearasset_probe/v2'
+          assert m['requested_platform']==f['requested_platform']=='mobile'
           assert [x['item_hash_hex'] for x in m['items']]==ids
           assert [x['item_hash_hex'] for x in f['items']]==ids
           for role,d in [('masculine',m),('feminine',f)]:
@@ -61,8 +64,9 @@ jobs:
                   print(x['item_hash_hex'],'HTTP',x['http_status'],'bytes',x['response_size'],'parse',x.get('parse_error'))
                   if x.get('gearasset'):
                       assert x['exact_requested_id_match'] is True
+                      assert x['selected_platform']=='mobile'
                       assert x['all_gear_reference_ids_match'] is True
-                      print(' selected geometry',[(z['index'],z['file_name']) for z in x['web_selected_files']['geometry']])
+                      print(' selected geometry',[(z['index'],z['file_name']) for z in x['platform_selected_files']['geometry']])
                       print(' gear',[(g['file_name'],g['reference_id'],g['geometry_identifiers']) for g in x['gear_json']])
           ok=sum(1 for x in m['items'] if x.get('gearasset'))
           print('\nEXACT-HASH SECONDARY EVIDENCE SUCCESSES',ok,'of',len(ids))
@@ -70,19 +74,23 @@ jobs:
           cat > out/README.txt <<'EOF'
           Historical D1 GearAsset mirror exact-hash evidence
 
-          This is secondary evidence only. Every request uses the five already-proven Spektar inventory hashes.
-          The probe rejects requestedId mismatches and rejects any downloaded gear JSON whose reference_id does not
-          equal the exact requested inventory hash. No nearby item, visual match, class substitute, guessed hand mesh,
-          or guessed default armor is accepted.
+          The mirror currently serializes one explicit content row, platform=mobile, for each exact Spektar item hash.
+          This workflow selects that row explicitly. There is no fallback from a missing web row and no inference from
+          filenames or appearance.
 
-          Any returned geometry/file identity must still agree with independent retail PS4 package evidence before it
-          can be promoted into the extractor. A failed/retired mirror is retained as negative evidence, not worked around.
+          This is secondary evidence only. Every request uses the five already-proven Spektar inventory hashes. The probe
+          rejects requestedId mismatches and rejects any downloaded gear JSON whose reference_id does not equal the exact
+          requested inventory hash. No nearby item, visual match, class substitute, guessed hand mesh, or guessed default
+          armor is accepted.
+
+          Any returned geometry/file identity must still agree with independent retail PS4 package evidence before it can
+          be promoted into the extractor.
           EOF
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: D1-SPEKTAR-HISTORICAL-GEARASSET-EXACT-HASH
+          name: D1-SPEKTAR-HISTORICAL-GEARASSET-EXACT-HASH-MOBILE
           path: out/
           retention-days: 14
           if-no-files-found: error
