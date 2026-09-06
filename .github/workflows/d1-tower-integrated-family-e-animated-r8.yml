@@ -21,14 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Recover exact r6 static/common baseline
+      - name: Recover exact current r6 static/common release asset
         run: |
           set -euo pipefail
           mkdir -p base layer combined alternate reports
           curl --fail --location --retry 12 --retry-delay 5 \
             'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r6-exact-resources/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb' \
             -o base/static_common_r6.glb
-          echo 'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb  base/static_common_r6.glb' | sha256sum --check --strict
+          test "$(stat -c%s base/static_common_r6.glb)" = 558618948
+          echo '54e6d35f6d2a940e68f4d70bb0266b5af8fd57fdd39c0d0bc8396c4acc224ef9  base/static_common_r6.glb' | sha256sum --check --strict
 
       - name: Recover exact animated articulated r8 layer
         run: |
@@ -110,7 +111,6 @@ jobs:
           assert len(doc.get('textures',[]))==658
           assert len(doc.get('images',[]))==658
 
-          # Validate every remapped skin reference after the r6 offsets are applied.
           for si,skin in enumerate(doc['skins']):
             joints=skin.get('joints',[])
             assert len(joints)==67,(si,len(joints))
@@ -118,17 +118,14 @@ jobs:
             assert 0 <= int(skin['skeleton']) < len(doc['nodes']),(si,skin)
             assert 0 <= int(skin['inverseBindMatrices']) < len(doc['accessors']),(si,skin)
 
-          # Validate every remapped animation sampler and target node.
-          world_ids=set()
-          clips=[]
+          world_ids=set();clips=[]
           for ai,anim in enumerate(doc['animations']):
             ex=anim.get('extras',{})
             wid=str(ex.get('d1WorldID','')).upper()
             clip=str(ex.get('d1OwnerSelectedClip','')).upper()
             assert wid and clip,(ai,ex)
             world_ids.add(wid);clips.append(clip)
-            samplers=anim.get('samplers',[])
-            channels=anim.get('channels',[])
+            samplers=anim.get('samplers',[]);channels=anim.get('channels',[])
             assert samplers and channels,(ai,len(samplers),len(channels))
             for s in samplers:
               assert 0 <= int(s['input']) < len(doc['accessors']),s
@@ -140,7 +137,6 @@ jobs:
           assert world_ids==set(layer['world_id_owner_map']),world_ids
           assert clips.count('80C7AE98')==1 and clips.count('809D8572')==5,clips
 
-          # Original static/common r6 BIN stays byte-exact at the front of the merged BIN.
           base_doc,base_bin=read_glb(Path('base/static_common_r6.glb'))
           assert bin_data[:len(base_bin)]==base_bin
 
@@ -149,8 +145,10 @@ jobs:
             'status':'D1_TOWER_INTEGRATED_FAMILY_E_ANIMATED_R8_COMPLETE',
             'static_common':{
               'release':'d1-tower-baked-common-textured-r6-exact-resources',
-              'sha256':'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb',
+              'asset_bytes':558618948,
+              'sha256':'54e6d35f6d2a940e68f4d70bb0266b5af8fd57fdd39c0d0bc8396c4acc224ef9',
               'counts':b,
+              'release_asset_note':'Pinned to current GitHub release asset digest; this tag was previously mutable and an older f85b7ece... asset must not be substituted.',
             },
             'articulated_animated':{
               'release':'d1-tower-articulated-family-e-animated-r8-exact-resources',
@@ -185,7 +183,7 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title 'D1 Tower baked + common + Family E animated r8 exact resources' \
-              --notes 'Full Tower checkpoint for Blender 5.2.1 LTS. Exact r6 static/common Tower plus all 37 proven articulated placements. The six 67-bone Family-E placements now carry exact source-indexed retail skinning and owner-selected retail animations; the other 31 articulated placements remain bind pose. The merge preserves the r6 BIN and resource arrays as exact prefixes and is proven byte-identical across different temporary input paths. No vendor/NPC/state/loop/synchronization semantics are inferred.'
+              --notes 'Full Tower checkpoint for Blender 5.2.1 LTS. Current SHA-pinned r6 static/common release asset plus all 37 proven articulated placements. The six 67-bone Family-E placements carry exact source-indexed retail skinning and owner-selected retail animations; the other 31 articulated placements remain bind pose. The merge preserves the pinned r6 BIN and resource arrays as exact prefixes and is proven byte-identical across different temporary input paths. No vendor/NPC/state/loop/synchronization semantics are inferred.'
           fi
           gh release upload "$tag" \
             combined/D1_TOWER_BAKED_COMMON_PLUS_FAMILY_E_ANIMATED_R8_EXACT_RESOURCES.glb \
