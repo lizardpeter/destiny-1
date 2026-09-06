@@ -44,20 +44,31 @@ jobs:
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime -o out/spektar_texcoord2_lane_probe.json
 
-      - name: Validate complete five-model census
+      - name: Validate complete five-model half2 census
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           d=json.load(open('out/spektar_texcoord2_lane_probe.json'))
-          assert d['schema']=='d1_guardian_texcoord2_lane_probe/v1',d
+          assert d['schema']=='d1_guardian_texcoord2_lane_probe/v2',d
           assert d['model_count']==5,d
-          assert d['mesh_count']>0,d
+          assert d['mesh_count']==18,d
           assert sum(d['stride_pair_distribution'].values())==d['mesh_count'],d
           assert sum(d['uv0_source_distribution'].values())==d['mesh_count'],d
-          print('SPEKTAR TEXCOORD2 RAW LANE CENSUS COMPLETE')
+          assert d['texcoord2_candidate_mesh_count']==12,d
+          assert d['texcoord2_valid_candidate_mesh_count']==12,d
+          assert d['texcoord2_invalid_candidate_mesh_count']==0,d
+          assert d['texcoord2_absent_candidate_mesh_count']==6,d
+          assert not d['invalid_candidates'],d
+          assert d['texcoord2_candidate_stride_distribution']=={
+            '0xc/0x14':4,
+            '0xc/0x18':4,
+            '0x10/0x18':4,
+          },d
+          print('SPEKTAR TEXCOORD2 HALF2 CANDIDATES VALIDATED')
           print('stride pairs',d['stride_pair_distribution'])
           print('uv0 sources',d['uv0_source_distribution'])
+          print('candidate strides',d['texcoord2_candidate_stride_distribution'])
           for m in d['models']:
               print('MODEL',m)
           PY
