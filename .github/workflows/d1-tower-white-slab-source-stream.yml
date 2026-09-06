@@ -1,0 +1,96 @@
+name: D1 Tower white slab direct source stream
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-white-slab-source-stream.yml'
+      - 'tools/d1_world_static_vertex_decode.py'
+      - 'tools/d1_tower_static_chunk_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact direct 024c and 0250 source families
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh
+          mkdir -p index runtime packages reports
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/direct_family_recovery.json
+      - name: Decode exact target vertex streams and selected vertices
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from collections import Counter
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          import d1_tower_static_chunk_export_v2
+          import d1_tower_static_chunk_export as base
+          from d1_world_static_vertex_decode import decode_static_attributes
+
+          snaps=sorted(Path('packages').glob('*.pkg'))
+          c=v5.v3.base.Corpus([p.resolve() for p in snaps],Path('runtime').resolve())
+          v0=base.read_reference_file(c,'80C99E11')
+          v1=base.read_reference_file(c,'80C99E12')
+          ib=base.read_reference_file(c,'80C99E13')
+          s0=base.hdr_stride(v0['header']);s1=base.hdr_stride(v1['header'])
+          attrs=decode_static_attributes(v0['backing'],s0,v1['backing'],s1)
+          is32=base.index_is32(ib['header'])
+          inds=base.decode_indices(ib['backing'],is32)
+          fg=base.primitive_faces(inds[456:456+696],3,is32)
+          used=np.unique(fg.reshape(-1))
+          assert len(used)==282,(len(used),fg.shape)
+          assert attrs.colors is not None,attrs.layout
+          col=np.clip(attrs.colors[used]*255.0+0.5,0,255).astype(np.uint8)
+          def ch(k):
+              x=col[:,k];cnt=Counter(int(v) for v in x)
+              return {'min':int(x.min()),'max':int(x.max()),'mean':float(x.mean()),'unique':int(len(cnt)),'zero_fraction':float((x==0).mean()),'full_fraction':float((x==255).mean()),'top':[[v,n] for v,n in cnt.most_common(32)]}
+          rgba=Counter(tuple(int(v) for v in r) for r in col.tolist())
+          out={
+            'schema_version':1,
+            'status':'D1_80C9993C_EXACT_SOURCE_VERTEX_STREAM_PROOF',
+            'source':{'vertices0':'80C99E11','vertices1':'80C99E12','indices':'80C99E13','index_offset':456,'index_count':696,'primitive_type':3,'material':'80C9993C','vertex_shader':'80CA0CB7','pixel_shader':'80C9994A'},
+            'strides':{'vertices0':s0,'vertices1':s1},
+            'layout':attrs.layout,
+            'buffer_vertex_count':int(len(attrs.positions)),
+            'selected_vertex_count':int(len(used)),
+            'triangle_count':int(len(fg)),
+            'selected_source_vertex_indices':used.tolist(),
+            'color_rgba8':{'R':ch(0),'G':ch(1),'B':ch(2),'A':ch(3),'top_rgba':[{'rgba':list(k),'count':v} for k,v in rgba.most_common(64)]},
+            'policy':'Direct exact FileHash buffer/header/backing decode from current 024c/0250 families; no map validator, material preview, glTF merge, or appearance inference participates.'
+          }
+          Path('reports/80C9993C_exact_source_vertex_stream.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-white-slab-direct-source-stream
+          path: reports/
+          retention-days: 14
+          compression-level: 6
