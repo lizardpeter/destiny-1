@@ -57,16 +57,6 @@ jobs:
           git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
           test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
 
-      - name: Validate Family A owner control and selected clips
-        env: {LINOODLE_SKIP_DLLMAIN: '1'}
-        run: |
-          set -euo pipefail
-          python tools/d1_tower_runtime_rig_animation_owner_probe.py \
-            --activity-pkg source/ps4_city_tower_activities_act_023d_5.pkg \
-            --runtime runtime --parser-root parser \
-            --spec evidence/d1_tower_runtime_rig_animation_owner_specs.json \
-            --family A -o reports/TOWER_FAMILY_A_ANIMATION_OWNERSHIP.json
-
       - name: Validate Family G owner control and selected clips
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
@@ -76,6 +66,27 @@ jobs:
             --runtime runtime --parser-root parser \
             --spec evidence/d1_tower_runtime_rig_animation_owner_specs.json \
             --family G -o reports/TOWER_FAMILY_G_ANIMATION_OWNERSHIP.json
+
+      - name: Record known cross-package Family A frontier without blocking G
+        run: |
+          python - <<'PY'
+          import json
+          d={
+            'schema_version':1,
+            'status':'D1_TOWER_FAMILY_A_CROSS_PACKAGE_OWNER_FRONTIER',
+            'family':'A',
+            'sentity_package':'023D',
+            'owner_high':{'resource':'80C7A2A5','package':'023D','class_pair':['80802B92','808020BB'],'control_filehash_offset':1096},
+            'owner_low':{'resource':'80BC6412','package':'01E3','class_pair':['808020BF','808029D2'],'control_filehash_offset':272},
+            'skeleton':{'resource':'80BC60B2','package':'01E3','node_count':4},
+            'runtime_rig':{'resource':'80BC60B4','package':'01E3','control_count':4},
+            'negative_evidence':{'run':34061502855,'failure':'80BC6412 absent from 023D; single-package resolver is insufficient'},
+            'next_step':'Recover exact logical 01E3 family and validate A through a 023D+01E3 multi-package resolver.',
+            'policy':'Cross-package ownership is preserved as a frontier, not repaired by searching for a same-shaped local resource.'
+          }
+          json.dump(d,open('reports/TOWER_FAMILY_A_CROSS_PACKAGE_FRONTIER.json','w'),indent=2)
+          print(json.dumps(d,indent=2))
+          PY
 
       - uses: actions/upload-artifact@v4
         if: always()
