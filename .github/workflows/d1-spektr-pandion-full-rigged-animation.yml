@@ -6,6 +6,8 @@ on:
       - '.github/workflows/d1-spektr-pandion-full-rigged-animation.yml'
       - 'tools/d1_guardian_combined_skin_animation.py'
       - 'tools/d1_guardian_inline_skin_probe.py'
+      - 'tools/d1_entity_model_export.py'
+      - 'tools/d1_remote_model_export.py'
   workflow_dispatch:
 
 permissions:
@@ -75,7 +77,7 @@ jobs:
             --animation-name STATE_13433E07_809D8572 \
             --out out/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb \
             --report out/full_guardian_report.json
-      - name: Validate complete glTF skin and animation
+      - name: Validate complete glTF skin, UVs, and animation
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -99,6 +101,7 @@ jobs:
           assert len(mesh_nodes)==69,len(mesh_nodes)
           assert all(n.skin==0 for n in mesh_nodes)
           assert any(n.name=='b_head' for n in g.nodes)
+          assert all(m.primitives and m.primitives[0].attributes.TEXCOORD_0 is not None for m in g.meshes), 'all corrected Spektar primitives must retain UV0'
           def read_acc(idx):
               a=g.accessors[idx];v=g.bufferViews[a.bufferView];off=(v.byteOffset or 0)+(a.byteOffset or 0)
               comps={'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}[a.type]
@@ -120,7 +123,7 @@ jobs:
           print(json.dumps({'bytes':p.stat().st_size,'models':r['model_count'],'meshes':len(g.meshes),
                             'bound_vertices':verts,'multi_weight_vertices':multi,'bone_domain':sorted(bones),
                             'skin_joints':len(g.skins[0].joints),'clip_frames':r['clip_frame_count'],
-                            'animation_channels':r['animation_channel_count']},indent=2))
+                            'animation_channels':r['animation_channel_count'],'uv0_primitives':len(g.meshes)},indent=2))
           PY
           sha256sum out/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb | tee out/sha256.txt
       - name: Provenance README
@@ -148,7 +151,8 @@ jobs:
 
           Every source U8 weight tuple was required to sum to 255 and every nonzero
           index was required to fit the 67-node skeleton. No weights were synthesized,
-          normalized, clamped, or guessed.
+          normalized, clamped, or guessed. This rebuild also requires UV0 on all 69
+          primitives so downstream exact texture-plate binding cannot consume stale UVs.
           EOF
       - uses: actions/upload-artifact@v4
         with:
