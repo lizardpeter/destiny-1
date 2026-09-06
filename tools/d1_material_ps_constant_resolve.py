@@ -16,8 +16,8 @@ vectors; fourteen have no external mirror.  The +0x2E0 count independently track
 the highest constant referenced by each TFX program.
 
 Raw u32 words and source provenance remain canonical.  This module does not infer
-shader-semantic meanings for individual vector elements beyond structures closed
-by retail/schema evidence.
+shader-semantic meanings for individual vector elements or material state words
+beyond structures closed by retail/schema evidence.
 """
 from __future__ import annotations
 
@@ -147,6 +147,13 @@ def resolve_material(c, material_hash: str) -> dict:
     row.update(
         {
             "actual_file_size": len(b),
+            "material_state_raw": {
+                "unk08_hex": p["unk08"],
+                "unk0c_hex": p["unk0c"],
+                "unk10_hex": p["unk10"],
+                "unk20_u16": p["unk20"],
+                "unk20_hex": p["unk20_hex"],
+            },
             "pixel_shader": norm(p["pixel_shader"]),
             "vertex_shader": norm(p["vertex_shader"]),
             "ps_texture_tags": p["ps_textures"]["items"],
@@ -191,7 +198,7 @@ def main() -> int:
         relations[k] = relations.get(k, 0) + 1
 
     out = {
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "D1_PS_MATERIAL_VECTOR_LAYOUT_EXACT" if not errors else "D1_PS_MATERIAL_VECTOR_LAYOUT_PARTIAL",
         "selected_material_count": len(materials),
         "vector_storage_relation_counts": relations,
@@ -199,6 +206,7 @@ def main() -> int:
         "error_materials": errors,
         "materials": materials,
         "closed_offsets": {
+            "material_unk20": "0x20:u16",
             "ps_tfx_bytecode": "0x2D0",
             "ps_tfx_constants": "0x2E0",
             "ps_samplers": "0x2F0",
@@ -206,9 +214,9 @@ def main() -> int:
             "ps_vector4_container": "0x32C",
         },
         "policy": (
-            "Exact PS4 ROI material structures: +0x2E0 PS TFX constants and +0x300 PS CBuffers are "
-            "decoded independently; +0x32C subtype-32:7 is resolved and byte-compared to PS CBuffers. "
-            "Raw values and provenance remain canonical."
+            "Exact PS4 ROI material structures: raw state words are preserved without semantic naming; "
+            "+0x2E0 PS TFX constants and +0x300 PS CBuffers are decoded independently; +0x32C subtype-32:7 "
+            "is resolved and byte-compared to PS CBuffers. Raw values and provenance remain canonical."
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
