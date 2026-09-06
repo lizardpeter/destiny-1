@@ -1,0 +1,134 @@
+name: D1 Crota 8108E4C6 control payload closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-8108e4c6-control-payloads.yml'
+      - 'tools/d1_remote_exact_tag_probe.py'
+      - 'tools/d1_remote_catalog_backlinks.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact unknown control payloads
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_exact_tag_probe.py
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 0x8108E5BC --tag-hash 0x8108E5BD \
+            --tag-hash 0x80AACB82 --tag-hash 0x80AAC4E8 --tag-hash 0x80AAC4E5 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --min-string 4 \
+            -o out/CROTA_8108E4C6_CONTROL_PAYLOADS.json \
+            | tee out/payload_probe_stdout.txt
+
+      - name: Trace exact 0447 backlinks to control payloads
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0447 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --target 0x8108E5BC --target 0x8108E5BD \
+            --target 0x80AACB82 --target 0x80AAC4E8 --target 0x80AAC4E5 \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_8108E4C6_CONTROL_PAYLOAD_BACKLINKS_0447.json \
+            | tee out/backlinks_0447_stdout.txt
+
+      - name: Trace cross-package backlinks for shared payloads
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          : > out/backlinks_cross_stdout.txt
+          for PKG in 0x044B 0x0156 0x0157 0x0158; do
+            NAME=$(printf '%04X' $((PKG)))
+            python tools/d1_remote_catalog_backlinks.py \
+              --scan-package-id "$PKG" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --target 0x8108E5BC --target 0x8108E5BD \
+              --target 0x80AACB82 --target 0x80AAC4E8 --target 0x80AAC4E5 \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime --max-entry-size 8000000 \
+              -o "out/CROTA_8108E4C6_CONTROL_PAYLOAD_BACKLINKS_${NAME}.json" \
+              | tee -a out/backlinks_cross_stdout.txt
+          done
+
+      - name: Summarize exact unknown-class frontier
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,glob,collections
+          d=json.load(open('out/CROTA_8108E4C6_CONTROL_PAYLOADS.json'))
+          assert d['violation_count']==0,d['violations']
+          expected=['8108E5BC','8108E5BD','80AACB82','80AAC4E8','80AAC4E5']
+          assert [x['tag_hash'] for x in d['entries']]==expected,d['entries']
+          for x in d['entries']:
+              e=x['entry']
+              print('PAYLOAD',x['tag_hash'],'CLASS',e['reference'],'TYPE',e['type'],'SUBTYPE',e['subtype'],
+                    'SIZE',x['payload_size'],'SHA256',x['payload_sha256'])
+              for s in x['printable_strings']:
+                  print(' STRING',x['tag_hash'],hex(s['offset']),repr(s['string']))
+              refs=collections.Counter(m['entry']['reference'] for m in x['aligned_resolved_tags'])
+              print(' RESOLVED_REF_CLASSES',dict(refs))
+              for m in x['aligned_resolved_tags']:
+                  me=m['entry']
+                  print(' EDGE_CANDIDATE',x['tag_hash'],hex(m['offset']),m['tag_hash'],me['reference'],me['file_size'])
+          totals=collections.Counter()
+          sources=collections.Counter()
+          for path in sorted(glob.glob('out/CROTA_8108E4C6_CONTROL_PAYLOAD_BACKLINKS_*.json')):
+              b=json.load(open(path))
+              assert b['error_count']==0,(path,b['errors'])
+              totals.update(b['occurrences_by_target'])
+              sources.update(b['hit_sources_by_reference'])
+              print('BACKLINK_FILE',path,'HIT_SOURCES',b['hit_source_count'],'OCCURRENCES',b['occurrences_by_target'])
+          print('CROSS_PACKAGE_OCCURRENCES',dict(totals))
+          print('CROSS_PACKAGE_SOURCE_CLASSES',dict(sources))
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-8108E4C6-CONTROL-PAYLOADS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
