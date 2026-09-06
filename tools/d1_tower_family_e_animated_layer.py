@@ -20,6 +20,11 @@ one Tower-local 80C7AE98 placement and five 809D8572 placements.
 No NPC/vendor label, state name, loop behavior, synchronization behavior, missing
 weight, or animation is inferred.  Six separate glTF Animation objects are emitted
 so the export does not imply that the game starts all six clips simultaneously.
+
+Retail skin weights remain authoritative as U8 values whose four lanes sum exactly
+255.  glTF FLOAT weights are a transport encoding only: every emitted float32 lane
+must be bit-identical to float32(raw_u8 / 255).  The tool never renormalizes those
+float values merely to force their floating-point accumulation to equal 1.0.
 """
 from __future__ import annotations
 
@@ -84,7 +89,24 @@ def exact_payload(r: EntryReader, by: dict[str, dict], tag: str,
     return e, r.entry(e['index'])
 
 
-def decode_inline_arrays(payload: bytes, stride: int, bone_count: int) -> tuple[np.ndarray, np.ndarray, dict]:
+def exact_float32_weights(raw_weights: np.ndarray) -> np.ndarray:
+    """Return the exact portable float32 encoding of retail U8/255 weights.
+
+    This function deliberately does not renormalize.  The authoritative invariant
+    is the source U8 sum of 255, not a mathematically exact float32 sum of 1.0.
+    """
+    raw = np.asarray(raw_weights, dtype=np.uint8)
+    if raw.ndim != 2 or raw.shape[1] != 4:
+        raise ValueError(f'raw weight array must be Nx4 U8, got {raw.shape}')
+    sums = np.sum(raw.astype(np.uint16), axis=1, dtype=np.uint16)
+    if not np.all(sums == 255):
+        bad = np.flatnonzero(sums != 255)
+        i = int(bad[0]) if len(bad) else -1
+        raise ValueError(f'raw U8 weight sum drift at row {i}: {int(sums[i]) if i >= 0 else None}')
+    return (raw.astype(np.float32) / np.float32(255.0)).astype('<f4', copy=False)
+
+
+def decode_inline_arrays(payload: bytes, stride: int, bone_count: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
     """Decode only retail-closed D1 primary-stream skin forms."""
     if stride not in (0x08, 0x0C, 0x10):
         raise ValueError(f'unsupported D1 inline skin stride 0x{stride:X}')
@@ -92,7 +114,7 @@ def decode_inline_arrays(payload: bytes, stride: int, bone_count: int) -> tuple[
         raise ValueError(f'payload size {len(payload)} not divisible by stride 0x{stride:X}')
     n = len(payload) // stride
     joints = np.zeros((n, 4), dtype='<u2')
-    weights = np.zeros((n, 4), dtype='<f4')
+    raw_weights = np.zeros((n, 4), dtype=np.uint8)
     modes = Counter()
     domain = set()
     sums = []
@@ -130,8 +152,11 @@ def decode_inline_arrays(payload: bytes, stride: int, bone_count: int) -> tuple[
             if not 0 <= int(joint) < bone_count:
                 raise ValueError(f'vertex {vi}: joint {joint} outside skeleton {bone_count}')
             joints[vi, k] = int(joint)
-            weights[vi, k] = float(weight) / 255.0
             domain.add(int(joint))
+        raw_weights[vi] = np.asarray(vals, dtype=np.uint8)
+    weights = exact_float32_weights(raw_weights)
+    float_sums = np.sum(weights, axis=1, dtype=np.float32)
+    float_errors = np.abs(float_sums - np.float32(1.0))
     meta = {
         'vertex_count': n,
         'stride': stride,
@@ -139,8 +164,12 @@ def decode_inline_arrays(payload: bytes, stride: int, bone_count: int) -> tuple[
         'bone_domain': sorted(domain),
         'weight_sum_min': min(sums) if sums else None,
         'weight_sum_max': max(sums) if sums else None,
+        'float32_weight_sum_min': float(np.min(float_sums)) if n else None,
+        'float32_weight_sum_max': float(np.max(float_sums)) if n else None,
+        'float32_weight_sum_abs_error_max': float(np.max(float_errors)) if n else 0.0,
+        'float_encoding': 'bit_exact_float32(raw_u8 / 255); no renormalization',
     }
-    return joints, weights, meta
+    return joints, raw_weights, weights, meta
 
 
 def family_skin_row(doc: dict) -> dict:
@@ -183,7 +212,7 @@ def decode_all_family_streams(r: EntryReader, skin_family: dict, bone_count: int
         if actual_stride != stride:
             raise ValueError(f'{MODEL} mesh {mi}: source stride {actual_stride} != census {stride}')
         be, payload = exact_payload(r, by, backing_tag)
-        joints, weights, meta = decode_inline_arrays(payload, stride, bone_count)
+        joints, raw_weights, weights, meta = decode_inline_arrays(payload, stride, bone_count)
         expected = m.get('skin') or {}
         if int(expected.get('vertex_count', -1)) != meta['vertex_count']:
             raise ValueError(f'{MODEL} mesh {mi}: vertex count drift {meta["vertex_count"]} != {expected.get("vertex_count")}')
@@ -195,6 +224,7 @@ def decode_all_family_streams(r: EntryReader, skin_family: dict, bone_count: int
             raise ValueError(f'{MODEL} mesh {mi}: weight-sum invariant drift')
         out[mi] = {
             'joints': joints,
+            'raw_weights': raw_weights,
             'weights': weights,
             'meta': meta,
             'header_tag': header_tag,
@@ -218,8 +248,8 @@ def main() -> int:
     ap.add_argument('--model-report', type=Path, required=True)
     ap.add_argument('--skin-census', type=Path, required=True)
     ap.add_argument('--ownership-report', type=Path, required=True)
-    ap.add_argument('--source-pkg', type=Path, required=True, help='exact 00EC_5 member')
-    ap.add_argument('--tower-animation-pkg', type=Path, required=True, help='exact 023D_5 member')
+    ap.add_argument('--source-pkg', type=Path, required=True, help='exact 00EC_5 member with logical siblings staged beside it')
+    ap.add_argument('--tower-animation-pkg', type=Path, required=True, help='exact 023D_5 member with logical siblings staged beside it')
     ap.add_argument('--runtime', type=Path, required=True)
     ap.add_argument('--parser-root', type=Path, required=True)
     ap.add_argument('--fps', type=float, default=30.0)
@@ -351,6 +381,7 @@ def main() -> int:
     unique_bound_vertices = 0
     unique_triangles = 0
     bind_rows = []
+    float32_weight_sum_abs_error_max = 0.0
     for gi, mesh in enumerate(g.meshes):
         ex = mesh.extras or {}
         if norm(ex.get('model', '')) != MODEL:
@@ -381,9 +412,25 @@ def main() -> int:
         if min(src_indices) < 0 or max(src_indices) >= stream['meta']['vertex_count']:
             raise ValueError(f'{range_name}: source vertex index outside exact primary stream')
         joints = stream['joints'][src_indices]
+        raw_weights = stream['raw_weights'][src_indices]
         weights = stream['weights'][src_indices]
-        if not np.allclose(np.sum(weights, axis=1), 1.0, atol=1e-7, rtol=0.0):
-            raise ValueError(f'{range_name}: normalized exported weights do not sum to 1')
+
+        # Retail truth is the exact four U8 lanes.  Prove the selected rows still
+        # sum to exactly 255, then prove the glTF FLOAT transport bytes are exactly
+        # float32(raw/255).  Do not renormalize the portable floats.
+        raw_sums = np.sum(raw_weights.astype(np.uint16), axis=1, dtype=np.uint16)
+        if not np.all(raw_sums == 255):
+            bad = np.flatnonzero(raw_sums != 255)
+            i = int(bad[0]) if len(bad) else -1
+            raise ValueError(f'{range_name}: selected raw U8 weight sum drift at row {i}')
+        expected_weights = exact_float32_weights(raw_weights)
+        if not np.array_equal(weights.view(np.uint32), expected_weights.view(np.uint32)):
+            raise ValueError(f'{range_name}: emitted float32 weights are not bit-exact U8/255 conversions')
+        float_sums = np.sum(weights, axis=1, dtype=np.float32)
+        float_errors = np.abs(float_sums - np.float32(1.0))
+        range_float_error = float(np.max(float_errors)) if len(float_errors) else 0.0
+        float32_weight_sum_abs_error_max = max(float32_weight_sum_abs_error_max, range_float_error)
+
         jacc = append_accessor(g, blob, joints, component_type=UNSIGNED_SHORT,
                                accessor_type='VEC4', target=ARRAY_BUFFER)
         wacc = append_accessor(g, blob, weights, component_type=FLOAT,
@@ -402,7 +449,15 @@ def main() -> int:
             'source_mesh_index': mi, 'source_vertex_count': pos_count,
             'source_vertex_min': min(src_indices), 'source_vertex_max': max(src_indices),
             'triangle_count': tri_count, 'primary_stride': stream['meta']['stride'],
-            'skin_modes': stream['meta']['mode_counts'], 'bone_domain': sorted(set(int(x) for x in joints[weights > 0])),
+            'skin_modes': stream['meta']['mode_counts'],
+            'bone_domain': sorted(set(int(x) for x in joints[raw_weights > 0])),
+            'raw_u8_weight_sum_min': int(np.min(raw_sums)),
+            'raw_u8_weight_sum_max': int(np.max(raw_sums)),
+            'float32_weight_sum_min': float(np.min(float_sums)),
+            'float32_weight_sum_max': float(np.max(float_sums)),
+            'float32_weight_sum_abs_error_max': range_float_error,
+            'float32_conversion_bit_exact': True,
+            'portable_float_renormalized': False,
         })
     if len(family_mesh_indices) != 26 or seen_ranges != set(range_by_name):
         raise ValueError(f'Family-E glTF range coverage is not exact 26/26')
@@ -542,7 +597,8 @@ def main() -> int:
         }
 
     animation_rows = []
-    for wid in sorted(world_to_owner):
+    sorted_world_ids = sorted(world_to_owner)
+    for wid in sorted_world_ids:
         entity = world_to_owner[wid]['entity']; clip = world_to_owner[wid]['clip']
         bones = placement_bones[wid]
         samplers = []; channels = []
@@ -569,7 +625,7 @@ def main() -> int:
             'animation_index': anim_idx, 'world_id': wid, 'entity': entity, 'clip': clip,
             'frame_count': clip_cache[clip]['frame_count'], 'channel_count': len(channels),
             'sampler_count': len(samplers), 'skin_index': placement_skin[wid],
-            'skeleton_root_node': added_skeleton_roots[sorted(world_to_owner).index(wid)],
+            'skeleton_root_node': added_skeleton_roots[sorted_world_ids.index(wid)],
         })
 
     g.extras = {
@@ -577,10 +633,13 @@ def main() -> int:
         'd1TowerFamilyEAnimatedProof': {
             'model': MODEL, 'skeleton': SKELETON, 'runtimeRig': RIG,
             'runtimePlacements': 6, 'selectedRanges': 26, 'uniqueTriangles': 20575,
-            'worldIDClipMap': {wid: world_to_owner[wid]['clip'] for wid in sorted(world_to_owner)},
+            'worldIDClipMap': {wid: world_to_owner[wid]['clip'] for wid in sorted_world_ids},
             'ownershipStatus': ownership['status'],
+            'rawWeightInvariant': 'four U8 lanes sum exactly 255',
+            'floatWeightEncoding': 'bit-exact float32(raw_u8/255), never renormalized',
+            'float32WeightSumAbsErrorMax': float32_weight_sum_abs_error_max,
             'stateSemantic': 'UNRESOLVED', 'loopSemantic': 'UNRESOLVED',
-            'policy': 'Skin bytes are exact D1 retail inline forms. Clip choice is source-owner-selected. No NPC/vendor/state/loop/synchronization semantic is inferred.'
+            'policy': 'Skin bytes are exact D1 retail inline forms. Portable float weights are exact U8/255 encodings, not renormalized. Clip choice is source-owner-selected. No NPC/vendor/state/loop/synchronization semantic is inferred.'
         }
     }
     g.buffers[0].byteLength = len(blob)
@@ -617,7 +676,7 @@ def main() -> int:
         raise ValueError('output does not skin all 156 original Family-E placement geometry nodes')
 
     rep = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_TOWER_FAMILY_E_ANIMATED_LAYER_COMPLETE',
         'input': str(a.input_glb), 'input_sha256': sha256_file(a.input_glb),
         'output': str(a.out), 'output_bytes': a.out.stat().st_size,
@@ -634,6 +693,15 @@ def main() -> int:
             for mi, v in sorted(source_streams.items())
         },
         'mesh_bindings': bind_rows,
+        'raw_u8_weight_sum_exact_255': True,
+        'float32_conversion_bit_exact': True,
+        'portable_float_weights_renormalized': False,
+        'float32_weight_sum_abs_error_max': float32_weight_sum_abs_error_max,
+        'weight_fidelity_policy': (
+            'Retail U8 weight lanes are authoritative and must sum exactly 255. '
+            'glTF FLOAT weights are emitted as bit-exact float32(U8/255) conversions. '
+            'No post-conversion renormalization is allowed merely to force a float32 sum of exactly 1.0.'
+        ),
         'world_id_owner_map': world_to_owner,
         'clip_decode': clip_binary,
         'animations': animation_rows,
@@ -645,6 +713,7 @@ def main() -> int:
         'policy': (
             'The proven exact-texture articulated layer is preserved and only appended to. '
             'All 26 shared Family-E mesh primitives receive source-indexed JOINTS_0/WEIGHTS_0 from exact retail D1 primary streams. '
+            'Retail U8 weights remain authoritative; portable float32 weights are exact U8/255 conversions and are never renormalized. '
             'Six independent skeletons use the existing exact placement matrices. Each WorldID receives only its source-owner-selected retail clip. '
             'Six separate glTF animations avoid implying simultaneous playback, loop behavior, state names, or NPC/vendor semantics.'
         ),
@@ -655,7 +724,9 @@ def main() -> int:
         k: rep[k] for k in (
             'status','output_bytes','output_sha256','selected_range_count','unique_triangle_count',
             'runtime_placement_count','placement_geometry_node_count','skeleton_node_count',
-            'runtime_rig_control_count','original_counts','final_counts','original_binary_exact_prefix',
+            'runtime_rig_control_count','raw_u8_weight_sum_exact_255','float32_conversion_bit_exact',
+            'portable_float_weights_renormalized','float32_weight_sum_abs_error_max',
+            'original_counts','final_counts','original_binary_exact_prefix',
             'other_articulated_world_id_count'
         )
     }, indent=2))
