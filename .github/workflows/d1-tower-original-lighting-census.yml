@@ -7,6 +7,8 @@ on:
       - '.github/workflows/d1-tower-original-lighting-census.yml'
       - 'tools/d1_world_map_lighting_census.py'
       - 'tools/d1_close_map_lighting_dependencies.py'
+      - 'tools/d1_world_map_light_semantic_probe.py'
+      - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_world_map_data_layer_census.py'
       - 'tools/d1_world_activity_root_dependency_closure.py'
 
@@ -123,13 +125,49 @@ jobs:
           assert c['light_record_count']>0 and c['transform_record_count']>0,c
           assert c['decoded_light_buffer_count']==c['light_buffer_hash_count'],c
           assert c['decoded_sky_model_resource_count']==c['sky_model_resource_hash_count'],c
-          # Every decoded light BufferData must preserve program plus both D1 Vec4 constant arrays.
           for b in c['light_buffers']:
               assert b['status']=='D1_LIGHT_BUFFER_PROGRAM_AND_CONSTANTS_PRESERVED',b
               assert b['bytecode_array']['ok'] and b['buffer1_array']['ok'] and b['buffer2_array']['ok'],b
               assert b['all_constants_finite'],b
           PY
           test "$rc" -eq 0
+
+      - name: Prove D1 TFX constant bank and pair exact per-light bounds
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_tfx_program_inventory.py \
+            --lighting-census reports/tower_map_lighting_census.json \
+            --out reports/tower_light_tfx_program_inventory.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_light_semantic_probe.py "${args[@]}" \
+            --runtime runtime \
+            --lighting-census reports/tower_map_lighting_census.json \
+            --tfx-inventory reports/tower_light_tfx_program_inventory.json \
+            --out reports/tower_map_light_semantic_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_map_light_semantic_probe.json'))
+          p=d['buffer1_constant_bank_proof']
+          b=d['occlusion_bounds']
+          r=d['record_plus_0x80_candidate_reference']
+          assert d['status']=='D1_WORLD_MAP_LIGHT_SEMANTIC_PROBE_COMPLETE',d['violations']
+          assert p['proven'] and p['semantic_role']=='D1_TFX_BYTECODE_CONSTANTS',p
+          assert (p['all_reference_fit_count'],p['exact_highest_reference_span_count'])==(412,412),p
+          assert p['buffer1_only_fit_count']>0,p
+          assert d['buffer2_characterization']['count_histogram']=={'8':412},d['buffer2_characterization']
+          assert (b['collection_count'],b['decoded_collection_count'],b['record_count'],b['parallel_light_transform_bounds_collection_count'])==(9,9,737,9),b
+          assert r['total_occurrences']==737,r
+          print('LIGHT_SEMANTIC_PROOF',json.dumps({
+              'buffer1':{k:p[k] for k in ('proven','semantic_role','all_reference_fit_count','exact_highest_reference_span_count','buffer1_only_fit_count','buffer2_reference_fit_count')},
+              'buffer2':d['buffer2_characterization'],
+              'bounds':{k:b[k] for k in ('collection_count','decoded_collection_count','record_count','parallel_light_transform_bounds_collection_count')},
+              'ref80':r,
+              'flags88':d['flags88_histogram'],
+              'flags8c':d['flags8c_histogram'],
+          },indent=2))
+          PY
 
       - uses: actions/upload-artifact@v4
         if: always()
