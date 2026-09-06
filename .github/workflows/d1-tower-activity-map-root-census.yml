@@ -83,7 +83,7 @@ jobs:
             --out-dir recovered \
             --report reports/activity_discovered_manifest_recovery.json
 
-      - name: Trace current named D1 Activity through manifest-resolved bubbles to map tables
+      - name: Trace source-typed D1 Activity ownership to map tables
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -94,18 +94,11 @@ jobs:
             | tee reports/tower_activity_map_root_census_stdout.txt
 
       - name: Validate Activity-owned Tower root fixture
-        env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
-          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
-          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          python tools/d1_world_map_root_census.py "${args[@]}" --runtime runtime \
-            --out reports/tower_all_resolved_bubble_map_root_census.json \
-            | tee reports/tower_all_resolved_bubble_map_root_census_stdout.txt
           python - <<'PY'
           import json
           a=json.load(open('reports/tower_activity_map_root_census.json'))
-          b=json.load(open('reports/tower_all_resolved_bubble_map_root_census.json'))
           expected=sorted([
             '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
             '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
@@ -119,30 +112,39 @@ jobs:
                   'activities':a.get('current_d1_activities')}))
           if a.get('selected_activities')!=['80C98019']:
               raise SystemExit('Tower root Activity changed: '+json.dumps(a.get('selected_activities')))
+
+          activities=a.get('activities',[])
+          if len(activities)!=1:
+              raise SystemExit('expected one semantic Tower Activity component')
+          br=activities[0].get('bubble_references',[])
+          if len(br)!=5:
+              raise SystemExit('Tower Activity bubble edge count changed: '+str(len(br)))
+          if any(not x.get('target',{}).get('typed_target_valid') for x in br):
+              raise SystemExit('one or more source-typed Bubble targets did not resolve')
+          manifest_classes=sorted({x.get('target',{}).get('manifest_tag_class') for x in br})
+          if manifest_classes!=['80800580']:
+              raise SystemExit('Tower Bubble manifest TagClassHash fixture changed: '+json.dumps(manifest_classes))
+          if any(x.get('target',{}).get('manifest_tag_class_matches_schema') is not False for x in br):
+              raise SystemExit('expected Bubble manifest TagClassHash to remain distinct from SBubbleDefinition SchemaStruct hash')
+          if any(x.get('target',{}).get('schema_evidence')!='PINNED_SOURCE_TYPED_TAG_EDGE_PLUS_S48018080_BACKLINK' for x in br):
+              raise SystemExit('Bubble schema evidence mode changed')
+
           actual=sorted(a.get('map_data_tables',[]))
           if actual!=expected:
               raise SystemExit('activity-owned Tower table set changed: '+json.dumps({'expected':expected,'actual':actual},indent=2))
           if a.get('total_reachable_map_entries')!=337:
               raise SystemExit(f'activity-owned Tower entry total changed: {a.get("total_reachable_map_entries")}')
 
-          # Package-wide class discovery is deliberately broader than Activity
-          # ownership. It is a cross-check, not the world-selection mechanism.
-          all_tables=set(b.get('map_data_tables',[]))
-          missing=sorted(set(expected)-all_tables)
-          if missing:
-              raise SystemExit('Activity-owned tables absent from resolved bubble census: '+json.dumps(missing))
-          missing_bubbles=sorted(set(a.get('bubble_definitions',[]))-set(b.get('bubble_definitions',[])))
-          if missing_bubbles:
-              raise SystemExit('Activity-owned bubbles absent from package-wide class census: '+json.dumps(missing_bubbles))
+          plan=json.load(open('reports/tower_activity_manifest_dependency_plan.json'))
           print('TOWER_ACTIVITY_TO_MAP_ROOTS_CLOSED',json.dumps({
               'activity':'80C98019',
               'activity_alias_rows':a.get('current_d1_activity_named_row_count'),
-              'manifest_packages':json.load(open('reports/tower_activity_manifest_dependency_plan.json'))['manifest_package_ids'],
-              'bubbles':a.get('reachable_bubble_count'),
+              'manifest_packages':plan['manifest_package_ids'],
+              'bubble_edges':len(br),
+              'bubble_manifest_tag_class':'80800580',
               'containers':a.get('reachable_map_container_count'),
               'tables':len(actual),
               'entries':a.get('total_reachable_map_entries'),
-              'package_wide_resolved_tables':len(all_tables),
           },sort_keys=True))
           PY
 
