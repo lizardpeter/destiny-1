@@ -7,6 +7,7 @@ on:
       - 'tools/d1_remote_texture_export.py'
       - 'tools/d1_texture_export.py'
       - 'tools/d1_entry_extract.py'
+      - 'tools/d1_dye_channel_semantics.py'
       - 'evidence/d1_player_gear_member_catalog.json'
   workflow_dispatch:
 
@@ -60,13 +61,14 @@ jobs:
               rows.append({'header':x['header'],'png':x['png'],'bytes':p.stat().st_size,
                            'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
                            'owner_package':x.get('owner_package'),'backing':x.get('backing')})
-          rep={'schema':'d1_spektar_dye_detail_texture_set/v1','textures':rows,
+          rep={'schema':'d1_spektar_dye_detail_texture_set/v2','textures':rows,
                'roles':{
-                 '8752_ArmorPlate':{'detail_diffuse':'80A083DD','detail_normal':'80A08252'},
-                 '8753_ArmorSuit':{'detail_diffuse':'80A07D96','detail_normal':'80A07D98'},
-                 '8754_ArmorCloth':{'detail_diffuse':'80A083E1','detail_normal':'80A083DF'}
+                 '8752_ArmorPlate':{'channel_index':0,'detail_diffuse':'80A083DD','detail_normal':'80A08252'},
+                 '8753_ArmorCloth':{'channel_index':1,'detail_diffuse':'80A07D96','detail_normal':'80A07D98'},
+                 '8754_ArmorSuit':{'channel_index':2,'detail_diffuse':'80A083E1','detail_normal':'80A083DF'}
                },
                'decal_policy':'All three exact Spektar SDye_D1 records serialize decal FFFFFFFF; no decal image exists for this default state.',
+               'semantic_policy':'Armor channel names follow the canonical 0 Plate / 1 Cloth / 2 Suit mapping in tools/d1_dye_channel_semantics.py; numeric retail hashes are authoritative.',
                'policy':'All six texture FileHashes come directly from the three exact F41A8080 SDye_D1 records. No filename, visual, or neighboring-resource inference is used.'}
           Path('out/spektar_dye_detail_textures.json').write_text(json.dumps(rep,indent=2)+'\n')
           for r in rows: print('TEXTURE',r)
