@@ -16,13 +16,20 @@ jobs:
   scan:
     strategy:
       fail-fast: false
+      max-parallel: 6
       matrix:
         include:
-          - {family: '00FC'}
-          - {family: '00FE'}
-          - {family: '00FF'}
+          # 00FC/00FE/00FF were exhaustively scanned in run 34039624304 with
+          # zero exact structural matches. Continue through every remaining
+          # verified gear_player family rather than repeatedly rescanning them.
+          - {family: '0100'}
+          - {family: '0101'}
+          - {family: '0102'}
+          - {family: '0103'}
+          - {family: '0104'}
+          - {family: '0105'}
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
