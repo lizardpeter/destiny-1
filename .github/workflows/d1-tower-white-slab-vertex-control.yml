@@ -1,0 +1,120 @@
+name: D1 Tower white slab vertex control
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-white-slab-vertex-control.yml'
+      - 'tools/d1_world_static_visual_export.py'
+      - 'tools/d1_tower_map_schema_validate_v5.py'
+      - 'tools/d1_close_world_shader_dependencies.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Runtime, global index, and exact current 024c/0250 families
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh
+          mkdir -p index runtime packages validation world shader_work shader disasm reports
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/package_recovery.json
+
+      - name: Validate and export source cell 80C993CF before any preview round-trip
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v5.py "${args[@]}" --runtime runtime --out validation > reports/validator.txt
+          python tools/d1_world_static_visual_export.py "${args[@]}" --runtime runtime \
+            --validation-json validation/tower_map_schema_validation.json --static-map-data 80C993CF --basis gltf-y-up \
+            --out world/TOWER_80C993CF_SOURCE.glb --json world/TOWER_80C993CF_SOURCE.json > reports/export.txt
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          import numpy as np
+          p=Path('world/TOWER_80C993CF_SOURCE.glb')
+          b=p.read_bytes();off=12;chunks=[]
+          while off<len(b):
+              n,t=struct.unpack_from('<II',b,off);off+=8;chunks.append((t,b[off:off+n]));off+=n
+          g=json.loads(chunks[0][1].decode('utf-8').rstrip('\x00 '));binb=chunks[1][1]
+          mats={i:m.get('name','') for i,m in enumerate(g.get('materials',[]))}
+          hits=[]
+          comp_dtype={5121:np.uint8,5123:np.uint16,5125:np.uint32,5126:np.float32}
+          comps={'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4}
+          def acc(i):
+              a=g['accessors'][i];v=g['bufferViews'][a['bufferView']];dt=np.dtype(comp_dtype[a['componentType']]).newbyteorder('<');nc=comps[a['type']]
+              stride=v.get('byteStride',dt.itemsize*nc);start=v.get('byteOffset',0)+a.get('byteOffset',0)
+              out=np.empty((a['count'],nc),dtype=dt)
+              for j in range(a['count']): out[j]=np.frombuffer(binb,dtype=dt,count=nc,offset=start+j*stride)
+              return out
+          for mi,m in enumerate(g.get('meshes',[])):
+              for pi,pr in enumerate(m.get('primitives',[])):
+                  if '80C9993C' not in mats.get(pr.get('material',-1),''): continue
+                  attrs=pr.get('attributes',{});row={'mesh_index':mi,'mesh':m.get('name'),'primitive':pi,'attributes':attrs,'material':mats[pr['material']]}
+                  if 'COLOR_0' in attrs:
+                      x=acc(attrs['COLOR_0']);row['color_shape']=list(x.shape);row['color_component_type']=g['accessors'][attrs['COLOR_0']]['componentType'];row['color_normalized']=g['accessors'][attrs['COLOR_0']].get('normalized',False)
+                      row['color_channels']=[{'min':float(x[:,k].min()),'max':float(x[:,k].max()),'unique':int(len(np.unique(x[:,k]))),'mean':float(x[:,k].mean())} for k in range(x.shape[1])]
+                      row['color_top']=[list(map(float,r)) for r in x[:32]]
+                  hits.append(row)
+          out={'status':'D1_80C9993C_SOURCE_VERTEX_CONTROL','target_material':'80C9993C','primitive_count':len(hits),'primitives':hits}
+          Path('reports/80C9993C_source_vertex_control.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          assert hits,'target material absent from source cell'
+          assert all('COLOR_0' in x['attributes'] for x in hits),out
+          PY
+
+      - name: Close and disassemble shared vertex shader 80CA0CB7
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"pixel_shader_frequency":{"80CA0CB7":1}}' > reports/vs_manifest.json
+          python tools/d1_close_world_shader_dependencies.py --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --manifest reports/vs_manifest.json --runtime runtime --package-dir packages --work-dir shader_work --out-dir shader --report reports/vs_closure.json
+          test -f shader/PS_80CA0CB7_gcn.bin
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)";test -n "$exe"
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_80CA0CB7_gcn.bin > disasm/VS_80CA0CB7.s 2> disasm/VS_80CA0CB7.stderr
+          test ! -s disasm/VS_80CA0CB7.stderr
+          grep -q 's_endpgm' disasm/VS_80CA0CB7.s
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          lines=Path('disasm/VS_80CA0CB7.s').read_text().splitlines()
+          focus=[{'line':i+1,'text':s} for i,s in enumerate(lines) if 'exp ' in s or 'buffer_load' in s or 'v_cvt' in s or 'v_mov' in s]
+          Path('reports/VS_80CA0CB7_export_focus.json').write_text(json.dumps({'status':'D1_80CA0CB7_EXPORT_FOCUS','focus':focus},indent=2)+'\n')
+          print(json.dumps(focus,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-white-slab-vertex-control
+          path: |
+            reports/
+            world/TOWER_80C993CF_SOURCE.json
+            disasm/VS_80CA0CB7.s
+          retention-days: 14
+          compression-level: 6
