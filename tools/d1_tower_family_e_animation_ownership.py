@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Close source-owned animation selection for the Tower 67-bone articulated family.
 
-This is intentionally narrow.  It joins four independently decoded layers:
+This is intentionally narrow. It joins four independently decoded layers:
 
 * the source-owned Tower Family-E WorldID -> SEntity evidence;
 * each SEntity's serialized EntityResource list;
 * literal animation-owner -> control -> selected-clip edges; and
 * exact skeleton/runtime-rig/clip component and dimension compatibility.
+
+D1 package families are logical multi-member archives. SEntity resolution therefore
+supports a Corpus spanning all exact physical siblings instead of assuming the
+entry-table member also contains resident payload bytes.
 
 No clip is named idle/vendor/ambient from appearance or duration.
 """
@@ -26,6 +30,7 @@ from d1_entry_extract import EntryReader
 from d1_world_activity_entity_table_census import dyn
 from d1_animation_control_state_map import decode_control
 from d1_animation_retarget_probe import component_rows
+import d1_tower_map_schema_validate as mapbase
 
 SENTITY_REF = '80800734'
 ENTITY_RESOURCE_REF = '80800861'
@@ -71,8 +76,46 @@ def payload(reader: EntryReader, tag: str, expected_ref: str | None = None) -> t
     return e, reader.entry(e['index'])
 
 
-def parse_sentity_resources(reader: EntryReader, tag: str) -> dict:
-    e, b = payload(reader, tag, SENTITY_REF)
+def corpus_payload(corpus: mapbase.Corpus, tag: str, expected_ref: str) -> tuple[dict, bytes, dict]:
+    """Choose the newest class-matching occurrence whose payload is actually resident."""
+    tag = norm(tag); expected_ref = norm(expected_ref)
+    occurrences = corpus.occ.get(tag, [])
+    if not occurrences:
+        raise ValueError(f'{tag}: absent from logical package corpus')
+    class_rows = [x for x in occurrences if norm(x[3]['reference']) == expected_ref]
+    if not class_rows:
+        refs = sorted({norm(x[3]['reference']) for x in occurrences})
+        raise ValueError(f'{tag}: no {expected_ref} occurrence; observed refs {refs}')
+    for generation, path, reader, e in class_rows:
+        if not reader.available(e['index']):
+            continue
+        try:
+            b = reader.entry(e['index'])
+        except Exception:
+            continue
+        src = {
+            'snapshot': path.name,
+            'generation': generation,
+            'package_id': f'{int(reader.h["pkg_id"]):04X}',
+            'entry_index': int(e['index']),
+            'reference': norm(e['reference']),
+            'size': int(e['file_size']),
+        }
+        return e, b, src
+    availability = [
+        {'snapshot': x[1].name, 'generation': x[0], 'entry_index': int(x[3]['index']),
+         'available': bool(x[2].available(x[3]['index']))}
+        for x in class_rows
+    ]
+    raise ValueError(f'{tag}: class-matching payload unavailable across logical corpus: {availability}')
+
+
+def parse_sentity_resources(source, tag: str) -> dict:
+    if isinstance(source, mapbase.Corpus):
+        e, b, src = corpus_payload(source, tag, SENTITY_REF)
+    else:
+        e, b = payload(source, tag, SENTITY_REF)
+        src = {'package_id': f'{int(source.h["pkg_id"]):04X}', 'entry_index': int(e['index'])}
     a = dyn(b, 0x20, 0x0C)
     if not a['ok']:
         raise ValueError(f'{tag}: SEntity resource array invalid: {a}')
@@ -82,8 +125,9 @@ def parse_sentity_resources(reader: EntryReader, tag: str) -> dict:
         h = f'{u32(b, off):08X}'
         rows.append({'index': i, 'record_offset': off, 'resource_hash': h})
     return {
-        'tag_hash': norm(tag), 'entry_index': e['index'], 'resource_count': len(rows),
-        'resource_hashes': [x['resource_hash'] for x in rows], 'resources': rows,
+        'tag_hash': norm(tag), 'entry_index': int(e['index']), 'payload_source': src,
+        'resource_count': len(rows), 'resource_hashes': [x['resource_hash'] for x in rows],
+        'resources': rows,
     }
 
 
@@ -112,7 +156,8 @@ def sig(rows: list[dict]) -> tuple[tuple[str, int], ...]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--tower-activity-pkg', type=Path, required=True)
-    ap.add_argument('--tower-destination-pkg', type=Path, required=True)
+    ap.add_argument('--tower-destination-pkg', type=Path, action='append', required=True,
+                    help='physical siblings of the 0250 logical package; repeatable')
     ap.add_argument('--generic-owner-pkg', type=Path, required=True)
     ap.add_argument('--generic-animation-pkg', type=Path, required=True)
     ap.add_argument('--runtime', type=Path, required=True)
@@ -129,7 +174,7 @@ def main() -> int:
     ver = Game_Version.D1_ROI
 
     tower = EntryReader(a.tower_activity_pkg, a.runtime)
-    dest = EntryReader(a.tower_destination_pkg, a.runtime)
+    dest = mapbase.Corpus([p.resolve() for p in a.tower_destination_pkg], a.runtime.resolve())
     owner = EntryReader(a.generic_owner_pkg, a.runtime)
     anim_reader = EntryReader(a.generic_animation_pkg, a.runtime)
     evidence = json.loads(a.evidence.read_text())
@@ -254,7 +299,7 @@ def main() -> int:
             violations.append(f'{entity}: animation selection did not close')
 
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_TOWER_FAMILY_E_ANIMATION_OWNERSHIP_CLOSED' if not violations else 'D1_TOWER_FAMILY_E_ANIMATION_OWNERSHIP_PARTIAL',
         'family': {
             'model_parent_resource': '80CA0CD8', 'entity_model': '80CA0CFC',
@@ -263,18 +308,20 @@ def main() -> int:
             'runtime_rig_components': rig_components,
             'runtime_placement_count': len(all_world_ids), 'unique_world_id_count': len(set(all_world_ids)),
         },
+        'destination_physical_members': [p.name for p in a.tower_destination_pkg],
         'entities': entities,
         'owner_control_edges': owner_edges,
         'controls': controls,
         'clips': clips,
         'violations': violations,
-        'policy': 'Owner-selected means the source-owned WorldID->SEntity evidence, literal SEntity owner-resource membership, literal owner->control edge, decoded control-selected clip, and exact skeleton/runtime-rig clip compatibility all agree. Clip semantic names remain unresolved.',
+        'policy': 'Owner-selected means the source-owned WorldID->SEntity evidence, literal SEntity owner-resource membership, literal owner->control edge, decoded control-selected clip, and exact skeleton/runtime-rig clip compatibility all agree. Logical package payloads may resolve from a different physical sibling than the newest entry-table occurrence. Clip semantic names remain unresolved.',
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({
         'status': out['status'], 'family': out['family'],
         'entity_selection_status': {k: v['selection_status'] for k, v in entities.items()},
+        'entity_payload_sources': {k: v['payload_source'] for k, v in entities.items()},
         'clip_summary': {k: {x: v[x] for x in ('frame_count','node_count','rig_control_count','exact_family_compatible')} for k, v in clips.items()},
         'violations': violations,
     }, indent=2))
