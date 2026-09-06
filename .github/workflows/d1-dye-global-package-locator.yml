@@ -23,19 +23,26 @@ jobs:
           python - <<'PY'
           import json,re
           from pathlib import Path
-          tags={'art_dye_reference':'A8FFA580','dye_channels':'49E2A580','dye_manifest_assignments':'DCE1A780'}
+          # Charm FileHash(string) byte-swaps textual literals. Preserve both the
+          # source literal and the actual serialized/on-disk FileHash.
+          literals={'art_dye_reference':'A8FFA580','dye_channels':'49E2A580','dye_manifest_assignments':'DCE1A780'}
+          def swap_text(s): return int.from_bytes(bytes.fromhex(s),'little')
           def fh(v):
-              v=int(v,16)
               pkg=((v>>13)&0x3ff)+((((v>>23)&3)-1)*0x400)
               return pkg,v&0x1fff
           names=[Path(x.strip()).name for x in Path('out/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
           out={}
-          for role,tag in tags.items():
-              pkg,idx=fh(tag)
-              pid=f'{pkg:04x}'
+          for role,literal in literals.items():
+              v=swap_text(literal); pkg,idx=fh(v); pid=f'{pkg:04x}'
               members=sorted(n for n in names if re.search(rf'_{pid}_[0-9]+\.pkg$',n,re.I))
-              out[role]={'tag_hash':tag,'decoded_package_id':f'{pkg:04X}','decoded_file_index':idx,'members':members}
-              print(role,tag,f'pkg={pkg:04X}',f'index={idx}',members)
+              out[role]={'charm_source_literal':literal,'on_disk_tag_hash':f'{v:08X}','decoded_package_id':f'{pkg:04X}','decoded_file_index':idx,'members':members}
+              print(role,literal,'->',f'{v:08X}',f'pkg={pkg:04X}',f'index={idx}',members)
+          assert out['art_dye_reference']['on_disk_tag_hash']=='80A5FFA8'
+          assert out['dye_channels']['on_disk_tag_hash']=='80A5E249'
+          assert out['dye_manifest_assignments']['on_disk_tag_hash']=='80A7E1DC'
+          assert out['art_dye_reference']['decoded_package_id']=='012F'
+          assert out['dye_channels']['decoded_package_id']=='012F'
+          assert out['dye_manifest_assignments']['decoded_package_id']=='013F'
           Path('out/dye_global_package_locator.json').write_text(json.dumps(out,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v4
