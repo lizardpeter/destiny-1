@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "d1_knowledge_record/v1",
+  "title": "Destiny 1 reverse-engineering knowledge record",
+  "type": "object",
+  "required": [
+    "schema",
+    "record_id",
+    "title",
+    "updated_utc",
+    "nodes",
+    "edges",
+    "assertions",
+    "sources",
+    "rejections",
+    "frontiers"
+  ],
+  "properties": {
+    "schema": {"const": "d1_knowledge_record/v1"},
+    "record_id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "updated_utc": {"type": "string", "minLength": 1},
+    "scope": {"type": "object"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "status"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "status": {"$ref": "#/$defs/status"},
+          "label": {"type": ["string", "null"]},
+          "attrs": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "subject", "predicate", "object", "status"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "subject": {"type": "string", "minLength": 1},
+          "predicate": {"type": "string", "minLength": 1},
+          "object": {"type": "string", "minLength": 1},
+          "status": {"$ref": "#/$defs/status"},
+          "assertion_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          },
+          "attrs": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "claim", "source_ids"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {"$ref": "#/$defs/status"},
+          "claim": {"type": "string", "minLength": 1},
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          },
+          "details": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "locator"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "locator": {"type": "string", "minLength": 1},
+          "sha256": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9a-fA-F]{64}$"
+          },
+          "details": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "rejections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "candidate_node", "rejected_as", "reason", "assertion_ids"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "candidate_node": {"type": "string", "minLength": 1},
+          "rejected_as": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "assertion_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "frontiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question", "next_proof"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "question": {"type": "string", "minLength": 1},
+          "next_proof": {"type": "string", "minLength": 1},
+          "related_nodes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": [
+        "PROVEN",
+        "STRONGLY_SUPPORTED",
+        "CANDIDATE",
+        "UNRESOLVED",
+        "REJECTED",
+        "TARGET"
+      ]
+    }
+  },
+  "additionalProperties": true
+}
