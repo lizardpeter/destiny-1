@@ -81,6 +81,78 @@
       "standalone_export": true,
       "tool": "tools/d1_remote_skeleton_resource_probe.py",
       "notes": "Validated skeleton hierarchy/default/inverse transform payload role."
+    },
+    "808003F6": {
+      "label": "SF603_activity_entity_resource_carrier",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_activity_entity_table",
+      "standalone_export": false,
+      "tool": "tools/d1_world_activity_entity_resource_census.py",
+      "notes": "Source-pinned Activity carrier. +0x0C resolves an EntityResource; supported inner forms collapse to serialized SMapDataEntry rows. This route preserves activity ownership and requires surrounding Activity context."
+    },
+    "808009A2": {
+      "label": "SMapDataTable",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_map_data_table",
+      "standalone_export": false,
+      "tool": "tools/d1_world_map_root_census.py",
+      "notes": "Pinned D1 SMapDataTable. +0x08 is DynamicArray<SMapDataEntry> with exact 0x90-byte rows. Placement meaning remains tied to world/activity ownership."
+    },
+    "808091E0": {
+      "label": "SBubbleDefinition",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_map_root",
+      "standalone_export": false,
+      "tool": "tools/d1_world_map_root_census.py",
+      "notes": "Pinned D1 Bubble root. +0x08 contains SMapContainer tags; Activity ownership is authoritative for world selection."
+    },
+    "80808A54": {
+      "label": "SMapContainer",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_map_root",
+      "standalone_export": false,
+      "tool": "tools/d1_world_map_root_census.py",
+      "notes": "Pinned D1 map container. +0x18 contains SMapDataTable tags."
+    },
+    "80801AEA": {
+      "label": "SMapDataResource",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_static_map_chain",
+      "standalone_export": false,
+      "tool": "tools/d1_world_static_map_resource_chain_census.py",
+      "notes": "Pinned SMapDataEntry DataResource payload class. Exact +0x0C Tag/FileHash selects SStaticMapParent."
+    },
+    "80801AC6": {
+      "label": "SStaticMapParent",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_static_map_chain",
+      "standalone_export": false,
+      "tool": "tools/d1_world_static_map_resource_chain_census.py",
+      "notes": "Pinned static-map parent. Exact +0x08 Tag/FileHash selects SStaticMapData."
+    },
+    "808008B4": {
+      "label": "SStaticMapData",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_static_map_data",
+      "standalone_export": false,
+      "tool": "tools/d1_world_static_map_layer_census.py",
+      "notes": "Pinned static-map data structure reached through the SMapDataResource -> SStaticMapParent ownership chain."
+    },
+    "80801B75": {
+      "label": "SStaticMapData_D1",
+      "semantic_status": "source_pinned_schema_and_shipped_byte_validated",
+      "export_route": "world_static_map_data",
+      "standalone_export": false,
+      "tool": "tools/d1_static_map_d1_layout_probe.py",
+      "notes": "Current D1 static-map payload class used by the source-driven world pipeline. Generation-safe parsing is required; older 80801A90 payloads must never be silently substituted."
+    },
+    "80801A90": {
+      "label": "static_table",
+      "semantic_status": "source_pinned_schema_and_shipped_byte_validated",
+      "export_route": "world_static_table",
+      "standalone_export": false,
+      "tool": "tools/d1_static_map_d1_layout_probe.py",
+      "notes": "Pinned static-table class with shipped mesh/info arrays. It is a distinct class from current 80801B75 static-map payloads and must not be used as a generation fallback for them."
     }
   },
   "type_subtype_classes": {
