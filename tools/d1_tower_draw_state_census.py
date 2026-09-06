@@ -8,6 +8,12 @@ then groups the resulting rows by pixel shader. Unknown fields remain unknown.
 Material FileHashes are resolved class-stably: only occurrences whose reference is
 exactly the D1 PS4 ROI material class can supply material bytes. Newer occurrences
 with another class are never accepted as fallback material payloads.
+
+This census deliberately does NOT require every referenced vertex/index/transform
+payload to be present. Those payloads are required for geometry export, but not to
+read a static table's serialized material index, static index, mesh state, detail
+level, primitive type, or index range. Missing unrelated backing payloads are
+reported separately as source gaps and cannot invalidate the draw-state join.
 """
 from __future__ import annotations
 
@@ -48,6 +54,7 @@ def main() -> int:
     material_cache: dict[str, dict | None] = {}
     rows = []
     violations = []
+    source_gaps = []
 
     def material(h: str) -> dict | None:
         h = norm(h)
@@ -55,6 +62,7 @@ def main() -> int:
             return material_cache[h]
         b, src, meta = class_stable_payload(c, h)
         if b is None:
+            source_gaps.append({"material": h, "gap": "class_stable_material_payload_unavailable"})
             material_cache[h] = None
             return None
         try:
@@ -80,21 +88,60 @@ def main() -> int:
 
     for cell in CELLS:
         vr = schema.validate_static_map_data(c, cell)
-        if not vr.get("ok"):
-            violations.append({"cell": cell, "error": "static_map_validation_failed", "violations": vr.get("violations")})
+        d1 = vr.get("d1_validation")
+        if d1 is None:
+            violations.append({"cell": cell, "error": "d1_static_data_unavailable", "validation": vr.get("violations")})
             continue
-        d1 = vr["d1_validation"]
-        for table in d1.get("static_tables", []):
+        if not vr.get("ok"):
+            source_gaps.append({
+                "cell": cell,
+                "gap": "full_geometry_validation_not_green",
+                "validation": vr.get("violations"),
+                "d1_validation": d1.get("violations"),
+                "note": "nonfatal for draw-state census; backing geometry/transform availability is outside this join",
+            })
+
+        tables = d1.get("static_tables", [])
+        if not tables:
+            violations.append({"cell": cell, "error": "no_static_tables"})
+            continue
+
+        for table in tables:
+            arrays = table.get("arrays", {})
+            required = [arrays.get("materials"), arrays.get("meshes"), arrays.get("infos")]
+            if any(not x or not x.get("ok") for x in required):
+                violations.append({"cell": cell, "static_table": table.get("hash"), "error": "required_static_table_array_bounds"})
+                continue
             mats = table.get("material_hashes", [])
             meshes = table.get("mesh_entries", [])
             infos = table.get("info_entries", [])
+            if len(mats) != arrays["materials"]["count"] or len(meshes) != arrays["meshes"]["count"] or len(infos) != arrays["infos"]["count"]:
+                violations.append({"cell": cell, "static_table": table.get("hash"), "error": "decoded_array_count_mismatch"})
+                continue
+
+            missing_mesh_targets = sum(not bool(m.get("all_targets_exist")) for m in meshes)
+            if missing_mesh_targets:
+                source_gaps.append({
+                    "cell": cell,
+                    "static_table": table.get("hash"),
+                    "gap": "mesh_backing_targets_absent_from_bounded_corpus",
+                    "mesh_count": len(meshes),
+                    "missing_mesh_target_rows": missing_mesh_targets,
+                })
+
             for info in infos:
-                if not info.get("all_indices_in_bounds"):
+                # The draw-state join needs only the two serialized table indices.
+                # Transform bounds/backing are intentionally not a prerequisite.
+                if not info.get("material_in_bounds") or not info.get("static_in_bounds"):
+                    violations.append({
+                        "cell": cell,
+                        "static_table": table.get("hash"),
+                        "info_index": info.get("index"),
+                        "error": "material_or_static_index_out_of_bounds",
+                    })
                     continue
                 mi = info["material_index"]
                 si = info["static_index"]
-                if not (0 <= mi < len(mats) and 0 <= si < len(meshes)):
-                    continue
                 mh = norm(mats[mi])
                 mr = material(mh)
                 if mr is None:
@@ -113,6 +160,7 @@ def main() -> int:
                     "info_index": info["index"],
                     "instance_count": info["instance_count"],
                     "transform_index": info["transform_index"],
+                    "transform_in_bounds_in_bounded_corpus": info.get("transform_in_bounds"),
                     "material_index": mi,
                     "static_index": si,
                     "material": mh,
@@ -124,6 +172,7 @@ def main() -> int:
                     "material_unk20": mr["unk20_hex"],
                     "material_payload_source": mr["source"],
                     "ps_external_vector_present": mr["ps_vector4_container"] not in ("00000000", "FFFFFFFF"),
+                    "mesh_backing_targets_present": bool(mesh.get("all_targets_exist")),
                     "mesh_unk0c_u16": mesh.get("unk0C"),
                     "mesh_unk0c_hex": f"{int(mesh.get('unk0C', 0)):04X}",
                     "detail_level": mesh.get("detail_level"),
@@ -155,13 +204,16 @@ def main() -> int:
     peer = [r for r in rows if r["pixel_shader"] == PEER_PS]
 
     out = {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "D1_TOWER_DRAW_STATE_CENSUS_COMPLETE" if not violations else "D1_TOWER_DRAW_STATE_CENSUS_PARTIAL",
         "cells": CELLS,
         "material_selection_policy": "CLASS_STABLE_NEWEST_REFERENCE_ONLY",
+        "structural_scope": "static-table arrays + MaterialIndex + StaticIndex + serialized mesh record; geometry/transform backing not required",
         "row_count": len(rows),
         "material_count": len({r["material"] for r in rows}),
         "pixel_shader_count": len(by_ps),
+        "source_gap_count": len(source_gaps),
+        "source_gaps": source_gaps,
         "violations": violations,
         "pixel_shader_groups": groups,
         "target_809DCD66": {
@@ -183,9 +235,9 @@ def main() -> int:
         },
         "rows": rows,
         "policy": (
-            "Static Info MaterialIndex/StaticIndex joins are structural retail facts. Material and mesh unknown fields "
-            "are emitted raw and grouped mechanically; no blend/cull/depth semantic is assigned. Material FileHash "
-            "reuse is resolved only inside the exact PS4 ROI material class."
+            "Static Info MaterialIndex/StaticIndex joins and mesh-record bytes are structural retail facts. Material and mesh unknown fields "
+            "are emitted raw and grouped mechanically; no blend/cull/depth semantic is assigned. Material FileHash reuse is resolved only "
+            "inside the exact PS4 ROI material class. Missing geometry/transform payloads are source gaps, not evidence against serialized draw state."
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
@@ -195,6 +247,7 @@ def main() -> int:
         "row_count": out["row_count"],
         "material_count": out["material_count"],
         "pixel_shader_count": out["pixel_shader_count"],
+        "source_gap_count": out["source_gap_count"],
         "target_809DCD66": {k: out["target_809DCD66"][k] for k in (
             "row_count", "visible_row_count", "material_count", "mesh_unk0c_histogram",
             "visible_mesh_unk0c_histogram", "material_unk0c_histogram", "material_unk20_histogram",
