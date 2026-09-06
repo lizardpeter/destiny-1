@@ -1,0 +1,127 @@
+name: D1 Crota finale controller closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-finale-controller-closure.yml'
+      - 'tools/d1_remote_catalog_entity_resource_probe.py'
+      - 'tools/d1_remote_catalog_backlinks.py'
+      - 'tools/d1_entity_resource_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode Crota-named EntityResources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_entity_resource_probe.py \
+            --tag-hash 0x8108E295 --tag-hash 0x8108E39C --tag-hash 0x8108EEE3 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/CROTA_FINALE_ENTITY_RESOURCES.json | tee out/resources_stdout.txt
+      - name: Probe Crota immunity source tag exactly
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY' | tee out/immunity_stdout.txt
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          from d1_crota_raid_candidate_probe import LazyExactHashResolver
+          from d1_split_tar_extract import SplitHttpTar
+          catalogs=load_catalogs([Path('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json')])
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          r=LazyExactHashResolver(arc,catalogs,Path('runtime'))
+          h='8108E5D0';pkg=(int(h,16)-0x80800000)>>13 & 0x7ff;v=r.view(pkg)
+          e=next(x for x in v.entries if x['tag_hash'].upper()==h);b=v.entry(e['index'])
+          matches=[]
+          for off in range(0,len(b)-3,4):
+              x=struct.unpack_from('<I',b,off)[0]
+              try:
+                  xp=((x-0x80800000)>>13)&0x7ff; xv=r.view(xp); xe=next((z for z in xv.entries if int(z['tag_hash'],16)==x),None)
+              except Exception:xe=None
+              if xe:matches.append({'offset':off,'tag_hash':f'{x:08X}','reference':xe['reference'].upper(),'size':xe['file_size']})
+          strings=[];start=None
+          for i,x in enumerate(b+b'\0'):
+              if 0x20<=x<0x7f:
+                  if start is None:start=i
+              else:
+                  if start is not None and i-start>=4:
+                      s=b[start:i].decode('ascii','replace')
+                      if 'crota' in s.lower() or 'immun' in s.lower() or 'final' in s.lower():strings.append({'offset':start,'string':s})
+                  start=None
+          out={'tag_hash':h,'entry':{k:e[k] for k in ('index','tag_hash','reference','type','subtype','file_size')},'payload_sha256':hashlib.sha256(b).hexdigest(),'aligned_resolved_tags':matches,'relevant_strings':strings,'prefix128':b[:128].hex()}
+          Path('out/CROTA_IMMUNITY_SOURCE_8108E5D0.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('ENTRY',out['entry']);print('STRINGS',strings);print('RESOLVED_TAGS',matches)
+          PY
+      - name: Trace literal Crota hashes and controller resource owners
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0447 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --target 0x8108E295 --target 0x8108E39C --target 0x8108E5D0 --target 0x8108EEE3 \
+            --target 0xA384A910 --target 0x879B27CD --target 0xA389B62C --target 0x3BD1A797 \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_FINALE_ALL_BACKLINKS.json | tee out/backlinks_stdout.txt
+      - name: Summarize closure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('out/CROTA_FINALE_ENTITY_RESOURCES.json'))
+          assert not r['violations'],r['violations']
+          for x in r['entries']:
+              er=x['entity_resource']
+              print('RESOURCE',x['tag_hash'],'ROLE',er.get('semantic_role'),'U10',(er.get('unk10') or {}).get('class_hash'),'U18',(er.get('unk18') or {}).get('class_hash'))
+              print('  MATCHES',[(hex(m['offset']),m['tag_hash'],m['reference']) for m in x['aligned_resolved_tag_matches']])
+          b=json.load(open('out/CROTA_FINALE_ALL_BACKLINKS.json'))
+          assert b['error_count']==0,b['errors']
+          print('BACKLINK_SOURCES',b['hit_source_count'],'BY_TARGET',b['hit_sources_by_target'],'BY_REFERENCE',b['hit_sources_by_reference'])
+          for x in b['hits']:print('OWNER',x['source_tag_hash'],'CLASS',x['reference'],'TARGETS',x['targets'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-FINALE-CONTROLLER-CLOSURE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
