@@ -1,0 +1,228 @@
+name: D1 Spektar exact glove-collar static v1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-exact-glove-collar-static-v1.yml'
+      - 'tools/d1_guardian_component_stage0_materialize.py'
+      - 'tools/d1_guardian_source_skin_attributes_restore.py'
+      - 'tools/d1_gltf_bind_source_model_to_existing_skin.py'
+      - 'tools/d1_gltf_tiger_mesh_basis_fix.py'
+      - 'tools/d1_gltf_layer_merge.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pillow trimesh pygltflib
+          mkdir -p runtime input/{base,geometry,materials,stage,external,skeleton} work out/textures
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Fetch exact proof and visual checkpoint artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact 'D1-SPEKTAR-BUNGIE72-MATERIAL-V4' input/base.zip input/base
+          fetch_artifact 'd1-shared-glove-collar-80A6A345-geometry-fixtures' input/geometry.zip input/geometry
+          fetch_artifact 'd1-shared-glove-collar-exact-retail-materials' input/materials.zip input/materials
+          fetch_artifact 'd1-shared-glove-collar-exact-stage-materials-v2' input/stage.zip input/stage
+          fetch_artifact 'd1-shared-glove-collar-external-material-decode' input/external.zip input/external
+          fetch_artifact 'd1-80AD27B2-published-player-skeleton-identity' input/skeleton.zip input/skeleton
+          find input -maxdepth 4 -type f -print | sort
+
+      - name: Canonicalize exact inputs and build explicit texture bindings
+        run: |
+          set -euo pipefail
+          cp "$(find input/base -type f -name 'SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V4_EXACT_TANGENT_DETAIL_DIFFUSE.glb' -print -quit)" work/base_animated.glb
+          cp "$(find input/geometry -type f -path '*/ps4/80A6A345.glb' -print -quit)" work/80A6A345.glb
+          cp "$(find input/stage -type f -name '80A6A345_exact_stage_materials.json' -print -quit)" work/stage.json
+          cp "$(find input/materials -type f -name '80A6A345_stage0_materials.json' -print -quit)" work/materials.json
+          cp "$(find input/external -type f -name 'external_materials.json' -print -quit)" work/external.json
+          cp "$(find input/skeleton -type f -name '80AD27B2_vs_published_player_skeleton.json' -print -quit)" work/skeleton_identity.json
+          find input/materials -type f -name '*.png' -exec cp '{}' out/textures/ \;
+          test "$(find out/textures -type f -name '*.png' | wc -l)" -eq 9
+          python - <<'PY'
+          import json
+          sm=json.load(open('work/materials.json')); ex=json.load(open('work/external.json'))
+          by={x['tag_hash']:x for x in sm['materials']}; eb={x['tag_hash']:x for x in ex['materials']}
+          expected={
+            '80A6A766':['80A6A76C','80A6AC9C','80A6A76D','80A6AC9D','80A6A76E'],
+            '80A6A767':['80A6A76C','80A6AC9E','80A6A76D','80A6AC9F','80A6A76E'],
+            '80A6A76A':['80A6ACA0','80A6ACA1'],
+            '80A6A76B':['80A6A76C','80A6AC9C','80A6A76D','80A6AC9D','80A6A76E'],
+          }
+          for h,seq in expected.items():
+              got=[x['texture'] for x in by[h]['ps_textures']['items']]; assert got==seq,(h,got,seq)
+          extseq=['80A6A76C','80A6A76D','80A0856C','80A6A76E']
+          for h in ('80A6A3F9','80A6A400'):
+              assert eb[h]['ps_texture_tags']==extseq,(h,eb[h]['ps_texture_tags'])
+          mats={}
+          for h in ('80A6A766','80A6A767','80A6A76B'):
+              mats[h]={'base_color':expected[h][0],'normal':expected[h][2],'source_textures':expected[h]}
+          mats['80A6A76A']={'base_color':'80A6ACA0','normal':'80A6ACA1','source_textures':expected['80A6A76A']}
+          for h in ('80A6A3F9','80A6A400'):
+              mats[h]={'base_color':'80A6A76C','normal':'80A6A76D','source_textures':extseq}
+          out={'schema':'d1_glove_collar_portable_binding/v1','materials':mats,
+               'proof_boundary':'Base diffuse/normal roles are source-backed by exact historical TGXM equivalence for static hand/collar materials and exact serialized external-material texture arrays for 80A6A3F9/80A6A400. Detail/scratch/gear-stack operations are not approximated into PBR.'}
+          json.dump(out,open('work/bindings.json','w'),indent=2);open('work/bindings.json','a').write('\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Materialize only exact visible glove-collar surface ranges
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_component_stage0_materialize.py work/80A6A345.glb \
+            --stage-report work/stage.json --bindings work/bindings.json --texture-dir out/textures \
+            --report out/80A6A345_materialize.json -o work/80A6A345_stage0_textured.glb
+
+      - name: Restore exact source skin attributes and glTF basis
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_source_skin_attributes_restore.py work/80A6A345_stage0_textured.glb \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --node-count 72 --report out/80A6A345_skin_attributes.json \
+            -o work/80A6A345_stage0_textured_skinattrs.glb
+          python tools/d1_gltf_tiger_mesh_basis_fix.py work/80A6A345_stage0_textured_skinattrs.glb \
+            -o out/80A6A345_STAGE0_EXACT_SOURCE_TEXTURED_SKINATTR_BASIS.glb \
+            --json out/80A6A345_basis.json
+
+      - name: Lock exact retail 72-bone skeleton identity and strip unproven animation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_gltf_layer_merge import read_glb,write_glb
+          ident=json.load(open('work/skeleton_identity.json')); c=ident['comparison']
+          assert c['retail_node_count']==72 and c['ordered_hashes_exact'] is True and c['ordered_parent_indices_exact'] is True,c
+          assert c['default_transform_max_abs_error_shared'] < 1e-5 and c['inverse_transform_max_abs_error_shared'] < 1e-5,c
+          d,b=read_glb(Path('work/base_animated.glb'))
+          assert len(d.get('skins',[]))==1 and len(d['skins'][0]['joints'])==72
+          removed=len(d.get('animations',[])); assert removed>=1,removed
+          d['animations']=[]
+          d.setdefault('extras',{})['d1RetailPlayerSkeletonIdentity']={'tagHash':'80AD27B2','jointCount':72,'orderedHashesExact':True,'orderedParentsExact':True}
+          d['extras']['d1AnimationPolicy']='No animation embedded in this checkpoint; retail player animation ownership/path remains gated on source proof.'
+          write_glb(Path('work/base_static.glb'),d,b)
+          print('STRIPPED ANIMATIONS',removed,'SKIN JOINTS',len(d['skins'][0]['joints']))
+          PY
+
+      - name: Loss-preserving merge and attach exact glove skin weights to existing 72-bone skin
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_layer_merge.py --base work/base_static.glb \
+            --layer EXACT_SHARED_GLOVE_COLLAR=out/80A6A345_STAGE0_EXACT_SOURCE_TEXTURED_SKINATTR_BASIS.glb \
+            --out work/merged.glb --report out/merge.json
+          python tools/d1_gltf_bind_source_model_to_existing_skin.py work/merged.glb \
+            --model 80A6A345 --skin-index 0 --expected-joints 72 --report out/glove_skin_bind.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_EXACT_GLOVE_COLLAR_STATIC_V1.glb
+
+      - name: Validate Blender checkpoint proof boundaries
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib
+          from pathlib import Path
+          p=Path('out/SPEKTAR_PANDION_TITAN_BUNGIE72_EXACT_GLOVE_COLLAR_STATIC_V1.glb');raw=p.read_bytes()
+          _,_,total=struct.unpack_from('<4sII',raw,0);assert total==len(raw)
+          jl=struct.unpack_from('<I',raw,12)[0];g=json.loads(raw[20:20+jl].decode().rstrip('\x00 '))
+          assert len(g.get('animations',[]))==0
+          assert len(g.get('skins',[]))==1 and len(g['skins'][0]['joints'])==72
+          layer=[(i,n) for i,n in enumerate(g['nodes']) if n.get('name')=='D1_LAYER_EXACT_SHARED_GLOVE_COLLAR'];assert len(layer)==1,layer
+          li,ln=layer[0];children=ln.get('children') or [];assert len(children)==9,children
+          active=[]
+          for ni in children:
+              n=g['nodes'][ni];m=g['meshes'][n['mesh']];name=m.get('name') or ''
+              assert '80A6A345_' in name,name
+              assert n.get('skin')==0,(name,n.get('skin'))
+              pr=m['primitives'][0];attrs=pr['attributes']
+              assert {'POSITION','NORMAL','TEXCOORD_0','JOINTS_0','WEIGHTS_0'} <= set(attrs),name
+              active.append(name)
+          expected={
+            '80A6A345_mesh0_range0_1365','80A6A345_mesh0_range1366_7678','80A6A345_mesh0_range9045_8757',
+            '80A6A345_mesh0_range17803_268','80A6A345_mesh0_range18072_268','80A6A345_mesh2_range49_547',
+            '80A6A345_mesh2_range639_544','80A6A345_mesh2_range1192_23','80A6A345_mesh2_range1405_53'}
+          assert set(active)==expected,(set(active)-expected,expected-set(active))
+          mats={m.get('name') for m in g.get('materials',[]) if (m.get('name') or '').startswith('D1_80A6')}
+          for h in ('80A6A3F9','80A6A766','80A6A767','80A6A76A','80A6A400','80A6A76B'):
+              assert f'D1_{h}_exact_source_bound' in mats,(h,mats)
+          image_names={x.get('name') for x in g.get('images',[])}
+          for h in ('80A6A76C','80A6A76D','80A6ACA0','80A6ACA1'):
+              assert h in image_names,(h,image_names)
+          out={'schema':'d1_spektar_exact_glove_collar_static_v1_validation','bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),
+               'active_glove_collar_ranges':active,'active_range_count':len(active),'skin_joint_count':72,'animation_count':0,
+               'material_hashes':['80A6A3F9','80A6A766','80A6A767','80A6A76A','80A6A400','80A6A76B'],
+               'policy':'No _0/_1 range re-enabling; no hand repositioning; no synthesized weights; no old 67-rig animation. Portable PBR uses exact retail diffuse/normal images while native detail/scratch/gear-stack shader operations remain explicitly unresolved.'}
+          json.dump(out,open('out/FINAL_VALIDATION.json','w'),indent=2);open('out/FINAL_VALIDATION.json','a').write('\n')
+          print(json.dumps(out,indent=2))
+          PY
+          python - <<'PY'
+          import trimesh
+          p='out/SPEKTAR_PANDION_TITAN_BUNGIE72_EXACT_GLOVE_COLLAR_STATIC_V1.glb'
+          s=trimesh.load(p,force='scene',process=False)
+          assert len(s.geometry)>0
+          print('TRIMESH PARSE OK geometry',len(s.geometry))
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - name: README
+        run: |
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion Titan — exact shared glove/collar static checkpoint v1
+
+          This is the first Blender checkpoint that replaces the diagnostic white shared hand/collar component with
+          exact retail D1 source textures while retaining the already-correct geometry. 80A6A345 visibility is driven
+          only by the source-proven highest-detail stage ranges and stage-group-0 material pass.
+
+          The two formerly ambiguous FFFFFFFF surfaces are now closed through 80A6A125 ExternalMaterialsMap:
+            mesh0 range 0/1365 variant 0 -> 80A6A3F9
+            mesh2 range 1192/23 variant 2 -> 80A6A400
+
+          Exact source JOINTS_0/WEIGHTS_0 are restored from retail vertex bytes, limited against the proven 72-node
+          player palette. The existing skin is retained only after the retail 80AD27B2 skeleton was proven exactly
+          identical in ordered hashes, parents and bind transforms to Bungie's published 72-node player skeleton.
+
+          No animation is embedded. The earlier preview animation is intentionally stripped until a source-proven
+          retail player animation owner/path is closed. No _0/_1 geometry was re-enabled and no hand offsets were used.
+
+          Portable material boundary: glTF PBR binds the exact retail base diffuse and normal images so Blender no
+          longer shows white placeholder hands. The exact detail/scratch/gear-stack source textures and hashes are
+          preserved in this artifact/evidence, but their native D1 shader arithmetic is not falsely represented as
+          solved PBR behavior yet.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-EXACT-GLOVE-COLLAR-STATIC-V1
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
