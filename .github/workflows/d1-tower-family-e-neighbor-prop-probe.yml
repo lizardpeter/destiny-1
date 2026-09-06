@@ -1,0 +1,72 @@
+name: D1 Tower Family E neighbor prop probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-family-e-neighbor-prop-probe.yml'
+      - 'tools/d1_tower_articulated_neighbor_census.py'
+      - 'tools/d1_world_activity_entity_table_census.py'
+      - 'tools/d1_world_activity_entity_resource_census.py'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_tower_recover_current_corpus.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install exact runtime and recover corpus
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered roots reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_tower_recover_activity_root_corpus.py --package-list reports/packages.txt --out-dir roots --report reports/root_corpus.json
+      - name: Materialize exact runtime WorldID placements
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t rootsf < <(find roots -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=();for f in "${deps[@]}" "${rootsf[@]}";do args+=(--snapshot "$f");done
+          rootargs=();for f in "${rootsf[@]}";do rootargs+=(--named-root-snapshot "$f");done
+          set +e
+          python tools/d1_world_activity_entity_table_census.py "${args[@]}" "${rootargs[@]}" --runtime runtime --out reports/entity_tables.json
+          rc=$?;set -e;test "$rc" -eq 0 -o "$rc" -eq 2
+          set +e
+          python tools/d1_world_activity_entity_resource_census.py "${args[@]}" --runtime runtime --entity-table-census reports/entity_tables.json --out reports/runtime_placements.json
+          rc=$?;set -e;test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/runtime_placements.json'))
+          assert not d['violations'],d['violations'][:20]
+          assert d['unique_runtime_world_placement_count']==1215,d['unique_runtime_world_placement_count']
+          PY
+      - name: Census every dynamic placement within five metres of Family E
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered roots -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=();for f in "${files[@]}";do args+=(--snapshot "$f");done
+          python tools/d1_tower_articulated_neighbor_census.py --placements reports/runtime_placements.json "${args[@]}" --runtime runtime --radius 5 \
+            --world-id 1F763204E6BF153E --world-id 288E250AFDC06BC7 --world-id 28F88CAFCCE615AC \
+            --world-id 5A9D48129FB3D22A --world-id 5F523A4A340754A7 --world-id C588D8EE0F1F493D \
+            -o reports/TOWER_FAMILY_E_SPATIAL_NEIGHBORS.json | tee reports/TOWER_FAMILY_E_SPATIAL_NEIGHBORS_stdout.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-family-e-neighbor-prop-probe
+          path: reports/
+          retention-days: 14
+          compression-level: 6
