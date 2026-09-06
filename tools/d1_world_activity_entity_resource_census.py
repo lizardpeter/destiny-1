@@ -15,6 +15,10 @@ SMapDataEntry D1 layout used here is source-pinned:
   +0x80 WorldID u64
   +0x88 DataResource ResourcePointer
 
+A zero-count DynamicArray is valid without dereferencing its serialized pointer.
+The raw relative/absolute pointer evidence is still preserved in the report, but
+an out-of-payload target is not a framing violation when count == 0.
+
 No entity/NPC semantic label is inferred by this layer.
 """
 from __future__ import annotations
@@ -67,6 +71,17 @@ def string_pointer(b,off):
  if end<0:end=min(len(b),absolute+4096)
  r['value']=b[absolute:end].decode('utf-8','replace');return r
 
+def placement_dyn(b,off,stride):
+ """Use the shared D1 descriptor math but do not dereference empty arrays."""
+ arr=act.dyn(b,off,stride)
+ if arr.get('count')==0:
+  arr=dict(arr)
+  arr['serialized_pointer_bounds_ok']=bool(arr.get('ok'))
+  arr['zero_count_no_dereference']=True
+  arr['ok']=True
+  arr.pop('error',None)
+ return arr
+
 def parse_map_entry(c,b,o,i,source_kind,source_hash):
  ent=hx(u32(b,o));rot=f4(b,o+0x20);tr=f4(b,o+0x30);wid=u64(b,o+0x80);dr=resource_pointer(b,o+0x88)
  return {'source_kind':source_kind,'source_hash':source_hash,'index':i,'record_offset':o,
@@ -81,7 +96,7 @@ def parse_direct_table(c,h):
   out['violations'].append('map_table_missing_class_or_payload');return out
  if len(b)<0x18:
   out['violations'].append('map_table_shorter_than_0x18');return out
- arr=act.dyn(b,0x08,MAP_ENTRY_STRIDE);out['data_entries_array']=arr
+ arr=placement_dyn(b,0x08,MAP_ENTRY_STRIDE);out['data_entries_array']=arr
  if not arr['ok']:
   out['violations'].append('map_table_data_entries_bounds');return out
  for i in range(arr['count']):
@@ -109,7 +124,7 @@ def parse_f603(c,h):
   out['violations'].append('unk18_not_SDD078080');return out
  dd=p18['absolute']
  if dd is None or dd+0x78>len(eb):out['violations'].append('sdd_header_oob');return out
- out['sdd_absolute']=dd;out['dev_name']=string_pointer(eb,dd+0x60);arr=act.dyn(eb,dd+0x68,MAP_ENTRY_STRIDE);out['data_entries_array']=arr
+ out['sdd_absolute']=dd;out['dev_name']=string_pointer(eb,dd+0x60);arr=placement_dyn(eb,dd+0x68,MAP_ENTRY_STRIDE);out['data_entries_array']=arr
  if not arr['ok']:out['violations'].append('sdd_data_entries_bounds');return out
  for i in range(arr['count']):
   row=parse_map_entry(c,eb,arr['absolute']+i*MAP_ENTRY_STRIDE,i,'f603_collapsed',h);out['entries'].append(row)
@@ -135,7 +150,7 @@ def main():
  entity_refs=Counter(e['entity_hash'] for e in real);world_ids=Counter(e['world_id_hex'] for e in real);source_kinds=Counter(e['source_kind'] for e in rows)
  collapse_reasons=Counter(t.get('collapse_reason','collapsed' if t.get('collapsed') else 'failed') for t in f603_tables)
  er_hashes=Counter(t.get('entity_resource',{}).get('hash') for t in f603_tables if t.get('entity_resource',{}).get('hash') not in NULLS)
- out={'schema_version':2,'status':'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_COMPLETE' if not viol else 'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_PARTIAL',
+ out={'schema_version':3,'status':'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_COMPLETE' if not viol else 'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_PARTIAL',
   'pinned_source':PINNED_SOURCE,'input_entity_table_census':str(a.entity_table_census),
   'f603_count':len(f603_tables),'collapsed_f603_count':sum(t.get('collapsed',False) for t in f603_tables),'collapse_reason_counts':dict(collapse_reasons),
   'unique_entity_resource_tags':len(er_hashes),'direct_map_data_table_count':len(direct_tables),'direct_map_entry_count':len(direct_rows),
@@ -145,7 +160,8 @@ def main():
   'entity_reference_counts':dict(entity_refs),'world_id_reference_counts':dict(world_ids),'unique_entity_hashes':sorted(entity_refs),
   'direct_tables':direct_tables,'tables':f603_tables,'violations':viol,
   'policy':('Preserves both D1 activity entity paths used by Charm: ordinary SMapDataTable rows and F603 rows collapsed through EntityResource. '
-            'F603 collapse requires Unk10 S2E098080 and reads SDD078080.DataEntries. Entity hash is D1 EntitySK +0x00. No NPC semantic is inferred.')}
+            'Zero-count arrays are never dereferenced; their serialized pointers remain evidence only. F603 collapse requires Unk10 S2E098080 and reads '
+            'SDD078080.DataEntries. Entity hash is D1 EntitySK +0x00. No NPC semantic is inferred.')}
  a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
  keys=('status','f603_count','collapsed_f603_count','collapse_reason_counts','unique_entity_resource_tags','direct_map_data_table_count','direct_map_entry_count',
        'f603_collapsed_entry_count','collapsed_entry_count','source_kind_counts','real_entity_entry_count','unique_entity_hash_count','resolved_entity_entry_count',
