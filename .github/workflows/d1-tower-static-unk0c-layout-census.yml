@@ -114,17 +114,27 @@ jobs:
               }
 
           target=[r for r in draws if r['material']=='80C9993C']
-          assert len(target)==2,target
+          # Retail serializes paired detail-7 and detail-1 variants for each of
+          # the two geometry ranges.  Preserve all four here.  The normal visual
+          # Tower selection rule keeps detail level 1 and excludes level 7.
+          assert len(target)==4,target
+          assert sorted(r['static_index'] for r in target)==[578,579,798,799],target
           assert all(r['unk0C_hex']=='0104' for r in target),target
+          target_visible=[r for r in target if r['detail_level'] in (0,1,2,3,10)]
+          target_nonvisual=[r for r in target if r['detail_level'] not in (0,1,2,3,10)]
+          assert sorted(r['static_index'] for r in target_visible)==[579,799],target_visible
+          assert sorted(r['static_index'] for r in target_nonvisual)==[578,798],target_nonvisual
 
           same_unk=[r for r in draws if r['unk0C_hex']=='0104']
           same_layout=[r for r in draws if (r['stride0'],r['stride1'])==(8,24)]
           out={
-            'schema_version':1,'status':'D1_TOWER_STATIC_UNK0C_LAYOUT_CENSUS','table':'80C99827',
+            'schema_version':2,'status':'D1_TOWER_STATIC_UNK0C_LAYOUT_CENSUS','table':'80C99827',
             'table_global_ok':t.get('ok'),'table_global_violations':t.get('violations',[]),
             'mesh_count':len(mesh_rows),'draw_count':len(draws),'mesh_rows':mesh_rows,'draw_rows':draws,
             'unk0C_groups':groups,
-            'target_80C9993C':target,
+            'target_80C9993C_all':target,
+            'target_80C9993C_visible':target_visible,
+            'target_80C9993C_nonvisual_detail7':target_nonvisual,
             'unk0104_summary':{
               'draw_count':len(same_unk),
               'layout_frequency':freq(lambda r:(r['stride0'],r['stride1'],r['type0'],r['type1']),same_unk),
@@ -140,7 +150,7 @@ jobs:
             'policy':'Correlation census only. No semantic meaning is assigned to unk0C unless retail relationships are exclusive enough to justify it.'
           }
           Path('reports/80C99827_unk0C_layout_census.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps({k:out[k] for k in ('status','mesh_count','draw_count','target_80C9993C','unk0104_summary','stride8_24_summary')},indent=2))
+          print(json.dumps({k:out[k] for k in ('status','mesh_count','draw_count','target_80C9993C_all','target_80C9993C_visible','unk0104_summary','stride8_24_summary')},indent=2))
           PY
 
       - uses: actions/upload-artifact@v4
