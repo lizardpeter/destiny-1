@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-06",
+  "status": "TOWER_FAMILY_E_ANIMATION_SOURCE_MEMBERS_SHA256_PINNED",
+  "policy": "Minimal physical-member set for the already-closed Tower Family-E animated export. These rows pin bytes only. Animation ownership is established separately by TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json. This catalog intentionally contains only the two resident source members needed by the exporter, not complete logical package families.",
+  "families": {
+    "00ec": [
+      {
+        "name": "ps4_race_set_all_00ec_5.pkg",
+        "data_offset": 45919511552,
+        "size": 155648,
+        "sha256": "e55e29bfc4fbea417df195996c0289a12308b6dac88cdfd99eacbfe55fdb847a"
+      }
+    ],
+    "023d": [
+      {
+        "name": "ps4_city_tower_activities_act_023d_5.pkg",
+        "data_offset": 5419706880,
+        "size": 131072,
+        "sha256": "de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695"
+      }
+    ]
+  },
+  "provenance": {
+    "00ec_5": "Fresh exact recovery in Family-E ownership run 34057701526; same current bytes as prior 67-bone Guardian validation.",
+    "023d_5": "Fresh exact recovery in Family-E ownership run 34057701526; contains the Tower-local owner/control/clip path including 80C7AE98."
+  }
+}
