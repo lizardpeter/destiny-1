@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_ARTICULATED_TEXTURE_003B_FAMILY_RECOVERED",
+  "source_workflow": {
+    "run_id": 34009249946,
+    "artifact_id": 9982084977,
+    "artifact_digest": "sha256:64e6548cc4ba4737662580076b35632b035974c05221215d459ea9e53802c227"
+  },
+  "selection": {
+    "missing_texture_package_id": "003b",
+    "missing_texture_taghashes": [
+      "808768D3",
+      "808768D4",
+      "80876965",
+      "80876966",
+      "80876967",
+      "8087696F",
+      "80876970",
+      "80876971",
+      "80876972",
+      "80876973",
+      "80876979",
+      "8087697A"
+    ],
+    "basis": "Exact serialized texture FileHashes reported by d1_world_material_texture_export after the closed 35-material articulated model export decoded to Tiger package id 003b."
+  },
+  "families": {
+    "003b": [
+      {"name":"ps4_ui_social_003b_0.pkg","data_offset":48880714240,"size":288055296,"sha256":"08ea18e3723a57d17fd6aae4abd09437cd42f3598a780baf61218cbcf75f77b6"},
+      {"name":"ps4_ui_social_003b_1.pkg","data_offset":49168770048,"size":145676288,"sha256":"d08bd72c8276fbec5a28cb6b1496b1b0316bdce19d922d6cbcd12f5399fa139f"},
+      {"name":"ps4_ui_social_003b_2.pkg","data_offset":49314446848,"size":154404864,"sha256":"9e1f37dc81e829f2daeafec119c8e5408c459d61146ae234dbc1395356599f54"},
+      {"name":"ps4_ui_social_003b_3.pkg","data_offset":49468852224,"size":339968,"sha256":"7e31632e5efdee01241ebf8f099031db4c2672977d2c9b6af859227b98f54aa8"},
+      {"name":"ps4_ui_social_003b_4.pkg","data_offset":49469192704,"size":401408,"sha256":"87360fe14061ec9cec7280dfff214087a45bcf7f5bb5495c1b60b7fdd0a1f2f7"},
+      {"name":"ps4_ui_social_003b_5.pkg","data_offset":49469594624,"size":217088,"sha256":"da8021c6b69629cfd77e909e7ae6878f3f83bade960095eb471d15e80c85dbe7"},
+      {"name":"ps4_ui_social_003b_6.pkg","data_offset":49469812224,"size":210944,"sha256":"9715a07b2754adc03c540a623ba5f3fffb57d780ccc3eb19f5baa5859913a5be"}
+    ]
+  },
+  "policy": "Current packages.txt must contain this exact seven-member 003b family before offsets are reused. Every byte range is SHA-256 reverified. The package filename is physical-location metadata only, not semantic ownership evidence."
+}
