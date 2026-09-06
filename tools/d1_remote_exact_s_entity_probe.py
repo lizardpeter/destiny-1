@@ -6,9 +6,9 @@ For every requested FileHash this source-proof tool:
 - decodes the validated Resource[] array,
 - resolves every child FileHash through the verified universal member catalog,
 - parses child EntityResources with the validated PS4 parser,
-- exposes exact semantic roles and embedded s_entity_model FileHashes,
-- source-closes skeleton node counts/hashes when the EntityResource role is
-  entity_skeleton,
+- exposes exact semantic roles, source-mapped name fields and embedded models,
+- source-closes skeleton node counts/hashes for entity_skeleton resources,
+- source-closes serialized child EntitySK arrays for entity_children resources,
 - resolves embedded model metadata without inferring ownership from locality,
   adjacency, naming, package names, or appearance.
 """
@@ -27,6 +27,7 @@ if str(HERE) not in sys.path:
 from d1_crota_raid_candidate_probe import LazyExactHashResolver, meta_row, norm
 from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
+from d1_remote_entity_child_find import parse_children_resource
 from d1_remote_s_entity_resource_package_find import S_ENTITY_REF, parse_entity_resources
 from d1_skeleton_probe import parse_skeleton_resource
 from d1_split_tar_extract import SplitHttpTar
@@ -94,6 +95,10 @@ def main() -> int:
                             'unk18_class': (parsed.get('unk18') or {}).get('class_hash'),
                             'embedded_model_tag_hash': parsed.get('embedded_model_tag_hash'),
                             'model_field_offset_in_parent': parsed.get('model_field_offset_in_parent'),
+                            'entity_name_string_hash': parsed.get('entity_name_string_hash'),
+                            'entity_name_tag_hash': parsed.get('entity_name_tag_hash'),
+                            'entity_name_tag_expected_class': parsed.get('entity_name_tag_expected_class'),
+                            'generic_name_tag_field_offset_in_parent': parsed.get('generic_name_tag_field_offset_in_parent'),
                         }
                         rrow['entity_resource'] = er
                         model = er.get('embedded_model_tag_hash')
@@ -118,6 +123,14 @@ def main() -> int:
                                 }
                             except Exception as ex:
                                 rrow['skeleton_parse_error'] = repr(ex)
+                        if er.get('semantic_role') == 'entity_children':
+                            try:
+                                ch = parse_children_resource(child_payload)
+                                if ch is None:
+                                    raise ValueError('entity_children role did not satisfy validated children parser')
+                                rrow['entity_children'] = ch
+                            except Exception as ex:
+                                rrow['entity_children_parse_error'] = repr(ex)
                     elif ref == ENTITY_MODEL_CLASS:
                         rrow['direct_entity_model'] = True
                 except Exception as ex:
@@ -138,6 +151,22 @@ def main() -> int:
                 {'resource_hash': norm(r['resource_hash']), **r['skeleton']}
                 for r in resolved_resources if r.get('skeleton')
             ]
+            row['specific_name_string_hashes'] = sorted({
+                norm((r.get('entity_resource') or {}).get('entity_name_string_hash'))
+                for r in resolved_resources
+                if (r.get('entity_resource') or {}).get('entity_name_string_hash')
+            })
+            row['generic_name_tags'] = sorted({
+                norm((r.get('entity_resource') or {}).get('entity_name_tag_hash'))
+                for r in resolved_resources
+                if (r.get('entity_resource') or {}).get('entity_name_tag_hash')
+            })
+            row['child_entities'] = [
+                {'resource_hash': norm(r['resource_hash']), **c}
+                for r in resolved_resources
+                for c in ((r.get('entity_children') or {}).get('children') or [])
+                if c.get('entity_hash') not in ('00000000', 'FFFFFFFF')
+            ]
         except Exception as ex:
             msg = repr(ex)
             row['violations'].append(msg)
@@ -145,16 +174,16 @@ def main() -> int:
         entries.append(row)
 
     report = {
-        'schema': 'd1_remote_exact_s_entity_probe/v2',
+        'schema': 'd1_remote_exact_s_entity_probe/v3',
         'status': 'D1_EXACT_S_ENTITY_PROBE' if not violations else 'D1_EXACT_S_ENTITY_PROBE_WITH_VIOLATIONS',
         'entries': entries,
         'violation_count': len(violations),
         'violations': violations,
         'policy': (
-            'Every child edge comes from the validated s_entity Resource[] serialization and exact FileHash routing. '
-            'EntityResource roles and embedded models come only from the validated PS4 parser; skeleton metadata comes '
-            'only from the validated skeleton parser. No locality, adjacency, appearance, package-name, or semantic-name '
-            'heuristics are used.'
+            'Every child edge comes from validated s_entity/EntityChildren serialization and exact FileHash routing. '
+            'EntityResource roles, source-mapped name fields and embedded models come only from the validated PS4 parser; '
+            'skeleton metadata comes only from the validated skeleton parser. No locality, adjacency, appearance, '
+            'package-name, or semantic-name heuristics are used.'
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
@@ -164,15 +193,21 @@ def main() -> int:
         print('S_ENTITY', x['tag_hash'], 'ENTRY', x.get('entry'), 'RESOURCES', x.get('resource_count'),
               'MODELS', x.get('embedded_models'),
               'SKELETONS', [(s['resource_hash'], s['node_count']) for s in x.get('skeletons', [])],
+              'SPECIFIC_NAMES', x.get('specific_name_string_hashes'),
+              'GENERIC_NAME_TAGS', x.get('generic_name_tags'),
+              'CHILDREN', [(c['resource_hash'], c['entity_hash']) for c in x.get('child_entities', [])],
               'VIOLATIONS', x.get('violations'))
         for rr in x.get('resources', []):
             e = rr.get('entry') or {}
             er = rr.get('entity_resource') or {}
             sk = rr.get('skeleton') or {}
+            ch = rr.get('entity_children') or {}
             print('  RESOURCE', rr.get('resource_index'), rr.get('resource_hash'),
                   'REF', e.get('reference'), 'ROLE', er.get('semantic_role'),
                   'CLASSES', (er.get('unk10_class'), er.get('unk18_class')),
-                  'MODEL', er.get('embedded_model_tag_hash'), 'SKEL_NODES', sk.get('node_count'))
+                  'MODEL', er.get('embedded_model_tag_hash'), 'SKEL_NODES', sk.get('node_count'),
+                  'SPECIFIC_NAME', er.get('entity_name_string_hash'), 'GENERIC_NAME_TAG', er.get('entity_name_tag_hash'),
+                  'CHILD_COUNT', ch.get('child_count'))
     print('STATUS', report['status'], 'VIOLATIONS', report['violations'])
     return 0 if not violations else 2
 
