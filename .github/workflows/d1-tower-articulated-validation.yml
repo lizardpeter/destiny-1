@@ -1,0 +1,248 @@
+name: D1 Tower articulated entity validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-articulated-validation.yml'
+      - 'tools/d1_world_activity_entity_table_census.py'
+      - 'tools/d1_world_activity_entity_resource_census.py'
+      - 'tools/d1_world_entity_dependency_census.py'
+      - 'tools/d1_expand_world_entity_dependencies.py'
+      - 'tools/d1_global_strings_resolve.py'
+      - 'tools/d1_world_articulated_entity_plan.py'
+      - 'tools/d1_world_placement_data_resource_census.py'
+      - 'tools/d1_world_entity_model_material_bindings.py'
+      - 'tools/d1_world_articulated_skin_census.py'
+      - 'tools/d1_entity_resource_probe.py'
+      - 'tools/d1_entity_model_probe.py'
+      - 'tools/d1_skeleton_probe.py'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_tower_recover_current_corpus.py'
+      - 'tools/d1_split_tar_extract.py'
+      - 'evidence/d1_weapon_globals_member_catalog.json'
+      - 'evidence/d1_tower_shader_dependency_member_catalog.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered root_corpus entity_expanded reports/entity_dependency_passes
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Recover source-owned Tower corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt \
+            --out-dir recovered \
+            --report reports/tower_dependency_corpus.json
+          python tools/d1_tower_recover_activity_root_corpus.py \
+            --package-list reports/packages.txt \
+            --out-dir root_corpus \
+            --report reports/tower_activity_package_recovery.json
+
+      - name: Discover Activity-owned entity tables
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          root_args=(); for f in "${roots[@]}"; do root_args+=(--named-root-snapshot "$f"); done
+          set +e
+          python tools/d1_world_activity_entity_table_census.py "${args[@]}" "${root_args[@]}" --runtime runtime \
+            --out reports/tower_activity_entity_table_census.json | tee reports/tower_activity_entity_table_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Materialize unique runtime world placements
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_activity_entity_resource_census.py "${args[@]}" --runtime runtime \
+            --entity-table-census reports/tower_activity_entity_table_census.json \
+            --out reports/tower_activity_entity_resource_census.json \
+            | tee reports/tower_activity_entity_resource_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_activity_entity_resource_census.json'))
+          if d['violations']: raise SystemExit('placement framing violations: '+repr(d['violations'][:20]))
+          if d['real_entity_entry_count']<=0 or d['unique_world_id_count']<=0: raise SystemExit('no real runtime placements')
+          print(json.dumps({k:d[k] for k in ('status','collapsed_entry_count','real_entity_entry_count','unique_entity_hash_count','unique_world_id_count','data_resource_class_counts','violations')},indent=2))
+          PY
+
+      - name: Close every placed SEntity dependency recursively
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_expand_world_entity_dependencies.py "${args[@]}" \
+            --runtime runtime \
+            --placements reports/tower_activity_entity_resource_census.json \
+            --package-list reports/packages.txt \
+            --expansion-dir entity_expanded \
+            --work-dir reports/entity_dependency_passes \
+            --out reports/tower_entity_dependency_census.json \
+            --report reports/tower_entity_dependency_expansion.json \
+            | tee reports/tower_entity_dependency_expansion_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_entity_dependency_census.json'))
+          x=json.load(open('reports/tower_entity_dependency_expansion.json'))
+          if x['status']!='D1_WORLD_ENTITY_DEPENDENCY_EXPANSION_CLOSED': raise SystemExit('dependency graph not closed')
+          if d['unresolved_dependency_hashes']: raise SystemExit('closed expansion still has unresolved hashes')
+          print(json.dumps({
+            'dependency_status':d['status'],
+            'placed_unique_entity_count':d['placed_unique_entity_count'],
+            'unique_entity_resource_hash_count':d['unique_entity_resource_hash_count'],
+            'articulated_candidate_count':d['articulated_candidate_count'],
+            'name_hash_count':d['unique_entity_name_hash_count'],
+            'recovered_package_ids':x['recovered_package_ids'],
+            'recovered_member_count':x['recovered_member_count'],
+          },indent=2))
+          PY
+
+      - name: Resolve source-mapped entity StringHashes
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t expanded < <(find entity_expanded -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}" "${expanded[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_global_strings_resolve.py "${args[@]}" --runtime runtime \
+            --entity-dependency-census reports/tower_entity_dependency_census.json \
+            --out reports/tower_entity_global_strings.json \
+            | tee reports/tower_entity_global_strings_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Build source-owned articulated runtime plan
+        run: |
+          set -euo pipefail
+          python tools/d1_world_articulated_entity_plan.py \
+            --placements reports/tower_activity_entity_resource_census.json \
+            --entity-dependencies reports/tower_entity_dependency_census.json \
+            --global-strings reports/tower_entity_global_strings.json \
+            --out reports/tower_articulated_entity_plan.json \
+            | tee reports/tower_articulated_entity_plan_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_articulated_entity_plan.json'))
+          if d['missing_placement_entities']: raise SystemExit('articulated owner lost world placement')
+          if d['candidate_count']<=0 or d['family_count']<=0: raise SystemExit('no articulated families')
+          print(json.dumps({k:d[k] for k in ('status','candidate_count','rig_export_candidate_count','family_count','runtime_placement_count','serialized_placement_reference_count','duplicate_serialized_reference_count','unique_model_count','unique_skeleton_resource_count','unique_runtime_rig_resource_count','missing_placement_entities')},indent=2))
+          PY
+
+      - name: Decode optional per-placement DataResources
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t expanded < <(find entity_expanded -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}" "${expanded[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_placement_data_resource_census.py "${args[@]}" --runtime runtime \
+            --placements reports/tower_activity_entity_resource_census.json \
+            --out reports/tower_placement_data_resource_census.json \
+            | tee reports/tower_placement_data_resource_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Validate exact owning-parent material selection
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t expanded < <(find entity_expanded -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}" "${expanded[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_entity_model_material_bindings.py "${args[@]}" --runtime runtime \
+            --articulated-plan reports/tower_articulated_entity_plan.json \
+            --out reports/tower_articulated_material_bindings.json \
+            | tee reports/tower_articulated_material_bindings_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Census exact articulated skin storage
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t expanded < <(find entity_expanded -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}" "${expanded[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_articulated_skin_census.py "${args[@]}" --runtime runtime \
+            --articulated-plan reports/tower_articulated_entity_plan.json \
+            --out reports/tower_articulated_skin_census.json \
+            | tee reports/tower_articulated_skin_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Write articulated validation summary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p=json.load(open('reports/tower_articulated_entity_plan.json'))
+          m=json.load(open('reports/tower_articulated_material_bindings.json'))
+          s=json.load(open('reports/tower_articulated_skin_census.json'))
+          r=json.load(open('reports/tower_placement_data_resource_census.json'))
+          out={
+            'status':'D1_TOWER_ARTICULATED_VALIDATION',
+            'articulated_plan':{k:p[k] for k in ('status','candidate_count','rig_export_candidate_count','family_count','runtime_placement_count','serialized_placement_reference_count','duplicate_serialized_reference_count','unique_model_count','unique_skeleton_resource_count','unique_runtime_rig_resource_count')},
+            'materials':{k:m[k] for k in ('status','model_parent_pair_count','validated_pair_count','part_count','external_variant_part_count','unique_selected_material_count','violations')},
+            'skin':{k:s[k] for k in ('status','family_count','unique_model_count','mesh_count','inline_mesh_count','separate_old_weights_mesh_count','unsupported_inline_mesh_count','runtime_placement_count','serialized_placement_reference_count','mode_vertex_counts','frontiers','violations')},
+            'placement_data':{k:r[k] for k in ('status','serialized_nonnull_data_resource_reference_count','unique_world_id_count','data_resource_class_counts','known_S152_reference_count','unique_type_string_hash_count','unique_type_string_hashes','violations')},
+          }
+          json.dump(out,open('reports/TOWER_ARTICULATED_VALIDATION_SUMMARY.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          if m['violations']: raise SystemExit('parent-aware material binding violations remain')
+          if s['violations']: raise SystemExit('known skin layout validation violations remain')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-articulated-validation
+          path: reports/
+          retention-days: 14
+          compression-level: 6
