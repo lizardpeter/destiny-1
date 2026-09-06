@@ -1,0 +1,136 @@
+name: D1 Tower shader 809DCD66 material constants
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-shader-809dcd66-constants.yml'
+      - 'tools/d1_material_ps_constant_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  constants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative ten-cell manifest, activity index, shader proof and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p prior prior_shader index runtime packages reports
+          gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D prior
+          test -f prior/reports/material_texture_manifest_ten_cell.json
+          gh run download 33983155305 -n d1-tower-top40-pixel-shader-disassembly -D prior_shader
+          test -f prior_shader/disasm/PS_809DCD66.s
+          test -f prior_shader/reports/top40_shader_extract.json
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Select the exact 24 visible 809DCD66 materials
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('prior/reports/material_texture_manifest_ten_cell.json'))
+          mats={h:r for h,r in d['materials'].items() if r.get('pixel_shader')=='809DCD66'}
+          assert len(mats)==24,len(mats)
+          for h,r in mats.items():
+              assert r['vertex_shader']=='80CA0DDA',(h,r['vertex_shader'])
+              assert [(x['texture_index'],x['texture']) for x in r['ps_texture_tags']]==[(0,'8093E9A3'),(1,'8093E9A2')],(h,r['ps_texture_tags'])
+          Path('reports/selected_materials.json').write_text(json.dumps({'status':'D1_TOWER_809DCD66_SELECTED_MATERIALS','materials':mats},indent=2)+'\n')
+          Path('reports/selected_material_hashes.txt').write_text('\n'.join(sorted(mats))+'\n')
+          print('SELECTED',len(mats))
+          for h in sorted(mats):
+              c=mats[h].get('constants') or {}
+              print(h,'size',mats[h].get('actual_file_size'),'psc',c.get('ps_vector4_container'),'tfx_bytes',mats[h].get('tfx',{}).get('ps',{}).get('count'))
+          PY
+
+      - name: Recover exact material and external-constant package families
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --package-id 00ec --package-id 00ee \
+            --out-dir packages \
+            --report reports/target_package_recovery.json
+          find packages -maxdepth 1 -name '*.pkg' -type f -printf '%f\n' | sort
+
+      - name: Resolve inline and external PS material constants exactly
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          tags=(); while read -r h; do tags+=(--tag-hash "$h"); done < reports/selected_material_hashes.txt
+          python tools/d1_material_ps_constant_resolve.py "${args[@]}" --runtime runtime "${tags[@]}" --out reports/809DCD66_material_constants.json
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          d=json.load(open('reports/809DCD66_material_constants.json'))
+          assert d['selected_material_count']==24,d
+          assert d['error_count']==0,d['error_materials']
+          assert set(d['storage_mode_counts']).issubset({'inline','external'}),d['storage_mode_counts']
+          rows=[]
+          for h,r in sorted(d['materials'].items()):
+              assert r['pixel_shader']=='809DCD66',(h,r['pixel_shader'])
+              if r['storage_mode']=='inline':
+                  vecs=r['inline']['vectors']; assert len(vecs)==r['inline']['count'] and len(vecs)>0,(h,r['inline'])
+                  src='inline@+0x300'; count=len(vecs)
+              else:
+                  assert r['external_resolved'],(h,r['external'])
+                  vecs=r['external']['vectors']; count=len(vecs); src=r['ps_vector4_container']
+              rows.append({'material':h,'storage':r['storage_mode'],'source':src,'vector_count':count,'vectors':vecs})
+          out={'status':'D1_TOWER_809DCD66_CONSTANT_CENSUS','material_count':len(rows),'storage_mode_counts':d['storage_mode_counts'],'vector_count_histogram':dict(Counter(str(r['vector_count']) for r in rows)),'materials':rows}
+          Path('reports/809DCD66_constant_census.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','material_count','storage_mode_counts','vector_count_histogram')},indent=2))
+          for r in rows:
+              print('\nMATERIAL',r['material'],r['storage'],r['source'],'vectors',r['vector_count'])
+              for v in r['vectors']:
+                  print(f"  c{v['index']:02d}",v['float4'],v['u32_hex'])
+          PY
+
+      - name: Preserve exact 809DCD66 shader resource and constant-buffer windows
+        run: |
+          set -euo pipefail
+          cp prior_shader/disasm/PS_809DCD66.s reports/PS_809DCD66.s
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          ext=json.load(open('prior_shader/reports/top40_shader_extract.json'))
+          row=next(r for r in ext['shaders'] if r['shader']=='809DCD66')
+          text=Path('reports/PS_809DCD66.s').read_text().splitlines()
+          focus=[]
+          for i,s in enumerate(text,1):
+              q=s.lower()
+              if any(k in q for k in ('s_load_dword','s_buffer_load','image_sample','v_interp','v_rsq','v_rcp','v_mad','v_max','v_mul','v_mac','exp ')):
+                  focus.append({'line':i,'text':s})
+          out={'status':'D1_TOWER_809DCD66_SHADER_CONSTANT_FOCUS','shader_extract':row,'focus':focus}
+          Path('reports/809DCD66_shader_focus.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(row['usage'],indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-809dcd66-material-constants
+          path: reports/
+          retention-days: 14
+          compression-level: 6
