@@ -19,11 +19,12 @@ sys.path.insert(0,str(HERE))
 
 from d1_entity_model_export import decode_indices, index_is32, primitive_faces
 from d1_entity_model_probe import parse_model
-from d1_guardian_combined_skin_animation import SENTINELS
 from d1_guardian_stage_part_material_resolve import HIGHEST_LODS
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_model_tgxm_signature_match import LazyExactHashResolver
 from d1_split_tar_extract import SplitHttpTar
+
+SENTINELS={32767,-32767}
 
 
 def norm(s:str)->str: return s.upper().removeprefix('0X').zfill(8)
@@ -76,7 +77,7 @@ def main()->int:
     arc=SplitHttpTar([f"{a.base_url.rstrip('/')}/packages.tar.{i:03d}" for i in range(1,a.part_count+1)],retries=6,timeout=90)
     resolver=LazyExactHashResolver(arc,catalogs,a.runtime)
     _mv,me,mb=resolver.bytes(tag); model=parse_model(mb,'PS4')
-    meshes=[]; global_domain=set(); active_domain=set(); total_active_vertices=set()
+    meshes=[]; global_domain=set(); active_domain=set()
     for mi,m in enumerate(model['meshes']):
         vh,vp,vmeta=linked(resolver,m['vertices1']); stride=stride_from_header(vh)
         joints,weights,smeta=decode_skin_unbounded(vp,stride,a.node_count)
