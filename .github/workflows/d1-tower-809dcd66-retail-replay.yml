@@ -160,7 +160,9 @@ jobs:
           cam=np.array([0,0,10],dtype=np.float32)
           p=parallax_uv(uv,world,N,T,B,cam,0.025)
           np.testing.assert_array_equal(p.displaced_uv[0],uv[0])
-          assert p.displaced_uv[1,0] < uv[1,0]
+          # camera-position minus the second point has negative tangent X;
+          # subtracting that negative parallax term increases U.
+          assert p.displaced_uv[1,0] > uv[1,0]
           np.testing.assert_array_equal(p.displaced_uv[:,1],uv[:,1])
 
           c2=np.array([0.2,0.3,0.4,9],dtype=np.float32)
