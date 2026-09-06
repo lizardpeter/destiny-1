@@ -105,12 +105,19 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/TOWER_FAMILY_E_ANIMATED_LAYER.json'))
+          assert d['schema_version']==2,d
           assert d['status']=='D1_TOWER_FAMILY_E_ANIMATED_LAYER_COMPLETE',d
           assert d['input_sha256']=='cea9dadacf0eb62c5aa9dc940f7a0fe27958b2d2e0bce7070762d22cbce7dfd4',d['input_sha256']
           assert (d['source_mesh_count'],d['selected_range_count'],d['unique_triangle_count'])==(4,26,20575),d
           assert d['scene_placement_triangle_count']==123450,d
           assert (d['runtime_placement_count'],d['placement_geometry_node_count'])==(6,156),d
           assert (d['skeleton_node_count'],d['runtime_rig_control_count'])==(67,67),d
+          assert d['raw_u8_weight_sum_exact_255'] is True,d
+          assert d['float32_conversion_bit_exact'] is True,d
+          assert d['portable_float_weights_renormalized'] is False,d
+          assert 0.0 <= d['float32_weight_sum_abs_error_max'] <= 2.384185791015625e-07,d['float32_weight_sum_abs_error_max']
+          assert all(x['raw_u8_weight_sum_min']==255 and x['raw_u8_weight_sum_max']==255 for x in d['mesh_bindings']),d['mesh_bindings']
+          assert all(x['float32_conversion_bit_exact'] is True and x['portable_float_renormalized'] is False for x in d['mesh_bindings']),d['mesh_bindings']
           assert d['original_binary_exact_prefix'] is True,d
           assert d['other_articulated_world_id_count']==31,d
           assert d['state_semantics_proven'] is False and d['loop_semantics_proven'] is False and d['synchronization_semantics_proven'] is False,d
@@ -138,6 +145,7 @@ jobs:
             assert d['source_streams'][mi]['meta']['weight_sum_min']==255 and d['source_streams'][mi]['meta']['weight_sum_max']==255,d['source_streams'][mi]
           assert len(d['animations'])==6 and all(x['channel_count']>0 for x in d['animations']),d['animations']
           print('TOWER_FAMILY_E_ANIMATED_LAYER_GREEN')
+          print('FLOAT32_WEIGHT_SUM_ABS_ERROR_MAX',d['float32_weight_sum_abs_error_max'])
           print('OUTPUT_SHA256',d['output_sha256'])
           print('OUTPUT_BYTES',d['output_bytes'])
           PY
@@ -149,7 +157,7 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title 'D1 Tower articulated Family E animated r8 exact resources' \
-              --notes 'Exact-texture articulated Tower layer with all 37 previously proven placements retained. The six 67-bone Family-E placements now carry exact retail D1 JOINTS/WEIGHTS and six source-owner-selected animation actions: one 62-frame 80C7AE98 placement and five 324-frame 809D8572 placements. No vendor/NPC/state/loop/synchronization semantic is inferred. Other articulated families remain at the previous bind-pose checkpoint.'
+              --notes 'Exact-texture articulated Tower layer with all 37 previously proven placements retained. The six 67-bone Family-E placements carry exact retail D1 JOINTS and authoritative U8 skin weights encoded as bit-exact float32(U8/255) without renormalization, plus six source-owner-selected animation actions: one 62-frame 80C7AE98 placement and five 324-frame 809D8572 placements. No vendor/NPC/state/loop/synchronization semantic is inferred. Other articulated families remain at the previous bind-pose checkpoint.'
           fi
           gh release upload "$tag" \
             out/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb \
