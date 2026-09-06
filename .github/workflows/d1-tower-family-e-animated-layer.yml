@@ -9,6 +9,7 @@ on:
       - 'tools/d1_gltf_bind_rigid_animation.py'
       - 'tools/d1_recover_member_catalog.py'
       - 'tools/d1_split_tar_extract.py'
+      - 'tools/d1_entry_extract.py'
       - 'evidence/d1_tower_family_e_animation_source_member_catalog.json'
       - 'notes/D1_TOWER_FAMILY_E_ANIMATION_OWNERSHIP_CLOSED_2026-09-06.md'
 
@@ -31,7 +32,7 @@ jobs:
       - name: Python dependencies
         run: python -m pip install -q numpy scipy pygltflib pyglm
 
-      - name: Install verified Oodle runtime
+      - name: Install verified Oodle runtime and current package index
         run: |
           set -euo pipefail
           mkdir -p runtime source prior_visual prior_validation ownership work out reports
@@ -39,16 +40,21 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
 
-      - name: Recover minimal exact retail animation/skin source members
+      - name: Recover exact logical 00EC and 023D source families
         run: |
           set -euo pipefail
           python tools/d1_recover_member_catalog.py \
             --catalog evidence/d1_tower_family_e_animation_source_member_catalog.json \
-            --family 00ec --out-dir source --report reports/recover_family_e_00ec5.json
+            --package-list reports/packages.txt --family 00ec \
+            --out-dir source --report reports/recover_family_e_00ec.json
           python tools/d1_recover_member_catalog.py \
             --catalog evidence/d1_tower_family_e_animation_source_member_catalog.json \
-            --family 023d --out-dir source --report reports/recover_family_e_023d5.json
+            --package-list reports/packages.txt --family 023d \
+            --out-dir source --report reports/recover_family_e_023d.json
+          test "$(find source -maxdepth 1 -name 'ps4_race_set_all_00ec_*.pkg' -type f | wc -l)" -eq 6
+          test "$(find source -maxdepth 1 -name 'ps4_city_tower_activities_act_023d_*.pkg' -type f | wc -l)" -eq 6
           echo 'e55e29bfc4fbea417df195996c0289a12308b6dac88cdfd99eacbfe55fdb847a  source/ps4_race_set_all_00ec_5.pkg' | sha256sum --check --strict
           echo 'de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695  source/ps4_city_tower_activities_act_023d_5.pkg' | sha256sum --check --strict
 
