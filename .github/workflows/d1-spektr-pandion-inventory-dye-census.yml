@@ -1,0 +1,110 @@
+name: D1 Spektar Pandion inventory dye census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-inventory-dye-census.yml'
+      - 'tools/d1_remote_inventory_art_arrangement_find.py'
+      - 'tools/d1_entry_extract.py'
+      - 'tools/d1_remote_investment_parent_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover runtime and global inventory map
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg \
+            --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest out/012f_extract.json --retries 6 --timeout 90
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_inventory_item_map.py recovered/ps4_investment_globals_012f_6.pkg --runtime runtime -o out/inventory_item_map.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/inventory_item_map.json'))
+          assert d['row_count']==8609,d
+          assert d['package_counts']=={'0131':4092,'0132':4517},d['package_counts']
+          print('INVENTORY MAP VERIFIED',d['row_count'],d['package_counts'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-spektr-pandion-inventory-map
+          path: out/inventory_item_map.json
+          retention-days: 14
+
+  scan:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - family: '0131'
+            package_id: '0x0131'
+            members: '--member ps4_investment_globals_0131_1.pkg:0x622A43600:1550336 --member ps4_investment_globals_0131_2.pkg:0x622BBE000:1386496 --member ps4_investment_globals_0131_3.pkg:0x622D10A00:200704 --member ps4_investment_globals_0131_4.pkg:0x622D41C00:1482752 --member ps4_investment_globals_0131_5.pkg:0x622EABE00:7544832 --member ps4_investment_globals_0131_6.pkg:0x6235DE000:196608'
+          - family: '0132'
+            package_id: '0x0132'
+            members: '--member ps4_investment_globals_0132_2.pkg:0x62360E200:1138688 --member ps4_investment_globals_0132_3.pkg:0x623724400:430080 --member ps4_investment_globals_0132_4.pkg:0x62378D600:3534848 --member ps4_investment_globals_0132_5.pkg:0x623AEC800:407552 --member ps4_investment_globals_0132_6.pkg:0x623B50200:147456'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: d1-spektr-pandion-inventory-map
+          path: input
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Resolve the five Spektar arrangement owners and serialized dyes
+        env:
+          MEMBER_ARGS: ${{ matrix.members }}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          eval python tools/d1_remote_inventory_art_arrangement_find.py input/inventory_item_map.json \
+            --package-id '${{ matrix.package_id }}' \
+            --target-arrangement 3867 --target-arrangement 3868 --target-arrangement 3869 \
+            --target-arrangement 3870 --target-arrangement 3871 \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            $MEMBER_ARGS -o out/spektar_inventory_dyes_${{ matrix.family }}.json
+      - name: Print exact matches
+        run: |
+          python - <<'PY'
+          import glob,json
+          p=glob.glob('out/*.json')[0];d=json.load(open(p))
+          print('MATCHES',d['match_count'],'ERRORS',d['error_count'])
+          for m in d['matches']:
+              print(json.dumps({k:m.get(k) for k in ('inventory_item_hash','item_file_hash','matched_arrangements','arrangements','locked_dyes','default_dyes','custom_dyes')},separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-inventory-dyes-${{ matrix.family }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
