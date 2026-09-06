@@ -61,8 +61,9 @@ jobs:
           import json
           d=json.load(open('out/CROTA_UNRESOLVED_COMBATANT_BACKLINKS.json'))
           print('BY TARGET',d['occurrences_by_target'])
-          for r in d['hit_sources']:
-              print('SOURCE',r['source_hash'],r['source_reference'],'HITS',[(x['target'],x['offsets']) for x in r['target_hits']])
+          for r in d['hits']:
+              print('SOURCE',r['source_tag_hash'],r['reference'],'HITS',sorted((target,offsets) for target,offsets in r['targets'].items()))
+          assert d['error_count']==0,d['errors']
           PY
           sha256sum out/* > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
