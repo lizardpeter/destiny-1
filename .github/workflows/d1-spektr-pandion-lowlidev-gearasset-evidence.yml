@@ -6,6 +6,7 @@ on:
       - '.github/workflows/d1-spektr-pandion-lowlidev-gearasset-evidence.yml'
       - 'tools/d1_lowlidev_gearasset_probe.py'
       - 'tools/d1_bungie_web_gearasset_probe.py'
+      - 'tools/d1_tgxm_unpack.py'
   workflow_dispatch:
 
 permissions:
@@ -20,77 +21,129 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Probe exact masculine Titan hashes from explicit mobile content
+      - name: Probe exact masculine Titan hashes and exact selected mobile TGXM
         run: |
           set -euo pipefail
-          mkdir -p out/male out/female
-          set +e
+          mkdir -p out/male out/female out/tgxm_male out/tgxm_female
           python tools/d1_lowlidev_gearasset_probe.py \
             --platform mobile --class-hash 3655393761 \
             --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
             --download-dir out/male \
+            --download-tgxm-dir out/tgxm_male \
             -o out/spektar_lowlidev_masculine.json
-          echo $? > out/male_exit_code.txt
-          set -e
 
-      - name: Probe exact feminine Titan hashes from explicit mobile content
+      - name: Probe exact feminine Titan hashes and exact selected mobile TGXM
         run: |
           set -euo pipefail
-          set +e
           python tools/d1_lowlidev_gearasset_probe.py \
             --platform mobile --class-hash 3655393761 --female \
             --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
             --download-dir out/female \
+            --download-tgxm-dir out/tgxm_female \
             -o out/spektar_lowlidev_feminine.json
-          echo $? > out/female_exit_code.txt
-          set -e
 
-      - name: Classify evidence without promoting it
+      - name: Losslessly unpack every exact selected TGXM
+        run: |
+          set -euo pipefail
+          mkdir -p out/tgxm_reports out/tgxm_unpacked
+          for role in male female; do
+            root="out/tgxm_${role}"
+            find "$root" -type f -name '*.tgxm' -print0 | sort -z | while IFS= read -r -d '' src; do
+              rel="${src#${root}/}"
+              item="${rel%%/*}"
+              base="$(basename "$src" .tgxm)"
+              mkdir -p "out/tgxm_reports/${role}/${item}" "out/tgxm_unpacked/${role}/${item}/${base}"
+              python tools/d1_tgxm_unpack.py "$src" \
+                --extract-dir "out/tgxm_unpacked/${role}/${item}/${base}" \
+                -o "out/tgxm_reports/${role}/${item}/${base}.json"
+            done
+          done
+
+      - name: Prove selected TGXM pack identifiers equal exact art geometry identifiers
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
+          from pathlib import Path
+          from tools.d1_tgxm_unpack import parse_tgxm
+
           ids=['B4BD27A2','1DF65286','4A37316F','4A2AD693','4A5B75DC']
-          m=json.load(open('out/spektar_lowlidev_masculine.json'))
-          f=json.load(open('out/spektar_lowlidev_feminine.json'))
-          assert m['schema']=='d1_lowlidev_gearasset_probe/v2'
-          assert f['schema']=='d1_lowlidev_gearasset_probe/v2'
-          assert m['requested_platform']==f['requested_platform']=='mobile'
-          assert [x['item_hash_hex'] for x in m['items']]==ids
-          assert [x['item_hash_hex'] for x in f['items']]==ids
-          for role,d in [('masculine',m),('feminine',f)]:
-              print('\n',role.upper())
+          all_rows=[]
+          for role, report_path, tgxm_root in [
+              ('masculine','out/spektar_lowlidev_masculine.json',Path('out/tgxm_male')),
+              ('feminine','out/spektar_lowlidev_feminine.json',Path('out/tgxm_female')),
+          ]:
+              d=json.load(open(report_path))
+              assert d['schema']=='d1_lowlidev_gearasset_probe/v3'
+              assert d['requested_platform']=='mobile'
+              assert [x['item_hash_hex'] for x in d['items']]==ids
               for x in d['items']:
-                  print(x['item_hash_hex'],'HTTP',x['http_status'],'bytes',x['response_size'],'parse',x.get('parse_error'))
-                  if x.get('gearasset'):
-                      assert x['exact_requested_id_match'] is True
-                      assert x['selected_platform']=='mobile'
-                      assert x['all_gear_reference_ids_match'] is True
-                      print(' selected geometry',[(z['index'],z['file_name']) for z in x['platform_selected_files']['geometry']])
-                      print(' gear',[(g['file_name'],g['reference_id'],g['geometry_identifiers']) for g in x['gear_json']])
-          ok=sum(1 for x in m['items'] if x.get('gearasset'))
-          print('\nEXACT-HASH SECONDARY EVIDENCE SUCCESSES',ok,'of',len(ids))
+                  assert x.get('parse_error') is None,x
+                  assert x['exact_requested_id_match'] is True
+                  assert x['selected_platform']=='mobile'
+                  assert x['all_gear_reference_ids_match'] is True
+                  expected=[]
+                  for g in x['gear_json']:
+                      expected.extend(str(v) for v in g['geometry_identifiers'])
+                  actual=[]
+                  maps=[]
+                  for z in x['downloaded_selected_tgxm']:
+                      p=tgxm_root/x['item_hash_hex']/z['file_name']
+                      raw=p.read_bytes()
+                      assert len(raw)==z['size']
+                      import hashlib
+                      assert hashlib.sha256(raw).hexdigest()==z['sha256']
+                      r=parse_tgxm(raw)
+                      assert r['file_identifier'],(role,x['item_hash_hex'],z['file_name'])
+                      actual.append(r['file_identifier'])
+                      md=r['render_metadata'] or {}
+                      meshes=((md.get('render_model') or {}).get('render_meshes') or [])
+                      maps.append({
+                          'selected_index':z['index'],
+                          'file_name':z['file_name'],
+                          'file_identifier':r['file_identifier'],
+                          'tgxm_sha256':r['sha256'],
+                          'tgxm_bytes':r['file_size'],
+                          'embedded_file_count':r['file_count'],
+                          'render_mesh_count':len(meshes),
+                      })
+                  assert len(actual)==len(set(actual)),(role,x['item_hash_hex'],actual)
+                  assert set(actual)==set(expected),(role,x['item_hash_hex'],expected,actual)
+                  print(role,x['item_hash_hex'],'EXPECTED',expected,'TGXM',[(m['selected_index'],m['file_identifier']) for m in maps])
+                  all_rows.append({'role':role,'item_hash_hex':x['item_hash_hex'],'expected_art_geometry_identifiers':expected,'tgxm':maps})
+
+          out={
+              'schema':'d1_spektar_exact_mobile_tgxm_identifier_census/v1',
+              'rows':all_rows,
+              'invariant':'For every selected masculine/feminine Spektar mobile geometry file, the TGXM v2 file_identifier set exactly equals the geometry identifiers serialized by the exact item gear art arrangement.',
+              'promotion_policy':'This closes historical GearAsset file-to-art-identifier mapping only. PS4 asset/range equivalence still requires independent retail package evidence.',
+          }
+          Path('out/spektar_mobile_tgxm_identifier_census.json').write_text(json.dumps(out,indent=2)+'\n')
           PY
+
+      - name: Evidence note
+        run: |
           cat > out/README.txt <<'EOF'
-          Historical D1 GearAsset mirror exact-hash evidence
+          Historical D1 GearAsset + exact selected TGXM evidence
 
-          The mirror currently serializes one explicit content row, platform=mobile, for each exact Spektar item hash.
-          This workflow selects that row explicitly. There is no fallback from a missing web row and no inference from
-          filenames or appearance.
+          Every request uses the five already-proven Spektar inventory hashes. The historical manifest mirror currently
+          exposes one explicit platform=mobile content row. That row is selected explicitly; there is no platform fallback.
 
-          This is secondary evidence only. Every request uses the five already-proven Spektar inventory hashes. The probe
-          rejects requestedId mismatches and rejects any downloaded gear JSON whose reference_id does not equal the exact
-          requested inventory hash. No nearby item, visual match, class substitute, guessed hand mesh, or guessed default
-          armor is accepted.
+          Geometry URLs follow the preserved lowlines TGX loader equation exactly:
+            {contentpath}/geometry/platform/{platform}/geometry/{geometry}
 
-          Any returned geometry/file identity must still agree with independent retail PS4 package evidence before it can
-          be promoted into the extractor.
+          Only geometry filenames selected by the exact manifest index sets are downloaded. Every TGXM is then parsed by
+          the archived Bungie Spasm TGXBinLoader structure. The v2 pack file_identifier must exactly equal one of the art
+          arrangement geometry identifiers from the exact gear JSON, and the complete selected identifier set must equal
+          the complete art arrangement identifier set for that item/gender.
+
+          This is still secondary historical evidence. It does not authorize enabling a PS4 range because it looks like a
+          hand. PS4 equivalence must be independently established from retail package data/topology before promotion.
           EOF
 
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: D1-SPEKTAR-HISTORICAL-GEARASSET-EXACT-HASH-MOBILE
+          name: D1-SPEKTAR-HISTORICAL-GEARASSET-EXACT-TGXM
           path: out/
           retention-days: 14
           if-no-files-found: error
