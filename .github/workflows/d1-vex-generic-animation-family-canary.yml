@@ -80,9 +80,14 @@ jobs:
           d=json.load(open('out/VEX_0767_GENERIC_ANIMATION_FAMILY.json'))
           assert d['status']=='D1_ANIMATION_FAMILY_PROBE_COMPLETE'
           assert d['skeleton_count']==1 and d['runtime_rig_count']==1
+          controls={x['tag_hash']:x for x in d['controls']}
+          assert sorted(controls['816CE09C']['selected'])==['816CE09E'],controls['816CE09C']
           paths=d['paths']
-          assert any(x['skeleton']=='816CE092' and x['runtime_rig']=='816CE095' and x['control']=='816CE09C' and x['clip']=='816CE09D' and x['retarget_success'] for x in paths),paths
-          assert any(x['skeleton']=='816CE092' and x['runtime_rig']=='816CE095' and x['control']=='816CE09C' and x['clip']=='816CE09E' and x['retarget_success'] for x in paths),paths
+          exact=[x for x in paths if x['skeleton']=='816CE092' and x['runtime_rig']=='816CE095' and x['control']=='816CE09C' and x['clip']=='816CE09E']
+          assert len(exact)==1 and exact[0]['retarget_success'] is True,paths
+          x=exact[0]
+          assert x['clip_frame_count']==101 and x['decoded_track_count']==x['retargeted_track_count']==x['local_track_count']==12,x
+          assert d['mechanically_compatible_clip_count']==1 and d['ambiguous_mechanical_clip_count']==0,d
           print('D1_GENERIC_ANIMATION_FAMILY_VEX_CANARY_EXACT')
           PY
           sha256sum out/* > out/SHA256SUMS.txt
