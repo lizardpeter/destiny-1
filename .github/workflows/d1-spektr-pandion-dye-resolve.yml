@@ -5,7 +5,7 @@ on:
     paths:
       - '.github/workflows/d1-spektr-pandion-dye-resolve.yml'
       - 'tools/d1_investment_dye_resolver.py'
-      - 'tools/d1_investment_dye_inline_resolver.py'
+      - 'tools/d1_investment_dye_exact_resolver.py'
       - 'tools/d1_entry_extract.py'
       - 'tools/d1_remote_investment_parent_probe.py'
   workflow_dispatch:
@@ -50,7 +50,7 @@ jobs:
             --target ps4_investment_assets_013f_5.pkg \
             --out recovered --manifest out/013f_extract.json --retries 6 --timeout 90
 
-          # 0432 follows the checksum-pinned 0431_6 member exactly in TAR order.
+          # D1 GetReferenceFromManifest wrappers for two relation entries live in 0432.
           python tools/d1_split_tar_extract.py --base-url "$BASE" --part-count 10 --start-offset 0xB4405A200 \
             --target ps4_shared_manifest_0432_1.pkg --target ps4_shared_manifest_0432_2.pkg \
             --target ps4_shared_manifest_0432_3.pkg --target ps4_shared_manifest_0432_4.pkg \
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python tools/d1_investment_dye_inline_resolver.py recovered --runtime runtime \
+          python tools/d1_investment_dye_exact_resolver.py recovered --runtime runtime \
             --channel-index 0 --channel-index 1 --channel-index 2 \
             --dye-index 8752 --dye-index 8753 --dye-index 8754 \
             -o out/spektar_pandion_exact_dyes.json
@@ -78,18 +78,18 @@ jobs:
           assert [x['known_name'] for x in d['channels']]==['ArmorPlate','ArmorSuit','ArmorCloth'],d['channels']
           assert all(x['assignment_match_count']==1 for x in d['dyes']),d['dyes']
           assert all(x['relation_manifest']['effective_class_charm_display']=='63348080' for x in d['dyes']),d['dyes']
-          assert all(x['resolution_mode']=='inline_resource_pointer' for x in d['dyes']),d['dyes']
-          assert all(x['dye_class_charm_display']=='F41A8080' for x in d['dyes']),d['dyes']
+          assert all(x['resolution_mode']=='generic_relation_to_direct_dye_entry' for x in d['dyes']),d['dyes']
+          assert all(x['dye_entry_direct_reference_charm_display']=='F41A8080' for x in d['dyes']),d['dyes']
           print('SPEKTAR DYE CHAIN CLOSED')
           for x in d['channels']:
               print('CHANNEL',x['channel_index'],x['channel_hash'],x['known_name'])
           for x in d['dyes']:
-              q=x['dye']; p=x['inline_resource_pointer']
-              print('DYE',x['dye_index'],x['dye_manifest_hash'],x['relation_hash'],
-                    'ptr',hex(p['pointer_field_offset']),'target',hex(p['resource_target_offset']),
+              q=x['dye']
+              print('DYE',x['dye_index'],x['dye_manifest_hash'],x['relation_hash'],x['dye_file_hash'],
                     'slot',q['slot_type_index'],'primary',q['primary_color'],'secondary',q['secondary_color'],
                     'spec',q['specular_properties'],'detail',q['detail_diffuse_texture_hash'],q['detail_normal_texture_hash'],
                     'decal',q['decal_texture_hash'],'subsurface',q['subsurface_scattering_strength'],
+                    'detail_xform',q['detail_transform'],'normal_strength',q['detail_normal_contribution_strength'],
                     'texture_pkgs',x['referenced_texture_package_ids'])
           PY
       - uses: actions/upload-artifact@v4
