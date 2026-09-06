@@ -51,10 +51,8 @@ jobs:
           python -m py_compile tools/d1_remote_model_owner_trace_multi.py
           python tools/d1_remote_model_owner_trace_multi.py \
             --model 0x8109790F --model 0x808EEF7F --model 0x808EEF7D --model 0x808EEF7B --model 0x8108E4E6 \
-            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x044C --scan-package-id 0x044D \
-            --scan-package-id 0x0453 --scan-package-id 0x0454 --scan-package-id 0x0455 \
-            --scan-package-id 0x005A --scan-package-id 0x005B --scan-package-id 0x005C --scan-package-id 0x005D --scan-package-id 0x005E --scan-package-id 0x005F \
-            --scan-package-id 0x0076 --scan-package-id 0x0077 \
+            --scan-package-id 0x0447 --scan-package-id 0x044B \
+            --scan-package-id 0x005B --scan-package-id 0x0077 \
             --scan-package-id 0x0151 --scan-package-id 0x0154 --scan-package-id 0x0156 --scan-package-id 0x0169 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
@@ -124,6 +122,7 @@ jobs:
           m=json.load(open('out/CROTA_STAGE_MODEL_OWNERS.json'))
           e=json.load(open('out/CROTA_STAGE_MODEL_OWNER_ENTITIES.json'))
           n=json.load(open('out/CROTA_STAGE_MODEL_OWNER_NAMES.json'))
+          assert m['scan_package_ids']==['0447','044B','005B','0077','0151','0154','0156','0169'],m['scan_package_ids']
           assert not m.get('violations'),m.get('violations')
           assert e.get('violation_count',0)==0,e.get('violations')
           assert n.get('violation_count',0)==0,n.get('violations')
@@ -132,6 +131,7 @@ jobs:
           name_map={h:sorted({r.get('string') for r in rows if r.get('string')}) for h,rows in resolved.items()}
           generic=n.get('generic_name_tag_to_string_hash',{})
           print('MODELS_REQUESTED',m['models_requested'])
+          print('VERIFIED_SCAN_PACKAGE_IDS',m['scan_package_ids'])
           for mr in m['models']:
               print('MODEL',mr['model_tag_hash'],'RESOURCE_OWNERS',mr['model_owner_resource_count'],'ENTITY_OWNERS',mr['s_entity_owner_count'])
               for owner in mr['s_entity_owners']:
