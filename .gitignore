@@ -19,6 +19,10 @@ __pycache__/
 build/
 tools/runtime/
 
+# Generated knowledge database views
+*.sqlite
+*.sqlite3
+
 # Generated bulk exports (commit selected regression fixtures intentionally with -f)
 exports/textures/all_ps4/
 *.dds
