@@ -84,10 +84,17 @@ jobs:
           d=json.load(open('reports/PS4_API13_CROSS_CORPUS_CENSUS.json'))
           assert d['status']=='D1_PS4_API13_CENSUS_COMPLETE',d['violations']
           assert d['corpus_shader_row_count']==137,d['corpus_shader_row_count']
-          assert '809DCD66' in d['api13_shaders'],d['api13_shaders']
-          assert any(x['shader']=='809DCD66' for x in d['api13_dword6_hits']),d['api13_dword6_hits']
-          assert any(x['shader']=='809DCD66' for x in d['api13_dword7_hits']),d['api13_dword7_hits']
-          print('PS4_809DCD66_API13_6_7_REPRODUCED_IN_CROSS_CORPUS_CENSUS')
+          assert d['unique_shader_count']==135,d['unique_shader_count']
+          # 809DCD66 is a separate recovered target family and is intentionally not
+          # one of these pre-existing top/common/light corpora.  The value of this
+          # census is the independent PS4 peer: 80CA0BE9 is the only shader in the
+          # 135-shader union using api13 and it loads exactly dwords 6 and 7.
+          assert d['api13_shaders']==['80CA0BE9'],d['api13_shaders']
+          assert d['api13_dword_load_histogram']=={'6':1,'7':1},d['api13_dword_load_histogram']
+          assert d['api13_shaders_covering_both_6_and_7']==['80CA0BE9'],d['api13_shaders_covering_both_6_and_7']
+          hit=d['api13_dword6_hits'][0]['load']
+          assert hit['width_dwords']==2 and hit['static_offset']==6 and hit['covered_dword_offsets']==[6,7],hit
+          print('PS4_80CA0BE9_INDEPENDENT_API13_6_7_PEER_GREEN')
           PY
 
       - uses: actions/upload-artifact@v4
