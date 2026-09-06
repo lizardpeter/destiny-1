@@ -1,0 +1,214 @@
+name: D1 Tower common-layer exact texture resources
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-layer-exact-textures.yml'
+      - 'tools/d1_gltf_bind_exact_shader_textures.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_shader_texture_roles.py'
+      - 'tools/d1_gltf_layer_merge.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install exact texture and GLB dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime recovered texture_deps source_models selector common textures reports combined
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover latest closed source-driven common model artifact
+        run: |
+          set -euo pipefail
+          model_run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$model_run"
+          echo "COMMON_MODEL_RUN=$model_run"
+          gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
+          test -f source_models/reports/common_layer_model_export.json
+          test -f source_models/reports/common_layer_source_census.json
+          test -f source_models/reports/common_layer_model_plan.json
+
+          python tools/d1_world_common_layer_scene.py \
+            --census source_models/reports/common_layer_source_census.json \
+            --model-dir source_models/models \
+            --out common/D1_TOWER_COMMON_LAYER_SOURCE_DRIVEN.glb \
+            --report reports/common_layer_scene.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_scene.json'))
+          m=json.load(open('source_models/reports/common_layer_model_export.json'))
+          plan=json.load(open('source_models/reports/common_layer_model_plan.json'))
+          census=json.load(open('source_models/reports/common_layer_source_census.json'))
+          assert (d.get('source') or {}).get('mode')=='source_driven_census',d.get('source')
+          assert (d['source_record_count'],d['unique_model_count'],d['scene_geometry_variants'],d['scene_geometry_nodes'])==(327,69,163,709),d
+          assert d['source_resolved_records']==327 and d['unresolved_records']==0,d
+          assert plan['status']=='D1_WORLD_COMMON_MODEL_PLAN_COMPLETE' and plan['unique_model_count']==69,plan
+          assert census['status']=='D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE' and census['table_scoped_materialized_record_count']==327,census
+          mats=set();parts=0;tris=0
+          for model in m.get('models',[]):
+              if not model.get('ok'): continue
+              for mesh in model.get('meshes',[]):
+                  for p in mesh.get('parts',[]):
+                      if not p.get('selected'): continue
+                      parts+=1
+                      tris+=int(p.get('triangle_count') or 0)
+                      h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                      if h:mats.add(str(h).upper())
+          assert parts==163 and len(mats)==99,(parts,len(mats))
+          json.dump({'status':'D1_COMMON_LAYER_MATERIAL_SELECTOR','selected_parts':parts,'material_count':len(mats),'materials':{h:{'visual':True} for h in sorted(mats)}},open('selector/common_material_selector.json','w'),indent=2)
+          print('SOURCE_COMMON_CLOSED',d['source_record_count'],d['scene_geometry_nodes'],parts,len(mats),'triangles',tris)
+          PY
+
+      - name: Recover current exact texture dependency corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt \
+            --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir texture_deps --report reports/texture_family_recovery.json
+
+      - name: Reconstruct the complete 99-material / 50-texture common corpus
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered texture_deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime \
+            --visual-json selector/common_material_selector.json --out textures \
+            | tee reports/common_texture_export_stdout.txt
+          python tools/d1_world_texture_role_inventory.py \
+            textures/material_texture_manifest.json -o reports/common_texture_role_inventory.json
+          python - <<'PY'
+          import json
+          m=json.load(open('textures/material_texture_manifest.json'))
+          r=json.load(open('reports/common_texture_role_inventory.json'))
+          assert m['visible_material_count']==99,m
+          assert m['material_decode_errors']==0,m['material_decode_errors']
+          assert m['unique_texture_tags']==50,m['unique_texture_tags']
+          assert m['decoded_texture_tags']==50,m['decoded_texture_tags']
+          assert m['texture_errors']==0,m['texture_errors']
+          assert not m['missing_texture_package_ids'],m['missing_texture_package_ids']
+          assert r['material_count']==99 and r['pixel_shader_count']==65,(r['material_count'],r['pixel_shader_count'])
+          print('EXACT_COMMON_TEXTURE_CORPUS',m['visible_material_count'],m['unique_texture_tags'],m['decoded_texture_tags'],'shader_families',r['pixel_shader_count'])
+          PY
+
+      - name: Bind portable preview slots while preserving every native shader texture
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb common/D1_TOWER_COMMON_LAYER_SOURCE_DRIVEN.glb \
+            --manifest textures/material_texture_manifest.json \
+            --roles reports/common_texture_role_inventory.json \
+            --texture-dir textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --expect-exact-textures 50 --expect-derived-normals 1 \
+            --out common/D1_TOWER_COMMON_LAYER_EXACT_TEXTURE_RESOURCES.glb \
+            --report reports/common_layer_exact_texture_resources.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_exact_texture_resources.json'))
+          assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',d['status']
+          assert d['exact_source_texture_count']==50,d['exact_source_texture_count']
+          assert d['derived_portable_normal_count']==1,d['derived_portable_normal_count']
+          assert d['portable_base_bound_material_count']==31,d['portable_base_bound_material_count']
+          assert d['portable_normal_bound_material_count']==1,d['portable_normal_bound_material_count']
+          assert d['final_counts']['images']==51 and d['final_counts']['textures']==51,d['final_counts']
+          assert d['final_counts']['materials']==99,d['final_counts']
+          assert d['final_counts']['meshes']==163 and d['final_counts']['nodes']==709,d['final_counts']
+          print('COMMON_GLTF_EXACT_RESOURCES',d['final_counts'])
+          PY
+
+      - name: Merge onto exact ten-cell baked base and require 588 resources
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-ten-cell-r1/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' \
+            -o combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+          echo 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa  combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' | sha256sum --check --strict
+
+          python tools/d1_gltf_layer_merge.py \
+            --base combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --layer common_decal=common/D1_TOWER_COMMON_LAYER_EXACT_TEXTURE_RESOURCES.glb \
+            --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb \
+            --report reports/combined_exact_texture_gltf.json
+
+          python - <<'PY'
+          import json
+          g=json.load(open('reports/combined_exact_texture_gltf.json'))
+          p=json.load(open('reports/common_layer_exact_texture_resources.json'))
+          assert g['base_bin_exact_prefix'] and all(x['exact'] for x in g['base_json_exact_prefixes'].values()),g
+          b=g['base_counts'];f=g['final_counts']
+          assert (b['images'],b['textures'],b['materials'],b['meshes'],b['nodes'])==(537,537,400,2071,11728),b
+          assert (f['images'],f['textures'],f['materials'],f['meshes'],f['nodes'])==(588,588,499,2234,12438),f
+          out={
+            'schema_version':3,
+            'status':'D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES',
+            'logical_source_records':12055,
+            'baked_placements':11728,
+            'common_source_records':327,
+            'common_rendered_nodes':709,
+            'common_geometry_parts':163,
+            'common_materials':99,
+            'common_pixel_shader_families':65,
+            'common_exact_source_textures':p['exact_source_texture_count'],
+            'common_derived_portable_normals':p['derived_portable_normal_count'],
+            'common_portable_base_materials':p['portable_base_bound_material_count'],
+            'common_portable_normal_materials':p['portable_normal_bound_material_count'],
+            'base_images':b['images'],'combined_images':f['images'],
+            'base_textures':b['textures'],'combined_textures':f['textures'],
+            'combined_meshes':f['meshes'],'combined_materials':f['materials'],'combined_nodes':f['nodes'],
+            'bytes':g['output_bytes'],'sha256':g['output_sha256'],
+            'texture_resource_policy':'All 50 exact common-layer shader texture tags are embedded once and retain native pixel-shader/t# metadata. One additional RGB normal is explicitly derived from the selected BC5 preview normal. Non-PBR mask/scalar/cubemap/native resources are preserved rather than discarded.',
+            'regeneration_policy':'Everything in this GLB is regenerated from the current package corpus, source-driven common model census, exact material texture manifest, and checked-in shader role table. No expired GLB artifact is an input.'
+          }
+          json.dump(out,open('reports/FINAL_COMMON_EXACT_TEXTURE_RESOURCES.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish reproducible 588-texture Tower checkpoint
+        run: |
+          set -euo pipefail
+          tag=d1-tower-baked-common-textured-r6-exact-resources
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title 'D1 Tower baked + common textured r6 exact resources' \
+              --notes 'Reproducible Tower static/common visual checkpoint. Preserves the exact 537-texture ten-cell baked base and embeds all 50 exact common-layer shader texture resources once, plus one explicitly derived portable RGB normal. Native material pixel-shader/t# binding metadata is retained even when a resource has no direct glTF PBR slot. Expected combined topology: 12,438 nodes, 2,234 meshes, 499 materials, 588 textures/images.'
+          fi
+          gh release upload "$tag" \
+            combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb \
+            reports/FINAL_COMMON_EXACT_TEXTURE_RESOURCES.json \
+            reports/common_layer_exact_texture_resources.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-common-layer-exact-textures
+          path: reports/
+          retention-days: 14
+          compression-level: 6
