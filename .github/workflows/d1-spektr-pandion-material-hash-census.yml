@@ -1,0 +1,63 @@
+name: D1 Spektar Pandion external material hash census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-material-hash-census.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download proven visual-context census and extract external materials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-visual-context-census&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/visual.zip
+          unzip -q input/visual.zip -d input/visual
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          out={}
+          allm=set()
+          for role in ('masculine','feminine'):
+              p=Path(f'input/visual/spektar_{role}_visual_context.json')
+              d=json.load(open(p))
+              rows=[]
+              for m in d['models']:
+                  r={
+                    'model_hash':m['model_hash'],
+                    'model_parent_hash':m['model_parent_hash'],
+                    'texture_plate_header_tag':m['model_parent'].get('texture_plate_header_tag'),
+                    'external_material_tag_hashes':m['model_parent'].get('external_material_tag_hashes',[]),
+                    'external_material_count':m['model_parent'].get('external_material_count',0),
+                  }
+                  rows.append(r); allm.update(r['external_material_tag_hashes'])
+              out[role]=rows
+          rep={'schema':'d1_spektar_external_material_census/v1','body_roles':out,
+               'distinct_external_material_count':len(allm),'distinct_external_material_tag_hashes':sorted(allm),
+               'policy':'Hashes come only from exact model-parent resources in the already validated Spektar visual-context artifact.'}
+          Path('out/spektar_external_material_hashes.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('DISTINCT',len(allm),sorted(allm))
+          for role,rows in out.items():
+              print('===',role,'===')
+              for r in rows: print(r['model_hash'],r['model_parent_hash'],'materials',r['external_material_tag_hashes'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-spektr-pandion-external-material-hashes
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
