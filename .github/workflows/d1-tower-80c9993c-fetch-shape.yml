@@ -1,0 +1,150 @@
+name: D1 Tower 80C9993C fetch shape
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80c9993c-fetch-shape.yml'
+      - 'tools/d1_world_static_vertex_decode.py'
+      - 'tools/d1_ps4_vertex_shader_header.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact 024c/0250 source families and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy
+          mkdir -p index runtime packages reports
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Prove raw packed-word shape against exact selected vertices
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,sys
+          from collections import Counter
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          import d1_tower_static_chunk_export as base
+          from d1_world_static_vertex_decode import decode_static_attributes
+
+          c=v5.v3.base.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          v0=base.read_reference_file(c,'80C99E11')
+          v1=base.read_reference_file(c,'80C99E12')
+          ib=base.read_reference_file(c,'80C99E13')
+          s0=base.hdr_stride(v0['header']);s1=base.hdr_stride(v1['header'])
+          assert (s0,s1)==(8,24),(s0,s1)
+          attrs=decode_static_attributes(v0['backing'],s0,v1['backing'],s1)
+          inds=base.decode_indices(ib['backing'],base.index_is32(ib['header']))
+          faces=base.primitive_faces(inds[456:456+696],3,base.index_is32(ib['header']))
+          used=np.unique(faces.reshape(-1))
+          assert len(used)==282,len(used)
+
+          raw0=np.frombuffer(v0['backing'],dtype='<i2').reshape(-1,4)
+          raw1=np.frombuffer(v1['backing'],dtype=np.uint8).reshape(-1,24)
+          first8=np.frombuffer(raw1[:,:8].copy().tobytes(),dtype='<i2').reshape(-1,4)
+          sel0=raw0[used]
+          sel8=first8[used]
+
+          # The current source decoder reads UV from the first two signed 16-bit
+          # words.  Assert byte-for-byte equivalence against those raw words.
+          uv_from_words=np.maximum(sel8[:,:2].astype(np.float32)/32767.0,-1.0)
+          np.testing.assert_array_equal(uv_from_words,attrs.uv0[used])
+
+          def istats(x):
+              x=np.asarray(x,dtype=np.int16)
+              c=Counter(int(v) for v in x.tolist())
+              return {'min':int(x.min()),'max':int(x.max()),'unique':len(c),'zero_count':int((x==0).sum()),
+                      'top':[[v,n] for v,n in c.most_common(24)]}
+          def bytestats(x):
+              x=np.asarray(x,dtype=np.uint8);c=Counter(int(v) for v in x.tolist())
+              return {'min':int(x.min()),'max':int(x.max()),'unique':len(c),'zero_count':int((x==0).sum()),
+                      'top':[[v,n] for v,n in c.most_common(24)]}
+
+          # Historical portable colour view is bytes 4..7.  For this target its
+          # R/G bytes are zero.  Reinterpret the same untouched bytes as LE i16
+          # words to test the native formatted-fetch candidate without changing
+          # extraction or claiming the descriptor mapping is solved.
+          rgba=raw1[used,4:8]
+          assert np.all(rgba[:,0]==0) and np.all(rgba[:,1]==0)
+          assert np.all(sel8[:,2]==0)
+          w3=sel8[:,3]
+          w3_norm=np.maximum(w3.astype(np.float32)/32767.0,-1.0)
+          assert np.all(w3>=0)
+          assert np.all((w3_norm>=0)&(w3_norm<=1))
+
+          def header_record(r):
+              h=r['header']
+              return {
+                'header_hash':r['header_hash'],'header_bytes':len(h),'header_hex':h.hex(),
+                'u16_le':[f'{x:04X}' for x in struct.unpack('<'+'H'*(len(h)//2),h[:len(h)//2*2])],
+                'u32_le':[f'{x:08X}' for x in struct.unpack('<'+'I'*(len(h)//4),h[:len(h)//4*4])],
+                'header_meta':r['header_meta'],'backing_hash':r['backing_hash'],'backing_meta':r['backing_meta'],
+              }
+
+          out={
+            'schema_version':1,
+            'status':'D1_80C9993C_FETCH_SHAPE_EVIDENCE',
+            'target':{'material':'80C9993C','vs':'80CA0CB7','ps':'80C9994A','static_indices':[579,799]},
+            'source':{'vertices0':header_record(v0),'vertices1':header_record(v1),'indices':header_record(ib),
+                      'index_offset':456,'index_count':696,'primitive_type':3},
+            'selected_vertex_count':int(len(used)),
+            'secondary_first8_as_i16x4':{
+              'word0_uv_x':istats(sel8[:,0]),'word1_uv_y':istats(sel8[:,1]),
+              'word2_bytes4_5':istats(sel8[:,2]),'word3_bytes6_7':istats(sel8[:,3]),
+              'word3_snorm_min':float(w3_norm.min()),'word3_snorm_max':float(w3_norm.max()),
+              'uv_words_equal_current_decoder_exactly':True,
+            },
+            'same_bytes_portable_rgba8_view':{
+              'R':bytestats(rgba[:,0]),'G':bytestats(rgba[:,1]),'B':bytestats(rgba[:,2]),'A':bytestats(rgba[:,3]),
+            },
+            'primary_i16x4':{
+              'word0':istats(sel0[:,0]),'word1':istats(sel0[:,1]),'word2':istats(sel0[:,2]),'word3':istats(sel0[:,3]),
+              'word3_snorm_min':float(np.maximum(sel0[:,3].astype(np.float32)/32767.0,-1.0).min()),
+              'word3_snorm_max':float(np.maximum(sel0[:,3].astype(np.float32)/32767.0,-1.0).max()),
+            },
+            'candidate_mapping':{
+              'semantic1_v8_v11':'secondary offset 0 formatted as signed-normalized 16-bit x4: UV.x, UV.y, packed word2, packed word3',
+              'semantic4_v20':'primary offset 6 formatted signed-normalized 16-bit x1',
+              'status':'CANDIDATE_ONLY_PENDING_EXACT_RUNTIME_GNM_BUFFER_DESCRIPTORS_OR_FETCH_SHADER',
+              'reason':'VS header proves sem1 is four elements at v8 and sem4 is one element at v20; raw source shape matches, but Gnm buffer descriptors own final format/offset selection.',
+            },
+            'policy':'No GnmBuffer format/offset is invented. This report proves raw byte shape and consistency only; candidate mapping remains explicitly unpromoted.'
+          }
+          Path('reports/80C9993C_fetch_shape.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80c9993c-fetch-shape
+          path: reports/
+          retention-days: 14
