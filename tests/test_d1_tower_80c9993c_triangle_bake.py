@@ -66,9 +66,11 @@ def test_bake_cell_native_branch_endpoints_constant_textures():
     attr_zero = np.array([[0,0,0,0]]*3,dtype=np.float32)
     out0 = mod.bake_cell(attr_zero,color_linear,mask_one,bary)
     np.testing.assert_array_equal(out0[...,3], 255)
-    # Re-encoding the linearized constant should recover the original sRGB byte values.
-    expected0 = np.rint(color_srgb[0,0,:3]*255.0).astype(np.uint8)
-    assert np.all(out0[...,:3] == expected0)
+    # Float-domain transfer is tested separately above. PNG quantization can move
+    # an exact half-LSB tie by one byte after a float32 sRGB round-trip.
+    expected0 = np.rint(color_srgb[0,0,:3]*255.0).astype(np.int16)
+    got0 = out0[...,:3].astype(np.int16)
+    assert np.max(np.abs(got0 - expected0)) <= 1
 
     # attr3.w=1 and mask=0 forces w=1 -> adjusted t0 branch.
     attr_one = np.array([[0,0,0,1]]*3,dtype=np.float32)
@@ -76,7 +78,7 @@ def test_bake_cell_native_branch_endpoints_constant_textures():
     adjusted = mod.grass.branch0_rgb(color_linear[0,0,:3],mod.TINT_RGB)
     expected1 = np.rint(mod.linear_to_srgb(adjusted)*255.0).astype(np.uint8)
     assert np.all(out1[...,:3] == expected1)
-    assert not np.array_equal(expected1, expected0)
+    assert not np.array_equal(expected1, expected0.astype(np.uint8))
 
 
 def test_target_identity_and_tint_are_locked():
