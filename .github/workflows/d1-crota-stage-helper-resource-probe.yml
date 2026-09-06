@@ -54,15 +54,12 @@ jobs:
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime --min-string 4 -o out/CROTA_STAGE_HELPERS_EXACT_TAGS.json | tee out/helper_probe_stdout.txt
 
-      - name: Trace helper backlinks in raid and Hive families
+      - name: Trace helper backlinks in verified current raid and Hive families
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_remote_catalog_backlinks.py \
-            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x044C --scan-package-id 0x044D \
-            --scan-package-id 0x0453 --scan-package-id 0x0454 --scan-package-id 0x0455 \
-            --scan-package-id 0x005A --scan-package-id 0x005B --scan-package-id 0x005C --scan-package-id 0x005D --scan-package-id 0x005E --scan-package-id 0x005F \
-            --scan-package-id 0x0076 --scan-package-id 0x0077 \
+            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x005B --scan-package-id 0x0077 \
             --target 0x81097903 --target 0x81097906 --target 0x8109790B --target 0x8109790C --target 0x8109790D \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
@@ -77,6 +74,7 @@ jobs:
           b=json.load(open('out/CROTA_STAGE_HELPER_BACKLINKS.json'))
           assert p.get('violation_count',0)==0,p.get('violations')
           assert b.get('error_count',0)==0,b.get('errors')
+          assert b['scan_package_ids']==['0447','044B','005B','0077'],b['scan_package_ids']
           signatures=collections.defaultdict(list)
           for x in p['entries']:
               refs=[(m['offset'],m['tag_hash'],m['entry'].get('reference'),m['entry'].get('file_size')) for m in x.get('aligned_resolved_tags',[])]
@@ -85,6 +83,7 @@ jobs:
               print('HELPER',x['tag_hash'],'SIZE',x['payload_size'],'SHA256',x['payload_sha256'])
               print(' STRINGS',[(s['offset'],s['string']) for s in x.get('printable_strings',[])])
               print(' RESOLVED_TAGS',refs)
+          print('VERIFIED_SCAN_PACKAGE_IDS',b['scan_package_ids'])
           print('PAYLOAD_LAYOUT_SIGNATURE_GROUPS',[(v,list(k)) for k,v in signatures.items()])
           print('BACKLINK_SOURCES',b['hit_source_count'],'BY_REFERENCE',b['hit_sources_by_reference'],'BY_TARGET',b['occurrences_by_target'])
           for x in b['hits']:
