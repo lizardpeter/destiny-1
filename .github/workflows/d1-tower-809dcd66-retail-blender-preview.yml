@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-809dcd66-retail-blender-preview.yml'
+      - 'tools/install_blender_lts.sh'
       - 'tools/d1_tower_809dcd66_retail_scene_export.py'
       - 'tools/d1_gltf_split_d1_basis_attributes.py'
       - 'tools/d1_blender_apply_809dcd66.py'
@@ -103,23 +104,18 @@ jobs:
           print('EXACT_RETAIL_809DCD66_TEXTURES_GREEN',d['unique_texture_tags'],d['png_outputs'])
           PY
 
-      - name: Install pinned Blender 4.5.13 LTS
+      - name: Install project Blender 5.2.1 LTS baseline
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 'https://download.blender.org/release/Blender4.5/blender-4.5.13.sha256' -o blender.sha256
-          curl --fail --location --retry 3 'https://download.blender.org/release/Blender4.5/blender-4.5.13-linux-x64.tar.xz' -o blender.tar.xz
-          grep 'blender-4.5.13-linux-x64.tar.xz' blender.sha256 > blender-linux.sha256
-          sed -i 's#blender-4.5.13-linux-x64.tar.xz#blender.tar.xz#' blender-linux.sha256
-          sha256sum --check --strict blender-linux.sha256
-          tar -xf blender.tar.xz
-          ./blender-4.5.13-linux-x64/blender --version | tee reports/blender_version.txt
-          grep -q 'Blender 4.5.13' reports/blender_version.txt
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"
+          echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
 
       - name: Build retail native-equation Blender preview and pack exact images
         run: |
           set -euo pipefail
-          B='./blender-4.5.13-linux-x64/blender'
-          "$B" --background --factory-startup \
+          "$BLENDER" --background --factory-startup \
             --python tools/d1_blender_apply_809dcd66.py -- \
             --input-glb retail/D1_TOWER_809DCD66_RETAIL_64_D1_BASIS.glb \
             --manifest manifest/809DCD66_blender_adapter_manifest.json \
@@ -127,11 +123,11 @@ jobs:
             --out-blend retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
             --report reports/809DCD66_retail_blender.json \
             | tee reports/809DCD66_retail_blender_stdout.txt
-          "$B" --background retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
-            --python-expr "import bpy; [im.pack() for im in bpy.data.images if im.source=='FILE']; bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath); print('PACKED_IMAGES',[(im.name,im.packed_file is not None) for im in bpy.data.images])" \
+          "$BLENDER" --background retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
+            --python-expr "import bpy; assert bpy.app.version[:3] == (5,2,1); [im.pack() for im in bpy.data.images if im.source=='FILE']; bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath); print('PACKED_IMAGES',[(im.name,im.packed_file is not None) for im in bpy.data.images])" \
             | tee reports/809DCD66_pack_images_stdout.txt
-          "$B" --background retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
-            --python-expr "import bpy; assert all(im.packed_file is not None for im in bpy.data.images if im.name.startswith('D1_8093')); print('REOPEN_PACKED_OK',bpy.app.version_string,len(bpy.data.objects),len(bpy.data.materials))" \
+          "$BLENDER" --background retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
+            --python-expr "import bpy; assert bpy.app.version[:3] == (5,2,1); assert all(im.packed_file is not None for im in bpy.data.images if im.name.startswith('D1_8093')); print('REOPEN_PACKED_OK',bpy.app.version_string,len(bpy.data.objects),len(bpy.data.materials))" \
             | tee reports/809DCD66_final_reopen_stdout.txt
           sha256sum retail/*.glb retail/*.blend | tee reports/809DCD66_retail_files_sha256.txt
           python - <<'PY'
@@ -141,9 +137,11 @@ jobs:
           scene=json.load(open('reports/809DCD66_retail_scene.json'))
           p=Path('retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend')
           assert d['status']=='D1_TOWER_809DCD66_BLENDER_NATIVE_EQUATION_PREVIEW_BUILT',d
+          assert d['blender_version_string'].startswith('5.2.1'),d['blender_version_string']
           assert d['target_materials_in_input']==5,d
           assert d['verified_saved_material_count']==5,d
           out={'status':'D1_TOWER_809DCD66_RETAIL_BLENDER_PREVIEW_COMPLETE',
+               'blender_baseline':'5.2.1 LTS','blender_version_string':d['blender_version_string'],
                'geometry_count':scene['geometry_count'],'placement_count':scene['placement_count'],'material_count':scene['material_count'],
                'blend_bytes':p.stat().st_size,'blend_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
                'api13_runtime_source_resolved':False,'native_blend_state_resolved':False,'frame0_time_unit_phase_resolved':False,
