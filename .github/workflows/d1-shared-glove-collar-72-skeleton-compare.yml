@@ -1,0 +1,90 @@
+name: D1 shared glove-collar skeleton versus 67-bone Guardian
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-glove-collar-72-skeleton-compare.yml'
+      - 'tools/d1_remote_skeleton_resource_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle and 00EC family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0xAAB580800 \
+            --target ps4_race_set_all_00ec_0.pkg --target ps4_race_set_all_00ec_1.pkg \
+            --target ps4_race_set_all_00ec_2.pkg --target ps4_race_set_all_00ec_3.pkg \
+            --target ps4_race_set_all_00ec_4.pkg --target ps4_race_set_all_00ec_5.pkg \
+            --out recovered --manifest out/00ec_extract.json --retries 6 --timeout 90
+      - name: Decode exact 67-node Guardian skeleton
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_skeleton_probe.py recovered/ps4_race_set_all_00ec_5.pkg --runtime runtime --tag-hash 809D8613 -o out/809D8613_skeleton.json
+      - name: Decode exact shared glove-collar skeleton
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_skeleton_resource_probe.py \
+            --skeleton-resource 80AD27B2 \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/80AD27B2_skeleton.json
+      - name: Compare ordered hierarchy and bind transforms
+        run: |
+          python - <<'PY'
+          import json,math
+          a=json.load(open('out/809D8613_skeleton.json'))
+          b=json.load(open('out/80AD27B2_skeleton.json'))
+          ar=[x for x in a['resources'] if x['tag_hash'].upper()=='809D8613'][0]
+          ai=ar['skeleton_info']; ab=ai['bones']; bb=b['bones']
+          print('NODE_COUNTS',len(ab),len(bb))
+          common=min(len(ab),len(bb))
+          hash_equal=[ab[i]['node_hash']==bb[i]['node_hash'] for i in range(common)]
+          parent_equal=[ab[i]['parent_node_index']==bb[i]['parent_node_index'] for i in range(common)]
+          def maxerr(x,y):
+              vals=[]
+              for k in ('rotation','translation'):
+                  vals += [abs(float(q)-float(r)) for q,r in zip(x[k],y[k])]
+              vals.append(abs(float(x['scale'])-float(y['scale'])))
+              return max(vals,default=0.0)
+          default_err=[maxerr(ab[i]['default_object_space_transform'],bb[i]['default_object_space_transform']) for i in range(common)]
+          inverse_err=[maxerr(ab[i]['default_inverse_object_space_transform'],bb[i]['default_inverse_object_space_transform']) for i in range(common)]
+          out={
+            'schema':'d1_skeleton_ordered_prefix_compare/v1',
+            'left':'809D8613','left_node_count':len(ab),'right':'80AD27B2','right_node_count':len(bb),
+            'common_count':common,'ordered_hash_prefix_equal':all(hash_equal),'ordered_parent_prefix_equal':all(parent_equal),
+            'default_transform_prefix_max_abs_error':max(default_err,default=0.0),'inverse_transform_prefix_max_abs_error':max(inverse_err,default=0.0),
+            'left_hashes':[x['node_hash'] for x in ab],'right_hashes':[x['node_hash'] for x in bb],
+            'right_extra_bones':bb[common:],
+            'first_hash_mismatch':next((i for i,x in enumerate(hash_equal) if not x),None),
+            'first_parent_mismatch':next((i for i,x in enumerate(parent_equal) if not x),None),
+          }
+          json.dump(out,open('out/809D8613_vs_80AD27B2.json','w'),indent=2);open('out/809D8613_vs_80AD27B2.json','a').write('\n')
+          print(json.dumps(out,indent=2))
+          assert len(ab)==67,len(ab)
+          assert len(bb)>=72,len(bb)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-shared-glove-collar-skeleton-compare
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
