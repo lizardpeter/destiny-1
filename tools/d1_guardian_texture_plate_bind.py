@@ -83,8 +83,6 @@ def exact_plate_images(report: dict, plate_dir: Path) -> dict[str, dict[str, Pat
             raise ValueError(f'malformed composed plate row: {p}')
         path = plate_dir / str(rel)
         if not path.is_file():
-            # Reports emitted beside the `plates/` directory store only the PNG
-            # basename. Accept that canonical artifact layout as well.
             path = plate_dir / Path(str(rel)).name
         if not path.is_file():
             raise FileNotFoundError(f'{header} {role}: plate image not found for {rel}')
@@ -134,7 +132,7 @@ def main() -> int:
     g.materials = g.materials or []
 
     sampler_index = len(g.samplers)
-    g.samplers.append(Sampler(name='D1_plate_preview_sampler', magFilter=9729, minFilter=9987, wrapS=10497, wrapT=10497))
+    g.samplers.append(Sampler(magFilter=9729, minFilter=9987, wrapS=10497, wrapT=10497))
 
     material_for_model: dict[str, int] = {}
     texture_rows = []
