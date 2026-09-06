@@ -15,6 +15,7 @@ The authoritative, durable workspace is the private GitHub repository `lizardpet
 5. PS4 is the canonical extraction corpus; Xbox One is the differential-validation corpus.
 6. Export code preserves decoded metadata/hashes alongside converted GLB/DDS/PNG/etc.
 7. Proprietary Oodle DLLs are user-supplied at runtime and are never bundled into this workspace.
+8. Every material reversal also updates the durable structured knowledge layer. Proven relations, unresolved candidates, evidence provenance, rejected hypotheses, and next-proof frontiers must be retained so later work can query and extend them instead of rediscovering them.
 
 ## Current milestone
 
@@ -49,6 +50,10 @@ Canonical PS4 `arch_cabal_005b_1` currently yields:
 - `corpus/CORPUS.json` — sample inventory and fingerprints/status.
 - `notes/OODLE_RUNTIME.md` — Oodle runtime/bridge policy and validation.
 - `evidence/` — reproducible outputs derived from package bytes.
+- `knowledge/` — canonical structured asset/entity/relation/evidence knowledge records; generated SQLite is built from these records.
+- `knowledge/README.md` — knowledge-base policy, proof states, negative-knowledge rules, and query examples.
+- `knowledge/schema_v1.json` — machine-readable knowledge record schema.
+- `tools/d1_knowledge_db.py` — validator and deterministic JSON-to-SQLite materializer.
 - `exports/` — converted preview assets and proof geometry.
 - `tools/` — parsers, extractors and comparators.
 - `tests/` — regression vectors and self-tests.
@@ -79,6 +84,13 @@ python tools/d1_texture_export.py <ps4_pkg> \
   --runtime tools/runtime/linux-x86_64/liblinoodle3_min.so \
   --all --out exports/textures/all_ps4 \
   --manifest evidence/decoded/ps4_texture_manifest.json
+```
+
+Knowledge database:
+
+```bash
+python tools/d1_knowledge_db.py --records knowledge/records --validate-only
+python tools/d1_knowledge_db.py --records knowledge/records --db build/d1_knowledge.sqlite --summary build/d1_knowledge_summary.json
 ```
 
 Regression suite:
