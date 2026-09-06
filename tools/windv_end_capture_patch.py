@@ -50,10 +50,10 @@ def main() -> int:
  *
  * When called while actively Capturing, first prevent any new frames from
  * entering the queue, then let CapturingThread drain every frame that was
- * already accepted by WinDV.  The queue EOS sentinel is observed only after
- * those buffered frames have been consumed.  CapturingThread then destroys
+ * already accepted by WinDV. The queue EOS sentinel is observed only after
+ * those buffered frames have been consumed. CapturingThread then destroys
  * CAVIWriter, whose destructor sends EOS to the AVI mux and waits for graph
- * completion before returning.  Post-capture AVI/index validation and optional
+ * completion before returning. Post-capture AVI/index validation and optional
  * SHA-256 also finish before this method returns.
  *
  * When called from CapturePaused, queued frames are drained without being
@@ -74,7 +74,7 @@ void CDV::FinalizeCapturing()
 	if (m_DVctrl && m_dvInput) m_dvInput->CtrlPause();
 	if (m_dvInput) m_dvInput->Stop();
 
-	/* Queue EOS is ordered after all frames already accepted by Put().  Get()
+	/* Queue EOS is ordered after all frames already accepted by Put(). Get()
 	 * continues returning buffered frames until the ring is empty, then false. */
 	if (m_queue) m_queue->Put(-1, NULL, 0);
 
@@ -99,6 +99,16 @@ void CDV::FinalizeCapturing()
     replace_once(root, "DShow.h",
         "\t * 0 = disabled (wait indefinitely). Default: 5000 ms. */\n",
         "\t * 0 = disabled (wait indefinitely). Archive-safe default: disabled. */\n")
+
+    # Do not inherit the normal v1.6 AutoStopTimeout registry value. This keeps
+    # a previously saved 5000 ms setting from silently re-enabling auto-stop.
+    # The archive build still persists its own opt-in setting separately.
+    replace_once(root, "DVToolsDlg.cpp",
+        'm_video.m_autoStopTimeout = AfxGetApp()->GetProfileInt("Capture", "AutoStopTimeout", m_video.m_autoStopTimeout);',
+        'm_video.m_autoStopTimeout = AfxGetApp()->GetProfileInt("Capture", "ArchiveAutoStopTimeout", m_video.m_autoStopTimeout);')
+    replace_once(root, "DVToolsDlg.cpp",
+        'AfxGetApp()->WriteProfileInt("Capture", "AutoStopTimeout", m_video.m_autoStopTimeout);',
+        'AfxGetApp()->WriteProfileInt("Capture", "ArchiveAutoStopTimeout", m_video.m_autoStopTimeout);')
 
     # Dialog wiring.
     replace_once(root, "DVToolsDlg.h",
