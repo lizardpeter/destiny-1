@@ -1,0 +1,103 @@
+name: D1 all Guardian visual export plan
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-all-guardian-visual-export-plan.yml'
+      - 'tools/d1_guardian_visual_export_plan.py'
+      - 'tools/d1_playable_guardian_entity_resource_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Guardian parent resolution and universal base catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/parent input/catalog runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-playable-guardian-entity-resolution&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/parent.zip
+          unzip -q input/parent.zip -d input/parent
+          test -f input/parent/playable_guardian_entity_resolution.json
+
+          curl --fail --location --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" \
+            -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Resolve every Guardian final entity to render model resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_playable_guardian_entity_resource_resolve.py tools/d1_guardian_visual_export_plan.py
+          python tools/d1_playable_guardian_entity_resource_resolve.py \
+            input/parent/playable_guardian_entity_resolution.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/D1_ALL_GUARDIAN_RENDER_RESOLUTION.json \
+            | tee out/render_stdout.txt
+
+      - name: Build lossless named-item and visual-branch export plan
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_visual_export_plan.py \
+            input/parent/playable_guardian_entity_resolution.json \
+            out/D1_ALL_GUARDIAN_RENDER_RESOLUTION.json \
+            --out out/D1_ALL_GUARDIAN_VISUAL_EXPORT_PLAN.json \
+            | tee out/plan_stdout.txt
+
+      - name: Validate Guardian coverage invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('out/D1_ALL_GUARDIAN_RENDER_RESOLUTION.json'))
+          p=json.load(open('out/D1_ALL_GUARDIAN_VISUAL_EXPORT_PLAN.json'))
+          assert p['named_item_count']==2655,p['named_item_count']
+          assert p['arrangement_count']==2157,p['arrangement_count']
+          assert p['visual_branch_count']>=p['arrangement_count']
+          assert p['render_graph_resolved_branch_count']>0
+          assert p['unique_model_hash_count']>0
+          assert r['unique_embedded_model_count']>0
+          print('D1_ALL_GUARDIAN_VISUAL_EXPORT_PLAN_BUILT')
+          print(json.dumps({k:p[k] for k in ('status','named_item_count','arrangement_count','visual_branch_count','render_graph_resolved_branch_count','unique_geometry_signature_count','unique_model_hash_count','status_counts')},indent=2))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-ALL-GUARDIAN-VISUAL-EXPORT-PLAN
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
