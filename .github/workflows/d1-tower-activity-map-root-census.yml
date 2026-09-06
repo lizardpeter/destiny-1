@@ -98,16 +98,12 @@ jobs:
             --out reports/tower_activity_map_root_census.json \
             | tee reports/tower_activity_map_root_census_stdout.txt
 
-      - name: Validate Activity-owned Tower root fixture
+      - name: Validate full Activity-owned Tower root graph
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           a=json.load(open('reports/tower_activity_map_root_census.json'))
-          expected=sorted([
-            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
-            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
-          ])
           if a.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
               raise SystemExit('activity ownership census incomplete: '+json.dumps(a.get('violations')))
           if a.get('current_d1_activity_count')!=1 or a.get('current_d1_activity_named_row_count')!=2:
@@ -134,22 +130,45 @@ jobs:
           if any(x.get('target',{}).get('schema_evidence')!='PINNED_SOURCE_TYPED_TAG_EDGE_PLUS_S48018080_BACKLINK' for x in br):
               raise SystemExit('Bubble schema evidence mode changed')
 
-          actual=sorted(a.get('map_data_tables',[]))
-          if actual!=expected:
-              raise SystemExit('activity-owned Tower table set changed: '+json.dumps({'expected':expected,'actual':actual},indent=2))
-          if a.get('total_reachable_map_entries')!=337:
-              raise SystemExit(f'activity-owned Tower entry total changed: {a.get("total_reachable_map_entries")}')
+          expected_full={
+              'reachable_bubble_count':5,
+              'reachable_map_container_count':17,
+              'reachable_map_data_table_count':122,
+              'total_reachable_map_entries':1418,
+          }
+          bad={k:{'expected':v,'actual':a.get(k)} for k,v in expected_full.items() if a.get(k)!=v}
+          if bad:
+              raise SystemExit('full Activity-owned Tower graph regression: '+json.dumps(bad,indent=2))
+
+          # The historically closed nine-table/337-row set is the static/render
+          # SMapDataResource subset, not the complete Activity graph. Keep it as a
+          # subset regression until the downstream resource-class census derives it.
+          visual_counts={
+            '80C98028':39,'80C984A0':14,'80C9895C':79,'80C989F7':112,
+            '80C997DF':4,'80C99956':22,'80CA0B0E':10,'80CA0B11':54,'80CA0C4E':3,
+          }
+          tables=set(a.get('map_data_tables',[]))
+          missing=sorted(set(visual_counts)-tables)
+          if missing:
+              raise SystemExit('known static/render subset missing from full Activity graph: '+json.dumps(missing))
+          actual_counts=a.get('map_data_table_entry_counts',{})
+          bad_counts={h:{'expected':n,'actual':actual_counts.get(h)} for h,n in visual_counts.items() if actual_counts.get(h)!=n}
+          if bad_counts:
+              raise SystemExit('known static/render subset counts changed: '+json.dumps(bad_counts,indent=2))
+          if sum(visual_counts.values())!=337:
+              raise SystemExit('internal visual subset fixture arithmetic changed')
 
           plan=json.load(open('reports/tower_activity_manifest_dependency_plan.json'))
-          print('TOWER_ACTIVITY_TO_MAP_ROOTS_CLOSED',json.dumps({
+          print('TOWER_ACTIVITY_GRAPH_CLOSED',json.dumps({
               'activity':'80C98019',
               'activity_alias_rows':a.get('current_d1_activity_named_row_count'),
               'manifest_packages':plan['manifest_package_ids'],
-              'bubble_edges':len(br),
-              'bubble_manifest_tag_class':'80800580',
+              'bubbles':a.get('reachable_bubble_count'),
               'containers':a.get('reachable_map_container_count'),
-              'tables':len(actual),
+              'tables':a.get('reachable_map_data_table_count'),
               'entries':a.get('total_reachable_map_entries'),
+              'known_static_visual_tables':len(visual_counts),
+              'known_static_visual_rows':sum(visual_counts.values()),
           },sort_keys=True))
           PY
 
