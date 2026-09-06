@@ -1,0 +1,181 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "crota_scripted_spawn_8108EF3A_2026_09_06",
+  "title": "Crota frontier: exact 8108EF3A scripted-entity table",
+  "updated_utc": "2026-09-06T20:34:00Z",
+  "scope": {
+    "platform": "PS4",
+    "package_id": "0447",
+    "target": "Crota, Son of Oryx binary identity frontier",
+    "policy": "This record closes 808012D9 scripted-spawn semantics for 8108EF3A but does not promote 8108EFFC to Crota without a separate exact semantic ownership/name/archetype edge."
+  },
+  "nodes": [
+    {
+      "id": "semantic:crota_son_of_oryx",
+      "kind": "semantic_enemy_target",
+      "status": "TARGET",
+      "label": "Crota, Son of Oryx",
+      "attrs": {"enemy_id": "R1S2RaidMoon0Ultra0", "race_class": "HiveUltraKnightA"}
+    },
+    {
+      "id": "scripted_table:8108EF3A",
+      "kind": "scripted_entity_table",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {
+        "tag_hash": "8108EF3A",
+        "reference_class": "808012D9",
+        "package_id": "0447",
+        "script_family_string_hash": "F9596AE6",
+        "group_count": 1,
+        "record_count": 1
+      }
+    },
+    {
+      "id": "entity:8108EFFC",
+      "kind": "s_entity",
+      "status": "CANDIDATE",
+      "label": null,
+      "attrs": {"model": "8108F1AD", "skeleton_resource": "8108F021", "skeleton_node_count": 72}
+    },
+    {
+      "id": "stringhash:F9596AE6",
+      "kind": "script_family_string_hash",
+      "status": "UNRESOLVED",
+      "label": null,
+      "attrs": {}
+    },
+    {
+      "id": "stringhash:D7236F15",
+      "kind": "script_type_string_hash",
+      "status": "UNRESOLVED",
+      "label": null,
+      "attrs": {}
+    },
+    {
+      "id": "stringhash:AF730B17",
+      "kind": "scripted_instance_entity_name_string_hash",
+      "status": "UNRESOLVED",
+      "label": null,
+      "attrs": {"scope": "instance/archetype-owned name in SMapDataEntry DataResource, not proven as global s_entity family name"}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:8108EF3A_scripted_entity",
+      "subject": "scripted_table:8108EF3A",
+      "predicate": "SCRIPTED_ENTITY_ENTRY",
+      "object": "entity:8108EFFC",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EF3A_schema_closed"]
+    },
+    {
+      "id": "edge:8108EF3A_family",
+      "subject": "scripted_table:8108EF3A",
+      "predicate": "HAS_SCRIPT_FAMILY_HASH",
+      "object": "stringhash:F9596AE6",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EF3A_schema_closed"]
+    },
+    {
+      "id": "edge:8108EF3A_type",
+      "subject": "scripted_table:8108EF3A",
+      "predicate": "HAS_SCRIPT_TYPE_HASH",
+      "object": "stringhash:D7236F15",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EF3A_schema_closed"]
+    },
+    {
+      "id": "edge:8108EFFC_instance_name",
+      "subject": "entity:8108EFFC",
+      "predicate": "HAS_SCRIPTED_INSTANCE_NAME_HASH",
+      "object": "stringhash:AF730B17",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EF3A_schema_closed"]
+    },
+    {
+      "id": "edge:crota_candidate_8108EFFC_scripted",
+      "subject": "semantic:crota_son_of_oryx",
+      "predicate": "CANDIDATE_BINARY_IDENTITY",
+      "object": "entity:8108EFFC",
+      "status": "CANDIDATE",
+      "assertion_ids": ["assert:crota_identity_still_open"]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:8108EF3A_schema_closed",
+      "status": "PROVEN",
+      "claim": "Source-pinned D1 schema decoding proves 8108EF3A is an 808012D9 scripted-entity table with script-family StringHash F9596AE6, one group of type D7236F15, and exactly one embedded SMapDataEntry whose EntitySK is 8108EFFC and whose instance-owned EntityName StringHash is AF730B17.",
+      "source_ids": ["source:scripted_table_artifact", "source:scripted_table_decoder", "source:charm_script_schema"],
+      "details": {
+        "world_id": "FFFFFFFFFFFFFFFF",
+        "translation": [0.0, 0.0, 0.0, 1.0],
+        "record_count": 1,
+        "layout_violations": 0,
+        "important_correction": "The earlier three aligned literal occurrences of 8108EFFC in 8108EF3A are not three spawn records. Schema decoding yields exactly one SMapDataEntry; the other aligned values occur in other serialized fields."
+      }
+    },
+    {
+      "id": "assert:crota_identity_still_open",
+      "status": "CANDIDATE",
+      "claim": "8108EFFC remains a high-value Crota candidate, but the scripted-entry proof does not by itself establish that AF730B17/F9596AE6/D7236F15 mean Crota or that the owning encounter is Crota's finale.",
+      "source_ids": ["source:scripted_table_artifact"]
+    },
+    {
+      "id": "assert:scripted_records_are_archetype_like",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "The decoded raid scripted records use WorldID FFFFFFFFFFFFFFFF with identity/zero transforms, consistent with script-spawn/archetype definitions rather than ordinary world-placed instances.",
+      "source_ids": ["source:scripted_table_artifact"],
+      "details": {"semantic_identity_implication": "none by itself"}
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:scripted_table_artifact",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9996646268 / CROTA_SCRIPTED_ENTITY_TABLES.json",
+      "sha256": "a82413d64b8e6f8fbefc35185dbbc49fd1c8d67b52ea46644535dc189ee5438b",
+      "details": {
+        "artifact_zip_sha256": "e1d71b0ed59a50c17c9752a25706a04f4c62a2a56dd0ffa6fcb8e34cb7249d9a",
+        "workflow_run_id": 34058286684,
+        "workflow_head_sha": "f7b0956d4468714e7cac4c4f61d7f42329c8fc90"
+      }
+    },
+    {
+      "id": "source:scripted_table_decoder",
+      "kind": "repository_tool",
+      "locator": "tools/d1_crota_scripted_entity_table_probe.py",
+      "details": {"commit": "674496924e17a90f95a9c635f2c80a714014b3ef"}
+    },
+    {
+      "id": "source:charm_script_schema",
+      "kind": "source_pinned_external_implementation",
+      "locator": "MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af Tiger/Schema/Activity/ActivityStructsROI.cs + Tiger/Schema/Static/StaticMapData.cs",
+      "details": {
+        "class_chain": "808012D9 -> SD614 -> S481 -> 80800406 SMapDataEntry -> optional 80801333 EntityName"
+      }
+    }
+  ],
+  "rejections": [],
+  "frontiers": [
+    {
+      "id": "frontier:resolve_AF730B17",
+      "question": "What exact string does scripted instance-name StringHash AF730B17 represent?",
+      "next_proof": "Resolve from a source-backed StringHash dictionary, retail string table, or exact sibling-table semantic join; do not infer from Crota proximity.",
+      "related_nodes": ["stringhash:AF730B17", "entity:8108EFFC"]
+    },
+    {
+      "id": "frontier:resolve_script_family_type",
+      "question": "What do script-family F9596AE6 and type D7236F15 mean?",
+      "next_proof": "Recover preimages or source-owned script tables and compare against semantically closed sibling families/types.",
+      "related_nodes": ["stringhash:F9596AE6", "stringhash:D7236F15", "scripted_table:8108EF3A"]
+    },
+    {
+      "id": "frontier:trace_8108EF3A_owner",
+      "question": "Which encounter/controller owns scripted table 8108EF3A?",
+      "next_proof": "Follow source-defined owner/backreference chains such as SA705/808005A7 +0x68 Tag<808012D9> across the full current base corpus, then trace that owner to moon_raid_1 finale logic.",
+      "related_nodes": ["scripted_table:8108EF3A", "semantic:crota_son_of_oryx"]
+    }
+  ]
+}
