@@ -1,0 +1,77 @@
+name: D1 Spektar exact Bungie web GearAsset endpoint
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie-web-endpoint.yml'
+      - 'tools/d1_bungie_web_gearasset_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Probe exact masculine Titan web rows
+        run: |
+          set -euo pipefail
+          mkdir -p out/male out/female
+          set +e
+          python tools/d1_bungie_web_gearasset_probe.py \
+            --class-hash 3655393761 \
+            --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
+            --download-dir out/male -o out/spektar_bungie_web_masculine.json
+          echo $? > out/male_exit_code.txt
+          set -e
+      - name: Probe exact feminine Titan web rows
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_bungie_web_gearasset_probe.py \
+            --class-hash 3655393761 --female \
+            --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
+            --download-dir out/female -o out/spektar_bungie_web_feminine.json
+          echo $? > out/female_exit_code.txt
+          set -e
+      - name: Classify endpoint availability without inventing fallback data
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          m=json.load(open('out/spektar_bungie_web_masculine.json'))
+          f=json.load(open('out/spektar_bungie_web_feminine.json'))
+          ids=['B4BD27A2','1DF65286','4A37316F','4A2AD693','4A5B75DC']
+          assert [x['item_hash_hex'] for x in m['items']]==ids
+          assert [x['item_hash_hex'] for x in f['items']]==ids
+          ok=[x for x in m['items'] if x.get('gearasset')]
+          print('BUNGIE D1 WEB ENDPOINT exact GearAsset successes',len(ok),'of',len(ids))
+          for x in m['items']:
+              print(x['item_hash_hex'],'HTTP',x['http_status'],'ErrorStatus',x.get('error_status'),'size',x['response_size'],'sha256',x['response_sha256'])
+              if x.get('gearasset'):
+                  print(' geometry',[(z['index'],z['file_name']) for z in x['web_selected_files']['geometry']])
+                  print(' gear',[(g['file_name'],g['geometry_identifiers']) for g in x['gear_json']])
+          # This workflow is an evidence probe. A retired endpoint is a valid negative result, not permission to synthesize data.
+          PY
+          cat > out/README.txt <<'EOF'
+          Exact Bungie D1 web GearAsset endpoint probe
+
+          Endpoint provenance comes from the archived Bungie Spasm/Destiny.GetDestinySingleDefinition implementation and the
+          preserved D1 endpoint shape /d1/Platform/Destiny/Manifest/22/{itemHash}. Raw response bytes are retained.
+
+          If this endpoint is retired, the result remains useful negative evidence. It does not authorize substituting nearby
+          gear, guessed regions, or another skeleton. Historical recovery must preserve the exact requested item hashes.
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-SPEKTAR-EXACT-BUNGIE-WEB-GEARASSET
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
