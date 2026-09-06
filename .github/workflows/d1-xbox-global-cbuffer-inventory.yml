@@ -1,0 +1,40 @@
+name: D1 Xbox global cbuffer inventory
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xbox-global-cbuffer-inventory.yml'
+      - 'tools/d1_xbox_global_cbuffer_inventory.py'
+      - 'evidence/decoded/xbox_material_dxbc_bindings_regression.json'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory non-b0 DXBC cbuffers
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python tools/d1_xbox_global_cbuffer_inventory.py \
+            --input evidence/decoded/xbox_material_dxbc_bindings_regression.json \
+            --out reports/xbox_global_cbuffer_inventory.json \
+            | tee reports/xbox_global_cbuffer_inventory_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/xbox_global_cbuffer_inventory.json'))
+          assert d['status']=='D1_XBOX_DXBC_GLOBAL_CBUFFER_INVENTORY'
+          assert d['b13'] is not None,'expected existing regression to contain b13 evidence'
+          print('XBOX_B13_ROWS',d['b13']['row_count'])
+          print('XBOX_B13_VEC4_COUNTS',d['b13']['vec4_count_frequency'])
+          print('XBOX_B13_PIXEL_SHADERS',d['b13']['unique_pixel_shaders'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-xbox-global-cbuffer-inventory
+          path: reports/
+          retention-days: 14
