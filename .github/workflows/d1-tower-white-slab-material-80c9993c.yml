@@ -30,7 +30,7 @@ jobs:
       - name: Recover authoritative prior material manifest, archive index and runtime
         run: |
           set -euo pipefail
-          python -m pip install --quiet pillow numpy
+          python -m pip install --quiet pillow numpy texture2ddecoder
           mkdir -p prior index runtime packages shader_work shader disasm reports target_textures
           gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D prior
           test -f prior/reports/material_texture_manifest_ten_cell.json
