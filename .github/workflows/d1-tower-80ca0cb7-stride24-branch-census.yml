@@ -1,0 +1,159 @@
+name: D1 Tower 80CA0CB7 stride24 branch census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80ca0cb7-stride24-branch-census.yml'
+      - 'tools/d1_world_static_vertex_decode.py'
+      - 'tools/d1_material_decode.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Tower families and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh
+          mkdir -p index runtime packages reports
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Census stride24 selector on all 8+24 draws and actually indexed vertices
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,sys
+          from collections import Counter,defaultdict
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate as schema
+          import d1_tower_static_chunk_export as base
+          from d1_material_decode import parse_material
+
+          c=schema.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          t=schema.parse_static_table(c,'80C99827')
+          assert t.get('mesh_entries') and t.get('info_entries') and t.get('material_hashes')
+
+          ref_cache={}
+          def ref(h):
+              h=str(h).upper()
+              if h not in ref_cache: ref_cache[h]=base.read_reference_file(c,h)
+              return ref_cache[h]
+          def stride(h):
+              if str(h).upper()=='FFFFFFFF': return None
+              return base.hdr_stride(ref(h)['header'])
+
+          mat_cache={}
+          def material_shader(h):
+              h=str(h).upper()
+              if h in mat_cache:return mat_cache[h]
+              b,_=c.payload(h); row={'material':h,'vs':None,'ps':None}
+              if b is not None:
+                  p=parse_material(b,'PS4'); row.update(vs=str(p['vertex_shader']).upper(),ps=str(p['pixel_shader']).upper())
+              mat_cache[h]=row;return row
+
+          # Static records are referenced one-for-one by the info table in this table.
+          draws=[]
+          for info in t['info_entries']:
+              si=int(info['static_index']);mi=int(info['material_index'])
+              if not (0<=si<len(t['mesh_entries']) and 0<=mi<len(t['material_hashes'])): continue
+              m=t['mesh_entries'][si]
+              if (stride(m['vertices0']),stride(m['vertices1'])) != (8,24): continue
+              mh=t['material_hashes'][mi]; sh=material_shader(mh)
+              assert sh['vs']=='80CA0CB7',(si,mh,sh)
+              v1=ref(m['vertices1'])
+              raw=np.frombuffer(v1['backing'],dtype=np.uint8).reshape(-1,24)
+              check=np.frombuffer(raw[:,0x0E:0x10].copy().tobytes(),dtype='<i2')
+              check2=np.frombuffer(raw[:,0x16:0x18].copy().tobytes(),dtype='<i2')
+              branch_a=(check==0)&((check2==32767)|(check2==-32767))
+
+              ib=ref(m['indices']); inds=base.decode_indices(ib['backing'],base.index_is32(ib['header']))
+              off=int(m['index_offset']);cnt=int(m['index_count'])
+              faces=base.primitive_faces(inds[off:off+cnt],int(m['primitive_type']),base.index_is32(ib['header']))
+              used=np.unique(faces.reshape(-1)) if len(faces) else np.array([],dtype=np.int64)
+              assert len(used)>0,(si,off,cnt)
+              assert int(used.max())<len(raw),(si,int(used.max()),len(raw))
+              ua=branch_a[used]
+              rgba04=raw[used,4:8]
+              words04=np.frombuffer(rgba04.copy().tobytes(),dtype='<i2').reshape(-1,2)
+              pos=ref(m['vertices0']); raw0=np.frombuffer(pos['backing'],dtype='<i2').reshape(-1,4)
+              assert int(used.max())<len(raw0)
+              draws.append({
+                'info_index':info['index'],'static_index':si,'material':mh,'vs':sh['vs'],'ps':sh['ps'],
+                'unk0C':m['unk0C'],'unk0C_hex':f"{m['unk0C']:04X}",'detail_level':m['detail_level'],
+                'primitive_type':m['primitive_type'],'vertices0':m['vertices0'],'vertices1':m['vertices1'],'indices':m['indices'],
+                'index_offset':off,'index_count':cnt,'source_vertex_count':len(raw),'used_vertex_count':len(used),
+                'whole_buffer_branch_a':int(branch_a.sum()),'whole_buffer_branch_b':int((~branch_a).sum()),
+                'used_branch_a':int(ua.sum()),'used_branch_b':int((~ua).sum()),
+                'used_word2_min':int(words04[:,0].min()),'used_word2_max':int(words04[:,0].max()),
+                'used_word3_min':int(words04[:,1].min()),'used_word3_max':int(words04[:,1].max()),
+                'primary_w_min':int(raw0[used,3].min()),'primary_w_max':int(raw0[used,3].max()),
+              })
+
+          assert len(draws)==59,len(draws)
+          unique_v1={r['vertices1'] for r in draws}
+          by_v1={}
+          for h in sorted(unique_v1):
+              rr=[r for r in draws if r['vertices1']==h]
+              v1=ref(h);raw=np.frombuffer(v1['backing'],dtype=np.uint8).reshape(-1,24)
+              check=np.frombuffer(raw[:,0x0E:0x10].copy().tobytes(),dtype='<i2')
+              check2=np.frombuffer(raw[:,0x16:0x18].copy().tobytes(),dtype='<i2')
+              a=(check==0)&((check2==32767)|(check2==-32767))
+              by_v1[h]={'vertex_count':len(raw),'branch_a':int(a.sum()),'branch_b':int((~a).sum()),
+                        'draw_count':len(rr),'materials':dict(Counter(r['material'] for r in rr)),
+                        'static_indices':[r['static_index'] for r in rr]}
+
+          target=[r for r in draws if r['material']=='80C9993C']
+          assert sorted(r['static_index'] for r in target)==[578,579,798,799]
+          visible=[r for r in target if r['detail_level'] in (0,1,2,3,10)]
+          all_used_a=sum(r['used_branch_a'] for r in draws)
+          all_used_b=sum(r['used_branch_b'] for r in draws)
+          out={
+            'schema_version':1,'status':'D1_80CA0CB7_STRIDE8_24_BRANCH_CENSUS','table':'80C99827',
+            'draw_count':len(draws),'unique_secondary_buffers':len(unique_v1),
+            'used_vertex_references':all_used_a+all_used_b,'used_branch_a_references':all_used_a,'used_branch_b_references':all_used_b,
+            'draws_with_used_branch_b':sum(r['used_branch_b']>0 for r in draws),
+            'buffers_with_any_branch_b':sum(x['branch_b']>0 for x in by_v1.values()),
+            'secondary_buffers':by_v1,'draws':draws,'target_80C9993C_all':target,'target_80C9993C_visible':visible,
+            'promotion_gate':{
+              'all_59_draws_share_vs_80CA0CB7':all(r['vs']=='80CA0CB7' for r in draws),
+              'all_actually_indexed_vertices_are_branch_a':all_used_b==0,
+              'all_backing_vertices_are_branch_a':all(x['branch_b']==0 for x in by_v1.values()),
+            },
+            'policy':'The Charm branch selector is measured, not assumed. Native fetch mapping may only be promoted for a scope in which the indexed retail vertices have one unambiguous serialized packing.'
+          }
+          Path('reports/80CA0CB7_stride8_24_branch_census.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','draw_count','unique_secondary_buffers','used_vertex_references','used_branch_a_references','used_branch_b_references','draws_with_used_branch_b','buffers_with_any_branch_b','promotion_gate','target_80C9993C_visible')},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80ca0cb7-stride24-branch-census
+          path: reports/
+          retention-days: 14
