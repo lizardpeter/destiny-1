@@ -48,6 +48,7 @@ jobs:
           python - <<'PY'
           import json,hashlib
           from pathlib import Path
+          from PIL import Image
           d=json.load(open('out/textures/remote_texture_manifest.json'))
           expected={'80A083DD','80A08252','80A07D96','80A07D98','80A083E1','80A083DF'}
           assert d['requested_count']==6,d
@@ -58,10 +59,15 @@ jobs:
           for x in d['textures']:
               p=Path('out/textures')/x['png']
               assert p.is_file() and p.stat().st_size>0,(x,p)
+              with Image.open(p) as im:
+                  width,height=im.size
+                  assert width>0 and height>0,(x,im.size)
+                  mode=im.mode
               rows.append({'header':x['header'],'png':x['png'],'bytes':p.stat().st_size,
+                           'width':width,'height':height,'mode':mode,
                            'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
                            'owner_package':x.get('owner_package'),'backing':x.get('backing')})
-          rep={'schema':'d1_spektar_dye_detail_texture_set/v2','textures':rows,
+          rep={'schema':'d1_spektar_dye_detail_texture_set/v3','textures':rows,
                'roles':{
                  '8752_ArmorPlate':{'channel_index':0,'detail_diffuse':'80A083DD','detail_normal':'80A08252'},
                  '8753_ArmorCloth':{'channel_index':1,'detail_diffuse':'80A07D96','detail_normal':'80A07D98'},
