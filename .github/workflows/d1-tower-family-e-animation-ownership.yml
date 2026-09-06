@@ -15,6 +15,7 @@ on:
       - 'evidence/d1_tower_family_e_animation_ownership.json'
       - 'evidence/d1_tower_shader_dependency_member_catalog.json'
       - 'evidence/d1_tower_00ef_member_catalog.json'
+      - 'evidence/d1_tower_0250_member_catalog.json'
 
 permissions:
   contents: read
@@ -22,7 +23,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,17 +56,14 @@ jobs:
             --package-list reports/packages.txt --out-dir recovered \
             --report reports/recover_023d_0244.json
 
-      - name: Recover exact 0250 SEntity member only
+      - name: Recover exact full 0250 logical package
         run: |
           set -euo pipefail
-          python tools/d1_split_tar_extract.py \
-            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
-            --part-count 10 --start-offset 7882615808 \
-            --target ps4_city_tower_destination_0250_5.pkg \
-            --out destination --manifest reports/recover_0250_5.json \
-            --retries 6 --timeout 90
-          test "$(stat -c%s destination/ps4_city_tower_destination_0250_5.pkg)" = 1677312
-          echo '2066afe09503eee4c35d948f6749a6e7b7b02572dcd41d1d3ca679fa523ea22c  destination/ps4_city_tower_destination_0250_5.pkg' | sha256sum --check --strict
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_0250_member_catalog.json \
+            --package-list reports/packages.txt --family 0250 \
+            --out-dir destination --report reports/recover_0250.json
+          test "$(find destination -maxdepth 1 -name 'ps4_city_tower_destination_0250_*.pkg' -type f | wc -l)" -eq 6
 
       - name: Pin animation parser
         run: |
@@ -78,9 +76,11 @@ jobs:
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
+          mapfile -t dest < <(find destination -maxdepth 1 -name 'ps4_city_tower_destination_0250_*.pkg' -type f | sort)
+          dest_args=(); for f in "${dest[@]}"; do dest_args+=(--tower-destination-pkg "$f"); done
           python tools/d1_tower_family_e_animation_ownership.py \
             --tower-activity-pkg recovered/ps4_city_tower_activities_act_023d_5.pkg \
-            --tower-destination-pkg destination/ps4_city_tower_destination_0250_5.pkg \
+            "${dest_args[@]}" \
             --generic-owner-pkg recovered/ps4_race_set_all_00ef_5.pkg \
             --generic-animation-pkg recovered/ps4_race_set_all_00ec_5.pkg \
             --runtime runtime --parser-root parser \
@@ -94,6 +94,7 @@ jobs:
           assert d['family']['runtime_rig_control_count']==67,d['family']
           assert d['family']['runtime_placement_count']==6,d['family']
           assert d['family']['unique_world_id_count']==6,d['family']
+          assert len(d['destination_physical_members'])==6,d['destination_physical_members']
           assert {k:v['selection_status'] for k,v in d['entities'].items()}=={
             '80C7AD82':'owner_selected','80C7AE3E':'owner_selected','80CA0CD6':'owner_selected'
           }
@@ -106,6 +107,7 @@ jobs:
           print('FAMILY_E_OWNER_SELECTED_ANIMATIONS_GREEN')
           print('TOWER_LOCAL_80C7AE98_FRAMES',d['clips']['80C7AE98']['frame_count'])
           print('GENERIC_809D8572_FRAMES',d['clips']['809D8572']['frame_count'])
+          print('80CA0CD6_PAYLOAD_SOURCE',d['entities']['80CA0CD6']['payload_source'])
           PY
 
       - uses: actions/upload-artifact@v4
