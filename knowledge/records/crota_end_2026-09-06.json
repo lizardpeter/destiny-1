@@ -1,0 +1,430 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "crota_end_2026_09_06",
+  "title": "Crota's End retail identity and articulated-entity reversal",
+  "updated_utc": "2026-09-06T20:10:00Z",
+  "scope": {
+    "platform": "PS4",
+    "era": "Destiny 1 Rise of Iron final package set",
+    "target": "Crota, Son of Oryx",
+    "policy": "No binary entity is promoted to Crota from appearance, package membership, model size, skeleton size, adjacency, or naming proximity. Exact semantic/spawn ownership is required."
+  },
+  "nodes": [
+    {
+      "id": "semantic:crota_son_of_oryx",
+      "kind": "semantic_enemy_target",
+      "status": "TARGET",
+      "label": "Crota, Son of Oryx",
+      "attrs": {
+        "enemy_id": "R1S2RaidMoon0Ultra0",
+        "race_class": "HiveUltraKnightA",
+        "tier": "Ultra",
+        "activity": "RaidMoon0",
+        "location": "OversoulThrone",
+        "weapon": "Cleaver",
+        "other_weapon": "Shredder"
+      }
+    },
+    {
+      "id": "activity:810B0002",
+      "kind": "named_activity_root",
+      "status": "PROVEN",
+      "label": "map:moon_hive_raid1:root",
+      "attrs": {
+        "class": "8080052E",
+        "package_id": "0458",
+        "aliases": ["map:moon_hive_raid1:895aa862:root", "map:moon_hive_raid1:root"],
+        "named_table_sha1": "836a3f4f85dfcc2385b8bc96a982706dd522aead"
+      }
+    },
+    {
+      "id": "scenario:8108E004",
+      "kind": "named_scenario_client",
+      "status": "PROVEN",
+      "label": "moon_raid_1:scenario_client",
+      "attrs": {
+        "class": "80800616",
+        "package_id": "0447",
+        "named_table_sha1": "d1734a59ceac938bd2e5579bc790fbf33858e31e"
+      }
+    },
+    {
+      "id": "scenario:8108E00B",
+      "kind": "named_scenario_client",
+      "status": "PROVEN",
+      "label": "mission_souvenir:scenario_client",
+      "attrs": {
+        "class": "80800616",
+        "package_id": "0447",
+        "scope_note": "Shares the package family but is not the Crota's End scenario selected for the exact placement traversal."
+      }
+    },
+    {
+      "id": "placement_set:moon_raid_1",
+      "kind": "runtime_placement_set",
+      "status": "PROVEN",
+      "label": "Exact moon_raid_1 scenario runtime placements",
+      "attrs": {
+        "serialized_placement_count": 282,
+        "runtime_placement_count": 282,
+        "unique_root_entity_count": 34,
+        "layout_violations": 0,
+        "interpretation": "Dominated by raid machinery and encounter objects; Crota is not identified as a static SMapDataEntry placement."
+      }
+    },
+    {
+      "id": "entity:8108EFFC",
+      "kind": "s_entity",
+      "status": "CANDIDATE",
+      "label": null,
+      "attrs": {
+        "package_id": "0447",
+        "model": "8108F1AD",
+        "skeleton_resource": "8108F021",
+        "skeleton_node_count": 72,
+        "generic_name_tag": "8108F16C",
+        "generic_name_string_hash": "FDBD7070",
+        "specific_name_string_hash": "A90FADAA",
+        "candidate_note": "Raid-local custom articulated family with unresolved DLC-specific generic name. High-value Crota candidate, not promoted."
+      }
+    },
+    {
+      "id": "model:8108F1AD",
+      "kind": "s_entity_model",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {"package_id": "0447"}
+    },
+    {
+      "id": "skeleton:8108F021",
+      "kind": "skeleton_resource",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {"node_count": 72, "package_id": "0447"}
+    },
+    {
+      "id": "stringhash:FDBD7070",
+      "kind": "entity_name_string_hash",
+      "status": "UNRESOLVED",
+      "label": null,
+      "attrs": {"source_name_tag": "8108F16C"}
+    },
+    {
+      "id": "record:8108EF3A",
+      "kind": "structured_record",
+      "status": "UNRESOLVED",
+      "label": null,
+      "attrs": {
+        "package_id": "0447",
+        "reference_class": "808012D9",
+        "entry_index": 3898,
+        "size": 1248
+      }
+    },
+    {
+      "id": "entity:8108E484",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "The Oversoul",
+      "attrs": {"model": "8108E5B7", "skeleton_resource": "8108E4BB", "skeleton_node_count": 50, "generic_name_string_hash": "905FBB6A"}
+    },
+    {
+      "id": "entity:8108EFFE",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "Deathsinger",
+      "attrs": {"model": "81096362", "skeleton_resource": "809DC323", "skeleton_node_count": 49, "generic_name_string_hash": "4B5D50B3"}
+    },
+    {
+      "id": "entity:8108EFFD",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "Divined Vision",
+      "attrs": {"model": "8108F1CF", "skeleton_resource": "8108F049", "skeleton_node_count": 49, "generic_name_string_hash": "C98036FA"}
+    },
+    {
+      "id": "entity:8108EFFF",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "Divined Vision",
+      "attrs": {"model": "8108F1CF", "skeleton_resource": "8108F049", "skeleton_node_count": 49, "generic_name_string_hash": "C98036FA"}
+    },
+    {
+      "id": "entity:8108F008",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "Baxx, Hand of Oryx",
+      "attrs": {"model": "8108F20D", "skeleton_resource": "816E2965", "skeleton_node_count": 50, "generic_name_string_hash": "7180F57D"}
+    },
+    {
+      "id": "entity:8108F009",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "Ta'aun, Hand of Oryx",
+      "attrs": {"model": "8108F21B", "skeleton_resource": "8108F0AD", "skeleton_node_count": 57, "generic_name_string_hash": "22D7B512"}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:scenario_8108E004_placements",
+      "subject": "scenario:8108E004",
+      "predicate": "SERIALIZES_RUNTIME_PLACEMENTS",
+      "object": "placement_set:moon_raid_1",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:exact_moon_raid_1_placements"]
+    },
+    {
+      "id": "edge:8108EFFC_model",
+      "subject": "entity:8108EFFC",
+      "predicate": "USES_MODEL",
+      "object": "model:8108F1AD",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EFFC_articulated_family"]
+    },
+    {
+      "id": "edge:8108EFFC_skeleton",
+      "subject": "entity:8108EFFC",
+      "predicate": "USES_SKELETON",
+      "object": "skeleton:8108F021",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EFFC_articulated_family"]
+    },
+    {
+      "id": "edge:8108EFFC_namehash",
+      "subject": "entity:8108EFFC",
+      "predicate": "HAS_GENERIC_NAME_HASH",
+      "object": "stringhash:FDBD7070",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EFFC_unresolved_name"]
+    },
+    {
+      "id": "edge:8108EF3A_backlink",
+      "subject": "record:8108EF3A",
+      "predicate": "SERIALIZES_FILEHASH",
+      "object": "entity:8108EFFC",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:8108EFFC_backlink"]
+    },
+    {
+      "id": "edge:crota_candidate_8108EFFC",
+      "subject": "semantic:crota_son_of_oryx",
+      "predicate": "CANDIDATE_BINARY_IDENTITY",
+      "object": "entity:8108EFFC",
+      "status": "CANDIDATE",
+      "assertion_ids": ["assert:8108EFFC_candidate_only"]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:crota_semantic_target",
+      "status": "TARGET",
+      "claim": "The semantic target being sought is R1S2RaidMoon0Ultra0 / Crota, Son of Oryx / HiveUltraKnightA / Ultra / RaidMoon0 / OversoulThrone / Cleaver+Shredder.",
+      "source_ids": ["source:crota_candidate_probe_tool"],
+      "details": {"binary_identity_closed": false}
+    },
+    {
+      "id": "assert:raid_named_roots",
+      "status": "PROVEN",
+      "claim": "Current D1 named-tag tables identify 810B0002 as the moon_hive_raid1 map root, 8108E004 as moon_raid_1:scenario_client, and 8108E00B as mission_souvenir:scenario_client.",
+      "source_ids": ["source:current_activity_index"],
+      "details": {"important_consequence": "0447 contains multiple scenario roots and must not be treated as one semantic encounter."}
+    },
+    {
+      "id": "assert:exact_moon_raid_1_placements",
+      "status": "PROVEN",
+      "claim": "Traversing only 8108E004 produces 282 serialized placements, 282 runtime placements, 34 unique root entity hashes, and zero layout violations.",
+      "source_ids": ["source:crota_runtime_placements"],
+      "details": {"crota_static_placement_identified": false}
+    },
+    {
+      "id": "assert:8108EFFC_articulated_family",
+      "status": "PROVEN",
+      "claim": "Entity 8108EFFC owns model 8108F1AD and skeleton resource 8108F021 with 72 nodes.",
+      "source_ids": ["source:crota_0447_candidates"]
+    },
+    {
+      "id": "assert:8108EFFC_unresolved_name",
+      "status": "PROVEN",
+      "claim": "Entity 8108EFFC carries generic name tag 8108F16C whose StringHash is FDBD7070; that hash was not resolved by the currently located D1 GlobalStrings CharacterNames bank.",
+      "source_ids": ["source:crota_candidate_names"]
+    },
+    {
+      "id": "assert:8108EFFC_backlink",
+      "status": "PROVEN",
+      "claim": "Structured record 8108EF3A (class 808012D9) serializes the exact FileHash 8108EFFC three times at byte offsets 0xE0, 0x230, and 0x380.",
+      "source_ids": ["source:crota_unresolved_backlinks"],
+      "details": {"semantic_meaning_of_808012D9_closed": false, "literal_serialization_only": true}
+    },
+    {
+      "id": "assert:8108EFFC_candidate_only",
+      "status": "CANDIDATE",
+      "claim": "8108EFFC is a high-value Crota candidate because it is a raid-local 72-node articulated family with an unresolved DLC-specific name and an exact raid-package backlink, but no exact Crota/archetype/spawn ownership edge has been recovered yet.",
+      "source_ids": ["source:crota_0447_candidates", "source:crota_candidate_names", "source:crota_unresolved_backlinks"]
+    },
+    {
+      "id": "assert:oversoul_identity",
+      "status": "PROVEN",
+      "claim": "8108E484 resolves through D1 CharacterNames to The Oversoul.",
+      "source_ids": ["source:crota_candidate_names"]
+    },
+    {
+      "id": "assert:deathsinger_identity",
+      "status": "PROVEN",
+      "claim": "8108EFFE resolves through D1 CharacterNames to Deathsinger.",
+      "source_ids": ["source:crota_candidate_names"]
+    },
+    {
+      "id": "assert:divined_vision_identity",
+      "status": "PROVEN",
+      "claim": "8108EFFD and 8108EFFF resolve through D1 CharacterNames to Divined Vision.",
+      "source_ids": ["source:crota_candidate_names"]
+    },
+    {
+      "id": "assert:baxx_identity",
+      "status": "PROVEN",
+      "claim": "8108F008 resolves through D1 CharacterNames to Baxx, Hand of Oryx.",
+      "source_ids": ["source:crota_candidate_names"]
+    },
+    {
+      "id": "assert:taaun_identity",
+      "status": "PROVEN",
+      "claim": "8108F009 resolves through D1 CharacterNames to Ta'aun, Hand of Oryx.",
+      "source_ids": ["source:crota_candidate_names"]
+    },
+    {
+      "id": "assert:english_localized_no_globalstrings",
+      "status": "PROVEN",
+      "claim": "All 68 current English localized namespace families (117 physical members) contain zero entries of exact GlobalStrings class 80800550, so the unresolved Crota candidate name is not explained by an English-localized GlobalStrings container of that class.",
+      "source_ids": ["source:english_globalstrings_locator"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:crota_candidate_probe_tool",
+      "kind": "repository_tool",
+      "locator": "tools/d1_crota_raid_candidate_probe.py",
+      "details": {"proof_boundary": "Tool explicitly forbids binary Crota promotion without a separate exact semantic ownership edge."}
+    },
+    {
+      "id": "source:current_activity_index",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9994964717 / D1_CURRENT_ACTIVITY_INDEX.json",
+      "sha256": "6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06",
+      "details": {"artifact_zip_sha256": "0b6df62c3385e3250271be0c57876351e7b2a5076c6a2de056092a4d98446955"}
+    },
+    {
+      "id": "source:crota_0447_candidates",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9995829343 / CROTA_0447_CANDIDATES.json",
+      "sha256": "741f500e1b6ba48c827408577aae16c0bf07e1d1dfbfdc3365e983b446bf0ba1",
+      "details": {"artifact_zip_sha256": "6b6badf5dc7fa9aed346550df8f4fb6a4cedec306575461c4d764e9db3739f33"}
+    },
+    {
+      "id": "source:crota_044b_candidates",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9995818422 / CROTA_044B_CANDIDATES.json",
+      "sha256": "ea4d56e2af07390dab43dd6af4a1f6a30dbdfed6a066d8c62a8f819eeff7e975",
+      "details": {"artifact_zip_sha256": "b2a29d7789a40aa7e3674b9900f01806df775e451bab537de707424c8e4f9285"}
+    },
+    {
+      "id": "source:crota_candidate_names",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9995889882 / CROTA_CANDIDATE_NAMES.json",
+      "sha256": "71cc481d8ee5283949cd6e1e8408af80965fc828e7470f8a9797c28408ab86bd",
+      "details": {"artifact_zip_sha256": "28e6c9d013dc0794fc861e5aaa242b3e9c4bed2246ff4148deb5ef6e37d66e70", "globalstrings_container": "80B1A007"}
+    },
+    {
+      "id": "source:crota_runtime_placements",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9995963526 / CROTA_END_RUNTIME_PLACEMENTS.json",
+      "sha256": "a460f9e2500460897d4d34aebf0def24982bc6b80af54166b97839abf3c02ec0",
+      "details": {"artifact_zip_sha256": "69d03bac70adbc70a4950d0874f8245e825363e7578cd6d73a68c8a2dfc9b117"}
+    },
+    {
+      "id": "source:crota_unresolved_backlinks",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9996076876 / CROTA_UNRESOLVED_COMBATANT_BACKLINKS.json",
+      "sha256": "3d2305512f9db71c72db75948e8798054408b87fa4bf99cb68752370be0b4868",
+      "details": {
+        "artifact_zip_sha256": "37a799a4d138d85fbb14a6956e475af9cb236de9b7452f5f060dc860058c67f7",
+        "scan_error_count": 0,
+        "workflow_note": "The scan completed successfully; the job conclusion was failure only because a post-scan summary snippet requested a non-existent hit_sources key instead of hits."
+      }
+    },
+    {
+      "id": "source:english_globalstrings_locator",
+      "kind": "actions_workflow_result",
+      "locator": "run 34056289298 / artifact 9996070315",
+      "details": {
+        "artifact_zip_sha256": "cfedbc8477b50a7d23a6b7b2def9c64f22696832bfbc54fe144d8170e5c5ad9c",
+        "physical_members_scanned": 117,
+        "namespace_families_scanned": 68,
+        "hit_namespace_count": 0
+      }
+    }
+  ],
+  "rejections": [
+    {
+      "id": "reject:oversoul_as_crota",
+      "candidate_node": "entity:8108E484",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "Exact CharacterNames resolution identifies the entity as The Oversoul.",
+      "assertion_ids": ["assert:oversoul_identity"]
+    },
+    {
+      "id": "reject:deathsinger_as_crota",
+      "candidate_node": "entity:8108EFFE",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "Exact CharacterNames resolution identifies the entity as Deathsinger.",
+      "assertion_ids": ["assert:deathsinger_identity"]
+    },
+    {
+      "id": "reject:divined_vision_a_as_crota",
+      "candidate_node": "entity:8108EFFD",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "Exact CharacterNames resolution identifies the entity as Divined Vision.",
+      "assertion_ids": ["assert:divined_vision_identity"]
+    },
+    {
+      "id": "reject:divined_vision_b_as_crota",
+      "candidate_node": "entity:8108EFFF",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "Exact CharacterNames resolution identifies the entity as Divined Vision.",
+      "assertion_ids": ["assert:divined_vision_identity"]
+    },
+    {
+      "id": "reject:baxx_as_crota",
+      "candidate_node": "entity:8108F008",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "Exact CharacterNames resolution identifies the entity as Baxx, Hand of Oryx.",
+      "assertion_ids": ["assert:baxx_identity"]
+    },
+    {
+      "id": "reject:taaun_as_crota",
+      "candidate_node": "entity:8108F009",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "Exact CharacterNames resolution identifies the entity as Ta'aun, Hand of Oryx.",
+      "assertion_ids": ["assert:taaun_identity"]
+    }
+  ],
+  "frontiers": [
+    {
+      "id": "frontier:resolve_FDBD7070",
+      "question": "What exact retail string, if any, corresponds to generic entity-name StringHash FDBD7070?",
+      "next_proof": "Locate the owning CharacterNames/global string bank or another exact source mapping for FDBD7070 without flattening namespace/hash collisions.",
+      "related_nodes": ["entity:8108EFFC", "stringhash:FDBD7070"]
+    },
+    {
+      "id": "frontier:class_808012D9",
+      "question": "What is the exact D1 schema/semantic role of class 808012D9 and its repeated 0x150-stride-like references?",
+      "next_proof": "Source-close class 808012D9 against retail schema/loader behavior, then determine what field at offsets 0xE0/0x230/0x380 means.",
+      "related_nodes": ["record:8108EF3A", "entity:8108EFFC"]
+    },
+    {
+      "id": "frontier:crota_binary_identity",
+      "question": "Which exact s_entity/model/skeleton family is Crota, Son of Oryx?",
+      "next_proof": "Recover an exact RaidMoon0/OversoulThrone/HiveUltraKnightA spawn/archetype/control edge to a binary entity. Do not promote 8108EFFC until that edge closes.",
+      "related_nodes": ["semantic:crota_son_of_oryx", "entity:8108EFFC"]
+    }
+  ]
+}
