@@ -1,0 +1,90 @@
+name: D1 global Activity index
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-activity-index.yml'
+      - 'tools/d1_remote_activity_index.py'
+      - 'tools/d1_split_tar_extract.py'
+      - 'tools/d1_pkg_probe.py'
+
+permissions:
+  contents: write
+
+jobs:
+  index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Read current package list
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          test -s reports/packages.txt
+
+      - name: Sparse-index current named tags and all D1 Activities
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_activity_index.py \
+            --package-list reports/packages.txt \
+            --out reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --tsv reports/D1_CURRENT_ACTIVITY_INDEX.tsv \
+            | tee reports/activity_index_stdout.txt
+
+      - name: Validate archive-wide index invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d['violations'][:20]
+          assert d['physical_member_count']>1000,d['physical_member_count']
+          assert d['package_family_count']>100,d['package_family_count']
+          assert d['current_named_row_count']>0,d['current_named_row_count']
+          assert d['current_d1_activity_count']>0,d['current_d1_activity_count']
+          assert not d['violations'],d['violations']
+          by_hash={x['tag_hash']:x for x in d['current_d1_activities']}
+          # Tower remains only a regression fixture. It is not a discovery input.
+          assert '80C98019' in by_hash,'current archive-wide index did not independently rediscover Tower Activity 80C98019'
+          t=by_hash['80C98019']
+          assert t['source_package_id']=='024C',t
+          print('GLOBAL_ACTIVITY_INDEX_CLOSED',json.dumps({
+              'physical_members':d['physical_member_count'],
+              'package_families':d['package_family_count'],
+              'named_rows':d['current_named_row_count'],
+              'activities':d['current_d1_activity_count'],
+              'unknown_activity_class_tags':d['current_unknown_activity_count'],
+              'tower_rediscovered':{'activity':'80C98019','package_id':t['source_package_id'],'snapshot':t['source_snapshot']},
+          },sort_keys=True))
+          PY
+
+      - name: Publish durable current Activity index
+        run: |
+          set -euo pipefail
+          tag=d1-global-activity-index-r1
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title 'D1 current archive-wide Activity index r1' \
+              --notes 'Sparse archive-wide D1 ROI Activity index. Walks the current PS4 split TAR, reads only Tiger package headers and current named-tag tables, validates their SHA-1s, and enumerates every current SActivity_ROI root without downloading package bodies or selecting by filenames/names. Includes exact physical family offsets for downstream per-Activity world dependency recovery.'
+          fi
+          gh release upload "$tag" \
+            reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            reports/D1_CURRENT_ACTIVITY_INDEX.tsv --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-global-activity-index
+          path: reports/
+          retention-days: 14
+          compression-level: 6
