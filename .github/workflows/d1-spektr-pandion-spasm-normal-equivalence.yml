@@ -1,0 +1,109 @@
+name: D1 Spektar archived Spasm normal-map equivalence census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-spasm-normal-equivalence.yml'
+      - 'tools/d1_guardian_spasm_normal_equivalence_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and exact evidence artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pillow opencv-python-headless
+          mkdir -p input/v5 input/dyes input/detail input/canonical out
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact 'D1-SPEKTAR-BUNGIE72-MATERIAL-V5-GLTF-UV-CORRECTED' input/v5.zip input/v5
+          fetch_artifact 'd1-spektr-pandion-exact-dyes' input/dyes.zip input/dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dye-detail-textures' input/detail.zip input/detail
+          resolve_one () { src=$(find "$1" -type f -name "$2" -print -quit); test -n "$src"; cp "$src" "$3"; }
+          resolve_one input/v5 'SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V5_GLTF_UV_CORRECTED.glb' input/canonical/v5.glb
+          resolve_one input/dyes 'spektar_pandion_exact_dyes.json' input/canonical/exact_dyes.json
+          resolve_one input/detail 'spektar_dye_detail_textures.json' input/canonical/detail_manifest.json
+          mkdir -p input/canonical/detail
+          find input/detail -type f -name '*.png' -exec cp '{}' input/canonical/detail/ \;
+          test "$(find input/canonical/detail -type f -name '*.png' | wc -l)" -eq 6
+
+      - name: Reproduce archived Spasm normal equation without approximation
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_spasm_normal_equivalence_probe.py \
+            input/canonical/v5.glb \
+            --exact-dyes input/canonical/exact_dyes.json \
+            --detail-manifest input/canonical/detail_manifest.json \
+            --detail-dir input/canonical/detail \
+            -o out/spasm_normal_equivalence.json
+
+      - name: Validate fail-closed census result
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('out/spasm_normal_equivalence.json'))
+          assert r['schema']=='d1_guardian_spasm_normal_equivalence/v1',r
+          assert r['active_range_count']==28,r
+          assert r['material_selector_group_count']==18,r
+          assert r['covered_pixels_total']>0,r
+          assert r['xy_length_squared_gt_1_pixels_total']>0,r
+          assert r['xy_length_squared_gt_1_fraction_total']>0,r
+          assert r['spasm_reconstructed_vector_length_max']>1.0,r
+          assert r['standard_gltf_normal_texture_is_exact'] is False,r
+          assert len(r['rows'])==18
+          print('ARCHIVED SPASM NORMAL EQUIVALENCE CENSUS PASSED')
+          print('covered pixels',r['covered_pixels_total'])
+          print('over-unit pixels',r['xy_length_squared_gt_1_pixels_total'])
+          print('fraction',r['xy_length_squared_gt_1_fraction_total'])
+          print('max vector length',r['spasm_reconstructed_vector_length_max'])
+          for row in r['rows']:
+              print(row['plate'],'selector',row['selector'],'pixels',row['covered_pixels'],'over',row['xy_length_squared_gt_1_pixels'],'fraction',row['xy_length_squared_gt_1_fraction'],'maxlen',row['spasm_reconstructed_vector_length_max'])
+          PY
+          sha256sum out/spasm_normal_equivalence.json > out/SHA256SUMS.txt
+
+      - name: Evidence README
+        run: |
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion — archived Bungie Spasm normal-map equivalence census
+
+          This artifact does not modify any model. It reproduces the exact published Bungie Spasm normal-combination
+          equation over the exact 28 active Spektar stage-0 ranges using the exact base normal plates, exact SDye_D1
+          detail-normal textures, exact a_texcoord2 multipliers, exact detail transforms, and the corrected D1/glTF UV
+          conversion established by Material v5.
+
+          Purpose: determine whether that published D1 normal path can be represented exactly by ordinary glTF
+          normalTexture semantics. Spasm adds base and detail RG vectors, reconstructs Z with sqrt(saturate(...)), and
+          does not normalize the resulting tangent-space vector before its lighting calculations. Therefore any active
+          sample with x^2+y^2 > 1 proves that a standard normalized glTF normalTexture is not behaviorally identical.
+
+          No clamping beyond the literal Spasm z reconstruction, renormalization, scaling, strength tuning, or visual
+          fitting is performed. A portable approximation may be useful later, but it must never be labeled exact.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-SPASM-NORMAL-EQUIVALENCE
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
