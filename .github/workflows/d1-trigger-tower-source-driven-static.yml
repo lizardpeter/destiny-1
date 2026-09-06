@@ -1,0 +1,24 @@
+name: Trigger D1 Tower source-driven static rebuild
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-trigger-tower-source-driven-static.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dispatch exact source-driven Tower textured preview workflow
+        run: |
+          set -euo pipefail
+          gh workflow run d1-tower-common-layer-textured-preview.yml --ref "${GITHUB_REF_NAME}"
+          echo 'DISPATCHED_D1_TOWER_COMMON_LAYER_TEXTURED_PREVIEW'
