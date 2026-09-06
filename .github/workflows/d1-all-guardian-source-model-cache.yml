@@ -1,0 +1,116 @@
+name: D1 all Guardian source model cache
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 all Guardian visual export plan']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHARD_SIZE: '25'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      model_count: ${{ steps.plan.outputs.model_count }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover latest exact Guardian visual plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-ALL-GUARDIAN-VISUAL-EXPORT-PLAN&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/plan.zip
+          unzip -q input/plan.zip -d input/plan
+          test -f input/plan/D1_ALL_GUARDIAN_VISUAL_EXPORT_PLAN.json
+      - name: Build deterministic model shard matrix
+        id: plan
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json,math,os
+          d=json.load(open('input/plan/D1_ALL_GUARDIAN_VISUAL_EXPORT_PLAN.json'))
+          n=int(d['unique_model_hash_count']);size=int(os.environ['SHARD_SIZE'])
+          assert n==len(d['model_cache']) and n>0,(n,len(d['model_cache']))
+          count=(n+size-1)//size
+          assert count<=256,(n,size,count)
+          print('model_count='+str(n))
+          print('shards='+json.dumps(list(range(count)),separators=(',',':')))
+          PY
+
+  export:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        shard: ${{ fromJson(needs.prepare.outputs.shards) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact Guardian visual plan and package catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/plan input/catalog runtime out/models
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-ALL-GUARDIAN-VISUAL-EXPORT-PLAN&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/plan.zip
+          unzip -q input/plan.zip -d input/plan
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Install exact geometry dependencies and Oodle
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Export source model shard with lazy FileHash routing
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_model_export_lazy.py \
+            --plan input/plan/D1_ALL_GUARDIAN_VISUAL_EXPORT_PLAN.json \
+            --shard-index '${{ matrix.shard }}' --shard-size "$SHARD_SIZE" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --runtime runtime --out-dir out/models --report out/SHARD_REPORT.json \
+            | tee out/stdout.txt
+          python - <<'PY'
+          import json,os
+          d=json.load(open('out/SHARD_REPORT.json'))
+          assert d['status']=='D1_REMOTE_MODEL_EXPORT_LAZY_COMPLETE',d['errors'][:10]
+          assert d['requested_model_count']==d['exported_model_count']>0,d
+          print('D1_GUARDIAN_SOURCE_MODEL_SHARD_EXACT',d['shard_index'],d['exported_model_count'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GUARDIAN-SOURCE-MODELS-${{ matrix.shard }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
