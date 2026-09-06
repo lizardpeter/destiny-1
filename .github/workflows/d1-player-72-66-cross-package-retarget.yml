@@ -52,6 +52,7 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('out/PLAYER_80AD27B2_80A7F90B_80A7E499_RETARGET.json'))
+          assert d['schema']=='d1_remote_cross_package_animation_retarget/v2',d['schema']
           assert d['skeleton']['tag_hash']=='80AD27B2' and d['skeleton']['node_count']==72,d['skeleton']
           r=d['runtime_rig'];assert r['tag_hash']=='80A7F90B' and r['control_count']==66,r
           assert r['components']==[
@@ -62,10 +63,11 @@ jobs:
           assert [x['frame_count'] for x in d['clips']]==[19,166,27]
           for x in d['clips']:
               assert x['node_count']==72 and x['rig_control_count']==66 and x['native_control_limit']==66,x
-              assert x['decoded_track_count']==x['retargeted_track_count']==x['local_track_count']==72,x
+              assert x['decoded_domain']=='runtime_controls' and x['decoded_track_count']==66,x
+              assert x['retargeted_domain']=='skeleton_nodes' and x['retargeted_track_count']==72 and x['local_track_count']==72,x
               assert x['selected_by_control_states'],x
               assert x['retarget_success'] is True,x
-          print('D1_PLAYER_72_66_CROSS_PACKAGE_RETARGET_EXACT')
+          print('D1_PLAYER_66_CONTROL_TO_72_NODE_CROSS_PACKAGE_RETARGET_EXACT')
           PY
           sha256sum out/*.json > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
