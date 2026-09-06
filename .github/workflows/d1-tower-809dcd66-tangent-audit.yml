@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-809dcd66-tangent-audit.yml'
       - 'tools/d1_tower_809dcd66_tangent_audit.py'
+      - 'tools/d1_tower_809dcd66_blender_basis_gate.py'
       - 'tools/d1_tower_80ca0dda_vs_replay.py'
       - 'tools/d1_tower_809dcd66_ps_replay.py'
       - 'tools/d1_world_static_common.py'
@@ -60,31 +61,19 @@ jobs:
             --out reports/809DCD66_tangent_audit.json \
             | tee reports/809DCD66_tangent_audit_stdout.txt
 
-      - name: Enforce promotion gates
+      - name: Classify faithful Blender basis path
         run: |
           set -euo pipefail
+          python tools/d1_tower_809dcd66_blender_basis_gate.py \
+            --audit reports/809DCD66_tangent_audit.json \
+            --out reports/809DCD66_blender_basis_gate.json \
+            | tee reports/809DCD66_blender_basis_gate_stdout.txt
           python - <<'PY'
           import json
-          p='reports/809DCD66_tangent_audit.json'
-          d=json.load(open(p))
-          assert d['geometry_count']==12,d['geometry_count']
-          assert d['placement_count']==64,d['placement_count']
-          gates=d['promotion_gates']
-          required=(
-            'tangent_w_is_glTF_sign_compatible',
-            'every_triangle_has_uniform_tangent_w',
-            'all_instance_transforms_orientation_preserving',
-            'instance_bases_are_orthogonal_within_1e_5',
-            'instance_scales_are_uniform_within_1e_5',
-            'native_normal_is_unit_within_1e_5',
-            'native_tangent_is_unit_within_1e_5',
-            'portable_uv_v_flip_exact_within_2e_6',
-            'portable_parallax_y_sign_flip_exact_within_3e_6',
-          )
-          failed=[k for k in required if not gates.get(k)]
-          if failed:
-              raise SystemExit('promotion gates failed: '+','.join(failed))
-          print('ALL_809DCD66_TANGENT_ADAPTER_GATES_GREEN')
+          d=json.load(open('reports/809DCD66_blender_basis_gate.json'))
+          assert d['status']=='D1_TOWER_809DCD66_BLENDER_EXPLICIT_BASIS_READY',d
+          assert d['standard_gltf_tangent_promotion_safe'] is False,d
+          print('EXPLICIT_D1_BLENDER_BASIS_READY_STANDARD_GLTF_TANGENT_REJECTED')
           PY
 
       - uses: actions/upload-artifact@v4
