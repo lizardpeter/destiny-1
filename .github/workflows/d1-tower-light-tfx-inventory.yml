@@ -1,0 +1,61 @@
+name: D1 Tower light TFX program inventory
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["D1 Tower original lighting and sky census"]
+    types: [completed]
+  push:
+    paths:
+      - '.github/workflows/d1-tower-light-tfx-inventory.yml'
+      - 'tools/d1_tfx_program_inventory.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inventory:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover completed original-lighting census artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p source reports
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            run_id='${{ github.event.workflow_run.id }}'
+          else
+            run_id="$(gh run list --workflow d1-tower-original-lighting-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$run_id"
+          gh run download "$run_id" -n d1-tower-original-lighting-census -D source
+          census="$(find source -name tower_map_lighting_census.json -print -quit)"
+          test -n "$census" -a -f "$census"
+          cp "$census" reports/tower_map_lighting_census.json
+
+      - name: Disassemble every preserved D1 light program without assigning output semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_tfx_program_inventory.py \
+            --lighting-census reports/tower_map_lighting_census.json \
+            --out reports/tower_light_tfx_program_inventory.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_light_tfx_program_inventory.json'))
+          assert d['status']=='D1_TFX_PROGRAM_INVENTORY_COMPLETE',d['violations']
+          assert d['buffer_count']>0 and d['unique_program_count']>0,d
+          print('LIGHT_TFX_PROGRAMS',json.dumps({k:d[k] for k in (
+            'buffer_count','unique_program_count','opcode_histogram','extern_histogram',
+            'output_slot_histogram','constant_reference_histogram')},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-light-tfx-program-inventory
+          path: reports/
+          retention-days: 14
+          compression-level: 6
