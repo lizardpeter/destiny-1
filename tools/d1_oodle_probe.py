@@ -8,6 +8,14 @@ Supports:
 The tool resolves Tiger patch-family block ownership, verifies the stored SHA-1,
 invokes OodleLZ_Decompress, and records decompressed size/hash/prefix. It does
 not distribute Oodle binaries.
+
+D1 ROI package blocks have a 0x40000-byte logical address-space capacity, but a
+compressed block's real Oodle output length can be shorter and that length is
+not serialized in the Tiger block table.  The source-backed allocation quantum
+is 0x4000.  `decompress_block()` therefore tests only legal 0x4000-aligned raw
+sizes, largest to smallest, and accepts a decode only when Oodle returns exactly
+the requested length.  Package readers zero-pad the proven decoded bytes back to
+0x40000 only after this step.
 """
 from __future__ import annotations
 
@@ -23,6 +31,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from d1_pkg_probe import BLOCK_SIZE, parse_header, parse_blocks, read_table, patch_path
+
+OODLE_BLOCK_QUANTUM = 0x4000
 
 
 def sha1_hex(data: bytes) -> str:
@@ -83,6 +93,10 @@ class Oodle3:
         dst = ctypes.create_string_buffer(raw_capacity)
         # Match tiger-pkg's Oodle 3 call: fuzzSafe=Yes, checkCRC=No,
         # verbosity=Minimal, threadPhase=All, all optional buffers/callbacks null.
+        # A D1 ROI call-matrix validation also proved these flags byte-identical
+        # to Charm's fuzzSafe=0/checkCRC=0/verbosity=0 call on both full and short
+        # retail blocks. Raw destination length, not these flags, is the material
+        # variable for the package-block issue.
         n = self.fn(
             ctypes.cast(src, ctypes.c_void_p), len(comp),
             ctypes.cast(dst, ctypes.c_void_p), raw_capacity,
@@ -95,6 +109,37 @@ class Oodle3:
         if n > raw_capacity:
             raise RuntimeError(f"Oodle returned impossible size {n} > {raw_capacity}")
         return dst.raw[:n]
+
+    def decompress_block(self, comp: bytes, *, max_raw_size: int = BLOCK_SIZE,
+                         quantum: int = OODLE_BLOCK_QUANTUM) -> bytes:
+        """Decode one D1 ROI Tiger package block with unknown exact raw length.
+
+        Tiger records the compressed stored size but not the real decompressed
+        length for a partial logical block.  D1/Oodle package consumers search
+        exact destination lengths in 0x4000-byte steps.  Try only those legal
+        lengths, largest first, and require Oodle to fill the selected output
+        exactly.  The caller remains responsible for padding to the 0x40000
+        logical address-space capacity after a successful shorter decode.
+        """
+        if max_raw_size <= 0 or max_raw_size > BLOCK_SIZE:
+            raise ValueError(f"invalid D1 block max raw size {max_raw_size}")
+        if quantum <= 0 or max_raw_size % quantum:
+            raise ValueError(f"invalid D1 Oodle block quantum/max size: {quantum}/{max_raw_size}")
+        failures = []
+        for raw_size in range(max_raw_size, quantum - 1, -quantum):
+            try:
+                dec = self.decompress(comp, raw_capacity=raw_size)
+            except Exception as ex:
+                failures.append((raw_size, repr(ex)))
+                continue
+            if len(dec) == raw_size:
+                return dec
+            failures.append((raw_size, f"partial return {len(dec)}"))
+        tail = ", ".join(f"{size:#x}:{err}" for size, err in failures[-4:])
+        raise RuntimeError(
+            f"OodleLZ_Decompress failed for every legal D1 package-block raw size "
+            f"{max_raw_size:#x}..{quantum:#x} step {quantum:#x}; last attempts: {tail}"
+        )
 
 
 def read_pkg_blocks(pkg: Path):
@@ -130,8 +175,8 @@ def probe_one(pkg: Path, blocks: list[dict], block_index: int, oodle: Oodle3) ->
         )
 
     if b["compressed"]:
-        dec = oodle.decompress(stored)
-        mode = "oodle3"
+        dec = oodle.decompress_block(stored)
+        mode = "oodle3_variable_d1_block"
     else:
         dec = stored
         mode = "raw"
@@ -151,6 +196,7 @@ def probe_one(pkg: Path, blocks: list[dict], block_index: int, oodle: Oodle3) ->
         "decompressed_sha256": sha256_hex(dec),
         "decompressed_prefix_hex": dec[:64].hex(),
         "logical_block_capacity": BLOCK_SIZE,
+        "oodle_block_quantum": OODLE_BLOCK_QUANTUM,
     }
 
 
