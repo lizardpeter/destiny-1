@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-runtime-rig-animation-owner-families.yml'
       - 'tools/d1_tower_runtime_rig_animation_owner_probe.py'
+      - 'tools/d1_tower_family_a_cross_package_animation_ownership.py'
       - 'tools/d1_tower_family_f_animation_ownership.py'
       - 'tools/d1_animation_control_state_map.py'
       - 'tools/d1_animation_retarget_probe.py'
@@ -14,6 +15,7 @@ on:
       - 'tools/d1_split_tar_extract.py'
       - 'evidence/d1_tower_runtime_rig_animation_owner_specs.json'
       - 'evidence/d1_tower_family_e_animation_source_member_catalog.json'
+      - 'evidence/d1_tower_family_a_01e3_member_catalog.json'
 
 permissions:
   contents: read
@@ -50,6 +52,18 @@ jobs:
           test "$(find source -maxdepth 1 -name 'ps4_city_tower_activities_act_023d_*.pkg' -type f | wc -l)" -eq 6
           echo 'de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695  source/ps4_city_tower_activities_act_023d_5.pkg' | sha256sum --check --strict
 
+      - name: Recover exact logical 01E3 Globals Cinematic family
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_family_a_01e3_member_catalog.json \
+            --package-list reports/packages.txt --family 01e3 \
+            --out-dir source --report reports/recover_01e3.json
+          test "$(find source -maxdepth 1 -name 'ps4_globals_cinematic_01e3_*.pkg' -type f | wc -l)" -eq 3
+          echo '5449c749b868d432b8d86c8c484b8a4324502af3d62e292c7553722294bff237  source/ps4_globals_cinematic_01e3_0.pkg' | sha256sum --check --strict
+          echo '53fcac4c2bc92e81ead9b91dd10ed4f14e7a9d8f005bf1bc60a9a59485e47ffd  source/ps4_globals_cinematic_01e3_1.pkg' | sha256sum --check --strict
+          echo '1aa58455b8c5bbcf0ff893d87f07affaba5a9dd0586a51d81be212565627cfba  source/ps4_globals_cinematic_01e3_2.pkg' | sha256sum --check --strict
+
       - name: Pin animation parser
         run: |
           set -euo pipefail
@@ -67,26 +81,16 @@ jobs:
             --spec evidence/d1_tower_runtime_rig_animation_owner_specs.json \
             --family G -o reports/TOWER_FAMILY_G_ANIMATION_OWNERSHIP.json
 
-      - name: Record known cross-package Family A frontier without blocking G
+      - name: Validate Family A cross-package owner control and selected clips
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
-          python - <<'PY'
-          import json
-          d={
-            'schema_version':1,
-            'status':'D1_TOWER_FAMILY_A_CROSS_PACKAGE_OWNER_FRONTIER',
-            'family':'A',
-            'sentity_package':'023D',
-            'owner_high':{'resource':'80C7A2A5','package':'023D','class_pair':['80802B92','808020BB'],'control_filehash_offset':1096},
-            'owner_low':{'resource':'80BC6412','package':'01E3','class_pair':['808020BF','808029D2'],'control_filehash_offset':272},
-            'skeleton':{'resource':'80BC60B2','package':'01E3','node_count':4},
-            'runtime_rig':{'resource':'80BC60B4','package':'01E3','control_count':4},
-            'negative_evidence':{'run':34061502855,'failure':'80BC6412 absent from 023D; single-package resolver is insufficient'},
-            'next_step':'Recover exact logical 01E3 family and validate A through a 023D+01E3 multi-package resolver.',
-            'policy':'Cross-package ownership is preserved as a frontier, not repaired by searching for a same-shaped local resource.'
-          }
-          json.dump(d,open('reports/TOWER_FAMILY_A_CROSS_PACKAGE_FRONTIER.json','w'),indent=2)
-          print(json.dumps(d,indent=2))
-          PY
+          set -euo pipefail
+          python tools/d1_tower_family_a_cross_package_animation_ownership.py \
+            --activity-pkg source/ps4_city_tower_activities_act_023d_5.pkg \
+            --cinematic-pkg source/ps4_globals_cinematic_01e3_2.pkg \
+            --runtime runtime --parser-root parser \
+            --spec evidence/d1_tower_runtime_rig_animation_owner_specs.json \
+            -o reports/TOWER_FAMILY_A_ANIMATION_OWNERSHIP.json
 
       - uses: actions/upload-artifact@v4
         if: always()
