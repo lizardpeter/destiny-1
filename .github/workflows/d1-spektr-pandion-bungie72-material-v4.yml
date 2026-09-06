@@ -1,0 +1,119 @@
+name: D1 Spektar Bungie72 material v4 exact tangent + detail diffuse
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie72-material-v4.yml'
+      - 'tools/d1_guardian_spasm_detail_diffuse_bake.py'
+      - 'tools/d1_guardian_stage0_tangent_restore.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and exact checkpoint artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pillow opencv-python-headless trimesh
+          mkdir -p input/tangent input/stage_dyes input/dyes input/detail input/canonical out
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact 'D1-SPEKTAR-BUNGIE72-EXACT-TANGENT' input/tangent.zip input/tangent
+          fetch_artifact 'd1-spektr-pandion-stage-part-dyes' input/stage_dyes.zip input/stage_dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dyes' input/dyes.zip input/dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dye-detail-textures' input/detail.zip input/detail
+          resolve_one () { src=$(find "$1" -type f -name "$2" -print -quit); test -n "$src"; cp "$src" "$3"; }
+          resolve_one input/tangent 'SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV_TANGENT.glb' input/canonical/source.glb
+          resolve_one input/stage_dyes 'spektar_masculine_stage_part_dyes.json' input/canonical/stage_dyes.json
+          resolve_one input/dyes 'spektar_pandion_exact_dyes.json' input/canonical/exact_dyes.json
+          resolve_one input/detail 'spektar_dye_detail_textures.json' input/canonical/detail_manifest.json
+          mkdir -p input/canonical/detail
+          find input/detail -type f -name '*.png' -exec cp '{}' input/canonical/detail/ \;
+          test "$(find input/canonical/detail -type f -name '*.png' | wc -l)" -eq 6
+
+      - name: Bake exact published Spasm diffuse path without discarding tangent data
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_spasm_detail_diffuse_bake.py \
+            input/canonical/source.glb \
+            --stage-dyes input/canonical/stage_dyes.json \
+            --exact-dyes input/canonical/exact_dyes.json \
+            --detail-manifest input/canonical/detail_manifest.json \
+            --detail-dir input/canonical/detail \
+            --report out/spasm_detail_diffuse.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V4_EXACT_TANGENT_DETAIL_DIFFUSE.glb
+
+      - name: Validate complete source geometry attribute set and deformation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,trimesh
+          p='out/SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V4_EXACT_TANGENT_DETAIL_DIFFUSE.glb'
+          raw=open(p,'rb').read(); jl=struct.unpack_from('<I',raw,12)[0]; g=json.loads(raw[20:20+jl].decode().rstrip('\x00 '))
+          active=[]
+          for n in g['nodes']:
+              if n.get('mesh') is None: continue
+              m=g['meshes'][n['mesh']]; pr=m['primitives'][0]
+              assert {'POSITION','NORMAL','TANGENT','TEXCOORD_0','TEXCOORD_1','JOINTS_0','WEIGHTS_0'} <= set(pr['attributes']),m.get('name')
+              assert 'd1SourceTangentRestore' in (m.get('extras') or {}),m.get('name')
+              mat=g['materials'][pr['material']]
+              assert 'KHR_materials_unlit' in (mat.get('extensions') or {}),mat.get('name')
+              active.append(m.get('name'))
+          assert len(active)==28,len(active)
+          assert len(g['skins'][0]['joints'])==72
+          assert len(g['animations'][0]['channels'])==216
+          r=json.load(open('out/spasm_detail_diffuse.json'))
+          assert r['active_primitive_count']==28 and r['baked_material_count']==18 and r['overlap_conflict_pixels']==0,r
+          s=trimesh.load(p,force='scene',process=False); assert len(s.geometry)==69
+          print('MATERIAL V4 STRUCTURAL VALIDATION PASSED')
+          print('bytes',len(raw),'active',len(active),'materials',r['baked_material_count'])
+          PY
+          python tools/d1_gltf_skin_deformation_bounds.py \
+            out/SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V4_EXACT_TANGENT_DETAIL_DIFFUSE.glb \
+            --frame 0 --frame 30 --frame 60 --frame 100 --frame 145 \
+            -o out/deformation_bounds.json
+          sha256sum out/*.glb > out/SHA256SUMS.txt
+
+      - name: README
+        run: |
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion Titan — Material v4
+
+          Visual checkpoint carrying the complete source-backed geometry attribute set now recovered for the exact
+          28 Bungie stage-0 gear ranges: POSITION, NORMAL, exact TANGENT vec4/handedness, TEXCOORD_0, exact D1
+          a_texcoord2 multiplier as TEXCOORD_1, JOINTS_0, and WEIGHTS_0.
+
+          The visible diffuse texture bakes Bungie's archived D1 Spasm detail-diffuse and GStack.R change-color path
+          with exact Spektar SDye_D1 colors, exact detail transforms and exact retail detail diffuse images. It is
+          KHR_materials_unlit so Cycles lighting cannot turn the validation render artificially black.
+
+          This still does not claim final native PS4 material equivalence. The next material stages are exact detail
+          normal combination and fuller native/specular reconstruction. Missing hands remain a separate exact
+          full-character/default-armor composition problem.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-BUNGIE72-MATERIAL-V4
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
