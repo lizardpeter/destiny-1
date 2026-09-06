@@ -10,6 +10,7 @@ on:
       - 'tools/d1_world_entity_dependency_census.py'
       - 'tools/d1_expand_world_entity_dependencies.py'
       - 'tools/d1_global_strings_resolve.py'
+      - 'tools/d1_world_articulated_entity_plan.py'
       - 'tools/d1_entity_resource_probe.py'
       - 'tools/d1_skeleton_probe.py'
       - 'tools/d1_tower_recover_activity_root_corpus.py'
@@ -169,6 +170,26 @@ jobs:
           compact={k:d[k] for k in ('status','target_count','global_container_count','bank_counts',
               'resolved_target_count','unresolved_target_count','unresolved_targets','resolved_targets','violations')}
           json.dump(compact,open('reports/TOWER_ENTITY_NAME_RESOLUTION_SUMMARY.json','w'),indent=2)
+          print(json.dumps(compact,indent=2))
+          PY
+      - name: Build articulated world-entity export plan
+        run: |
+          set -euo pipefail
+          python tools/d1_world_articulated_entity_plan.py \
+            --placements reports/tower_activity_entity_resource_census.json \
+            --entity-dependencies reports/tower_entity_dependency_census.json \
+            --global-strings reports/tower_entity_global_strings.json \
+            --out reports/tower_articulated_entity_plan.json \
+            | tee reports/tower_articulated_entity_plan_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_articulated_entity_plan.json'))
+          if d['candidate_count']<=0: raise SystemExit('no articulated Tower entity candidates')
+          if d['missing_placement_entities']: raise SystemExit('articulated candidate lost source placement ownership')
+          compact={k:d[k] for k in ('status','candidate_count','rig_export_candidate_count','family_count','placement_count',
+              'unique_model_count','unique_models','unique_skeleton_resource_count','unique_runtime_rig_resource_count',
+              'families','missing_placement_entities')}
+          json.dump(compact,open('reports/TOWER_ARTICULATED_ENTITY_PLAN_SUMMARY.json','w'),indent=2)
           print(json.dumps(compact,indent=2))
           PY
       - uses: actions/upload-artifact@v4
