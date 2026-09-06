@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Census exact D1 Guardian stage-part dye selectors for proven model selections.
 
-This probe joins a previously byte-proven Guardian visual-context report to the
-serialized SEntityModel stage-part records.  It deliberately uses the same
-index-range grouping key as d1_entity_model_export.py so each output row maps to
-one exported GLB primitive name:
+This probe reads serialized SEntityModel stage-part records and deliberately
+uses the same index-range grouping key as d1_entity_model_export.py so each
+output row maps to one exported GLB primitive name:
 
     <MODEL>_mesh<MESH>_range<INDEX_OFFSET>_<INDEX_COUNT>
 
-For every grouped range it preserves every candidate part and requires a single
-GearDyeChangeColorIndex before declaring the range dye-resolved.  The semantic
-mapping is delegated to d1_dye_stage_part_semantics.py, which records Bungie's
-D1 renderer convention separately from the raw byte.
+Selection can come from a previously byte-proven Guardian visual-context report
+or from explicit --model FileHashes supplied by a caller that has already
+locked the model set. For every grouped range the probe preserves every
+candidate part and requires a single GearDyeChangeColorIndex before declaring
+the range dye-resolved. Semantic mapping is delegated to
+`d1_dye_stage_part_semantics.py`, keeping raw retail bytes and labels separate.
 """
 from __future__ import annotations
 
@@ -34,6 +35,8 @@ from d1_split_tar_extract import SplitHttpTar
 
 def norm_hash(value: str) -> str:
     value = str(value).upper().removeprefix("0X").zfill(8)
+    if len(value) != 8:
+        raise ValueError(f"expected 32-bit FileHash, got {value!r}")
     int(value, 16)
     return value
 
@@ -70,34 +73,54 @@ def candidate_summary(part_index: int, p: dict) -> dict:
     }
 
 
+def selection_rows(visual_path: Path | None, explicit_models: list[str], body_role: str | None) -> tuple[list[dict], str | None]:
+    selected: list[dict] = []
+    seen: set[str] = set()
+    resolved_role = body_role
+
+    if visual_path is not None:
+        visual = json.loads(visual_path.read_text())
+        vrole = visual.get("body_role")
+        if body_role and vrole != body_role:
+            raise ValueError(f"expected body role {body_role}, got {vrole!r}")
+        resolved_role = vrole or body_role
+        for row in visual.get("models", []):
+            tag = norm_hash(row.get("tag_hash") or "")
+            if tag in seen:
+                raise ValueError(f"duplicate selected model {tag}")
+            seen.add(tag)
+            selected.append({
+                "tag_hash": tag,
+                "selection_source": "visual_context",
+                "entity_resource_hash": row.get("entity_resource_hash"),
+                "examples": row.get("examples") or [],
+            })
+
+    for raw in explicit_models:
+        tag = norm_hash(raw)
+        if tag in seen:
+            continue
+        seen.add(tag)
+        selected.append({"tag_hash": tag, "selection_source": "explicit_cli", "examples": []})
+
+    if not selected:
+        raise SystemExit("no models selected; supply --visual-context and/or --model")
+    return selected, resolved_role
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--visual-context", type=Path, required=True)
+    ap.add_argument("--visual-context", type=Path)
+    ap.add_argument("--model", action="append", default=[])
     ap.add_argument("--member-catalog", type=Path, action="append", required=True)
     ap.add_argument("--base-url", required=True)
     ap.add_argument("--part-count", type=int, default=10)
     ap.add_argument("--runtime", type=Path, required=True)
-    ap.add_argument("--expected-body-role", choices=("masculine", "feminine"))
+    ap.add_argument("--body-role", choices=("masculine", "feminine"))
     ap.add_argument("-o", "--output", type=Path, required=True)
     a = ap.parse_args()
 
-    visual = json.loads(a.visual_context.read_text())
-    if a.expected_body_role and visual.get("body_role") != a.expected_body_role:
-        raise ValueError(f"expected body role {a.expected_body_role}, got {visual.get('body_role')!r}")
-    selected = []
-    seen = set()
-    for row in visual.get("models", []):
-        tag = norm_hash(row.get("tag_hash") or "")
-        if tag in seen:
-            raise ValueError(f"duplicate selected model {tag}")
-        seen.add(tag)
-        selected.append({
-            "tag_hash": tag,
-            "entity_resource_hash": row.get("entity_resource_hash"),
-            "examples": row.get("examples") or [],
-        })
-    if not selected:
-        raise SystemExit("visual-context report selected no models")
+    selected, body_role = selection_rows(a.visual_context, a.model, a.body_role)
 
     catalogs = load_catalogs(a.member_catalog)
     missing = sorted({filehash_pkg_index(int(x["tag_hash"], 16))[0] for x in selected} - set(catalogs))
@@ -116,12 +139,13 @@ def main() -> int:
 
     for sel in selected:
         tag = sel["tag_hash"]
+        pkg, idx = filehash_pkg_index(int(tag, 16))
         entry, payload = fetch_exact_model(tag, views)
         model = parse_model(payload, "PS4")
         mrow = {
             **sel,
-            "source_package_id": f"{filehash_pkg_index(int(tag, 16))[0]:04X}",
-            "source_file_index": filehash_pkg_index(int(tag, 16))[1],
+            "source_package_id": f"{pkg:04X}",
+            "source_file_index": idx,
             "entry_reference": entry["reference"].upper(),
             "mesh_count": model["mesh_count"],
             "meshes": [],
@@ -176,8 +200,8 @@ def main() -> int:
         models.append(mrow)
 
     report = {
-        "schema": "d1_guardian_stage_part_dye_census/v1",
-        "body_role": visual.get("body_role"),
+        "schema": "d1_guardian_stage_part_dye_census/v2",
+        "body_role": body_role,
         "model_count": len(models),
         "unique_range_count": len(all_groups),
         "resolved_range_count": sum(bool(x["resolved"]) for x in all_groups),
