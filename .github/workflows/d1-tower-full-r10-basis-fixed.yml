@@ -1,0 +1,90 @@
+name: D1 Tower full r10 basis-fixed
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-full-r10-basis-fixed.yml'
+      - 'tools/d1_gltf_layer_merge.py'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q numpy
+      - name: Recover exact r6 static/common and corrected articulated r10
+        run: |
+          set -euo pipefail
+          mkdir -p input out reports alternate
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r6-exact-resources/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb' \
+            -o input/static_common_r6.glb
+          test "$(stat -c%s input/static_common_r6.glb)" = 558618948
+          echo '54e6d35f6d2a940e68f4d70bb0266b5af8fd57fdd39c0d0bc8396c4acc224ef9  input/static_common_r6.glb' | sha256sum --check --strict
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-articulated-e-f-g-animated-r10-basis-fixed/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb' \
+            -o input/articulated_r10.glb
+          test "$(stat -c%s input/articulated_r10.glb)" = 76007176
+          echo 'd7ba8084cebe4c2d100b37fe89dec41793249b14a99b29da37f2fbad34bfc331  input/articulated_r10.glb' | sha256sum --check --strict
+          cp input/articulated_r10.glb alternate/articulated_different_name.glb
+      - name: Merge full r10 twice and prove path independence
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_layer_merge.py --base input/static_common_r6.glb \
+            --layer articulated_basis_fixed= input/articulated_r10.glb 2>/dev/null && exit 91 || true
+          # Correct invocation; preceding guarded call protects against accidental parser acceptance of split layer syntax.
+          python tools/d1_gltf_layer_merge.py --base input/static_common_r6.glb \
+            --layer articulated_basis_fixed=input/articulated_r10.glb \
+            --out out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
+            --report reports/FULL_R10_MERGE.json
+          python tools/d1_gltf_layer_merge.py --base input/static_common_r6.glb \
+            --layer articulated_basis_fixed=alternate/articulated_different_name.glb \
+            --out alternate/full_r10_path_control.glb --report reports/FULL_R10_MERGE_PATH_CONTROL.json
+          cmp --silent out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb alternate/full_r10_path_control.glb
+      - name: Validate full r10 resources and corrected skins
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_skin_bind_identity_probe.py out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
+            --model 80CA0CFC --model 80C7AF4C --model 80C7AE59 --max-error 2e-5 -o reports/FULL_R10_SKIN_BIND_IDENTITY.json
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          from tools.d1_gltf_layer_merge import read_glb
+          p=Path('out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb');m=json.load(open('reports/FULL_R10_MERGE.json'));c=json.load(open('reports/FULL_R10_MERGE_PATH_CONTROL.json'));s=json.load(open('reports/FULL_R10_SKIN_BIND_IDENTITY.json'));doc,_=read_glb(p)
+          sha=hashlib.sha256(p.read_bytes()).hexdigest()
+          assert sha==m['output_sha256']==c['output_sha256'];assert m['base_bin_exact_prefix'] is True and c['base_bin_exact_prefix'] is True
+          assert all(x['exact'] for x in m['base_json_exact_prefixes'].values())
+          assert len(doc.get('meshes',[]))==2320 and len(doc.get('materials',[]))==534 and len(doc.get('textures',[]))==658 and len(doc.get('images',[]))==658
+          assert len(doc.get('skins',[]))==17 and len(doc.get('animations',[]))==39 and len(doc.get('nodes',[]))==13215
+          assert s['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and s['max_observed_error']<=2e-5
+          out={'schema_version':1,'status':'D1_TOWER_FULL_R10_BASIS_FIXED_COMPLETE','bytes':p.stat().st_size,'sha256':sha,'counts':{'meshes':2320,'materials':534,'textures':658,'images':658,'nodes':13215,'skins':17,'animations':39},'static_common_sha256':'54e6d35f6d2a940e68f4d70bb0266b5af8fd57fdd39c0d0bc8396c4acc224ef9','articulated_r10_sha256':'d7ba8084cebe4c2d100b37fe89dec41793249b14a99b29da37f2fbad34bfc331','base_bin_exact_prefix':True,'path_independent':True,'skin_bind_max_error':s['max_observed_error'],'known_remaining_visual_frontier':'Common/decal transparent-card and incomplete material semantics are unchanged from r6 and are being fixed separately.'}
+          json.dump(out,open('reports/FULL_R10_SUMMARY.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+      - name: Publish full corrected-NPC r10 checkpoint
+        run: |
+          set -euo pipefail
+          tag=d1-tower-full-r10-basis-fixed
+          if ! gh release view "$tag" >/dev/null 2>&1;then
+            gh release create "$tag" --title 'D1 Tower full r10 basis-fixed articulated NPCs' \
+              --notes 'Full Tower checkpoint using exact r6 static/common plus the basis-corrected E/F/G articulated r10 layer. This fixes the concrete double-coordinate-conversion bug that misaligned/exploded animated NPC skeletons. Common/decal transparency and remaining texture/shader fidelity are not claimed solved in this checkpoint.'
+          fi
+          gh release upload "$tag" out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb reports/FULL_R10_SUMMARY.json --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-full-r10-basis-fixed
+          path: |
+            out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb
+            reports/*.json
+          retention-days: 14
+          compression-level: 6
