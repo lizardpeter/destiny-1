@@ -19,12 +19,18 @@ A zero-count DynamicArray is valid without dereferencing its serialized pointer.
 The raw relative/absolute pointer evidence is still preserved in the report, but
 an out-of-payload target is not a framing violation when count == 0.
 
+Parallel Activity/scenario carriers can serialize the same WorldID more than once.
+Serialized references are therefore never silently discarded, but a second view is
+also emitted: one unique runtime world-placement record per WorldID. Duplicate
+serializations are promoted to one runtime placement only when EntitySK, transform,
+and DataResource class agree exactly; conflicting serializations fail closed.
+
 No entity/NPC semantic label is inferred by this layer.
 """
 from __future__ import annotations
 
 import argparse,json,math,struct,sys
-from collections import Counter
+from collections import Counter,defaultdict
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
@@ -132,6 +138,31 @@ def parse_f603(c,h):
   if not row['data_resource']['ok']:out['violations'].append(f'entry[{i}]:data_resource_pointer_invalid')
  out['collapsed']=True;out['entry_count']=len(out['entries']);return out
 
+def runtime_placement_view(real_rows,violations):
+ """Group repeated scenario/activity serializations by exact retail WorldID."""
+ groups=defaultdict(list)
+ for r in real_rows:groups[r['world_id_hex']].append(r)
+ unique=[];duplicate_refs=0
+ for wid in sorted(groups):
+  rows=groups[wid];first=rows[0]
+  sig=lambda x:(x['entity_hash'],tuple(x['rotation']),tuple(x['translation']),
+                (x.get('data_resource') or {}).get('resource_class'),
+                bool((x.get('data_resource') or {}).get('is_null')))
+  signatures={sig(x) for x in rows}
+  consistent=len(signatures)==1
+  if not consistent:
+   violations.append(f'world_id_conflicting_serializations:{wid}')
+  duplicate_refs+=max(0,len(rows)-1)
+  unique.append({
+   'world_id':first['world_id'],'world_id_hex':wid,'entity_hash':first['entity_hash'],
+   'rotation':first['rotation'],'translation':first['translation'],'transform_finite':first['transform_finite'],
+   'data_resource_class':(first.get('data_resource') or {}).get('resource_class'),
+   'serialized_reference_count':len(rows),'duplicate_serialization_count':max(0,len(rows)-1),
+   'serializations_consistent':consistent,
+   'source_references':[{'source_kind':x['source_kind'],'source_hash':x['source_hash'],'index':x['index'],'record_offset':x['record_offset']} for x in rows],
+  })
+ return unique,duplicate_refs
+
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('--snapshot',type=Path,action='append',required=True);ap.add_argument('--runtime',type=Path,required=True)
  ap.add_argument('--entity-table-census',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);a=ap.parse_args()
@@ -146,25 +177,32 @@ def main():
   viol.extend(f"{t['map_data_table']}:{x}" for x in t['violations'])
  f603_rows=[e for t in f603_tables for e in t['entries']];direct_rows=[e for t in direct_tables for e in t['entries']];rows=f603_rows+direct_rows
  real=[e for e in rows if e['entity_hash'] not in NULLS];resolved=[e for e in real if e['entity']['exists']];class_ok=[e for e in real if e['entity']['class_matches']]
+ unique_world,duplicate_refs=runtime_placement_view(real,viol)
  dr_classes=Counter((e['data_resource'].get('resource_class') or ('NULL' if e['data_resource'].get('is_null') else 'UNKNOWN')) for e in rows)
  entity_refs=Counter(e['entity_hash'] for e in real);world_ids=Counter(e['world_id_hex'] for e in real);source_kinds=Counter(e['source_kind'] for e in rows)
+ runtime_entity_counts=Counter(e['entity_hash'] for e in unique_world)
  collapse_reasons=Counter(t.get('collapse_reason','collapsed' if t.get('collapsed') else 'failed') for t in f603_tables)
  er_hashes=Counter(t.get('entity_resource',{}).get('hash') for t in f603_tables if t.get('entity_resource',{}).get('hash') not in NULLS)
- out={'schema_version':3,'status':'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_COMPLETE' if not viol else 'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_PARTIAL',
+ out={'schema_version':4,'status':'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_COMPLETE' if not viol else 'D1_ACTIVITY_ENTITY_RESOURCE_CENSUS_PARTIAL',
   'pinned_source':PINNED_SOURCE,'input_entity_table_census':str(a.entity_table_census),
   'f603_count':len(f603_tables),'collapsed_f603_count':sum(t.get('collapsed',False) for t in f603_tables),'collapse_reason_counts':dict(collapse_reasons),
   'unique_entity_resource_tags':len(er_hashes),'direct_map_data_table_count':len(direct_tables),'direct_map_entry_count':len(direct_rows),
   'f603_collapsed_entry_count':len(f603_rows),'collapsed_entry_count':len(rows),'source_kind_counts':dict(source_kinds),
-  'real_entity_entry_count':len(real),'unique_entity_hash_count':len(entity_refs),'resolved_entity_entry_count':len(resolved),
+  'real_entity_entry_count':len(real),'serialized_entity_placement_reference_count':len(real),
+  'unique_runtime_world_placement_count':len(unique_world),'duplicate_serialized_placement_reference_count':duplicate_refs,
+  'unique_entity_hash_count':len(entity_refs),'resolved_entity_entry_count':len(resolved),
   'entity_class_match_entry_count':len(class_ok),'unique_world_id_count':len(world_ids),'data_resource_class_counts':dict(dr_classes),
-  'entity_reference_counts':dict(entity_refs),'world_id_reference_counts':dict(world_ids),'unique_entity_hashes':sorted(entity_refs),
-  'direct_tables':direct_tables,'tables':f603_tables,'violations':viol,
+  'entity_reference_counts':dict(entity_refs),'runtime_entity_placement_counts':dict(runtime_entity_counts),
+  'world_id_reference_counts':dict(world_ids),'unique_entity_hashes':sorted(entity_refs),
+  'unique_world_placements':unique_world,'direct_tables':direct_tables,'tables':f603_tables,'violations':viol,
   'policy':('Preserves both D1 activity entity paths used by Charm: ordinary SMapDataTable rows and F603 rows collapsed through EntityResource. '
-            'Zero-count arrays are never dereferenced; their serialized pointers remain evidence only. F603 collapse requires Unk10 S2E098080 and reads '
-            'SDD078080.DataEntries. Entity hash is D1 EntitySK +0x00. No NPC semantic is inferred.')}
+            'Serialized references remain loss-preserved. WorldID is used as the runtime-placement identity only after every repeated serialization agrees exactly on '
+            'EntitySK, rotation, translation and DataResource class; conflicts fail closed. Zero-count arrays are never dereferenced. F603 collapse requires Unk10 '
+            'S2E098080 and reads SDD078080.DataEntries. No NPC semantic is inferred.')}
  a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
  keys=('status','f603_count','collapsed_f603_count','collapse_reason_counts','unique_entity_resource_tags','direct_map_data_table_count','direct_map_entry_count',
-       'f603_collapsed_entry_count','collapsed_entry_count','source_kind_counts','real_entity_entry_count','unique_entity_hash_count','resolved_entity_entry_count',
+       'f603_collapsed_entry_count','collapsed_entry_count','source_kind_counts','real_entity_entry_count','serialized_entity_placement_reference_count',
+       'unique_runtime_world_placement_count','duplicate_serialized_placement_reference_count','unique_entity_hash_count','resolved_entity_entry_count',
        'entity_class_match_entry_count','unique_world_id_count','data_resource_class_counts','violations')
  print(json.dumps({k:out[k] for k in keys},indent=2));return 0 if not viol else 2
 if __name__=='__main__':raise SystemExit(main())
