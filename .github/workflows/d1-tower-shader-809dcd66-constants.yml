@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-tower-shader-809dcd66-constants.yml'
       - 'tools/d1_material_ps_constant_resolve.py'
       - 'tools/d1_ps4_material_state_census.py'
+      - 'tools/d1_tower_draw_state_census.py'
 
 permissions:
   contents: read
@@ -134,6 +135,25 @@ jobs:
           assert t['unk20_histogram']=={'0088':24},t['unk20_histogram']
           assert t['unk0c_x_ps_constant_storage']=={'00000000|external':10,'00000002|inline_only':14},t['unk0c_x_ps_constant_storage']
           print('PS4_809DCD66_RAW_STATE_CORRELATION_GREEN')
+          PY
+
+      - name: Correlate static draw state with material state
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_draw_state_census.py \
+            "${args[@]}" --runtime runtime --out reports/PS4_TOWER_DRAW_STATE_CENSUS.json \
+            | tee reports/PS4_TOWER_DRAW_STATE_CENSUS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS4_TOWER_DRAW_STATE_CENSUS.json'))
+          assert d['status']=='D1_TOWER_DRAW_STATE_CENSUS_COMPLETE',d['violations']
+          t=d['target_809DCD66']
+          assert t['material_count']==24,t
+          assert t['visible_row_count']>0,t
+          assert t['material_unk20_histogram']=={'0088':t['row_count']},t['material_unk20_histogram']
+          print('PS4_809DCD66_DRAW_STATE_CORRELATION_GREEN')
           PY
 
       - name: Preserve exact shader resource and b0 read windows
