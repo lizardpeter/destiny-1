@@ -1,0 +1,92 @@
+name: D1 shared glove-collar resource and skin proof
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-glove-collar-resource-skin-proof.yml'
+      - 'tools/d1_remote_entity_resource_classify.py'
+      - 'tools/d1_remote_model_skin_census.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies
+        run: python -m pip install -q numpy trimesh
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Classify exact Resource arrays for all three retail owners
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_entity_resource_classify.py \
+            --entity 80A6A022 --entity 80A6A05E --entity 80A6A06C \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime \
+            -o out/80A6A022_05E_06C_resource_classification.json
+
+      - name: Census exact inline skin for 80A6A345
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_model_skin_census.py \
+            --model 80A6A345 \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime \
+            -o out/80A6A345_skin_census.json
+
+      - name: Lock proof boundaries
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('out/80A6A022_05E_06C_resource_classification.json'))
+          s=json.load(open('out/80A6A345_skin_census.json'))
+          assert r['schema']=='d1_remote_entity_resource_classify/v1'
+          assert [x['entity_hash'] for x in r['entities']]==['80A6A022','80A6A05E','80A6A06C']
+          assert all(x['resource_count']==54 for x in r['entities'])
+          assert r['error_count']==0,r['errors'][:3]
+          assert s['schema']=='d1_remote_model_skin_census/v1'
+          assert s['model_tag_hash']=='80A6A345'
+          assert s['model_mesh_count']==3
+          assert [x['full_skin']['vertex_count'] for x in s['meshes']]==[6921,266,760]
+          assert [x['primary_stride'] for x in s['meshes']]==[16,12,12]
+          print('CLASSIFICATION STATUS',r['resolution_status_counts'])
+          print('RESOURCE ROLES',r['entity_resource_role_counts'])
+          print('SKIN FULL DOMAIN',s['full_model_bone_domain'])
+          print('SKIN ACTIVE DOMAIN',s['stage0_highest_bone_domain'])
+          for m in s['meshes']:
+              print('SKIN MESH',m['mesh_index'],'modes',m['full_skin']['modes'],'active_parts',m['stage0_highest_part_count'],'active_domain',m['stage0_highest_bone_domain'])
+          for e in r['entities']:
+              for x in e['resources']:
+                  er=x.get('entity_resource') or {}
+                  if er.get('semantic_role') not in (None,'other_or_unknown'):
+                      print('ROLE',e['entity_hash'],x['resource_index'],x['resource_hash'],er['semantic_role'],x.get('entry'))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-shared-glove-collar-resource-skin-proof
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
