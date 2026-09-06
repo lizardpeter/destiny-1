@@ -1,0 +1,141 @@
+name: D1 Spektar Pandion exact Bungie 72-bone player preview
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie-72-player-preview.yml'
+      - 'tools/d1_bungie_published_player_preview_bind.py'
+      - 'tools/d1_gltf_skin_deformation_bounds.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Dependencies and exact basis-fixed Spektar checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p input published out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-Spektar-Pandion-Guardian-VISUAL-EXPORTS-BASIS-FIXED&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/basis.zip
+          unzip -q input/basis.zip -d input/basis
+          cp input/basis/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_STATIC_BASIS_FIXED.glb input/spektar_static.glb
+          echo 'c019a8ebffa61976780cd3361f96cc5cec02971f9514785738dd6840ce9b605f  input/spektar_static.glb' | sha256sum --check --strict
+
+      - name: Recover exact published Bungie player skeleton and animation
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://www.bungie.net/common/destiny_content/animations/destiny_player_skeleton.js' \
+            -o published/destiny_player_skeleton.js
+          echo 'a477e58e2b9c23dcc75e8b538c24cc181f2a3af4b2cb2340b603aacf2f47e716  published/destiny_player_skeleton.js' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://www.bungie.net/common/destiny_content/animations/destiny_player_animation.js' \
+            -o published/destiny_player_animation.js
+          echo '2d6d419a357e8e141cf717b20ab68034cb6e6ded51f63fc3377bb26ce2fef3b5  published/destiny_player_animation.js' | sha256sum --check --strict
+
+      - name: Replace invalid 67-node diagnostic with exact published 72-node palette
+        run: |
+          set -euo pipefail
+          python tools/d1_bungie_published_player_preview_bind.py \
+            --input-glb input/spektar_static.glb \
+            --skeleton published/destiny_player_skeleton.js \
+            --animation published/destiny_player_animation.js \
+            --fps 30 \
+            --report out/bind_report.json \
+            -o out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb
+
+      - name: Independently evaluate serialized skin deformation
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_skin_deformation_bounds.py \
+            out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb \
+            --frame 0 --frame 1 --frame 30 --frame 60 --frame 100 --frame 145 \
+            -o out/deformation_bounds.json
+          python - <<'PY'
+          import json
+          b=json.load(open('out/bind_report.json'))
+          d=json.load(open('out/deformation_bounds.json'))
+          assert b['skeleton_nodes']==72,b
+          assert b['animation_frames']==146,b
+          assert b['animation_channels']==216,b
+          assert b['shoulder_fixup_indices']['27']['string']=='b_l_shoulder_twist_fixup',b
+          assert b['shoulder_fixup_indices']['28']['string']=='b_r_shoulder_twist_fixup',b
+          assert b['max_bind_inverse_error'] < 1e-4,b
+          assert d['skin_joint_count']==72,d
+          assert d['animation_frame_count']==146,d
+          assert d['bind_identity_max_error'] < 1e-4,d
+          for s in d['samples']:
+              x,y,z=s['span']
+              assert 0.5 < x < 1.3,s
+              assert 1.5 < y < 2.2,s
+              assert 0.3 < z < 1.3,s
+          print('BUNGIE 72-NODE PLAYER PREVIEW DEFORMATION VALIDATION PASSED')
+          for s in d['samples']: print(s)
+          PY
+
+      - name: Independent container parse
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,trimesh
+          p='out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb'
+          raw=open(p,'rb').read(); _,_,total=struct.unpack_from('<4sII',raw,0); assert total==len(raw)
+          jl=struct.unpack_from('<I',raw,12)[0]; g=json.loads(raw[20:20+jl].decode().rstrip('\x00 '))
+          assert len(g['skins'])==1 and len(g['skins'][0]['joints'])==72
+          assert len(g['animations'])==1 and len(g['animations'][0]['channels'])==216
+          assert sum(1 for n in g['nodes'] if n.get('mesh') is not None)==28
+          assert g['nodes'][g['skins'][0]['joints'][27]]['name']=='b_l_shoulder_twist_fixup'
+          assert g['nodes'][g['skins'][0]['joints'][28]]['name']=='b_r_shoulder_twist_fixup'
+          s=trimesh.load(p,force='scene')
+          print('trimesh geometry definitions',len(s.geometry),'GLB bytes',len(raw))
+          PY
+          sha256sum out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb > out/SHA256SUMS.txt
+
+      - name: Evidence README
+        run: |
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion Titan - exact Bungie published 72-node player-preview diagnostic
+
+          This file removes the previously invalid direct-index 67-node 809D8613 skin target and the unrelated
+          809D8572 diagnostic animation. The exact source JOINTS_0/WEIGHTS_0 values are preserved unchanged and are
+          interpreted against Bungie's exact published D1 player-preview 72-node skeleton order. Source indices 27
+          and 28 therefore land on b_l_shoulder_twist_fixup and b_r_shoulder_twist_fixup exactly as Bungie's published
+          palette defines them.
+
+          The animation is Bungie's exact published destiny_player_animation.js: 146 frames, 72 nodes, 72 controls.
+          The archived Spasm static/animated component-map rules are reproduced directly. Tiger coordinates are mapped
+          to the already-proven glTF basis [x,y,z] -> [y,z,x].
+
+          30 fps is a glTF serialization cadence, chosen to mirror the archived viewer's nominal +0.5 source frame per
+          requestAnimationFrame behavior at 60 Hz. It is not promoted as a serialized PS4 clip-rate field.
+
+          This is exact for Bungie's published D1 player-preview skin palette and animation applied to the exact PS4
+          Spektar source weights. It does not claim that a byte-identical 72-node skeleton tag has yet been found in a
+          PS4 race_set package. Full preview composition (gearAndDefaultArmor, including missing hand/body contribution)
+          remains a separate unresolved ownership problem.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-PANDION-BUNGIE-72-PLAYER-PREVIEW
+          path: |
+            out/
+            published/destiny_player_skeleton.js
+            published/destiny_player_animation.js
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
