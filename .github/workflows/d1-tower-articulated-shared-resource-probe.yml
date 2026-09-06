@@ -1,0 +1,70 @@
+name: D1 Tower articulated shared resource probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-articulated-shared-resource-probe.yml'
+      - 'tools/d1_remote_filehash_probe.py'
+      - 'tools/d1_remote_investment_parent_probe.py'
+      - 'tools/d1_entity_resource_probe.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install verified Oodle runtime and package index
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Probe shared articulated dependencies by exact FileHash
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_filehash_probe.py \
+            --tag-hash 80AB0301 \
+            --tag-hash 80AAC3DD \
+            --tag-hash 80AADE40 \
+            --tag-hash 80AACC23 \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --out reports/tower_articulated_shared_resources.json \
+            | tee reports/tower_articulated_shared_resources_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_articulated_shared_resources.json'))
+          if d['status']!='D1_REMOTE_FILEHASH_PROBE_COMPLETE': raise SystemExit(d['violations'])
+          rows=[]
+          for r in d['entries']:
+              er=r.get('entity_resource') or {}
+              rows.append({'tag_hash':r['tag_hash'],'package_id':r['package_id'],'entry':r.get('entry'),
+                           'payload_size':r.get('payload_size'),'payload_sha256':r.get('payload_sha256'),
+                           'semantic_role':er.get('semantic_role'),'unk10_class':(er.get('unk10') or {}).get('class_hash'),
+                           'unk18_class':(er.get('unk18') or {}).get('class_hash'),
+                           'embedded_model_tag_hash':er.get('embedded_model_tag_hash'),
+                           'embedded_physics_model_tag_hash':er.get('embedded_physics_model_tag_hash'),
+                           'aligned_resolved_tag_matches':r.get('aligned_resolved_tag_matches',[])})
+          out={'status':d['status'],'resources':rows}
+          json.dump(out,open('reports/TOWER_ARTICULATED_SHARED_RESOURCE_SUMMARY.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-articulated-shared-resource-probe
+          path: reports/
+          retention-days: 14
+          compression-level: 6
