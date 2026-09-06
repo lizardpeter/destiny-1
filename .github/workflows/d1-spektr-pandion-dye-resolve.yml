@@ -1,0 +1,81 @@
+name: D1 Spektar Pandion exact dye resolve
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-dye-resolve.yml'
+      - 'tools/d1_investment_dye_resolver.py'
+      - 'tools/d1_entry_extract.py'
+      - 'tools/d1_remote_investment_parent_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle and Investment globals/assets
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          BASE='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_split_tar_extract.py --base-url "$BASE" --part-count 10 --start-offset 0x61A5CB200 \
+            --target ps4_investment_globals_012f_0.pkg --target ps4_investment_globals_012f_1.pkg \
+            --target ps4_investment_globals_012f_2.pkg --target ps4_investment_globals_012f_3.pkg \
+            --target ps4_investment_globals_012f_4.pkg --target ps4_investment_globals_012f_5.pkg \
+            --target ps4_investment_globals_012f_6.pkg \
+            --out recovered --manifest out/012f_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$BASE" --part-count 10 --start-offset 0x5A9421400 \
+            --target ps4_investment_assets_013f_1.pkg --target ps4_investment_assets_013f_2.pkg \
+            --target ps4_investment_assets_013f_3.pkg --target ps4_investment_assets_013f_4.pkg \
+            --target ps4_investment_assets_013f_5.pkg \
+            --out recovered --manifest out/013f_extract.json --retries 6 --timeout 90
+      - name: Resolve channels 0/1/2 and dyes 8752/8753/8754
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_investment_dye_resolver.py recovered --runtime runtime \
+            --channel-index 0 --channel-index 1 --channel-index 2 \
+            --dye-index 8752 --dye-index 8753 --dye-index 8754 \
+            -o out/spektar_pandion_exact_dyes.json
+      - name: Validate exact Spektar dye closure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/spektar_pandion_exact_dyes.json'))
+          assert d['requested_dye_indices']==[8752,8753,8754],d
+          assert d['requested_channel_indices']==[0,1,2],d
+          assert d['resolved_dye_count']==3,d
+          assert not d['unresolved_package_ids'],d
+          assert [x['known_name'] for x in d['channels']]==['ArmorPlate','ArmorSuit','ArmorCloth'],d['channels']
+          assert all(x['assignment_match_count']==1 for x in d['dyes']),d['dyes']
+          assert all(x['relation_manifest']['effective_class_charm_display']=='63348080' for x in d['dyes']),d['dyes']
+          assert all(x['dye_manifest']['effective_class_charm_display']=='F41A8080' for x in d['dyes']),d['dyes']
+          print('SPEKTAR DYE CHAIN CLOSED')
+          for x in d['channels']:
+              print('CHANNEL',x['channel_index'],x['channel_hash'],x['known_name'])
+          for x in d['dyes']:
+              q=x['dye']
+              print('DYE',x['dye_index'],x['dye_manifest_hash'],x['relation_hash'],x['dye_file_hash'],
+                    'slot',q['slot_type_index'],'primary',q['primary_color'],'secondary',q['secondary_color'],
+                    'detail',q['detail_diffuse_texture_hash'],q['detail_normal_texture_hash'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-exact-dyes
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
