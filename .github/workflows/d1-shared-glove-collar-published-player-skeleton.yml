@@ -1,0 +1,84 @@
+name: D1 shared glove-collar skeleton versus Bungie published player skeleton
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-glove-collar-published-player-skeleton.yml'
+      - 'tools/d1_remote_skeleton_resource_probe.py'
+      - 'tools/d1_published_player_skeleton_compare.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies and recover exact published skeleton/runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p runtime out
+          curl --fail --location --retry 3 \
+            'https://www.bungie.net/common/destiny_content/animations/destiny_player_skeleton.js' \
+            -o out/destiny_player_skeleton.js
+          echo 'a477e58e2b9c23dcc75e8b538c24cc181f2a3af4b2cb2340b603aacf2f47e716  out/destiny_player_skeleton.js' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode exact retail skeleton 80AD27B2
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_skeleton_resource_probe.py \
+            --skeleton-resource 80AD27B2 \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/80AD27B2_skeleton.json
+      - name: Compare exact ordered identity and named bone mapping
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools')
+          from d1_published_player_skeleton_compare import published_skeleton,compare
+          p=published_skeleton(__import__('pathlib').Path('out/destiny_player_skeleton.js'))
+          r=json.load(open('out/80AD27B2_skeleton.json'))
+          bones=r['bones']
+          retail={
+            'tag_hash':'80AD27B2',
+            'node_hierarchy':{'items':[{'node_hash':b['node_hash'],'parent_node_index':b['parent_node_index'],
+                                       'first_child_node_index':b['first_child_node_index'],'next_sibling_node_index':b['next_sibling_node_index']} for b in bones]},
+            'default_object_space_transforms':{'items':[b['default_object_space_transform'] for b in bones]},
+            'default_inverse_object_space_transforms':{'items':[b['default_inverse_object_space_transform'] for b in bones]},
+            'range_index_map':{'items':[]},'inner_index_map':{'items':[]},
+            'count_invariants':{'default_transform_count_matches_nodes':True,'inverse_transform_count_matches_nodes':True},
+          }
+          c=compare(p,retail)
+          out={'schema':'d1_shared_glove_collar_published_player_skeleton_identity/v1',
+               'published_sha256':'a477e58e2b9c23dcc75e8b538c24cc181f2a3af4b2cb2340b603aacf2f47e716',
+               'published_node_names':[x.get('name') for x in p['nodes']],
+               'comparison':c,
+               'policy':'Exact player-skeleton identity requires ordered node hashes and ordered parent indices, with bind transforms used as independent corroboration. Names come only from Bungie published skeleton metadata.'}
+          json.dump(out,open('out/80AD27B2_vs_published_player_skeleton.json','w'),indent=2);open('out/80AD27B2_vs_published_player_skeleton.json','a').write('\n')
+          print(json.dumps(out,indent=2))
+          assert len(p['nodes'])==72,len(p['nodes'])
+          assert c['retail_node_count']==72,c
+          assert c['ordered_hashes_exact'] is True,c
+          assert c['ordered_parent_indices_exact'] is True,c
+          assert c['default_transform_max_abs_error_shared'] is not None and c['default_transform_max_abs_error_shared'] < 1e-5,c
+          assert c['inverse_transform_max_abs_error_shared'] is not None and c['inverse_transform_max_abs_error_shared'] < 1e-5,c
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-80AD27B2-published-player-skeleton-identity
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
