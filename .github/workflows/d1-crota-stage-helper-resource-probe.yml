@@ -1,0 +1,100 @@
+name: D1 Crota stage helper resource probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-stage-helper-resource-probe.yml'
+      - 'tools/d1_remote_exact_tag_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    env:
+      UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+      UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+      UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact unknown helper EntityResources schema-agnostically
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 0x81097903 --tag-hash 0x81097906 --tag-hash 0x8109790B --tag-hash 0x8109790C --tag-hash 0x8109790D \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --min-string 4 -o out/CROTA_STAGE_HELPERS_EXACT_TAGS.json | tee out/helper_probe_stdout.txt
+
+      - name: Trace helper backlinks in raid and Hive families
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x044C --scan-package-id 0x044D \
+            --scan-package-id 0x0453 --scan-package-id 0x0454 --scan-package-id 0x0455 \
+            --scan-package-id 0x005A --scan-package-id 0x005B --scan-package-id 0x005C --scan-package-id 0x005D --scan-package-id 0x005E --scan-package-id 0x005F \
+            --scan-package-id 0x0076 --scan-package-id 0x0077 \
+            --target 0x81097903 --target 0x81097906 --target 0x8109790B --target 0x8109790C --target 0x8109790D \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-entry-size 8000000 -o out/CROTA_STAGE_HELPER_BACKLINKS.json | tee out/backlinks_stdout.txt
+
+      - name: Summarize exact helper payloads
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import json,collections
+          p=json.load(open('out/CROTA_STAGE_HELPERS_EXACT_TAGS.json'))
+          b=json.load(open('out/CROTA_STAGE_HELPER_BACKLINKS.json'))
+          assert p.get('violation_count',0)==0,p.get('violations')
+          assert b.get('error_count',0)==0,b.get('errors')
+          signatures=collections.defaultdict(list)
+          for x in p['entries']:
+              refs=[(m['offset'],m['tag_hash'],m['entry'].get('reference'),m['entry'].get('file_size')) for m in x.get('aligned_resolved_tags',[])]
+              sig=tuple((o,r,s) for o,_,r,s in refs)
+              signatures[sig].append(x['tag_hash'])
+              print('HELPER',x['tag_hash'],'SIZE',x['payload_size'],'SHA256',x['payload_sha256'])
+              print(' STRINGS',[(s['offset'],s['string']) for s in x.get('printable_strings',[])])
+              print(' RESOLVED_TAGS',refs)
+          print('PAYLOAD_LAYOUT_SIGNATURE_GROUPS',[(v,list(k)) for k,v in signatures.items()])
+          print('BACKLINK_SOURCES',b['hit_source_count'],'BY_REFERENCE',b['hit_sources_by_reference'],'BY_TARGET',b['occurrences_by_target'])
+          for x in b['hits']:
+              print(' BACKLINK',x['package_id'],x['source_tag_hash'],x['reference'],x['targets'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-STAGE-HELPER-RESOURCE-PROBE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
