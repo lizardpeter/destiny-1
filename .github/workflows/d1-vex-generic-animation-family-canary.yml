@@ -1,0 +1,95 @@
+name: D1 Vex generic animation family canary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-vex-generic-animation-family-canary.yml'
+      - 'tools/d1_remote_animation_family_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover universal exact base package catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime parser out
+          curl --fail --location --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" \
+            -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Install pinned animation parser and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh
+          rm -rf parser
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Build exact known Vex structural fixture
+        run: |
+          cat > out/VEX_0767_CORPUS_FIXTURE.json <<'JSON'
+          {
+            "schema":"d1_remote_character_corpus_probe/v1",
+            "families":[{
+              "namespace_key":"base:0767","kind":"base","package_id":"0767",
+              "skeletons":[{"tag_hash":"816CE092","bone_count":12}],
+              "runtime_rigs":[{"tag_hash":"816CE095"}]
+            }]
+          }
+          JSON
+      - name: Run generic family resolver
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_animation_family_probe.py
+          python tools/d1_remote_animation_family_probe.py out/VEX_0767_CORPUS_FIXTURE.json \
+            --namespace-key base:0767 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --parser-root parser --out out/VEX_0767_GENERIC_ANIMATION_FAMILY.json \
+            | tee out/stdout.txt
+      - name: Lock known Vex exact path
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/VEX_0767_GENERIC_ANIMATION_FAMILY.json'))
+          assert d['status']=='D1_ANIMATION_FAMILY_PROBE_COMPLETE'
+          assert d['skeleton_count']==1 and d['runtime_rig_count']==1
+          paths=d['paths']
+          assert any(x['skeleton']=='816CE092' and x['runtime_rig']=='816CE095' and x['control']=='816CE09C' and x['clip']=='816CE09D' and x['retarget_success'] for x in paths),paths
+          assert any(x['skeleton']=='816CE092' and x['runtime_rig']=='816CE095' and x['control']=='816CE09C' and x['clip']=='816CE09E' and x['retarget_success'] for x in paths),paths
+          print('D1_GENERIC_ANIMATION_FAMILY_VEX_CANARY_EXACT')
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-VEX-GENERIC-ANIMATION-FAMILY-CANARY
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
