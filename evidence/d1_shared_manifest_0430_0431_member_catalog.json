@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "status": "D1_SHARED_MANIFEST_0430_0431_PHYSICAL_MEMBER_CATALOG",
+  "source_workflow_run": 33999723638,
+  "source_commit": "50d9e68149005c2ae6e5e95fa20bab7ccb26e1a8",
+  "source_artifact_digest": "sha256:ded839a459b33081cf782ea378b0abd39d279197486422a5eed5148603928b65",
+  "families": {
+    "0430": [
+      {"name":"ps4_shared_manifest_0430_0.pkg","data_offset":"0xB401E3800","size":4134912,"sha256":"15161f6cc442fd67177090a14614d54d1597725ad5928ae472d3eb6481eb61f4"},
+      {"name":"ps4_shared_manifest_0430_1.pkg","data_offset":"0xB405D5200","size":4495360,"sha256":"1a2b2174b8ec56b307c1d46c0548230f7269ed0c62719d12b1c0eb82fa97dd44"},
+      {"name":"ps4_shared_manifest_0430_2.pkg","data_offset":"0xB40A1EC00","size":3069952,"sha256":"91c0a10b59b47b0a99e7ecc3969c0587ce059b182658aa56614f0bccaf09372b"},
+      {"name":"ps4_shared_manifest_0430_3.pkg","data_offset":"0xB40D0C600","size":923648,"sha256":"e5cab32053047123a27d2d6d002200faf33a57ace71c0f3858139fd4e1de6620"},
+      {"name":"ps4_shared_manifest_0430_4.pkg","data_offset":"0xB40DEE000","size":382976,"sha256":"caf02b447cc0d0f0a57fea0be3b51b7f3a5e9dbd8aad3c94cc9da3424ce21a53"},
+      {"name":"ps4_shared_manifest_0430_5.pkg","data_offset":"0xB40E4BA00","size":1988608,"sha256":"5392bc42dd2934e7f5ca00bff65e5b7b2280bc086cea2ba2ef0e9e85569eb527"},
+      {"name":"ps4_shared_manifest_0430_6.pkg","data_offset":"0xB41031400","size":153600,"sha256":"aa70a0d28842325114d32e205403cce0d2ac271f496e19896a6e1d9ad7ce1990"}
+    ],
+    "0431": [
+      {"name":"ps4_shared_manifest_0431_0.pkg","data_offset":"0xB41056E00","size":9932800,"sha256":"5142511fc851dba93fd209ebba11198f5ba463281dfc99079be27021d92a5b7f"},
+      {"name":"ps4_shared_manifest_0431_1.pkg","data_offset":"0xB419D0000","size":12017664,"sha256":"9cd4694fdaab0e4bf6753898a91c23ed6a17bc670a5c9d0a32f1ebcfb97a1230"},
+      {"name":"ps4_shared_manifest_0431_2.pkg","data_offset":"0xB42546200","size":10674176,"sha256":"7260ca85417dd4eacfcb87d0b9e05ec1228745f3be793f532c61277ec8b3b8a3"},
+      {"name":"ps4_shared_manifest_0431_3.pkg","data_offset":"0xB42F74400","size":1155072,"sha256":"9f1adbafe2acd86a61e16919e0cf866ef5098fbaba1c48036ac5741145a4d534"},
+      {"name":"ps4_shared_manifest_0431_4.pkg","data_offset":"0xB4308E600","size":7268352,"sha256":"f8e2a2c547893a4c456a150387eb43e3a0ac22983c543dc682404b448fdee125"},
+      {"name":"ps4_shared_manifest_0431_5.pkg","data_offset":"0xB4377D000","size":9119744,"sha256":"0eae97da077df9447502546b415bdd33a509f4fbbc910c242e2d71aaeb559bb7"},
+      {"name":"ps4_shared_manifest_0431_6.pkg","data_offset":"0xB4402FA00","size":174080,"sha256":"988b37e19bc6aa40524e2a2ebd73749810f6cbc527e0290f7c944bbd85c80d2b"}
+    ]
+  },
+  "policy": "This catalog pins only the physical split-TAR members already SHA-256 verified by a successful recovery. Semantic need for family 0430 or 0431 must be established first by serialized D1 dependency discovery; package IDs are not world-selection inputs."
+}
