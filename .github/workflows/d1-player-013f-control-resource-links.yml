@@ -1,0 +1,61 @@
+name: D1 player 013F control EntityResource links
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-player-013f-control-resource-links.yml'
+      - 'tools/d1_remote_entity_resource_links.py'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Decode exact resources and resolvable aligned links
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_entity_resource_links.py \
+            --tag 80A7E2BE --tag 80A7E2BF --tag 80A7E2C0 \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/013F_control_entity_resource_links.json
+      - name: Validate all three resources and exact control references
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/013F_control_entity_resource_links.json'))
+          assert [x['tag_hash'] for x in d['resources']]==['80A7E2BE','80A7E2BF','80A7E2C0']
+          for r in d['resources']:
+              hits=[x for x in r['aligned_resolvable_links'] if x['tag_hash']=='80A7E499']
+              assert hits,(r['tag_hash'],r['aligned_resolvable_links'])
+          print(json.dumps([{'tag':r['tag_hash'],'role':r['resource']['semantic_role'],
+                             'unk10':r['resource']['unk10'].get('class_hash'),'unk18':r['resource']['unk18'].get('class_hash'),
+                             'link_count':r['aligned_resolvable_link_count'],
+                             'links':r['aligned_resolvable_links']} for r in d['resources']],indent=2))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-player-013f-control-entity-resource-links
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
