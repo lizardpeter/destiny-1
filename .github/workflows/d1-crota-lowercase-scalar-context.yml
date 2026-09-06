@@ -1,0 +1,81 @@
+name: D1 lowercase crota scalar context
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_remote_scalar_context_probe.py'
+      - '.github/workflows/d1-crota-lowercase-scalar-context.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    env:
+      UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+      UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+      UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Record raw field context for exact lowercase crota hash
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_scalar_context_probe.py
+          python tools/d1_remote_scalar_context_probe.py \
+            --tag-hash 0x80AA9C0D --tag-hash 0x80AADD3E --tag-hash 0x80AB026E \
+            --tag-hash 0x80B1A004 --tag-hash 0x8166A3E8 \
+            --scalar-u32 0xACC65F88 --radius 96 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/CROTA_LOWERCASE_SCALAR_CONTEXT.json | tee out/stdout.txt
+      - name: Enforce exact known occurrence offsets
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_LOWERCASE_SCALAR_CONTEXT.json'))
+          assert not d['violations'],d['violations']
+          expected={
+            '80AA9C0D':[788,3884],
+            '80AADD3E':[6916],
+            '80AB026E':[6916],
+            '80B1A004':[2172],
+            '8166A3E8':[3620],
+          }
+          for row in d['entries']:
+              got=[x['offset'] for x in row['scalar_occurrences']['ACC65F88']]
+              assert got==expected[row['tag_hash']],(row['tag_hash'],got,expected[row['tag_hash']])
+              print('EXACT_SCALAR_CONTEXT',row['tag_hash'],got)
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-LOWERCASE-SCALAR-CONTEXT
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
