@@ -33,11 +33,17 @@ jobs:
           import json,glob,os
           rows=[]
           for p in sorted(glob.glob('out/*/report.json')):
-              d=json.load(open(p)); rows.append({
+              d=json.load(open(p))
+              qs=d.get('cdx_queries',[])
+              rows.append({
                 'role':os.path.basename(os.path.dirname(p)), 'item':d['item'],'name':d['name'],
-                'cdx_status':d['cdx_status'],'capture_count':d.get('capture_count',0),
+                'capture_count':d.get('capture_count',0),
+                'cdx_successes':sum(1 for q in qs if q.get('status')==200),
+                'cdx_transport_failures':sum(1 for q in qs if q.get('status')!=200),
                 'selected':d.get('selected'),'snippet_keywords':[x['keyword'] for x in d.get('snippets',[])]})
-          json.dump({'schema':'d1_spektar_armory_wayback_summary/v1','rows':rows},open('out/SUMMARY.json','w'),indent=2)
+          json.dump({'schema':'d1_spektar_armory_wayback_summary/v2','rows':rows,
+                     'interpretation':'A zero capture count is evidence only for the exact successful CDX queries; transport failures remain unresolved, not negative evidence.'},
+                    open('out/SUMMARY.json','w'),indent=2)
           print(json.dumps(rows,indent=2))
           PY
       - uses: actions/upload-artifact@v4
