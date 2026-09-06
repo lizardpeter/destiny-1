@@ -1,0 +1,53 @@
+name: D1 archived Armory default-armor control pages
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-armory-default-armor-controls.yml'
+      - 'tools/d1_wayback_armory_page_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Probe historically linked armor pages across classes
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # These exact Armory URLs are independently preserved in historical forum posts.
+          python tools/d1_wayback_armory_page_probe.py --item 591060261  --name 'The Taikonaut (Titan helmet)'       -o out/titan_taikonaut
+          python tools/d1_wayback_armory_page_probe.py --item 155374076  --name 'Thagomizers (Titan gauntlets)'    -o out/titan_thagomizers
+          python tools/d1_wayback_armory_page_probe.py --item 2661471739 --name 'The Armamentarium (Titan chest)'  -o out/titan_armamentarium
+          python tools/d1_wayback_armory_page_probe.py --item 1865771870 --name 'Bones of Eao (Hunter boots)'      -o out/hunter_bones
+          python tools/d1_wayback_armory_page_probe.py --item 2778128367 --name 'The Stag (Warlock helmet)'        -o out/warlock_stag
+          python tools/d1_wayback_armory_page_probe.py --item 2275132880 --name 'Transversive Steps (Warlock)'     -o out/warlock_steps
+      - name: Summarize exact capture evidence
+        run: |
+          python - <<'PY'
+          import glob,json,os
+          rows=[]
+          for p in sorted(glob.glob('out/*/report.json')):
+              d=json.load(open(p)); rows.append({
+                  'probe':os.path.basename(os.path.dirname(p)), 'item':d['item'],'name':d['name'],
+                  'capture_count':d.get('capture_count',0),'selected':d.get('selected'),
+                  'snippet_keywords':[x['keyword'] for x in d.get('snippets',[])],
+                  'transport_errors':[x.get('error') for x in d.get('cdx_queries',[]) if x.get('error')]})
+          json.dump({'schema':'d1_armory_default_armor_controls/v1','rows':rows},open('out/SUMMARY.json','w'),indent=2)
+          print(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-ARCHIVED-ARMORY-DEFAULT-ARMOR-CONTROLS
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
