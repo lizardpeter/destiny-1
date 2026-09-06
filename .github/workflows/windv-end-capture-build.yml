@@ -35,6 +35,7 @@ jobs:
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (m_queue) m_queue->Put(-1, NULL, 0);')) { throw "ordered EOS missing" }
           if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'm_video.FinalizeCapturing();')) { throw "UI does not use deterministic finalizer" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_autoStopTimeout(0)')) { throw "archive-safe auto-stop default missing" }
+          if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'ArchiveAutoStopTimeout')) { throw "archive auto-stop registry isolation missing" }
 
       - name: Configure Win32 Release
         run: cmake -S windv -B build -G "Visual Studio 17 2022" -A Win32
@@ -69,9 +70,9 @@ jobs:
           Platform: Win32/x86, VS 2022
 
           Capture data path remains WinDV's raw DV-to-AVI copy path.
-          End Capture now stops new DV input, drains frames already accepted into WinDV's queue when capture is active, then lets CAVIWriter send EOS to the AVI mux and waits for the capture worker/post-capture integrity checks to complete. The UI only reports the index as verified when AVICheck confirms an idx1/indx index.
+          End Capture stops new DV input, drains frames already accepted into WinDV's queue when capture is active, then lets CAVIWriter send EOS to the AVI mux and waits for the capture worker/post-capture integrity checks to complete. The UI only reports the index as verified when AVICheck confirms an idx1/indx index.
 
-          Signal-loss auto-stop remains available in Config but defaults OFF in this archival build. SHA-256 and AVI integrity checking occur after the AVI writer has finalized and therefore do not alter captured DV frames.
+          Signal-loss auto-stop remains available in Config but defaults OFF and uses the separate ArchiveAutoStopTimeout setting so normal WinDV 1.6 settings cannot silently enable it. SHA-256 and AVI integrity checking occur after AVI writer finalization and do not alter captured DV frames.
           "@ | Out-File -Encoding utf8 artifact/README_ArchiveSafe.txt
 
       - name: Upload artifact
