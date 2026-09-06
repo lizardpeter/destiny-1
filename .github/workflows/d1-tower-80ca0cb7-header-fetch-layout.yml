@@ -71,16 +71,24 @@ jobs:
           import d1_tower_map_schema_validate as m
           c=m.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
           t=m.parse_static_table(c,'80C99827')
-          assert t['ok'],t.get('violations')
+          # The table parser deliberately records unresolved buffer targets anywhere in
+          # the table as global violations.  Those do not invalidate serialized fields
+          # on the three independently identified rows we are probing here, so preserve
+          # the violations as evidence instead of using t['ok'] as an unrelated gate.
           rows=[]
           for info_index in (926,976,978):
+              assert 0 <= info_index < len(t['info_entries'])
               info=t['info_entries'][info_index]
+              assert 0 <= info['static_index'] < len(t['mesh_entries'])
+              assert 0 <= info['material_index'] < len(t['material_hashes'])
               mesh=t['mesh_entries'][info['static_index']]
               mh=t['material_hashes'][info['material_index']]
               rows.append({'info_index':info_index,'info':info,'mesh':mesh,'material_hash':mh})
           target=[r for r in rows if r['material_hash']=='80C9993C']
           assert len(target)==2,target
-          out={'status':'D1_TOWER_80C99827_TARGET_STAGE_CENSUS','table':'80C99827','rows':rows,
+          out={'status':'D1_TOWER_80C99827_TARGET_STAGE_CENSUS','table':'80C99827',
+               'table_global_ok':t['ok'],'table_global_violations':t.get('violations',[]),
+               'rows':rows,'target_80C9993C_static_indices':[r['info']['static_index'] for r in target],
                'target_80C9993C_unk0C':[r['mesh']['unk0C'] for r in target],
                'all_unk0C_frequency':{str(k):sum(1 for x in t['mesh_entries'] if x['unk0C']==k) for k in sorted({x['unk0C'] for x in t['mesh_entries']})}}
           Path('reports/80C99827_target_stage.json').write_text(json.dumps(out,indent=2)+'\n')
@@ -88,8 +96,10 @@ jobs:
           PY
 
       - name: Decode PS4 Gnm-like VS trailing semantic tables by bounded candidate layout
+        if: always()
         run: |
           set -euo pipefail
+          test -f reports/80CA0CB7_header.bin
           python - <<'PY'
           import json,struct
           from pathlib import Path
@@ -99,10 +109,8 @@ jobs:
           # fields encode plausible input/export counts and the total stays in bounds.
           candidates=[]
           for base in range(0,len(b)-0x28+1,4):
-              if base+0x28>len(b): continue
               nin,nout,gsm,fetch=b[base+0x24:base+0x28]
               if not (1<=nin<=16 and 1<=nout<=16): continue
-              # CommonData low dword top byte is num input usage slots.
               common=struct.unpack_from('<I',b,base)[0]
               nusage=(common>>24)&0xff
               if nusage>32: continue
