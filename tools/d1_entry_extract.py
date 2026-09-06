@@ -7,6 +7,10 @@ sys.path.insert(0,str(HERE))
 from d1_pkg_probe import BLOCK_SIZE, parse_header, parse_entries, parse_blocks, read_table, patch_path
 from d1_oodle_probe import Oodle3
 
+RAW_QUANTUM=0x4000
+
+def _align_up(v:int,a:int)->int: return ((v+a-1)//a)*a
+
 class EntryReader:
     def __init__(self,pkg:Path,runtime:Path):
         self.pkg=pkg.resolve(); self.oodle=Oodle3(runtime); self.cache={}
@@ -14,13 +18,25 @@ class EntryReader:
             self.h=parse_header(f)
             self.entries=parse_entries(read_table(f,self.h['entry_table_offset'],self.h['entry_table_count'],16),self.h['pkg_id'])
             self.blocks=parse_blocks(read_table(f,self.h['block_table_offset'],self.h['block_table_count'],32))
+        self.block_used_end=[0]*len(self.blocks)
+        for e in self.entries:
+            remaining=int(e['file_size']); bi=int(e['starting_block']); off=int(e['starting_block_offset'])
+            while remaining>0 and bi<len(self.blocks):
+                n=min(remaining,BLOCK_SIZE-off); self.block_used_end[bi]=max(self.block_used_end[bi],off+n)
+                remaining-=n; bi+=1; off=0
+    def expected_raw_len(self,i:int)->int:
+        used=self.block_used_end[i]
+        return BLOCK_SIZE if used<=0 else min(BLOCK_SIZE,_align_up(used,RAW_QUANTUM))
     def block(self,i:int)->bytes:
         if i in self.cache:return self.cache[i]
         b=self.blocks[i]; owner=patch_path(self.pkg,b['patch_id'])
         if not owner.exists(): raise FileNotFoundError(str(owner))
         with owner.open('rb') as f:f.seek(b['offset']); raw=f.read(b['size'])
         if hashlib.sha1(raw).hexdigest()!=b['sha1']:raise RuntimeError(f'block {i} sha1 mismatch')
-        dec=self.oodle.decompress(raw) if b['compressed'] else raw
+        if b['compressed']:
+            expected=self.expected_raw_len(i); dec=self.oodle.decompress(raw,raw_capacity=expected)
+            if len(dec)!=expected: raise RuntimeError(f'block {i} decoded {len(dec)} bytes, expected {expected}')
+        else: dec=raw
         if len(dec)>BLOCK_SIZE:raise RuntimeError(f'block {i} oversized')
         if len(dec)<BLOCK_SIZE:dec=dec+b'\0'*(BLOCK_SIZE-len(dec))
         self.cache[i]=dec; return dec
