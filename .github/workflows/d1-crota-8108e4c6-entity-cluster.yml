@@ -1,0 +1,179 @@
+name: D1 Crota 8108E4C6 entity cluster closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-8108e4c6-entity-cluster.yml'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+      - 'tools/d1_remote_catalog_backlinks.py'
+      - 'tools/d1_remote_model_owner_trace.py'
+      - 'tools/d1_entity_resource_probe.py'
+      - 'tools/d1_skeleton_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/model_traces
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Decode exact 8108E4C6 serialized s_entity cluster
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_exact_s_entity_probe.py
+          python tools/d1_remote_exact_s_entity_probe.py \
+            --tag-hash 0x8108E5BE --tag-hash 0x81096347 --tag-hash 0x8108E5BF \
+            --tag-hash 0x81096656 --tag-hash 0x80AAC798 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/CROTA_8108E4C6_ENTITY_CLUSTER.json \
+            | tee out/entity_cluster_stdout.txt
+
+      - name: Resolve every source-mapped entity name exactly
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_8108E4C6_ENTITY_CLUSTER.json'))
+          args=[]
+          seen=set()
+          for e in d['entries']:
+              for h in e.get('specific_name_string_hashes',[]):
+                  h=h.upper()
+                  k=('s',h)
+                  if k not in seen:
+                      seen.add(k); args += ['--string-hash','0x'+h]
+              for h in e.get('generic_name_tag_hashes',[]):
+                  h=h.upper()
+                  k=('g',h)
+                  if k not in seen:
+                      seen.add(k); args += ['--generic-name-tag','0x'+h]
+          print(' '.join(args))
+          PY
+          )
+          echo "NAME_ARGS=$ARGS" | tee out/name_args.txt
+          if [[ -n "$ARGS" ]]; then
+            python tools/d1_remote_global_stringhash_resolve.py $ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+              --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+              --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+              --global-package-id 0x072B --global-package-id 0x072F --global-package-id 0x0735 \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime -o out/CROTA_8108E4C6_ENTITY_NAMES.json \
+              | tee out/entity_names_stdout.txt
+          else
+            printf '{"schema":"no_source_mapped_names","target_string_hashes":[],"resolved":{},"unresolved_target_hashes":[],"violation_count":0,"violations":[]}\n' > out/CROTA_8108E4C6_ENTITY_NAMES.json
+            echo 'NO_SOURCE_MAPPED_NAME_FIELDS' | tee out/entity_names_stdout.txt
+          fi
+
+      - name: Trace exact package-local backlinks to cluster entities
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0447 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --target 0x8108E5BE --target 0x81096347 --target 0x8108E5BF \
+            --target 0x81096656 --target 0x80AAC798 \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_8108E4C6_ENTITY_BACKLINKS.json \
+            | tee out/entity_backlinks_stdout.txt
+
+      - name: Trace any source-closed models to exact owners
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY' > out/model_tags.txt
+          import json
+          d=json.load(open('out/CROTA_8108E4C6_ENTITY_CLUSTER.json'))
+          models=sorted({m for e in d['entries'] for m in e.get('embedded_models',[])})
+          for m in models: print(m)
+          PY
+          if [[ -s out/model_tags.txt ]]; then
+            while read -r MODEL; do
+              [[ -z "$MODEL" ]] && continue
+              echo "TRACE_MODEL $MODEL"
+              python tools/d1_remote_model_owner_trace.py \
+                --model "0x${MODEL}" \
+                --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x0458 \
+                --scan-package-id 0x0075 --scan-package-id 0x0077 --scan-package-id 0x075D \
+                --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+                --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+                --runtime runtime -o "out/model_traces/${MODEL}.json"
+            done < out/model_tags.txt
+          else
+            echo 'NO_SOURCE_CLOSED_MODELS_IN_8108E4C6_ENTITY_CLUSTER'
+          fi | tee out/model_trace_stdout.txt
+
+      - name: Validate and summarize proof boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_8108E4C6_ENTITY_CLUSTER.json'))
+          assert d['violation_count']==0,d['violations']
+          expected=['8108E5BE','81096347','8108E5BF','81096656','80AAC798']
+          assert [x['tag_hash'] for x in d['entries']]==expected,d['entries']
+          for e in d['entries']:
+              assert e['entry']['reference']=='80800734',e
+              print('ENTITY',e['tag_hash'],'RESOURCES',e['resource_count'],
+                    'MODELS',e.get('embedded_models',[]),
+                    'SKELETONS',[(x['resource_hash'],x['node_count']) for x in e.get('skeletons',[])],
+                    'SPECIFIC',e.get('specific_name_string_hashes',[]),
+                    'GENERIC',e.get('generic_name_tag_hashes',[]),
+                    'CHILDREN',[x['entity_hash'] for x in e.get('child_entities',[])])
+          n=json.load(open('out/CROTA_8108E4C6_ENTITY_NAMES.json'))
+          assert n.get('violation_count',0)==0,n.get('violations')
+          for h,rows in n.get('resolved',{}).items():
+              vals=[x.get('string') for x in rows if x.get('string') is not None]
+              if vals: print('NAME',h,vals)
+          b=json.load(open('out/CROTA_8108E4C6_ENTITY_BACKLINKS.json'))
+          assert b['error_count']==0,b['errors']
+          print('BACKLINKS',b['hit_source_count'],b['occurrences_by_target'],b['hit_sources_by_reference'])
+          PY
+          find out -type f -maxdepth 2 -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-8108E4C6-ENTITY-CLUSTER
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
