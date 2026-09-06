@@ -1,0 +1,134 @@
+name: D1 Spektar Pandion textured rigged animation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-textured-rigged-animation.yml'
+      - 'tools/d1_guardian_texture_plate_bind.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Download exact corrected rig, plate, and ownership artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q pygltflib
+          mkdir -p input/rig input/plates input/visual out
+          get_artifact () {
+            local name="$1" dest="$2" zip="$3"
+            local url
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=20" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$zip"
+            unzip -q "$zip" -d "$dest"
+          }
+          get_artifact 'D1-Spektar-Pandion-Titan-Masculine-FULL-RIGGED-ANIMATED' input/rig input/rig.zip
+          get_artifact 'd1-spektr-pandion-exact-texture-plates' input/plates input/plates.zip
+          get_artifact 'd1-spektr-pandion-visual-context-census' input/visual input/visual.zip
+          test -f input/rig/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb
+          test -f input/rig/full_guardian_report.json
+          test -f input/plates/spektar_masculine_composed_plates.json
+          test -d input/plates/plates
+          test -f input/visual/spektar_masculine_visual_context.json
+          python - <<'PY'
+          import json
+          r=json.load(open('input/rig/full_guardian_report.json'))
+          p=json.load(open('input/plates/spektar_masculine_composed_plates.json'))
+          v=json.load(open('input/visual/spektar_masculine_visual_context.json'))
+          assert r['model_count']==5 and r['original_mesh_count']==69 and r['skin_joint_count']==67 and r['clip_frame_count']==324,r
+          assert p['header_count']==5 and p['plate_image_count']==15 and not p['allow_resize'],p
+          assert v['model_count']==5 and v['texture_plate_header_count']==5 and not v['errors'],v
+          print('INPUTS VERIFIED: corrected rig + exact 15 plates + exact model-parent ownership')
+          PY
+      - name: Bind exact retail model-parent plates
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_texture_plate_bind.py \
+            input/rig/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb \
+            --visual-context input/visual/spektar_masculine_visual_context.json \
+            --composed-plate-report input/plates/spektar_masculine_composed_plates.json \
+            --plate-dir input/plates/plates \
+            --out out/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb \
+            --report out/textured_guardian_report.json
+      - name: Validate exact texture binding and preserve rig animation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from pygltflib import GLTF2
+          p=Path('out/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb')
+          r=json.load(open('out/textured_guardian_report.json'))
+          g=GLTF2().load_binary(str(p))
+          assert r['model_count']==5,r
+          assert r['primitive_count']==69,r
+          assert r['material_count_added']==5,r
+          assert r['image_count_added']==15,r
+          assert r['texture_count_added']==15,r
+          assert len(g.meshes)==69,len(g.meshes)
+          assert len(g.skins)==1 and len(g.skins[0].joints)==67
+          assert len(g.animations)==1 and g.animations[0].name=='STATE_13433E07_809D8572'
+          assert len(g.materials)>=5,len(g.materials)
+          assert len(g.images)>=15,len(g.images)
+          assert len(g.textures)>=15,len(g.textures)
+          mats=set()
+          for m in g.meshes:
+              assert len(m.primitives)==1
+              q=m.primitives[0]
+              assert q.attributes.TEXCOORD_0 is not None
+              assert q.attributes.JOINTS_0 is not None and q.attributes.WEIGHTS_0 is not None
+              assert q.material is not None
+              mats.add(q.material)
+          assert len(mats)==5,mats
+          for mi in mats:
+              m=g.materials[mi]
+              assert m.pbrMetallicRoughness and m.pbrMetallicRoughness.baseColorTexture
+              assert m.normalTexture
+              assert m.extras and 'd1GStackTextureIndex' in m.extras
+              ti=m.extras['d1GStackTextureIndex']; assert 0 <= ti < len(g.textures)
+          for im in g.images[-15:]:
+              assert im.mimeType=='image/png' and im.bufferView is not None
+          proof=g.extras.get('d1ExactTexturePlateBinding') if g.extras else None
+          assert proof and proof['dyePolicy'].startswith('not applied'),proof
+          print(json.dumps({'bytes':p.stat().st_size,'meshes':len(g.meshes),'materials_used':len(mats),
+                            'images_embedded':15,'skin_joints':len(g.skins[0].joints),
+                            'animation':g.animations[0].name,'models':r['model_to_plate_header']},indent=2))
+          PY
+          sha256sum out/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb | tee out/sha256.txt
+      - name: Provenance README
+        run: |
+          cat > out/README.txt <<'EOF'
+          Destiny 1 Rise of Iron - Spektar Pandion Titan textured + rigged + animated proof
+
+          This GLB combines:
+          - five exact retail Spektar Pandion masculine s_entity_model meshes;
+          - corrected D1 ROI UV0 selection on every primitive;
+          - exact retail source skin influences on the 67-node Guardian skeleton;
+          - exact 324-frame retail clip 809D8572;
+          - exact model-parent albedo and normal texture plates;
+          - exact GStack plates embedded with provenance but intentionally NOT reinterpreted as guessed PBR channels.
+
+          The glTF metallic=0 / roughness=1 material factors are neutral preview defaults only.
+          D1 gear dye selection and native GStack/material shader semantics remain separate source-closure work.
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-Spektar-Pandion-Titan-Masculine-TEXTURED-RIGGED-ANIMATED
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
