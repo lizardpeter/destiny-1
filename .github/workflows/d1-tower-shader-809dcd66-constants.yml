@@ -61,13 +61,13 @@ jobs:
           print('SELECTED',len(mats))
           PY
 
-      - name: Recover exact material and external-vector package families
+      - name: Recover exact material, geometry and external-vector package families
         run: |
           set -euo pipefail
           python tools/d1_recover_indexed_package_families.py \
             --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
             --package-list reports/packages.txt \
-            --package-id 024c --package-id 0250 --package-id 00ec --package-id 00ee \
+            --package-id 009f --package-id 024c --package-id 0250 --package-id 00ec --package-id 00ee \
             --out-dir packages \
             --report reports/target_package_recovery.json
 
@@ -111,7 +111,7 @@ jobs:
               'unk0c_histogram':dict(Counter(r['material_state_raw']['unk0c_hex'] for r in rows)),
               'unk20_histogram':dict(Counter(r['material_state_raw']['unk20_hex'] for r in rows)),
               'materials':rows,
-              'proof':'All 24 have a bounded 7xVec4 array at +0x300. The 10 materials with +0x32C resolve to 7xVec4 external 32:7 payloads byte-identical to +0x300; 14 have no external mirror. Raw material state words are retained without semantic assignment.'
+              'proof':'All 24 visible materials have a bounded 7xVec4 array at +0x300. The 10 materials with +0x32C resolve to 7xVec4 external 32:7 payloads byte-identical to +0x300; 14 have no external mirror. Raw material state words are retained without semantic assignment.'
           }
           Path('reports/809DCD66_vector_census.json').write_text(json.dumps(out,indent=2)+'\n')
           print(json.dumps({k:out[k] for k in ('status','material_count','relation_counts','array_300_vector_count_histogram','unk0c_histogram','unk20_histogram','candidate_array_count_histograms')},indent=2))
@@ -127,14 +127,23 @@ jobs:
             | tee reports/PS4_TOWER_MATERIAL_STATE_CENSUS_stdout.txt
           python - <<'PY'
           import json
+          from collections import Counter
           d=json.load(open('reports/PS4_TOWER_MATERIAL_STATE_CENSUS.json'))
           assert d['status']=='D1_PS4_MATERIAL_STATE_CENSUS_COMPLETE',d['violations']
           t=d['target_809DCD66']
-          assert t['material_count']==24,t
-          assert t['unk0c_histogram']=={'00000002':14,'00000000':10},t['unk0c_histogram']
-          assert t['unk20_histogram']=={'0088':24},t['unk20_histogram']
-          assert t['unk0c_x_ps_constant_storage']=={'00000000|external':10,'00000002|inline_only':14},t['unk0c_x_ps_constant_storage']
-          print('PS4_809DCD66_RAW_STATE_CORRELATION_GREEN')
+          assert t['material_count']>=24,t
+          assert set(t['unk20_histogram'])=={'0088'},t['unk20_histogram']
+          selected={x.strip() for x in open('reports/selected_material_hashes.txt') if x.strip()}
+          by={r['material']:r for r in t['materials']}
+          assert selected <= set(by),(len(selected),len(by),sorted(selected-set(by)))
+          vis=[by[h] for h in sorted(selected)]
+          assert len(vis)==24
+          assert Counter(r['state']['unk0c'] for r in vis)==Counter({'00000002':14,'00000000':10})
+          assert Counter(r['state']['unk20_hex'] for r in vis)==Counter({'0088':24})
+          rel=Counter((r['state']['unk0c'],'external' if r['ps_external_vector_present'] else 'inline_only') for r in vis)
+          assert rel==Counter({('00000000','external'):10,('00000002','inline_only'):14}),rel
+          print('PS4_809DCD66_BROAD_FAMILY',t['material_count'])
+          print('PS4_809DCD66_VISIBLE24_RAW_STATE_CORRELATION_GREEN')
           PY
 
       - name: Correlate static draw state with material state
