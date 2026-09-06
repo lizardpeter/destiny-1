@@ -1,0 +1,14 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": "evidence/d1_tower_dependency_member_catalog.json + evidence/d1_tower_dependency_sha256_catalog.json",
+  "policy": "Physical byte-location fixture only. Package ownership is derived from serialized Tiger FileHash package ids; this catalog only exposes the already verified 0169 members to the reusable RemoteLogicalPackage resolver.",
+  "families": {
+    "0169": [
+      {"name":"ps4_globals_pvp_0169_0.pkg","data_offset":20522625536,"size":168075264,"sha256":"b58a66ece15ea136ee5ed388fa9a561a24a2af292a1609ad002e3f3cbacaaf1f"},
+      {"name":"ps4_globals_pvp_0169_1.pkg","data_offset":20690701312,"size":44832768,"sha256":"65b709d07f547626b0cbf1fa2f4ce2874b51a226fd9952cf296a28bf0cbc7fa4"},
+      {"name":"ps4_globals_pvp_0169_2.pkg","data_offset":20735534592,"size":16578560,"sha256":"63862c343ce679c4a1b633bf3b98bb64c00cfaa9a87efb0af1e5e421f3bb1b82"},
+      {"name":"ps4_globals_pvp_0169_3.pkg","data_offset":20752113664,"size":2764800,"sha256":"f7d80745776d7353ce143eef579387cbebfda9f244345f40309ca69c35e5aa62"},
+      {"name":"ps4_globals_pvp_0169_5.pkg","data_offset":20754878976,"size":92160}
+    ]
+  }
+}
