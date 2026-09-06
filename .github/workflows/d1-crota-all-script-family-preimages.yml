@@ -83,31 +83,52 @@ jobs:
           p=json.load(open('out/CROTA_ALL_SCRIPT_FAMILY_STRINGHASH_PREIMAGES.json'))
           hits=collections.defaultdict(list)
           for x in p['hits']:
-              hits[x['target']].append(x)
+              for h in x.get('matched_targets',[]):
+                  hits[h].append(x)
+          owners={x.get('scripted_entity_table'):x for x in c['owners'] if x.get('scripted_entity_table')}
           rows=[]
           for t in c['scripted_tables']:
               h=t['script_family_string_hash']
               names=sorted({x['preimage'] for x in hits.get(h,[])})
               if not names: continue
               entities=sorted({r['entity_hash'] for r in t['records']})
-              rows.append({'d912':t['scripted_entity_table'],'script_family_string_hash':h,'preimages':names,'entities':entities,'record_count':t['record_count']})
+              owner=owners.get(t['scripted_entity_table']) or {}
+              rows.append({
+                  'd912':t['scripted_entity_table'],
+                  'script_family_string_hash':h,
+                  'preimages':names,
+                  'entities':entities,
+                  'record_count':t['record_count'],
+                  'f603':owner.get('f603'),
+                  'entity_resource':owner.get('entity_resource'),
+                  'unk0C_tiger_hash':t.get('unk0C_tiger_hash'),
+                  'unk10_file_hash':t.get('unk10_file_hash'),
+                  'records':t['records'],
+              })
           out={
-              'schema':'d1_crota_script_family_preimage_join/v1',
+              'schema':'d1_crota_script_family_preimage_join/v2',
               'target_hash_count':len(c['script_family_string_hash_counts']),
               'resolved_hash_count':len(hits),
               'resolved_d912_count':len(rows),
               'rows':rows,
-              'policy':'Preimages are accepted only from exact FNV1-32 equality over printable retail runs. D912 and EntitySK joins come only from the pinned raid scripted census.',
+              'policy':'Preimages are accepted only from exact FNV1-32 equality over printable retail runs. D912, SF603, EntityResource, and EntitySK joins come only from the pinned raid scripted census.',
           }
           open('out/CROTA_ALL_SCRIPT_FAMILY_PREIMAGE_JOIN.json','w').write(json.dumps(out,indent=2)+'\n')
           print('TARGET_HASHES',out['target_hash_count'],'RESOLVED_HASHES',out['resolved_hash_count'],'RESOLVED_D912',out['resolved_d912_count'])
+          assert out['target_hash_count']==182
+          assert out['resolved_hash_count']==182
+          assert out['resolved_d912_count']==192
           keywords=re.compile(r'crota|final|boss|ultra|knight|oversoul|lens|dark|sword|oryx',re.I)
           for r in rows:
               text=' '.join(r['preimages'])
               if keywords.search(text):
-                  print('HIGH_VALUE',r['d912'],r['script_family_string_hash'],r['preimages'],'ENTITIES',r['entities'])
-          for r in rows:
-              print('JOIN',r['d912'],r['script_family_string_hash'],r['preimages'],'ENTITIES',r['entities'])
+                  print('HIGH_VALUE',r['d912'],r['script_family_string_hash'],r['preimages'],'ENTITIES',r['entities'],'ER',r['entity_resource'],'F603',r['f603'])
+          crota=[r for r in rows if r['script_family_string_hash']=='A384A910']
+          ultra=[r for r in rows if r['script_family_string_hash']=='7D04C786']
+          assert len(crota)==1 and crota[0]['preimages']==['dark_lens.sq_crota'] and crota[0]['entities']==['8108E484'],crota
+          assert len(ultra)==1 and ultra[0]['preimages']==['sq_ultra_knight'] and ultra[0]['entities']==['8108E484'],ultra
+          print('CROTA_DEV_FAMILY',crota[0])
+          print('ULTRA_KNIGHT_FAMILY',ultra[0])
           PY
           sha256sum out/* > out/SHA256SUMS.txt
 
