@@ -44,7 +44,7 @@ jobs:
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
           python tools/d1_recover_indexed_package_families.py \
             --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
-            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+            --package-id 009f --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
 
       - name: Replay exact 8+20 target geometry and instance varyings
         run: |
@@ -122,7 +122,6 @@ jobs:
                   np.testing.assert_array_equal(out.param3[used,2],np.zeros(len(used),dtype=np.float32))
                   np.testing.assert_array_equal(out.param3[used,3],np.ones(len(used),dtype=np.float32))
                   np.testing.assert_array_equal(out.param4[used,3],np.ones(len(used),dtype=np.float32))
-                  # Independent affine/UV vector forms against sidecar fields.
                   a=np.asarray(n['source_affine'],dtype=np.float32)
                   src=native.v4_v6_position[used]
                   expected=src@a[:3,:3].T+a[:3,3]
@@ -153,7 +152,6 @@ jobs:
           sys.path.insert(0,'tools')
           from d1_tower_809dcd66_ps_replay import parallax_uv,rgb_from_samples
 
-          # Direct arithmetic fixtures corresponding to closed native operations.
           uv=np.array([[0.25,0.75],[0.5,0.5]],dtype=np.float32)
           world=np.array([[0,0,0],[1,0,0]],dtype=np.float32)
           N=np.array([[0,0,1],[0,0,1]],dtype=np.float32)
@@ -161,8 +159,6 @@ jobs:
           B=np.array([[0,1,0],[0,1,0]],dtype=np.float32)
           cam=np.array([0,0,10],dtype=np.float32)
           p=parallax_uv(uv,world,N,T,B,cam,0.025)
-          # First point is straight-on; no displacement. Second has a positive
-          # tangent-space X view term and therefore moves U negatively.
           np.testing.assert_array_equal(p.displaced_uv[0],uv[0])
           assert p.displaced_uv[1,0] < uv[1,0]
           np.testing.assert_array_equal(p.displaced_uv[:,1],uv[:,1])
