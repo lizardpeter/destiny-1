@@ -1,0 +1,57 @@
+name: D1 Tower 809DCD66 adapter manifest
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-809dcd66-adapter-manifest.yml'
+      - 'tools/d1_tower_809dcd66_adapter_manifest.py'
+      - 'tools/d1_tower_809dcd66_tfx_eval.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover closed upstream evidence
+        run: |
+          set -euo pipefail
+          mkdir -p constants tower reports
+          gh run download 34045866733 -n d1-tower-809dcd66-material-constants -D constants
+          gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D tower
+          test -f constants/809DCD66_material_vectors.json
+          test -f tower/reports/material_texture_manifest_ten_cell.json
+          test -f tower/reports/texture_role_inventory_ten_cell.json
+      - name: Build exact adapter input manifest
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_809dcd66_adapter_manifest.py \
+            --constants constants/809DCD66_material_vectors.json \
+            --texture-manifest tower/reports/material_texture_manifest_ten_cell.json \
+            --roles tower/reports/texture_role_inventory_ten_cell.json \
+            --out reports/809DCD66_blender_adapter_manifest.json \
+            | tee reports/809DCD66_blender_adapter_manifest_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/809DCD66_blender_adapter_manifest.json'))
+          assert d['status']=='D1_TOWER_809DCD66_BLENDER_ADAPTER_INPUTS_CLOSED'
+          assert d['material_count']==24
+          assert d['static_material_count']==10
+          assert d['dynamic_material_count']==14
+          assert d['global_inputs']['api13_dword6']['runtime_source'] is None
+          assert d['global_inputs']['api13_dword7']['runtime_source'] is None
+          assert d['render_state']['native_blend_composition_state'] is None
+          print('809DCD66_ADAPTER_MANIFEST_CANARY_GREEN')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-809dcd66-adapter-manifest
+          path: reports/
+          retention-days: 14
