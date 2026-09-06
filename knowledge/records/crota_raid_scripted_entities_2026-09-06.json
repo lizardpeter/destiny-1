@@ -1,0 +1,49 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "crota_raid_scripted_entities_2026_09_06",
+  "title": "Exact moon_raid_1 scripted-entity census and blue-Knight family closure",
+  "updated_utc": "2026-09-06T21:31:00Z",
+  "nodes": [
+    {"id":"scenario:8108E004","kind":"named_scenario_client","status":"PROVEN","label":"moon_raid_1:scenario_client","attrs":{"class":"80800616","f603_count":509}},
+    {"id":"census:moon_raid_1_scripted","kind":"scripted_entity_census","status":"PROVEN","label":null,"attrs":{"scripted_owner_f603_count":192,"unique_scripted_table_count":192,"scripted_record_count":243,"unique_entity_family_count":18,"violations":0}},
+    {"id":"entity:81096306","kind":"s_entity","status":"PROVEN","label":"raid blue/final-blue Knight family","attrs":{"model":"809D9839","skeleton_resource":"809D9821","skeleton_node_count":50,"generic_name_string_hash":"FD666BEB","generic_name_preimage_resolved":false,"scripted_record_count":12}},
+    {"id":"entity:81096305","kind":"s_entity","status":"PROVEN","label":"Knight","attrs":{"model":"809D9839","skeleton_resource":"809D9821","skeleton_node_count":50,"scripted_record_count":3}},
+    {"id":"location:083EC0AD","kind":"StringHash","status":"PROVEN","label":"lens","attrs":{"algorithm":"FNV1-32","independent_retail_hits":3}},
+    {"id":"machine:10D32BA6","kind":"StringHash","status":"PROVEN","label":"sq_blue_knight[0]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:0FD32A35","kind":"StringHash","status":"PROVEN","label":"sq_blue_knight[1]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:12D32F7C","kind":"StringHash","status":"PROVEN","label":"sq_blue_knight[2]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:11D32DD3","kind":"StringHash","status":"PROVEN","label":"sq_blue_knight[3]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:611BC079","kind":"StringHash","status":"PROVEN","label":"sq_final_blue_knight[0]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:621BC1EA","kind":"StringHash","status":"PROVEN","label":"sq_final_blue_knight[1]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:631BC317","kind":"StringHash","status":"PROVEN","label":"sq_final_blue_knight[2]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:641BC480","kind":"StringHash","status":"PROVEN","label":"sq_final_blue_knight[3]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:5D1BB985","kind":"StringHash","status":"PROVEN","label":"sq_final_blue_knight[4]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:5E1BBB36","kind":"StringHash","status":"PROVEN","label":"sq_final_blue_knight[5]","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:B6A9DA65","kind":"StringHash","status":"PROVEN","label":"sq_knights_blue_upper_balcony","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"machine:CF8DE383","kind":"StringHash","status":"PROVEN","label":"sq_knights_blue_pit","attrs":{"algorithm":"FNV1-32"}},
+    {"id":"negative:raid_inline_type_name_preimages","kind":"bounded_negative_scan","status":"PROVEN","label":null,"attrs":{"structured_entries_scanned":15246,"printable_runs_scanned":900401,"target_hash_count":22,"exact_preimage_hits":0,"errors":0}}
+  ],
+  "edges": [
+    {"id":"edge:scenario_scripted_census","subject":"scenario:8108E004","predicate":"HAS_EXACT_SCRIPTED_ENTITY_CENSUS","object":"census:moon_raid_1_scripted","status":"PROVEN","assertion_ids":["assert:raid_scripted_census"]},
+    {"id":"edge:blue_knight_in_census","subject":"census:moon_raid_1_scripted","predicate":"SERIALIZES_ENTITY_FAMILY","object":"entity:81096306","status":"PROVEN","assertion_ids":["assert:blue_knight_family"]},
+    {"id":"edge:ordinary_knight_in_census","subject":"census:moon_raid_1_scripted","predicate":"SERIALIZES_ENTITY_FAMILY","object":"entity:81096305","status":"PROVEN","assertion_ids":["assert:raid_scripted_census"]},
+    {"id":"edge:blue_knight_location","subject":"entity:81096306","predicate":"SERIALIZED_UNDER_LOCATION_HASH","object":"location:083EC0AD","status":"PROVEN","assertion_ids":["assert:blue_knight_family"]}
+  ],
+  "assertions": [
+    {"id":"assert:raid_scripted_census","status":"PROVEN","claim":"Exact traversal beginning at named scenario 8108E004 moon_raid_1 admits 509 SF603 resources, of which 192 source-close as 808007BC->808005A7 scripted-table owners. They lead to 192 unique D912 tables containing 243 scripted records across 18 EntitySK families, with zero layout violations.","source_ids":["source:raid_scripted_census"]},
+    {"id":"assert:blue_knight_family","status":"PROVEN","claim":"All 12 raid-scripted records for EntitySK 81096306 use the same Knight model/skeleton family and exact retail machine preimages resolve to sq_blue_knight[0..3], sq_final_blue_knight[0..5], sq_knights_blue_upper_balcony, and sq_knights_blue_pit; the shared activity location hash 083EC0AD resolves exactly to lens.","source_ids":["source:raid_scripted_census","source:knight_machine_preimages"]},
+    {"id":"assert:blue_knight_not_promoted_as_crota","status":"PROVEN","claim":"81096306 must not be promoted as Crota from its unresolved generic display-name hash. Its source-resolved scripted machine vocabulary identifies it as the raid blue/final-blue Knight family, not a Crota-named actor.","source_ids":["source:knight_machine_preimages","source:candidate_names"]},
+    {"id":"assert:bounded_preimage_negative","status":"PROVEN","claim":"Across current Crota raid package families 0447/044B/0450/0458, a bounded scan of 15,246 structured entries and 900,401 printable runs found zero exact inline FNV1 preimages for the 22 requested raid scripted Type/EntityName hashes. This does not prove the strings do not exist elsewhere.","source_ids":["source:raid_type_name_preimage_negative"]}
+  ],
+  "sources": [
+    {"id":"source:raid_scripted_census","kind":"actions_artifact_report","locator":"run 34060714494 / artifact 9997371058 / CROTA_RAID_SCRIPTED_ENTITY_CENSUS.json","details":{"artifact_zip_sha256":"756a6ead36218efe3208532ba5b6b94c2769ffa71c3857af43e2ca01c44e8202"}},
+    {"id":"source:knight_machine_preimages","kind":"actions_artifact_report","locator":"run 34061052918 / artifact 9997501009 / CROTA_KNIGHT_MACHINE_STRINGHASH_PREIMAGES.json","details":{"artifact_zip_sha256":"6f03a9b35b7ca2a6d9c2e25454937a55a1a82b8080503a4a41f8ae9ec396801d"}},
+    {"id":"source:raid_type_name_preimage_negative","kind":"actions_artifact_report","locator":"run 34060908310 / artifact 9997471529 / CROTA_RAID_SCRIPTED_STRINGHASH_PREIMAGES.json","details":{"artifact_zip_sha256":"2d2ab357224af7096504a707a6fc3b8bd3ecc2178268cd9667e7cc12afe3f042"}},
+    {"id":"source:candidate_names","kind":"actions_artifact_report","locator":"artifact 9995889882 / CROTA_CANDIDATE_NAMES.json","details":{"policy":"names joined only through exact s_entity FileHash and source-mapped name resources"}}
+  ],
+  "rejections": [],
+  "frontiers": [
+    {"id":"frontier:crota_exact_binary","question":"Which exact raid-owned binary entity is Crota, Son of Oryx?","next_proof":"Map source-derived raid dev strings containing Crota/finale/boss vocabulary back into exact D912/S6E/SF603/EntityResource fields, and if necessary extend beyond the D912 scripted path into all 282 normal runtime placements.","related_nodes":["scenario:8108E004","census:moon_raid_1_scripted"]},
+    {"id":"frontier:blue_knight_generic_name","question":"What is exact preimage FD666BEB?","next_proof":"Resolve from GlobalStrings or another authoritative string container; do not infer from machine names.","related_nodes":["entity:81096306"]}
+  ]
+}
