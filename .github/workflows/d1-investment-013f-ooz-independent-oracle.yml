@@ -1,0 +1,128 @@
+name: D1 investment 013F independent OOZ oracle
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-investment-013f-ooz-independent-oracle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact known-good and failing 013F compressed Tiger blocks
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          python - <<'PY'
+          import hashlib,io,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          from d1_pkg_probe import parse_header,parse_entries,parse_blocks
+          fam=load_catalogs([Path('evidence/d1_investment_asset_member_catalog.json')])[0x013F]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          latest=fam[max(fam)]
+          head=arc.read_at(latest.data_offset,0x140);h=parse_header(io.BytesIO(head))
+          entries=parse_entries(arc.read_at(latest.data_offset+h['entry_table_offset'],h['entry_table_count']*16),h['pkg_id'])
+          blocks=parse_blocks(arc.read_at(latest.data_offset+h['block_table_offset'],h['block_table_count']*32))
+          targets={'good':'80A7FA34','bad':'80A7FB3B'}
+          rows={}
+          for role,tag in targets.items():
+              idx=int(tag,16)&0x1fff;e=entries[idx];assert e['tag_hash'].upper()==tag,(role,e)
+              bi=e['starting_block'];b=blocks[bi];owner=fam[int(b['patch_id'])]
+              raw=arc.read_at(owner.data_offset+int(b['offset']),int(b['size']))
+              sha=hashlib.sha1(raw).hexdigest();assert sha.lower()==b['sha1'].lower(),(tag,sha,b['sha1'])
+              p=Path('input')/f'{role}_{tag}_block{bi}.bin';p.write_bytes(raw)
+              rows[role]={'tag':tag,'entry_index':idx,'block_index':bi,'owner':owner.name,'offset':b['offset'],'size':b['size'],'flags':b['flags'],'sha1':sha,'path':str(p)}
+              print(role.upper(),tag,'block',bi,'owner',owner.name,'offset',hex(b['offset']),'size',b['size'],'flags',hex(b['flags']),'sha1',sha,'prefix',raw[:16].hex())
+          assert rows['good']['flags']==1 and rows['bad']['flags']==1,rows
+          Path('out/block_inputs.json').write_text(json.dumps(rows,indent=2)+'\n')
+          PY
+      - name: Decode known-good block with verified official Oodle 3
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_oodle_probe import Oodle3
+          p=next(Path('input').glob('good_*.bin'));raw=p.read_bytes();dec=Oodle3(Path('runtime')).decompress(raw)
+          print('OFFICIAL_GOOD_SIZE',len(dec),'SHA256',hashlib.sha256(dec).hexdigest(),'PREFIX',dec[:32].hex())
+          Path('out/good_official.bin').write_bytes(dec)
+          if len(dec)!=0x40000: raise SystemExit(f'known-good block decoded to {len(dec)}, expected full Tiger block 0x40000')
+          PY
+      - name: Build pinned independent open-source OOZ decoder
+        run: |
+          set -euo pipefail
+          git clone -q --recurse-submodules https://github.com/oMaN-Rod/ooz-rs.git ooz_rs
+          cd ooz_rs
+          git checkout -q c197be7a4b49b2f37f339888da1c10ab87780c19
+          git submodule update -q --init --recursive
+          mkdir -p src/bin
+          cat > src/bin/d1_decode.rs <<'RS'
+          use std::{env,fs,path::PathBuf};
+          fn main() {
+              let a:Vec<String>=env::args().collect();
+              if a.len()!=3 { eprintln!("usage: d1_decode INPUT OUTPUT"); std::process::exit(2); }
+              let src=fs::read(&a[1]).unwrap();
+              match ooz_rs::decompress(&src,0x40000) {
+                  Ok(dec)=>{ assert_eq!(dec.len(),0x40000); fs::write(PathBuf::from(&a[2]),dec).unwrap(); }
+                  Err(e)=>{ eprintln!("OOZ_ERROR {e:?}"); std::process::exit(3); }
+              }
+          }
+          RS
+          cargo build --release --bin d1_decode
+      - name: Require byte-identical calibration on known-good block, then test failing block
+        run: |
+          set -uo pipefail
+          exe="$PWD/ooz_rs/target/release/d1_decode"
+          good=$(find input -name 'good_*.bin' -print -quit)
+          bad=$(find input -name 'bad_*.bin' -print -quit)
+          set +e
+          "$exe" "$good" out/good_ooz.bin >out/good_ooz_stdout.txt 2>out/good_ooz_stderr.txt
+          good_rc=$?
+          set -e
+          echo "GOOD_OOZ_RC=$good_rc"
+          cat out/good_ooz_stderr.txt
+          if [ "$good_rc" -ne 0 ]; then
+            echo 'INDEPENDENT_DECODER_NOT_CALIBRATED=1'
+            exit 1
+          fi
+          sha256sum out/good_official.bin out/good_ooz.bin
+          cmp out/good_official.bin out/good_ooz.bin
+          echo 'OOZ_CALIBRATION_BYTE_IDENTICAL=1'
+          set +e
+          "$exe" "$bad" out/bad_ooz.bin >out/bad_ooz_stdout.txt 2>out/bad_ooz_stderr.txt
+          bad_rc=$?
+          set -e
+          echo "BAD_OOZ_RC=$bad_rc" | tee out/bad_result.txt
+          cat out/bad_ooz_stderr.txt | tee -a out/bad_result.txt
+          if [ "$bad_rc" -eq 0 ]; then
+            echo 'BAD_BLOCK_OPEN_SOURCE_DECODE_SUCCESS=1' | tee -a out/bad_result.txt
+            sha256sum out/bad_ooz.bin | tee -a out/bad_result.txt
+            test "$(stat -c%s out/bad_ooz.bin)" -eq 262144
+          else
+            echo 'BAD_BLOCK_OPEN_SOURCE_DECODE_SUCCESS=0' | tee -a out/bad_result.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-investment-013f-independent-ooz-oracle
+          path: out/
+          retention-days: 14
+          compression-level: 6
