@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 """Census exact D1 skin storage for source-owned articulated world entities.
 
-Input is the exporter-ready plan from d1_world_articulated_entity_plan.py.  For
+Input is the exporter-ready plan from d1_world_articulated_entity_plan.py. For
 every distinct model/skeleton family, this tool resolves the exact retail
-s_entity_model and primary vertex streams through the cross-package Corpus and
-classifies how skin influences are stored.
+s_entity_model and vertex streams through the cross-package Corpus and classifies
+how skin influences are stored.
 
-The only decoded forms are forms already independently retail-validated in this
-repository for D1 PS4 assets when mesh.old_weights == FFFFFFFF:
+Decoded forms are source/retail closed for D1 PS4:
 
-* primary stride 0x08: int16 lane 3 is one rigid joint index;
-* primary stride 0x0C:
+* old_weights == FFFFFFFF, primary stride 0x08:
+    int16 lane 3 is one rigid joint index;
+* old_weights == FFFFFFFF, primary stride 0x0C:
     - ordinary non-negative int16 lane 3 is one rigid joint index;
     - lane 3 == +/-0x7FFF means bytes 8..9 are two U8 joint indices and
       bytes 10..11 are two U8 weights;
-* primary stride 0x10: bytes 8..11 are four U8 weights and bytes 12..15
-  are four U8 joint indices.
+* old_weights == FFFFFFFF, primary stride 0x10:
+    bytes 8..11 are four U8 weights and bytes 12..15 four U8 joint indices;
+* old_weights != FFFFFFFF, legacy OldWeights bufferIndex 2 stride 0x08:
+    bytes 0..3 are four U8 weights and bytes 4..7 four U8 joint indices.
 
-For weighted forms, raw U8 weights must sum to exactly 255.  Every nonzero
+The separate 0x08 OldWeights form is pinned directly to Charm's D1
+ReadD1VertexData(bufferIndex == 2) implementation. A separate 0x04 buffer is not
+promoted to weights because Charm reads that case as texcoords.
+
+For weighted forms, raw U8 weights must sum to exactly 255. Every nonzero
 influence must address a joint inside the source-decoded skeleton bone count.
-No malformed influence is repaired and no unsupported/separate old-weight
-format is guessed.  Such meshes are emitted as an explicit frontier instead.
+No malformed influence is repaired and no unsupported format is guessed.
 """
 from __future__ import annotations
 
@@ -28,7 +33,7 @@ import argparse
 import json
 import struct
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -42,7 +47,9 @@ SENTINELS = {32767, -32767}
 PINNED_PROJECT_PROOF = (
     'Retail-validated D1 PS4 inline skin forms from '
     'd1_guardian_combined_skin_animation.py, d1_model_joint_probe.py, '
-    'd1_remote_rigid_joint_domain.py, and D1_GUARDIAN_FULL_SKIN_SOLVED_2026-09-05.md'
+    'd1_remote_rigid_joint_domain.py, and D1_GUARDIAN_FULL_SKIN_SOLVED_2026-09-05.md; '
+    'legacy OldWeights stride 0x08 pinned to MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
+    'Tiger/Schema/Model/VertexBuffer.cs ReadD1VertexData bufferIndex 2.'
 )
 
 
@@ -79,6 +86,61 @@ def linked_payload(c, h):
     return out, head, payload
 
 
+def finish_weight_report(out, sums):
+    out['mode_counts'] = dict(out['mode_counts'])
+    out['bone_domain'] = sorted(out['bone_domain'])
+    out['bone_reference_counts'] = dict(out['bone_reference_counts'])
+    if sums:
+        out['weight_sum_min'] = min(sums)
+        out['weight_sum_max'] = max(sums)
+    out['validation_ok'] = not out['violations']
+    return out
+
+
+def register_influences(out, vi, influences):
+    for joint, weight in influences:
+        if weight == 0:
+            continue
+        if not (0 <= int(joint) < out['bone_count']):
+            out['violations'].append(
+                f'vertex[{vi}]:nonzero_joint_{joint}_outside_skeleton_{out["bone_count"]}'
+            )
+            continue
+        out['bone_domain'].add(int(joint))
+        out['bone_reference_counts'][str(int(joint))] += 1
+
+
+def decode_weight8(payload: bytes, bone_count: int, storage='separate_old_weights') -> dict:
+    out = {
+        'storage': storage,
+        'stride': 0x08,
+        'bone_count': bone_count,
+        'vertex_count': 0,
+        'mode_counts': Counter(),
+        'bone_reference_counts': Counter(),
+        'bone_domain': set(),
+        'weight_sum_min': None,
+        'weight_sum_max': None,
+        'violations': [],
+    }
+    if len(payload) % 8:
+        out['violations'].append(f'weight_payload_size_{len(payload)}_not_divisible_by_8')
+        return finish_weight_report(out, [])
+    sums=[]
+    out['vertex_count']=len(payload)//8
+    for vi in range(out['vertex_count']):
+        off=vi*8
+        vals=list(payload[off:off+4])
+        inds=list(payload[off+4:off+8])
+        total=sum(vals);sums.append(total);out['mode_counts']['weight4_u8']+=1
+        if total!=255:
+            out['violations'].append(
+                f'vertex[{vi}]:weight4_sum_{total}_not_255:indices={inds}:weights={vals}'
+            )
+        register_influences(out,vi,zip(inds,vals))
+    return finish_weight_report(out,sums)
+
+
 def decode_inline(payload: bytes, stride: int, bone_count: int) -> dict:
     out = {
         'storage': 'inline_primary',
@@ -95,10 +157,10 @@ def decode_inline(payload: bytes, stride: int, bone_count: int) -> dict:
     if stride not in (0x08, 0x0C, 0x10):
         out['storage'] = 'unsupported_inline_stride'
         out['frontier'] = f'inline skin stride 0x{stride:X} is not source-closed by the project'
-        return out
+        return finish_weight_report(out, [])
     if len(payload) % stride:
         out['violations'].append(f'primary_payload_size_{len(payload)}_not_divisible_by_stride_{stride}')
-        return out
+        return finish_weight_report(out, [])
     n = len(payload) // stride
     out['vertex_count'] = n
     sums = []
@@ -145,24 +207,8 @@ def decode_inline(payload: bytes, stride: int, bone_count: int) -> dict:
                     f'vertex[{vi}]:inline4_weight_sum_{sum(vals)}_not_255:'
                     f'indices={inds}:weights={vals}'
                 )
-        for joint, weight in influences:
-            if weight == 0:
-                continue
-            if not (0 <= int(joint) < bone_count):
-                out['violations'].append(
-                    f'vertex[{vi}]:nonzero_joint_{joint}_outside_skeleton_{bone_count}'
-                )
-                continue
-            out['bone_domain'].add(int(joint))
-            out['bone_reference_counts'][str(int(joint))] += 1
-    out['mode_counts'] = dict(out['mode_counts'])
-    out['bone_domain'] = sorted(out['bone_domain'])
-    out['bone_reference_counts'] = dict(out['bone_reference_counts'])
-    if sums:
-        out['weight_sum_min'] = min(sums)
-        out['weight_sum_max'] = max(sums)
-    out['validation_ok'] = not out['violations']
-    return out
+        register_influences(out,vi,influences)
+    return finish_weight_report(out,sums)
 
 
 def family_inputs(plan: dict) -> list[dict]:
@@ -251,22 +297,46 @@ def inspect_family(c, fam):
             else:
                 wlink, whead, wpayload = linked_payload(c, row['old_weights'])
                 row['old_weights_stream'] = wlink
-                row['skin'] = {
-                    'storage': 'separate_old_weights',
-                    'frontier': 'separate D1 OldWeights stream present; byte semantics intentionally not guessed',
-                    'header_size': None if whead is None else len(whead),
-                    'payload_size': None if wpayload is None else len(wpayload),
-                    'stride': None if whead is None or len(whead) < 6 else s16(whead, 4),
-                }
-                out['frontiers'].append(f'mesh[{mi}]:separate_old_weights:{row["old_weights"]}')
                 if whead is None or wpayload is None:
+                    row['skin']={'storage':'separate_old_weights','frontier':'separate OldWeights stream unavailable'}
                     row['violations'].append('separate_old_weights_stream_unavailable')
+                elif len(whead)<6:
+                    row['skin']={'storage':'separate_old_weights','frontier':'separate OldWeights header shorter than stride field'}
+                    row['violations'].append('separate_old_weights_header_short')
+                else:
+                    wstride=s16(whead,4)
+                    row['old_weights_stride']=wstride
+                    row['old_weights_payload_size']=len(wpayload)
+                    if wstride==0x08:
+                        skin=decode_weight8(wpayload,bone_count)
+                        row['skin']=skin
+                        row['violations'].extend(skin.get('violations',[]))
+                        primary_vertices=len(payload)//stride if stride>0 and len(payload)%stride==0 else None
+                        row['primary_vertex_count']=primary_vertices
+                        row['old_weights_vertex_count']=skin.get('vertex_count')
+                        if primary_vertices is not None and skin.get('vertex_count')!=primary_vertices:
+                            row['violations'].append(
+                                f'old_weights_vertex_count_{skin.get("vertex_count")}_does_not_match_primary_{primary_vertices}'
+                            )
+                    else:
+                        row['skin']={
+                            'storage':'unsupported_separate_old_weights_stride',
+                            'stride':wstride,
+                            'payload_size':len(wpayload),
+                            'frontier':(
+                                f'D1 OldWeights bufferIndex 2 stride 0x{wstride:X} is not a source-closed weight format; '
+                                'Charm only treats stride 0x08 as four weights + four indices'
+                            ),
+                        }
+                        row['frontier']=row['skin']['frontier']
+                        out['frontiers'].append(f'mesh[{mi}]:'+row['frontier'])
         if row['violations']:
             out['violations'].extend(f'mesh[{mi}]:{x}' for x in row['violations'])
         out['meshes'].append(row)
     out['mesh_count'] = len(out['meshes'])
     out['inline_mesh_count'] = sum((m.get('skin') or {}).get('storage') == 'inline_primary' for m in out['meshes'])
     out['separate_old_weights_mesh_count'] = sum((m.get('skin') or {}).get('storage') == 'separate_old_weights' for m in out['meshes'])
+    out['unsupported_separate_old_weights_mesh_count'] = sum((m.get('skin') or {}).get('storage') == 'unsupported_separate_old_weights_stride' for m in out['meshes'])
     out['unsupported_inline_mesh_count'] = sum((m.get('skin') or {}).get('storage') == 'unsupported_inline_stride' for m in out['meshes'])
     out['validation_ok'] = not out['violations']
     return out
@@ -296,12 +366,13 @@ def main():
             if s.get('bone_domain') is not None:
                 bone_domains[f'{f.get("model")}:mesh{m["mesh_index"]}'] = s.get('bone_domain')
     separate = sum(f.get('separate_old_weights_mesh_count', 0) for f in families)
+    unsupported_sep = sum(f.get('unsupported_separate_old_weights_mesh_count', 0) for f in families)
     unsupported = sum(f.get('unsupported_inline_mesh_count', 0) for f in families)
     status = 'D1_WORLD_ARTICULATED_SKIN_CENSUS_PARTIAL' if violations else (
         'D1_WORLD_ARTICULATED_SKIN_CENSUS_FRONTIER' if frontiers else 'D1_WORLD_ARTICULATED_SKIN_CENSUS_COMPLETE'
     )
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': status,
         'project_proof_basis': PINNED_PROJECT_PROOF,
         'family_count': len(families),
@@ -309,6 +380,7 @@ def main():
         'mesh_count': sum(f.get('mesh_count', 0) for f in families),
         'inline_mesh_count': sum(f.get('inline_mesh_count', 0) for f in families),
         'separate_old_weights_mesh_count': separate,
+        'unsupported_separate_old_weights_mesh_count': unsupported_sep,
         'unsupported_inline_mesh_count': unsupported,
         'runtime_placement_count': sum(f.get('runtime_placement_count', 0) for f in families),
         'serialized_placement_reference_count': sum(f.get('serialized_placement_reference_count', 0) for f in families),
@@ -318,15 +390,16 @@ def main():
         'frontiers': frontiers,
         'violations': violations,
         'policy': (
-            'Only previously retail-validated D1 PS4 inline skin encodings are decoded. '
-            'Every nonzero influence must fit the source-owned skeleton. Separate OldWeights or unknown strides remain explicit frontiers; no influences are fabricated.'
+            'Only source/retail-closed D1 PS4 skin encodings are decoded. Every nonzero influence must fit the source-owned skeleton. '
+            'Legacy OldWeights stride 0x08 follows Charm bufferIndex-2 four-weight/four-index layout; any other separate stride remains an explicit frontier. No influences are fabricated.'
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({k: out[k] for k in (
         'status', 'family_count', 'unique_model_count', 'mesh_count', 'inline_mesh_count',
-        'separate_old_weights_mesh_count', 'unsupported_inline_mesh_count', 'runtime_placement_count',
+        'separate_old_weights_mesh_count', 'unsupported_separate_old_weights_mesh_count',
+        'unsupported_inline_mesh_count', 'runtime_placement_count',
         'serialized_placement_reference_count', 'mode_vertex_counts', 'frontiers', 'violations')}, indent=2))
     return 2 if violations else 0
 
