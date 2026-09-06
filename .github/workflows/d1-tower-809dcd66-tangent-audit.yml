@@ -1,0 +1,96 @@
+name: D1 Tower 809DCD66 tangent audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-809dcd66-tangent-audit.yml'
+      - 'tools/d1_tower_809dcd66_tangent_audit.py'
+      - 'tools/d1_tower_80ca0dda_vs_replay.py'
+      - 'tools/d1_tower_809dcd66_ps_replay.py'
+      - 'tools/d1_world_static_common.py'
+      - 'tools/d1_world_static_vertex_decode.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact retail cell evidence and source families
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh
+          mkdir -p prior index runtime packages reports
+          gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D prior
+          test -f prior/world/TOWER_80C98254_WORLD.json
+          test -f prior/reports/material_texture_manifest_ten_cell.json
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 009f --package-id 024c --package-id 0250 \
+            --out-dir packages --report reports/recovery.json
+
+      - name: Audit exact tangent W, instance basis and portable UV relation
+        run: |
+          set -euo pipefail
+          args=(); for f in packages/*.pkg; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_809dcd66_tangent_audit.py \
+            "${args[@]}" --runtime runtime \
+            --world prior/world/TOWER_80C98254_WORLD.json \
+            --manifest prior/reports/material_texture_manifest_ten_cell.json \
+            --out reports/809DCD66_tangent_audit.json \
+            | tee reports/809DCD66_tangent_audit_stdout.txt
+
+      - name: Enforce promotion gates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p='reports/809DCD66_tangent_audit.json'
+          d=json.load(open(p))
+          assert d['geometry_count']==12,d['geometry_count']
+          assert d['placement_count']==64,d['placement_count']
+          gates=d['promotion_gates']
+          required=(
+            'tangent_w_is_glTF_sign_compatible',
+            'every_triangle_has_uniform_tangent_w',
+            'all_instance_transforms_orientation_preserving',
+            'instance_bases_are_orthogonal_within_1e_5',
+            'instance_scales_are_uniform_within_1e_5',
+            'native_normal_is_unit_within_1e_5',
+            'native_tangent_is_unit_within_1e_5',
+            'portable_uv_v_flip_exact_within_2e_6',
+            'portable_parallax_y_sign_flip_exact_within_3e_6',
+          )
+          failed=[k for k in required if not gates.get(k)]
+          if failed:
+              raise SystemExit('promotion gates failed: '+','.join(failed))
+          print('ALL_809DCD66_TANGENT_ADAPTER_GATES_GREEN')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-809dcd66-tangent-audit
+          path: reports/
+          retention-days: 14
+          compression-level: 6
