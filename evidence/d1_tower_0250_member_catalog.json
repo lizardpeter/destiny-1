@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-06",
+  "status": "TOWER_0250_LOGICAL_FAMILY_PHYSICAL_MEMBERS_SHA256_PINNED",
+  "policy": "These rows pin the exact current physical siblings of logical PS4 package family 0250. They establish byte identity and package-family membership only; semantic ownership remains source-derived from D1 FileHash/resource graphs. All six siblings must be available to resolve payloads because an entry-table occurrence does not guarantee that the resident payload is stored in the same physical sibling.",
+  "families": {
+    "0250": [
+      {
+        "name": "ps4_city_tower_destination_0250_0.pkg",
+        "data_offset": 7882616320,
+        "size": 294875136,
+        "sha256": "beb269a2673f1106e2eff20ff577d0221d7fa56a8b71f5f8763cf34272114b32"
+      },
+      {
+        "name": "ps4_city_tower_destination_0250_1.pkg",
+        "data_offset": 8177491968,
+        "size": 17983488,
+        "sha256": "87904a97ce9899305b6bdba9df960d220749b3b2398c4ba8bd97e6efb8f81f91"
+      },
+      {
+        "name": "ps4_city_tower_destination_0250_2.pkg",
+        "data_offset": 8195475968,
+        "size": 11143168,
+        "sha256": "7543c1926023ec76ff8949618e04e1d0a93609f8448a1f8f875fcfc505a6b219"
+      },
+      {
+        "name": "ps4_city_tower_destination_0250_3.pkg",
+        "data_offset": 8206619648,
+        "size": 206848,
+        "sha256": "1db9423081f922b78cce256641dfab195e6a4b4afb6020e4e0c5029234f19375"
+      },
+      {
+        "name": "ps4_city_tower_destination_0250_4.pkg",
+        "data_offset": 8206827008,
+        "size": 17901568,
+        "sha256": "5a9370d60724622fb6592a7bcfa2fc4dbb40a4fca5cd696ce8db086a5756e84f"
+      },
+      {
+        "name": "ps4_city_tower_destination_0250_5.pkg",
+        "data_offset": 8224729088,
+        "size": 1677312,
+        "sha256": "2066afe09503eee4c35d948f6749a6e7b7b02572dcd41d1d3ca679fa523ea22c"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "tools/d1_tower_recover_current_corpus.py CORE exact current Tower dependency corpus",
+    "reason_for_separate_catalog": "Family-E animation ownership needs the complete 0250 logical package without recovering unrelated Tower dependency families."
+  }
+}
