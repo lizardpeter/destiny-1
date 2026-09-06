@@ -37,8 +37,6 @@ def pair_of(resource):
 def runtime_placements(p):
     if p.get('unique_world_placements') is not None:
         return list(p.get('unique_world_placements',[]))
-    # Compatibility fallback for historical manifests: retain one exact WorldID
-    # only when repeated serializations are identical.
     by={}
     for key in ('direct_tables','tables'):
         for t in p.get(key,[]):
@@ -128,16 +126,19 @@ def main():
                          'skeleton_resources':sorted(v['skeleton_resources']),'runtime_rig_resources':sorted(v['runtime_rig_resources']),
                          'runtime_placement_count':v['runtime_placements'],'serialized_placement_reference_count':v['serialized_references']})
     model_counts=Counter(m for c in candidates for m in c['models']);skeleton_counts=Counter(x['resource_hash'] for c in candidates for x in c['skeletons']);rig_counts=Counter(r for c in candidates for r in c['runtime_rig_resources'])
+    runtime_count=sum(c['runtime_placement_count'] for c in candidates)
+    serialized_count=sum(c['serialized_placement_reference_count'] for c in candidates)
     out={'schema_version':2,'status':'D1_WORLD_ARTICULATED_ENTITY_PLAN_COMPLETE' if not missing_placement else 'D1_WORLD_ARTICULATED_ENTITY_PLAN_PARTIAL',
          'candidate_count':len(candidates),'rig_export_candidate_count':sum(c['rig_export_candidate'] for c in candidates),
-         'family_count':len(fam_rows),'runtime_placement_count':sum(c['runtime_placement_count'] for c in candidates),
-         'serialized_placement_reference_count':sum(c['serialized_placement_reference_count'] for c in candidates),
-         'duplicate_serialized_reference_count':sum(c['serialized_placement_reference_count']-c['runtime_placement_count'] for c in candidates),
+         'family_count':len(fam_rows),'runtime_placement_count':runtime_count,
+         'placement_count':runtime_count,
+         'serialized_placement_reference_count':serialized_count,
+         'duplicate_serialized_reference_count':serialized_count-runtime_count,
          'unique_model_count':len(model_counts),'unique_models':sorted(model_counts),'model_reference_counts':dict(model_counts),
          'unique_skeleton_resource_count':len(skeleton_counts),'skeleton_reference_counts':dict(skeleton_counts),
          'unique_runtime_rig_resource_count':len(rig_counts),'runtime_rig_reference_counts':dict(rig_counts),
          'missing_placement_entities':missing_placement,'families':fam_rows,'candidates':candidates,
-         'policy':'Candidate membership comes only from model+skeleton evidence. Runtime scene instances are unique WorldIDs whose repeated source serializations were proven identical by the placement census; all Activity/F603 source references remain attached as provenance. Retail names are evidence candidates and do not by themselves assign NPC/vendor/combatant semantics.'}
+         'policy':'Candidate membership comes only from model+skeleton evidence. Runtime scene instances are unique WorldIDs whose repeated source serializations were proven identical by the placement census; all Activity/F603 source references remain attached as provenance. Retail names are evidence candidates and do not by themselves assign NPC/vendor/combatant semantics. placement_count is a compatibility alias for runtime_placement_count.'}
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
     print(json.dumps({k:out[k] for k in ('status','candidate_count','rig_export_candidate_count','family_count','runtime_placement_count','serialized_placement_reference_count','duplicate_serialized_reference_count','unique_model_count','unique_models','unique_skeleton_resource_count','unique_runtime_rig_resource_count','missing_placement_entities')},indent=2))
     return 0 if out['status'].endswith('_COMPLETE') else 2
