@@ -13,7 +13,7 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 from d1_entry_extract import EntryReader
-from d1_material_decode import parse_material, parse_array_header
+from d1_material_decode import parse_material, checked_rel_array
 from d1_dxbc_probe import parse_shader_tag, XBOX_MATERIAL_CLASS, XBOX_SHADER_TAG_CLASS
 
 
@@ -22,10 +22,7 @@ def u64(b,o):return struct.unpack_from('<Q',b,o)[0]
 
 
 def vec4_array(b:bytes,o:int)->dict:
-    h=parse_array_header(b,o,16)
-    count=int(h['count']); off=int(h['absolute_offset'])
-    end=off+count*16
-    if off<0 or end>len(b): raise ValueError(f'vec4 array {o:#x} out of bounds {off:#x}:{end:#x}/{len(b):#x}')
+    count,off,end=checked_rel_array(b,o,16,f'vec4 array {o:#x}')
     raw=b[off:end]
     rows=[]
     for i in range(count):
