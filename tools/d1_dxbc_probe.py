@@ -15,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from d1_entry_extract import EntryReader
-from d1_material_decode import parse_material, parse_array_header
+from d1_material_decode import parse_material, checked_rel_array
 from d1_vector_container_probe import xbox_count_from_metadata_size, parse_xbox_vector_container
 
 XBOX_MATERIAL_CLASS = '80801C32'
@@ -138,11 +138,13 @@ def main():
                      'b0_compared':0,'b0_count_exact':0,'b0_count_mismatch':0}
     for e in mats:
         if not r.available(e['index']): continue
-        m=parse_material(r.entry(e['index']),r.h['platform'])
+        material_bytes=r.entry(e['index'])
+        m=parse_material(material_bytes,r.h['platform'])
         pe=by.get(m['pixel_shader'].upper())
         # In the ROI material layout, PS_CBuffers is the DynamicArray immediately
         # following PS_Samplers at +0x300. PSVector4Container is at +0x32C.
-        inline_ps_cbuffers=parse_array_header(r.entry(e['index']),0x300,16)
+        cb_count,cb_off,cb_end=checked_rel_array(material_bytes,0x300,16,'PS CBuffers')
+        inline_ps_cbuffers={'count':cb_count,'offset':cb_off,'end':cb_end}
         row={'material_tag_hash':e['tag_hash'],'material_entry_index':e['index'],'pixel_shader':m['pixel_shader'],
              'material_texture_indices':[x['texture_index'] for x in m['ps_textures']['items']],
              'material_sampler_count':m['ps_samplers']['count'],
