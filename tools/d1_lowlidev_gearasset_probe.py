@@ -12,8 +12,13 @@ gear ``reference_id``, explicitly selected content platform, filenames, hashes a
 response bytes are preserved so they can be cross-checked against proven retail
 PS4 data.
 
-No nearby item, class substitute, visual match, guessed default armor, or implicit
-platform fallback is used.
+Geometry download URL provenance is lowlines/destiny-tgx-loader at commit
+``a40ac48ca27b5ad4c2e437616f8cc65137ad6b8a``:
+
+    contentpath+'/geometry/platform/'+platform+'/geometry/'+geometry
+
+No nearby item, class substitute, visual match, guessed default armor, implicit
+platform fallback, or unselected geometry file is used.
 """
 from __future__ import annotations
 
@@ -27,7 +32,8 @@ from pathlib import Path
 from d1_bungie_web_gearasset_probe import geometry_ids, index_sets, selected
 
 BASE = 'https://lowlidev.com.au'
-GEAR_ROOT = 'https://www.bungie.net/common/destiny_content/geometry/gear'
+BUNGIE_CONTENT = 'https://www.bungie.net/common/destiny_content'
+GEAR_ROOT = f'{BUNGIE_CONTENT}/geometry/gear'
 UA = 'd1-reversal-evidence/1.0 (+https://github.com/lizardpeter/destiny-1)'
 
 
@@ -55,6 +61,32 @@ def exact_platform_content(ga: dict, platform: str) -> dict:
     return rows[0]
 
 
+def download_selected_tgxm(files: dict, platform: str, output_dir: Path) -> list[dict]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for entry in files.get('geometry') or []:
+        index = int(entry['index'])
+        name = str(entry['file_name'])
+        if Path(name).name != name or not name.lower().endswith('.tgxm'):
+            raise ValueError(f'unsafe/non-TGXM selected geometry filename {name!r}')
+        url = f'{BUNGIE_CONTENT}/geometry/platform/{platform}/geometry/{name}'
+        status, headers, body, transport_error = get(url)
+        if status != 200:
+            raise ValueError(f'exact selected geometry {name} HTTP {status} transport={transport_error}')
+        path = output_dir / name
+        path.write_bytes(body)
+        rows.append({
+            'index': index,
+            'file_name': name,
+            'url': url,
+            'http_status': status,
+            'content_type': headers.get('Content-Type'),
+            'size': len(body),
+            'sha256': hashlib.sha256(body).hexdigest(),
+        })
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--item-hash', action='append', required=True)
@@ -62,6 +94,7 @@ def main() -> int:
     ap.add_argument('--female', action='store_true')
     ap.add_argument('--platform', choices=('web', 'mobile'), required=True)
     ap.add_argument('--download-dir', type=Path)
+    ap.add_argument('--download-tgxm-dir', type=Path)
     ap.add_argument('-o', '--output', type=Path, required=True)
     a = ap.parse_args()
 
@@ -122,6 +155,15 @@ def main() -> int:
                     'locked_dye_count': len(gear.get('locked_dyes') or []),
                     'custom_dye_count': len(gear.get('custom_dyes') or []),
                 })
+
+            tgxm_rows = []
+            if a.download_tgxm_dir:
+                tgxm_rows = download_selected_tgxm(
+                    files,
+                    a.platform,
+                    a.download_tgxm_dir / f'{item:08X}',
+                )
+
             row.update({
                 'requested_id': requested,
                 'gearasset': ga,
@@ -129,6 +171,7 @@ def main() -> int:
                 'platform_index_sets': sets,
                 'platform_selected_files': files,
                 'gear_json': gear_rows,
+                'downloaded_selected_tgxm': tgxm_rows,
                 'exact_requested_id_match': True,
                 'all_gear_reference_ids_match': all(x['reference_id'] == item for x in gear_rows),
             })
@@ -140,16 +183,19 @@ def main() -> int:
         if row.get('gear_json'):
             print(' gear', [(x['file_name'], x['reference_id'], x['geometry_identifiers']) for x in row['gear_json']])
             print(' selected geometry', [(x['index'], x['file_name']) for x in row['platform_selected_files']['geometry']])
+            if row.get('downloaded_selected_tgxm'):
+                print(' downloaded TGXM', [(x['index'], x['file_name'], x['size'], x['sha256']) for x in row['downloaded_selected_tgxm']])
 
     report = {
-        'schema': 'd1_lowlidev_gearasset_probe/v2',
+        'schema': 'd1_lowlidev_gearasset_probe/v3',
         'source': 'lowlines historical D1 manifest testing endpoint documented in Porting Bungie Spasm to Three.js (2018)',
+        'geometry_url_provenance': 'lowlines/destiny-tgx-loader a40ac48ca27b5ad4c2e437616f8cc65137ad6b8a: contentpath/geometry/platform/{platform}/geometry/{geometry}',
         'class_hash': a.class_hash,
         'is_female': a.female,
         'requested_platform': a.platform,
         'items': rows,
         'failure_item_hashes': failures,
-        'promotion_policy': 'Secondary evidence only. Exact requestedId, explicitly selected platform, and gear reference_id are required. Returned filenames/geometry must still be cross-checked against independent retail PS4 evidence before promotion.',
+        'promotion_policy': 'Secondary evidence only. Exact requestedId, explicitly selected platform, gear reference_id, and exact selected index-set filenames are required. Returned geometry must still be cross-checked against independent retail PS4 evidence before promotion.',
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(report, indent=2) + '\n')
