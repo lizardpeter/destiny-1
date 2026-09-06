@@ -1,0 +1,131 @@
+name: D1 Tower common material constants
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-material-constants.yml'
+      - 'tools/d1_world_material_manifest.py'
+      - 'tools/d1_world_material_constant_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install exact Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime source_models recovered material_families selector reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf4c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact 99 common material selector from source-driven model artifact
+        run: |
+          set -euo pipefail
+          run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$run"
+          gh run download "$run" -n d1-tower-common-layer-model-export -D source_models
+          python - <<'PY'
+          import json
+          m=json.load(open('source_models/reports/common_layer_model_export.json'))
+          mats=set();parts=0
+          for model in m.get('models',[]):
+              if not model.get('ok'): continue
+              for mesh in model.get('meshes',[]):
+                  for p in mesh.get('parts',[]):
+                      if not p.get('selected'): continue
+                      parts+=1
+                      h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                      if h:mats.add(str(h).upper())
+          assert parts==163 and len(mats)==99,(parts,len(mats))
+          json.dump({'status':'D1_COMMON_LAYER_MATERIAL_SELECTOR','selected_parts':parts,'material_count':len(mats),
+                     'materials':{h:{'visual':True} for h in sorted(mats)}},open('selector/common_material_selector.json','w'),indent=2)
+          print('MATERIAL_SELECTOR',parts,len(mats))
+          PY
+
+      - name: Recover exact current material/constant package corpus
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt \
+            --family 0154 --family 0156 --family 0157 --family 0158 \
+            --out-dir material_families --report reports/material_family_recovery.json
+
+      - name: Decode selected Material records without image payload work
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered material_families -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_manifest.py "${args[@]}" --runtime runtime \
+            --visual-json selector/common_material_selector.json \
+            --out reports/common_material_manifest.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_material_manifest.json'))
+          assert d['status']=='D1_WORLD_MATERIAL_MANIFEST_COMPLETE',d['error_materials']
+          assert d['visible_material_count']==99 and d['material_decode_errors']==0,d
+          assert d['pixel_shader_count']==65,d['pixel_shader_count']
+          print('MATERIAL_MANIFEST_CLOSED',d['visible_material_count'],d['pixel_shader_count'],'constant_containers',d['unique_constant_container_count'])
+          PY
+
+      - name: Decode exact VS/PS vec4 constant containers
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered material_families -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_constant_export.py "${args[@]}" --runtime runtime \
+            --manifest reports/common_material_manifest.json \
+            --out reports/common_material_constants.json
+
+      - name: Report F5/F6 exact authored constants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          m=json.load(open('reports/common_material_manifest.json'))
+          c=json.load(open('reports/common_material_constants.json'))
+          assert c['status']=='D1_WORLD_MATERIAL_CONSTANT_EXPORT',c['error_containers']
+          assert c['constant_errors']==0,c['error_containers']
+          rows=[]
+          for mh,mat in sorted(m['materials'].items()):
+              ps=mat.get('pixel_shader')
+              if ps not in {'80AAE1F5','80AAE1F6'}: continue
+              h=(mat.get('constants') or {}).get('ps_vector4_container')
+              cr=c['containers'].get(h) if h and h!='FFFFFFFF' else None
+              rows.append({'material':mh,'pixel_shader':ps,'ps_vector4_container':h,
+                           'vector_count':None if cr is None else cr.get('vector_count'),
+                           'vectors':None if cr is None else cr.get('vectors')})
+          assert len(rows)==17,len(rows)
+          json.dump({'schema_version':1,'status':'D1_TOWER_F5_F6_AUTHORED_CONSTANTS_RECOVERED','material_count':len(rows),'materials':rows},
+                    open('reports/F5_F6_authored_constants.json','w'),indent=2)
+          print('F5_F6_CONSTANTS',len(rows),'materials','unique_ps_containers',len({x['ps_vector4_container'] for x in rows}))
+          for r in rows:
+              print(r['material'],r['pixel_shader'],r['ps_vector4_container'],'vec4s',r['vector_count'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-common-material-constants
+          path: reports/
+          retention-days: 14
+          compression-level: 6
