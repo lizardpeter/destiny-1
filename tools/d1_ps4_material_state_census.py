@@ -2,9 +2,13 @@
 """Census raw D1 PS4 material header state without assigning semantics.
 
 This tool intentionally treats the compact ROI material header at +0x08..+0x27
-as opaque state.  It inventories exact shipped bytes and correlates them only with
-other serialized structures (shader identities and constant-storage form).  It does
+as opaque state. It inventories exact shipped bytes and correlates them only with
+other serialized structures (shader identities and constant-storage form). It does
 not label any bit as blend, cull, depth, alpha-test, or pass state.
+
+FileHash reuse across package generations is handled fail-closed: payload selection
+is restricted to occurrences whose reference is exactly the PS4 ROI material class.
+A newer occurrence with another class can never replace a material payload here.
 """
 from __future__ import annotations
 
@@ -49,6 +53,42 @@ def header_state(b: bytes) -> dict:
     }
 
 
+def class_stable_payload(c, h: str):
+    """Return newest available occurrence of h whose class is MAT_CLASS only."""
+    h = norm(h)
+    for generation, path, reader, entry in c.occ.get(h, []):
+        if norm(entry.get("reference", "")) != MAT_CLASS:
+            continue
+        if not reader.available(entry["index"]):
+            continue
+        try:
+            b = reader.entry(entry["index"])
+        except Exception:
+            continue
+        meta = {
+            "hash": h,
+            "snapshot": path.name,
+            "package_id": f"{int(reader.h['pkg_id']):04X}",
+            "entry_index": int(entry["index"]),
+            "type": int(entry["type"]),
+            "subtype": int(entry["subtype"]),
+            "reference": norm(entry["reference"]),
+            "size": int(entry["file_size"]),
+            "available": True,
+            "generation": int(generation),
+        }
+        src = {
+            "snapshot": path.name,
+            "package_id": f"{int(reader.h['pkg_id']):04X}",
+            "entry_index": int(entry["index"]),
+            "reference": norm(entry["reference"]),
+            "size": int(entry["file_size"]),
+            "fallback_policy": "CLASS_STABLE_NEWEST_REFERENCE_ONLY",
+        }
+        return b, src, meta
+    return None, None, None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot", type=Path, action="append", required=True)
@@ -65,16 +105,15 @@ def main() -> int:
     rows = []
     violations = []
     for h in hashes:
-        meta = c.entry_meta(h)
-        b, src = c.payload(h)
+        b, src, meta = class_stable_payload(c, h)
         if b is None:
-            violations.append({"material": h, "error": "payload_unavailable"})
+            violations.append({"material": h, "error": "class_stable_payload_unavailable"})
             continue
         try:
             p = parse_material(b, "PS4")
             st = header_state(b)
         except Exception as ex:
-            violations.append({"material": h, "error": repr(ex)})
+            violations.append({"material": h, "source": src, "error": repr(ex)})
             continue
         psc = norm(p["ps_vector4_container"])
         rows.append({
@@ -120,11 +159,12 @@ def main() -> int:
     )
 
     out = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "D1_PS4_MATERIAL_STATE_CENSUS_COMPLETE" if not violations else "D1_PS4_MATERIAL_STATE_CENSUS_PARTIAL",
         "material_class": MAT_CLASS,
         "material_count": len(rows),
         "candidate_hash_count": len(hashes),
+        "selection_policy": "CLASS_STABLE_NEWEST_REFERENCE_ONLY",
         "violations": violations,
         "histograms": {
             "state_window": dict(by_window),
@@ -149,7 +189,8 @@ def main() -> int:
         "materials": rows,
         "policy": (
             "Raw PS4 ROI material-header bytes only. Correlations with shader identity and PS constant-storage form "
-            "are reported mechanically; no render-state semantic is assigned to any header field or bit."
+            "are reported mechanically; no render-state semantic is assigned to any header field or bit. FileHash "
+            "reuse is resolved only within the exact material class."
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
@@ -157,6 +198,7 @@ def main() -> int:
     print(json.dumps({
         "status": out["status"],
         "material_count": out["material_count"],
+        "candidate_hash_count": out["candidate_hash_count"],
         "state_window_count": len(by_window),
         "unk0c_histogram": out["histograms"]["unk0c"],
         "unk20_histogram": out["histograms"]["unk20"],
