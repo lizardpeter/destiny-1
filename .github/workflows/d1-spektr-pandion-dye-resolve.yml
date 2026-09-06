@@ -6,6 +6,8 @@ on:
       - '.github/workflows/d1-spektr-pandion-dye-resolve.yml'
       - 'tools/d1_investment_dye_resolver.py'
       - 'tools/d1_investment_dye_exact_resolver.py'
+      - 'tools/d1_investment_dye_exact_resolver_v2.py'
+      - 'tools/d1_dye_channel_semantics.py'
       - 'tools/d1_entry_extract.py'
       - 'tools/d1_remote_investment_parent_probe.py'
   workflow_dispatch:
@@ -50,7 +52,6 @@ jobs:
             --target ps4_investment_assets_013f_5.pkg \
             --out recovered --manifest out/013f_extract.json --retries 6 --timeout 90
 
-          # D1 GetReferenceFromManifest wrappers for two relation entries live in 0432.
           python tools/d1_split_tar_extract.py --base-url "$BASE" --part-count 10 --start-offset 0xB4405A200 \
             --target ps4_shared_manifest_0432_1.pkg --target ps4_shared_manifest_0432_2.pkg \
             --target ps4_shared_manifest_0432_3.pkg --target ps4_shared_manifest_0432_4.pkg \
@@ -61,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python tools/d1_investment_dye_exact_resolver.py recovered --runtime runtime \
+          python tools/d1_investment_dye_exact_resolver_v2.py recovered --runtime runtime \
             --channel-index 0 --channel-index 1 --channel-index 2 \
             --dye-index 8752 --dye-index 8753 --dye-index 8754 \
             -o out/spektar_pandion_exact_dyes.json
@@ -75,7 +76,11 @@ jobs:
           assert d['requested_channel_indices']==[0,1,2],d
           assert d['resolved_dye_count']==3,d
           assert not d['unresolved_package_ids'],d
-          assert [x['known_name'] for x in d['channels']]==['ArmorPlate','ArmorSuit','ArmorCloth'],d['channels']
+          assert [x['known_name'] for x in d['channels']]==['ArmorPlate','ArmorCloth','ArmorSuit'],d['channels']
+          by={x['dye_index']:x for x in d['dyes']}
+          assert by[8752]['dye']['slot_type_index']==0,by[8752]
+          assert by[8753]['dye']['slot_type_index']==1,by[8753]
+          assert by[8754]['dye']['slot_type_index']==2,by[8754]
           assert all(x['assignment_match_count']==1 for x in d['dyes']),d['dyes']
           assert all(x['relation_manifest']['effective_class_charm_display']=='63348080' for x in d['dyes']),d['dyes']
           assert all(x['resolution_mode']=='generic_relation_to_direct_dye_entry' for x in d['dyes']),d['dyes']
