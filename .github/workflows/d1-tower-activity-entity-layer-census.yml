@@ -7,6 +7,8 @@ on:
       - '.github/workflows/d1-tower-activity-entity-layer-census.yml'
       - 'tools/d1_world_activity_entity_table_census.py'
       - 'tools/d1_world_activity_entity_resource_census.py'
+      - 'tools/d1_world_entity_dependency_census.py'
+      - 'tools/d1_entity_resource_probe.py'
       - 'tools/d1_tower_recover_activity_root_corpus.py'
       - 'tools/d1_tower_recover_current_corpus.py'
       - 'tools/d1_split_tar_extract.py'
@@ -97,6 +99,31 @@ jobs:
               'resolved_entity_entry_count','entity_class_match_entry_count','unique_world_id_count','data_resource_class_counts','violations')}
           compact['unique_entity_hashes']=d['unique_entity_hashes']
           json.dump(compact,open('reports/TOWER_ACTIVITY_ENTITY_PLACEMENT_SUMMARY.json','w'),indent=2)
+          print(json.dumps(compact,indent=2))
+          PY
+      - name: Trace placed entities into model skeleton physics and child resources
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_entity_dependency_census.py "${args[@]}" --runtime runtime \
+            --placements reports/tower_activity_entity_resource_census.json \
+            --out reports/tower_entity_dependency_census.json \
+            | tee reports/tower_entity_dependency_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_entity_dependency_census.json'))
+          if d['placed_unique_entity_count']<=0: raise SystemExit('no placed entity hashes reached dependency pass')
+          compact={k:d[k] for k in ('status','placed_unique_entity_count','parsed_entity_count',
+              'entity_resource_reference_count','unique_entity_resource_hash_count','resource_reference_class_counts',
+              'entity_resource_role_counts','unique_embedded_model_count','unique_embedded_models','violations')}
+          json.dump(compact,open('reports/TOWER_ENTITY_DEPENDENCY_SUMMARY.json','w'),indent=2)
           print(json.dumps(compact,indent=2))
           PY
       - uses: actions/upload-artifact@v4
