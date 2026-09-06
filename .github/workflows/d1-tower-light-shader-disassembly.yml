@@ -1,0 +1,100 @@
+name: D1 Tower light shader disassembly
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 Tower light shader census']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  disasm:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact bounded light GCN corpus
+        run: |
+          set -euo pipefail
+          mkdir -p upstream shader disasm reports
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            run_id='${{ github.event.workflow_run.id }}'
+          else
+            run_id="$(gh run list --workflow d1-tower-light-shader-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$run_id"
+          gh run download "$run_id" -n d1-tower-light-shader-census -D upstream
+          cp upstream/tower_light_shader_report.json reports/tower_light_shader_report.json
+          cp upstream/light_gcn/PS_*_gcn.bin shader/
+          python - <<'PY'
+          import json,glob
+          d=json.load(open('reports/tower_light_shader_report.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['selected_count']==32 and d['error_count']==0,d
+          assert len(glob.glob('shader/PS_*_gcn.bin'))==32
+          PY
+
+      - name: Build pinned CLRX and disassemble all 32 D1 light pixel shaders
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
+          cmake --build clrx/build --target clrxdisasm -j2
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          shopt -s nullglob
+          n=0
+          for f in shader/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"
+            test ! -s "disasm/${b}.stderr"
+            grep -q 's_endpgm' "disasm/${b}.s"
+            n=$((n+1))
+          done
+          test "$n" -eq 32
+
+      - name: Map exact GCN constant-buffer loads through OrbShdr usage metadata
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_constant_buffer_usage_analyze.py \
+            --extract-report reports/tower_light_shader_report.json \
+            --disasm-dir disasm \
+            --out reports/tower_light_gcn_constant_buffer_usage.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/tower_light_gcn_constant_buffer_usage.json'))
+          assert d['status']=='D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED',d['violations']
+          assert d['shader_count']==32,d
+          # Preserve focused windows around every scalar-buffer load for manual/dataflow proof.
+          out=[]
+          by={x['shader']:x for x in d['shaders']}
+          for sh,row in sorted(by.items()):
+              text=(Path('disasm')/f'PS_{sh}.s').read_text(errors='replace').splitlines()
+              windows=[]
+              for load in row['loads']:
+                  ln=load['line_number']; lo=max(0,ln-6); hi=min(len(text),ln+6)
+                  windows.append({'load':load,'context':text[lo:hi]})
+              out.append({'shader':sh,'imm_constant_buffers':row['imm_constant_buffers'],'windows':windows})
+          Path('reports/tower_light_gcn_constant_windows.json').write_text(json.dumps({'status':'D1_TOWER_LIGHT_GCN_CONSTANT_WINDOWS','shaders':out},indent=2)+'\n')
+          print('LIGHT_GCN_CONSTANT_USAGE',json.dumps({k:d[k] for k in ('total_scalar_buffer_load_count','mapped_constant_buffer_load_count','unmatched_scalar_buffer_load_count','constant_buffer_api_slot_histogram','constant_buffer_static_offset_histograms')},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-light-shader-disassembly
+          path: |
+            reports/
+            disasm/
+          retention-days: 14
+          compression-level: 6
