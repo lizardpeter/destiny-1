@@ -45,11 +45,16 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
+          import hashlib,json
           d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          assert d['schema_version']==2,d.get('schema_version')
           assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d['violations'][:20]
           assert d['physical_member_count']>1000,d['physical_member_count']
           assert d['package_family_count']>100,d['package_family_count']
+          assert len(d['package_families'])==d['package_family_count'],(len(d['package_families']),d['package_family_count'])
+          assert sum(len(x) for x in d['package_families'].values())==d['physical_member_count']
+          assert d['source']['package_list_sha256']==hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert len(d['source']['part_sizes'])==d['source']['part_count']==10,d['source']
           assert d['current_named_row_count']>0,d['current_named_row_count']
           assert d['current_d1_activity_count']>0,d['current_d1_activity_count']
           assert not d['violations'],d['violations']
@@ -58,24 +63,26 @@ jobs:
           assert '80C98019' in by_hash,'current archive-wide index did not independently rediscover Tower Activity 80C98019'
           t=by_hash['80C98019']
           assert t['source_package_id']=='024C',t
+          assert t['physical_family_members']==d['package_families']['024C'],(t['physical_family_members'],d['package_families']['024C'])
           print('GLOBAL_ACTIVITY_INDEX_CLOSED',json.dumps({
               'physical_members':d['physical_member_count'],
               'package_families':d['package_family_count'],
               'named_rows':d['current_named_row_count'],
               'activities':d['current_d1_activity_count'],
               'unknown_activity_class_tags':d['current_unknown_activity_count'],
+              'packages_txt_sha256':d['source']['package_list_sha256'],
               'tower_rediscovered':{'activity':'80C98019','package_id':t['source_package_id'],'snapshot':t['source_snapshot']},
           },sort_keys=True))
           PY
 
-      - name: Publish durable current Activity index
+      - name: Publish durable current Activity and package-family index
         run: |
           set -euo pipefail
           tag=d1-global-activity-index-r1
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title 'D1 current archive-wide Activity index r1' \
-              --notes 'Sparse archive-wide D1 ROI Activity index. Walks the current PS4 split TAR, reads only Tiger package headers and current named-tag tables, validates their SHA-1s, and enumerates every current SActivity_ROI root without downloading package bodies or selecting by filenames/names. Includes exact physical family offsets for downstream per-Activity world dependency recovery.'
+              --notes 'Sparse archive-wide D1 ROI Activity/package index. Walks the current PS4 split TAR, reads only Tiger package headers and current named-tag tables, validates their SHA-1s, enumerates every current SActivity_ROI root, and preserves exact split-TAR locations for every package family. No package bodies are downloaded during indexing. The package-family catalog may be reused only with the exact indexed packages.txt SHA-256.'
           fi
           gh release upload "$tag" \
             reports/D1_CURRENT_ACTIVITY_INDEX.json \
