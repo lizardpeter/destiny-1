@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Runtime, global index, and proven ten-cell validation corpus
+      - name: Runtime, global index, and exact proven Tower map-validation corpus
         run: |
           set -euo pipefail
           python -m pip install --quiet numpy trimesh
@@ -43,25 +43,26 @@ jobs:
             --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
             --package-list reports/packages.txt \
             --package-id 009f \
-            --package-id 0154 \
-            --package-id 0155 \
-            --package-id 0156 \
+            --package-id 00ef \
+            --package-id 013a \
             --package-id 0157 \
-            --package-id 0158 \
+            --package-id 0169 \
+            --package-id 01c5 \
             --package-id 01cf \
-            --package-id 01db \
+            --package-id 01d1 \
+            --package-id 01e3 \
             --package-id 024c \
             --package-id 0250 \
-            --package-id 0265 \
             --out-dir packages \
             --report reports/package_recovery.json
           python - <<'PY'
           import json
           p=json.load(open('reports/package_recovery.json'))
-          wanted=['009f','0154','0155','0156','0157','0158','01cf','01db','024c','0250','0265']
+          wanted=['009f','00ef','013a','0157','0169','01c5','01cf','01d1','01e3','024c','0250']
           assert p['status']=='D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE',p
           assert sorted(p['requested_package_ids'])==wanted,p
-          print('PROVEN_VALIDATION_CORPUS',json.dumps({k:p[k] for k in ('status','family_count','member_count','package_list_sha256')},indent=2))
+          assert p['member_count']==52,p
+          print('PROVEN_MAP_VALIDATION_CORPUS',json.dumps({k:p[k] for k in ('status','family_count','member_count','package_list_sha256')},indent=2))
           PY
 
       - name: Validate and export source cell 80C993CF before any preview round-trip
@@ -76,6 +77,25 @@ jobs:
           cat reports/validator.txt
           test "$rc" -eq 0
           test -f validation/tower_map_schema_validation.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('validation/tower_map_schema_validation.json'))
+          rows={str(x.get('hash','')).upper():x for x in d.get('static_map_data',[])}
+          outer=rows.get('80C993CF')
+          assert outer and outer.get('ok') and outer.get('d1_validation',{}).get('ok'),outer
+          hits=[]
+          for t in outer['d1_validation'].get('static_tables',[]):
+              for m in t.get('mesh_entries',[]):
+                  if str(m.get('vertices0','')).upper()!='80C99E11': continue
+                  if str(m.get('indices','')).upper()!='80C99E13': continue
+                  if int(m.get('index_offset',-1))!=456 or int(m.get('index_count',-1))!=696 or int(m.get('primitive_type',-1))!=3: continue
+                  hits.append({'table_hash':t.get('hash'),'mesh':m})
+          assert hits,hits
+          out={'status':'D1_80C9993C_TARGET_STATIC_RECORDS','outer_static_map_data':'80C993CF','d1_static_map_data':outer['d1_validation'].get('hash'),'target_records':hits}
+          Path('reports/80C9993C_target_static_records.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('TARGET_STATIC_RECORDS',json.dumps(out,indent=2))
+          PY
           python tools/d1_world_static_visual_export.py "${args[@]}" --runtime runtime \
             --validation-json validation/tower_map_schema_validation.json --static-map-data 80C993CF --basis gltf-y-up \
             --out world/TOWER_80C993CF_SOURCE.glb --json world/TOWER_80C993CF_SOURCE.json | tee reports/export.txt
