@@ -19,21 +19,29 @@ jobs:
           $actual = (git -C windv rev-parse HEAD).Trim()
           if ($actual -ne "f633c456c211a0fb0e05aa43f2b150ec787faab7") { throw "Unexpected upstream commit: $actual" }
 
-      - name: Apply archival End Capture patch
+      - name: Apply ArchiveSafe patches
         shell: pwsh
         run: |
           python tools/windv_end_capture_patch.py windv
+          python tools/windv_archive_safe_hardening.py windv
           git -C windv diff --check
 
-      - name: Verify finalization invariants
+      - name: Verify capture invariants
         shell: pwsh
         run: |
           if (-not (Select-String -Path windv/WinDV.rc -SimpleMatch '"End Capture",IDC_END_CAPTURE')) { throw "End Capture resource missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'void CDV::FinalizeCapturing()')) { throw "FinalizeCapturing missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_state == Capturing || m_state == CaptureFinalizing')) { throw "queue-drain write state missing" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (!gotFrame && m_queue->m_end)')) { throw "EOS drain termination missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (m_dvInput) m_dvInput->Stop();')) { throw "producer stop missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (m_queue) m_queue->Put(-1, NULL, 0);')) { throw "ordered EOS missing" }
-          if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'm_video.FinalizeCapturing();')) { throw "UI does not use deterministic finalizer" }
+          if (Select-String -Path windv/DShow.cpp -SimpleMatch 'AnalyzeDVFrame(buffer, len)') { throw "live DV error scanner still active" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_type2AVI(false)')) { throw "Type-1 archive default missing" }
+          if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'ArchiveSafe always preserves every received DV frame')) { throw "frame-decimation lock missing" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'duration = (len >= 144000) ? 400000 : 333667')) { throw "DV timing fallback missing" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'AVI writer did not reach running state')) { throw "AVI writer run-state check missing" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'CString CAVIWriter::FinalizeFile()')) { throw "exact final-file tracking missing" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_finalizedFiles')) { throw "finalized-file verification list missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_autoStopTimeout(0)')) { throw "archive-safe auto-stop default missing" }
           if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'ArchiveAutoStopTimeout')) { throw "archive auto-stop registry isolation missing" }
 
@@ -56,28 +64,38 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
-          Copy-Item build/Release/WinDV.exe artifact/WinDV_1.6.0_EndCapture_ArchiveSafe_x86.exe
+          Copy-Item build/Release/WinDV.exe artifact/WinDV_1.6.0_ArchiveSafe_v2_x86.exe
           Copy-Item tools/windv_end_capture_patch.py artifact/windv_end_capture_patch.py
+          Copy-Item tools/windv_archive_safe_hardening.py artifact/windv_archive_safe_hardening.py
           Copy-Item windv/LICENSE artifact/LICENSE
-          git -C windv diff -- Resource.h WinDV.rc DShow.h DShow.cpp DVToolsDlg.h DVToolsDlg.cpp | Out-File -Encoding utf8 artifact/WinDV_EndCapture_ArchiveSafe.patch
+          git -C windv diff -- Resource.h WinDV.rc DShow.h DShow.cpp DVToolsDlg.h DVToolsDlg.cpp | Out-File -Encoding utf8 artifact/WinDV_ArchiveSafe_v2.patch
           "f633c456c211a0fb0e05aa43f2b150ec787faab7" | Out-File -Encoding ascii artifact/UPSTREAM_COMMIT.txt
-          $hash = (Get-FileHash artifact/WinDV_1.6.0_EndCapture_ArchiveSafe_x86.exe -Algorithm SHA256).Hash
+          $hash = (Get-FileHash artifact/WinDV_1.6.0_ArchiveSafe_v2_x86.exe -Algorithm SHA256).Hash
           "SHA256=$hash" | Out-File -Encoding ascii artifact/SHA256.txt
           @"
-          WinDV 1.6.0 End Capture - ArchiveSafe custom build
+          WinDV 1.6.0 ArchiveSafe v2
 
           Base: exact Wachhund/WinDV v1.6.0 release commit f633c456c211a0fb0e05aa43f2b150ec787faab7
-          Platform: Win32/x86, VS 2022
+          Platform: Win32/x86, Visual Studio 2022
 
-          Capture data path remains WinDV's raw DV-to-AVI copy path.
-          End Capture stops new DV input, drains frames already accepted into WinDV's queue when capture is active, then lets CAVIWriter send EOS to the AVI mux and waits for the capture worker/post-capture integrity checks to complete. The UI only reports the index as verified when AVICheck confirms an idx1/indx index.
+          Archive changes:
+          - explicit End Capture with stop-producer -> drain queue -> EOS -> AVI index finalization
+          - explicit queue-EOS termination (fixes worker spin/deadlock)
+          - live DV DIF error scanner disabled
+          - Type-1 AVI is the archive default; Type-2 remains selectable
+          - EveryNth is forced to 1 so no received DV frames are intentionally decimated
+          - signal-loss auto-stop defaults OFF and uses isolated ArchiveAutoStopTimeout setting
+          - invalid/missing DirectShow frame timing falls back to exact nominal DV PAL/NTSC duration
+          - AVI writer Run state is checked before capture continues
+          - post-capture verification/SHA-256 target exact generated AVI paths, including filename suffixes/splits
 
-          Signal-loss auto-stop remains available in Config but defaults OFF and uses the separate ArchiveAutoStopTimeout setting so normal WinDV 1.6 settings cannot silently enable it. SHA-256 and AVI integrity checking occur after AVI writer finalization and do not alter captured DV frames.
-          "@ | Out-File -Encoding utf8 artifact/README_ArchiveSafe.txt
+          Raw DV frame payloads are copied without decode/re-encode.
+          SHA-256 and AVI integrity checks are post-capture only.
+          "@ | Out-File -Encoding utf8 artifact/README_ArchiveSafe_v2.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WinDV-1.6.0-EndCapture-ArchiveSafe-x86
+          name: WinDV-1.6.0-ArchiveSafe-v2-x86
           path: artifact/*
           if-no-files-found: error
