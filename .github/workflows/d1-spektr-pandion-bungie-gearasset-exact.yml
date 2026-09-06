@@ -1,0 +1,98 @@
+name: D1 Spektar Pandion exact Bungie GearAsset selection
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie-gearasset-exact.yml'
+      - 'tools/d1_legacy_gearasset_rows.py'
+      - 'evidence/d1_bungie_manifest_2017_04_12_asset_snapshot.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact masculine Titan GearAsset rows and gear JSON
+        run: |
+          set -euo pipefail
+          mkdir -p out/gear_male out/gear_female
+          python tools/d1_legacy_gearasset_rows.py \
+            --asset-db-url 'https://www.bungie.net/common/destiny_content/sqlite/asset/asset_sql_content_e563ae481f48cf708da20f4ab86ba8ed.content' \
+            --class-hash 3655393761 \
+            --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
+            --download-gear-dir out/gear_male \
+            -o out/spektar_bungie_gearasset_masculine.json
+
+      - name: Recover exact feminine Titan GearAsset selection
+        run: |
+          set -euo pipefail
+          python tools/d1_legacy_gearasset_rows.py \
+            --asset-db-url 'https://www.bungie.net/common/destiny_content/sqlite/asset/asset_sql_content_e563ae481f48cf708da20f4ab86ba8ed.content' \
+            --class-hash 3655393761 --female \
+            --item-hash B4BD27A2 --item-hash 1DF65286 --item-hash 4A37316F --item-hash 4A2AD693 --item-hash 4A5B75DC \
+            --download-gear-dir out/gear_female \
+            -o out/spektar_bungie_gearasset_feminine.json
+
+      - name: Validate exact row and selection invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          ids=['B4BD27A2','1DF65286','4A37316F','4A2AD693','4A5B75DC']
+          m=json.load(open('out/spektar_bungie_gearasset_masculine.json'))
+          f=json.load(open('out/spektar_bungie_gearasset_feminine.json'))
+          assert m['asset_db_download_sha256']==f['asset_db_download_sha256']
+          assert [x['item_hash_hex'] for x in m['items']]==ids
+          assert [x['item_hash_hex'] for x in f['items']]==ids
+          for d in (m,f):
+              for x in d['items']:
+                  assert x['gearasset']['gear'],x['item_hash_hex']
+                  assert x['gear_json'],x['item_hash_hex']
+                  assert x['web_selected_files']['geometry'],x['item_hash_hex']
+                  for g in x['gear_json']:
+                      assert g['geometry_identifiers'],(x['item_hash_hex'],g['file_name'])
+          print('EXACT BUNGIE GEARASSET ROWS',ids)
+          for role,d in [('masculine',m),('feminine',f)]:
+              print('\n',role.upper())
+              for x in d['items']:
+                  print(x['item_hash_hex'])
+                  print(' gear',[(g['file_name'],g['geometry_identifiers']) for g in x['gear_json']])
+                  print(' web geometry',[(z['index'],z['file_name']) for z in x['web_selected_files']['geometry']])
+          PY
+
+      - name: Evidence note
+        run: |
+          cat > out/README.txt <<'EOF'
+          Exact Bungie D1 Spektar GearAsset evidence
+
+          Source database path is pinned by archived successful Bungie D1 Manifest version 56578.17.04.12.1251-6 (2017-04-12).
+          Rows are queried directly from DestinyGearAssetsDefinition for the five Spektar Pandion item hashes.
+          Gear JSON is then fetched from the exact filenames serialized in those rows.
+
+          Selection mirrors archived Bungie Spasm.TGXAssetLoader:
+          - select platform == web
+          - include dye index set
+          - for region_index_sets, use first set per region except 2/6/21
+          - otherwise use male_index_set/female_index_set
+          - select class-specific art_content_set when present
+          - use first region pattern, or base/female override arrangement, exactly as Spasm does
+
+          Nothing is enabled because it visually resembles a hand, shoulder, or body part.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-SPEKTAR-PANDION-EXACT-BUNGIE-GEARASSET
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
