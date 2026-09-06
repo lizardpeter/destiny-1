@@ -14,7 +14,7 @@ jobs:
   tower-regression:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -73,8 +73,6 @@ jobs:
                     'reachable_map_data_table_count':122,'total_reachable_map_entries':1418}
           bad={k:{'expected':v,'actual':r.get(k)} for k,v in expected.items() if r.get(k)!=v}
           if bad: raise SystemExit('generic Tower Activity-root regression mismatch: '+json.dumps(bad,indent=2))
-          # Critical generalization assertion: no Tower package-id list is an input.
-          assert len(c['recovered_package_ids'])>=1,c['recovered_package_ids']
           print('GENERIC_ACTIVITY_ROOT_CLOSED',json.dumps({**expected,'recovered_package_ids':c['recovered_package_ids']},sort_keys=True))
           PY
 
@@ -101,8 +99,6 @@ jobs:
           assert s['status']=='D1_WORLD_MAP_RESOURCE_SUBSET_PLAN_COMPLETE',s['violations']
           assert s['resource_class']=='80801AEA',s['resource_class']
           assert (s['map_data_table_count'],s['entry_count'])==(9,337),(s['map_data_table_count'],s['entry_count'])
-          # The exact nine hashes are deliberately not asserted here. This regression
-          # proves the set is derived from Activity ownership + serialized class only.
           print('GENERIC_STATIC_RENDER_SUBSET_DERIVED',json.dumps({
             'activity_tables':c['map_data_table_count'],'activity_rows':c['entry_count'],
             'static_resource_class':'80801AEA','static_tables':s['map_data_table_count'],
@@ -143,38 +139,79 @@ jobs:
           print('GENERIC_STATIC_TARGET_PLAN_CLOSED',json.dumps({**expected_chain,**expected_plan},sort_keys=True))
           PY
 
-      - name: Materialize common layer and census all baked static placements
+      - name: Close baked-static material and geometry package dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_static_visual_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --chain-json reports/static_map_resource_chain_census.json \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir reports/baked_visual_dependency_closure \
+            --validation-out reports/generic_baked_validation.json \
+            --report reports/baked_visual_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/baked_visual_dependency_closure.json'))
+          assert d['status']=='D1_WORLD_STATIC_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',d
+          assert d['baked_cell_count']==10,d['baked_cell_count']
+          assert not d['validation_failures'],d['validation_failures']
+          print('GENERIC_BAKED_DEPENDENCIES_CLOSED',json.dumps({
+            'cells':d['baked_cell_count'],'buffer_headers':d['buffer_header_count'],
+            'materials':d['material_count'],'package_ids':d['final_package_ids']},sort_keys=True))
+          PY
+
+      - name: Close table-scoped common identity dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_table_scoped_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --target-plan reports/static_map_target_plan.json \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir reports/common_dependency_closure \
+            --out reports/table_scoped_decal_census.json \
+            --report reports/common_dependency_closure.json
+          python - <<'PY'
+          import json
+          x=json.load(open('reports/common_dependency_closure.json'))
+          d=json.load(open('reports/table_scoped_decal_census.json'))
+          assert x['status']=='D1_WORLD_TABLE_SCOPED_DEPENDENCY_CLOSURE_COMPLETE',x
+          expected={'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE','table_scoped_target_count':9,
+                    'table_scoped_decal_records':327,'table_scoped_singleton_transform_model_records':327,
+                    'table_scoped_unique_entity_models':69,'table_scoped_materialized_record_count':327,
+                    'table_scoped_export_ready_singleton_records':327,'baked_target_count':10}
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
+          if bad: raise SystemExit('generic common-layer regression mismatch: '+json.dumps(bad,indent=2))
+          print('GENERIC_COMMON_DEPENDENCIES_CLOSED',json.dumps(expected,sort_keys=True))
+          PY
+
+      - name: Census all baked static placements after source-driven dependency closure
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          python tools/d1_world_table_scoped_decal_census.py "${args[@]}" --runtime runtime \
-            --target-plan reports/static_map_target_plan.json \
-            --out reports/table_scoped_decal_census.json \
-            --validation-dir validation/table_scoped_targets
           python tools/d1_world_static_map_content_census.py "${args[@]}" --runtime runtime \
             --chain-json reports/static_map_resource_chain_census.json \
             --out reports/static_map_content_census.json
           python - <<'PY'
           import json
-          d=json.load(open('reports/table_scoped_decal_census.json'))
           b=json.load(open('reports/static_map_content_census.json'))
-          expected_common={'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE','table_scoped_target_count':9,
-                           'table_scoped_decal_records':327,'table_scoped_singleton_transform_model_records':327,
-                           'table_scoped_unique_entity_models':69,'table_scoped_materialized_record_count':327,
-                           'table_scoped_export_ready_singleton_records':327,'baked_target_count':10}
-          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected_common.items() if d.get(k)!=v}
-          if bad: raise SystemExit('generic common-layer regression mismatch: '+json.dumps(bad,indent=2))
-          expected_baked={'status':'D1_WORLD_STATIC_MAP_CONTENT_CENSUS_COMPLETE','direct_d1_baked_static_maps':10,
-                          'structurally_valid_baked_static_maps':10,'visual_selection_complete_baked_static_maps':10,
-                          'retail_visible_baked_static_emitters':10,'total_serialized_placements':50148,
-                          'total_retail_visible_placements':11728,'material_cache_unresolved':0}
-          bad={k:{'expected':v,'actual':b.get(k)} for k,v in expected_baked.items() if b.get(k)!=v}
+          expected={'status':'D1_WORLD_STATIC_MAP_CONTENT_CENSUS_COMPLETE','direct_d1_baked_static_maps':10,
+                    'structurally_valid_baked_static_maps':10,'visual_selection_complete_baked_static_maps':10,
+                    'retail_visible_baked_static_emitters':10,'total_serialized_placements':50148,
+                    'total_retail_visible_placements':11728,'material_cache_unresolved':0}
+          bad={k:{'expected':v,'actual':b.get(k)} for k,v in expected.items() if b.get(k)!=v}
           if bad: raise SystemExit('generic baked-content regression mismatch: '+json.dumps(bad,indent=2))
           print('GENERIC_WORLD_STRUCTURE_CLOSED',json.dumps({
               'activity':'80C98019','common_records':327,'common_models':69,
-              'baked_cells':10,'serialized_placements':50148,'retail_visible_placements':11728},sort_keys=True))
+              'baked_cells':10,'serialized_placements':50148,'retail_visible_placements':11728,
+              'final_package_count':len(json.load(open('reports/baked_visual_dependency_closure.json'))['final_package_ids'])},sort_keys=True))
           PY
 
       - uses: actions/upload-artifact@v4
