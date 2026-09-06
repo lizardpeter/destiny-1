@@ -16,27 +16,30 @@ sys.path.insert(0,str(HERE))
 from d1_entry_extract import EntryReader
 
 ENTITY_RESOURCE_CLASS='80800861'
-D1_MODEL_DISCRIMINATOR=0x80801A80   # D2Class_8A6D8080 D1 schema "801A8080"
-D1_MODEL_PARENT=0x80801A9C          # D2Class_8F6D8080 D1 schema "9C1A8080"
-D1_SKELETON_DISCRIMINATOR=0x808006BD # D2Class_DD818080 D1 schema "BD068080"
-D1_SKELETON_INFO=0x8080049A         # D2Class_DE818080 D1 schema "9A048080"
-D1_PHYSICS_DISCRIMINATOR=0x80801A79 # D2Class_5B6D8080 D1 schema "791A8080"
-D1_PHYSICS_PARENT=0x80801BF6         # D2Class_6C6D8080 D1 schema "F61B8080"
-# Charm's logical D2Class_12848080 maps to D1 schema string "63268080".
-# Tiger schema strings are serialized little-endian as u32, hence 0x80802663.
+D1_MODEL_DISCRIMINATOR=0x80801A80
+D1_MODEL_PARENT=0x80801A9C
+D1_SKELETON_DISCRIMINATOR=0x808006BD
+D1_SKELETON_INFO=0x8080049A
+D1_PHYSICS_DISCRIMINATOR=0x80801A79
+D1_PHYSICS_PARENT=0x80801BF6
 D1_CHILDREN_DISCRIMINATOR=0x80802663
-# D2Class_0E848080 maps to D1 schema string "08278080" -> 0x80802708.
 D1_CHILDREN_DATA=0x80802708
+# Entity.Load generic-name branch: D2Class_357C8080 maps in D1 to E3138080.
+D1_GENERIC_NAME_DISCRIMINATOR=0x808013E3
+D1_GENERIC_NAME_PARENT=0x80801308       # D2Class_18808080 -> D1 08138080
+D1_GENERIC_NAME_TAG_CLASS=0x808013F3    # D2Class_4D7E8080 -> D1 F3138080
+# Entity.Load specific-name branch: D2Class_DA5E8080 maps in D1 to 9B208080.
+D1_SPECIFIC_NAME_DISCRIMINATOR=0x8080209B
+D1_SPECIFIC_NAME_PARENT=0x80802089      # D2Class_DB5E8080 -> D1 89208080
 
 KNOWN={
- D1_MODEL_DISCRIMINATOR:'entity_model_discriminator',
- D1_MODEL_PARENT:'entity_model_parent',
- D1_SKELETON_DISCRIMINATOR:'entity_skeleton_discriminator',
- D1_SKELETON_INFO:'entity_skeleton_info',
- D1_PHYSICS_DISCRIMINATOR:'entity_physics_discriminator',
- D1_PHYSICS_PARENT:'entity_physics_parent',
- D1_CHILDREN_DISCRIMINATOR:'entity_children_discriminator',
- D1_CHILDREN_DATA:'entity_children_data',
+ D1_MODEL_DISCRIMINATOR:'entity_model_discriminator',D1_MODEL_PARENT:'entity_model_parent',
+ D1_SKELETON_DISCRIMINATOR:'entity_skeleton_discriminator',D1_SKELETON_INFO:'entity_skeleton_info',
+ D1_PHYSICS_DISCRIMINATOR:'entity_physics_discriminator',D1_PHYSICS_PARENT:'entity_physics_parent',
+ D1_CHILDREN_DISCRIMINATOR:'entity_children_discriminator',D1_CHILDREN_DATA:'entity_children_data',
+ D1_GENERIC_NAME_DISCRIMINATOR:'entity_generic_name_discriminator',D1_GENERIC_NAME_PARENT:'entity_generic_name_parent',
+ D1_GENERIC_NAME_TAG_CLASS:'entity_generic_name_tag',
+ D1_SPECIFIC_NAME_DISCRIMINATOR:'entity_specific_name_discriminator',D1_SPECIFIC_NAME_PARENT:'entity_specific_name_parent',
 }
 
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
@@ -62,14 +65,11 @@ def parse_resource(b, platform=None):
         f'{D1_SKELETON_DISCRIMINATOR:08X}':'entity_skeleton',
         f'{D1_PHYSICS_DISCRIMINATOR:08X}':'entity_physics',
         f'{D1_CHILDREN_DISCRIMINATOR:08X}':'entity_children',
+        f'{D1_GENERIC_NAME_DISCRIMINATOR:08X}':'entity_name_generic',
+        f'{D1_SPECIFIC_NAME_DISCRIMINATOR:08X}':'entity_name_specific',
     }.get(discr,'other_or_unknown')
-    # Both D1 model-parent (9C1A8080) and physics-parent (F61B8080)
-    # serialize their EntityModel FileHash at +0x15C. Charm's source pins the
-    # physics field to the same D1 relative offset. XboxOne's ordinary model
-    # parent uses +0x1C4; the PS4 Tower path uses +0x15C.
     if d['semantic_role']=='entity_model':
-        p=d['unk18'];t=p.get('target_offset')
-        model_rel = 0x1C4 if platform == 'XboxOne' else 0x15C
+        p=d['unk18'];t=p.get('target_offset');model_rel=0x1C4 if platform=='XboxOne' else 0x15C
         d['model_field_offset_in_parent']=model_rel
         if p.get('class_hash')==f'{D1_MODEL_PARENT:08X}' and isinstance(t,int) and t+model_rel+4<=len(b):
             d['embedded_model_tag_hash']=f'{u32(b,t+model_rel):08X}'
@@ -78,6 +78,17 @@ def parse_resource(b, platform=None):
         d['physics_model_field_offset_in_parent']=model_rel
         if p.get('class_hash')==f'{D1_PHYSICS_PARENT:08X}' and isinstance(t,int) and t+model_rel+4<=len(b):
             d['embedded_physics_model_tag_hash']=f'{u32(b,t+model_rel):08X}'
+    elif d['semantic_role']=='entity_name_generic':
+        # D1 D2Class_18808080: +0x278 Tag<D2Class_4D7E8080>.
+        p=d['unk18'];t=p.get('target_offset');off=0x278;d['generic_name_tag_field_offset_in_parent']=off
+        if p.get('class_hash')==f'{D1_GENERIC_NAME_PARENT:08X}' and isinstance(t,int) and t+off+4<=len(b):
+            d['entity_name_tag_hash']=f'{u32(b,t+off):08X}'
+            d['entity_name_tag_expected_class']=f'{D1_GENERIC_NAME_TAG_CLASS:08X}'
+    elif d['semantic_role']=='entity_name_specific':
+        # D1 D2Class_DB5E8080 has StringHash EntityName directly at +0x114.
+        p=d['unk18'];t=p.get('target_offset');off=0x114;d['specific_name_field_offset_in_parent']=off
+        if p.get('class_hash')==f'{D1_SPECIFIC_NAME_PARENT:08X}' and isinstance(t,int) and t+off+4<=len(b):
+            d['entity_name_string_hash']=f'{u32(b,t+off):08X}'
     return d
 
 def main():
@@ -91,7 +102,7 @@ def main():
             try: row.update(parse_resource(r.entry(e['index']),r.h['platform']))
             except Exception as ex: row['error']=repr(ex)
             roles[row.get('semantic_role','parse_error')]+=1
-            x=row.get('unk10',{}).get('class_hash'); y=row.get('unk18',{}).get('class_hash')
+            x=row.get('unk10',{}).get('class_hash');y=row.get('unk18',{}).get('class_hash')
             if x:disc[x]+=1
             if y:p18[y]+=1
         rows.append(row)
