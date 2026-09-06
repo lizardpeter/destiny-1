@@ -1,4 +1,15 @@
-from tools.d1_ps4_gnm_sampler import decode_sampler_bytes
+import importlib.util
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location(
+    'd1_ps4_gnm_sampler', ROOT/'tools'/'d1_ps4_gnm_sampler.py'
+)
+mod = importlib.util.module_from_spec(SPEC)
+sys.modules['d1_ps4_gnm_sampler'] = mod
+SPEC.loader.exec_module(mod)
+decode_sampler_bytes = mod.decode_sampler_bytes
 
 
 def pack(raw0: int, raw1: int) -> bytes:
