@@ -24,6 +24,7 @@ jobs:
           python -m pip install -q numpy pillow
           mkdir -p runtime out/textures
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad002e3f3cbacaaf1f' >/dev/null || true
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
@@ -38,6 +39,47 @@ jobs:
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
             --part-count 10 --runtime runtime -o out/80A6A345_stage0_materials.json
 
+      - name: Prove retail texture-array correspondence to archived Bungie hand fallback
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/80A6A345_stage0_materials.json'))
+          by={x['tag_hash']:x for x in d['materials']}
+          # The archived exact TGXM uses five static textures for hand parts in the
+          # serialized order diffuse, detail-diffuse, normal, detail-normal, scratch.
+          # Collar uses two entries in serialized order diffuse, normal.
+          expected={
+            '80A6A766':['80A6A76C','80A6AC9C','80A6A76D','80A6AC9D','80A6A76E'],
+            '80A6A767':['80A6A76C','80A6AC9E','80A6A76D','80A6AC9F','80A6A76E'],
+            '80A6A76A':['80A6ACA0','80A6ACA1'],
+            '80A6A76B':['80A6A76C','80A6AC9C','80A6A76D','80A6AC9D','80A6A76E'],
+          }
+          for mh,seq in expected.items():
+              got=[x['texture'] for x in by[mh]['ps_textures']['items']]
+              assert got==seq,(mh,got,seq)
+          out={
+            'schema':'d1_shared_glove_collar_retail_historical_texture_correspondence/v1',
+            'retail_material_texture_sequences':expected,
+            'archived_bungie_hand_static_texture_order':['diffuse','detail_diffuse','normal','detail_normal','scratch'],
+            'archived_bungie_collar_static_texture_order':['diffuse','normal'],
+            'retail_semantic_mapping':{
+              '80A6A76C':'player_gloves_diffuse',
+              '80A6AC9C':'player_gloves_plastic_detail_diffuse',
+              '80A6A76D':'player_gloves_normal',
+              '80A6AC9D':'player_gloves_plastic_detail_normal',
+              '80A6A76E':'player_gloves_scratch',
+              '80A6AC9E':'player_gloves_detail_over_diffuse',
+              '80A6AC9F':'player_gloves_detail_normal',
+              '80A6ACA0':'collar_diffuse',
+              '80A6ACA1':'collar_normal'
+            },
+            'proof_boundary':'Names are transferred only because exact TGXM stage-part geometry is decoded-equivalent to 80A6A345 and each corresponding retail material preserves the archived static-texture arity and serialized ordering exactly. No pixel/name similarity is used.'
+          }
+          json.dump(out,open('out/retail_historical_texture_correspondence.json','w'),indent=2);open('out/retail_historical_texture_correspondence.json','a').write('\n')
+          print(json.dumps(out,indent=2))
+          PY
+
       - name: Export every exact serialized retail texture reference
         run: |
           set -euo pipefail
@@ -50,6 +92,7 @@ jobs:
           )
           test -n "$ARGS"
           python tools/d1_remote_texture_export_generation_safe.py $ARGS \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
             --member-catalog evidence/d1_tower_texture_dependency_member_catalog.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
             --part-count 10 --runtime runtime --out out/textures
