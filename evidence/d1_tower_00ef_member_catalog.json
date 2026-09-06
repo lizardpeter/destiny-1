@@ -1,0 +1,14 @@
+{
+  "schema": "d1_remote_package_member_catalog/v1",
+  "source": "evidence/d1_tower_dependency_member_catalog.json + evidence/d1_tower_dependency_sha256_catalog.json",
+  "policy": "Physical byte-location fixture only. 00EF relevance is established separately by source-owned Tower EntityResource FileHashes.",
+  "families": {
+    "00ef": [
+      {"name":"ps4_race_set_all_00ef_0.pkg","data_offset":46023276544,"size":232409088,"sha256":"80cc8b001321c2a8f263ee58febaa2607cd9c6cc5600e1be1a49a0115a0162d9"},
+      {"name":"ps4_race_set_all_00ef_1.pkg","data_offset":46255686144,"size":12650496,"sha256":"de72e2d6db64fe37ff70b82ad833d7917b3b9fadc51782a04a6abc5124690583"},
+      {"name":"ps4_race_set_all_00ef_2.pkg","data_offset":46268337152,"size":6375424,"sha256":"8555609a75dd2bbec4821f07422bd26d5b1a9f51c0888a5de6ca16976893b6b7"},
+      {"name":"ps4_race_set_all_00ef_3.pkg","data_offset":46274713088,"size":176128,"sha256":"5924c1664d7c264c4e9fce741fdf3163259c89b6dec1bf1bdf3dd7f537b3b1c4"},
+      {"name":"ps4_race_set_all_00ef_5.pkg","data_offset":46274889728,"size":184320,"sha256":"80c462b23f22593d82efb78305921c830c9e64aa25fc5d4ceb25e705606dbb72"}
+    ]
+  }
+}
