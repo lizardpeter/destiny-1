@@ -1,0 +1,141 @@
+name: D1 global everything entry index
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-everything-entry-index.yml'
+      - 'tools/d1_remote_everything_index.py'
+      - 'evidence/d1_export_class_registry.json'
+      - 'tools/d1_pkg_probe.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Syntax-check indexer
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_everything_index.py tools/d1_pkg_probe.py tools/d1_split_tar_extract.py
+          python - <<'PY'
+          import json
+          d=json.load(open('evidence/d1_export_class_registry.json'))
+          assert d['schema']=='d1_export_class_registry/v1'
+          assert d['reference_classes']['80801AB5']['export_route']=='model_geometry'
+          assert d['reference_classes']['808005A1']['export_route']=='animation_clip'
+          assert d['reference_classes']['80801AD7']['export_route']=='material_manifest'
+          assert d['type_subtype_classes']['32:1']['export_route']=='texture'
+          assert d['type_subtype_classes']['32:2']['export_route']=='texture'
+          print('REGISTRY_OK')
+          PY
+
+      - name: Read current PS4 package list
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o out/packages.txt
+          test -s out/packages.txt
+          sha256sum out/packages.txt
+
+      - name: Build archive-wide current entry database
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_everything_index.py \
+            --package-list out/packages.txt \
+            --registry evidence/d1_export_class_registry.json \
+            --sqlite out/D1_CURRENT_EVERYTHING.sqlite \
+            --summary out/D1_CURRENT_EVERYTHING_SUMMARY.json \
+            --queue out/D1_CURRENT_EXPORT_QUEUE.tsv \
+            | tee out/index_stdout.txt
+
+      - name: Validate everything-index invariants and route census
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sqlite3
+          s=json.load(open('out/D1_CURRENT_EVERYTHING_SUMMARY.json'))
+          assert s['schema']=='d1_remote_everything_index/v1',s.get('schema')
+          assert s['status']=='D1_REMOTE_EVERYTHING_INDEX_COMPLETE',s['violations'][:20]
+          assert s['physical_package_member_count']>=2000,s['physical_package_member_count']
+          assert s['package_family_count']>=300,s['package_family_count']
+          assert s['current_package_count']==s['package_family_count'],(s['current_package_count'],s['package_family_count'])
+          assert s['indexed_package_generation_count']==s['current_package_count'],s['indexed_package_generation_count']
+          assert s['current_entry_count']>10000,s['current_entry_count']
+          assert s['current_distinct_tag_hash_count']>10000,s['current_distinct_tag_hash_count']
+          assert s['source']['packages_txt_sha256']==hashlib.sha256(open('out/packages.txt','rb').read()).hexdigest()
+          assert not s['violations'],s['violations']
+          routes=s['current_export_route_counts']; classes=s['current_class_label_counts']
+          for route in ('model_geometry','material_manifest','texture','animation_clip','entity_graph','entity_resource_graph','runtime_rig','skeleton'):
+              assert routes.get(route,0)>0,(route,routes)
+          assert classes.get('s_entity_model',0)>0,classes
+          assert classes.get('s_animation_clip',0)>0,classes
+          assert classes.get('SMaterial_ROI_PS4',0)>0,classes
+          assert s['current_unknown_entry_count']>0,'unexpectedly classified every Tiger class already'
+          db=sqlite3.connect('out/D1_CURRENT_EVERYTHING.sqlite')
+          try:
+              pc=db.execute('select count(*) from physical_packages').fetchone()[0]
+              ec=db.execute('select count(*) from current_entries').fetchone()[0]
+              qc=db.execute('select count(*) from current_export_queue').fetchone()[0]
+              lc=db.execute('select count(*) from current_logical_resources').fetchone()[0]
+              assert pc==s['physical_package_member_count'],(pc,s['physical_package_member_count'])
+              assert ec==qc==s['current_entry_count'],(ec,qc,s['current_entry_count'])
+              assert lc==s['current_distinct_tag_hash_count'],(lc,s['current_distinct_tag_hash_count'])
+              # Existing exact fixtures must be independently visible in the global index.
+              fixtures={x[0]:x for x in db.execute("select tag_hash,reference,class_label,export_route from current_entries where tag_hash in ('80A6A345','80AD27B2','80A7F90B')")}
+              assert fixtures['80A6A345'][1]=='80801AB5',fixtures
+              print('FIXTURES',json.dumps(fixtures,sort_keys=True))
+          finally:
+              db.close()
+          print('GLOBAL_EVERYTHING_INDEX_CLOSED',json.dumps({
+            'physical_packages':s['physical_package_member_count'],
+            'package_ids':s['package_family_count'],
+            'current_entries':s['current_entry_count'],
+            'distinct_tags':s['current_distinct_tag_hash_count'],
+            'known_routed':s['current_known_routed_entry_count'],
+            'unknown':s['current_unknown_entry_count'],
+            'standalone_candidates':s['current_standalone_export_candidate_count'],
+            'routes':routes,
+          },sort_keys=True))
+          PY
+          sha256sum out/D1_CURRENT_EVERYTHING.sqlite out/D1_CURRENT_EVERYTHING_SUMMARY.json out/D1_CURRENT_EXPORT_QUEUE.tsv > out/SHA256SUMS.txt
+
+      - name: Query exact 80A7F90B player-rig neighborhood
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,sqlite3
+          db=sqlite3.connect('out/D1_CURRENT_EVERYTHING.sqlite')
+          db.row_factory=sqlite3.Row
+          rig=db.execute("select * from current_entries where tag_hash='80A7F90B'").fetchall()
+          assert len(rig)==1,rig
+          r=dict(rig[0]); pkg=r['package_id']
+          clips=[dict(x) for x in db.execute("select tag_hash,package_id,entry_index,file_size,reference from current_entries where package_id=? and reference='808005A1' order by entry_index",(pkg,))]
+          wrappers=[dict(x) for x in db.execute("select tag_hash,package_id,entry_index,file_size,reference from current_entries where package_id=? and reference='8080222A' order by entry_index",(pkg,))]
+          nearby=[dict(x) for x in db.execute("select tag_hash,entry_index,reference,type,subtype,file_size,class_label,export_route from current_entries where package_id=? and entry_index between ? and ? order by entry_index",(pkg,max(0,r['entry_index']-64),r['entry_index']+64))]
+          out={'rig':{k:r[k] for k in ('tag_hash','package_name','package_id','entry_index','reference','file_size','class_label','export_route')},
+               'same_package_animation_clip_count':len(clips),'same_package_animation_wrapper_count':len(wrappers),
+               'same_package_animation_clips':clips,'same_package_animation_wrappers':wrappers,'nearby_entries':nearby,
+               'policy':'Package co-residency/nearby entry indices are discovery evidence only; clip ownership is not inferred.'}
+          json.dump(out,open('out/80A7F90B_GLOBAL_NEIGHBORHOOD.json','w'),indent=2);open('out/80A7F90B_GLOBAL_NEIGHBORHOOD.json','a').write('\n')
+          print(json.dumps({'rig':out['rig'],'same_package_animation_clip_count':len(clips),'same_package_animation_wrapper_count':len(wrappers)},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-EVERYTHING-ENTRY-INDEX-R1
+          path: out/
+          retention-days: 14
+          compression-level: 6
+          if-no-files-found: error
