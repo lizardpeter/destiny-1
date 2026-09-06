@@ -1,0 +1,71 @@
+name: D1 Tower articulated texture 003b catalog
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-articulated-texture-003b-catalog.yml'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover complete current 003b physical family
+        run: |
+          set -euo pipefail
+          mkdir -p reports recovered
+          curl -fsSL --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+
+          names=[Path(x.strip()).name for x in Path('reports/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          rx=re.compile(r'_003b_[0-9]+\.pkg$',re.I)
+          wanted=sorted(n for n in names if rx.search(n))
+          expected=[f'ps4_ui_social_003b_{i}.pkg' for i in range(7)]
+          if wanted!=expected:
+              raise SystemExit('unexpected current 003b family: '+repr(wanted))
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=120)
+          found,headers=arc.find(set(wanted))
+          missing=sorted(set(wanted)-set(found))
+          if missing: raise SystemExit('missing current 003b members: '+repr(missing))
+          rows=[]
+          for name in wanted:
+              info=found[name]
+              dst=Path('recovered')/name
+              sha=arc.copy_to(int(info['data_offset']),int(info['size']),dst)
+              rows.append({'name':name,'data_offset':int(info['data_offset']),'size':int(info['size']),'sha256':sha})
+              print('RECOVERED',name,info['data_offset'],info['size'],sha,flush=True)
+          out={
+              'schema_version':1,
+              'status':'D1_TOWER_ARTICULATED_TEXTURE_003B_FAMILY_RECOVERED',
+              'selection':{
+                  'missing_texture_package_id':'003b',
+                  'missing_texture_taghashes':['808768D3','808768D4','80876965','80876966','80876967','8087696F','80876970','80876971','80876972','80876973','80876979','8087697A'],
+                  'source':'d1_world_material_texture_export missing_texture_package_ids after exact 35-material articulated model export'
+              },
+              'current_family_membership':wanted,
+              'tar_headers_scanned':headers,
+              'members':rows,
+              'policy':'003b is selected only because exact serialized texture FileHashes decoded to Tiger package id 003b. The package filename is not semantic ownership evidence.'
+          }
+          Path('reports/003b_member_catalog.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-tower-articulated-texture-003b-catalog
+          path: reports/003b_member_catalog.json
+          retention-days: 14
+          compression-level: 6
