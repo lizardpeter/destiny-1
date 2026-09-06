@@ -31,7 +31,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq vkd3d-compiler
           mkdir -p runtime retail out reports
-          gdown --id '1ZlnqOedZoCBE1oUoiFfIUFKSsJZJZm6D' -O retail/xboxone_arch_cabal_0059_1.pkg
+          gdown '1ZlnqOedZoCBE1oUoiFfIUFKSsJZJZm6D' -O retail/xboxone_arch_cabal_0059_1.pkg
           echo '8836546ecbbbf6ba31fd50035a180c80c7bcb6407780f4b61be7a8217d24fde8  retail/xboxone_arch_cabal_0059_1.pkg' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
