@@ -1,0 +1,122 @@
+name: D1 Spektar Pandion joint semantic audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-joint-semantic-audit.yml'
+      - 'tools/d1_guardian_joint_semantic_audit.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact existing source evidence artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/skin input/identity out
+          fetch_named () {
+            name="$1"; zip="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=30" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a,'no live artifact'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$zip"
+            unzip -q "$zip" -d "$dir"
+          }
+          fetch_named 'd1-spektr-pandion-inline-skin-validation' input/skin.zip input/skin
+          fetch_named 'D1-PUBLISHED-PLAYER-SKELETON-RETAIL-IDENTITY' input/identity.zip input/identity
+          test -f input/skin/spektar_masculine_inline_skin.json
+          test -f input/skin/spektar_feminine_inline_skin.json
+          test -f input/identity/destiny_player_skeleton.js
+          test -f input/identity/retail_00ec.json
+
+      - name: Prove old raw-index to 809D8613 bind is semantically unsafe
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_guardian_joint_semantic_audit.py \
+            --skin-report input/skin/spektar_masculine_inline_skin.json \
+            --skin-report input/skin/spektar_feminine_inline_skin.json \
+            --published-skeleton input/identity/destiny_player_skeleton.js \
+            --retail-report input/identity/retail_00ec.json --retail-tag 809D8613 \
+            -o out/spektar_809D8613_joint_semantic_audit.json
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+
+      - name: Validate the exact corrupted semantic slots and source usage
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/spektar_809D8613_joint_semantic_audit.json'))
+          assert d['schema']=='d1_guardian_joint_semantic_audit/v1'
+          assert d['published_skeleton_node_count']==72
+          assert d['retail_tag']=='809D8613'
+          assert d['retail_skeleton_node_count']==67
+          assert d['same_index_semantics_safe'] is False
+          assert d['mismatched_source_joint_indices']==[25,26,27,28,40,42],d['mismatched_source_joint_indices']
+          by={x['source_joint_index']:x for x in d['joints']}
+          expected={
+            25:('b_l_toe','3AE77E9D',33),
+            26:('b_r_toe','3284136B',36),
+            27:('b_l_shoulder_twist_fixup','E7ADDB2C',None),
+            28:('b_r_shoulder_twist_fixup','7F2867B2',None),
+            40:('b_l_index_1','0FAB2B51',37),
+            42:('b_l_middle_1','9B74FBB0',38),
+          }
+          for i,(name,h,ri) in expected.items():
+              x=by[i]
+              assert (x['published_name'],x['published_hash'],x['published_hash_index_in_retail'])==(name,h,ri),(i,x)
+              assert not x['same_index_hash_exact']
+          # These two slots carry enormous exact Spektar gauntlet influence and are the shoulder-corruption mechanism.
+          for role in ('masculine','feminine'):
+              assert by[27]['source_usage'][role]['weight_u8_total']>200000
+              assert by[28]['source_usage'][role]['weight_u8_total']>300000
+          print('PROVEN UNSAFE RAW DIRECT BIND: mismatched slots',d['mismatched_source_joint_indices'])
+          for i in d['mismatched_source_joint_indices']:
+              x=by[i]
+              print(i,x['published_name'],x['published_hash'],'same-index retail',x['retail_same_index_hash'],'hash exists at',x['published_hash_index_in_retail'])
+              print(' usage',x['source_usage'])
+          PY
+
+      - name: Record source-backed exporter behavior
+        run: |
+          cat > out/README.txt <<'EOF'
+          Spektar Pandion source-joint semantic audit
+
+          This is a negative proof with a concrete consequence: the previous direct raw-joint-index -> retail 809D8613 bind is invalid.
+
+          The exact source Spektar skin bytes use raw indices 25, 26, 27, 28, 40 and 42. At those same integer slots,
+          809D8613 contains different bone hashes than Bungie's exact published 72-node D1 player skeleton. In particular,
+          source slots 27 and 28 are the published left/right shoulder twist-fixup bones and carry very large gauntlet weight,
+          while 809D8613 has unrelated bones at those integer slots.
+
+          Charm's pinned D1 exporter is also direct-index: FbxHandler.AddWeightsToMesh indexes weightClusters[vw.WeightIndices[j]]
+          without a remap. Therefore using a mismatched skeleton with numerically in-range joint values reproduces the exact class
+          of shoulder deformation seen in Blender; an in-range check cannot validate semantics.
+
+          This report does NOT promote a replacement remap. The next authoritative PS4 build requires the exact serialized
+          skeleton/palette mapping for the entity, while the Bungie web-preview path can use its independently exact 72-node
+          skeleton + web GearAsset geometry domain.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-SPEKTAR-PANDION-JOINT-SEMANTIC-AUDIT
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
