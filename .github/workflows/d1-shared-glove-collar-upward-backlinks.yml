@@ -1,0 +1,63 @@
+name: D1 shared glove-collar upward investment backlinks
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-glove-collar-upward-backlinks.yml'
+      - 'tools/d1_remote_catalog_backlinks.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Scan verified investment families for exact owner hashes
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0135 --scan-package-id 0x0137 --scan-package-id 0x0139 \
+            --scan-package-id 0x013A --scan-package-id 0x013B --scan-package-id 0x013C \
+            --scan-package-id 0x013D --scan-package-id 0x013E --scan-package-id 0x013F \
+            --scan-package-id 0x0140 --scan-package-id 0x0141 --scan-package-id 0x0142 \
+            --scan-package-id 0x0143 --scan-package-id 0x0144 --scan-package-id 0x0145 --scan-package-id 0x0146 \
+            --target 80A6A022 --target 80A6A05E --target 80A6A06C --target 80A6A125 --target 80A6A345 \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime --max-entry-size 4000000 \
+            -o out/shared_glove_collar_upward_backlinks.json
+      - name: Summarize exact backlink classes
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('out/shared_glove_collar_upward_backlinks.json'))
+          assert d['schema']=='d1_remote_catalog_backlinks/v1'
+          print('HIT SOURCES',d['hit_source_count'])
+          print('OCCURRENCES',d['occurrences_by_target'])
+          print('CLASSES',d['hit_sources_by_reference'])
+          print('ERRORS',d['error_count'])
+          for x in d['hits']:
+              print('HIT',x['package_id'],x['source_tag_hash'],'class',x['reference'],'size',x['size'],'targets',x['targets'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-shared-glove-collar-upward-backlinks
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
