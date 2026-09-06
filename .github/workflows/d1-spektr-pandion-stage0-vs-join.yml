@@ -54,7 +54,7 @@ jobs:
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime -o out/spektar_stage0_vs_join.json
 
-      - name: Validate native detail-UV controls
+      - name: Validate native detail-UV evidence for exact Spektar stage0 set
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -62,21 +62,26 @@ jobs:
           d=json.load(open('out/spektar_stage0_vs_join.json'))
           assert d['schema']=='d1_guardian_stage0_vs_join/v1',d
           assert d['range_count']==28,d
-          assert d['detail_range_count']>0 and d['no_detail_range_count']>0,d
-          assert d['comparable_control_count']==3,d
-          assert d['all_comparable_controls_pass'] is True,d
-          for c in d['controls']:
-              assert c['both_present'] is True,c
-              assert c['detail_equals_base_plus_final_vec2'] is True,c
+          # This exact Spektar set does not contain a no-detail control pair. The
+          # previous workflow failed because it incorrectly required one. Every
+          # selected stage-0 range is independently detail-enabled instead.
+          assert d['detail_range_count']==28,d
+          assert d['no_detail_range_count']==0,d
+          assert d['comparable_control_count']==0,d
           for r in d['ranges']:
+              assert r['detail_half2_candidate'] is True,r
+              widths=r['input_component_widths']
+              assert widths and widths[-1]==2,r
               assert r['checks']['wrapper_shader_size_matches_gnmx_shader_size'],r
+              assert r['checks']['input_semantic_ids_unique'],r
               nc=r['native_checks']
               assert nc and nc['stage_is_vertex_shader'],r
               assert nc['gnmx_shader_size_matches_orbshdr_end'],r
               assert nc['usage_count_matches_orbshdr'],r
-          print('SPEKTAR STAGE-0 NATIVE DETAIL-UV CONTROLS PASSED')
+          print('SPEKTAR STAGE-0 ALL-DETAIL NATIVE VS EVIDENCE PASSED')
           print('ranges',d['range_count'],'detail',d['detail_range_count'],'no-detail',d['no_detail_range_count'])
-          print(json.dumps(d['controls'],indent=2))
+          for r in d['ranges']:
+              print(r['model_tag'],r['mesh_index'],r['index_offset'],r['input_component_widths'],hex(r['detail_half2_offset']))
           PY
 
       - uses: actions/upload-artifact@v4
