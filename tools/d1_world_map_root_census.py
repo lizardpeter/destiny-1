@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-"""Discover D1 SMapDataTable roots from shipped bubble/map-container ownership.
+"""Parse D1 Bubble -> MapContainer -> MapDataTable ownership.
 
 Pinned D1 Rise-of-Iron schema chain (MontagueM/Charm commit
 50d36ee1f9ecadad7522504c20b1f3f9c97e30af):
 
-  SBubbleDefinition / 808091E0
+  SBubbleDefinition / SchemaStruct 808091E0
     +0x08 DynamicArray<SMapContainerEntry>, elem 0x04
-      -> SMapContainer / 80808A54
+      -> typed Tag<SMapContainer> / SchemaStruct 80808A54
         +0x18 DynamicArray<SMapDataTableEntry>, elem 0x04
-          -> SMapDataTable / 808009A2
+          -> typed Tag<SMapDataTable> / SchemaStruct 808009A2
             +0x08 DynamicArray<SMapDataEntry>, elem 0x90
 
-D1 global Tags may not expose these schema classes in their ordinary file-entry
-Reference. Class validation therefore uses d1_tag_manifest_resolver.py, which implements
-Charm's D1 FileHash.GetReferenceFromManifest path through S48018080. Class-direct entries
-remain supported as the fast path.
+D1 global Tag manifest TagClassHash values are not assumed to equal SchemaStruct class
+identifiers. For source-typed Tag<T> edges this parser uses `resolve_typed_tag`: a direct
+schema Reference is accepted directly; otherwise a valid S48018080 manifest parent and
+exact +0x10 backlink proves target identity while the pinned field type supplies the
+payload schema. The manifest TagClassHash is preserved separately as evidence.
 
-This tool accepts no bubble, map-container or map-data-table hashes as discovery inputs.
-Historical occurrences whose TagHash has since changed are excluded by the Corpus
-current-entry policy.
+The standalone class-scan mode remains a conservative diagnostic only. It can enumerate
+class-direct/exact-manifest-class resources, but Activity ownership is the authoritative
+world-root discovery path for D1 global Bubble tags.
 """
 from __future__ import annotations
 
@@ -32,7 +33,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import d1_tower_map_schema_validate_v5 as v5
 import d1_world_map_data_layer_census as layer
-from d1_tag_manifest_resolver import resolve_tag_class, current_hashes_by_class
+from d1_tag_manifest_resolver import resolve_typed_tag, current_hashes_by_class
 
 BUBBLE_DEFINITION = '808091E0'
 MAP_CONTAINER = '80808A54'
@@ -57,12 +58,13 @@ def hx(v: int) -> str:
 
 
 def current_hashes_by_ref(c, reference: str) -> list[str]:
-    """Compatibility alias: D1 'reference' means resolved class, not raw entry ref."""
+    """Conservative exact TagClassHash/class-direct diagnostic enumeration."""
     return current_hashes_by_class(c, reference)
 
 
 def target(c, h: str, expected: str) -> dict:
-    return resolve_tag_class(c, norm(h), norm(expected))
+    """Resolve a target reached through a pinned source-typed Tag<T> field."""
+    return resolve_typed_tag(c, norm(h), norm(expected))
 
 
 def parse_table(c, h: str) -> dict:
@@ -75,8 +77,8 @@ def parse_table(c, h: str) -> dict:
         'validation_ok': False,
         'violations': [],
     }
-    if not resolved.get('reference_matches'):
-        rep['violations'].append(f'class_mismatch_or_missing:{MAP_DATA_TABLE}')
+    if not resolved.get('typed_target_valid'):
+        rep['violations'].append(f'typed_target_unresolved:{MAP_DATA_TABLE}')
         return rep
     b, src = c.payload(h)
     rep['payload_source'] = src
@@ -84,6 +86,9 @@ def parse_table(c, h: str) -> dict:
         rep['violations'].append('payload_unavailable')
         return rep
     rep['payload_bytes'] = len(b)
+    if len(b) < 0x18:
+        rep['violations'].append('payload_shorter_than_SMapDataTable_0x18')
+        return rep
     arr = layer.dyn(b, 0x08, MAP_ENTRY_STRIDE)
     rep['data_entries_array'] = arr
     if not arr['ok']:
@@ -105,8 +110,8 @@ def parse_container(c, h: str) -> dict:
         'validation_ok': False,
         'violations': [],
     }
-    if not resolved.get('reference_matches'):
-        rep['violations'].append(f'class_mismatch_or_missing:{MAP_CONTAINER}')
+    if not resolved.get('typed_target_valid'):
+        rep['violations'].append(f'typed_target_unresolved:{MAP_CONTAINER}')
         return rep
     b, src = c.payload(h)
     rep['payload_source'] = src
@@ -114,6 +119,9 @@ def parse_container(c, h: str) -> dict:
         rep['violations'].append('payload_unavailable')
         return rep
     rep['payload_bytes'] = len(b)
+    if len(b) < 0x28:
+        rep['violations'].append('payload_shorter_than_SMapContainer_0x28')
+        return rep
     arr = layer.dyn(b, 0x18, 0x04)
     rep['map_data_tables_array'] = arr
     if not arr['ok']:
@@ -124,15 +132,10 @@ def parse_container(c, h: str) -> dict:
         o = arr['absolute'] + i * 4
         th = hx(u32(b, o))
         t = target(c, th, MAP_DATA_TABLE)
-        row = {
-            'index': i,
-            'offset': o,
-            'map_data_table': th,
-            'target': t,
-        }
-        if not t['reference_matches']:
-            row['violation'] = 'map_data_table_missing_or_class_mismatch'
-            rep['violations'].append(f'table[{i}]={th}:target_mismatch')
+        row = {'index': i, 'offset': o, 'map_data_table': th, 'target': t}
+        if not t.get('typed_target_valid'):
+            row['violation'] = 'map_data_table_typed_target_unresolved'
+            rep['violations'].append(f'table[{i}]={th}:target_unresolved')
         else:
             row['table_validation'] = parse_table(c, th)
             if not row['table_validation']['validation_ok']:
@@ -154,8 +157,8 @@ def parse_bubble(c, h: str) -> dict:
         'validation_ok': False,
         'violations': [],
     }
-    if not resolved.get('reference_matches'):
-        rep['violations'].append(f'class_mismatch_or_missing:{BUBBLE_DEFINITION}')
+    if not resolved.get('typed_target_valid'):
+        rep['violations'].append(f'typed_target_unresolved:{BUBBLE_DEFINITION}')
         return rep
     b, src = c.payload(h)
     rep['payload_source'] = src
@@ -163,6 +166,9 @@ def parse_bubble(c, h: str) -> dict:
         rep['violations'].append('payload_unavailable')
         return rep
     rep['payload_bytes'] = len(b)
+    if len(b) < 0x18:
+        rep['violations'].append('payload_shorter_than_SBubbleDefinition_0x18')
+        return rep
     arr = layer.dyn(b, 0x08, 0x04)
     rep['map_resources_array'] = arr
     if not arr['ok']:
@@ -173,15 +179,10 @@ def parse_bubble(c, h: str) -> dict:
         o = arr['absolute'] + i * 4
         ch = hx(u32(b, o))
         t = target(c, ch, MAP_CONTAINER)
-        row = {
-            'index': i,
-            'offset': o,
-            'map_container': ch,
-            'target': t,
-        }
-        if not t['reference_matches']:
-            row['violation'] = 'map_container_missing_or_class_mismatch'
-            rep['violations'].append(f'container[{i}]={ch}:target_mismatch')
+        row = {'index': i, 'offset': o, 'map_container': ch, 'target': t}
+        if not t.get('typed_target_valid'):
+            row['violation'] = 'map_container_typed_target_unresolved'
+            rep['violations'].append(f'container[{i}]={ch}:target_unresolved')
         else:
             row['container_validation'] = parse_container(c, ch)
             if not row['container_validation']['validation_ok']:
@@ -200,6 +201,8 @@ def main() -> int:
     a = ap.parse_args()
 
     c = v5.v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
+    # This standalone scan is intentionally conservative. It cannot infer source-typed
+    # global Bubble tags from TagClassHash alone when TagClassHash != SchemaStruct hash.
     current_bubbles = current_hashes_by_class(c, BUBBLE_DEFINITION)
     current_containers = current_hashes_by_class(c, MAP_CONTAINER)
     current_tables = current_hashes_by_class(c, MAP_DATA_TABLE)
@@ -214,13 +217,13 @@ def main() -> int:
         if not b['validation_ok']:
             violations.append(f"bubble:{b['bubble_definition']}:validation_failed")
         for cr in b.get('map_containers', []):
-            if not cr.get('target', {}).get('reference_matches'):
+            if not cr.get('target', {}).get('typed_target_valid'):
                 continue
             ch = norm(cr['map_container'])
             reachable_containers.append(ch)
             cv = cr.get('container_validation') or {}
             for tr in cv.get('map_data_tables', []):
-                if not tr.get('target', {}).get('reference_matches'):
+                if not tr.get('target', {}).get('typed_target_valid'):
                     continue
                 th = norm(tr['map_data_table'])
                 reachable_tables.append(th)
@@ -233,35 +236,23 @@ def main() -> int:
     orphan_containers = sorted(set(current_containers) - set(reachable_containers))
     orphan_tables = sorted(set(current_tables) - set(reachable_tables))
 
-    if not current_bubbles:
-        violations.append('no_current_bubble_definitions')
-    if not reachable_containers:
-        violations.append('no_reachable_map_containers')
-    if not reachable_tables:
-        violations.append('no_reachable_map_data_tables')
-
-    resolution_modes = {}
-    for label, values, expected in (
-        ('bubbles', current_bubbles, BUBBLE_DEFINITION),
-        ('containers', current_containers, MAP_CONTAINER),
-        ('tables', current_tables, MAP_DATA_TABLE),
-    ):
-        counts = {}
-        for h in values:
-            mode = target(c, h, expected).get('resolution_mode') or 'UNRESOLVED'
-            counts[mode] = counts.get(mode, 0) + 1
-        resolution_modes[label] = counts
+    # No failure is attached merely because exact TagClassHash scanning finds no
+    # Bubble globals; Activity traversal is the authoritative discovery path.
+    if current_bubbles and not reachable_containers:
+        violations.append('exact_class_bubbles_reach_no_map_containers')
+    if reachable_containers and not reachable_tables:
+        violations.append('exact_class_containers_reach_no_map_data_tables')
 
     out = {
-        'schema_version': 2,
-        'status': 'D1_WORLD_MAP_ROOT_CENSUS_COMPLETE' if not violations else 'D1_WORLD_MAP_ROOT_CENSUS_PARTIAL',
+        'schema_version': 3,
+        'status': 'D1_WORLD_MAP_ROOT_DIAGNOSTIC_COMPLETE' if not violations else 'D1_WORLD_MAP_ROOT_DIAGNOSTIC_PARTIAL',
         'pinned_source': PINNED_SOURCE,
-        'current_class_counts': {
+        'scan_scope': 'CONSERVATIVE_EXACT_TAGCLASS_DIAGNOSTIC_NOT_WORLD_SELECTION',
+        'current_exact_tagclass_counts': {
             BUBBLE_DEFINITION: len(current_bubbles),
             MAP_CONTAINER: len(current_containers),
             MAP_DATA_TABLE: len(current_tables),
         },
-        'class_resolution_modes': resolution_modes,
         'bubble_definition_count': len(current_bubbles),
         'bubble_definitions': current_bubbles,
         'reachable_map_container_count': len(reachable_containers),
@@ -275,19 +266,17 @@ def main() -> int:
         'bubbles': bubbles,
         'violations': violations,
         'policy': (
-            'Map-data-table roots are discovered only by resolved-current-class '
-            'SBubbleDefinition -> SMapContainer -> SMapDataTable ownership. D1 global '
-            'Tag classes are resolved through S48018080 manifest parents when ordinary '
-            'file-entry Reference values are FileHashes. No world hashes are accepted '
-            'as discovery inputs. Orphan current-class resources are reported rather '
-            'than silently merged into the reachable world set.'
+            'Source-typed Tag<T> traversal uses S48018080 identity/backlinks plus the '
+            'pinned field schema; manifest TagClassHash is preserved separately and is '
+            'not conflated with SchemaStruct identifiers. Standalone class scanning is '
+            'diagnostic only. Activity ownership is authoritative world-root discovery.'
         ),
     }
 
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + '\n')
     print(json.dumps({k: out[k] for k in (
-        'status', 'current_class_counts', 'class_resolution_modes',
+        'status', 'scan_scope', 'current_exact_tagclass_counts',
         'bubble_definition_count', 'reachable_map_container_count',
         'reachable_map_data_table_count', 'map_data_tables',
         'map_data_table_entry_counts', 'total_reachable_map_entries',
