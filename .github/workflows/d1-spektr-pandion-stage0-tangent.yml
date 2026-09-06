@@ -1,0 +1,103 @@
+name: D1 Spektar exact active-stage0 tangent restore
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-stage0-tangent.yml'
+      - 'tools/d1_guardian_stage0_tangent_restore.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Dependencies, Oodle, and exact source-attribute checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p runtime input/material_v2 input/vs input/canonical out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact 'D1-SPEKTAR-BUNGIE72-ACTIVE-SOURCE-MATERIAL-V2' input/material_v2.zip input/material_v2
+          fetch_artifact 'd1-spektr-pandion-stage0-vs-join' input/vs.zip input/vs
+          src=$(find input/material_v2 -type f -name 'SPEKTAR_PANDION_TITAN_BUNGIE72_ACTIVE_SOURCE_NORMALS_DETAILUV.glb' -print -quit); test -n "$src"; cp "$src" input/canonical/source_attrs.glb
+          src=$(find input/vs -type f -name 'spektar_stage0_vs_join.json' -print -quit); test -n "$src"; cp "$src" input/canonical/stage0_vs.json
+
+      - name: Restore exact source tangent vec4
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_stage0_tangent_restore.py \
+            input/canonical/source_attrs.glb \
+            --vs-join input/canonical/stage0_vs.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --member-catalog evidence/d1_weapon_globals_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --report out/tangent_restore.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV_TANGENT.glb
+
+      - name: Validate exact tangent W and unchanged skin/animation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,numpy as np,trimesh
+          p='out/SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV_TANGENT.glb'
+          raw=open(p,'rb').read(); jl=struct.unpack_from('<I',raw,12)[0]
+          g=json.loads(raw[20:20+jl].decode().rstrip('\x00 '))
+          active=[]
+          for n in g['nodes']:
+              if n.get('mesh') is None: continue
+              m=g['meshes'][n['mesh']]; pr=m['primitives'][0]
+              assert {'POSITION','NORMAL','TANGENT','TEXCOORD_0','TEXCOORD_1','JOINTS_0','WEIGHTS_0'} <= set(pr['attributes'])
+              assert g['accessors'][pr['attributes']['TANGENT']]['type']=='VEC4'
+              assert 'd1SourceTangentRestore' in (m.get('extras') or {})
+              active.append(m.get('name'))
+          assert len(active)==28,len(active)
+          assert len(g['skins'][0]['joints'])==72
+          assert len(g['animations'][0]['channels'])==216
+          r=json.load(open('out/tangent_restore.json'))
+          assert r['active_range_count']==28,r
+          assert r['decoded_source_mesh_count']==10,r
+          for s in r['source_meshes']:
+              assert set(s['handedness_raw_counts']) <= {'-32767','32767'},s
+              lo,hi=s['tangent_length_minmax']; assert abs(lo-1)<1e-5 and abs(hi-1)<1e-5,s
+          scene=trimesh.load(p,force='scene',process=False); assert len(scene.geometry)==69
+          print('EXACT D1 TANGENT HANDENESS VALIDATION PASSED')
+          for s in r['source_meshes']: print(s)
+          PY
+          python tools/d1_gltf_skin_deformation_bounds.py \
+            out/SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV_TANGENT.glb \
+            --frame 0 --frame 30 --frame 60 --frame 100 --frame 145 \
+            -o out/deformation_bounds.json
+          sha256sum out/*.glb > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-BUNGIE72-EXACT-TANGENT
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
