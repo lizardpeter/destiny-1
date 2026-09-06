@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-activity-entity-layer-census.yml'
       - 'tools/d1_world_activity_entity_table_census.py'
+      - 'tools/d1_world_activity_entity_resource_census.py'
       - 'tools/d1_tower_recover_activity_root_corpus.py'
       - 'tools/d1_tower_recover_current_corpus.py'
       - 'tools/d1_split_tar_extract.py'
@@ -68,6 +69,34 @@ jobs:
                    'unique_f603_entity_resources':d['unique_f603_entity_resources'],
                    'unresolved_hashes':d['unresolved_hashes'],'violations':d['violations']}
           json.dump(compact,open('reports/TOWER_ACTIVITY_ENTITY_LAYER_SUMMARY.json','w'),indent=2)
+          print(json.dumps(compact,indent=2))
+          PY
+      - name: Collapse F603 entity resources into exact placements
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_activity_entity_resource_census.py "${args[@]}" --runtime runtime \
+            --entity-table-census reports/tower_activity_entity_table_census.json \
+            --out reports/tower_activity_entity_resource_census.json \
+            | tee reports/tower_activity_entity_resource_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_activity_entity_resource_census.json'))
+          if d['f603_count']<=0: raise SystemExit('no Activity-owned F603 tables reached collapse pass')
+          if d['collapsed_f603_count']<=0: raise SystemExit('no F603 EntityResource collapsed into SMapDataEntry records')
+          if d['real_entity_entry_count']<=0: raise SystemExit('no real entity placements materialized')
+          compact={k:d[k] for k in ('status','f603_count','collapsed_f603_count','collapse_reason_counts',
+              'unique_entity_resource_tags','collapsed_entry_count','real_entity_entry_count','unique_entity_hash_count',
+              'resolved_entity_entry_count','entity_class_match_entry_count','unique_world_id_count','data_resource_class_counts','violations')}
+          compact['unique_entity_hashes']=d['unique_entity_hashes']
+          json.dump(compact,open('reports/TOWER_ACTIVITY_ENTITY_PLACEMENT_SUMMARY.json','w'),indent=2)
           print(json.dumps(compact,indent=2))
           PY
       - uses: actions/upload-artifact@v4
