@@ -63,13 +63,21 @@ def parse_resource(b, platform=None):
         f'{D1_PHYSICS_DISCRIMINATOR:08X}':'entity_physics',
         f'{D1_CHILDREN_DISCRIMINATOR:08X}':'entity_children',
     }.get(discr,'other_or_unknown')
-    # Model parent embeds an EntityModel FileHash at +0x15C (Charm D1 schema).
+    # Both D1 model-parent (9C1A8080) and physics-parent (F61B8080)
+    # serialize their EntityModel FileHash at +0x15C. Charm's source pins the
+    # physics field to the same D1 relative offset. XboxOne's ordinary model
+    # parent uses +0x1C4; the PS4 Tower path uses +0x15C.
     if d['semantic_role']=='entity_model':
         p=d['unk18'];t=p.get('target_offset')
         model_rel = 0x1C4 if platform == 'XboxOne' else 0x15C
         d['model_field_offset_in_parent']=model_rel
         if p.get('class_hash')==f'{D1_MODEL_PARENT:08X}' and isinstance(t,int) and t+model_rel+4<=len(b):
             d['embedded_model_tag_hash']=f'{u32(b,t+model_rel):08X}'
+    elif d['semantic_role']=='entity_physics':
+        p=d['unk18'];t=p.get('target_offset');model_rel=0x15C
+        d['physics_model_field_offset_in_parent']=model_rel
+        if p.get('class_hash')==f'{D1_PHYSICS_PARENT:08X}' and isinstance(t,int) and t+model_rel+4<=len(b):
+            d['embedded_physics_model_tag_hash']=f'{u32(b,t+model_rel):08X}'
     return d
 
 def main():
