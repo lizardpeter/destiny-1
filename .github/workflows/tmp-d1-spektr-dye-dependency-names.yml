@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Print current package members for exact dependency IDs
+      - name: Print current package members and archive-list neighbors
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o packages.txt
@@ -24,7 +24,13 @@ jobs:
           from pathlib import Path
           names=[Path(x.strip()).name for x in Path('packages.txt').read_text(errors='replace').splitlines() if x.strip()]
           for pid in ('0135','0432'):
-              rows=sorted(n for n in names if re.search(rf'_{pid}_[0-9]+\.pkg$',n,re.I))
-              print(pid, rows)
-              if not rows: raise SystemExit(f'no package members for {pid}')
+              hits=[i for i,n in enumerate(names) if re.search(rf'_{pid}_[0-9]+\.pkg$',n,re.I)]
+              rows=[names[i] for i in hits]
+              print('FAMILY',pid,'indices',hits,'members',rows)
+              if not hits: raise SystemExit(f'no package members for {pid}')
+              lo=max(0,min(hits)-8); hi=min(len(names),max(hits)+9)
+              print('NEIGHBORS',pid)
+              for i in range(lo,hi): print(i,names[i])
+          for exact in ('ps4_investment_assets_013f_1.pkg','ps4_investment_globals_012f_0.pkg'):
+              if exact in names: print('KNOWN_INDEX',exact,names.index(exact))
           PY
