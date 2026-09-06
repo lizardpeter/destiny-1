@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-white-slab-material-80c9993c.yml'
-      - 'tools/d1_close_world_texture_dependencies_indexed.py'
       - 'tools/d1_close_world_shader_dependencies.py'
       - 'tools/d1_world_material_texture_export.py'
       - 'tools/d1_world_material_constant_export.py'
@@ -27,10 +26,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Install dependencies
+
+      - name: Recover authoritative prior material manifest, archive index and runtime
         run: |
+          set -euo pipefail
           python -m pip install --quiet pillow numpy
-          mkdir -p index runtime packages expanded texture_work target_textures shader_work shader disasm reports
+          mkdir -p prior index runtime packages shader_work shader disasm reports target_textures
+          gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D prior
+          test -f prior/reports/material_texture_manifest_ten_cell.json
+          cp prior/reports/material_texture_manifest_ten_cell.json reports/full_material_manifest.json
           idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$idx_run"
           gh run download "$idx_run" -n d1-global-activity-index -D index
@@ -40,44 +44,58 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-
-      - name: Recover exact selected material family
-        run: |
-          python tools/d1_recover_indexed_package_families.py \
-            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
-            --package-list reports/packages.txt \
-            --package-id 024c \
-            --out-dir packages \
-            --report reports/material_family_recovery.json
-          cat > reports/selected_visual.json <<'JSON'
-          {
-            "status":"D1_TARGETED_VISUAL_SELECTOR",
-            "source_node":"cell04_TOWER_80C993CF_WORLD_p001741_80C99827_info976_xform2377",
-            "materials":{"80C9993C":{"visual":true}}
-          }
-          JSON
-
-      - name: Close all five exact texture dependencies
-        run: |
-          python tools/d1_close_world_texture_dependencies_indexed.py \
-            --snapshot-dir packages \
-            --runtime runtime \
-            --visual-json reports/selected_visual.json \
-            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
-            --package-list reports/packages.txt \
-            --expansion-dir expanded \
-            --work-dir texture_work \
-            --out target_textures \
-            --report reports/target_texture_closure.json
           python - <<'PY'
           import json
-          d=json.load(open('target_textures/material_texture_manifest.json'))
+          d=json.load(open('reports/full_material_manifest.json'))
           m=d['materials']['80C9993C']
           assert m['pixel_shader']=='80C9994A',m
           assert [(x['texture_index'],x['texture']) for x in m['ps_texture_tags']]==[(0,'80C9988C'),(1,'80C9988D'),(2,'80C9988C'),(3,'80C9988D'),(4,'80C9988E')],m
-          assert d['texture_errors']==0 and d['material_decode_errors']==0,d
-          print('TARGET_MATERIAL',json.dumps(m,indent=2))
+          out={
+            'schema_version':1,'status':'D1_TARGETED_MATERIAL_MANIFEST',
+            'visible_material_count':1,'material_decode_errors':0,
+            'pixel_shader_frequency':{'80C9994A':1},
+            'materials':{'80C9993C':m},
+            'textures':{h:d['textures'][h] for h in ('80C9988C','80C9988D','80C9988E')},
+            'texture_references':{h:d['texture_references'][h] for h in ('80C9988C','80C9988D','80C9988E')},
+          }
+          open('reports/target_material_manifest.json','w').write(json.dumps(out,indent=2)+'\n')
+          open('reports/selected_visual.json','w').write(json.dumps({'status':'D1_TARGETED_VISUAL_SELECTOR','source_node':'cell04_TOWER_80C993CF_WORLD_p001741_80C99827_info976_xform2377','materials':{'80C9993C':{'visual':True}}},indent=2)+'\n')
+          print(json.dumps(m,indent=2))
           PY
+
+      - name: Recover exact current 024c and 0250 package families
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 \
+            --out-dir packages \
+            --report reports/target_package_recovery.json
+
+      - name: Re-export exact target textures directly
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime \
+            --visual-json reports/selected_visual.json --out target_textures \
+            > reports/target_texture_export_stdout.txt 2>&1
+          rc=$?
+          set -e
+          cat reports/target_texture_export_stdout.txt
+          test -f target_textures/material_texture_manifest.json
+          python - <<'PY'
+          import json
+          d=json.load(open('target_textures/material_texture_manifest.json'))
+          assert d['material_decode_errors']==0,d
+          assert d['unique_texture_tags']==3,d
+          assert d['texture_errors']==0,d
+          assert d['materials']['80C9993C']['pixel_shader']=='80C9994A'
+          print('TARGET_TEXTURE_EXPORT',json.dumps({k:d[k] for k in ('visible_material_count','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs')},indent=2))
+          PY
+          test "$rc" -eq 0
 
       - name: Prove source texture channel distributions
         run: |
@@ -89,19 +107,12 @@ jobs:
           d=json.load(open('target_textures/material_texture_manifest.json'))
           out={}
           for h in ('80C9988C','80C9988D','80C9988E'):
-              r=d['textures'][h]
-              p=Path('target_textures/textures')/r['png']
+              r=d['textures'][h];p=Path('target_textures/textures')/r['png']
               im=np.asarray(Image.open(p).convert('RGBA'))
               rec={'hash':h,'format':r['format_name'],'shape':list(im.shape[:2][::-1]),'channels':{}}
               for ci,n in enumerate('RGBA'):
-                  a=im[...,ci]
-                  vals,cnts=np.unique(a,return_counts=True)
-                  rec['channels'][n]={
-                      'min':int(a.min()),'max':int(a.max()),'mean':float(a.mean()),
-                      'zero_fraction':float((a==0).mean()),'full_fraction':float((a==255).mean()),
-                      'unique_values':int(len(vals)),
-                      'top_values':[[int(v),int(c)] for c,v in sorted(zip(cnts,vals),reverse=True)[:12]],
-                  }
+                  a=im[...,ci];vals,cnts=np.unique(a,return_counts=True)
+                  rec['channels'][n]={'min':int(a.min()),'max':int(a.max()),'mean':float(a.mean()),'zero_fraction':float((a==0).mean()),'full_fraction':float((a==255).mean()),'unique_values':int(len(vals)),'top_values':[[int(v),int(c)] for c,v in sorted(zip(cnts,vals),reverse=True)[:12]]}
               out[h]=rec
           Path('reports/target_texture_channel_stats.json').write_text(json.dumps(out,indent=2)+'\n')
           print(json.dumps(out,indent=2))
@@ -109,25 +120,20 @@ jobs:
 
       - name: Export exact external PS constants
         run: |
-          mapfile -t files < <(find packages expanded -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          set +e
-          python tools/d1_world_material_constant_export.py "${args[@]}" \
-            --runtime runtime \
-            --manifest target_textures/material_texture_manifest.json \
-            --out reports/target_material_constants.json
-          rc=$?
-          set -e
+          python tools/d1_world_material_constant_export.py "${args[@]}" --runtime runtime \
+            --manifest reports/target_material_manifest.json --out reports/target_material_constants.json
           cat reports/target_material_constants.json
-          # A missing cross-family backing here is diagnostic and does not invalidate texture/shader work.
-          test "$rc" -eq 0 || true
 
       - name: Close exact native pixel shader 80C9994A
         run: |
+          set -euo pipefail
           python tools/d1_close_world_shader_dependencies.py \
             --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
             --package-list reports/packages.txt \
-            --manifest target_textures/material_texture_manifest.json \
+            --manifest reports/target_material_manifest.json \
             --runtime runtime \
             --package-dir packages \
             --work-dir shader_work \
@@ -137,41 +143,37 @@ jobs:
           import json
           d=json.load(open('shader/shader_report.json'))
           assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['selected_count']==1 and d['error_count']==0,d
-          r=d['shaders'][0]
-          assert r['shader']=='80C9994A' and r.get('gcn_bytes',0)>0,r
+          r=d['shaders'][0];assert r['shader']=='80C9994A' and r.get('gcn_bytes',0)>0,r
           print('TARGET_SHADER',json.dumps(r,indent=2))
           PY
 
       - name: Build pinned CLRX and disassemble exact target shader
         run: |
+          set -euo pipefail
           git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
           git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
           cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
           cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
-          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)";test -n "$exe"
           "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_80C9994A_gcn.bin > disasm/PS_80C9994A.s 2> disasm/PS_80C9994A.stderr
           test ! -s disasm/PS_80C9994A.stderr
           grep -q 's_endpgm' disasm/PS_80C9994A.s
 
-      - name: Map exact t# image usage and alpha/discard evidence
+      - name: Map exact t# use and preserve alpha/discard dataflow windows
         run: |
-          python tools/d1_gcn_image_usage_analyze.py \
-            --extract-report shader/shader_report.json \
-            --disasm-dir disasm \
-            --out reports/target_gcn_image_usage.json
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py --extract-report shader/shader_report.json \
+            --disasm-dir disasm --out reports/target_gcn_image_usage.json
           python - <<'PY'
-          import json,re
+          import json
           from pathlib import Path
           d=json.load(open('reports/target_gcn_image_usage.json'))
           assert d['shader_count']==1 and d['unmatched_image_instruction_count']==0,d
-          row=d['shaders'][0]
-          text=Path('disasm/PS_80C9994A.s').read_text(errors='replace').splitlines()
-          patterns=('cmp','exec','kill','discard','mrt','exp ','image_sample','image_load','s_buffer_load')
-          focus=[{'line':i+1,'text':s} for i,s in enumerate(text) if any(p in s.lower() for p in patterns)]
-          out={'status':'D1_TOWER_80C9994A_SHADER_FOCUS','shader':row,'focus':focus}
-          Path('reports/target_shader_focus.json').write_text(json.dumps(out,indent=2)+'\n')
-          print('IMAGE_USAGE',json.dumps(row,indent=2))
-          print('FOCUS_LINES',json.dumps(focus,indent=2))
+          row=d['shaders'][0];text=Path('disasm/PS_80C9994A.s').read_text(errors='replace').splitlines()
+          keys=('cmp','exec','kill','discard','mrt','exp ','image_sample','image_load','s_buffer_load','v_cndmask','v_mul','v_add','v_sub')
+          focus=[{'line':i+1,'text':s} for i,s in enumerate(text) if any(k in s.lower() for k in keys)]
+          Path('reports/target_shader_focus.json').write_text(json.dumps({'status':'D1_TOWER_80C9994A_SHADER_FOCUS','shader':row,'focus':focus},indent=2)+'\n')
+          print('IMAGE_USAGE',json.dumps(row,indent=2));print('FOCUS_LINES',json.dumps(focus,indent=2))
           PY
 
       - uses: actions/upload-artifact@v4
