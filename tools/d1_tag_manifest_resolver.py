@@ -21,10 +21,11 @@ This helper never guesses a class from payload shape. A Tag matches an expected 
 only if either:
 
 1. its current ordinary file-entry Reference is already that class (class-direct Tag), or
-2. that Reference resolves to a manifest-parent payload whose +0x10 Tag equals the
-   original TagHash and whose +0x0C TagClassHash equals the expected class.
+2. that Reference resolves to a current entry of class S48018080 whose payload +0x10
+   Tag equals the original TagHash and whose +0x0C TagClassHash equals the expected class.
 
-Missing shared-manifest packages remain explicit unresolved evidence.
+Missing shared-manifest packages and non-S48018080 parent candidates remain explicit
+unresolved evidence.
 """
 from __future__ import annotations
 
@@ -100,7 +101,16 @@ def resolve_tag_class(c, tag_hash: str, expected: str | None = None) -> dict:
         out['violations'].append('manifest_parent_missing')
         return out
 
-    parent['parent_reference_is_S48018080'] = norm(parent_meta.get('reference', '')) == MANIFEST_PARENT
+    parent_ref = norm(parent_meta.get('reference', ''))
+    parent['parent_reference'] = parent_ref
+    parent['parent_reference_is_S48018080'] = parent_ref == MANIFEST_PARENT
+    if not parent['parent_reference_is_S48018080']:
+        parent['violations'].append(
+            f'manifest_parent_class_mismatch:{parent_ref}!={MANIFEST_PARENT}'
+        )
+        out['violations'].append('manifest_parent_class_mismatch')
+        return out
+
     pb, psrc = c.payload(parent_hash)
     parent['payload_source'] = psrc
     if pb is None:
@@ -119,7 +129,7 @@ def resolve_tag_class(c, tag_hash: str, expected: str | None = None) -> dict:
     parent['class_hash'] = cls
     parent['tag_hash'] = child
     parent['tag_matches_original'] = child == h
-    parent['structurally_valid'] = parent['tag_matches_original']
+    parent['structurally_valid'] = parent['parent_reference_is_S48018080'] and parent['tag_matches_original']
 
     if not parent['tag_matches_original']:
         parent['violations'].append(f'manifest_parent_tag_mismatch:{child}!={h}')
