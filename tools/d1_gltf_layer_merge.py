@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loss-preserving GLB layer merger for D1 world adapters.
+"""Loss-preserving, path-independent GLB layer merger for D1 world adapters.
 
 The earlier trimesh scene round-trip preserved geometry and transforms but
 stripped embedded textures/images/material bindings. This tool edits glTF 2.0
@@ -13,7 +13,10 @@ Contract:
 - base indices are never renumbered;
 - appended default-scene roots are attached under one identity layer node;
 - the entire original base BIN payload is an exact prefix of the output BIN;
-- base core resource arrays are exact unchanged prefixes of the output arrays.
+- base core resource arrays are exact unchanged prefixes of the output arrays;
+- output GLB bytes depend on input *content* and logical layer names, not temporary
+  filesystem paths. Provenance embedded in a layer parent uses the input SHA-256,
+  while human-readable paths remain report-only metadata.
 """
 from __future__ import annotations
 
@@ -163,7 +166,7 @@ def main()->int:
 
     for spec in a.layer:
         if '=' not in spec: raise SystemExit('--layer must be NAME=PATH')
-        name,pstr=spec.split('=',1);p=Path(pstr);src,src_bin=read_glb(p)
+        name,pstr=spec.split('=',1);p=Path(pstr);src,src_bin=read_glb(p);input_sha=digest(p)
         c0=counts(out);off={k:c0.get(k,0) for k in ARRAYS};off['lights']=c0.get('lights',0)
         aligned=(len(bin_data)+3)&~3
         if aligned!=len(bin_data): bin_data+=b'\x00'*(aligned-len(bin_data))
@@ -175,14 +178,20 @@ def main()->int:
             if vals: out.setdefault(k,[]).extend(vals)
         sidx=int(r.get('scene',0)) if r.get('scenes') else None
         roots=[] if sidx is None else [int(v)+off['nodes'] for v in r['scenes'][sidx].get('nodes',[])]
-        parent={'name':f'D1_LAYER_{name}','children':roots,'extras':{'d1_layer':name,'source_glb':p.name}}
+        parent={'name':f'D1_LAYER_{name}','children':roots,'extras':{
+            'd1_layer':name,
+            'source_glb_sha256':input_sha,
+            'source_glb_bytes':p.stat().st_size,
+        }}
         parent_i=len(out.get('nodes',[]));out.setdefault('nodes',[]).append(parent);out['scenes'][scene_idx]['nodes'].append(parent_i)
         for key in ('extensionsUsed','extensionsRequired'):
             if src.get(key):
                 cur=out.setdefault(key,[])
                 for v in src[key]:
                     if v not in cur: cur.append(v)
-        rows.append({'name':name,'input':str(p),'input_bytes':p.stat().st_size,'input_sha256':digest(p),
+        # Paths are useful diagnostics but are deliberately report-only so temporary
+        # runner directory/file names cannot alter the emitted GLB bytes.
+        rows.append({'name':name,'input':str(p),'input_bytes':p.stat().st_size,'input_sha256':input_sha,
                      'input_counts':counts(src),'bin_payload_bytes':len(src_bin),'bin_offset':bin_off,
                      'scene_root_count':len(roots),'layer_parent_node':parent_i})
 
@@ -193,12 +202,13 @@ def main()->int:
         n=len(base.get(k,[]));got=check.get(k,[])[:n];same=(got==base.get(k,[]))
         prefix[k]={'count':n,'base_sha256':base_prefix_hashes[k],'output_prefix_sha256':json_digest(got),'exact':same}
         if not same: raise SystemExit(f'base {k} JSON prefix changed')
-    rep={'schema_version':2,'status':'D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION',
+    rep={'schema_version':3,'status':'D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION',
          'base':str(a.base),'base_bytes':a.base.stat().st_size,'base_sha256':digest(a.base),
          'base_counts':base_counts,'base_bin_payload_bytes':len(base_bin_data),'base_bin_sha256':bytes_digest(base_bin_data),
          'layers':rows,'final_counts':final_counts,'final_bin_payload_bytes':len(check_bin),
          'base_bin_exact_prefix':True,'base_json_exact_prefixes':prefix,
          'output':str(a.out),'output_bytes':a.out.stat().st_size,'output_sha256':digest(a.out),
+         'determinism_contract':'Embedded merge metadata contains logical layer names plus source content SHA-256/byte length only; filesystem input paths are report-only.',
          'policy':'Base GLB resource arrays and BIN bytes remain exact prefixes; appended layer indices are remapped directly in glTF, with no material/image round-trip.'}
     a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(rep,indent=2)+'\n')
     print(json.dumps({k:rep[k] for k in ('status','base_counts','final_counts','base_bin_exact_prefix','output_bytes','output_sha256')},indent=2))
