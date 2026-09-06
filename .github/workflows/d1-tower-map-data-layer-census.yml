@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Recover proven Activity-root ownership artifact
+      - name: Recover proven full Activity-root ownership artifact
         run: |
           set -euo pipefail
           mkdir -p root_evidence reports
@@ -44,21 +44,19 @@ jobs:
           import json
           r=json.load(open('reports/tower_activity_map_roots.json'))
           m=json.load(open('reports/tower_activity_manifest_dependency_plan.json'))
-          expected_tables=sorted([
-            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
-            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
-          ])
+          expected={'reachable_bubble_count':5,'reachable_map_container_count':17,
+                    'reachable_map_data_table_count':122,'total_reachable_map_entries':1418}
           if r.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
               raise SystemExit('upstream Activity-root artifact not complete')
-          if r.get('selected_activities')!=['80C98019'] or sorted(r.get('map_data_tables',[]))!=expected_tables or r.get('total_reachable_map_entries')!=337:
-              raise SystemExit('upstream Tower Activity-root fixture changed: '+json.dumps({
-                  'activities':r.get('selected_activities'),'tables':r.get('map_data_tables'),
-                  'entries':r.get('total_reachable_map_entries')},indent=2))
+          if r.get('selected_activities')!=['80C98019']:
+              raise SystemExit('upstream Tower Activity changed: '+json.dumps(r.get('selected_activities')))
+          bad={k:{'expected':v,'actual':r.get(k)} for k,v in expected.items() if r.get(k)!=v}
+          if bad: raise SystemExit('upstream full Tower graph changed: '+json.dumps(bad,indent=2))
           if m.get('status')!='D1_WORLD_ACTIVITY_MANIFEST_DEPENDENCY_PLAN_COMPLETE' or m.get('manifest_package_ids')!=['0430','0431']:
               raise SystemExit('upstream manifest dependency fixture changed: '+json.dumps(m))
-          print('CONSUMING_PROVEN_ACTIVITY_ROOTS',json.dumps({
+          print('CONSUMING_PROVEN_FULL_ACTIVITY_GRAPH',json.dumps({
               'activity':'80C98019','manifest_packages':m['manifest_package_ids'],
-              'tables':len(expected_tables),'entries':337},sort_keys=True))
+              'bubbles':5,'containers':17,'tables':122,'entries':1418},sort_keys=True))
           PY
 
       - name: Recover current Tower map dependency corpus and runtime
@@ -73,7 +71,7 @@ jobs:
           python tools/d1_tower_recover_current_corpus.py \
             --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
 
-      - name: Census every Activity-owned Tower map-data entry
+      - name: Census all 1418 Activity-owned Tower map-data rows
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -88,10 +86,39 @@ jobs:
           d=json.load(open('reports/tower_map_data_layer_census.json'))
           if (d.get('root_source') or {}).get('mode')!='ownership_root_manifest':
               raise SystemExit('map-data census did not consume ownership manifest')
-          if d.get('map_data_table_count')!=9 or d.get('entry_count')!=337:
-              raise SystemExit('map-data census root/count regression: '+json.dumps({
+          if d.get('map_data_table_count')!=122 or d.get('entry_count')!=1418:
+              raise SystemExit('full map-data census root/count regression: '+json.dumps({
                   'tables':d.get('map_data_table_count'),'entries':d.get('entry_count')}))
-          print('TOWER_MAP_DATA_FROM_ACTIVITY_ROOTS_CLOSED',d['map_data_table_count'],d['entry_count'])
+          if d.get('resource_pointer_non_null_entries')!=1418:
+              raise SystemExit('not every Activity-owned row has a ResourcePointer: '+str(d.get('resource_pointer_non_null_entries')))
+          print('TOWER_FULL_MAP_DATA_CLASSIFIED',json.dumps({
+              'tables':122,'entries':1418,'resource_classes':d.get('resource_class_counts')},sort_keys=True))
+          PY
+
+      - name: Derive static-render SMapDataResource subset from serialized classes
+        run: |
+          set -euo pipefail
+          python tools/d1_world_map_resource_subset_plan.py \
+            --census reports/tower_map_data_layer_census.json \
+            --resource-class 80801AEA \
+            --out reports/tower_static_map_roots.json \
+            | tee reports/tower_static_map_roots_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_static_map_roots.json'))
+          expected_tables=sorted([
+            '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
+            '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
+          ])
+          if d.get('status')!='D1_WORLD_MAP_RESOURCE_SUBSET_PLAN_COMPLETE':
+              raise SystemExit('static resource subset plan incomplete: '+json.dumps(d.get('violations')))
+          if d.get('resource_class')!='80801AEA' or d.get('map_data_table_count')!=9 or d.get('entry_count')!=337:
+              raise SystemExit('static subset count regression: '+json.dumps({
+                  'class':d.get('resource_class'),'tables':d.get('map_data_table_count'),'entries':d.get('entry_count')},indent=2))
+          if sorted(d.get('map_data_tables',[]))!=expected_tables:
+              raise SystemExit('derived static table set changed: '+json.dumps(d.get('map_data_tables'),indent=2))
+          print('TOWER_STATIC_SUBSET_DERIVED_FROM_RESOURCE_CLASS',json.dumps({
+              'class':'80801AEA','tables':9,'rows':337,'nonstatic_rows':d.get('nonmatching_entry_count')},sort_keys=True))
           PY
 
       - name: Close and classify every static-map ResourcePointer chain
@@ -101,14 +128,14 @@ jobs:
           mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
           python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
-            --map-root-json reports/tower_activity_map_roots.json \
+            --map-root-json reports/tower_static_map_roots.json \
             --out reports/tower_static_map_resource_chain_census.json \
             | tee reports/tower_static_map_resource_chain_census_stdout.txt
           python - <<'PY'
           import json
           d=json.load(open('reports/tower_static_map_resource_chain_census.json'))
           if (d.get('root_source') or {}).get('mode')!='ownership_root_manifest':
-              raise SystemExit('resource-chain census did not consume ownership manifest')
+              raise SystemExit('resource-chain census did not consume derived static root manifest')
           expected={
             'status':'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED',
             'map_data_table_count':9,'entry_count':337,'closed_chain_count':337,
@@ -117,7 +144,7 @@ jobs:
           }
           bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected.items() if d.get(k)!=v}
           if bad: raise SystemExit('Tower resource-chain regression mismatch: '+json.dumps(bad,indent=2))
-          print('TOWER_RESOURCE_CHAINS_FROM_ACTIVITY_ROOTS_CLOSED',json.dumps(expected,sort_keys=True))
+          print('TOWER_RESOURCE_CHAINS_FROM_DERIVED_STATIC_SUBSET_CLOSED',json.dumps(expected,sort_keys=True))
           PY
 
       - name: Derive source-driven table/decal and baked target plan
