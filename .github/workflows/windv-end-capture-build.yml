@@ -24,6 +24,7 @@ jobs:
         run: |
           python tools/windv_end_capture_patch.py windv
           python tools/windv_archive_safe_hardening.py windv
+          python tools/windv_archive_safe_finalize_fix.py windv
           git -C windv diff --check
 
       - name: Verify capture invariants
@@ -36,12 +37,13 @@ jobs:
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (m_dvInput) m_dvInput->Stop();')) { throw "producer stop missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (m_queue) m_queue->Put(-1, NULL, 0);')) { throw "ordered EOS missing" }
           if (Select-String -Path windv/DShow.cpp -SimpleMatch 'AnalyzeDVFrame(buffer, len)') { throw "live DV error scanner still active" }
+          if (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'E:%lu') { throw "DV error scanner UI polling still active" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_type2AVI(false)')) { throw "Type-1 archive default missing" }
           if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'ArchiveSafe always preserves every received DV frame')) { throw "frame-decimation lock missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'duration = (len >= 144000) ? 400000 : 333667')) { throw "DV timing fallback missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'AVI writer did not reach running state')) { throw "AVI writer run-state check missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'CString CAVIWriter::FinalizeFile()')) { throw "exact final-file tracking missing" }
-          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_finalizedFiles')) { throw "finalized-file verification list missing" }
+          if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'if (m_finalizedFiles.GetSize() > 0)')) { throw "pause-safe verification gate missing" }
           if (-not (Select-String -Path windv/DShow.cpp -SimpleMatch 'm_autoStopTimeout(0)')) { throw "archive-safe auto-stop default missing" }
           if (-not (Select-String -Path windv/DVToolsDlg.cpp -SimpleMatch 'ArchiveAutoStopTimeout')) { throw "archive auto-stop registry isolation missing" }
 
@@ -64,38 +66,40 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
-          Copy-Item build/Release/WinDV.exe artifact/WinDV_1.6.0_ArchiveSafe_v2_x86.exe
+          Copy-Item build/Release/WinDV.exe artifact/WinDV_1.6.0_ArchiveSafe_v2.1_x86.exe
           Copy-Item tools/windv_end_capture_patch.py artifact/windv_end_capture_patch.py
           Copy-Item tools/windv_archive_safe_hardening.py artifact/windv_archive_safe_hardening.py
+          Copy-Item tools/windv_archive_safe_finalize_fix.py artifact/windv_archive_safe_finalize_fix.py
           Copy-Item windv/LICENSE artifact/LICENSE
-          git -C windv diff -- Resource.h WinDV.rc DShow.h DShow.cpp DVToolsDlg.h DVToolsDlg.cpp | Out-File -Encoding utf8 artifact/WinDV_ArchiveSafe_v2.patch
+          git -C windv diff -- Resource.h WinDV.rc DShow.h DShow.cpp DVToolsDlg.h DVToolsDlg.cpp | Out-File -Encoding utf8 artifact/WinDV_ArchiveSafe_v2.1.patch
           "f633c456c211a0fb0e05aa43f2b150ec787faab7" | Out-File -Encoding ascii artifact/UPSTREAM_COMMIT.txt
-          $hash = (Get-FileHash artifact/WinDV_1.6.0_ArchiveSafe_v2_x86.exe -Algorithm SHA256).Hash
+          $hash = (Get-FileHash artifact/WinDV_1.6.0_ArchiveSafe_v2.1_x86.exe -Algorithm SHA256).Hash
           "SHA256=$hash" | Out-File -Encoding ascii artifact/SHA256.txt
           @"
-          WinDV 1.6.0 ArchiveSafe v2
+          WinDV 1.6.0 ArchiveSafe v2.1
 
           Base: exact Wachhund/WinDV v1.6.0 release commit f633c456c211a0fb0e05aa43f2b150ec787faab7
           Platform: Win32/x86, Visual Studio 2022
 
           Archive changes:
-          - explicit End Capture with stop-producer -> drain queue -> EOS -> AVI index finalization
-          - explicit queue-EOS termination (fixes worker spin/deadlock)
-          - live DV DIF error scanner disabled
-          - Type-1 AVI is the archive default; Type-2 remains selectable
-          - EveryNth is forced to 1 so no received DV frames are intentionally decimated
-          - signal-loss auto-stop defaults OFF and uses isolated ArchiveAutoStopTimeout setting
-          - invalid/missing DirectShow frame timing falls back to exact nominal DV PAL/NTSC duration
-          - AVI writer Run state is checked before capture continues
-          - post-capture verification/SHA-256 target exact generated AVI paths, including filename suffixes/splits
+          - explicit End Capture: stop producer -> drain accepted frames -> EOS -> AVI index finalization
+          - queue-EOS termination fix (prevents worker spin/deadlock)
+          - live DV DIF error scanner and its UI polling disabled
+          - Type-1 AVI archive default; Type-2 remains selectable
+          - frame decimation locked to EveryNth=1
+          - signal-loss auto-stop defaults OFF with isolated ArchiveAutoStopTimeout setting
+          - invalid/missing sample timing falls back to nominal PAL/NTSC DV duration
+          - AVI writer Running state checked before capture continues
+          - verification/SHA-256 use exact generated AVI paths
+          - Pause -> End Capture still verifies finalized AVI even though historical WinDV resets m_counter on pause
 
           Raw DV frame payloads are copied without decode/re-encode.
           SHA-256 and AVI integrity checks are post-capture only.
-          "@ | Out-File -Encoding utf8 artifact/README_ArchiveSafe_v2.txt
+          "@ | Out-File -Encoding utf8 artifact/README_ArchiveSafe_v2.1.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WinDV-1.6.0-ArchiveSafe-v2-x86
+          name: WinDV-1.6.0-ArchiveSafe-v2.1-x86
           path: artifact/*
           if-no-files-found: error
