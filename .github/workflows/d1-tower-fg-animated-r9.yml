@@ -1,0 +1,294 @@
+name: D1 Tower Families F G animated r9
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-fg-animated-r9.yml'
+      - 'tools/d1_tower_add_runtime_rig_family_actions.py'
+      - 'tools/d1_tower_runtime_rig_animation_owner_probe.py'
+      - 'tools/d1_tower_family_e_animated_layer.py'
+      - 'tools/d1_gltf_bind_rigid_animation.py'
+      - 'tools/d1_gltf_layer_merge.py'
+      - 'tools/d1_recover_member_catalog.py'
+      - 'tools/d1_split_tar_extract.py'
+      - 'evidence/d1_tower_runtime_rig_animation_owner_specs.json'
+      - 'evidence/d1_tower_family_e_animation_source_member_catalog.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Python dependencies
+        run: python -m pip install -q numpy scipy pygltflib pyglm
+
+      - name: Install verified Oodle runtime and current package index
+        run: |
+          set -euo pipefail
+          mkdir -p runtime source prior_visual prior_validation r8 ownership out reports base combined alternate
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Recover exact logical 023D Tower Activity family
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_family_e_animation_source_member_catalog.json \
+            --package-list reports/packages.txt --family 023d \
+            --out-dir source --report reports/recover_023d.json
+          test "$(find source -maxdepth 1 -name 'ps4_city_tower_activities_act_023d_*.pkg' -type f | wc -l)" -eq 6
+          echo 'de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695  source/ps4_city_tower_activities_act_023d_5.pkg' | sha256sum --check --strict
+
+      - name: Pin animation parser
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+
+      - name: Re-prove Family F and G owner-selected action sets
+        run: |
+          set -euo pipefail
+          for fam in F G; do
+            python tools/d1_tower_runtime_rig_animation_owner_probe.py \
+              --activity-pkg source/ps4_city_tower_activities_act_023d_5.pkg \
+              --runtime runtime --parser-root parser \
+              --spec evidence/d1_tower_runtime_rig_animation_owner_specs.json \
+              --family "$fam" -o "ownership/TOWER_FAMILY_${fam}_ANIMATION_OWNERSHIP.json"
+          done
+
+      - name: Recover exact retained geometry and skin evidence
+        run: |
+          set -euo pipefail
+          gh run download 34010062329 -n d1-tower-integrated-articulated-preview-fast -D prior_visual
+          gh run download 34005842721 -n d1-tower-articulated-validation -D prior_validation
+          model="$(find prior_visual -name tower_articulated_model_export.json -print -quit)"
+          skin="$(find prior_validation -name tower_articulated_skin_census.json -print -quit)"
+          test -n "$model" -a -f "$model"
+          test -n "$skin" -a -f "$skin"
+          cp "$model" reports/tower_articulated_model_export.json
+          cp "$skin" reports/tower_articulated_skin_census.json
+          echo '280592bdaff3be24636425ea29094d5fae97e24158fae5a9e7fb86d99ca5b668  reports/tower_articulated_model_export.json' | sha256sum --check --strict
+          echo 'b2a26bfb90f3ff14b2a5e15228a555ade0407e5708a8a8bafa56f104447a2191  reports/tower_articulated_skin_census.json' | sha256sum --check --strict
+
+      - name: Recover exact Family-E animated r8 articulated checkpoint
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 12 --retry-delay 5 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-articulated-family-e-animated-r8-exact-resources/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb' \
+            -o r8/articulated_r8.glb
+          test "$(stat -c%s r8/articulated_r8.glb)" = 75876040
+          echo '8a68c4e18578824e3799cbbea13def8f828c60b6ad21e6658b8f390f6485caa2  r8/articulated_r8.glb' | sha256sum --check --strict
+          cp r8/articulated_r8.glb alternate/r8_different_path_name.glb
+          cmp --silent r8/articulated_r8.glb alternate/r8_different_path_name.glb
+
+      - name: Build exact E plus F G animated articulated r9 twice
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_add_runtime_rig_family_actions.py \
+            r8/articulated_r8.glb \
+            --model-report reports/tower_articulated_model_export.json \
+            --skin-census reports/tower_articulated_skin_census.json \
+            --ownership F=ownership/TOWER_FAMILY_F_ANIMATION_OWNERSHIP.json \
+            --ownership G=ownership/TOWER_FAMILY_G_ANIMATION_OWNERSHIP.json \
+            --activity-pkg source/ps4_city_tower_activities_act_023d_5.pkg \
+            --runtime runtime --parser-root parser --fps 30 \
+            --out out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb \
+            --report reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9.json
+          python tools/d1_tower_add_runtime_rig_family_actions.py \
+            alternate/r8_different_path_name.glb \
+            --model-report reports/tower_articulated_model_export.json \
+            --skin-census reports/tower_articulated_skin_census.json \
+            --ownership F=ownership/TOWER_FAMILY_F_ANIMATION_OWNERSHIP.json \
+            --ownership G=ownership/TOWER_FAMILY_G_ANIMATION_OWNERSHIP.json \
+            --activity-pkg source/ps4_city_tower_activities_act_023d_5.pkg \
+            --runtime runtime --parser-root parser --fps 30 \
+            --out alternate/r9_path_control.glb \
+            --report reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9_PATH_CONTROL.json
+          cmp --silent out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb alternate/r9_path_control.glb
+
+      - name: Validate articulated r9 contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from collections import Counter
+          from pygltflib import GLTF2
+          p='out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb'
+          d=json.load(open('reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9.json'))
+          c=json.load(open('reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9_PATH_CONTROL.json'))
+          assert d['status']=='D1_TOWER_RUNTIME_RIG_FAMILIES_ANIMATED_R9_COMPLETE',d
+          assert d['input_sha256']=='8a68c4e18578824e3799cbbea13def8f828c60b6ad21e6658b8f390f6485caa2',d['input_sha256']
+          assert d['input_binary_exact_prefix'] is True and c['input_binary_exact_prefix'] is True
+          assert d['output_sha256']==c['output_sha256']==hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert d['raw_u8_weight_sum_exact_255'] is True
+          assert d['float32_conversion_bit_exact'] is True
+          assert d['portable_float_weights_renormalized'] is False
+          assert 0.0 <= d['float32_weight_sum_abs_error_max'] <= 2.384185791015625e-07
+          f=d['families']['F'];g=d['families']['G']
+          assert (f['runtime_placement_count'],f['selected_range_count'],f['unique_triangle_count'],f['new_nodes'],f['new_skins'],f['new_animations'])==(8,2,827,24,8,24),f
+          assert f['selected_clip_hashes']==['80C7AF5A','80C7AF5B','80C7AF5C'],f['selected_clip_hashes']
+          assert (g['runtime_placement_count'],g['selected_range_count'],g['unique_triangle_count'],g['new_nodes'],g['new_skins'],g['new_animations'])==(3,2,827,12,3,9),g
+          assert g['selected_clip_hashes']==['80C7AE63','80C7AE64','80C7AE65'],g['selected_clip_hashes']
+          assert all(x['state_name'] is None for fam in (f,g) for rows in fam['states_by_clip'].values() for x in rows)
+          o=d['original_counts'];z=d['final_counts']
+          assert (o['meshes'],o['nodes'],o['materials'],o['textures'],o['images'],o['skins'],o['animations'])==(86,740,35,70,70,6,6),o
+          assert (z['meshes'],z['nodes'],z['materials'],z['textures'],z['images'],z['skins'],z['animations'])==(86,776,35,70,70,17,39),z
+          gg=GLTF2().load_binary(p)
+          ac=Counter(str((a.extras or {}).get('d1Model','')).upper() for a in gg.animations)
+          assert ac['80CA0CFC']==6 and ac['80C7AF4C']==24 and ac['80C7AE59']==9,ac
+          assert len(gg.skins)==17 and len(gg.animations)==39 and len(gg.nodes)==776
+          print('ARTICULATED_R9_GREEN')
+          print('OUTPUT_BYTES',d['output_bytes'])
+          print('OUTPUT_SHA256',d['output_sha256'])
+          PY
+
+      - name: Publish durable articulated r9 checkpoint
+        run: |
+          set -euo pipefail
+          tag=d1-tower-articulated-e-f-g-animated-r9-exact-resources
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title 'D1 Tower articulated E F G animated r9 exact resources' \
+              --notes 'All 37 proven articulated Tower placements retained exactly once. Family E retains its six exact source-owner-selected animated skins from r8. Family F adds eight exact 2-bone skins and all three owner-selector-selected actions per placement. Family G adds three exact 3-bone skins and all three owner-selector-selected actions per placement. A/B/C/D remain bind pose. No default action, loop, synchronization, vendor/NPC identity, or unknown F/G state name is inferred.'
+          fi
+          gh release upload "$tag" \
+            out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb \
+            reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9.json \
+            ownership/TOWER_FAMILY_F_ANIMATION_OWNERSHIP.json \
+            ownership/TOWER_FAMILY_G_ANIMATION_OWNERSHIP.json --clobber
+
+      - name: Recover exact current r6 static common checkpoint
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 12 --retry-delay 5 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r6-exact-resources/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb' \
+            -o base/static_common_r6.glb
+          test "$(stat -c%s base/static_common_r6.glb)" = 558618948
+          echo '54e6d35f6d2a940e68f4d70bb0266b5af8fd57fdd39c0d0bc8396c4acc224ef9  base/static_common_r6.glb' | sha256sum --check --strict
+          cp out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb alternate/r9_layer_different_name.glb
+
+      - name: Merge full Tower r9 twice for path independence
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_layer_merge.py \
+            --base base/static_common_r6.glb \
+            --layer articulated_e_f_g_animated=out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb \
+            --out combined/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb \
+            --report reports/tower_integrated_e_f_g_animated_r9_merge.json
+          python tools/d1_gltf_layer_merge.py \
+            --base base/static_common_r6.glb \
+            --layer articulated_e_f_g_animated=alternate/r9_layer_different_name.glb \
+            --out combined/r9_merge_path_control.glb \
+            --report reports/tower_integrated_e_f_g_animated_r9_merge_path_control.json
+          cmp --silent combined/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb combined/r9_merge_path_control.glb
+
+      - name: Validate full Tower r9 contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from collections import Counter
+          from pathlib import Path
+          from tools.d1_gltf_layer_merge import read_glb
+          merge=json.load(open('reports/tower_integrated_e_f_g_animated_r9_merge.json'))
+          control=json.load(open('reports/tower_integrated_e_f_g_animated_r9_merge_path_control.json'))
+          layer=json.load(open('reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9.json'))
+          out=Path('combined/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb')
+          sha=hashlib.sha256(out.read_bytes()).hexdigest()
+          assert sha==merge['output_sha256']==control['output_sha256']
+          assert merge['base_bin_exact_prefix'] is True and control['base_bin_exact_prefix'] is True
+          assert all(x['exact'] for x in merge['base_json_exact_prefixes'].values())
+          assert all(x['exact'] for x in control['base_json_exact_prefixes'].values())
+          b=merge['base_counts'];li=merge['layers'][0]['input_counts'];z=merge['final_counts']
+          assert (b['meshes'],b['materials'],b['textures'],b['images'],b['nodes'],b['skins'],b['animations'])==(2234,499,588,588,12438,0,0),b
+          assert (li['meshes'],li['materials'],li['textures'],li['images'],li['nodes'],li['skins'],li['animations'])==(86,35,70,70,776,17,39),li
+          assert (z['meshes'],z['materials'],z['textures'],z['images'],z['nodes'],z['skins'],z['animations'])==(2320,534,658,658,13215,17,39),z
+          doc,bin_data=read_glb(out)
+          assert len(doc['skins'])==17 and len(doc['animations'])==39 and len(doc['nodes'])==13215
+          skin_counts=Counter(len(x.get('joints',[])) for x in doc['skins'])
+          assert skin_counts==Counter({2:8,3:3,67:6}),skin_counts
+          anim_models=Counter(str((x.get('extras') or {}).get('d1Model','')).upper() for x in doc['animations'])
+          assert anim_models==Counter({'80C7AF4C':24,'80C7AE59':9,'80CA0CFC':6}),anim_models
+          for ai,anim in enumerate(doc['animations']):
+            samplers=anim.get('samplers',[]);channels=anim.get('channels',[])
+            assert samplers and channels,(ai,anim.get('name'))
+            for s in samplers:
+              assert 0 <= int(s['input']) < len(doc['accessors'])
+              assert 0 <= int(s['output']) < len(doc['accessors'])
+            for c in channels:
+              assert 0 <= int(c['sampler']) < len(samplers)
+              assert 0 <= int(c['target']['node']) < len(doc['nodes'])
+              assert c['target']['path'] in ('translation','rotation','scale')
+          base_doc,base_bin=read_glb(Path('base/static_common_r6.glb'))
+          assert bin_data[:len(base_bin)]==base_bin
+          final={
+            'schema_version':1,
+            'status':'D1_TOWER_INTEGRATED_E_F_G_ANIMATED_R9_COMPLETE',
+            'static_common':{'asset_bytes':558618948,'sha256':'54e6d35f6d2a940e68f4d70bb0266b5af8fd57fdd39c0d0bc8396c4acc224ef9','counts':b},
+            'articulated_animated':{
+              'all_proven_articulated_placements_retained':37,
+              'animated_family_placements':{'E':6,'F':8,'G':3},
+              'bind_pose_family_placements':{'A':1,'B':1,'C':15,'D':3},
+              'skins':17,'animations':39,
+              'family_selected_action_counts':{'E':6,'F':24,'G':9},
+              'raw_u8_weight_sum_exact_255':True,
+              'float32_conversion_bit_exact':True,
+              'portable_float_weights_renormalized':False,
+            },
+            'family_a_frontier':'Owner halves converge on 80BC6489 and exact idle state selects 80BC648A, but the selected clip is C3747E31 x1 while the 4-control model rig is 69289DF6 x4; it is not attached to Family-A geometry.',
+            'merge_path_independence_proven':True,
+            'base_bin_exact_prefix':True,
+            'base_json_exact_prefixes':merge['base_json_exact_prefixes'],
+            'final_counts':z,'bytes':out.stat().st_size,'sha256':sha,
+            'blender_target':'Blender 5.2.1 LTS',
+            'semantic_scope':'E/F/G animation ownership is source-derived. F/G selected actions are exported separately with no default/loop/synchronization/state-name inference. A/B/C/D remain bind pose.',
+          }
+          json.dump(final,open('reports/FINAL_TOWER_INTEGRATED_E_F_G_ANIMATED_R9.json','w'),indent=2)
+          print(json.dumps(final,indent=2))
+          PY
+
+      - name: Publish durable full Tower r9 checkpoint
+        run: |
+          set -euo pipefail
+          tag=d1-tower-baked-common-e-f-g-animated-r9-exact-resources
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title 'D1 Tower baked common E F G animated r9 exact resources' \
+              --notes 'Full Blender-targeted Tower checkpoint. Exact SHA-pinned r6 static/common plus all 37 articulated placements. E/F/G are now skinned and carry source-selected retail actions; F/G expose every selected state action separately rather than inventing a default. A/B/C/D remain bind pose. The base r6 BIN and JSON arrays remain exact prefixes and merge output is path-independent.'
+          fi
+          gh release upload "$tag" \
+            combined/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb \
+            reports/FINAL_TOWER_INTEGRATED_E_F_G_ANIMATED_R9.json \
+            reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9.json \
+            reports/tower_integrated_e_f_g_animated_r9_merge.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-e-f-g-animated-r9
+          path: |
+            out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb
+            combined/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb
+            reports/TOWER_ARTICULATED_E_F_G_ANIMATED_R9.json
+            reports/FINAL_TOWER_INTEGRATED_E_F_G_ANIMATED_R9.json
+            reports/tower_integrated_e_f_g_animated_r9_merge.json
+            ownership/TOWER_FAMILY_F_ANIMATION_OWNERSHIP.json
+            ownership/TOWER_FAMILY_G_ANIMATION_OWNERSHIP.json
+          retention-days: 14
+          compression-level: 6
