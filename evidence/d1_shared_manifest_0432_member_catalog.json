@@ -1,0 +1,19 @@
+{
+  "schema": "d1_shared_manifest_member_catalog/v1",
+  "package_id": "0432",
+  "source": "https://crypt.cohae.dev/destiny/ps4/packages/latest",
+  "members": [
+    {"name":"ps4_shared_manifest_0432_1.pkg","patch_id":1,"header_offset":"0xB4405A200","data_offset":"0xB4405A400","size":9361408,"sha256":"709773a0c9afebab45b0d7cb9b0c84285d28814134e88e78026b755ec778ac65"},
+    {"name":"ps4_shared_manifest_0432_2.pkg","patch_id":2,"header_offset":"0xB44947C00","data_offset":"0xB44947E00","size":16375808,"sha256":"2392875fa0476c99de0f09f40e2050acddde1bbfdbb37b36d038107904b517b6"},
+    {"name":"ps4_shared_manifest_0432_3.pkg","patch_id":3,"header_offset":"0xB458E5E00","data_offset":"0xB458E6000","size":3694592,"sha256":"fefb5adc3538092aea72628ac7d569b57305f0ba07222d3bee92d5b1977dcb1d"},
+    {"name":"ps4_shared_manifest_0432_4.pkg","patch_id":4,"header_offset":"0xB45C6C000","data_offset":"0xB45C6C200","size":8683520,"sha256":"48a27784dc68236d10cd4f118c3765faabdf817deb580f6a28a1400cd15bfb98"},
+    {"name":"ps4_shared_manifest_0432_5.pkg","patch_id":5,"header_offset":"0xB464B4200","data_offset":"0xB464B4400","size":14510080,"sha256":"b22ff2a40d8fe35a7f23e91c528a51460cf271503dfbb7cf6c359227827d2914"},
+    {"name":"ps4_shared_manifest_0432_6.pkg","patch_id":6,"header_offset":"0xB4728AC00","data_offset":"0xB4728AE00","size":157696,"sha256":"d9c4136409a07e0c700e3bc914a40f7db2baa85d6958b7954c343693bba2dd28"}
+  ],
+  "validated_by": {
+    "workflow": ".github/workflows/d1-spektr-pandion-dye-resolve.yml",
+    "run_id": 34003552682,
+    "job_id": 101406581019
+  },
+  "policy": "These offsets, sizes, and SHA-256 values are exact retail archive evidence. Inclusion here establishes package identity and byte provenance only; it does not imply gameplay or render ownership beyond independently proven references."
+}
