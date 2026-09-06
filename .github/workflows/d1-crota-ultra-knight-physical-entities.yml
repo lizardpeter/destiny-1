@@ -106,10 +106,12 @@ jobs:
           import json
           d=json.load(open('out/CROTA_ULTRA_PHYSICAL_S_ENTITIES.json'))
           models=sorted({m for e in d['entries'] for m in e.get('embedded_models',[])})
-          print('\n'.join(models))
+          for model in models:
+              print(model)
           PY
           if [[ -s out/model_tags.txt ]]; then
             while read -r MODEL; do
+              [[ -z "$MODEL" ]] && continue
               echo "TRACE_MODEL $MODEL"
               python tools/d1_remote_model_owner_trace.py \
                 --model "0x${MODEL}" \
