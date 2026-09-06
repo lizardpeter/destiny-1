@@ -115,9 +115,10 @@ jobs:
             --out common/COMMON_EXACT_TEXTURES_TRANSPARENT_PREVIEW.glb --report reports/common_alpha_preview.json
           python - <<'PY'
           import json
+          from pathlib import Path
           from tools.d1_gltf_layer_merge import read_glb
           d=json.load(open('reports/common_alpha_preview.json'));assert d['status']=='D1_GLTF_MAP_DECAL_ALPHA_PREVIEW_APPLIED' and d['material_count']==99 and d['binary_exact'] is True,d
-          doc,_=read_glb('common/COMMON_EXACT_TEXTURES_TRANSPARENT_PREVIEW.glb');assert len(doc['materials'])==99 and all(m.get('alphaMode')=='BLEND' for m in doc['materials'])
+          doc,_=read_glb(Path('common/COMMON_EXACT_TEXTURES_TRANSPARENT_PREVIEW.glb'));assert len(doc['materials'])==99 and all(m.get('alphaMode')=='BLEND' for m in doc['materials'])
           print('COMMON_ALPHA_PREVIEW_GREEN',d['output_sha256'],d['output_bytes'])
           PY
       - uses: actions/upload-artifact@v4
@@ -130,5 +131,7 @@ jobs:
             reports/common_base_alpha_census.json
             reports/common_alpha_preview.json
             reports/common_exact_textures_old_alpha.json
+            reports/common_texture_roles.json
+            textures/material_texture_manifest.json
           retention-days: 14
           compression-level: 6
