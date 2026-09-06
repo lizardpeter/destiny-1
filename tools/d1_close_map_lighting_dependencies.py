@@ -2,9 +2,9 @@
 """Recursively close D1 map light/sky dependencies through the global package index.
 
 The input map-data layer census supplies only source-owned SMapDataEntry rows. This tool
-runs ``d1_world_map_lighting_census.py``, recovers package families named by serialized
-FileHashes, and reruns until the light/sky census is complete or no dependency progress
-is possible.
+runs the evidence-bounded ``d1_world_map_lighting_census_v2.py``, recovers package
+families named by serialized FileHashes, and reruns until the light/sky census is
+complete or no dependency progress is possible.
 
 No package filename, destination name, light appearance, or Blender heuristic is used.
 """
@@ -53,7 +53,7 @@ def recover(index: Path, package_list: Path, package_dir: Path, work_dir: Path,
 
 def run_census(a, pass_no: int) -> tuple[dict, Path, int]:
     out = a.work_dir / f'lighting_census_{pass_no:02d}.json'
-    cmd = [sys.executable, str(HERE / 'd1_world_map_lighting_census.py')]
+    cmd = [sys.executable, str(HERE / 'd1_world_map_lighting_census_v2.py')]
     for p in snapshots(a.package_dir):
         cmd += ['--snapshot', str(p)]
     cmd += ['--runtime', str(a.runtime), '--layer-census', str(a.layer_census), '--out', str(out)]
@@ -131,7 +131,7 @@ def main() -> int:
     shutil.copyfile(final_path, a.out)
     closed = final.get('status') == 'D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE'
     report = {
-        'schema_version': 2,
+        'schema_version': 3,
         'status': 'D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_COMPLETE' if closed else 'D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_PARTIAL',
         'stop_reason': stop_reason,
         'initial_snapshot_count': initial_snapshot_count,
@@ -150,7 +150,8 @@ def main() -> int:
         },
         'policy': (
             'Every recovered package family is selected only by a serialized FileHash package id emitted by the source-pinned light/sky parser. '
-            'The closure does not infer semantic ownership from package filenames or visual appearance.'
+            'The only short-structure compatibility rule is the exact retail-proven 80CA0CAF 0x60 empty sky collection. '
+            'No package filename, visual appearance, or Blender heuristic is used as semantic evidence.'
         ),
     }
     a.report.parent.mkdir(parents=True, exist_ok=True)
