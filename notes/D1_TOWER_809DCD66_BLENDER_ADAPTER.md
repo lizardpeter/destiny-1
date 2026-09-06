@@ -2,10 +2,14 @@
 
 Date: 2026-09-06  
 Scope: PS4 retail Tower, `VS 80CA0DDA -> PS 809DCD66`  
-Status: **native-equation Blender preview path closed and executable; native blend state, `api13[6:7]` runtime producers/values, and dynamic TFX `Frame[0]` time unit/phase remain unresolved**
+Status: **native-equation Blender preview path closed and executable on the active Blender 5.2.1 LTS baseline; native blend state, `api13[6:7]` runtime producers/values, and dynamic TFX `Frame[0]` time unit/phase remain unresolved**
 
 This note extends `D1_TOWER_809DCD66_NATIVE_SHADER_PROOF.md` through the portable
 Blender boundary. It does not weaken the existing native proof boundary.
+
+Project-wide active Blender policy is recorded in `notes/BLENDER_BASELINE.md`.
+The current baseline is **Blender 5.2.1 LTS**. Older 4.5.13 evidence below is
+retained only as historical compatibility evidence.
 
 ## Retail tangent-W audit
 
@@ -127,7 +131,7 @@ a change to Bungie's shader.
 ## Loss-preserving GLB basis retrofit
 
 Existing Tower GLBs already retain standard `NORMAL` plus custom `_D1_TANGENT`
-VEC4. A new direct GLB postprocessor exposes Blender-friendly split application
+VEC4. A direct GLB postprocessor exposes Blender-friendly split application
 attributes without rebuilding world geometry:
 
 ```text
@@ -184,7 +188,7 @@ artifact    9994022880 d1-tower-809dcd66-adapter-manifest
 artifact sha256 cca30835e32e972cabde1a2dfe982be4bf6d956ca22521bf232e234dc0f2fb49
 ```
 
-## Blender 4.5.13 execution closure
+## Blender 5.2.1 LTS execution closure
 
 The actual Blender node builder is:
 
@@ -192,8 +196,16 @@ The actual Blender node builder is:
 tools/d1_blender_apply_809dcd66.py
 ```
 
-It imports a GLB carrying the explicit D1 basis attributes and constructs the
-closed native semantic path:
+All active Blender CI installs the project baseline through:
+
+```text
+tools/install_blender_lts.sh
+```
+
+The current canonical baseline is **Blender 5.2.1 LTS**.
+
+The node builder imports a GLB carrying the explicit D1 basis attributes and
+constructs the closed native semantic path:
 
 ```text
 source N/T/W
@@ -225,7 +237,7 @@ The two `api13` nodes default to explicit preview fallback 1.0 unless the caller
 provides overrides. The `.blend` material custom properties retain that these are
 unresolved native globals.
 
-A pinned **Blender 4.5.13 LTS** execution canary validated:
+The pinned **Blender 5.2.1 LTS** structural execution canary validates:
 
 - glTF import of the underscore application attributes;
 - shader Attribute node access;
@@ -235,23 +247,35 @@ A pinned **Blender 4.5.13 LTS** execution canary validated:
 - texture-node plumbing;
 - save/reopen persistence of nodes and proof-boundary custom properties.
 
-Green run:
+Green current-baseline run:
 
 ```text
-Actions run 34049476189
-commit      3ab2f1c91331b13cf2ba4f504a0b345e86a7acec
-artifact    9994103064 d1-tower-809dcd66-blender-4513-canary
-artifact sha256 e0166aedf217462de59d053a3ee8a166633e26627325db1cf5291eacf8b79734
+Actions run 34050905926
+commit      3d214c6c0801befec2ec9873b6ce6b8fcd68e205
+artifact    9994505098 d1-tower-809dcd66-blender-521-canary
+artifact sha256 74aaf9224e597ecc06c722101e8bcdd2a3a4297d887f480368b3b45fcdb71f1a
 ```
 
 The canary's texture pixels are synthetic structural fixtures. Exact retail t0/t1
-image recovery remains independently source-closed; a separate retail-scene build
-uses those exact decoded PNGs.
+image recovery remains independently source-closed and is exercised by the retail
+scene build below.
+
+### Historical 4.5.13 compatibility evidence
+
+The first executable adapter closure used Blender 4.5.13 LTS. It remains useful
+historical compatibility evidence but is no longer an active workflow/baseline:
+
+```text
+historical Actions run 34049476189
+historical commit      3ab2f1c91331b13cf2ba4f504a0b345e86a7acec
+historical artifact    9994103064 d1-tower-809dcd66-blender-4513-canary
+historical artifact sha256 e0166aedf217462de59d053a3ee8a166633e26627325db1cf5291eacf8b79734
+```
 
 ## Compact retail scene path
 
-A new sidecar-driven exporter avoids moving the full Tower checkpoint simply to
-test this one shader family:
+A sidecar-driven exporter avoids moving the full Tower checkpoint simply to test
+this one shader family:
 
 ```text
 tools/d1_tower_809dcd66_retail_scene_export.py
@@ -269,6 +293,34 @@ buffers:
 Source geometry/index identity and sidecar affine/UV selection remain canonical.
 The compact GLB is then passed through the explicit-basis postprocessor and the
 Blender adapter using the exact decoded retail t0/t1 PNGs.
+
+The complete retail build is green on Blender **5.2.1 LTS**:
+
+```text
+Actions run 34050944445
+commit      4401bd0c508fb93e79e38e7129869c4dd26c52e8
+artifact    9994546945 d1-tower-809dcd66-retail-blender-preview
+artifact sha256 440a774e6a211554c78931da4459cbe61bad1651ecb5eb5e38f2c3bc08d835db
+```
+
+The final packed Blender file is:
+
+```text
+D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend
+bytes   316170
+sha256  b6e4f2e6cfab90ede2f83e7113ae4cb1ab001b3ae9f55160ee2ae7c367fa2354
+Blender version string: 5.2.1 LTS
+```
+
+Its source adapter GLBs are:
+
+```text
+D1_TOWER_809DCD66_RETAIL_64.glb
+sha256 e2f7e76714a990048fffc8cbfaafe5441512be4b79158fd7a04550e1603cd590
+
+D1_TOWER_809DCD66_RETAIL_64_D1_BASIS.glb
+sha256 833a188f8d0687530dce0717b4964c1e0f2d2caf2b8a62c6e7f6c86f91a83dcb
+```
 
 ## Remaining native proof boundary
 
