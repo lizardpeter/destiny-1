@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-r9-skin-bind-identity.yml'
       - 'tools/d1_gltf_skin_bind_identity_probe.py'
+      - 'tools/d1_gltf_skin_geometry_alignment_probe.py'
       - 'tools/d1_gltf_layer_merge.py'
 
 permissions:
@@ -35,6 +36,9 @@ jobs:
       - name: Prove every currently skinned family bind-pose algebra
         run: |
           python tools/d1_gltf_skin_bind_identity_probe.py input/r9.glb --model 80CA0CFC --model 80C7AF4C --model 80C7AE59 --max-error 2e-5 -o reports/E_F_G_BIND_IDENTITY.json
+      - name: Measure Family E bind skeleton against weighted geometry
+        run: |
+          python tools/d1_gltf_skin_geometry_alignment_probe.py input/r9.glb --model 80CA0CFC -o reports/FAMILY_E_GEOMETRY_SKELETON_ALIGNMENT.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
