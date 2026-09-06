@@ -18,6 +18,11 @@ SUnkActivity_ROI (named/global class 80800616)
 D1 SUnkActivity_ROI is selected from the package named-tag table, exactly like
 SActivity_ROI. The ordinary file-entry Reference for the named TagHash is retained
 as evidence but is not incorrectly required to equal the named class.
+
+When --named-root-snapshot is supplied, only those packages are permitted to select
+activity roots while the broader --snapshot corpus remains available for dependency
+resolution. This prevents shared dependency packages from accidentally widening a
+world-specific activity selection.
 """
 from __future__ import annotations
 
@@ -107,6 +112,7 @@ def meta(c, h, expected=None):
         'meta': m,
         'expected_class': expected,
         'class_matches': bool(m and (expected is None or norm(m.get('reference')) == expected)),
+        'is_null_sentinel': h in NULLS,
     }
 
 
@@ -258,15 +264,19 @@ def parse_activity(c, named, violations):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--snapshot', type=Path, action='append', required=True)
+    ap.add_argument('--snapshot', type=Path, action='append', required=True,
+                    help='Full dependency corpus used to resolve serialized hashes.')
+    ap.add_argument('--named-root-snapshot', type=Path, action='append', default=[],
+                    help='Optional world-root package subset used only for named activity selection.')
     ap.add_argument('--runtime', type=Path, required=True)
     ap.add_argument('--activity', action='append', default=[])
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()
 
     paths = [p.resolve() for p in a.snapshot]
+    named_paths = [p.resolve() for p in a.named_root_snapshot] if a.named_root_snapshot else paths
     c = v5.v3.base.Corpus(paths, a.runtime.resolve())
-    named_scan = named_roots.scan_named_tag_tables(paths)
+    named_scan = named_roots.scan_named_tag_tables(named_paths)
     violations = list(named_scan.get('violations', []))
     current_named = named_scan['current_entries']
     current_unk = [x for x in current_named if x['class_hash_canonical'] == CLS_UNK_ACTIVITY]
@@ -286,6 +296,7 @@ def main() -> int:
 
     acts = [parse_activity(c, n, violations) for n in selected]
     table_hashes = []
+    null_table_refs = 0
     f603 = []
     s6es = []
     f008s = []
@@ -309,19 +320,26 @@ def main() -> int:
                             unresolved.append(rr.get('hash'))
                         for st in rr.get('stages', []):
                             t = st['map_data_table']
-                            table_hashes.append(t['hash'])
-                            if not t['exists']:
-                                unresolved.append(t['hash'])
+                            if t['hash'] in NULLS:
+                                null_table_refs += 1
+                            else:
+                                table_hashes.append(t['hash'])
+                                if not t['exists']:
+                                    unresolved.append(t['hash'])
                             for er in st['entity_resource_tables']:
+                                if er['hash'] in NULLS:
+                                    continue
                                 f603.append(er['hash'])
                                 if not er['exists']:
                                     unresolved.append(er['hash'])
     unresolved = [h for h in unresolved if h and norm(h) not in NULLS]
 
     out = {
-        'schema_version': 2,
+        'schema_version': 3,
         'status': 'D1_ACTIVITY_ENTITY_TABLE_CENSUS' if not violations else 'D1_ACTIVITY_ENTITY_TABLE_CENSUS_WITH_LAYOUT_VIOLATIONS',
         'activity_class': CLS_UNK_ACTIVITY,
+        'named_root_mode': 'isolated_named_root_snapshots' if a.named_root_snapshot else 'full_snapshot_corpus',
+        'named_root_snapshots': [p.name for p in named_paths],
         'named_tag_discovery': {
             'current_package_count': len(named_scan['current_packages']),
             'current_named_row_count': named_scan['current_named_row_count'],
@@ -347,6 +365,7 @@ def main() -> int:
             's6e_resource_count': len([x for x in s6es if x]),
             'unique_s6e_resources': len(set(x for x in s6es if x)),
             'map_data_table_refs': len(table_hashes),
+            'null_map_data_table_refs': null_table_refs,
             'unique_map_data_tables': len(set(table_hashes)),
             'f603_entity_resource_refs': len(f603),
             'unique_f603_entity_resources': len(set(f603)),
@@ -362,8 +381,9 @@ def main() -> int:
         'policy': (
             'SUnkActivity_ROI ownership comes from the current D1 package named-tag table. '
             'Ordinary file-entry Reference is evidence only for the named activity itself. '
-            'This is serialized activity ownership/dependency evidence and does not claim '
-            'that every activity data table is simultaneously active in one runtime phase.'
+            'Null map-data-table sentinels are preserved in stage records but excluded from '
+            'dependency counts. This is serialized activity ownership/dependency evidence and '
+            'does not claim every activity data table is simultaneously active in one runtime phase.'
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
