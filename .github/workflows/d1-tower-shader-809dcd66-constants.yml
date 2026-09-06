@@ -42,7 +42,7 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Select the exact 24 visible 809DCD66 materials
+      - name: Select exact 24 visible 809DCD66 materials
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -57,12 +57,9 @@ jobs:
           Path('reports/selected_materials.json').write_text(json.dumps({'status':'D1_TOWER_809DCD66_SELECTED_MATERIALS','materials':mats},indent=2)+'\n')
           Path('reports/selected_material_hashes.txt').write_text('\n'.join(sorted(mats))+'\n')
           print('SELECTED',len(mats))
-          for h in sorted(mats):
-              c=mats[h].get('constants') or {}
-              print(h,'size',mats[h].get('actual_file_size'),'psc',c.get('ps_vector4_container'),'tfx_bytes',mats[h].get('tfx',{}).get('ps',{}).get('count'))
           PY
 
-      - name: Recover exact material and external-constant package families
+      - name: Recover exact material and external-vector package families
         run: |
           set -euo pipefail
           python tools/d1_recover_indexed_package_families.py \
@@ -71,48 +68,56 @@ jobs:
             --package-id 024c --package-id 0250 --package-id 00ec --package-id 00ee \
             --out-dir packages \
             --report reports/target_package_recovery.json
-          find packages -maxdepth 1 -name '*.pkg' -type f -printf '%f\n' | sort
 
-      - name: Resolve inline and external PS material constants exactly
+      - name: Resolve and cross-check PS material vector structures
         run: |
           set -euo pipefail
           mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
           tags=(); while read -r h; do tags+=(--tag-hash "$h"); done < reports/selected_material_hashes.txt
-          python tools/d1_material_ps_constant_resolve.py "${args[@]}" --runtime runtime "${tags[@]}" --out reports/809DCD66_material_constants.json
+          python tools/d1_material_ps_constant_resolve.py "${args[@]}" --runtime runtime "${tags[@]}" --out reports/809DCD66_material_vectors.json
           python - <<'PY'
           import json
-          from collections import Counter
+          from collections import Counter,defaultdict
           from pathlib import Path
-          d=json.load(open('reports/809DCD66_material_constants.json'))
+          d=json.load(open('reports/809DCD66_material_vectors.json'))
           assert d['selected_material_count']==24,d
           assert d['error_count']==0,d['error_materials']
-          assert set(d['storage_mode_counts']).issubset({'inline','external'}),d['storage_mode_counts']
-          rows=[]
+          expected={'array_300_only':14,'array_300_plus_external_identical':10}
+          assert d['vector_storage_relation_counts']==expected,d['vector_storage_relation_counts']
+          rows=[]; probe_hist=defaultdict(Counter)
           for h,r in sorted(d['materials'].items()):
               assert r['pixel_shader']=='809DCD66',(h,r['pixel_shader'])
-              if r['storage_mode']=='inline':
-                  vecs=r['inline']['vectors']; assert len(vecs)==r['inline']['count'] and len(vecs)>0,(h,r['inline'])
-                  src='inline@+0x300'; count=len(vecs)
-              else:
-                  assert r['external_resolved'],(h,r['external'])
-                  vecs=r['external']['vectors']; count=len(vecs); src=r['ps_vector4_container']
-              rows.append({'material':h,'storage':r['storage_mode'],'source':src,'vector_count':count,'vectors':vecs})
-          out={'status':'D1_TOWER_809DCD66_CONSTANT_CENSUS','material_count':len(rows),'storage_mode_counts':d['storage_mode_counts'],'vector_count_histogram':dict(Counter(str(r['vector_count']) for r in rows)),'materials':rows}
-          Path('reports/809DCD66_constant_census.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps({k:out[k] for k in ('status','material_count','storage_mode_counts','vector_count_histogram')},indent=2))
-          for r in rows:
-              print('\nMATERIAL',r['material'],r['storage'],r['source'],'vectors',r['vector_count'])
-              for v in r['vectors']:
-                  print(f"  c{v['index']:02d}",v['float4'],v['u32_hex'])
+              a=r['array_300']; assert a['count']==7 and len(a['vectors'])==7,(h,a)
+              if r['ps_vector4_container']!='FFFFFFFF':
+                  assert r['external_resolved'] and r['array_300_external_byte_identical'] is True,(h,r)
+                  assert r['external']['vector_count']==7,(h,r['external'])
+              for off,p in r['dynamic_array_candidate_scan'].items():
+                  if p.get('candidate_in_bounds') and p.get('count',0)<=64:
+                      probe_hist[off][str(p.get('count'))]+=1
+              rows.append({
+                  'material':h,'relation':r['vector_storage_relation'],'external':r['ps_vector4_container'],
+                  'array_300_count':a['count'],'array_300_offset':a['absolute_offset'],'vectors':a['vectors'],
+                  'ps_tfx_bytecode':r['ps_tfx_bytecode'],'array_scan':r['dynamic_array_candidate_scan'],
+              })
+          out={
+              'status':'D1_TOWER_809DCD66_VECTOR_STRUCTURE_CLOSED',
+              'material_count':len(rows),'relation_counts':d['vector_storage_relation_counts'],
+              'array_300_vector_count_histogram':dict(Counter(str(r['array_300_count']) for r in rows)),
+              'candidate_array_count_histograms':{o:dict(c) for o,c in sorted(probe_hist.items())},
+              'materials':rows,
+              'proof':'All 24 have a bounded 7xVec4 array at +0x300. The 10 materials with +0x32C resolve to 7xVec4 external 32:7 payloads byte-identical to +0x300; 14 have no external mirror.'
+          }
+          Path('reports/809DCD66_vector_census.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','material_count','relation_counts','array_300_vector_count_histogram','candidate_array_count_histograms')},indent=2))
           PY
 
-      - name: Preserve exact 809DCD66 shader resource and constant-buffer windows
+      - name: Preserve exact shader resource and b0 read windows
         run: |
           set -euo pipefail
           cp prior_shader/disasm/PS_809DCD66.s reports/PS_809DCD66.s
           python - <<'PY'
-          import json,re
+          import json
           from pathlib import Path
           ext=json.load(open('prior_shader/reports/top40_shader_extract.json'))
           row=next(r for r in ext['shaders'] if r['shader']=='809DCD66')
