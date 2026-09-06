@@ -84,11 +84,14 @@ jobs:
           d=json.load(open('out/CROTA_SCRIPTED_ENTITY_TABLES.json'))
           assert d['status']=='D1_CROTA_SCRIPTED_ENTITY_TABLES_EXACT',d['violations']
           assert d['violations']==[],d['violations']
-          assert d['entity_hash_counts'].get('8108EFFC')==3,d['entity_hash_counts']
+          assert d['entity_hash_counts'].get('8108EFFC')==1,d['entity_hash_counts']
           t=next(x for x in d['tables'] if x['scripted_entity_table']=='8108EF3A')
           assert t['reference']=='808012D9',t
-          assert t['entity_hash_counts']=={'8108EFFC':3},t['entity_hash_counts']
-          assert t['record_count']==3,t
+          assert t['entity_hash_counts']=={'8108EFFC':1},t['entity_hash_counts']
+          assert t['record_count']==1,t
+          assert t['script_family_string_hash']=='F9596AE6',t
+          assert t['type_string_hash_counts']=={'D7236F15':1},t
+          assert t['entity_name_string_hash_counts']=={'AF730B17':1},t
           print('CROTA_8108EF3A_D912_SCHEMA_CLOSED')
           print('FAMILY',t['script_family_string_hash'])
           print('TYPES',t['type_string_hash_counts'])
