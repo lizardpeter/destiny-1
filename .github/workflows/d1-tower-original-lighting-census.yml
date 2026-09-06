@@ -87,7 +87,7 @@ jobs:
           print('LIGHT_ROWS',d['resource_class_counts'].get('80801BEA',0),'SKY_ROWS',d['resource_class_counts'].get('80801BDA',0))
           PY
 
-      - name: Recursively close original light and sky dependencies
+      - name: Recursively close original light programs, constants, sky and sky-model dependencies
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -107,11 +107,14 @@ jobs:
           import json
           c=json.load(open('reports/tower_map_lighting_census.json'))
           x=json.load(open('reports/tower_map_lighting_dependency_closure.json'))
-          print('LIGHTING_CENSUS',json.dumps({k:c.get(k) for k in (
+          fields=(
             'status','light_resource_occurrences','sky_resource_occurrences',
             'unique_light_collection_count','unique_sky_collection_count','light_record_count',
-            'transform_record_count','parallel_collection_count','sky_entity_record_count',
-            'light_buffer_hash_count','decoded_light_buffer_count','missing_dependency_package_ids','violations')},indent=2))
+            'transform_record_count','parallel_collection_count','sky_record_count',
+            'light_buffer_hash_count','decoded_light_buffer_count','sky_model_resource_hash_count',
+            'decoded_sky_model_resource_count','sky_entity_model_hash_count','sky_entity_models',
+            'missing_dependency_package_ids','violations')
+          print('LIGHTING_CENSUS',json.dumps({k:c.get(k) for k in fields},indent=2))
           assert c['light_resource_occurrences']>0,'Tower full Activity graph exposed no SMapLightResource'
           assert c['sky_resource_occurrences']>0,'Tower full Activity graph exposed no SMapSkyEntResource'
           assert x['status']=='D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_COMPLETE',x
@@ -119,6 +122,12 @@ jobs:
           assert not c['missing_dependency_package_ids'] and not c['violations'],c
           assert c['light_record_count']>0 and c['transform_record_count']>0,c
           assert c['decoded_light_buffer_count']==c['light_buffer_hash_count'],c
+          assert c['decoded_sky_model_resource_count']==c['sky_model_resource_hash_count'],c
+          # Every decoded light BufferData must preserve program plus both D1 Vec4 constant arrays.
+          for b in c['light_buffers']:
+              assert b['status']=='D1_LIGHT_BUFFER_PROGRAM_AND_CONSTANTS_PRESERVED',b
+              assert b['bytecode_array']['ok'] and b['buffer1_array']['ok'] and b['buffer2_array']['ok'],b
+              assert b['all_constants_finite'],b
           PY
           test "$rc" -eq 0
 
