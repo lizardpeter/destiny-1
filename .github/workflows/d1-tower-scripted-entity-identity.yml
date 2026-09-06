@@ -1,0 +1,149 @@
+name: D1 Tower scripted entity identity
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-scripted-entity-identity.yml'
+      - 'tools/d1_world_scripted_entity_identity_census.py'
+      - 'tools/d1_global_strings_resolve.py'
+      - 'tools/d1_world_activity_entity_table_census.py'
+      - 'tools/d1_world_activity_entity_resource_census.py'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_tower_recover_current_corpus.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install verified Oodle runtime and recover Tower corpus
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered root_corpus reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered --report reports/tower_dependency_corpus.json
+          python tools/d1_tower_recover_activity_root_corpus.py \
+            --package-list reports/packages.txt --out-dir root_corpus --report reports/tower_activity_package_recovery.json
+
+      - name: Reconstruct source-owned Activity placements
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          root_args=(); for f in "${roots[@]}"; do root_args+=(--named-root-snapshot "$f"); done
+          set +e
+          python tools/d1_world_activity_entity_table_census.py "${args[@]}" "${root_args[@]}" --runtime runtime \
+            --out reports/tower_activity_entity_table_census.json | tee reports/tower_activity_entity_table_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          set +e
+          python tools/d1_world_activity_entity_resource_census.py "${args[@]}" --runtime runtime \
+            --entity-table-census reports/tower_activity_entity_table_census.json \
+            --out reports/tower_activity_entity_resource_census.json | tee reports/tower_activity_entity_resource_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_activity_entity_resource_census.json'))
+          if d['violations']: raise SystemExit('placement violations: '+repr(d['violations'][:20]))
+          print('runtime WorldIDs',d['unique_world_id_count'],'entities',d['unique_entity_hash_count'])
+          PY
+
+      - name: Join scripted identity records to runtime WorldIDs
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_scripted_entity_identity_census.py "${args[@]}" --runtime runtime \
+            --placements reports/tower_activity_entity_resource_census.json \
+            --out reports/tower_scripted_entity_identity_census.json | tee reports/tower_scripted_entity_identity_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Resolve scripted StringHashes through retail GlobalStrings
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t deps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          mapfile -t roots < <(find root_corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${deps[@]}" "${roots[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t hashes < <(python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_scripted_entity_identity_census.json'))
+          vals=set(d.get('entity_name_string_hash_reference_counts',{}))
+          vals.update(d.get('type_string_hash_reference_counts',{}))
+          vals.update(d.get('script_family_string_hash_reference_counts',{}))
+          for h in sorted(vals):
+              if h not in ('00000000','FFFFFFFF'): print(h)
+          PY
+          )
+          hargs=(); for h in "${hashes[@]}"; do hargs+=(--string-hash "$h"); done
+          set +e
+          python tools/d1_global_strings_resolve.py "${args[@]}" "${hargs[@]}" --runtime runtime \
+            --out reports/tower_scripted_entity_global_strings.json | tee reports/tower_scripted_entity_global_strings_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Write scripted identity summary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_scripted_entity_identity_census.json'))
+          s=json.load(open('reports/tower_scripted_entity_global_strings.json'))
+          resolved=s.get('resolved_targets',{})
+          named=[]
+          for t in d.get('scripted_tables',[]):
+              for r in t.get('records',[]):
+                  h=r.get('entity_name_string_hash')
+                  if h and h not in ('00000000','FFFFFFFF'):
+                      named.append({
+                          'world_id_hex':r.get('world_id_hex'),
+                          'entity_hash':r.get('entity_hash'),
+                          'name_string_hash':h,
+                          'resolved_candidates':resolved.get(h,[]),
+                          'type_string_hash':r.get('type_string_hash'),
+                          'type_candidates':resolved.get(r.get('type_string_hash'),[]),
+                          'placement_match':r.get('placement_match'),
+                      })
+          out={
+              'status':'D1_TOWER_SCRIPTED_ENTITY_IDENTITY',
+              'census':{k:d[k] for k in ('status','current_a705_count','current_d912_count','reachable_d912_from_a705_count','scripted_table_count','scripted_record_count','named_scripted_record_count','named_record_world_id_entity_match_count','named_record_full_transform_match_count','unique_entity_name_string_hash_count','unique_type_string_hash_count','violations')},
+              'global_strings':{k:s[k] for k in ('status','target_count','resolved_target_count','unresolved_target_count','unresolved_targets','violations')},
+              'named_runtime_records':named,
+          }
+          json.dump(out,open('reports/TOWER_SCRIPTED_ENTITY_IDENTITY_SUMMARY.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          if d['violations']: raise SystemExit('scripted identity structural violations remain')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-scripted-entity-identity
+          path: reports/
+          retention-days: 14
+          compression-level: 6
