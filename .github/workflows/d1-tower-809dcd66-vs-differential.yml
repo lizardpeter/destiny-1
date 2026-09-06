@@ -1,0 +1,144 @@
+name: D1 Tower 809DCD66 vertex shader differential
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-809dcd66-vs-differential.yml'
+      - 'tools/d1_ps4_vertex_shader_header.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  solve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact current 0250 family and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p index runtime packages reports shader disasm
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Extract exact target and control vertex shaders
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          from d1_ps4_vertex_shader_header import parse_header
+          from d1_ps4_shader_binary_probe import find_footer,parse_binary_info
+
+          tags=['80CA0DDA','80CA0CB7']
+          c=v5.v3.base.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          rows={}
+          for h in tags:
+              meta=c.entry_meta(h); hb,hsrc=c.payload(h)
+              assert meta and (meta['type'],meta['subtype'])==(32,9),(h,meta)
+              assert hb is not None,(h,'header unavailable')
+              native=str(meta['reference']).upper()
+              nb,nsrc=c.payload(native)
+              assert nb is not None,(h,native,'native unavailable')
+              footer,loc=find_footer(nb); assert footer is not None,(h,loc)
+              info=parse_binary_info(nb,footer); assert info['stage']=='VertexShader',(h,info)
+              dec=parse_header(hb,nb)
+              n=info['code_length_bytes']; code=nb[:n]
+              Path(f'shader/VS_{h}_header.bin').write_bytes(hb)
+              Path(f'shader/VS_{h}_native.bin').write_bytes(nb)
+              Path(f'shader/VS_{h}_gcn.bin').write_bytes(code)
+              rows[h]={
+                'shader':h,'meta':meta,'header_source':hsrc,'native_shader':native,'native_source':nsrc,
+                'header_sha256':hashlib.sha256(hb).hexdigest(),'native_sha256':hashlib.sha256(nb).hexdigest(),
+                'gcn_sha256':hashlib.sha256(code).hexdigest(),'gcn_bytes':len(code),'orbshdr_locator':loc,
+                'binary_info':info,'header_decode':dec,
+              }
+          out={'status':'D1_TOWER_809DCD66_VS_EXACT','target':'80CA0DDA','control':'80CA0CB7','shaders':rows}
+          Path('reports/vs_extract.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({h:{'native':r['native_shader'],'gcn_bytes':r['gcn_bytes'],'gcn_sha256':r['gcn_sha256'],
+                'usage':r['header_decode']['gnmx']['input_usage_slots'],'inputs':r['header_decode']['gnmx']['input_semantics'],
+                'exports':r['header_decode']['gnmx']['export_semantics']} for h,r in rows.items()},indent=2))
+          PY
+
+      - name: Build pinned CLRX and disassemble both shaders
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          for h in 80CA0DDA 80CA0CB7; do
+            "$exe" --raw --gpuType=GFX700 --hexcode "shader/VS_${h}_gcn.bin" > "disasm/VS_${h}.s" 2> "disasm/VS_${h}.stderr"
+            test ! -s "disasm/VS_${h}.stderr"
+            grep -q 's_endpgm' "disasm/VS_${h}.s"
+          done
+
+      - name: Build instruction and interface differential
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import difflib,json,re
+          from pathlib import Path
+          ext=json.load(open('reports/vs_extract.json'))
+          def insts(h):
+              out=[]
+              for line in Path(f'disasm/VS_{h}.s').read_text().splitlines():
+                  m=re.search(r'\*/\s*(.*)$',line)
+                  if m: out.append(m.group(1).strip())
+              return out
+          a=insts('80CA0DDA'); b=insts('80CA0CB7')
+          diff=list(difflib.unified_diff(b,a,fromfile='80CA0CB7',tofile='80CA0DDA',lineterm=''))
+          focus={}
+          for h in ('80CA0DDA','80CA0CB7'):
+              lines=Path(f'disasm/VS_{h}.s').read_text().splitlines()
+              focus[h]=[{'line':i+1,'text':s} for i,s in enumerate(lines)
+                        if any(k in s.lower() for k in ('s_load','s_buffer_load','v_mad','v_mac','v_mul','v_add','v_sub','v_mov','exp ','s_endpgm'))]
+          ta=ext['shaders']['80CA0DDA']['header_decode']['gnmx']; cb=ext['shaders']['80CA0CB7']['header_decode']['gnmx']
+          out={
+            'status':'D1_TOWER_809DCD66_VS_DIFFERENTIAL_COMPLETE',
+            'instruction_count':{'80CA0DDA':len(a),'80CA0CB7':len(b)},
+            'instruction_stream_identical':a==b,'unified_diff':diff,
+            'target_interface':{'input_usage_slots':ta['input_usage_slots'],'input_semantics':ta['input_semantics'],'export_semantics':ta['export_semantics']},
+            'control_interface':{'input_usage_slots':cb['input_usage_slots'],'input_semantics':cb['input_semantics'],'export_semantics':cb['export_semantics']},
+            'focus':focus,
+            'policy':'Exact retail GCN and native interface differential only; no semantic names assigned from numeric semantic IDs alone.'
+          }
+          Path('reports/vs_differential.json').write_text(json.dumps(out,indent=2)+'\n')
+          Path('reports/vs_instruction.diff').write_text('\n'.join(diff)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','instruction_count','instruction_stream_identical')},indent=2))
+          print('\n'.join(diff[:240]))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-809dcd66-vs-differential
+          path: |
+            reports/
+            shader/
+            disasm/
+          retention-days: 14
+          compression-level: 6
