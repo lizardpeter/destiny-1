@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-shader-809dcd66-constants.yml'
       - 'tools/d1_material_ps_constant_resolve.py'
+      - 'tools/d1_ps4_material_state_census.py'
 
 permissions:
   contents: read
@@ -83,7 +84,7 @@ jobs:
           d=json.load(open('reports/809DCD66_material_vectors.json'))
           assert d['selected_material_count']==24,d
           assert d['error_count']==0,d['error_materials']
-          expected={'array_300_only':14,'array_300_plus_external_identical':10}
+          expected={'ps_cbuffers_only':14,'ps_cbuffers_plus_external_identical':10}
           assert d['vector_storage_relation_counts']==expected,d['vector_storage_relation_counts']
           rows=[]; probe_hist=defaultdict(Counter)
           for h,r in sorted(d['materials'].items()):
@@ -97,6 +98,7 @@ jobs:
                       probe_hist[off][str(p.get('count'))]+=1
               rows.append({
                   'material':h,'relation':r['vector_storage_relation'],'external':r['ps_vector4_container'],
+                  'material_state_raw':r['material_state_raw'],
                   'array_300_count':a['count'],'array_300_offset':a['absolute_offset'],'vectors':a['vectors'],
                   'ps_tfx_bytecode':r['ps_tfx_bytecode'],'array_scan':r['dynamic_array_candidate_scan'],
               })
@@ -105,11 +107,33 @@ jobs:
               'material_count':len(rows),'relation_counts':d['vector_storage_relation_counts'],
               'array_300_vector_count_histogram':dict(Counter(str(r['array_300_count']) for r in rows)),
               'candidate_array_count_histograms':{o:dict(c) for o,c in sorted(probe_hist.items())},
+              'unk0c_histogram':dict(Counter(r['material_state_raw']['unk0c_hex'] for r in rows)),
+              'unk20_histogram':dict(Counter(r['material_state_raw']['unk20_hex'] for r in rows)),
               'materials':rows,
-              'proof':'All 24 have a bounded 7xVec4 array at +0x300. The 10 materials with +0x32C resolve to 7xVec4 external 32:7 payloads byte-identical to +0x300; 14 have no external mirror.'
+              'proof':'All 24 have a bounded 7xVec4 array at +0x300. The 10 materials with +0x32C resolve to 7xVec4 external 32:7 payloads byte-identical to +0x300; 14 have no external mirror. Raw material state words are retained without semantic assignment.'
           }
           Path('reports/809DCD66_vector_census.json').write_text(json.dumps(out,indent=2)+'\n')
-          print(json.dumps({k:out[k] for k in ('status','material_count','relation_counts','array_300_vector_count_histogram','candidate_array_count_histograms')},indent=2))
+          print(json.dumps({k:out[k] for k in ('status','material_count','relation_counts','array_300_vector_count_histogram','unk0c_histogram','unk20_histogram','candidate_array_count_histograms')},indent=2))
+          PY
+
+      - name: Census raw PS4 material state headers
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_ps4_material_state_census.py \
+            "${args[@]}" --runtime runtime --out reports/PS4_TOWER_MATERIAL_STATE_CENSUS.json \
+            | tee reports/PS4_TOWER_MATERIAL_STATE_CENSUS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS4_TOWER_MATERIAL_STATE_CENSUS.json'))
+          assert d['status']=='D1_PS4_MATERIAL_STATE_CENSUS_COMPLETE',d['violations']
+          t=d['target_809DCD66']
+          assert t['material_count']==24,t
+          assert t['unk0c_histogram']=={'00000002':14,'00000000':10},t['unk0c_histogram']
+          assert t['unk20_histogram']=={'0088':24},t['unk20_histogram']
+          assert t['unk0c_x_ps_constant_storage']=={'00000000|external':10,'00000002|inline_only':14},t['unk0c_x_ps_constant_storage']
+          print('PS4_809DCD66_RAW_STATE_CORRELATION_GREEN')
           PY
 
       - name: Preserve exact shader resource and b0 read windows
