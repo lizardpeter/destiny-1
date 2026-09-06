@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Correlate D1 PS4 Tower static draw records with exact material state.
 
-This is a structural census only.  It joins the already-proven D1 static-table
+This is a structural census only. It joins the already-proven D1 static-table
 MaterialIndex/StaticIndex relation to the raw mesh record and material header,
-then groups the resulting rows by pixel shader.  Unknown fields remain unknown.
+then groups the resulting rows by pixel shader. Unknown fields remain unknown.
+
+Material FileHashes are resolved class-stably: only occurrences whose reference is
+exactly the D1 PS4 ROI material class can supply material bytes. Newer occurrences
+with another class are never accepted as fallback material payloads.
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ sys.path.insert(0, str(HERE))
 
 import d1_tower_map_schema_validate as schema
 from d1_material_decode import parse_material
+from d1_ps4_material_state_census import class_stable_payload
 
 CELLS = [
     "80C98254", "80C984D8", "80C98A6B", "80C993CD", "80C993CF",
@@ -40,7 +45,7 @@ def main() -> int:
     a = ap.parse_args()
 
     c = schema.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
-    material_cache: dict[str, dict] = {}
+    material_cache: dict[str, dict | None] = {}
     rows = []
     violations = []
 
@@ -48,18 +53,20 @@ def main() -> int:
         h = norm(h)
         if h in material_cache:
             return material_cache[h]
-        b, src = c.payload(h)
+        b, src, meta = class_stable_payload(c, h)
         if b is None:
             material_cache[h] = None
             return None
         try:
             p = parse_material(b, "PS4")
-        except Exception:
+        except Exception as ex:
+            violations.append({"material": h, "error": "material_parse_failed", "detail": repr(ex), "source": src})
             material_cache[h] = None
             return None
         r = {
             "material": h,
             "source": src,
+            "meta": meta,
             "unk08": norm(p["unk08"]),
             "unk0c": norm(p["unk0c"]),
             "unk10": norm(p["unk10"]),
@@ -115,6 +122,7 @@ def main() -> int:
                     "material_unk0c": mr["unk0c"],
                     "material_unk10": mr["unk10"],
                     "material_unk20": mr["unk20_hex"],
+                    "material_payload_source": mr["source"],
                     "ps_external_vector_present": mr["ps_vector4_container"] not in ("00000000", "FFFFFFFF"),
                     "mesh_unk0c_u16": mesh.get("unk0C"),
                     "mesh_unk0c_hex": f"{int(mesh.get('unk0C', 0)):04X}",
@@ -147,9 +155,10 @@ def main() -> int:
     peer = [r for r in rows if r["pixel_shader"] == PEER_PS]
 
     out = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "D1_TOWER_DRAW_STATE_CENSUS_COMPLETE" if not violations else "D1_TOWER_DRAW_STATE_CENSUS_PARTIAL",
         "cells": CELLS,
+        "material_selection_policy": "CLASS_STABLE_NEWEST_REFERENCE_ONLY",
         "row_count": len(rows),
         "material_count": len({r["material"] for r in rows}),
         "pixel_shader_count": len(by_ps),
@@ -175,7 +184,8 @@ def main() -> int:
         "rows": rows,
         "policy": (
             "Static Info MaterialIndex/StaticIndex joins are structural retail facts. Material and mesh unknown fields "
-            "are emitted raw and grouped mechanically; no blend/cull/depth semantic is assigned."
+            "are emitted raw and grouped mechanically; no blend/cull/depth semantic is assigned. Material FileHash "
+            "reuse is resolved only inside the exact PS4 ROI material class."
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
