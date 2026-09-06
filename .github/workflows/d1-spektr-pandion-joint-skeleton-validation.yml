@@ -1,138 +1,33 @@
-name: D1 Spektar Pandion joint-to-skeleton validation
+name: RETIRED - D1 Spektar direct-index skeleton validation
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-spektr-pandion-joint-skeleton-validation.yml'
-      - 'tools/d1_remote_guardian_joint_probe.py'
-      - 'tools/d1_remote_model_export.py'
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  validate:
+  retired:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.13'}
-      - name: Dependencies
-        run: python -m pip install -q numpy scipy pyglm trimesh
-      - name: Recover successful Spektar resource report
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Explain supersession
         run: |
-          set -euo pipefail
-          mkdir -p input runtime recovered out
-          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-titan-masculine&per_page=20" \
-            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; print(a[0]['archive_download_url'])")
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/spektar.zip
-          unzip -q input/spektar.zip -d input/spektar
-          test -f input/spektar/spektar_pandion_resources.json
-      - name: Recover verified Oodle runtime
-        run: |
-          set -euo pipefail
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
-          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
-          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Decode exact masculine and feminine Guardian joint domains
-        run: |
-          set -euo pipefail
-          export LINOODLE_SKIP_DLLMAIN=1
-          for role in masculine feminine; do
-            python tools/d1_remote_guardian_joint_probe.py \
-              --report input/spektar/spektar_pandion_resources.json --body-role "$role" \
-              --member-catalog evidence/d1_investment_asset_member_catalog.json \
-              --member-catalog evidence/d1_player_gear_member_catalog.json \
-              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-              --runtime runtime -o "out/spektar_${role}_joints.json"
-          done
-      - name: Recover 67-bone candidate skeleton and pinned parser
-        run: |
-          set -euo pipefail
-          python tools/d1_split_tar_extract.py \
-            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --start-offset 0xAAB580800 \
-            --target ps4_race_set_all_00ec_0.pkg --target ps4_race_set_all_00ec_1.pkg \
-            --target ps4_race_set_all_00ec_2.pkg --target ps4_race_set_all_00ec_3.pkg \
-            --target ps4_race_set_all_00ec_4.pkg --target ps4_race_set_all_00ec_5.pkg \
-            --out recovered --manifest out/00ec_extract.json --retries 6 --timeout 90
-          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
-          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
-          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
-      - name: Map retail gear joint indices onto 809D8613 named bones
-        run: |
-          set -euo pipefail
-          export LINOODLE_SKIP_DLLMAIN=1
-          python - <<'PY'
-          import io,json,sys
-          from pathlib import Path
-          sys.path.insert(0,'tools'); sys.path.insert(0,'parser')
-          from d1_entry_extract import EntryReader
-          from tag.game_version import Game_Version
-          from tag_readers.read_skeleton import read_skeleton
-          from fnv_hashes.bones_names import hash_to_bungie_name
+          cat <<'EOF'
+          RETIRED: this workflow's old validation was semantically invalid.
 
-          r=EntryReader(Path('recovered/ps4_race_set_all_00ec_5.pkg'),Path('runtime'))
-          by={e['tag_hash'].upper():e for e in r.entries}
-          e=by['809D8613']
-          sk=read_skeleton(io.BytesIO(r.entry(e['index'])),Game_Version.D1_ROI)
-          nodes=[]
-          for i,n in enumerate(sk.node_defs):
-              nodes.append({'index':i,'bone_hash':int(n.bone_hash),'name':hash_to_bungie_name.get(n.bone_hash,'???'),
-                            'parent':int(n.parent_node_index)})
-          assert len(nodes)==67,len(nodes)
-          assert nodes[18]['name']=='b_head',nodes[18]
-          print('SKELETON 809D8613 nodes',len(nodes),'node18',nodes[18])
+          It treated every decoded source joint integer in [0,67) as the same-index
+          bone in retail skeleton 809D8613. Exact comparison against Bungie's
+          published 72-node D1 player skeleton later proved that assumption false.
 
-          result={'schema':'d1_guardian_joint_skeleton_validation/v2','skeleton':'809D8613','node_count':67,
-                  'nodes':nodes,'body_roles':{},
-                  'policy':'Values in [0,node_count) are mapped directly to the candidate skeleton. Out-of-range stored lane values are preserved separately and are not assigned a bone or given a semantic label.'}
-          for role in ('masculine','feminine'):
-              d=json.load(open(f'out/spektar_{role}_joints.json'))
-              mapped=[]
-              for m in d['models']:
-                  vals=m.get('joint_domain') or []
-                  joint_vals=[j for j in vals if 0 <= j < len(nodes)]
-                  non_skeleton=[j for j in vals if not (0 <= j < len(nodes))]
-                  ex=(m.get('examples') or [{}])[0]
-                  mapped.append({'name':ex.get('name'),'itemTypeName':ex.get('itemTypeName'),'model':m['tag_hash'],
-                                 'stored_lane_values':vals,'joint_indices':joint_vals,
-                                 'non_skeleton_values':non_skeleton,
-                                 'bones':[nodes[j] for j in joint_vals],
-                                 'rigid_mesh_count':m.get('rigid_mesh_count'),'weighted_mesh_count':m.get('weighted_mesh_count')})
-              result['body_roles'][role]=mapped
-              print('\nROLE',role)
-              for x in mapped:
-                  print(x['itemTypeName'],x['name'],x['model'],'=>',[(b['index'],b['name']) for b in x['bones']],
-                        'non-skeleton',x['non_skeleton_values'],'rigid',x['rigid_mesh_count'],'weighted',x['weighted_mesh_count'])
-          Path('out/809D8613_spektar_joint_validation.json').write_text(json.dumps(result,indent=2)+'\n')
-          # Both independently resolved body variants must attach their named helmet exactly to b_head.
-          for role in ('masculine','feminine'):
-              helmets=[x for x in result['body_roles'][role] if (x.get('name') or '').endswith('Helmet')]
-              assert len(helmets)==1,helmets
-              assert helmets[0]['joint_indices']==[18],helmets[0]
-              assert [b['name'] for b in helmets[0]['bones']]==['b_head'],helmets[0]
-          # Major slot anatomy must agree in both body variants.
-          for role in ('masculine','feminine'):
-              rows={x['name']:x for x in result['body_roles'][role]}
-              assert {'b_l_calf','b_r_calf','b_l_foot','b_r_foot'} <= {b['name'] for b in rows['Spektar Pandion Greaves']['bones']}
-              assert {'b_l_upperarm','b_r_upperarm','b_l_hand','b_r_hand'} <= {b['name'] for b in rows['Spektar Pandion Gauntlets']['bones']}
-              assert 'b_spine_3' in {b['name'] for b in rows['Spektar Pandion Plate']['bones']}
-              assert rows['Spektar Pandion Mark']['joint_indices']==[] and rows['Spektar Pandion Mark']['non_skeleton_values']==[32767]
-          print('ANATOMICAL VALIDATION SUCCESS: both Guardian body variants agree with 809D8613')
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: d1-spektr-pandion-joint-skeleton-validation
-          path: out/
-          retention-days: 14
-          if-no-files-found: warn
-          compression-level: 6
+          Used Spektar source slots 25, 26, 27, 28, 40 and 42 name different bones
+          at the same integer positions in 809D8613. Slots 27 and 28 are especially
+          important: in Bungie's exact player skeleton they are the left/right
+          shoulder twist-fixup bones and carry very large Spektar gauntlet weight.
+
+          Authoritative replacement:
+            .github/workflows/d1-spektr-pandion-joint-semantic-audit.yml
+            tools/d1_guardian_joint_semantic_audit.py
+
+          Do not restore the old direct-index assertion without an explicit serialized
+          PS4 skeleton/palette mapping proving it.
+          EOF
