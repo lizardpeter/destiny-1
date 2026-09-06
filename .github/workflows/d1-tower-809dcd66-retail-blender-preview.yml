@@ -1,0 +1,165 @@
+name: D1 Tower 809DCD66 retail Blender preview
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-809dcd66-retail-blender-preview.yml'
+      - 'tools/d1_tower_809dcd66_retail_scene_export.py'
+      - 'tools/d1_gltf_split_d1_basis_attributes.py'
+      - 'tools/d1_blender_apply_809dcd66.py'
+      - 'tools/d1_tower_80ca0dda_vs_replay.py'
+      - 'tools/d1_world_material_texture_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  retail:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact sidecar, adapter manifest, current package families and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh pillow texture2ddecoder
+          mkdir -p prior manifest index runtime packages reports retail textures selector
+          gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D prior
+          gh run download 34049203609 -n d1-tower-809dcd66-adapter-manifest -D manifest
+          test -f prior/world/TOWER_80C98254_WORLD.json
+          test -f manifest/809DCD66_blender_adapter_manifest.json
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 009f --package-id 024c --package-id 0250 \
+            --out-dir packages --report reports/recovery.json
+
+      - name: Rebuild exact 12-geometry 64-placement retail target scene
+        run: |
+          set -euo pipefail
+          args=(); for f in packages/*.pkg; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_809dcd66_retail_scene_export.py \
+            "${args[@]}" --runtime runtime \
+            --world prior/world/TOWER_80C98254_WORLD.json \
+            --adapter-manifest manifest/809DCD66_blender_adapter_manifest.json \
+            --out retail/D1_TOWER_809DCD66_RETAIL_64.glb \
+            --report reports/809DCD66_retail_scene.json \
+            | tee reports/809DCD66_retail_scene_stdout.txt
+          python tools/d1_gltf_split_d1_basis_attributes.py \
+            --input-glb retail/D1_TOWER_809DCD66_RETAIL_64.glb \
+            --out retail/D1_TOWER_809DCD66_RETAIL_64_D1_BASIS.glb \
+            --report reports/809DCD66_retail_basis_split.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/809DCD66_retail_scene.json'))
+          assert d['geometry_count']==12,d
+          assert d['placement_count']==64,d
+          assert d['material_count']==5,d
+          assert d['target_vs']=='80CA0DDA' and d['target_ps']=='809DCD66'
+          print('RETAIL_809DCD66_COMPACT_SCENE_GREEN')
+          PY
+
+      - name: Decode exact retail t0 and t1 PNG resources
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/809DCD66_retail_scene.json'))
+          out={'materials':{h:{'visual':True} for h in d['materials']}}
+          open('selector/target_materials.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+          args=(); for f in packages/*.pkg; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_texture_export.py \
+            "${args[@]}" --runtime runtime \
+            --visual-json selector/target_materials.json \
+            --out textures | tee reports/809DCD66_texture_export_stdout.txt
+          cp textures/material_texture_manifest.json reports/809DCD66_retail_texture_manifest.json
+          python - <<'PY'
+          import json
+          d=json.load(open('textures/material_texture_manifest.json'))
+          assert d['visible_material_count']==5,d
+          assert d['material_decode_errors']==0,d
+          assert d['texture_errors']==0,d
+          assert {'8093E9A3','8093E9A2'} <= set(d['textures']),d['textures'].keys()
+          for h in ('8093E9A3','8093E9A2'):
+              r=d['textures'][h]
+              assert r.get('png'),(h,r)
+          print('EXACT_RETAIL_809DCD66_TEXTURES_GREEN',d['unique_texture_tags'],d['png_outputs'])
+          PY
+
+      - name: Install pinned Blender 4.5.13 LTS
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://download.blender.org/release/Blender4.5/blender-4.5.13.sha256' -o blender.sha256
+          curl --fail --location --retry 3 'https://download.blender.org/release/Blender4.5/blender-4.5.13-linux-x64.tar.xz' -o blender.tar.xz
+          grep 'blender-4.5.13-linux-x64.tar.xz' blender.sha256 > blender-linux.sha256
+          sed -i 's#blender-4.5.13-linux-x64.tar.xz#blender.tar.xz#' blender-linux.sha256
+          sha256sum --check --strict blender-linux.sha256
+          tar -xf blender.tar.xz
+          ./blender-4.5.13-linux-x64/blender --version | tee reports/blender_version.txt
+          grep -q 'Blender 4.5.13' reports/blender_version.txt
+
+      - name: Build retail native-equation Blender preview and pack exact images
+        run: |
+          set -euo pipefail
+          B='./blender-4.5.13-linux-x64/blender'
+          "$B" --background --factory-startup \
+            --python tools/d1_blender_apply_809dcd66.py -- \
+            --input-glb retail/D1_TOWER_809DCD66_RETAIL_64_D1_BASIS.glb \
+            --manifest manifest/809DCD66_blender_adapter_manifest.json \
+            --texture-root textures/textures \
+            --out-blend retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
+            --report reports/809DCD66_retail_blender.json \
+            | tee reports/809DCD66_retail_blender_stdout.txt
+          "$B" --background retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
+            --python-expr "import bpy; [im.pack() for im in bpy.data.images if im.source=='FILE']; bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath); print('PACKED_IMAGES',[(im.name,im.packed_file is not None) for im in bpy.data.images])" \
+            | tee reports/809DCD66_pack_images_stdout.txt
+          "$B" --background retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend \
+            --python-expr "import bpy; assert all(im.packed_file is not None for im in bpy.data.images if im.name.startswith('D1_8093')); print('REOPEN_PACKED_OK',bpy.app.version_string,len(bpy.data.objects),len(bpy.data.materials))" \
+            | tee reports/809DCD66_final_reopen_stdout.txt
+          sha256sum retail/*.glb retail/*.blend | tee reports/809DCD66_retail_files_sha256.txt
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          d=json.load(open('reports/809DCD66_retail_blender.json'))
+          scene=json.load(open('reports/809DCD66_retail_scene.json'))
+          p=Path('retail/D1_TOWER_809DCD66_RETAIL_64_NATIVE_EQUATION_PREVIEW.blend')
+          assert d['status']=='D1_TOWER_809DCD66_BLENDER_NATIVE_EQUATION_PREVIEW_BUILT',d
+          assert d['target_materials_in_input']==5,d
+          assert d['verified_saved_material_count']==5,d
+          out={'status':'D1_TOWER_809DCD66_RETAIL_BLENDER_PREVIEW_COMPLETE',
+               'geometry_count':scene['geometry_count'],'placement_count':scene['placement_count'],'material_count':scene['material_count'],
+               'blend_bytes':p.stat().st_size,'blend_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+               'api13_runtime_source_resolved':False,'native_blend_state_resolved':False,'frame0_time_unit_phase_resolved':False,
+               'preview_scope':'exact retail geometry/placements/textures/material constants/native-equation nodes at abstract Frame[0]=0; api13 preview fallback=1; Blender emission composition'}
+          open('reports/FINAL_809DCD66_RETAIL_BLENDER_PREVIEW.json','w').write(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-809dcd66-retail-blender-preview
+          path: |
+            retail/
+            textures/textures/*.png
+            reports/
+            manifest/809DCD66_blender_adapter_manifest.json
+          retention-days: 14
+          compression-level: 6
