@@ -1,0 +1,88 @@
+name: D1 Spektar Pandion stage-0 native VS join
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-stage0-vs-join.yml'
+      - 'tools/d1_guardian_stage0_vs_join.py'
+      - 'tools/d1_ps4_vertex_shader_header.py'
+      - 'tools/d1_guardian_texcoord2_lane_probe.py'
+      - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_player_gear_member_catalog.json'
+      - 'evidence/d1_weapon_globals_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies, Oodle, and exact stage-0 draw artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p runtime input/stage0 out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-stage0-draws&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/stage0.zip
+          unzip -q input/stage0.zip -d input/stage0
+          test -f input/stage0/spektar_stage0_draws.json
+
+      - name: Join exact stage-0 draws to native vertex signatures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_stage0_vs_join.py \
+            --stage0-report input/stage0/spektar_stage0_draws.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --member-catalog evidence/d1_weapon_globals_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/spektar_stage0_vs_join.json
+
+      - name: Validate native detail-UV controls
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/spektar_stage0_vs_join.json'))
+          assert d['schema']=='d1_guardian_stage0_vs_join/v1',d
+          assert d['range_count']==28,d
+          assert d['detail_range_count']>0 and d['no_detail_range_count']>0,d
+          assert d['comparable_control_count']==3,d
+          assert d['all_comparable_controls_pass'] is True,d
+          for c in d['controls']:
+              assert c['both_present'] is True,c
+              assert c['detail_equals_base_plus_final_vec2'] is True,c
+          for r in d['ranges']:
+              assert r['checks']['wrapper_shader_size_matches_gnmx_shader_size'],r
+              nc=r['native_checks']
+              assert nc and nc['stage_is_vertex_shader'],r
+              assert nc['gnmx_shader_size_matches_orbshdr_end'],r
+              assert nc['usage_count_matches_orbshdr'],r
+          print('SPEKTAR STAGE-0 NATIVE DETAIL-UV CONTROLS PASSED')
+          print('ranges',d['range_count'],'detail',d['detail_range_count'],'no-detail',d['no_detail_range_count'])
+          print(json.dumps(d['controls'],indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-stage0-vs-join
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
