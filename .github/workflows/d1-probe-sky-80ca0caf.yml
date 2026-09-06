@@ -1,0 +1,96 @@
+name: D1 probe Tower sky 80CA0CAF exact bytes
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-probe-sky-80ca0caf.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current global package index and exact Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p index reports packages runtime
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover only FileHash package family 0250 from indexed ranges
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --package-id 0250 \
+            --out-dir packages \
+            --report reports/recovery_0250.json
+
+      - name: Dump exact 80CA0CAF payload and parse every field available through 0x60
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          import d1_world_map_data_layer_census as layer
+
+          files=sorted(Path('packages').glob('*.pkg'))
+          c=v5.v3.base.Corpus([p.resolve() for p in files],Path('runtime').resolve())
+          h='80CA0CAF'
+          meta=c.entry_meta(h)
+          b,src=c.payload(h)
+          assert meta is not None and b is not None
+          assert str(meta.get('reference')).upper()=='80801C1F',meta
+          assert len(b)==0x60,len(b)
+          arr=layer.dyn(b,0x08,0x80)
+          v40=list(struct.unpack_from('<4f',b,0x40))
+          v50=list(struct.unpack_from('<4f',b,0x50))
+          out={
+            'schema_version':1,
+            'status':'D1_RETAIL_SKY_80CA0CAF_EXACT_PAYLOAD_PROBE',
+            'tag_hash':h,
+            'entry_meta':meta,
+            'payload_source':src,
+            'payload_bytes':len(b),
+            'payload_sha256':hashlib.sha256(b).hexdigest(),
+            'payload_hex':b.hex().upper(),
+            'declared_file_size_i64':struct.unpack_from('<q',b,0)[0],
+            'sky_records_array':arr,
+            'vector40':v40,
+            'vector50':v50,
+            'defined_fields_end_offset':0x60,
+            'pinned_schema_declared_struct_size':0x68,
+            'schema_tail_not_required_for_defined_fields_bytes':8,
+          }
+          json.dump(out,open('reports/sky_80CA0CAF_exact_probe.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-80ca0caf-exact-probe
+          path: reports/
+          retention-days: 14
+          compression-level: 6
