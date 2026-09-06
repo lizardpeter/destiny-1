@@ -114,6 +114,28 @@ PROVEN_PIXEL_SHADER_ROLES: dict[str, dict[int, str]] = {
         0: 'surface_rgb',
     },
 
+    # High-frequency Tower common family, native PS 80AAE1F7. t0 and t1 are
+    # sampled as full RGBA at two independently authored UV transforms. Each t0
+    # channel is first transformed as (t0 * material_scale + material_bias), then
+    # multiplied by the corresponding t1 channel. RGB proceeds through the
+    # authored lighting/material branch; alpha participates in its intensity
+    # branch. A runtime t10 sample also contributes lighting/attenuation. Neither
+    # t0 nor t1 alone is therefore a faithful portable base-color texture.
+    '80AAE1F5': {
+        0: 'surface_rgba_affine_pre_multiplicative_modulation',
+        1: 'surface_rgba_multiplicative_modulation',
+    },
+
+    # Sibling common family, native PS 80AAE1F8. Only W/alpha is requested from
+    # either material texture. The dataflow forms
+    #   (material_bias + material_scale * t0.a) * t1.a
+    # and multiplies that scalar by authored lighting/intensity terms before MRT0.
+    # Treating either color-capable source image as albedo is explicitly wrong.
+    '80AAE1F6': {
+        0: 'material_scalar_affine_mask_a',
+        1: 'material_scalar_multiply_mask_a',
+    },
+
     # Common-layer authored-color mask siblings. All three emit RGB assembled
     # from material constants; the sampled texture contributes only one scalar
     # control channel, so binding the whole texture as glTF base color is wrong.
