@@ -31,6 +31,13 @@ D1_GENERIC_NAME_TAG_CLASS=0x808013F3    # D2Class_4D7E8080 -> D1 F3138080
 # Entity.Load specific-name branch: D2Class_DA5E8080 maps in D1 to 9B208080.
 D1_SPECIFIC_NAME_DISCRIMINATOR=0x8080209B
 D1_SPECIFIC_NAME_PARENT=0x80802089      # D2Class_DB5E8080 -> D1 89208080
+# Charm pinned D1 ROI ActivityStructsROI.cs:
+# SBC078080 (BC078080) selects SA7058080 (A7058080), whose +0x68 field is
+# Tag<SD9128080>. SD9128080 is the scripted-entity table schema.
+D1_SCRIPTED_ENTITY_DISCRIMINATOR=0x808007BC
+D1_SCRIPTED_ENTITY_PARENT=0x808005A7
+D1_SCRIPTED_ENTITY_TABLE_CLASS=0x808012D9
+D1_SCRIPTED_ENTITY_TABLE_OFFSET=0x68
 
 KNOWN={
  D1_MODEL_DISCRIMINATOR:'entity_model_discriminator',D1_MODEL_PARENT:'entity_model_parent',
@@ -40,6 +47,9 @@ KNOWN={
  D1_GENERIC_NAME_DISCRIMINATOR:'entity_generic_name_discriminator',D1_GENERIC_NAME_PARENT:'entity_generic_name_parent',
  D1_GENERIC_NAME_TAG_CLASS:'entity_generic_name_tag',
  D1_SPECIFIC_NAME_DISCRIMINATOR:'entity_specific_name_discriminator',D1_SPECIFIC_NAME_PARENT:'entity_specific_name_parent',
+ D1_SCRIPTED_ENTITY_DISCRIMINATOR:'scripted_entity_table_discriminator',
+ D1_SCRIPTED_ENTITY_PARENT:'scripted_entity_table_parent_SA7058080',
+ D1_SCRIPTED_ENTITY_TABLE_CLASS:'scripted_entity_table_SD9128080',
 }
 
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
@@ -67,6 +77,7 @@ def parse_resource(b, platform=None):
         f'{D1_CHILDREN_DISCRIMINATOR:08X}':'entity_children',
         f'{D1_GENERIC_NAME_DISCRIMINATOR:08X}':'entity_name_generic',
         f'{D1_SPECIFIC_NAME_DISCRIMINATOR:08X}':'entity_name_specific',
+        f'{D1_SCRIPTED_ENTITY_DISCRIMINATOR:08X}':'scripted_entity_table_owner',
     }.get(discr,'other_or_unknown')
     if d['semantic_role']=='entity_model':
         p=d['unk18'];t=p.get('target_offset');model_rel=0x1C4 if platform=='XboxOne' else 0x15C
@@ -89,6 +100,12 @@ def parse_resource(b, platform=None):
         p=d['unk18'];t=p.get('target_offset');off=0x114;d['specific_name_field_offset_in_parent']=off
         if p.get('class_hash')==f'{D1_SPECIFIC_NAME_PARENT:08X}' and isinstance(t,int) and t+off+4<=len(b):
             d['entity_name_string_hash']=f'{u32(b,t+off):08X}'
+    elif d['semantic_role']=='scripted_entity_table_owner':
+        p=d['unk18'];t=p.get('target_offset');off=D1_SCRIPTED_ENTITY_TABLE_OFFSET
+        d['scripted_entity_table_field_offset_in_parent']=off
+        d['scripted_entity_table_expected_class']=f'{D1_SCRIPTED_ENTITY_TABLE_CLASS:08X}'
+        if p.get('class_hash')==f'{D1_SCRIPTED_ENTITY_PARENT:08X}' and isinstance(t,int) and t+off+4<=len(b):
+            d['scripted_entity_table_tag_hash']=f'{u32(b,t+off):08X}'
     return d
 
 def main():
