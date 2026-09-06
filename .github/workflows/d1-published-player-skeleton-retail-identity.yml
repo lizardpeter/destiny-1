@@ -1,0 +1,111 @@
+name: D1 published player skeleton retail identity
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-published-player-skeleton-retail-identity.yml'
+      - 'tools/d1_remote_skeleton_exact_probe.py'
+      - 'tools/d1_published_player_skeleton_compare.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact published player skeleton and verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p out runtime
+          curl --fail --location --retry 3 \
+            'https://www.bungie.net/common/destiny_content/animations/destiny_player_skeleton.js' \
+            -o out/destiny_player_skeleton.js
+          echo 'a477e58e2b9c23dcc75e8b538c24cc181f2a3af4b2cb2340b603aacf2f47e716  out/destiny_player_skeleton.js' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact 00EC retail skeleton candidates
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_skeleton_exact_probe.py \
+            --package-id 0x00EC --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --member ps4_race_set_all_00ec_0.pkg:45824346624:82720768 \
+            --member ps4_race_set_all_00ec_1.pkg:45907067904:10065920 \
+            --member ps4_race_set_all_00ec_2.pkg:45917134336:2072576 \
+            --member ps4_race_set_all_00ec_3.pkg:45919207424:151552 \
+            --member ps4_race_set_all_00ec_4.pkg:45919359488:151552 \
+            --member ps4_race_set_all_00ec_5.pkg:45919511552:155648 \
+            --tag-hash 809D80C9 --tag-hash 809D8613 --tag-hash 809D8752 --tag-hash 809D8C66 \
+            --tag-hash 809D93D5 --tag-hash 809D947A --tag-hash 809D8DFB --tag-hash 809D9821 --tag-hash 809D9E43 \
+            -o out/retail_00ec.json
+
+      - name: Probe exact 00EE retail skeleton candidates
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_skeleton_exact_probe.py \
+            --package-id 0x00EE --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --member ps4_race_set_all_00ee_0.pkg:45919667712:88512512 \
+            --member ps4_race_set_all_00ee_1.pkg:46008180736:9631744 \
+            --member ps4_race_set_all_00ee_2.pkg:46017812992:5148672 \
+            --member ps4_race_set_all_00ee_3.pkg:46022962176:151552 \
+            --member ps4_race_set_all_00ee_5.pkg:46023114240:161792 \
+            --tag-hash 809DDC67 --tag-hash 809DDA3C --tag-hash 809DC133 --tag-hash 809DD23B \
+            -o out/retail_00ee.json
+
+      - name: Probe exact 00EF retail skeleton candidates
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_skeleton_exact_probe.py \
+            --package-id 0x00EF --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --member ps4_race_set_all_00ef_0.pkg:46023276544:232409088 \
+            --member ps4_race_set_all_00ef_1.pkg:46255686144:12650496 \
+            --member ps4_race_set_all_00ef_2.pkg:46268337152:6375424 \
+            --member ps4_race_set_all_00ef_3.pkg:46274713088:176128 \
+            --member ps4_race_set_all_00ef_5.pkg:46274889728:184320 \
+            --tag-hash 809DE53A --tag-hash 809DF370 --tag-hash 809DEF65 \
+            -o out/retail_00ef.json
+
+      - name: Compare exact identities and semantic index mappings
+        run: |
+          set -euo pipefail
+          python tools/d1_published_player_skeleton_compare.py \
+            --published-skeleton out/destiny_player_skeleton.js \
+            --retail-report out/retail_00ec.json \
+            --retail-report out/retail_00ee.json \
+            --retail-report out/retail_00ef.json \
+            -o out/published_vs_retail_skeletons.json
+
+      - name: Evidence note
+        run: |
+          cat > out/README.txt <<'EOF'
+          Exact D1 player skeleton identity comparison
+
+          The published player rig is the exact Bungie static asset used by the archived D1 ItemPreview renderer.
+          Retail candidates are decoded from complete logical PS4 race_set_all package families.
+
+          A retail skeleton is NOT accepted merely because its node count is close, its animation retargets, or all
+          raw mesh joint indices fit numerically. Exact identity requires the ordered bone hashes and parent hierarchy.
+          The report also exposes remapped/missing shoulder, wrist and hand-chain semantics so previous deformation
+          failures cannot be hidden by a range check.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PUBLISHED-PLAYER-SKELETON-RETAIL-IDENTITY
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
