@@ -17,7 +17,10 @@ from pathlib import Path
 
 
 def rows_from_doc(d: dict) -> list[dict]:
-    for key in ('comparisons','materials','rows','bindings'):
+    # Historical d1_dxbc_probe regression fixtures use ``compared``; newer
+    # reports may use one of the generic names below. Preserve all accepted
+    # shapes explicitly so the inventory does not depend on one report vintage.
+    for key in ('compared','comparisons','materials','rows','bindings'):
         v=d.get(key)
         if isinstance(v,list): return v
         if isinstance(v,dict):
@@ -58,7 +61,7 @@ def main()->int:
     for ps,ss in sorted(shader_regs.items()):
         shaders.append({'pixel_shader':ps,'global_cbuffers':[{'register':r,'vec4_count':n} for r,n in sorted(ss)]})
     out={
-      'schema_version':1,
+      'schema_version':2,
       'status':'D1_XBOX_DXBC_GLOBAL_CBUFFER_INVENTORY',
       'source':str(a.input),
       'input_row_count':len(rows),
