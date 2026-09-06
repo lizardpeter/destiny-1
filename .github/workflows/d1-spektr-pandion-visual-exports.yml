@@ -106,7 +106,11 @@ jobs:
               r=json.load(open(Path('out')/report_name))
               assert r['schema']=='d1_gltf_tiger_mesh_basis_fix/v1',r
               assert r['basis_permutation']=='[x,y,z] -> [y,z,x]',r
-              assert r['position_accessors_remapped']==69,r
+              assert r['primitive_count']==69,r
+              # The 69 primitives share two POSITION accessors, so exactly 67 unique
+              # position streams are rewritten. Counting primitives here was the old
+              # validator bug; the remapper correctly caches shared accessors.
+              assert r['position_accessors_remapped']==67,r
               pre=r['bounds_before_tiger']; post=r['bounds_after_gltf']
               assert np.allclose(post['min'],[pre['min'][1],pre['min'][2],pre['min'][0]],atol=1e-6),(pre,post)
               assert np.allclose(post['max'],[pre['max'][1],pre['max'][2],pre['max'][0]],atol=1e-6),(pre,post)
