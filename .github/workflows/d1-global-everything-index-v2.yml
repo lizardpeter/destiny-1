@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'tools/d1_remote_everything_index_v2.py'
+      - 'tools/d1_everything_export_plan_v2.py'
       - 'evidence/d1_export_class_registry.json'
       - '.github/workflows/d1-global-everything-index-v2.yml'
 
@@ -64,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY' | tee reports/validation.txt
-          import json,sqlite3,hashlib
+          import json,sqlite3
           s=json.load(open('reports/D1_CURRENT_EVERYTHING_V2.json'))
           assert s['status']=='D1_REMOTE_EVERYTHING_INDEX_V2_COMPLETE',s.get('violations')
           assert not s['violations'],s['violations'][:20]
@@ -82,12 +83,10 @@ jobs:
           assert db.execute('select count(*) from physical_packages').fetchone()[0]==2105
           assert db.execute('select count(*) from physical_packages where is_current=1').fetchone()[0]==822
           assert db.execute('select count(*) from current_entries').fetchone()[0]==s['current_entry_count']
-          # Base player canaries must survive namespace qualification exactly.
           for h in ('80A7F90B','80AD27B2'):
               rows=db.execute("select namespace_key,tag_hash,reference,export_route from current_entries where namespace_kind='base' and tag_hash=?",(h,)).fetchall()
               assert rows,(h,'missing base canary')
               print('BASE_CANARY',h,rows)
-          # Locale FileHash collisions are expected and must remain distinct by namespace.
           collision=db.execute('''select tag_hash,count(distinct namespace_key) n from current_entries
                                   where namespace_kind='localized' group by tag_hash having n>1 order by n desc limit 1''').fetchone()
           assert collision, 'expected at least one locale tag hash occurring in multiple namespaces'
@@ -105,7 +104,29 @@ jobs:
             'unknown':s['current_unknown_entry_count']
           },sort_keys=True))
           PY
-          sha256sum reports/D1_CURRENT_EVERYTHING_V2.sqlite reports/D1_CURRENT_EVERYTHING_V2.json reports/D1_CURRENT_EVERYTHING_V2.tsv > reports/SHA256SUMS.txt
+
+      - name: Build namespace-safe export execution plan
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_everything_export_plan_v2.py
+          python tools/d1_everything_export_plan_v2.py reports/D1_CURRENT_EVERYTHING_V2.sqlite \
+            --out reports/plan --shard-size 1000 | tee reports/export_plan_stdout.txt
+          python - <<'PY'
+          import json
+          i=json.load(open('reports/D1_CURRENT_EVERYTHING_V2.json'))
+          p=json.load(open('reports/plan/PLAN.json'))
+          assert p['current_entry_count']==i['current_entry_count']
+          assert p['current_namespace_count']==i['current_namespace_count']
+          assert p['route_counts']==i['current_export_route_counts'],(p['route_counts'],i['current_export_route_counts'])
+          assert sum(p['bucket_counts'].values())==i['current_entry_count']
+          assert p['cross_namespace_filehash_count']>0
+          print('PLAN_VALIDATED',p['current_entry_count'],p['shard_count'],p['cross_namespace_filehash_count'])
+          PY
+          sha256sum \
+            reports/D1_CURRENT_EVERYTHING_V2.sqlite \
+            reports/D1_CURRENT_EVERYTHING_V2.json \
+            reports/D1_CURRENT_EVERYTHING_V2.tsv \
+            reports/plan/PLAN.json > reports/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
