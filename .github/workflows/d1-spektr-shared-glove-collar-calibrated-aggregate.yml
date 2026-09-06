@@ -1,0 +1,145 @@
+name: D1 Spektar shared glove-collar calibrated scan aggregate
+
+on:
+  workflow_run:
+    workflows: ['D1 Spektar shared glove-collar calibrated PS4 scan']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  aggregate:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover every family artifact from triggering exhaustive scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/artifacts out/families
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            -o input/artifacts.json
+          python - <<'PY' > input/download_rows.txt
+          import json
+          d=json.load(open('input/artifacts.json'))
+          for a in d.get('artifacts',[]):
+              n=a['name']
+              p='d1-spektr-shared-glove-collar-calibrated-'
+              if n.startswith(p) and not a.get('expired'):
+                  print(n[len(p):],a['archive_download_url'])
+          PY
+          while read -r fam url; do
+            test -n "$fam"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "input/artifacts/${fam}.zip"
+            mkdir -p "out/families/${fam}"
+            unzip -q "input/artifacts/${fam}.zip" -d "out/families/${fam}"
+          done < input/download_rows.txt
+
+      - name: Aggregate calibrated candidates and prove exhaustive family coverage
+        env:
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          catalog_paths=[
+            'evidence/d1_player_gear_member_catalog.json',
+            'evidence/d1_investment_asset_member_catalog.json',
+            'evidence/d1_tower_shader_dependency_member_catalog.json',
+            'evidence/d1_tower_00ef_member_catalog.json',
+          ]
+          expected=set()
+          for p in catalog_paths:
+              expected.update(k.upper() for k in json.load(open(p)).get('families',{}))
+          reports={}
+          bad=[]
+          for p in sorted(Path('out/families').glob('*/*.json')):
+              d=json.load(open(p))
+              if d.get('schema')!='d1_remote_model_tgxm_active_signature_match/v1':
+                  continue
+              ids=d.get('scan_package_ids') or []
+              if len(ids)!=1:
+                  bad.append({'path':str(p),'reason':'not exactly one scan_package_id','ids':ids}); continue
+              fam=ids[0].upper()
+              if fam in reports:
+                  bad.append({'path':str(p),'reason':'duplicate family report','family':fam}); continue
+              reports[fam]=d
+          missing=sorted(expected-set(reports),key=lambda x:int(x,16))
+          extra=sorted(set(reports)-expected,key=lambda x:int(x,16))
+          if bad or missing or extra:
+              raise SystemExit(f'non-exhaustive aggregate bad={bad} missing={missing} extra={extra}')
+
+          rows=[]; matches=[]; errors=[]
+          for fam in sorted(reports,key=lambda x:int(x,16)):
+              d=reports[fam]
+              assert d['target']['tgxm_sha256']=='f5e7b2efae7d7737f87997c16dbc36047e0e685bc39f36c311435afc8c47d977'
+              assert d['target']['tgxm_file_identifier']=='984938936-0'
+              assert d['target_active_signature']['stage0_highest_part_counts']==[5,4]
+              assert d['target_active_signature']['vertex_counts']==[6921,760]
+              assert d['vertex_tolerance']==3
+              rows.append({
+                  'package_id':fam,
+                  'scanned_entity_model_count':d['scanned_entity_model_count'],
+                  'active_mesh_count_prefilter_count':d['active_mesh_count_prefilter_count'],
+                  'active_part_sequence_prefilter_count':d['active_part_sequence_prefilter_count'],
+                  'resolved_part_sequence_candidate_count':d['resolved_part_sequence_candidate_count'],
+                  'calibrated_active_structure_match_count':d['calibrated_active_structure_match_count'],
+                  'error_count':d['error_count'],
+              })
+              matches.extend(d['matches'])
+              errors.extend({'scan_family':fam,**x} for x in d['errors'])
+          rep={
+              'schema':'d1_spektar_shared_glove_collar_calibrated_scan_aggregate/v1',
+              'trigger_workflow_run':int(os.environ['TRIGGER_RUN_ID']),
+              'trigger_head_sha':os.environ['TRIGGER_HEAD_SHA'],
+              'target_tgxm_file_identifier':'984938936-0',
+              'target_tgxm_sha256':'f5e7b2efae7d7737f87997c16dbc36047e0e685bc39f36c311435afc8c47d977',
+              'target_active_stage0_highest_part_counts':[5,4],
+              'target_active_vertex_counts':[6921,760],
+              'vertex_tolerance':3,
+              'calibration_run':34041222260,
+              'calibration_artifact_id':9991725578,
+              'family_count':len(rows),
+              'families':[x['package_id'] for x in rows],
+              'total_scanned_entity_models':sum(x['scanned_entity_model_count'] for x in rows),
+              'total_active_mesh_count_prefilter':sum(x['active_mesh_count_prefilter_count'] for x in rows),
+              'total_active_part_sequence_prefilter':sum(x['active_part_sequence_prefilter_count'] for x in rows),
+              'total_resolved_part_sequence_candidates':sum(x['resolved_part_sequence_candidate_count'] for x in rows),
+              'calibrated_active_structure_match_count':len(matches),
+              'error_count':len(errors),
+              'family_rows':rows,
+              'matches':matches,
+              'errors':errors,
+              'policy':(
+                  'This is an exhaustive aggregate over every currently byte-verified player-gear, investment-asset, '
+                  'and race-set family in the four named catalogs. A calibrated signature match remains candidate '
+                  'evidence only until decoded geometry/topology and exact retail ownership are independently proven.'
+              ),
+          }
+          Path('out/shared_glove_collar_calibrated_aggregate.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('FAMILIES',rep['family_count'],'MODELS',rep['total_scanned_entity_models'])
+          print('ACTIVE_COUNT',rep['total_active_mesh_count_prefilter'],'PART_SEQUENCE',rep['total_active_part_sequence_prefilter'])
+          print('MATCHES',rep['calibrated_active_structure_match_count'],'ERRORS',rep['error_count'])
+          for x in matches:
+              c=x['comparison']
+              print('MATCH',x['package_id'],x['tag_hash'],'active',x['active_mesh_indices'],
+                    'verts',c['candidate_active_vertex_counts'],'delta',c['active_vertex_count_deltas_candidate_minus_target'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-spektr-shared-glove-collar-calibrated-AGGREGATE
+          path: |
+            out/shared_glove_collar_calibrated_aggregate.json
+            out/families
+          retention-days: 14
+          if-no-files-found: error
