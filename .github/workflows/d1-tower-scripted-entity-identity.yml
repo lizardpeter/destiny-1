@@ -107,33 +107,59 @@ jobs:
           set -e
           test "$rc" -eq 0 -o "$rc" -eq 2
 
-      - name: Write scripted identity summary
+      - name: Write scripted identity and articulated-coverage summary
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
+          import json,re
           d=json.load(open('reports/tower_scripted_entity_identity_census.json'))
           s=json.load(open('reports/tower_scripted_entity_global_strings.json'))
           resolved=s.get('resolved_targets',{})
+          # Exact SEntity owners in the currently source-closed A-G articulated census.
+          articulated_owners={
+            '80C7A05E','80C7A532','80C7A9A7','80C7ABCD',
+            '80C7AD82','80C7AE3E','80CA0CD6',
+            '80C7ADE5','80C7AE14','80C7AE15','80C7AE16','80C7AE1B',
+            '80C7AE17','80C7AE18','80C7AE19',
+          }
           named=[]
           for t in d.get('scripted_tables',[]):
               for r in t.get('records',[]):
                   h=r.get('entity_name_string_hash')
                   if h and h not in ('00000000','FFFFFFFF'):
+                      ent=(r.get('entity_hash') or '').upper()
+                      names=resolved.get(h,[])
+                      types=resolved.get(r.get('type_string_hash'),[])
+                      strings=[]
+                      for x in list(names)+list(types):
+                          if isinstance(x,str): strings.append(x)
+                          elif isinstance(x,dict): strings.extend(str(v) for v in x.values() if isinstance(v,(str,int,float)))
+                      text=' | '.join(strings)
                       named.append({
                           'world_id_hex':r.get('world_id_hex'),
-                          'entity_hash':r.get('entity_hash'),
+                          'entity_hash':ent,
                           'name_string_hash':h,
-                          'resolved_candidates':resolved.get(h,[]),
+                          'resolved_candidates':names,
                           'type_string_hash':r.get('type_string_hash'),
-                          'type_candidates':resolved.get(r.get('type_string_hash'),[]),
+                          'type_candidates':types,
                           'placement_match':r.get('placement_match'),
+                          'already_in_articulated_owner_set':ent in articulated_owners,
+                          'sweeper_keyword_candidate':bool(re.search(r'sweep|broom|janitor|clean|worker|maintenance',text,re.I)),
                       })
+          missing=[x for x in named if not x['already_in_articulated_owner_set']]
+          sweeper=[x for x in named if x['sweeper_keyword_candidate']]
           out={
               'status':'D1_TOWER_SCRIPTED_ENTITY_IDENTITY',
               'census':{k:d[k] for k in ('status','current_a705_count','current_d912_count','reachable_d912_from_a705_count','scripted_table_count','scripted_record_count','named_scripted_record_count','named_record_world_id_entity_match_count','named_record_full_transform_match_count','unique_entity_name_string_hash_count','unique_type_string_hash_count','violations')},
               'global_strings':{k:s[k] for k in ('status','target_count','resolved_target_count','unresolved_target_count','unresolved_targets','violations')},
+              'current_articulated_owner_count':len(articulated_owners),
+              'named_runtime_record_count':len(named),
+              'named_runtime_records_already_in_articulated_owner_set':sum(x['already_in_articulated_owner_set'] for x in named),
+              'named_runtime_records_outside_articulated_owner_set':len(missing),
               'named_runtime_records':named,
+              'named_runtime_records_missing_from_articulated_owner_set':missing,
+              'sweeper_keyword_candidates':sweeper,
+              'policy':'The 15-owner articulated set is exact for the current A-G census. A named scripted record outside that owner set is a source-backed coverage lead, not automatically an NPC. Keyword candidates are search aids only and do not prove character identity.',
           }
           json.dump(out,open('reports/TOWER_SCRIPTED_ENTITY_IDENTITY_SUMMARY.json','w'),indent=2)
           print(json.dumps(out,indent=2))
