@@ -5,6 +5,10 @@ on:
   workflow_run:
     workflows: ['D1 Tower light shader census']
     types: [completed]
+  push:
+    paths:
+      - '.github/workflows/d1-tower-light-shader-disassembly.yml'
+      - 'tools/d1_gcn_constant_buffer_usage_analyze.py'
 
 permissions:
   contents: read
@@ -75,7 +79,6 @@ jobs:
           d=json.load(open('reports/tower_light_gcn_constant_buffer_usage.json'))
           assert d['status']=='D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED',d['violations']
           assert d['shader_count']==32,d
-          # Preserve focused windows around every scalar-buffer load for manual/dataflow proof.
           out=[]
           by={x['shader']:x for x in d['shaders']}
           for sh,row in sorted(by.items()):
