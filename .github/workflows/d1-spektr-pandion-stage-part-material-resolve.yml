@@ -1,0 +1,89 @@
+name: D1 Spektar Pandion stage-part material resolve
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-stage-part-material-resolve.yml'
+      - 'tools/d1_guardian_stage_part_material_resolve.py'
+      - 'tools/d1_render_owner_probe.py'
+      - 'tools/d1_entity_model_probe.py'
+      - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_player_gear_member_catalog.json'
+      - 'evidence/d1_weapon_globals_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install parser dependencies, verified Oodle, and exact visual context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p runtime input/visual out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-spektr-pandion-visual-context-census&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/visual.zip
+          unzip -q input/visual.zip -d input/visual
+          test -f input/visual/spektar_masculine_visual_context.json
+
+      - name: Resolve every serialized highest-detail stage part
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_stage_part_material_resolve.py \
+            --visual-context input/visual/spektar_masculine_visual_context.json \
+            --model 80A8274E --model 80A85682 --model 809FDB1E --model 80A816E4 --model 80A862BA \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --member-catalog evidence/d1_weapon_globals_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/spektar_stage_part_materials.json
+
+      - name: Validate source-backed stage-part resolution
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/spektar_stage_part_materials.json'))
+          assert d['schema']=='d1_guardian_stage_part_material_resolve/v1',d
+          assert d['model_count']==5,d
+          assert d['unresolved_material_count']==0,d
+          assert d['highest_detail_part_count']>0,d
+          assert d['highest_detail_range_count']>0,d
+          assert set(d['highest_detail_lods'])=={0,1,2,3,10},d
+          # Existing exported geometry has 69 unique serialized ranges; the
+          # source-selected visible set may be <=69 but never invent more.
+          assert d['highest_detail_range_count']<=69,d
+          for r in d['ranges']:
+              assert r['active_material_count']>=1,r
+              assert len(r['gear_dye_change_color_indices'])==1,r
+          print('SPEKTAR STAGE-PART MATERIAL RESOLUTION PASSED')
+          print('highest parts',d['highest_detail_part_count'],'ranges',d['highest_detail_range_count'],
+                'multi-part',d['multi_part_highest_detail_range_count'],
+                'multi-material',d['multi_material_highest_detail_range_count'])
+          print('material packages',d['active_material_package_ids'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-stage-part-materials
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
