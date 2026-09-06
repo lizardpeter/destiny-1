@@ -1,0 +1,76 @@
+name: D1 archive character candidate index
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-archive-character-candidate-index.yml'
+      - 'tools/d1_remote_character_candidate_index.py'
+
+permissions:
+  contents: read
+
+env:
+  COMPLETE_LOCATION_ARTIFACT_ID: '9994964717'
+  COMPLETE_LOCATION_ZIP_SHA256: '0b6df62c3385e3250271be0c57876351e7b2a5076c6a2de056092a4d98446955'
+  COMPLETE_LOCATION_JSON_SHA256: '00cf59176c30217c5134fe42f9862b7717fb751ef2b34fd395bd60d995959ef0'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact 2105-package physical index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl --fail --location --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${COMPLETE_LOCATION_ARTIFACT_ID}/zip" \
+            -o input/location.zip
+          echo "${COMPLETE_LOCATION_ZIP_SHA256}  input/location.zip" | sha256sum --check --strict
+          unzip -q input/location.zip -d input/location
+          echo "${COMPLETE_LOCATION_JSON_SHA256}  input/location/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json" | sha256sum --check --strict
+
+      - name: Syntax check corpus indexer
+        run: python -m py_compile tools/d1_remote_character_candidate_index.py
+
+      - name: Census all current namespace families
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_character_candidate_index.py \
+            --location-index input/location/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --out out/D1_CHARACTER_CANDIDATE_INDEX.json \
+            | tee out/stdout.txt
+
+      - name: Lock corpus invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_CHARACTER_CANDIDATE_INDEX.json'))
+          assert d['status']=='D1_CHARACTER_CANDIDATE_INDEX_COMPLETE',d['status']
+          assert d['source']['physical_member_count']==2105
+          assert d['namespace_family_count']>337,d['namespace_family_count']
+          assert d['articulated_signature_family_count']>0
+          assert d['strong_character_payload_candidate_count']>0
+          assert not d['violations'],d['violations'][:5]
+          print('D1_ARCHIVE_CHARACTER_CANDIDATE_INDEX_EXACT')
+          print(json.dumps({k:d[k] for k in ('namespace_family_count','articulated_signature_family_count','strong_character_payload_candidate_count','namespace_candidate_counts','classification_counts')},indent=2))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-ARCHIVE-CHARACTER-CANDIDATE-INDEX
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
