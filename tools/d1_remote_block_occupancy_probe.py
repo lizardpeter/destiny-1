@@ -11,6 +11,12 @@ snapshot of its package family.  This matters because a block reused from patch
 1 may have a different logical block index in patch 5; the physical producer's
 entry table is therefore reported separately from the latest consumer table.
 
+For oo2core_3 package blocks, real decompressed block size is not serialized in
+the Tiger block table.  Independent oo2core_3 runtime usage shows valid unknown
+block output sizes are searched in 0x4000-byte steps.  Therefore the first
+0x4000-aligned size covering the serialized entry occupancy is an authoritative
+candidate rather than an arbitrary brute-force guess.
+
 No asset bytes are synthesized and no arbitrary raw-length brute force is done.
 """
 from __future__ import annotations
@@ -109,7 +115,12 @@ def occupancy(entries: list[dict], target_block: int) -> dict:
     candidates = {BLOCK_SIZE}
     if max_end > 0:
         candidates.add(max_end)
-        for a in (0x10, 0x100, 0x1000, 0x10000):
+        # 0x4000 is significant for oo2core_3 block decode: when the real
+        # uncompressed size is not serialized, runtime users search exact
+        # destination sizes in 0x4000-byte steps. Keep smaller alignment probes
+        # too because they remain useful diagnostics, but 0x4000 is the first
+        # Oodle-derived candidate rather than a format guess.
+        for a in (0x10, 0x100, 0x1000, 0x4000, 0x10000):
             x = align_up(max_end, a)
             if 0 < x <= BLOCK_SIZE:
                 candidates.add(x)
@@ -225,13 +236,13 @@ def main() -> int:
         results.append(rec)
 
     report = {
-        'schema': 'd1_remote_block_occupancy_probe/v1',
+        'schema': 'd1_remote_block_occupancy_probe/v2',
         'logical_block_capacity': BLOCK_SIZE,
         'entries': results,
         'policy': (
             'Candidate Oodle raw lengths are limited to the exact maximum serialized entry end in the block, '
-            'that end rounded upward to 0x10/0x100/0x1000/0x10000, and the canonical 0x40000 Tiger capacity. '
-            'No arbitrary length brute force is performed.'
+            'that end rounded upward to 0x10/0x100/0x1000/0x4000/0x10000, and the canonical 0x40000 Tiger capacity. '
+            'The 0x4000 step is source-backed oo2core_3 unknown-block sizing behavior; no arbitrary length brute force is performed.'
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
