@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-ps4-api13-census.yml'
       - 'tools/d1_ps4_api13_census.py'
+      - 'tools/d1_ps4_api13_peer_validate.py'
       - 'tools/d1_gcn_constant_buffer_usage_analyze.py'
 
 permissions:
@@ -95,6 +96,23 @@ jobs:
           hit=d['api13_dword6_hits'][0]['load']
           assert hit['width_dwords']==2 and hit['static_offset']==6 and hit['covered_dword_offsets']==[6,7],hit
           print('PS4_80CA0BE9_INDEPENDENT_API13_6_7_PEER_GREEN')
+          PY
+
+      - name: Validate independent peer RGB dataflow
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_api13_peer_validate.py \
+            --disasm upstream/common/disasm/PS_80CA0BE9.s \
+            --out reports/PS4_API13_80CA0BE9_PEER_PROOF.json \
+            | tee reports/PS4_API13_80CA0BE9_PEER_PROOF_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS4_API13_80CA0BE9_PEER_PROOF.json'))
+          assert d['status']=='D1_PS4_API13_PEER_80CA0BE9_VALIDATED',d
+          assert d['gcn_bytes']==480,d
+          assert d['api13_load']['start_dword']==6 and d['api13_load']['width_dwords']==2,d
+          assert d['producer_name_resolved'] is False and d['runtime_values_resolved'] is False,d
+          print('PS4_API13_PEER_RGB_DATAFLOW_GREEN')
           PY
 
       - uses: actions/upload-artifact@v4
