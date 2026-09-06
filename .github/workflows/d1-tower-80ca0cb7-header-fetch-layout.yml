@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 90
     env:
       LINOODLE_SKIP_DLLMAIN: '1'
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
