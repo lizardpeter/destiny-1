@@ -5,10 +5,11 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-activity-map-root-census.yml'
+      - 'evidence/d1_shared_manifest_0430_0431_member_catalog.json'
       - 'tools/d1_tower_recover_map_activity_root_corpus.py'
       - 'tools/d1_tower_recover_activity_root_corpus.py'
       - 'tools/d1_tower_recover_current_corpus.py'
-      - 'tools/d1_recover_package_ids.py'
+      - 'tools/d1_recover_member_catalog.py'
       - 'tools/d1_tag_manifest_resolver.py'
       - 'tools/d1_world_activity_manifest_dependency_plan.py'
       - 'tools/d1_world_activity_map_root_census.py'
@@ -75,11 +76,15 @@ jobs:
           print('TOWER_ACTIVITY_MANIFEST_DEPENDENCIES_DISCOVERED',json.dumps(expected,sort_keys=True))
           PY
 
+          # Physical recovery is pinned only after the serialized dependency plan has
+          # discovered the needed family IDs. This avoids rescanning the full split TAR
+          # while keeping 0430/0431 out of semantic world-selection inputs.
           mapfile -t manifest_ids < reports/tower_activity_manifest_package_ids.txt
           test "${#manifest_ids[@]}" -gt 0
-          manifest_args=(); for pid in "${manifest_ids[@]}"; do manifest_args+=(--package-id "$pid"); done
-          python tools/d1_recover_package_ids.py \
-            --package-list reports/packages.txt "${manifest_args[@]}" \
+          family_args=(); for pid in "${manifest_ids[@]}"; do family_args+=(--family "$pid"); done
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_shared_manifest_0430_0431_member_catalog.json \
+            --package-list reports/packages.txt "${family_args[@]}" \
             --out-dir recovered \
             --report reports/activity_discovered_manifest_recovery.json
 
