@@ -33,6 +33,20 @@ def test_independent_clamps_and_signed_lod_bias():
     assert d['border_color_type'] == 'white'
 
 
+def test_retail_80aae177_descriptor_fixture():
+    # Exact 16-byte descriptor payload at +0x08 in the validated D1 sampler tag.
+    # Source words: 00000000 00F00000 0A503F80 00000000.
+    raw = bytes.fromhex('000000000000f000803f500a00000000')
+    d = decode_sampler_bytes(raw)
+    assert (d['clamp_x'],d['clamp_y'],d['clamp_z']) == ('wrap','wrap','wrap')
+    assert d['xy_mag_filter'] == 'bilinear'
+    assert d['xy_min_filter'] == 'bilinear'
+    assert d['mip_filter'] == 'linear'
+    assert d['min_lod'] == 0.0
+    assert d['max_lod'] == 15.0
+    assert d['lod_bias'] == -0.5
+
+
 def test_reject_wrong_descriptor_size():
     try:
         decode_sampler_bytes(b'\x00' * 15)
