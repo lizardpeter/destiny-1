@@ -1,0 +1,106 @@
+name: D1 Crota scripted entity tables
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-scripted-entity-tables.yml'
+      - 'tools/d1_crota_scripted_entity_table_probe.py'
+      - 'tools/d1_world_scripted_entity_identity_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  BACKLINK_ARTIFACT_ID: '9996466006'
+  BACKLINK_ZIP_SHA256: '606fc1dd7ed7fc7fc4219dee73d4aa0de4021219321138724a5c0cf0bd77f3d5'
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact catalogs and backlink evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/backlinks runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BACKLINK_ARTIFACT_ID}/zip" -o input/backlinks.zip
+          echo "${BACKLINK_ZIP_SHA256}  input/backlinks.zip" | sha256sum --check --strict
+          unzip -q input/backlinks.zip -d input/backlinks
+          test -f input/backlinks/CROTA_UNRESOLVED_COMBATANT_BACKLINKS.json
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Decode exact 808012D9 backlink sources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_crota_scripted_entity_table_probe.py
+          mapfile -t tables < <(python - <<'PY'
+          import json
+          d=json.load(open('input/backlinks/CROTA_UNRESOLVED_COMBATANT_BACKLINKS.json'))
+          rows=sorted({x['source_tag_hash'] for x in d['hits'] if x['reference']=='808012D9'})
+          assert '8108EF3A' in rows,rows
+          print('\n'.join(rows))
+          PY
+          )
+          args=()
+          for h in "${tables[@]}"; do args+=(--table "$h"); done
+          python tools/d1_crota_scripted_entity_table_probe.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            "${args[@]}" \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime \
+            -o out/CROTA_SCRIPTED_ENTITY_TABLES.json | tee out/stdout.txt
+
+      - name: Lock schema-specific Crota frontier invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SCRIPTED_ENTITY_TABLES.json'))
+          assert d['status']=='D1_CROTA_SCRIPTED_ENTITY_TABLES_EXACT',d['violations']
+          assert d['violations']==[],d['violations']
+          assert d['entity_hash_counts'].get('8108EFFC')==3,d['entity_hash_counts']
+          t=next(x for x in d['tables'] if x['scripted_entity_table']=='8108EF3A')
+          assert t['reference']=='808012D9',t
+          assert t['entity_hash_counts']=={'8108EFFC':3},t['entity_hash_counts']
+          assert t['record_count']==3,t
+          print('CROTA_8108EF3A_D912_SCHEMA_CLOSED')
+          print('FAMILY',t['script_family_string_hash'])
+          print('TYPES',t['type_string_hash_counts'])
+          print('INSTANCE_NAMES',t['entity_name_string_hash_counts'])
+          for r in t['records']:
+              print('RECORD',r['record_index'],'ENTITY',r.get('entity_hash'),'WORLD',r.get('world_id_hex'),'NAME',r.get('entity_name_string_hash'),'POS',r.get('translation'))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-SCRIPTED-ENTITY-TABLES
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
