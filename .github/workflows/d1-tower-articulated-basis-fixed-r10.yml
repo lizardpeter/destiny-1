@@ -1,0 +1,91 @@
+name: D1 Tower articulated basis-fixed r10
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-articulated-basis-fixed-r10.yml'
+      - 'tools/d1_gltf_unapply_parser_basis.py'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+      - 'tools/d1_gltf_skin_geometry_alignment_probe.py'
+      - 'tools/d1_gltf_animation_skin_deformation_probe.py'
+      - 'tools/d1_gltf_layer_merge.py'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q numpy scipy
+      - name: Recover exact articulated r9 input
+        run: |
+          set -euo pipefail
+          mkdir -p input out reports
+          curl --fail --location --retry 5 --retry-delay 2 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-articulated-e-f-g-animated-r9-exact-resources/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb' \
+            -o input/r9.glb
+          test "$(stat -c%s input/r9.glb)" = 76004468
+          echo '5b459d7ec8e9c9912ce63bb3f988c8c02b87b020bca0b17f4fee120609e237a2  input/r9.glb' | sha256sum --check --strict
+      - name: Record pre-fix Family E alignment and deformation
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_skin_geometry_alignment_probe.py input/r9.glb --model 80CA0CFC -o reports/FAMILY_E_ALIGNMENT_BEFORE.json
+          python tools/d1_gltf_animation_skin_deformation_probe.py input/r9.glb --model 80CA0CFC -o reports/FAMILY_E_DEFORMATION_BEFORE.json
+      - name: Restore E F G skeletons and animation to native D1 model basis
+        run: |
+          python tools/d1_gltf_unapply_parser_basis.py input/r9.glb \
+            --out out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
+            --report reports/TOWER_ARTICULATED_R10_BASIS_FIX.json
+      - name: Prove post-fix skin algebra and spatial alignment
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_skin_bind_identity_probe.py out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
+            --model 80CA0CFC --model 80C7AF4C --model 80C7AE59 --max-error 2e-5 -o reports/E_F_G_BIND_IDENTITY_AFTER.json
+          python tools/d1_gltf_skin_geometry_alignment_probe.py out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
+            --model 80CA0CFC -o reports/FAMILY_E_ALIGNMENT_AFTER.json
+          python tools/d1_gltf_animation_skin_deformation_probe.py out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
+            --model 80CA0CFC -o reports/FAMILY_E_DEFORMATION_AFTER.json
+      - name: Enforce the basis-fix improvement
+        run: |
+          python - <<'PY'
+          import json,hashlib
+          pre=json.load(open('reports/FAMILY_E_ALIGNMENT_BEFORE.json'));post=json.load(open('reports/FAMILY_E_ALIGNMENT_AFTER.json'));fix=json.load(open('reports/TOWER_ARTICULATED_R10_BASIS_FIX.json'));bind=json.load(open('reports/E_F_G_BIND_IDENTITY_AFTER.json'));before=json.load(open('reports/FAMILY_E_DEFORMATION_BEFORE.json'));after=json.load(open('reports/FAMILY_E_DEFORMATION_AFTER.json'))
+          assert fix['status']=='D1_TOWER_ARTICULATED_TIGER_PARSER_BASIS_FIXED',fix
+          assert bind['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and bind['max_observed_error'] <= 2e-5,bind
+          # Native model-space skeleton must now be tall on Z, matching geometry rather than parser-space Y.
+          ge=post['geometry_extent'];se=post['skeleton_extent']
+          assert ge[2] > ge[1] and se[2] > se[1],(ge,se)
+          assert abs(se[2]-ge[2]) < 0.35,(ge,se)
+          assert post['centroid_distance_median'] < pre['centroid_distance_median']*0.5,(pre['centroid_distance_median'],post['centroid_distance_median'])
+          # Fix must not turn animation into unbounded numerical geometry.
+          assert after['max_sample_diagonal_ratio_to_bind'] < 5.0,after['max_sample_diagonal_ratio_to_bind']
+          p='out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb';sha=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          summary={'status':'D1_TOWER_ARTICULATED_R10_BASIS_FIX_GREEN','output_bytes':__import__('os').path.getsize(p),'output_sha256':sha,'alignment_before_median':pre['centroid_distance_median'],'alignment_after_median':post['centroid_distance_median'],'geometry_extent':ge,'skeleton_extent_after':se,'deformation_ratio_before':before['max_sample_diagonal_ratio_to_bind'],'deformation_ratio_after':after['max_sample_diagonal_ratio_to_bind'],'bind_error_after':bind['max_observed_error']}
+          json.dump(summary,open('reports/ARTICULATED_R10_SUMMARY.json','w'),indent=2);print(json.dumps(summary,indent=2))
+          PY
+      - name: Publish corrected articulated r10 canary
+        run: |
+          set -euo pipefail
+          tag=d1-tower-articulated-e-f-g-animated-r10-basis-fixed
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title 'D1 Tower articulated E F G animated r10 basis-fixed' \
+              --notes 'Corrects a concrete coordinate-basis bug in r9: tiger-animation-parser already maps native Tiger/D1 [x,y,z] to [y,z,x], while Tower geometry remained native D1 and the placement root applied the Tower D1-to-glTF adapter. r10 restores E/F/G bind skeletons, inverse binds and animation tracks to native D1 model space before the existing placement transform. Mesh positions, source weights, materials, placement matrices and action identity are unchanged.'
+          fi
+          gh release upload "$tag" out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb reports/ARTICULATED_R10_SUMMARY.json reports/TOWER_ARTICULATED_R10_BASIS_FIX.json --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-articulated-basis-fixed-r10
+          path: |
+            out/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R10_BASIS_FIXED.glb
+            reports/*.json
+          retention-days: 14
+          compression-level: 6
