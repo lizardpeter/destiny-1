@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Resolve exact D1 PS4 pixel-material constant vectors for selected materials.
+"""Resolve and structurally probe D1 PS4 pixel-material vector data.
 
-D1 ROI materials can store pixel-stage b0 vectors in two forms:
-  * external PS Vector4 container at Material +0x32C (PS4 subtype 32:7), or
-  * inline DynamicArray<Vec4> at Material +0x300 when the external hash is null.
+The ROI Material PS region contains several independent structures: TFX bytecode,
+samplers, TFX-expression data, GPU constant-buffer data, and an optional external
+PS Vector4 container at +0x32C.  Earlier tooling incorrectly treated +0x300 and
++0x32C as mutually exclusive storage modes.  Retail 809DCD66 materials prove that
+both can coexist and that the external 32:7 payload may be a byte-identical mirror.
 
-This tool preserves both paths independently, including raw u32 words and source
-provenance. It does not assign shader-semantic names to vector slots.
+This tool therefore preserves raw structure first.  It decodes the known +0x300
+DynamicArray<Vec4>, resolves +0x32C when present, compares both payloads exactly,
+and emits bounded DynamicArray probes across the surrounding PS control region.
+No semantic name is assigned to an unresolved array solely from its offset.
 """
 from __future__ import annotations
 
@@ -32,32 +36,52 @@ def norm(h: object) -> str:
     return str(h).upper().removeprefix("0X").zfill(8)
 
 
-def inline_ps_vectors(material_bytes: bytes) -> dict:
-    o = 0x300
-    if len(material_bytes) < o + 16:
-        return {"error": f"material too small for inline PS DynamicArray header: {len(material_bytes):#x}"}
-    count, abs_off, elem_size = rel_array(material_bytes, o, 16)
-    rel = struct.unpack_from("<q", material_bytes, o + 8)[0]
-    end = abs_off + count * elem_size
-    row = {
-        "header_offset": o,
-        "count": count,
-        "element_size": elem_size,
-        "relative_pointer": rel,
-        "absolute_offset": abs_off,
-        "payload_bytes": count * elem_size,
-        "header_hex": material_bytes[o : o + 16].hex(),
-    }
-    if abs_off < 0 or end < abs_off or end > len(material_bytes):
-        row["error"] = (
-            f"inline PS vec4 array out of bounds: off={abs_off:#x}, "
-            f"count={count}, elem={elem_size:#x}, end={end:#x}, len={len(material_bytes):#x}"
-        )
+def array_probe(material_bytes: bytes, o: int, elem_size: int = 16) -> dict:
+    row = {"header_offset": o, "element_size_candidate": elem_size}
+    if o < 0 or o + 16 > len(material_bytes):
+        row["error"] = "header out of bounds"
         return row
-    payload = material_bytes[abs_off:end]
-    row["payload_hex"] = payload.hex()
-    row["vectors"] = decode_vec4s(payload)
+    count = struct.unpack_from("<I", material_bytes, o)[0]
+    reserved = struct.unpack_from("<I", material_bytes, o + 4)[0]
+    rel = struct.unpack_from("<q", material_bytes, o + 8)[0]
+    abs_off = (o + 8) + rel + 0x10
+    end = abs_off + count * elem_size
+    row.update(
+        {
+            "count": count,
+            "reserved_u32": reserved,
+            "relative_pointer": rel,
+            "absolute_offset": abs_off,
+            "candidate_end": end,
+            "header_hex": material_bytes[o : o + 16].hex(),
+            "candidate_in_bounds": bool(0 <= abs_off <= end <= len(material_bytes)),
+        }
+    )
+    if row["candidate_in_bounds"] and count <= 256:
+        payload = material_bytes[abs_off:end]
+        row["candidate_payload_hex"] = payload.hex()
+        if elem_size == 16:
+            try:
+                row["candidate_vectors"] = decode_vec4s(payload)
+            except Exception as ex:
+                row["candidate_decode_error"] = repr(ex)
     return row
+
+
+def vec4_array(material_bytes: bytes, o: int) -> dict:
+    p = array_probe(material_bytes, o, 16)
+    if p.get("error"):
+        return p
+    if not p.get("candidate_in_bounds"):
+        p["error"] = (
+            f"vec4 array out of bounds: off={p.get('absolute_offset'):#x}, "
+            f"count={p.get('count')}, end={p.get('candidate_end'):#x}, len={len(material_bytes):#x}"
+        )
+        return p
+    p["vectors"] = p.pop("candidate_vectors", [])
+    p["payload_hex"] = p.pop("candidate_payload_hex", "")
+    p["payload_bytes"] = int(p.get("count", 0)) * 16
+    return p
 
 
 def resolve_material(c, material_hash: str) -> dict:
@@ -82,21 +106,32 @@ def resolve_material(c, material_hash: str) -> dict:
         return row
 
     psc = norm(p["ps_vector4_container"])
-    inline = inline_ps_vectors(b)
-    external = None
-    if psc not in NULLS:
-        external = export_container(c, psc)
-
-    inline_count = int(inline.get("count", 0)) if not inline.get("error") else None
+    a300 = vec4_array(b, 0x300)
+    external = export_container(c, psc) if psc not in NULLS else None
     external_ok = bool(external is not None and not external.get("error"))
-    if psc not in NULLS and inline_count == 0:
-        mode = "external"
-    elif psc in NULLS and inline_count and inline_count > 0:
-        mode = "inline"
-    elif psc in NULLS and inline_count == 0:
-        mode = "none"
+
+    a300_hex = a300.get("payload_hex") if not a300.get("error") else None
+    external_hex = None
+    if external_ok:
+        external_hex = "".join(
+            "".join(struct.pack("<I", int(x, 16)).hex() for x in v["u32_hex"])
+            for v in external.get("vectors", [])
+        )
+    mirror_equal = None if external is None or a300_hex is None or not external_ok else (a300_hex == external_hex)
+
+    if external is None:
+        relation = "array_300_only"
+    elif external_ok and mirror_equal:
+        relation = "array_300_plus_external_identical"
+    elif external_ok:
+        relation = "array_300_plus_external_different"
     else:
-        mode = "mixed_or_unexpected"
+        relation = "array_300_plus_external_unresolved"
+
+    # Keep the complete region plus a deliberately redundant 8-byte-step scan.
+    # The scan is forensic: only explicitly parsed structures receive semantic names.
+    probe_offsets = list(range(0x2D0, 0x330, 8))
+    probes = {f"{o:03X}": array_probe(b, o, 16) for o in probe_offsets}
 
     row.update(
         {
@@ -104,18 +139,21 @@ def resolve_material(c, material_hash: str) -> dict:
             "pixel_shader": norm(p["pixel_shader"]),
             "vertex_shader": norm(p["vertex_shader"]),
             "ps_texture_tags": p["ps_textures"]["items"],
+            "ps_tfx_bytecode": p["ps_tfx_bytecode"],
             "ps_vector4_container": psc,
-            "storage_mode": mode,
-            "inline": inline,
+            "array_300": a300,
             "external": external,
             "external_resolved": external_ok,
-            "material_constant_window_2f0_340_hex": b[0x2F0 : min(len(b), 0x340)].hex(),
+            "array_300_external_byte_identical": mirror_equal,
+            "vector_storage_relation": relation,
+            "dynamic_array_candidate_scan": probes,
+            "material_ps_control_window_2d0_340_hex": b[0x2D0 : min(len(b), 0x340)].hex(),
         }
     )
-    if inline.get("error"):
-        row["error"] = inline["error"]
-    elif psc not in NULLS and external is not None and external.get("error"):
-        row["error"] = f"external constant container unresolved: {external['error']}"
+    if a300.get("error"):
+        row["error"] = a300["error"]
+    elif external is not None and not external_ok:
+        row["error"] = f"external constant container unresolved: {external.get('error')}"
     return row
 
 
@@ -130,27 +168,28 @@ def main() -> int:
     c = v5.v3.base.Corpus([p.resolve() for p in a.snapshot], a.runtime.resolve())
     materials = {norm(h): resolve_material(c, h) for h in a.tag_hash}
     errors = [h for h, r in materials.items() if r.get("error")]
-    modes: dict[str, int] = {}
+    relations: dict[str, int] = {}
     for r in materials.values():
-        m = r.get("storage_mode", "error")
-        modes[m] = modes.get(m, 0) + 1
+        k = r.get("vector_storage_relation", "error")
+        relations[k] = relations.get(k, 0) + 1
 
     out = {
-        "schema_version": 1,
-        "status": "D1_PS_MATERIAL_CONSTANTS_EXACT" if not errors else "D1_PS_MATERIAL_CONSTANTS_PARTIAL",
+        "schema_version": 2,
+        "status": "D1_PS_MATERIAL_VECTOR_PROBE_EXACT" if not errors else "D1_PS_MATERIAL_VECTOR_PROBE_PARTIAL",
         "selected_material_count": len(materials),
-        "storage_mode_counts": modes,
+        "vector_storage_relation_counts": relations,
         "error_count": len(errors),
         "error_materials": errors,
         "materials": materials,
         "policy": (
-            "Exact PS4 Material +0x300 inline DynamicArray<Vec4> and +0x32C external subtype-32:7 "
-            "resolution. Raw vectors are preserved; shader-semantic roles are not inferred here."
+            "Raw PS4 ROI material-vector structure. +0x300 is decoded structurally as DynamicArray<Vec4>; "
+            "+0x32C external subtype-32:7 is resolved independently and byte-compared. Surrounding array scans "
+            "are forensic candidates only until retail/schema dataflow closes their semantic role."
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + "\n")
-    print(json.dumps({k: out[k] for k in ("status", "selected_material_count", "storage_mode_counts", "error_count")}, indent=2))
+    print(json.dumps({k: out[k] for k in ("status", "selected_material_count", "vector_storage_relation_counts", "error_count")}, indent=2))
     return 0 if not errors else 2
 
 
