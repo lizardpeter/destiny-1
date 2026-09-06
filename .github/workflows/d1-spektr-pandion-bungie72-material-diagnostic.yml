@@ -1,0 +1,151 @@
+name: D1 Spektar Bungie72 source-backed material diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie72-material-diagnostic.yml'
+      - 'tools/d1_guardian_stage0_source_attributes_patch.py'
+      - 'tools/d1_guardian_spasm_change_color_bake.py'
+      - 'tools/d1_guardian_texcoord2_lane_probe.py'
+      - 'tools/d1_entity_model_export.py'
+      - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_player_gear_member_catalog.json'
+      - 'evidence/d1_weapon_globals_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Dependencies, verified Oodle runtime, and exact evidence artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pillow trimesh
+          mkdir -p runtime input/bungie72 input/vs input/stage_dyes input/dyes input/detail out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact 'D1-SPEKTAR-PANDION-BUNGIE-72-PLAYER-PREVIEW' input/bungie72.zip input/bungie72
+          fetch_artifact 'd1-spektr-pandion-stage0-vs-join' input/vs.zip input/vs
+          fetch_artifact 'd1-spektr-pandion-stage-part-dyes' input/stage_dyes.zip input/stage_dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dyes' input/dyes.zip input/dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dye-detail-textures' input/detail.zip input/detail
+
+          test -f input/bungie72/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb
+          test -f input/vs/spektar_stage0_vs_join.json
+          test -f input/stage_dyes/spektar_masculine_stage_part_dyes.json
+          test -f input/dyes/spektar_pandion_exact_dyes.json
+          test -f input/detail/spektar_dye_detail_textures.json
+
+      - name: Restore exact retail normals and D1 detail UV multiplier
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_stage0_source_attributes_patch.py \
+            input/bungie72/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb \
+            --vs-join input/vs/spektar_stage0_vs_join.json \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --member-catalog evidence/d1_weapon_globals_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --report out/source_attributes.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV.glb
+
+      - name: Bake exact archived Bungie change-color path for a Cycles-safe diagnostic
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_spasm_change_color_bake.py \
+            out/SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV.glb \
+            --stage-dyes input/stage_dyes/spektar_masculine_stage_part_dyes.json \
+            --exact-dyes input/dyes/spektar_pandion_exact_dyes.json \
+            --report out/spasm_change_color.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_CHANGE_COLOR_UNLIT_SOURCE_ATTRS.glb
+
+      - name: Validate geometry attributes, material path, and unchanged skin deformation
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_skin_deformation_bounds.py \
+            out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_CHANGE_COLOR_UNLIT_SOURCE_ATTRS.glb \
+            --frame 0 --frame 30 --frame 60 --frame 100 --frame 145 \
+            -o out/deformation_bounds.json
+          python - <<'PY'
+          import json,struct
+          p='out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_CHANGE_COLOR_UNLIT_SOURCE_ATTRS.glb'
+          raw=open(p,'rb').read(); jl=struct.unpack_from('<I',raw,12)[0]; g=json.loads(raw[20:20+jl].decode().rstrip('\x00 '))
+          active=[]
+          for n in g['nodes']:
+              if n.get('mesh') is None: continue
+              m=g['meshes'][n['mesh']]; assert len(m['primitives'])==1,m.get('name')
+              pr=m['primitives'][0]; attrs=pr['attributes']
+              assert {'POSITION','TEXCOORD_0','NORMAL','TEXCOORD_1','JOINTS_0','WEIGHTS_0'} <= set(attrs), (m.get('name'),attrs)
+              pc=g['accessors'][attrs['POSITION']]['count']
+              assert g['accessors'][attrs['NORMAL']]['count']==pc
+              assert g['accessors'][attrs['TEXCOORD_1']]['count']==pc
+              assert 'd1SourceAttributeRestore' in (m.get('extras') or {}),m.get('name')
+              mat=g['materials'][pr['material']]
+              assert 'KHR_materials_unlit' in (mat.get('extensions') or {}),mat.get('name')
+              active.append(m.get('name'))
+          assert len(active)==28,len(active)
+          assert 'KHR_materials_unlit' in g.get('extensionsUsed',[])
+          d=json.load(open('out/deformation_bounds.json'))
+          assert d['skin_joint_count']==72,d
+          assert d['bind_identity_max_error'] < 1e-4,d
+          for s in d['samples']:
+              x,y,z=s['span']; assert 0.5<x<1.3 and 1.5<y<2.2 and 0.3<z<1.3,s
+          print('SOURCE ATTRIBUTES + SPASM COLOR DIAGNOSTIC PASSED; active',len(active))
+          PY
+          sha256sum out/*.glb > out/SHA256SUMS.txt
+
+      - name: Preserve exact six dye-detail textures beside diagnostic
+        run: |
+          set -euo pipefail
+          mkdir -p out/exact_dye_detail_textures
+          find input/detail -maxdepth 1 -type f -name '*.png' -exec cp '{}' out/exact_dye_detail_textures/ \;
+          cp input/detail/spektar_dye_detail_textures.json out/exact_dye_detail_textures/
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion Titan Bungie72 material diagnostic
+
+          Improvements over the previous 72-bone checkpoint:
+          - restores exact retail NORMAL for every one of the 28 active stage-0 ranges;
+          - restores exact per-vertex D1 dye-detail multiplier as TEXCOORD_1 for every active range;
+          - bakes Bungie's archived D1 Spasm albedo + GStack.R + exact change-color path;
+          - uses KHR_materials_unlit in the color diagnostic so Blender/Cycles lighting cannot turn the preview artificially black;
+          - preserves the six exact retail Spektar dye-detail diffuse/normal textures in this artifact.
+
+          The unlit GLB is deliberately not claimed as the final PS4 material. It validates the exact published Spasm
+          change-color path while remaining portable. The exact detail textures and detail UV multiplier are now both
+          recovered, but their multi-texture overlay cannot be represented by core glTF PBR without baking or a custom
+          material graph. Native/specular material reconstruction continues separately.
+
+          TANGENT is not emitted yet: source tangent xyz is decoded, but glTF requires a fourth handedness component and
+          that exact component is not promoted until its source semantics are closed.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-BUNGIE72-SOURCE-ATTRS-SPASM-COLOR
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
