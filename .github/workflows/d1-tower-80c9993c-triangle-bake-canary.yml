@@ -1,0 +1,169 @@
+name: D1 Tower 80C9993C triangle bake canary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80c9993c-triangle-bake-canary.yml'
+      - 'tools/d1_tower_80c9993c_triangle_bake.py'
+      - 'tools/d1_tower_80ca0cb7_static_inputs.py'
+      - 'tools/d1_tower_grass_shader_80c9994a.py'
+      - 'tests/test_d1_tower_80c9993c_triangle_bake.py'
+      - 'tests/test_d1_tower_80ca0cb7_static_inputs.py'
+      - 'tests/test_d1_tower_grass_shader_80c9994a.py'
+      - 'tools/d1_ps4_gnm_sampler.py'
+      - 'tests/test_d1_ps4_gnm_sampler.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Run scoped shader/fetch/bake tests
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy pillow trimesh pytest texture2ddecoder
+          pytest -q \
+            tests/test_d1_tower_80c9993c_triangle_bake.py \
+            tests/test_d1_tower_80ca0cb7_static_inputs.py \
+            tests/test_d1_tower_grass_shader_80c9994a.py \
+            tests/test_d1_ps4_gnm_sampler.py
+
+      - name: Recover exact Tower source families and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p index runtime packages reports target_textures proof
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Export exact retail target textures
+        run: |
+          set -euo pipefail
+          cat > reports/selected_visual.json <<'JSON'
+          {
+            "status": "D1_80C9993C_TRIANGLE_BAKE_SELECTOR",
+            "materials": {"80C9993C": {"visual": true}}
+          }
+          JSON
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_material_texture_export.py "${args[@]}" \
+            --runtime runtime --visual-json reports/selected_visual.json --out target_textures
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('target_textures/material_texture_manifest.json'))
+          assert d['material_decode_errors']==0,d
+          assert d['texture_errors']==0,d
+          assert d['unique_texture_tags']==3,d
+          m=d['materials']['80C9993C']
+          assert m['vertex_shader']=='80CA0CB7' and m['pixel_shader']=='80C9994A',m
+          c=d['textures']['80C9988C']; mask=d['textures']['80C9988E']
+          assert c['format_name']=='BC3' and c['native_colorspace_hint']=='sRGB',c
+          assert mask['format_name']=='BC4' and mask['native_colorspace_hint']=='linear',mask
+          assert Path('target_textures/textures',c['png']).is_file()
+          assert Path('target_textures/textures',mask['png']).is_file()
+          print('TEXTURE_GATE',json.dumps({'color':c,'mask':mask},indent=2))
+          PY
+
+      - name: Bake exact-control grass RGB proof atlas and GLB
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          color_png="$(find target_textures/textures -name '80C9988C_*_BC3.png' -print -quit)"
+          mask_png="$(find target_textures/textures -name '80C9988E_*_BC4.png' -print -quit)"
+          test -n "$color_png"; test -n "$mask_png"
+          python tools/d1_tower_80c9993c_triangle_bake.py "${args[@]}" \
+            --runtime runtime --color-png "$color_png" --mask-png "$mask_png" \
+            --out-glb proof/D1_TOWER_80C9993C_NATIVE_CONTROL_RGB_PROOF.glb \
+            --out-atlas proof/D1_TOWER_80C9993C_NATIVE_CONTROL_RGB_ATLAS.png \
+            --report proof/D1_TOWER_80C9993C_NATIVE_CONTROL_RGB_REPORT.json
+
+      - name: Validate proof artifact independently
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import numpy as np
+          from PIL import Image
+          import trimesh
+
+          gp=Path('proof/D1_TOWER_80C9993C_NATIVE_CONTROL_RGB_PROOF.glb')
+          ap=Path('proof/D1_TOWER_80C9993C_NATIVE_CONTROL_RGB_ATLAS.png')
+          rp=Path('proof/D1_TOWER_80C9993C_NATIVE_CONTROL_RGB_REPORT.json')
+          assert gp.stat().st_size>10000 and ap.stat().st_size>1000 and rp.stat().st_size>1000
+          r=json.load(open(rp))
+          assert r['status']=='D1_80C9993C_TRIANGLE_ATLAS_VISUAL_ADAPTER',r
+          assert r['material']=='80C9993C' and r['vertex_shader']=='80CA0CB7' and r['pixel_shader']=='80C9994A'
+          assert r['atlas']['triangle_count']==648,r['atlas']
+          assert [(x['static_index'],x['triangles']) for x in r['draws']]==[(579,232),(799,416)],r['draws']
+          assert r['sampler']['hash']=='80AAE177' and r['sampler']['wrap_xyz']=='Wrap'
+          im=np.asarray(Image.open(ap).convert('RGBA'))
+          assert list(im.shape[:2][::-1])==[r['atlas']['width'],r['atlas']['height']]
+          occupied=im[...,3]>0
+          assert occupied.any()
+          rgb=im[occupied,:3]
+          assert len(np.unique(rgb.reshape(-1,3),axis=0))>100
+          assert int(rgb.max())>int(rgb.min())
+
+          s=trimesh.load(gp,force='scene',process=False)
+          assert isinstance(s,trimesh.Scene)
+          assert len(s.geometry)==2,(len(s.geometry),s.geometry.keys())
+          tris=sum(len(g.faces) for g in s.geometry.values())
+          verts=sum(len(g.vertices) for g in s.geometry.values())
+          assert tris==648,tris
+          assert verts==648*3,verts
+          for name,g in s.geometry.items():
+              assert getattr(g.visual,'uv',None) is not None,name
+              assert len(g.visual.uv)==len(g.vertices),(name,len(g.visual.uv),len(g.vertices))
+              assert g.visual.material is not None,name
+          out={
+            'status':'D1_80C9993C_TRIANGLE_BAKE_CANARY_PASS',
+            'glb_bytes':gp.stat().st_size,
+            'atlas_bytes':ap.stat().st_size,
+            'glb_sha256':hashlib.sha256(gp.read_bytes()).hexdigest(),
+            'atlas_sha256':hashlib.sha256(ap.read_bytes()).hexdigest(),
+            'geometry_count':len(s.geometry),'triangles':tris,'vertices':verts,
+            'occupied_atlas_pixels':int(occupied.sum()),
+            'unique_occupied_rgb':int(len(np.unique(rgb.reshape(-1,3),axis=0))),
+            'rgb_min':int(rgb.min()),'rgb_max':int(rgb.max()),
+            'approximation_boundary':r['approximation_boundary'],
+          }
+          Path('proof/CANARY.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80c9993c-native-control-rgb-proof
+          path: |
+            proof/
+            target_textures/material_texture_manifest.json
+            reports/selected_visual.json
+            reports/recovery.json
+          retention-days: 14
+          compression-level: 6
