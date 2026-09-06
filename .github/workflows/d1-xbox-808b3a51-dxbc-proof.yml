@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           python -m pip install --quiet gdown
           sudo apt-get update -qq
-          sudo apt-get install -y -qq vkd3d-compiler
+          sudo apt-get install -y -qq vkd3d-compiler spirv-tools
           mkdir -p runtime retail out reports
           gdown '1ZlnqOedZoCBE1oUoiFfIUFKSsJZJZm6D' -O retail/xboxone_arch_cabal_0059_1.pkg
           echo '8836546ecbbbf6ba31fd50035a180c80c7bcb6407780f4b61be7a8217d24fde8  retail/xboxone_arch_cabal_0059_1.pkg' | sha256sum --check --strict
@@ -39,6 +39,7 @@ jobs:
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
           vkd3d-compiler --version | tee reports/vkd3d_version.txt
           vkd3d-compiler -x dxbc-tpf --print-target-types | tee reports/vkd3d_dxbc_targets.txt
+          spirv-dis --version | tee reports/spirv_tools_version.txt
 
       - name: Extract exact material and DXBC from retail bytes
         run: |
@@ -63,19 +64,21 @@ jobs:
           print('EXACT_808B3A51_DXBC_DECLARATIONS_GREEN')
           PY
 
-      - name: Disassemble exact DXBC token stream
+      - name: Translate exact DXBC to readable SPIR-V cross-check
         run: |
           set -euo pipefail
-          if grep -q 'd3d-asm' reports/vkd3d_dxbc_targets.txt; then
-            vkd3d-compiler -x dxbc-tpf -b d3d-asm --formatting=offsets,header,signatures \
-              out/808B3A51.dxbc > reports/808B3A51.d3dasm
-          else
-            echo 'd3d-asm target unavailable' >&2
-            exit 2
-          fi
-          test -s reports/808B3A51.d3dasm
-          grep -E 'cb13|cbuffer|t0|t1|sample|mad|mul' reports/808B3A51.d3dasm | tee reports/808B3A51_key_lines.txt || true
-          sha256sum out/* reports/808B3A51.d3dasm | tee reports/808B3A51_output_sha256.txt
+          # The Ubuntu 24.04 vkd3d 1.2 package cannot emit d3d-asm, but it can
+          # translate the exact tokenized DXBC to SPIR-V. Raw DXBC/chunks above
+          # remain the canonical evidence; this translation is a readable
+          # semantic cross-check only.
+          vkd3d-compiler -x dxbc-tpf -b spirv-binary out/808B3A51.dxbc -o out/808B3A51.spv
+          spirv-val out/808B3A51.spv
+          spirv-dis --raw-id out/808B3A51.spv -o reports/808B3A51.spvasm
+          test -s reports/808B3A51.spvasm
+          grep -E 'DescriptorSet|Binding|Uniform|ImageSample|F(Mul|Add|Sub|Div)|Dot|VectorTimesScalar|CompositeExtract|Store' \
+            reports/808B3A51.spvasm > reports/808B3A51_spirv_key_lines.txt || true
+          sha256sum out/* reports/808B3A51.spvasm | tee reports/808B3A51_output_sha256.txt
+          echo 'EXACT_DXBC_PLUS_SPIRV_SEMANTIC_CROSSCHECK_GREEN'
 
       - uses: actions/upload-artifact@v4
         if: always()
