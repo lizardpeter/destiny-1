@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/d1-spektr-pandion-visual-exports.yml'
       - 'tools/d1_gltf_stage0_prune.py'
+      - 'tools/d1_gltf_tiger_mesh_basis_fix.py'
   workflow_dispatch:
 
 permissions:
@@ -24,8 +25,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python -m pip install -q pygltflib
-          mkdir -p input/rig input/textured input/stage0 out
+          python -m pip install -q numpy pygltflib
+          mkdir -p input/rig input/textured input/stage0 work out
           get_artifact () {
             local name="$1" dest="$2" zip="$3"
             local url
@@ -42,54 +43,102 @@ jobs:
           test -f input/textured/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb
           test -f input/stage0/spektar_stage0_draws.json
 
+      - name: Put mesh geometry in the same basis as the decoded D1 armature
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_tiger_mesh_basis_fix.py \
+            input/rig/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb \
+            -o work/SPEKTAR_PANDION_TITAN_MASCULINE_69_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb \
+            --json out/basis_rigged_report.json
+
+          python tools/d1_gltf_tiger_mesh_basis_fix.py \
+            input/textured/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb \
+            -o work/SPEKTAR_PANDION_TITAN_MASCULINE_69_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb \
+            --json out/basis_textured_report.json
+
       - name: Build stage-0-only visual exports
         run: |
           set -euo pipefail
-          cp input/rig/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb \
-             out/SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_RIGGED_ANIMATED.glb
-          cp input/textured/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb \
-             out/SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_TEXTURED_RIGGED_ANIMATED.glb
+          cp work/SPEKTAR_PANDION_TITAN_MASCULINE_69_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb \
+             out/SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb
+          cp work/SPEKTAR_PANDION_TITAN_MASCULINE_69_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb \
+             out/SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb
 
           python tools/d1_gltf_stage0_prune.py \
-            input/rig/SPEKTAR_PANDION_TITAN_MASCULINE_FULL_RIGGED_ANIMATED.glb \
+            work/SPEKTAR_PANDION_TITAN_MASCULINE_69_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb \
             --stage0-report input/stage0/spektar_stage0_draws.json \
-            -o out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_RIGGED_ANIMATED.glb \
+            -o out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb \
             --json out/stage0_rigged_report.json
 
           python tools/d1_gltf_stage0_prune.py \
-            input/textured/SPEKTAR_PANDION_TITAN_MASCULINE_TEXTURED_RIGGED_ANIMATED.glb \
+            work/SPEKTAR_PANDION_TITAN_MASCULINE_69_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb \
             --stage0-report input/stage0/spektar_stage0_draws.json \
-            -o out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED.glb \
+            -o out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb \
             --json out/stage0_textured_report.json
+
+          # Pure geometry/material control: no skin and no animation. If this is coherent
+          # while the animated file is not, any remaining defect is armature-side rather
+          # than stage-0 geometry selection or texture binding.
+          python - <<'PY'
+          from pygltflib import GLTF2
+          src='out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb'
+          dst='out/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_STATIC_BASIS_FIXED.glb'
+          g=GLTF2().load_binary(src)
+          for n in g.nodes or []:
+              if n.mesh is not None:
+                  n.skin=None
+          g.animations=[]
+          g.skins=[]
+          g.save_binary(dst)
+          PY
 
           cp input/stage0/spektar_stage0_draws.json out/
 
-      - name: Validate exports
+      - name: Validate exports and coordinate-basis invariant
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           from pygltflib import GLTF2
-          import json, hashlib
+          import json, hashlib, numpy as np
+
+          for report_name in ('basis_rigged_report.json','basis_textured_report.json'):
+              r=json.load(open(Path('out')/report_name))
+              assert r['schema']=='d1_gltf_tiger_mesh_basis_fix/v1',r
+              assert r['basis_permutation']=='[x,y,z] -> [y,z,x]',r
+              assert r['position_accessors_remapped']==69,r
+              pre=r['bounds_before_tiger']; post=r['bounds_after_gltf']
+              assert np.allclose(post['min'],[pre['min'][1],pre['min'][2],pre['min'][0]],atol=1e-6),(pre,post)
+              assert np.allclose(post['max'],[pre['max'][1],pre['max'][2],pre['max'][0]],atol=1e-6),(pre,post)
+              # This exact Guardian source was previously proven Z-up with ~1.90m Z extent.
+              # After the parser-matching permutation, its ~1.90m height must be glTF Y.
+              span=np.asarray(post['max'])-np.asarray(post['min'])
+              assert span[1] > 1.85 and span[1] > span[0] and span[1] > span[2],span
 
           specs = [
-            ('SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_RIGGED_ANIMATED.glb', 69),
-            ('SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_TEXTURED_RIGGED_ANIMATED.glb', 69),
-            ('SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_RIGGED_ANIMATED.glb', 28),
-            ('SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED.glb', 28),
+            ('SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb', 69, 1, 1),
+            ('SPEKTAR_PANDION_TITAN_MASCULINE_FORENSIC_69_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb', 69, 1, 1),
+            ('SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_RIGGED_ANIMATED_BASIS_FIXED.glb', 28, 1, 1),
+            ('SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb', 28, 1, 1),
+            ('SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_STATIC_BASIS_FIXED.glb', 28, 0, 0),
           ]
           rows=[]
-          for name, active_expected in specs:
+          for name, active_expected, skin_expected, anim_expected in specs:
               p=Path('out')/name
               g=GLTF2().load_binary(str(p))
               active=sum(1 for n in (g.nodes or []) if n.mesh is not None)
               assert active==active_expected,(name,active)
-              assert len(g.skins or [])==1 and len(g.skins[0].joints)==67,name
-              assert len(g.animations or [])==1,name
+              assert len(g.skins or [])==skin_expected,(name,len(g.skins or []))
+              if skin_expected:
+                  assert len(g.skins[0].joints)==67,name
+              assert len(g.animations or [])==anim_expected,(name,len(g.animations or []))
+              basis=(g.extras or {}).get('d1TigerMeshBasis')
+              assert basis and basis['permutation']=='[x,y,z] -> [y,z,x]',name
               h=hashlib.sha256(p.read_bytes()).hexdigest()
               rows.append({'file':name,'bytes':p.stat().st_size,'sha256':h,'active_mesh_nodes':active,
-                           'mesh_objects_preserved':len(g.meshes or []),'skin_joints':67,
-                           'animation':g.animations[0].name})
+                           'mesh_objects_preserved':len(g.meshes or []),'skin_joints':67 if skin_expected else 0,
+                           'animation':g.animations[0].name if anim_expected else None,
+                           'basis':'Tiger [x,y,z] -> glTF/parser [y,z,x]'})
           Path('out/EXPORT_MANIFEST.json').write_text(json.dumps(rows,indent=2)+'\n')
           for r in rows: print(r)
           PY
@@ -100,29 +149,35 @@ jobs:
           cat > out/README.txt <<'EOF'
           Destiny 1 Rise of Iron - Spektar Pandion Titan visual comparison exports
 
-          BEST FILE TO INSPECT FIRST:
-          SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED.glb
+          IMPORTANT FIX IN THIS BUILD:
+          The previous rigged files mixed two coordinate bases. Mesh geometry was still in native
+          Tiger coordinates (Z-up, X-forward, Y-right), while the exact retail skeleton/animation
+          decoder explicitly converts Tiger [x,y,z] -> [y,z,x] for the glTF/Three.js Y-up basis.
+          That mismatch makes otherwise valid skin weights explode around the wrong bone pivots
+          when Blender evaluates the armature. This build remaps mesh POSITION/NORMAL/TANGENT data
+          into the exact same basis as the skeleton before any stage-0 pruning.
 
-          Stage0 files:
-          - 28 real Bungie normal-draw ranges only.
-          - exact 67-joint Guardian skin preserved.
-          - exact retail 324-frame animation preserved.
-          - textured file preserves the already-proven retail texture-plate binding.
+          START WITH THESE TWO FILES:
+          1. SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_STATIC_BASIS_FIXED.glb
+             - pure geometry/material control, no skin and no animation.
+             - use this to judge whether the 28 selected retail draw ranges form the right body.
 
-          Forensic 69-range files:
-          - preserve every deduplicated serialized geometry range from the prior proof export.
-          - useful only as an A/B comparison against the corrected Bungie stage-0 selection.
-          - not the preferred visual representation.
+          2. SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_28_RANGE_TEXTURED_RIGGED_ANIMATED_BASIS_FIXED.glb
+             - same 28 ranges, exact 67-joint Guardian skin, exact retail 324-frame animation.
+             - this is the corrected animated comparison.
 
-          Important current limitation:
-          The texture-plate export has exact retail albedo/normal/GStack plate provenance, but the newly
+          Forensic 69-range BASIS_FIXED files remain only for A/B diagnosis. They deliberately keep
+          every deduplicated serialized geometry range and are not the preferred visual model.
+
+          Important current material limitation:
+          The texture-plate export has exact retail albedo/normal/GStack plate provenance, but the
           source-closed per-vertex dye-detail multiplier and final native dye/GStack shader recreation
-          are not yet baked into this checkpoint. That is the next exporter pass.
+          are not yet baked into this checkpoint.
           EOF
 
       - uses: actions/upload-artifact@v4
         with:
-          name: D1-Spektar-Pandion-Guardian-VISUAL-EXPORTS
+          name: D1-Spektar-Pandion-Guardian-VISUAL-EXPORTS-BASIS-FIXED
           path: out/
           retention-days: 14
           if-no-files-found: error
