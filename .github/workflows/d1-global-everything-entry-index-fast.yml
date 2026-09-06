@@ -1,0 +1,106 @@
+name: D1 global everything entry index fast
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-everything-entry-index-fast.yml'
+      - 'tools/d1_remote_everything_index_fast.py'
+      - 'tools/d1_remote_everything_index.py'
+      - 'tools/d1_everything_export_plan.py'
+      - 'evidence/d1_export_class_registry.json'
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact current package list and prior physical-location index
+        run: |
+          set -euo pipefail
+          mkdir -p reports plan
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          curl --fail --location --retry 4 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  reports/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+
+      - name: Build current archive-wide Tiger entry database without TAR rescan
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_everything_index_fast.py \
+            --location-index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --registry evidence/d1_export_class_registry.json \
+            --sqlite reports/D1_CURRENT_EVERYTHING.sqlite \
+            --summary reports/D1_CURRENT_EVERYTHING.json \
+            --queue reports/D1_CURRENT_EVERYTHING.tsv \
+            | tee reports/everything_index_stdout.txt
+
+      - name: Generate deterministic export/resolution shards
+        run: |
+          set -euo pipefail
+          python tools/d1_everything_export_plan.py reports/D1_CURRENT_EVERYTHING.sqlite \
+            --out plan --shard-size 1000 \
+            | tee reports/everything_plan_stdout.txt
+
+      - name: Validate index and planning invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sqlite3
+          s=json.load(open('reports/D1_CURRENT_EVERYTHING.json'))
+          a=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          p=json.load(open('plan/PLAN.json'))
+          qsha=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert s['status']=='D1_REMOTE_EVERYTHING_INDEX_COMPLETE',s['violations'][:20]
+          assert not s['violations'],s['violations'][:20]
+          assert s['source']['packages_txt_sha256']==a['source']['package_list_sha256']==qsha
+          assert s['physical_package_member_count']==a['physical_member_count']
+          assert s['package_family_count']==a['package_family_count']
+          assert s['source']['tar_headers_scanned']==0,s['source']
+          assert s['current_entry_count']>100000,s['current_entry_count']
+          assert s['current_distinct_tag_hash_count']>0
+          assert s['current_known_routed_entry_count']>0
+          assert s['current_unknown_entry_count']>0
+          assert p['current_entry_count']==s['current_entry_count']
+          assert sum(p['bucket_counts'].values())==s['current_entry_count']
+          assert sum(p['route_counts'].values())==s['current_entry_count']
+          db=sqlite3.connect('reports/D1_CURRENT_EVERYTHING.sqlite')
+          assert db.execute('select count(*) from current_entries').fetchone()[0]==s['current_entry_count']
+          r=db.execute("select tag_hash,reference,class_label,export_route from current_entries where tag_hash='80A7F90B'").fetchone()
+          assert r and r[0]=='80A7F90B',r
+          db.close()
+          print('D1_GLOBAL_EVERYTHING_FAST_INDEX_CLOSED',json.dumps({
+            'physical_members':s['physical_package_member_count'],
+            'package_families':s['package_family_count'],
+            'current_entries':s['current_entry_count'],
+            'distinct_tags':s['current_distinct_tag_hash_count'],
+            'known_routed':s['current_known_routed_entry_count'],
+            'unknown':s['current_unknown_entry_count'],
+            'standalone':s['current_standalone_export_candidate_count'],
+            'routes':s['current_export_route_counts'],
+            'buckets':p['bucket_counts'],
+            'shards':p['shard_count'],
+          },sort_keys=True))
+          PY
+          sha256sum reports/D1_CURRENT_EVERYTHING.sqlite reports/D1_CURRENT_EVERYTHING.json reports/D1_CURRENT_EVERYTHING.tsv plan/PLAN.json > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-EVERYTHING-INDEX-FAST
+          path: |
+            reports/
+            plan/
+          retention-days: 14
+          compression-level: 6
