@@ -1,0 +1,183 @@
+name: D1 Tower white card vertex and state trace
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-white-card-vertex-state.yml'
+      - 'tools/d1_world_static_visual_export.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_material_decode.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact current Tower corpus and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet numpy trimesh
+          mkdir -p runtime recovered validation world reports shader disasm
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+
+      - name: Rebuild exact source cell and census target vertex streams
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_tower_map_schema_validate_v5.py "${args[@]}" --runtime runtime --out validation >/dev/null
+          python tools/d1_world_static_visual_export.py "${args[@]}" --runtime runtime \
+            --validation-json validation/tower_map_schema_validation.json \
+            --static-map-data 80C993CF --basis gltf-y-up \
+            --out world/white_card_cell.glb --json world/white_card_cell.json >/dev/null
+          python - <<'PY'
+          import json,struct,sys,hashlib
+          from collections import Counter
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          from d1_material_decode import parse_material
+
+          TARGET='80C9993C'
+          d=json.load(open('world/white_card_cell.json'))
+          geos=[g for g in d['geometry'] if g['source_key']['material_hash'].upper()==TARGET]
+          nodes=[n for n in d['nodes'] if n['material_hash'].upper()==TARGET]
+          assert geos, 'target material geometry missing'
+          assert nodes, 'target material placements missing'
+          c=v5.v3.base.Corpus([p.resolve() for p in sorted(Path('recovered').glob('*.pkg'))],Path('runtime').resolve())
+
+          streams={}
+          for g in geos:
+              for field in ('vertices0','vertices1'):
+                  h=str(g['source_key'].get(field) or '').upper()
+                  if not h or h=='FFFFFFFF' or h in streams: continue
+                  meta=c.entry_meta(h); hb,hs=c.payload(h)
+                  row={'hash':h,'meta':meta,'header_source':hs}
+                  if hb is not None and len(hb)>=12:
+                      data_size,stride,typ,dead=struct.unpack_from('<Ihhi',hb,0)
+                      ref=(meta or {}).get('reference','FFFFFFFF'); db,ds=c.payload(ref)
+                      row.update({'data_size':data_size,'stride':stride,'type':typ,'deadbeef':f'{dead&0xffffffff:08X}',
+                                  'backing':ref,'backing_source':ds,'backing_bytes':None if db is None else len(db)})
+                      if db is not None and stride>0 and len(db)%stride==0:
+                          count=len(db)//stride;row['vertex_count']=count
+                          row['sha256']=hashlib.sha256(db).hexdigest()
+                          row['first_vertices_hex']=[db[i*stride:(i+1)*stride].hex() for i in range(min(32,count))]
+                          for off,label in ((4,'rgba8_at_04'),(20,'rgba8_at_14')):
+                              if stride>=off+4:
+                                  vals=[tuple(db[i*stride+off:i*stride+off+4]) for i in range(count)]
+                                  row[label+'_histogram']=[[list(k),v] for k,v in Counter(vals).most_common(64)]
+                                  row[label+'_channels']=[{
+                                      'channel':j,'min':min(v[j] for v in vals),'max':max(v[j] for v in vals),
+                                      'unique':len({v[j] for v in vals}),
+                                      'top':[[x,n] for x,n in Counter(v[j] for v in vals).most_common(16)]
+                                  } for j in range(4)]
+                  streams[h]=row
+
+          # Compare every material in this exact source cell that uses the same VS.
+          material_hashes=sorted({g['source_key']['material_hash'].upper() for g in d['geometry']})
+          same_vs={}
+          for mh in material_hashes:
+              meta=c.entry_meta(mh); b,src=c.payload(mh)
+              if b is None: continue
+              try: p=parse_material(b,'PS4')
+              except Exception: continue
+              if str(p['vertex_shader']).upper()!='80CA0CB7': continue
+              same_vs[mh]={
+                  'material':mh,'source':src,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),
+                  'unk08':p['unk08'],'unk0c':p['unk0c'],'unk10':p['unk10'],
+                  'unk20_u16':struct.unpack_from('<H',b,0x20)[0] if len(b)>=0x22 else None,
+                  'pixel_shader':str(p['pixel_shader']).upper(),
+                  'ps_texture_count':p['ps_textures']['count'],
+                  'ps_vector4_container':str(p['ps_vector4_container']).upper(),
+                  'header_0x00_0x28_hex':b[:0x28].hex(),
+                  'raw_hex':b.hex(),
+              }
+          assert TARGET in same_vs
+          tb=bytes.fromhex(same_vs[TARGET]['raw_hex'])
+          for mh,r in same_vs.items():
+              b=bytes.fromhex(r['raw_hex']); n=min(len(tb),len(b))
+              diffs=[i for i in range(n) if tb[i]!=b[i]]
+              r['byte_diff_vs_target_count']=len(diffs)+abs(len(tb)-len(b))
+              r['first_byte_diffs_vs_target']=[{'offset':i,'target':tb[i],'other':b[i]} for i in diffs[:256]]
+
+          out={
+            'schema_version':1,
+            'status':'D1_TOWER_WHITE_CARD_VERTEX_STATE_TRACE',
+            'cell':'80C993CF','target_material':TARGET,
+            'target_geometry':geos,'target_nodes':nodes,'streams':streams,
+            'same_vertex_shader_materials':same_vs,
+            'policy':'Raw source vertex streams and material bytes are preserved. Candidate byte channels remain unnamed until native fetch/VS evidence proves their semantics.'
+          }
+          Path('reports/white_card_vertex_state.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({
+            'target_geometry_count':len(geos),'target_node_count':len(nodes),
+            'target_geometry':[{'source_key':g['source_key'],'stride0':g.get('stride0'),'stride1':g.get('stride1'),'layout':g.get('layout'),'has_colors':g.get('has_colors')} for g in geos],
+            'streams':{h:{k:r.get(k) for k in ('stride','vertex_count','rgba8_at_04_channels','rgba8_at_14_channels')} for h,r in streams.items()},
+            'same_vs_material_count':len(same_vs),
+            'same_vs_headers':{h:{k:r[k] for k in ('unk08','unk0c','unk10','unk20_u16','pixel_shader','ps_texture_count','bytes')} for h,r in same_vs.items()}
+          },indent=2))
+          PY
+
+      - name: Extract exact shared vertex shader 80CA0CB7
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"pixel_shader_frequency":{"80CA0CB7":1}}' > reports/vs_manifest.json
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_shader_extract.py "${args[@]}" --runtime runtime \
+            --manifest reports/vs_manifest.json --shader 80CA0CB7 \
+            --out-dir shader --report reports/vs_extract.json
+          test -f shader/PS_80CA0CB7_gcn.bin
+
+      - name: Disassemble VS and isolate param0 alpha provenance
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_80CA0CB7_gcn.bin > disasm/VS_80CA0CB7.s 2> disasm/VS_80CA0CB7.stderr
+          test ! -s disasm/VS_80CA0CB7.stderr
+          grep -q 's_endpgm' disasm/VS_80CA0CB7.s
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          lines=Path('disasm/VS_80CA0CB7.s').read_text(errors='replace').splitlines()
+          exp=[]
+          for i,s in enumerate(lines):
+              if re.search(r'\bexp\s+(?:param|pos)',s,re.I):
+                  exp.append({'line':i+1,'text':s,'window':[{'line':j+1,'text':lines[j]} for j in range(max(0,i-24),min(len(lines),i+4))]})
+          inputs=[{'line':i+1,'text':s} for i,s in enumerate(lines) if re.search(r'\bv(?:_interp|_mov|_cvt|_mul|_add|_mad|_mac|_bfe|_lshr|_and|_or|_xor)',s,re.I)]
+          out={'schema_version':1,'status':'D1_80CA0CB7_PARAM_EXPORT_TRACE','shader':'80CA0CB7','exports':exp,'selected_alu':inputs}
+          Path('reports/VS_80CA0CB7_param_trace.json').write_text(json.dumps(out,indent=2)+'\n')
+          Path('reports/VS_80CA0CB7.s').write_text('\n'.join(lines)+'\n')
+          print(json.dumps({'exports':exp},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-white-card-vertex-state
+          path: |
+            reports/
+            world/white_card_cell.json
+            disasm/VS_80CA0CB7.s
+          retention-days: 14
+          compression-level: 6
