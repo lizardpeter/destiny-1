@@ -1,0 +1,219 @@
+name: D1 generic Activity-driven common export
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["D1 global Activity index"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  tower-common-proof:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install exact export dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p index reports packages runtime models common texture_expanded textures validation
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover current archive-wide Activity/package index
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            idx_run='${{ github.event.workflow_run.id }}'
+          else
+            idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          idx="$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
+          plist="$(find index -name packages.txt -print -quit)"
+          test -n "$idx" -a -f "$idx" -a -n "$plist" -a -f "$plist"
+          cp "$idx" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$plist" reports/packages.txt
+
+      - name: Discover Activity roots, static subset, and common target plan
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt --activity 80C98019 \
+            --runtime runtime --package-dir packages \
+            --work-dir reports/root_closure \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/activity_map_roots.json --out reports/map_data_layer_census.json
+          python tools/d1_world_map_resource_subset_plan.py --census reports/map_data_layer_census.json \
+            --resource-class 80801AEA --out reports/static_map_roots.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/static_map_roots.json --out reports/static_map_resource_chain_census.json
+          python tools/d1_world_static_map_target_plan.py --chain-json reports/static_map_resource_chain_census.json \
+            --out reports/static_map_target_plan.json --tsv reports/static_map_target_plan.tsv
+
+      - name: Close common record identity dependencies and derive exact model set
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_table_scoped_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --target-plan reports/static_map_target_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/common_identity_closure \
+            --out reports/common_layer_source_census.json --report reports/common_identity_closure.json
+          python tools/d1_world_common_model_plan.py \
+            --census reports/common_layer_source_census.json \
+            --out reports/common_layer_model_plan.json \
+            --model-list reports/common_layer_models.txt
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/common_layer_source_census.json'))
+          p=json.load(open('reports/common_layer_model_plan.json'))
+          assert c['status']=='D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE',c['violations']
+          assert (c['table_scoped_materialized_record_count'],c['table_scoped_export_ready_singleton_records'],c['table_scoped_unique_entity_models'])==(327,327,69),c
+          assert p['status']=='D1_WORLD_COMMON_MODEL_PLAN_COMPLETE',p['violations']
+          assert (p['source_record_count'],p['resolved_model_reference_records'],p['unique_model_count'])==(327,327,69),p
+          print('GENERIC_COMMON_MODEL_SET',p['unique_model_count'])
+          PY
+
+      - name: Close all EntityModel buffer/material dependencies from model hashes
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_entity_model_visual_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --model-plan reports/common_layer_model_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/common_model_dependency_closure \
+            --report reports/common_model_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_model_dependency_closure.json'))
+          assert d['status']=='D1_WORLD_ENTITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',d
+          assert d['model_count']==69,d['model_count']
+          print('GENERIC_COMMON_MODEL_DEPS',d['model_count'],len(d['final_package_ids']))
+          PY
+
+      - name: Export all discovered common models and instantiate all source records
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t models < reports/common_layer_models.txt
+          test "${#models[@]}" -eq 69
+          margs=(); for h in "${models[@]}"; do margs+=(--model "$h"); done
+          python tools/d1_entity_model_corpus_export.py "${args[@]}" --runtime runtime \
+            "${margs[@]}" --mode map-decal --out-dir models \
+            --summary reports/common_layer_model_export.json
+          python tools/d1_world_common_layer_scene.py \
+            --census reports/common_layer_source_census.json --model-dir models \
+            --out common/D1_ACTIVITY_80C98019_COMMON_LAYER_UNTEXTURED.glb \
+            --report reports/common_layer_scene.json
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/common_layer_model_export.json'))
+          s=json.load(open('reports/common_layer_scene.json'))
+          assert e['status']=='D1_ENTITY_MODEL_CORPUS_EXPORT_COMPLETE',e
+          assert (e['requested_models'],e['exported_models'],e['failed_models'],e['geometry_count'])==(69,69,0,163),e
+          assert s['status']=='D1_WORLD_COMMON_LAYER_SCENE_COMPLETE',s
+          assert (s['source_record_count'],s['source_resolved_records'],s['unique_model_count'],s['scene_geometry_variants'],s['scene_geometry_nodes'])==(327,327,69,163,709),s
+          mats=set();parts=0
+          for model in e['models']:
+            for mesh in model.get('meshes',[]):
+              for p in mesh.get('parts',[]):
+                if not p.get('selected'):continue
+                parts+=1
+                h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                if h:mats.add(str(h).upper())
+          assert parts==163 and len(mats)==99,(parts,len(mats))
+          json.dump({'status':'D1_GENERIC_ACTIVITY_COMMON_MATERIAL_SELECTOR','activity':'80C98019','materials':{h:{'visual':True} for h in sorted(mats)}},open('reports/common_material_selector.json','w'),indent=2)
+          print('GENERIC_COMMON_SCENE',s['scene_geometry_nodes'],'nodes',s['scene_geometry_variants'],'variants',len(mats),'materials')
+          PY
+
+      - name: Recursively close common material texture dependencies through global index
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/common_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir texture_expanded --work-dir reports/common_texture_dependency_closure \
+            --out textures --report reports/common_texture_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/common_texture_dependency_closure.json'))
+          m=json.load(open('textures/material_texture_manifest.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert (m['visible_material_count'],m['material_decode_errors'],m['unique_texture_tags'],m['decoded_texture_tags'],m['texture_errors'])==(99,0,50,50,0),m
+          assert not m['missing_texture_package_ids'],m['missing_texture_package_ids']
+          print('GENERIC_COMMON_TEXTURES',m['decoded_texture_tags'],'/',m['unique_texture_tags'],'added',c['recovered_package_ids'])
+          PY
+
+      - name: Preserve all native common textures and bind safe Blender roles
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json \
+            -o reports/common_texture_role_inventory.json
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb common/D1_ACTIVITY_80C98019_COMMON_LAYER_UNTEXTURED.glb \
+            --manifest textures/material_texture_manifest.json \
+            --roles reports/common_texture_role_inventory.json \
+            --texture-dir textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --expect-exact-textures 50 --expect-derived-normals 1 \
+            --out common/D1_ACTIVITY_80C98019_COMMON_LAYER_EXACT_TEXTURES.glb \
+            --report reports/common_exact_texture_resources.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          r=json.load(open('reports/common_exact_texture_resources.json'))
+          s=json.load(open('reports/common_layer_scene.json'))
+          assert r['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',r
+          assert r['exact_source_texture_count']==50 and r['derived_portable_normal_count']==1,r
+          assert (r['final_counts']['materials'],r['final_counts']['meshes'],r['final_counts']['nodes'])==(99,163,709),r['final_counts']
+          p=Path('common/D1_ACTIVITY_80C98019_COMMON_LAYER_EXACT_TEXTURES.glb')
+          out={'schema_version':1,'status':'D1_GENERIC_ACTIVITY_COMMON_TEXTURED_EXPORT_COMPLETE','activity':'80C98019','source_records':327,'unique_models':69,'geometry_variants':163,'scene_geometry_nodes':709,'unique_materials':99,'exact_native_texture_resources':50,'derived_portable_normals':1,'portable_base_bound_materials':r['portable_base_bound_material_count'],'portable_normal_bound_materials':r['portable_normal_bound_material_count'],'final_glb_counts':r['final_counts'],'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'proof':'No prior Tower GLB, Tower package-family list, or known nine static-table hash list is an input. Common geometry/model/material/texture dependencies originate from the Activity-owned table records and serialized FileHashes.','scope':'Table-scoped common/decal geometry and exact native material texture resources. Baked-static and dynamic/runtime layers are separate.'}
+          json.dump(out,open('reports/FINAL_GENERIC_ACTIVITY_COMMON_EXPORT.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish generic Activity-driven common layer proof
+        run: |
+          set -euo pipefail
+          tag=d1-generic-activity-80c98019-common-r1
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title 'D1 generic Activity 80C98019 common-layer export r1' \
+              --notes 'End-to-end Activity-driven table-scoped/common geometry proof. Discovers common records and EntityModels from the Activity-owned static resource chain, recursively closes model buffers/materials/textures from serialized FileHashes via the archive-wide package index, instantiates all records, and preserves every exact native material texture. No prior Tower GLB, Tower package list, or known static-table hash list is an input.'
+          fi
+          gh release upload "$tag" common/D1_ACTIVITY_80C98019_COMMON_LAYER_EXACT_TEXTURES.glb \
+            reports/FINAL_GENERIC_ACTIVITY_COMMON_EXPORT.json \
+            reports/common_identity_closure.json reports/common_model_dependency_closure.json \
+            reports/common_texture_dependency_closure.json reports/common_exact_texture_resources.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-generic-activity-common-export
+          path: reports/
+          retention-days: 14
+          compression-level: 6
