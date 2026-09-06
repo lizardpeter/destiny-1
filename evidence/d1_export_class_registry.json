@@ -42,6 +42,14 @@
       "tool": "tools/d1_animation_rig_clip_census.py",
       "notes": "Clip payload can be decoded, but final skeletal animation requires a proven compatible runtime rig and skeleton/owner path."
     },
+    "80802C0E": {
+      "label": "animation_action_control",
+      "semantic_status": "global_byte_validated",
+      "export_route": "animation_control",
+      "standalone_export": false,
+      "tool": "tools/d1_animation_control_state_map.py",
+      "notes": "D1 ROI action/state selector table. FileHash animation lists, StringHash states, packed selectors and empty sentinel are source-closed; semantic ownership remains a separate graph edge."
+    },
     "8080222A": {
       "label": "animation_control_wrapper",
       "semantic_status": "schema_partial_byte_validated",
