@@ -1,0 +1,77 @@
+name: D1 player 72-66 cross-package retarget
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-player-72-66-cross-package-retarget.yml'
+      - 'tools/d1_remote_cross_package_animation_retarget.py'
+      - 'tools/d1_animation_control_state_map.py'
+      - 'tools/d1_animation_retarget_probe.py'
+      - 'evidence/d1_investment_assets_013f_member_catalog.json'
+      - 'evidence/d1_globals_pvp_0169_member_catalog.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install pinned parser and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Retarget three exact control-selected 72-66 clips
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_cross_package_animation_retarget.py \
+            --member-catalog evidence/d1_investment_assets_013f_member_catalog.json \
+            --member-catalog evidence/d1_globals_pvp_0169_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --parser-root parser \
+            --skeleton 80AD27B2 --rig 80A7F90B --control 80A7E499 \
+            --clip 80A7F348 --clip 80A7F350 --clip 80A7F3A7 \
+            -o out/PLAYER_80AD27B2_80A7F90B_80A7E499_RETARGET.json
+      - name: Lock 72-node 66-control cross-package invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PLAYER_80AD27B2_80A7F90B_80A7E499_RETARGET.json'))
+          assert d['skeleton']['tag_hash']=='80AD27B2' and d['skeleton']['node_count']==72,d['skeleton']
+          r=d['runtime_rig'];assert r['tag_hash']=='80A7F90B' and r['control_count']==66,r
+          assert r['components']==[
+            {'hash':'FFCA31D7','count':19},{'hash':'C6703C7D','count':30},
+            {'hash':'F6E216A3','count':9},{'hash':'988CF8E5','count':8}],r['components']
+          assert d['control']['tag_hash']=='80A7E499' and d['control']['animation_count']==959 and d['control']['state_count']==1142,d['control']
+          assert [x['clip_tag_hash'] for x in d['clips']]==['80A7F348','80A7F350','80A7F3A7']
+          assert [x['frame_count'] for x in d['clips']]==[19,166,27]
+          for x in d['clips']:
+              assert x['node_count']==72 and x['rig_control_count']==66 and x['native_control_limit']==66,x
+              assert x['decoded_track_count']==x['retargeted_track_count']==x['local_track_count']==72,x
+              assert x['selected_by_control_states'],x
+              assert x['retarget_success'] is True,x
+          print('D1_PLAYER_72_66_CROSS_PACKAGE_RETARGET_EXACT')
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-player-72-66-cross-package-retarget
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
