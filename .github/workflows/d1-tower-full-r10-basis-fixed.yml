@@ -41,9 +41,6 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_gltf_layer_merge.py --base input/static_common_r6.glb \
-            --layer articulated_basis_fixed= input/articulated_r10.glb 2>/dev/null && exit 91 || true
-          # Correct invocation; preceding guarded call protects against accidental parser acceptance of split layer syntax.
-          python tools/d1_gltf_layer_merge.py --base input/static_common_r6.glb \
             --layer articulated_basis_fixed=input/articulated_r10.glb \
             --out out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
             --report reports/FULL_R10_MERGE.json
@@ -57,7 +54,7 @@ jobs:
           python tools/d1_gltf_skin_bind_identity_probe.py out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb \
             --model 80CA0CFC --model 80C7AF4C --model 80C7AE59 --max-error 2e-5 -o reports/FULL_R10_SKIN_BIND_IDENTITY.json
           python - <<'PY'
-          import hashlib,json,os
+          import hashlib,json
           from pathlib import Path
           from tools.d1_gltf_layer_merge import read_glb
           p=Path('out/D1_TOWER_BAKED_COMMON_PLUS_E_F_G_ANIMATED_R10_BASIS_FIXED.glb');m=json.load(open('reports/FULL_R10_MERGE.json'));c=json.load(open('reports/FULL_R10_MERGE_PATH_CONTROL.json'));s=json.load(open('reports/FULL_R10_SKIN_BIND_IDENTITY.json'));doc,_=read_glb(p)
