@@ -1,0 +1,162 @@
+name: D1 exact Bungie player-preview provenance
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-bungie-player-preview-provenance.yml'
+      - 'tools/d1_bungie_player_preview_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact published Bungie player-preview assets and GearAsset rows
+        run: |
+          set -euo pipefail
+          mkdir -p out/published
+          python tools/d1_bungie_player_preview_probe.py \
+            --inventory-hash B4BD27A2 \
+            --inventory-hash 1DF65286 \
+            --inventory-hash 4A37316F \
+            --inventory-hash 4A2AD693 \
+            --inventory-hash 4A5B75DC \
+            --download-dir out/published \
+            -o out/bungie_player_preview_provenance.json
+
+      - name: Recover retail 809D8613 for exact skeleton identity comparison
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm
+          mkdir -p runtime recovered parser
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0xAAB580800 \
+            --target ps4_race_set_all_00ec_5.pkg \
+            --out recovered --manifest out/00ec_extract.json --retries 6 --timeout 90
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser/repo
+          git -C parser/repo checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser/repo rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+
+      - name: Compare published player skeleton to retail 809D8613
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import io,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,'parser/repo')
+          from d1_entry_extract import EntryReader
+          from tag.game_version import Game_Version
+          from tag_readers.read_skeleton import read_skeleton
+
+          p=json.load(open('out/bungie_player_preview_provenance.json'))
+          pub=p['player_skeleton']['summary']
+          r=EntryReader(Path('recovered/ps4_race_set_all_00ec_5.pkg'),Path('runtime'))
+          by={e['tag_hash'].upper():e for e in r.entries}
+          assert '809D8613' in by, 'retail skeleton 809D8613 absent from exact 00EC package'
+          sk=read_skeleton(io.BytesIO(r.entry(by['809D8613']['index'])),Game_Version.D1_ROI)
+          retail_hashes=[f'{int(n.bone_hash)&0xffffffff:08X}' for n in sk.node_defs]
+          retail_parents=[int(n.parent_node_index) for n in sk.node_defs]
+          published_hashes=pub['node_hashes']
+          published_parents=pub['parent_node_indices']
+          hash_exact=(published_hashes==retail_hashes)
+          parent_exact=(published_parents==retail_parents)
+          result={
+            'schema':'d1_published_player_skeleton_retail_compare/v1',
+            'published_node_count':pub['node_count'],
+            'retail_tag':'809D8613',
+            'retail_node_count':len(retail_hashes),
+            'bone_hash_order_exact':hash_exact,
+            'parent_hierarchy_exact':parent_exact,
+            'published_bone_hashes':published_hashes,
+            'retail_bone_hashes':retail_hashes,
+            'published_parents':published_parents,
+            'retail_parents':retail_parents,
+            'first_hash_mismatch':next(({'index':i,'published':a,'retail':b} for i,(a,b) in enumerate(zip(published_hashes,retail_hashes)) if a!=b),None),
+            'first_parent_mismatch':next(({'index':i,'published':a,'retail':b} for i,(a,b) in enumerate(zip(published_parents,retail_parents)) if a!=b),None),
+            'policy':'Identity is promoted only if published Bungie player skeleton and retail tag match exact ordered bone hashes and exact parent hierarchy.',
+          }
+          Path('out/player_skeleton_retail_compare.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps({k:result[k] for k in ('published_node_count','retail_node_count','bone_hash_order_exact','parent_hierarchy_exact','first_hash_mismatch','first_parent_mismatch')},indent=2))
+          if not hash_exact or not parent_exact:
+              print('809D8613 is NOT promoted as exact official player-preview skeleton by this comparison.')
+          else:
+              print('PROVEN: 809D8613 has exact published D1 player-preview bone identity and hierarchy.')
+          PY
+
+      - name: Summarize exact GearAsset composition evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.load(open('out/bungie_player_preview_provenance.json'))
+          rows=[]
+          for db in p['gear_asset_databases']:
+              for h in db.get('hits',[]):
+                  row=h.get('row',{})
+                  # Preserve entire exact row in source report; summary surfaces structural keys only.
+                  interesting={}
+                  for k,v in row.items():
+                      lk=k.lower()
+                      if any(x in lk for x in ('gear','asset','content','json','id','hash')):
+                          interesting[k]=v
+                  rows.append({'target_hash':h['target_hash'],'database_index':db['index'],'table':h['table'],
+                               'match_column':h['match_column'],'match_kind':h['match_kind'],'rowid':h['rowid'],
+                               'interesting_columns':interesting})
+          out={'schema':'d1_spektar_published_gearasset_matches/v1','exact_match_count':len(rows),'matches':rows,
+               'policy':'Exact rows only. No geometry/base-body item is synthesized when the published GearAsset data does not name it.'}
+          Path('out/spektar_published_gearasset_matches.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('EXACT GEARASSET MATCHES',len(rows))
+          for r in rows: print(r['target_hash'],r['database_index'],r['table'],r['match_column'],r['match_kind'])
+          PY
+
+      - name: Provenance README
+        run: |
+          cat > out/README.txt <<'EOF'
+          D1 exact player-preview provenance checkpoint
+
+          This workflow replaces heuristic hand/shoulder range toggling with published Bungie evidence.
+
+          Exact sources queried:
+          - D1 manifest: /d1/Platform/Destiny/Manifest/
+          - /common/destiny_content/animations/destiny_player_skeleton.js
+          - /common/destiny_content/animations/destiny_player_animation.js
+          - every mobileGearAssetDataBase path returned by that exact D1 manifest
+          - exact D1 single InventoryItem definitions for the five Spektar Pandion hashes
+          - retail PS4 race_set_all_00ec_5 skeleton 809D8613 for byte-derived comparison
+
+          The five exact inventory hashes are:
+            B4BD27A2  Spektar Pandion Gauntlets
+            1DF65286  Spektar Pandion Plate
+            4A37316F  Spektar Pandion Mark
+            4A2AD693  Spektar Pandion Helmet
+            4A5B75DC  Spektar Pandion Greaves
+
+          No mesh range is manually enabled or disabled here. No animation is attached by compatibility.
+          The point of this checkpoint is to recover the character composition and rig provenance that
+          Bungie's own D1 player-preview stack used, including its default-armor/body contribution.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-EXACT-BUNGIE-PLAYER-PREVIEW-PROVENANCE
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
