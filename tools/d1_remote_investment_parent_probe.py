@@ -39,6 +39,10 @@ def tag_hash(pkg_id: int, index: int) -> str:
     return f"{(0x80800000 + (pkg_id << 13) + (index % 8192)) & 0xFFFFFFFF:08X}"
 
 
+def _align_up(v: int, a: int) -> int:
+    return ((v + a - 1) // a) * a
+
+
 @dataclass(frozen=True)
 class Member:
     name: str
@@ -74,6 +78,23 @@ class RemoteLogicalPackage:
         bt = archive.read_at(self.view.data_offset + self.h["block_table_offset"], self.h["block_table_count"] * 32)
         self.entries = parse_entries(et, self.h["pkg_id"])
         self.blocks = parse_blocks(bt)
+        self.block_used_end = [0] * len(self.blocks)
+        for e in self.entries:
+            remaining = int(e["file_size"])
+            bi = int(e["starting_block"])
+            off = int(e["starting_block_offset"])
+            while remaining > 0 and bi < len(self.blocks):
+                n = min(remaining, BLOCK_SIZE - off)
+                self.block_used_end[bi] = max(self.block_used_end[bi], off + n)
+                remaining -= n
+                bi += 1
+                off = 0
+
+    def expected_raw_len(self, index: int) -> int:
+        used = self.block_used_end[index]
+        if used <= 0:
+            return BLOCK_SIZE
+        return min(BLOCK_SIZE, _align_up(used, 0x4000))
 
     def block(self, index: int) -> bytes:
         if index in self.block_cache:
@@ -88,7 +109,15 @@ class RemoteLogicalPackage:
             raise RuntimeError(f"pkg {self.h['pkg_id']:04X} block {index} SHA1 mismatch: {got} != {b['sha1']}")
         if b["encrypted"]:
             raise RuntimeError(f"pkg {self.h['pkg_id']:04X} block {index} is encrypted; sparse resolver has no decrypt step")
-        dec = self.oodle.decompress(raw) if b["compressed"] else raw
+        if b["compressed"]:
+            expected = self.expected_raw_len(index)
+            dec = self.oodle.decompress(raw, raw_capacity=expected)
+            if len(dec) != expected:
+                raise RuntimeError(
+                    f"pkg {self.h['pkg_id']:04X} block {index} decoded {len(dec)} bytes, expected {expected}"
+                )
+        else:
+            dec = raw
         if len(dec) > BLOCK_SIZE:
             raise RuntimeError(f"pkg {self.h['pkg_id']:04X} block {index} oversized after decode")
         if len(dec) < BLOCK_SIZE:
