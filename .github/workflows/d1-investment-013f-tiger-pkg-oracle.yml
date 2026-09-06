@@ -1,0 +1,87 @@
+name: D1 investment 013F tiger-pkg oracle
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-investment-013f-tiger-pkg-oracle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize exact verified 013F physical package family
+        run: |
+          set -euo pipefail
+          mkdir -p oracle_pkgs out runtime
+          python - <<'PY'
+          import json,hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          fam=load_catalogs([Path('evidence/d1_investment_asset_member_catalog.json')])[0x013F]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          rows=[]
+          for patch,m in sorted(fam.items()):
+              data=arc.read_at(m.data_offset,m.size)
+              p=Path('oracle_pkgs')/m.name;p.write_bytes(data)
+              rows.append({'patch':patch,'name':m.name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+              print('PKG',patch,m.name,len(data),rows[-1]['sha256'])
+          Path('out/materialized_013f.json').write_text(json.dumps(rows,indent=2)+'\n')
+          PY
+      - name: Recover the same verified Oodle runtime used by project reader
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Build pinned upstream tiger-pkg oracle
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/v4nguard/tiger-pkg.git oracle_src
+          cd oracle_src
+          git checkout -q 657f41c0851001b2d371592b2f7a5cb9c686ddb4
+          cargo build --release --example unpack_tag
+          cp ../runtime/liblinoodle3.so target/release/examples/
+          cp ../runtime/oo2core_3_win64.dll target/release/examples/
+      - name: Ask upstream reader for known-good and four failing entries
+        run: |
+          set -uo pipefail
+          exe="$PWD/oracle_src/target/release/examples/unpack_tag"
+          mkdir -p out/oracle_extract
+          # unpack_tag's historical CLI parses display hashes through u32::from_be,
+          # so pass byte-reversed display forms for exact internal D1 FileHashes.
+          set +e
+          "$exe" "$PWD/oracle_pkgs" 34FAA780 3BFBA780 3EFBA780 41FEA780 47FEA780 \
+            -o "$PWD/out/oracle_extract" -v d1_roi -p ps4 >out/tiger_pkg_stdout.txt 2>out/tiger_pkg_stderr.txt
+          rc=$?
+          set -e
+          echo "TIGER_PKG_RC=$rc"
+          cat out/tiger_pkg_stdout.txt
+          cat out/tiger_pkg_stderr.txt
+          find out/oracle_extract -maxdepth 1 -type f -printf '%f %s\n' | sort | tee out/oracle_outputs.txt
+          python - <<'PY'
+          from pathlib import Path
+          files=sorted(Path('out/oracle_extract').glob('*'))
+          print('ORACLE_OUTPUT_COUNT',len(files))
+          for p in files: print('ORACLE_FILE',p.name,p.stat().st_size)
+          # Known-good 80A7FA34 must extract or the oracle invocation itself is invalid.
+          if not any('80A7FA34' in p.name.upper() for p in files):
+              raise SystemExit('upstream oracle did not extract known-good 80A7FA34; invocation is not calibrated')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-investment-013f-tiger-pkg-oracle
+          path: out/
+          retention-days: 14
