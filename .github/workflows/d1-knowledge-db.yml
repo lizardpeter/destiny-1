@@ -1,0 +1,73 @@
+name: D1 knowledge database
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'knowledge/**'
+      - 'tools/d1_knowledge_db.py'
+      - '.github/workflows/d1-knowledge-db.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Validate canonical knowledge records
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_knowledge_db.py
+          python tools/d1_knowledge_db.py \
+            --records knowledge/records \
+            --validate-only
+
+      - name: Build queryable SQLite knowledge database
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python tools/d1_knowledge_db.py \
+            --records knowledge/records \
+            --db out/d1_knowledge.sqlite \
+            --summary out/d1_knowledge_summary.json \
+            | tee out/stdout.txt
+          sqlite3 out/d1_knowledge.sqlite 'PRAGMA foreign_key_check;'
+          sqlite3 out/d1_knowledge.sqlite \
+            'SELECT record_id, assertion_id, status, claim FROM assertions ORDER BY record_id, assertion_id;' \
+            > out/assertions.tsv
+          sqlite3 out/d1_knowledge.sqlite \
+            'SELECT record_id, candidate_node_id, rejected_as, reason FROM rejections ORDER BY record_id, rejection_id;' \
+            > out/rejections.tsv
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - name: Lock initial invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, sqlite3
+          s=json.load(open('out/d1_knowledge_summary.json'))
+          assert s['status']=='D1_KNOWLEDGE_DB_VALID',s
+          assert s['records']>=1,s
+          assert s['nodes']>=1,s
+          assert s['assertions']>=1,s
+          assert s['sources']>=1,s
+          con=sqlite3.connect('out/d1_knowledge.sqlite')
+          assert con.execute("select count(*) from records where record_id='crota_end_2026_09_06'").fetchone()[0]==1
+          assert con.execute("select count(*) from nodes where node_id='entity:8108EFFC'").fetchone()[0]>=1
+          assert con.execute("select count(*) from rejections where rejected_as='semantic:crota_son_of_oryx'").fetchone()[0]>=1
+          assert con.execute("select count(*) from frontiers").fetchone()[0]>=1
+          print('D1_KNOWLEDGE_DB_INITIAL_INVARIANTS_EXACT')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-KNOWLEDGE-DATABASE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
