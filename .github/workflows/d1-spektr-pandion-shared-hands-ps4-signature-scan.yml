@@ -1,0 +1,87 @@
+name: D1 Spektar shared hands exact PS4 signature scan
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-shared-hands-ps4-signature-scan.yml'
+      - 'tools/d1_remote_model_tgxm_signature_match.py'
+      - 'tools/d1_tgxm_unpack.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  scan:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {family: '00FC'}
+          - {family: '00FE'}
+          - {family: '00FF'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact historical shared TGXM and verified Oodle runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/historical runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-SPEKTAR-HISTORICAL-GEARASSET-EXACT-TGXM&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/historical.zip
+          unzip -q input/historical.zip -d input/historical
+          target=$(find input/historical -type f -path '*/tgxm_male/B4BD27A2/2943ee229ea8c0c44dd610a4dd68ace3.tgxm' -print -quit)
+          test -n "$target"
+          cp "$target" input/shared_hands_984938936-0.tgxm
+          echo 'f5e7b2efae7d7737f87997c16dbc36047e0e685bc39f36c311435afc8c47d977  input/shared_hands_984938936-0.tgxm' | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Exact structural scan gear_player_${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_model_tgxm_signature_match.py \
+            --scan-package-id 0x${{ matrix.family }} \
+            --target-tgxm input/shared_hands_984938936-0.tgxm \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime --keep-top 50 \
+            -o out/shared_hands_ps4_${{ matrix.family }}.json
+
+      - name: Validate scan provenance and summarize exact matches
+        run: |
+          python - <<'PY'
+          import json,glob
+          p=glob.glob('out/shared_hands_ps4_*.json')[0]
+          d=json.load(open(p))
+          assert d['schema']=='d1_remote_model_tgxm_signature_match/v1'
+          assert d['target']['tgxm_sha256']=='f5e7b2efae7d7737f87997c16dbc36047e0e685bc39f36c311435afc8c47d977'
+          assert d['target']['tgxm_file_identifier']=='984938936-0'
+          assert d['target']['mesh_count']==3
+          print('SCAN',d['scan_package_ids'])
+          print('MODELS',d['scanned_entity_model_count'],'3-MESH',d['target_mesh_count_candidate_count'],'RESOLVED',d['resolved_candidate_count'])
+          print('EXACT STRUCTURAL MATCHES',d['exact_topology_structure_match_count'])
+          for x in d['exact_matches']:
+              print('EXACT',x['package_id'],x['tag_hash'],x['comparison'])
+              print(' signature',[(m['vertex_count'],m['index_count'],m['stage0_highest_index_counts']) for m in x['signature']['meshes']])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-spektr-shared-hands-ps4-signature-${{ matrix.family }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
