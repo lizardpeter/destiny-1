@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install -q numpy pillow trimesh
-          mkdir -p runtime input/bungie72 input/vs input/stage_dyes input/dyes input/detail out
+          mkdir -p runtime input/bungie72 input/vs input/stage_dyes input/dyes input/detail input/canonical out
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -52,19 +52,27 @@ jobs:
           fetch_artifact 'd1-spektr-pandion-exact-dyes' input/dyes.zip input/dyes
           fetch_artifact 'd1-spektr-pandion-exact-dye-detail-textures' input/detail.zip input/detail
 
-          test -f input/bungie72/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb
-          test -f input/vs/spektar_stage0_vs_join.json
-          test -f input/stage_dyes/spektar_masculine_stage_part_dyes.json
-          test -f input/dyes/spektar_pandion_exact_dyes.json
-          test -f input/detail/spektar_dye_detail_textures.json
+          resolve_one () {
+            root="$1"; filename="$2"; dst="$3"
+            src=$(find "$root" -type f -name "$filename" -print -quit)
+            test -n "$src"
+            cp "$src" "$dst"
+          }
+          resolve_one input/bungie72 'SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb' input/canonical/bungie72.glb
+          resolve_one input/vs 'spektar_stage0_vs_join.json' input/canonical/stage0_vs.json
+          resolve_one input/stage_dyes 'spektar_masculine_stage_part_dyes.json' input/canonical/stage_dyes.json
+          resolve_one input/dyes 'spektar_pandion_exact_dyes.json' input/canonical/exact_dyes.json
+          resolve_one input/detail 'spektar_dye_detail_textures.json' input/canonical/detail_manifest.json
+          find input/detail -type f -name '*.png' -print > input/canonical/detail_pngs.txt
+          test "$(wc -l < input/canonical/detail_pngs.txt)" -eq 6
 
       - name: Restore exact retail normals and D1 detail UV multiplier
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_guardian_stage0_source_attributes_patch.py \
-            input/bungie72/SPEKTAR_PANDION_TITAN_MASCULINE_STAGE0_TEXTURED_BUNGIE_72_PLAYER_PREVIEW.glb \
-            --vs-join input/vs/spektar_stage0_vs_join.json \
+            input/canonical/bungie72.glb \
+            --vs-join input/canonical/stage0_vs.json \
             --member-catalog evidence/d1_investment_asset_member_catalog.json \
             --member-catalog evidence/d1_player_gear_member_catalog.json \
             --member-catalog evidence/d1_weapon_globals_member_catalog.json \
@@ -77,8 +85,8 @@ jobs:
           set -euo pipefail
           python tools/d1_guardian_spasm_change_color_bake.py \
             out/SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV.glb \
-            --stage-dyes input/stage_dyes/spektar_masculine_stage_part_dyes.json \
-            --exact-dyes input/dyes/spektar_pandion_exact_dyes.json \
+            --stage-dyes input/canonical/stage_dyes.json \
+            --exact-dyes input/canonical/exact_dyes.json \
             --report out/spasm_change_color.json \
             -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_SPASM_CHANGE_COLOR_UNLIT_SOURCE_ATTRS.glb
 
@@ -121,8 +129,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out/exact_dye_detail_textures
-          find input/detail -maxdepth 1 -type f -name '*.png' -exec cp '{}' out/exact_dye_detail_textures/ \;
-          cp input/detail/spektar_dye_detail_textures.json out/exact_dye_detail_textures/
+          while IFS= read -r p; do cp "$p" out/exact_dye_detail_textures/; done < input/canonical/detail_pngs.txt
+          cp input/canonical/detail_manifest.json out/exact_dye_detail_textures/spektar_dye_detail_textures.json
           cat > out/README.txt <<'EOF'
           D1 Spektar Pandion Titan Bungie72 material diagnostic
 
