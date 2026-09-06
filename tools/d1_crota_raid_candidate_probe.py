@@ -27,7 +27,6 @@ from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource
 from d1_investment_arrangement_probe import filehash_pkg_index
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_investment_parent_probe import RemoteLogicalPackage
-from d1_remote_model_tgxm_signature_match import LazyExactHashResolver
 from d1_remote_s_entity_resource_package_find import S_ENTITY_REF, parse_entity_resources
 from d1_skeleton_probe import parse_skeleton_resource
 from d1_split_tar_extract import SplitHttpTar
@@ -40,6 +39,47 @@ POST_ANIMATION_CONTROL_CLASS = '80802C0E'
 
 def norm(v: str) -> str:
     return str(v).upper().removeprefix('0X').zfill(8)
+
+
+def package_of_hash(v: str) -> int:
+    return filehash_pkg_index(int(norm(v), 16))[0]
+
+
+class LazyExactHashResolver:
+    """Open only the exact verified package family encoded by each Tiger FileHash."""
+
+    def __init__(self, arc: SplitHttpTar, catalogs: dict[int, dict], runtime: Path):
+        self.arc = arc
+        self.catalogs = catalogs
+        self.runtime = runtime
+        self.views: dict[int, RemoteLogicalPackage] = {}
+        self.maps: dict[int, dict[str, dict]] = {}
+
+    def view(self, pkg: int) -> RemoteLogicalPackage:
+        if pkg not in self.catalogs:
+            raise KeyError(f'no verified member catalog for package {pkg:04X}')
+        if pkg not in self.views:
+            self.views[pkg] = RemoteLogicalPackage(self.arc, self.catalogs[pkg], self.runtime)
+        return self.views[pkg]
+
+    def hash_map(self, pkg: int) -> dict[str, dict]:
+        if pkg not in self.maps:
+            m: dict[str, dict] = {}
+            for e in self.view(pkg).entries:
+                h = e['tag_hash'].upper()
+                if h in m:
+                    raise ValueError(f'duplicate FileHash {h} in package {pkg:04X}')
+                m[h] = e
+            self.maps[pkg] = m
+        return self.maps[pkg]
+
+    def locate(self, tag_hash: str) -> tuple[RemoteLogicalPackage, dict]:
+        h = norm(tag_hash)
+        pkg = package_of_hash(h)
+        e = self.hash_map(pkg).get(h)
+        if e is None:
+            raise KeyError(f'{h}: not present in exact logical package {pkg:04X}')
+        return self.view(pkg), e
 
 
 def meta_row(e: dict) -> dict:
