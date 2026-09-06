@@ -1,0 +1,73 @@
+name: D1 player 013F animation-source census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-player-013f-animation-source-census.yml'
+      - 'tools/d1_remote_character_asset_probe.py'
+      - 'evidence/d1_investment_assets_013f_member_catalog.json'
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Census exact logical 013F family
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_character_asset_probe.py \
+            --package-id 0x013F \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --member ps4_investment_assets_013f_1.pkg:0x5A9421600:17747968 \
+            --member ps4_investment_assets_013f_2.pkg:0x5AA50E800:3614720 \
+            --member ps4_investment_assets_013f_3.pkg:0x5AA881200:301056 \
+            --member ps4_investment_assets_013f_4.pkg:0x5AA8CAC00:284672 \
+            --member ps4_investment_assets_013f_5.pkg:0x5AA910600:317440 \
+            -o out/013F_character_census.json
+      - name: Validate exact player rig is present and classify animation content
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/013F_character_census.json'))
+          rigs={x['tag_hash'] for x in d['runtime_rigs']}
+          assert '80A7F90B' in rigs,(len(rigs),sorted(rigs)[:20])
+          out={
+            'package_id':d['package_id'],
+            'logical_view_member':d['logical_view_member'],
+            'entry_count':d['entry_count'],
+            'animation_clip_count':d['summary']['animation_clip_count'],
+            'animation_wrapper_count':d['summary']['animation_wrapper_count'],
+            'post_animation_control_count':d['summary']['post_animation_control_count'],
+            'runtime_rig_count':d['summary']['runtime_rig_count'],
+            'skeleton_count':d['summary']['skeleton_count'],
+            'model_parent_count':d['summary']['model_parent_count'],
+            '80A7F90B_present':True,
+            'policy':'Co-residency is discovery evidence only. Even a resident clip is not promoted to player ownership without exact serialized selector/owner evidence.'
+          }
+          json.dump(out,open('out/013F_animation_source_summary.json','w'),indent=2);open('out/013F_animation_source_summary.json','a').write('\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-player-013f-animation-source-census
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
