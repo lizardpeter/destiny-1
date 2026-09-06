@@ -1,0 +1,162 @@
+name: D1 Tower Family E animated exact-resource layer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-family-e-animated-layer.yml'
+      - 'tools/d1_tower_family_e_animated_layer.py'
+      - 'tools/d1_gltf_bind_rigid_animation.py'
+      - 'tools/d1_recover_member_catalog.py'
+      - 'tools/d1_split_tar_extract.py'
+      - 'evidence/d1_tower_family_e_animation_source_member_catalog.json'
+      - 'notes/D1_TOWER_FAMILY_E_ANIMATION_OWNERSHIP_CLOSED_2026-09-06.md'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Python dependencies
+        run: python -m pip install -q numpy scipy pygltflib pyglm
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime source prior_visual prior_validation ownership work out reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover minimal exact retail animation/skin source members
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_family_e_animation_source_member_catalog.json \
+            --family 00ec --out-dir source --report reports/recover_family_e_00ec5.json
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_family_e_animation_source_member_catalog.json \
+            --family 023d --out-dir source --report reports/recover_family_e_023d5.json
+          echo 'e55e29bfc4fbea417df195996c0289a12308b6dac88cdfd99eacbfe55fdb847a  source/ps4_race_set_all_00ec_5.pkg' | sha256sum --check --strict
+          echo 'de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695  source/ps4_city_tower_activities_act_023d_5.pkg' | sha256sum --check --strict
+
+      - name: Pin animation parser
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+
+      - name: Recover proven visual, skin-census, and ownership inputs
+        run: |
+          set -euo pipefail
+          gh run download 34010062329 -n d1-tower-integrated-articulated-preview-fast -D prior_visual
+          gh run download 34005842721 -n d1-tower-articulated-validation -D prior_validation
+          gh run download 34057701526 -n d1-tower-family-e-animation-ownership -D ownership
+          base="$(find prior_visual -name D1_TOWER_ARTICULATED_SOURCE_OWNED_EXACT_TEXTURE_RESOURCES.glb -print -quit)"
+          model="$(find prior_visual -name tower_articulated_model_export.json -print -quit)"
+          skin="$(find prior_validation -name tower_articulated_skin_census.json -print -quit)"
+          own="$(find ownership -name TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json -print -quit)"
+          for p in "$base" "$model" "$skin" "$own"; do test -n "$p" -a -f "$p"; done
+          cp "$base" work/articulated_exact_resources.glb
+          cp "$model" work/tower_articulated_model_export.json
+          cp "$skin" work/tower_articulated_skin_census.json
+          cp "$own" work/TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json
+          echo 'cea9dadacf0eb62c5aa9dc940f7a0fe27958b2d2e0bce7070762d22cbce7dfd4  work/articulated_exact_resources.glb' | sha256sum --check --strict
+          echo '280592bdaff3be24636425ea29094d5fae97e24158fae5a9e7fb86d99ca5b668  work/tower_articulated_model_export.json' | sha256sum --check --strict
+          echo 'b2a26bfb90f3ff14b2a5e15228a555ade0407e5708a8a8bafa56f104447a2191  work/tower_articulated_skin_census.json' | sha256sum --check --strict
+          echo 'f4b0fdf848cf3fb4119c00bb097256f85ee45ccecb1fc6ef73f755ba60ab5188  work/TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json' | sha256sum --check --strict
+
+      - name: Build exact owner-selected Family E animated layer
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_family_e_animated_layer.py \
+            work/articulated_exact_resources.glb \
+            --model-report work/tower_articulated_model_export.json \
+            --skin-census work/tower_articulated_skin_census.json \
+            --ownership-report work/TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json \
+            --source-pkg source/ps4_race_set_all_00ec_5.pkg \
+            --tower-animation-pkg source/ps4_city_tower_activities_act_023d_5.pkg \
+            --runtime runtime --parser-root parser --fps 30 \
+            --out out/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb \
+            --report reports/TOWER_FAMILY_E_ANIMATED_LAYER.json
+
+      - name: Validate exact animated-layer contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_FAMILY_E_ANIMATED_LAYER.json'))
+          assert d['status']=='D1_TOWER_FAMILY_E_ANIMATED_LAYER_COMPLETE',d
+          assert d['input_sha256']=='cea9dadacf0eb62c5aa9dc940f7a0fe27958b2d2e0bce7070762d22cbce7dfd4',d['input_sha256']
+          assert (d['source_mesh_count'],d['selected_range_count'],d['unique_triangle_count'])==(4,26,20575),d
+          assert d['scene_placement_triangle_count']==123450,d
+          assert (d['runtime_placement_count'],d['placement_geometry_node_count'])==(6,156),d
+          assert (d['skeleton_node_count'],d['runtime_rig_control_count'])==(67,67),d
+          assert d['original_binary_exact_prefix'] is True,d
+          assert d['other_articulated_world_id_count']==31,d
+          assert d['state_semantics_proven'] is False and d['loop_semantics_proven'] is False and d['synchronization_semantics_proven'] is False,d
+          o=d['original_counts'];f=d['final_counts']
+          assert (o['meshes'],o['nodes'],o['materials'],o['textures'],o['images'],o['skins'],o['animations'])==(86,332,35,70,70,0,0),o
+          assert (f['meshes'],f['nodes'],f['materials'],f['textures'],f['images'],f['skins'],f['animations'])==(86,740,35,70,70,6,6),f
+          assert d['clip_decode']['80C7AE98']['frame_count']==62,d['clip_decode']
+          assert d['clip_decode']['809D8572']['frame_count']==324,d['clip_decode']
+          assert d['world_id_owner_map']=={
+            '1F763204E6BF153E':{'entity':'80C7AD82','clip':'809D8572'},
+            '288E250AFDC06BC7':{'entity':'80C7AE3E','clip':'80C7AE98'},
+            '28F88CAFCCE615AC':{'entity':'80CA0CD6','clip':'809D8572'},
+            '5A9D48129FB3D22A':{'entity':'80CA0CD6','clip':'809D8572'},
+            '5F523A4A340754A7':{'entity':'80CA0CD6','clip':'809D8572'},
+            'C588D8EE0F1F493D':{'entity':'80CA0CD6','clip':'809D8572'},
+          },d['world_id_owner_map']
+          expected_modes={
+            '0':{'inline4':141},
+            '1':{'inline4':1381},
+            '2':{'inline2':745},
+            '3':{'rigid_lane3':19835},
+          }
+          for mi,modes in expected_modes.items():
+            assert d['source_streams'][mi]['meta']['mode_counts']==modes,(mi,d['source_streams'][mi])
+            assert d['source_streams'][mi]['meta']['weight_sum_min']==255 and d['source_streams'][mi]['meta']['weight_sum_max']==255,d['source_streams'][mi]
+          assert len(d['animations'])==6 and all(x['channel_count']>0 for x in d['animations']),d['animations']
+          print('TOWER_FAMILY_E_ANIMATED_LAYER_GREEN')
+          print('OUTPUT_SHA256',d['output_sha256'])
+          print('OUTPUT_BYTES',d['output_bytes'])
+          PY
+
+      - name: Publish durable Family E animated articulated checkpoint
+        run: |
+          set -euo pipefail
+          tag=d1-tower-articulated-family-e-animated-r8-exact-resources
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title 'D1 Tower articulated Family E animated r8 exact resources' \
+              --notes 'Exact-texture articulated Tower layer with all 37 previously proven placements retained. The six 67-bone Family-E placements now carry exact retail D1 JOINTS/WEIGHTS and six source-owner-selected animation actions: one 62-frame 80C7AE98 placement and five 324-frame 809D8572 placements. No vendor/NPC/state/loop/synchronization semantic is inferred. Other articulated families remain at the previous bind-pose checkpoint.'
+          fi
+          gh release upload "$tag" \
+            out/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb \
+            reports/TOWER_FAMILY_E_ANIMATED_LAYER.json \
+            work/TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-family-e-animated-exact-resources
+          path: |
+            out/D1_TOWER_ARTICULATED_FAMILY_E_OWNER_SELECTED_ANIMATED_EXACT_RESOURCES.glb
+            reports/TOWER_FAMILY_E_ANIMATED_LAYER.json
+            work/TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json
+          retention-days: 14
+          compression-level: 6
