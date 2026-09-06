@@ -1,0 +1,146 @@
+name: D1 Spektar Bungie72 material v5 corrected glTF detail UV
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-bungie72-material-v5-gltf-uv.yml'
+      - 'tools/d1_guardian_spasm_detail_diffuse_bake_gltf_v2.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and exact source checkpoints
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pillow opencv-python-headless trimesh
+          mkdir -p input/tangent input/stage_dyes input/dyes input/detail input/canonical out
+          fetch_artifact () {
+            name="$1"; dst="$2"; dir="$3"
+            url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=50" \
+              | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a, '${name}'; a.sort(key=lambda x:x['created_at'],reverse=True); print(a[0]['archive_download_url'])")
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o "$dst"
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact 'D1-SPEKTAR-BUNGIE72-EXACT-TANGENT' input/tangent.zip input/tangent
+          fetch_artifact 'd1-spektr-pandion-stage-part-dyes' input/stage_dyes.zip input/stage_dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dyes' input/dyes.zip input/dyes
+          fetch_artifact 'd1-spektr-pandion-exact-dye-detail-textures' input/detail.zip input/detail
+          resolve_one () { src=$(find "$1" -type f -name "$2" -print -quit); test -n "$src"; cp "$src" "$3"; }
+          resolve_one input/tangent 'SPEKTAR_PANDION_TITAN_BUNGIE72_SOURCE_NORMALS_DETAILUV_TANGENT.glb' input/canonical/source.glb
+          resolve_one input/stage_dyes 'spektar_masculine_stage_part_dyes.json' input/canonical/stage_dyes.json
+          resolve_one input/dyes 'spektar_pandion_exact_dyes.json' input/canonical/exact_dyes.json
+          resolve_one input/detail 'spektar_dye_detail_textures.json' input/canonical/detail_manifest.json
+          mkdir -p input/canonical/detail
+          find input/detail -type f -name '*.png' -exec cp '{}' input/canonical/detail/ \;
+          test "$(find input/canonical/detail -type f -name '*.png' | wc -l)" -eq 6
+
+      - name: Bake exact Spasm detail diffuse in corrected glTF plate space
+        run: |
+          set -euo pipefail
+          python tools/d1_guardian_spasm_detail_diffuse_bake_gltf_v2.py \
+            input/canonical/source.glb \
+            --stage-dyes input/canonical/stage_dyes.json \
+            --exact-dyes input/canonical/exact_dyes.json \
+            --detail-manifest input/canonical/detail_manifest.json \
+            --detail-dir input/canonical/detail \
+            --report out/spasm_detail_diffuse_gltf_v2.json \
+            -o out/SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V5_GLTF_UV_CORRECTED.glb
+
+      - name: Fail-closed structural and UV validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,trimesh
+          src='input/canonical/source.glb'
+          out='out/SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V5_GLTF_UV_CORRECTED.glb'
+          def graph(path):
+              raw=open(path,'rb').read(); jl=struct.unpack_from('<I',raw,12)[0]
+              return json.loads(raw[20:20+jl].decode().rstrip('\x00 ')),raw
+          a,ra=graph(src); b,rb=graph(out)
+          assert a['nodes']==b['nodes']
+          assert a['accessors']==b['accessors']
+          assert a['skins']==b['skins']
+          assert a['animations']==b['animations']
+          def no_materials(meshes):
+              x=json.loads(json.dumps(meshes))
+              for m in x:
+                  for p in m.get('primitives',[]): p.pop('material',None)
+              return x
+          assert no_materials(a['meshes'])==no_materials(b['meshes'])
+          active=[]
+          for n in b['nodes']:
+              if n.get('mesh') is None: continue
+              m=b['meshes'][n['mesh']]; pr=m['primitives'][0]
+              assert {'POSITION','NORMAL','TANGENT','TEXCOORD_0','TEXCOORD_1','JOINTS_0','WEIGHTS_0'} <= set(pr['attributes'])
+              assert 'd1SourceTangentRestore' in (m.get('extras') or {})
+              mat=b['materials'][pr['material']]
+              assert 'KHR_materials_unlit' in (mat.get('extensions') or {})
+              assert mat['extras']['d1UVPolicy'].startswith('TEXCOORD_0 is already D1->glTF V-flipped')
+              active.append(m.get('name'))
+          assert len(active)==28,len(active)
+          assert len(b['skins'])==1 and len(b['skins'][0]['joints'])==72
+          assert len(b['animations'])==1 and len(b['animations'][0]['channels'])==216
+          r=json.load(open('out/spasm_detail_diffuse_gltf_v2.json'))
+          assert r['schema']=='d1_guardian_spasm_detail_diffuse_bake_gltf/v2'
+          assert r['active_primitive_count']==28 and r['baked_material_count']==18
+          assert r['overlap_conflict_pixels']==0,r
+          # One edge pixel may round onto a transparent atlas border.  The corrected
+          # masks otherwise land entirely on the exact source albedo occupancy.
+          assert r['covered_transparent_source_albedo_pixels'] <= 1,r
+          assert r['legacy_vflip_covered_pixels'] > 0
+          assert r['legacy_vflip_nontransparent_pixels'] < r['legacy_vflip_covered_pixels']
+          s=trimesh.load(out,force='scene',process=False); assert len(s.geometry)==69
+          print('MATERIAL V5 GLTF UV VALIDATION PASSED')
+          print('active',len(active),'alpha_mismatch',r['covered_transparent_source_albedo_pixels'])
+          print('legacy alpha hit',r['legacy_vflip_nontransparent_pixels'],'/',r['legacy_vflip_covered_pixels'])
+          PY
+          python tools/d1_gltf_skin_deformation_bounds.py \
+            out/SPEKTAR_PANDION_TITAN_BUNGIE72_MATERIAL_V5_GLTF_UV_CORRECTED.glb \
+            --frame 0 --frame 30 --frame 60 --frame 100 --frame 145 \
+            -o out/deformation_bounds.json
+          sha256sum out/*.glb > out/SHA256SUMS.txt
+
+      - name: README
+        run: |
+          cat > out/README.txt <<'EOF'
+          D1 Spektar Pandion Titan — Material v5 glTF UV corrected
+
+          This supersedes the v3/v4 portable detail-diffuse bake. Geometry, exact 72-bone skin/animation, exact
+          stage-0 range selection, source NORMAL, exact tangent vec4/handedness, TEXCOORD_0, D1 a_texcoord2,
+          JOINTS_0, and WEIGHTS_0 are unchanged.
+
+          Correction: glTF 2.0 texture coordinates have their origin at the upper-left. The D1 exporter already
+          converts native/Tiger V into that convention. The older detail bake vertically flipped TEXCOORD_0 a
+          second time when rasterizing the atlas. v5 removes that extra flip, converts back to D1 V only while
+          evaluating Bungie's archived detail-UV equation, and converts the resulting detail V back to glTF image
+          space for sampling.
+
+          This is a source/convention correction, not a visual tweak. The build fails closed on multiplier overlap,
+          preserves all geometry/skin/animation structures, and records the old-vs-corrected source-atlas occupancy
+          as independent validation evidence.
+
+          KHR_materials_unlit remains intentional: no unproven PS4 PBR/roughness/metallic semantics are introduced.
+          Detail-normal reconstruction is the next source-backed material step.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SPEKTAR-BUNGIE72-MATERIAL-V5-GLTF-UV-CORRECTED
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
