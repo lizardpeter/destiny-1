@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""Resolve and structurally probe D1 PS4 pixel-material vector data.
+"""Resolve exact D1 PS4 ROI pixel-material vector structures.
 
-The ROI Material PS region contains several independent structures: TFX bytecode,
-samplers, TFX-expression data, GPU constant-buffer data, and an optional external
-PS Vector4 container at +0x32C.  Earlier tooling incorrectly treated +0x300 and
-+0x32C as mutually exclusive storage modes.  Retail 809DCD66 materials prove that
-both can coexist and that the external 32:7 payload may be a byte-identical mirror.
+Retail Tower evidence plus the pinned ROI material schema closes the pixel-stage
+layout used here:
 
-This tool therefore preserves raw structure first.  It decodes the known +0x300
-DynamicArray<Vec4>, resolves +0x32C when present, compares both payloads exactly,
-and emits bounded DynamicArray probes across the surrounding PS control region.
-No semantic name is assigned to an unresolved array solely from its offset.
+  +0x2D0  PS TFX bytecode DynamicArray<u8>
+  +0x2E0  PS TFX private constants DynamicArray<Vec4>
+  +0x2F0  PS sampler DynamicArray<16-byte tag records>
+  +0x300  PS CBuffers DynamicArray<Vec4>
+  +0x32C  optional external PS Vector4 container
+
+For the 24 visible 809DCD66 materials, +0x300 is always seven Vec4s.  Ten also
+have +0x32C subtype-32:7 payloads that are byte-identical mirrors of those seven
+vectors; fourteen have no external mirror.  The +0x2E0 count independently tracks
+the highest constant referenced by each TFX program.
+
+Raw u32 words and source provenance remain canonical.  This module does not infer
+shader-semantic meanings for individual vector elements beyond structures closed
+by retail/schema evidence.
 """
 from __future__ import annotations
 
@@ -24,7 +31,6 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import d1_tower_map_schema_validate_v5 as v5
-from d1_entity_model_probe import rel_array
 from d1_material_decode import parse_material
 from d1_world_material_constant_export import decode_vec4s, export_container
 
@@ -44,6 +50,8 @@ def array_probe(material_bytes: bytes, o: int, elem_size: int = 16) -> dict:
     count = struct.unpack_from("<I", material_bytes, o)[0]
     reserved = struct.unpack_from("<I", material_bytes, o + 4)[0]
     rel = struct.unpack_from("<q", material_bytes, o + 8)[0]
+    # Charm DynamicArray<T>: RelativePointer is based at pointer field o+8 and
+    # carries the engine's +0x10 extra offset.
     abs_off = (o + 8) + rel + 0x10
     end = abs_off + count * elem_size
     row.update(
@@ -84,6 +92,15 @@ def vec4_array(material_bytes: bytes, o: int) -> dict:
     return p
 
 
+def _external_payload_hex(external: dict | None) -> str | None:
+    if not external or external.get("error"):
+        return None
+    return "".join(
+        "".join(struct.pack("<I", int(x, 16)).hex() for x in v["u32_hex"])
+        for v in external.get("vectors", [])
+    )
+
+
 def resolve_material(c, material_hash: str) -> dict:
     mh = norm(material_hash)
     meta = c.entry_meta(mh)
@@ -105,31 +122,25 @@ def resolve_material(c, material_hash: str) -> dict:
         row["error"] = f"parse_material failed: {ex!r}"
         return row
 
+    ps_tfx_constants = vec4_array(b, 0x2E0)
+    ps_cbuffers = vec4_array(b, 0x300)
     psc = norm(p["ps_vector4_container"])
-    a300 = vec4_array(b, 0x300)
     external = export_container(c, psc) if psc not in NULLS else None
     external_ok = bool(external is not None and not external.get("error"))
 
-    a300_hex = a300.get("payload_hex") if not a300.get("error") else None
-    external_hex = None
-    if external_ok:
-        external_hex = "".join(
-            "".join(struct.pack("<I", int(x, 16)).hex() for x in v["u32_hex"])
-            for v in external.get("vectors", [])
-        )
-    mirror_equal = None if external is None or a300_hex is None or not external_ok else (a300_hex == external_hex)
+    cb_hex = ps_cbuffers.get("payload_hex") if not ps_cbuffers.get("error") else None
+    ext_hex = _external_payload_hex(external)
+    mirror_equal = None if external is None or cb_hex is None or ext_hex is None else (cb_hex == ext_hex)
 
     if external is None:
-        relation = "array_300_only"
+        relation = "ps_cbuffers_only"
     elif external_ok and mirror_equal:
-        relation = "array_300_plus_external_identical"
+        relation = "ps_cbuffers_plus_external_identical"
     elif external_ok:
-        relation = "array_300_plus_external_different"
+        relation = "ps_cbuffers_plus_external_different"
     else:
-        relation = "array_300_plus_external_unresolved"
+        relation = "ps_cbuffers_plus_external_unresolved"
 
-    # Keep the complete region plus a deliberately redundant 8-byte-step scan.
-    # The scan is forensic: only explicitly parsed structures receive semantic names.
     probe_offsets = list(range(0x2D0, 0x330, 8))
     probes = {f"{o:03X}": array_probe(b, o, 16) for o in probe_offsets}
 
@@ -140,18 +151,24 @@ def resolve_material(c, material_hash: str) -> dict:
             "vertex_shader": norm(p["vertex_shader"]),
             "ps_texture_tags": p["ps_textures"]["items"],
             "ps_tfx_bytecode": p["ps_tfx_bytecode"],
+            "ps_tfx_constants": ps_tfx_constants,
+            "ps_cbuffers": ps_cbuffers,
+            # Compatibility alias for reports emitted before the offset closure.
+            "array_300": ps_cbuffers,
             "ps_vector4_container": psc,
-            "array_300": a300,
             "external": external,
             "external_resolved": external_ok,
+            "ps_cbuffers_external_byte_identical": mirror_equal,
             "array_300_external_byte_identical": mirror_equal,
             "vector_storage_relation": relation,
             "dynamic_array_candidate_scan": probes,
             "material_ps_control_window_2d0_340_hex": b[0x2D0 : min(len(b), 0x340)].hex(),
         }
     )
-    if a300.get("error"):
-        row["error"] = a300["error"]
+    if ps_tfx_constants.get("error"):
+        row["error"] = f"PS TFX constants: {ps_tfx_constants['error']}"
+    elif ps_cbuffers.get("error"):
+        row["error"] = f"PS CBuffers: {ps_cbuffers['error']}"
     elif external is not None and not external_ok:
         row["error"] = f"external constant container unresolved: {external.get('error')}"
     return row
@@ -174,22 +191,29 @@ def main() -> int:
         relations[k] = relations.get(k, 0) + 1
 
     out = {
-        "schema_version": 2,
-        "status": "D1_PS_MATERIAL_VECTOR_PROBE_EXACT" if not errors else "D1_PS_MATERIAL_VECTOR_PROBE_PARTIAL",
+        "schema_version": 3,
+        "status": "D1_PS_MATERIAL_VECTOR_LAYOUT_EXACT" if not errors else "D1_PS_MATERIAL_VECTOR_LAYOUT_PARTIAL",
         "selected_material_count": len(materials),
         "vector_storage_relation_counts": relations,
         "error_count": len(errors),
         "error_materials": errors,
         "materials": materials,
+        "closed_offsets": {
+            "ps_tfx_bytecode": "0x2D0",
+            "ps_tfx_constants": "0x2E0",
+            "ps_samplers": "0x2F0",
+            "ps_cbuffers": "0x300",
+            "ps_vector4_container": "0x32C",
+        },
         "policy": (
-            "Raw PS4 ROI material-vector structure. +0x300 is decoded structurally as DynamicArray<Vec4>; "
-            "+0x32C external subtype-32:7 is resolved independently and byte-compared. Surrounding array scans "
-            "are forensic candidates only until retail/schema dataflow closes their semantic role."
+            "Exact PS4 ROI material structures: +0x2E0 PS TFX constants and +0x300 PS CBuffers are "
+            "decoded independently; +0x32C subtype-32:7 is resolved and byte-compared to PS CBuffers. "
+            "Raw values and provenance remain canonical."
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + "\n")
-    print(json.dumps({k: out[k] for k in ("status", "selected_material_count", "vector_storage_relation_counts", "error_count")}, indent=2))
+    print(json.dumps({k: out[k] for k in ("status", "selected_material_count", "vector_storage_relation_counts", "error_count", "closed_offsets")}, indent=2))
     return 0 if not errors else 2
 
 
