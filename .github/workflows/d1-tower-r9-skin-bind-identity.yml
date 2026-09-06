@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-tower-r9-skin-bind-identity.yml'
       - 'tools/d1_gltf_skin_bind_identity_probe.py'
       - 'tools/d1_gltf_skin_geometry_alignment_probe.py'
+      - 'tools/d1_gltf_animation_skin_deformation_probe.py'
       - 'tools/d1_gltf_layer_merge.py'
 
 permissions:
@@ -39,6 +40,9 @@ jobs:
       - name: Measure Family E bind skeleton against weighted geometry
         run: |
           python tools/d1_gltf_skin_geometry_alignment_probe.py input/r9.glb --model 80CA0CFC -o reports/FAMILY_E_GEOMETRY_SKELETON_ALIGNMENT.json
+      - name: Numerically skin Family E at source animation frames
+        run: |
+          python tools/d1_gltf_animation_skin_deformation_probe.py input/r9.glb --model 80CA0CFC -o reports/FAMILY_E_ANIMATED_DEFORMATION.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
