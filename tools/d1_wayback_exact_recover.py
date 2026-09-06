@@ -7,7 +7,7 @@ and optionally downloads one exact capture using the `id_` replay form so archiv
 bytes are not rewritten by the Wayback toolbar.
 """
 from __future__ import annotations
-import argparse,hashlib,json,time,urllib.parse,urllib.request
+import argparse,hashlib,json,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 
 UA='d1-reversal-evidence/1.0 (+https://github.com/lizardpeter/destiny-1)'
