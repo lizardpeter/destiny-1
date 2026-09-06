@@ -1,0 +1,45 @@
+name: D1 dye global package locator
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-dye-global-package-locator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve package families for D1 dye tables
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          tags={'art_dye_reference':'A8FFA580','dye_channels':'49E2A580','dye_manifest_assignments':'DCE1A780'}
+          def fh(v):
+              v=int(v,16)
+              pkg=((v>>13)&0x3ff)+((((v>>23)&3)-1)*0x400)
+              return pkg,v&0x1fff
+          names=[Path(x.strip()).name for x in Path('out/packages.txt').read_text(errors='replace').splitlines() if x.strip()]
+          out={}
+          for role,tag in tags.items():
+              pkg,idx=fh(tag)
+              pid=f'{pkg:04x}'
+              members=sorted(n for n in names if re.search(rf'_{pid}_[0-9]+\.pkg$',n,re.I))
+              out[role]={'tag_hash':tag,'decoded_package_id':f'{pkg:04X}','decoded_file_index':idx,'members':members}
+              print(role,tag,f'pkg={pkg:04X}',f'index={idx}',members)
+          Path('out/dye_global_package_locator.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-dye-global-package-locator
+          path: out/dye_global_package_locator.json
+          retention-days: 14
