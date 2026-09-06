@@ -114,7 +114,7 @@ jobs:
               print('  MATCHES',[(hex(m['offset']),m['tag_hash'],m['reference']) for m in x['aligned_resolved_tag_matches']])
           b=json.load(open('out/CROTA_FINALE_ALL_BACKLINKS.json'))
           assert b['error_count']==0,b['errors']
-          print('BACKLINK_SOURCES',b['hit_source_count'],'BY_TARGET',b['hit_sources_by_target'],'BY_REFERENCE',b['hit_sources_by_reference'])
+          print('BACKLINK_SOURCES',b['hit_source_count'],'BY_TARGET',b['occurrences_by_target'],'BY_REFERENCE',b['hit_sources_by_reference'])
           for x in b['hits']:print('OWNER',x['source_tag_hash'],'CLASS',x['reference'],'TARGETS',x['targets'])
           PY
           sha256sum out/* > out/SHA256SUMS.txt
