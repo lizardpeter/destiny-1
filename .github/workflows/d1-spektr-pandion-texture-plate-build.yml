@@ -6,6 +6,7 @@ on:
       - '.github/workflows/d1-spektr-pandion-texture-plate-build.yml'
       - 'tools/d1_remote_texture_export.py'
       - 'tools/d1_remote_texture_export_generation_safe.py'
+      - 'tools/d1_remote_investment_parent_probe.py'
       - 'tools/d1_texture_plate_compose_set.py'
   workflow_dispatch:
 
