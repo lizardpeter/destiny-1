@@ -1,0 +1,75 @@
+name: D1 Spektar Pandion stage-part dye census
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-stage-part-dyes.yml'
+      - 'tools/d1_guardian_stage_part_dye_census.py'
+      - 'tools/d1_dye_stage_part_semantics.py'
+      - 'tools/d1_entity_model_probe.py'
+      - 'evidence/d1_investment_asset_member_catalog.json'
+      - 'evidence/d1_player_gear_member_catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Census exact serialized stage-part dye selectors
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_stage_part_dye_census.py \
+            --model 80A8274E --model 80A85682 --model 809FDB1E --model 80A816E4 --model 80A862BA \
+            --body-role masculine \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --member-catalog evidence/d1_player_gear_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/spektar_masculine_stage_part_dyes.json
+
+      - name: Validate one dye selector per exported range
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/spektar_masculine_stage_part_dyes.json'))
+          assert d['schema']=='d1_guardian_stage_part_dye_census/v2',d
+          assert d['body_role']=='masculine',d
+          assert d['model_count']==5,d
+          assert d['unique_range_count']==69,d
+          assert d['resolved_range_count']==69,d
+          assert d['conflict_count']==0,d
+          assert not d['conflicts'],d
+          selectors={int(k) for k in d['selector_distribution']}
+          assert selectors <= set(range(8)),selectors
+          print('SPEKTAR STAGE-PART DYES CLOSED')
+          print('selector distribution',d['selector_distribution'])
+          print('semantic distribution',d['semantic_distribution'])
+          for m in d['models']:
+              print('MODEL',m['tag_hash'],'ranges',m['unique_range_count'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-spektr-pandion-stage-part-dyes
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
