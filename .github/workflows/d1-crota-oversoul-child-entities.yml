@@ -1,0 +1,154 @@
+name: D1 Crota Oversoul child EntitySK closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-oversoul-child-entities.yml'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_entity_child_find.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+      - 'tools/d1_remote_entity_names_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Decode exact Oversoul s_entity including EntityChildren
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_exact_s_entity_probe.py
+          python tools/d1_remote_exact_s_entity_probe.py \
+            --tag-hash 0x8108E484 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/OVERSOUL_ENTITY_WITH_CHILDREN.json \
+            | tee out/oversoul_stdout.txt
+
+      - name: Resolve every serialized Oversoul child s_entity
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/OVERSOUL_ENTITY_WITH_CHILDREN.json'))
+          e=d['entries'][0]
+          tags=[]
+          for c in e.get('child_entities',[]):
+              h=c['entity_hash'].upper()
+              if h not in tags: tags.append(h)
+          if not tags: raise SystemExit('Oversoul EntityChildren decoded zero non-null child EntitySK tags')
+          print(' '.join('--tag-hash 0x'+h for h in tags))
+          PY
+          )
+          echo "CHILD_ENTITY_ARGS=$ARGS" | tee out/child_entity_args.txt
+          python tools/d1_remote_exact_s_entity_probe.py $ARGS \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/OVERSOUL_CHILD_ENTITIES.json \
+            | tee out/child_entities_stdout.txt
+
+      - name: Resolve exact names of all children when name fields exist
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/OVERSOUL_CHILD_ENTITIES.json'))
+          generic=sorted({h for e in d['entries'] for h in e.get('generic_name_tags',[])})
+          specific=sorted({h for e in d['entries'] for h in e.get('specific_name_string_hashes',[])})
+          args=['--generic-name-tag 0x'+h for h in generic]+['--string-hash 0x'+h for h in specific]
+          print(' '.join(args))
+          PY
+          )
+          echo "NAME_ARGS=$ARGS" | tee out/name_args.txt
+          if [[ -n "$ARGS" ]]; then
+            python tools/d1_remote_global_stringhash_resolve.py $ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+              --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+              --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+              --global-package-id 0x072B --global-package-id 0x072F --global-package-id 0x0735 \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime -o out/OVERSOUL_CHILD_NAMES.json \
+              | tee out/child_names_stdout.txt
+          else
+            printf '%s\n' '{"schema":"d1_remote_global_stringhash_resolve/v1","target_string_hashes":[],"generic_name_tag_to_string_hash":{},"resolved":{},"unresolved_target_hashes":[],"violation_count":0,"violations":[],"scan_errors":[]}' > out/OVERSOUL_CHILD_NAMES.json
+            echo 'NO_SOURCE_MAPPED_CHILD_NAMES' | tee out/child_names_stdout.txt
+          fi
+
+      - name: Summarize exact child body candidates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          o=json.load(open('out/OVERSOUL_ENTITY_WITH_CHILDREN.json'))
+          assert o['violation_count']==0,o['violations']
+          root=o['entries'][0]
+          print('OVERSOUL','MODEL',root.get('embedded_models'),'SKELETONS',[(x['resource_hash'],x['node_count']) for x in root.get('skeletons',[])])
+          print('OVERSOUL_CHILD_EDGES',[(x['resource_hash'],x['index'],x['entity_hash']) for x in root.get('child_entities',[])])
+          d=json.load(open('out/OVERSOUL_CHILD_ENTITIES.json'))
+          assert d['violation_count']==0,d['violations']
+          names=json.load(open('out/OVERSOUL_CHILD_NAMES.json'))
+          assert names.get('violation_count',0)==0,names.get('violations')
+          gmap=names.get('generic_name_tag_to_string_hash',{})
+          resolved=names.get('resolved',{})
+          for e in d['entries']:
+              vals=[]
+              for tag in e.get('generic_name_tags',[]):
+                  sh=gmap.get(tag)
+                  vals += [x['string'] for x in resolved.get(sh,[]) if x.get('string') is not None]
+              for sh in e.get('specific_name_string_hashes',[]):
+                  vals += [x['string'] for x in resolved.get(sh,[]) if x.get('string') is not None]
+              print('CHILD',e['tag_hash'],'RESOURCES',e['resource_count'],
+                    'MODELS',e.get('embedded_models',[]),
+                    'SKELETONS',[(x['resource_hash'],x['node_count']) for x in e.get('skeletons',[])],
+                    'GENERIC_TAGS',e.get('generic_name_tags',[]),
+                    'SPECIFIC_HASHES',e.get('specific_name_string_hashes',[]),
+                    'RESOLVED_NAMES',vals,
+                    'NESTED_CHILDREN',[(x['resource_hash'],x['entity_hash']) for x in e.get('child_entities',[])])
+          PY
+          sha256sum out/*.json out/*.txt > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-OVERSOUL-CHILD-ENTITIES
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
