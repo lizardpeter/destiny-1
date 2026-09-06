@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_FAMILY_A_01E3_EXACT_MEMBER_CATALOG",
+  "date": "2026-09-06",
+  "families": {
+    "01e3": [
+      {
+        "name": "ps4_globals_cinematic_01e3_0.pkg",
+        "data_offset": 19789025792,
+        "size": 125274112,
+        "sha256": "5449c749b868d432b8d86c8c484b8a4324502af3d62e292c7553722294bff237"
+      },
+      {
+        "name": "ps4_globals_cinematic_01e3_1.pkg",
+        "data_offset": 19914300416,
+        "size": 1122304,
+        "sha256": "53fcac4c2bc92e81ead9b91dd10ed4f14e7a9d8f005bf1bc60a9a59485e47ffd"
+      },
+      {
+        "name": "ps4_globals_cinematic_01e3_2.pkg",
+        "data_offset": 19915423232,
+        "size": 44613632,
+        "sha256": "1aa58455b8c5bbcf0ff893d87f07affaba5a9dd0586a51d81be212565627cfba"
+      }
+    ]
+  },
+  "provenance": {
+    "member_locations": "evidence/d1_tower_dependency_member_catalog.json",
+    "member_sha256": "evidence/d1_tower_dependency_sha256_catalog.json"
+  },
+  "policy": "This catalog identifies exact current physical 01E3 archive members only. Family-A semantic ownership remains established by the SEntity resource list and exact cross-package owner/control proof."
+}
