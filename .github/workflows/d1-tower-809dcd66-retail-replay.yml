@@ -1,0 +1,193 @@
+name: D1 Tower 809DCD66 retail replay
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-809dcd66-retail-replay.yml'
+      - 'tools/d1_tower_80ca0dda_vs_replay.py'
+      - 'tools/d1_tower_809dcd66_ps_replay.py'
+      - 'tools/d1_world_static_vertex_decode.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Tower cell evidence, packages and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh
+          mkdir -p prior index runtime packages reports
+          gh run download 33987189885 -n d1-tower-ten-cell-corrected-textured-reports -D prior
+          test -f prior/world/TOWER_80C98254_WORLD.json
+          test -f prior/reports/material_texture_manifest_ten_cell.json
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Replay exact 8+20 target geometry and instance varyings
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from collections import Counter,defaultdict
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          import d1_tower_static_chunk_export as base
+          from d1_material_decode import parse_material
+          from d1_world_static_vertex_decode import decode_static_attributes
+          from d1_tower_80ca0dda_vs_replay import decode_static_inputs,record_from_sidecar,replay_pixel_varyings
+
+          c=v5.v3.base.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          world=json.load(open('prior/world/TOWER_80C98254_WORLD.json'))
+          manifest=json.load(open('prior/reports/material_texture_manifest_ten_cell.json'))
+          target_materials={h for h,r in manifest['materials'].items() if r.get('pixel_shader')=='809DCD66' and r.get('vertex_shader')=='80CA0DDA'}
+          assert len(target_materials)==24,len(target_materials)
+
+          geoms=[g for g in world['geometry'] if g.get('source_key',{}).get('material_hash') in target_materials]
+          nodes=[n for n in world['nodes'] if n.get('material_hash') in target_materials]
+          assert len(geoms)==12,len(geoms)
+          assert len(nodes)==64,len(nodes)
+          assert {n['material_hash'] for n in nodes}=={'80CA04C3','80CA0D9E','80CA0D9F','80CA0DA0','80CA0DA1'}
+
+          by_geom=defaultdict(list)
+          for n in nodes: by_geom[n['geometry']].append(n)
+          ref_cache={}
+          def ref(h):
+              if h not in ref_cache: ref_cache[h]=base.read_reference_file(c,h)
+              return ref_cache[h]
+
+          rows=[]; total_used=0
+          for g in geoms:
+              k=g['source_key']; mh=k['material_hash']
+              mb,_=c.payload(mh); assert mb is not None,mh
+              mat=parse_material(mb,'PS4')
+              assert str(mat['vertex_shader']).upper()=='80CA0DDA',(mh,mat['vertex_shader'])
+              assert str(mat['pixel_shader']).upper()=='809DCD66',(mh,mat['pixel_shader'])
+
+              v0=ref(k['vertices0']);v1=ref(k['vertices1']);ib=ref(k['indices'])
+              s0=base.hdr_stride(v0['header']);s1=base.hdr_stride(v1['header'])
+              assert (s0,s1)==(8,20),(g['geometry'],s0,s1)
+              assert (g['stride0'],g['stride1'])==(8,20),g['geometry']
+
+              native=decode_static_inputs(v0['backing'],v1['backing'])
+              generic=decode_static_attributes(v0['backing'],8,v1['backing'],20)
+              np.testing.assert_array_equal(native.v4_v6_position,generic.positions)
+              np.testing.assert_array_equal(native.v8_v9_uv,generic.uv0)
+              np.testing.assert_array_equal(native.v12_v14_normal,generic.normals)
+              np.testing.assert_array_equal(native.v16_v19_tangent,generic.tangents)
+              assert generic.colors is None
+              assert generic.layout['secondary']['uv0_offset']==0
+              assert generic.layout['secondary']['normal_offset']==4
+              assert generic.layout['secondary']['tangent_offset']==12
+
+              inds=base.decode_indices(ib['backing'],base.index_is32(ib['header']))
+              off=int(k['index_offset']);cnt=int(k['index_count']);ptype=int(k['primitive_type'])
+              faces=base.primitive_faces(inds[off:off+cnt],ptype,base.index_is32(ib['header']))
+              used=np.unique(faces.reshape(-1)); assert len(used)>0
+              assert int(used.max())<native.vertex_count
+              assert sorted(g['source_vertex_indices'])==used.tolist(),g['geometry']
+              total_used+=len(used)
+
+              gn=by_geom[g['geometry']]; assert len(gn)==int(g['placement_count'])
+              for n in gn:
+                  rec=record_from_sidecar(n['source_affine'],n['uv_transform'],n['tail_0x3c'])
+                  out=replay_pixel_varyings(native,rec)
+                  for a in (out.param0,out.param1,out.param2,out.param3,out.param4): assert np.isfinite(a[used]).all()
+                  np.testing.assert_array_equal(out.param0[used,3],np.ones(len(used),dtype=np.float32))
+                  np.testing.assert_array_equal(out.param2[used,3],np.ones(len(used),dtype=np.float32))
+                  np.testing.assert_array_equal(out.param3[used,2],np.zeros(len(used),dtype=np.float32))
+                  np.testing.assert_array_equal(out.param3[used,3],np.ones(len(used),dtype=np.float32))
+                  np.testing.assert_array_equal(out.param4[used,3],np.ones(len(used),dtype=np.float32))
+                  # Independent affine/UV vector forms against sidecar fields.
+                  a=np.asarray(n['source_affine'],dtype=np.float32)
+                  src=native.v4_v6_position[used]
+                  expected=src@a[:3,:3].T+a[:3,3]
+                  np.testing.assert_allclose(out.world_position[used],expected,rtol=0,atol=2e-5)
+                  uvt=np.asarray(n['uv_transform'],dtype=np.float32)
+                  expected_uv=uvt[1:][None,:]+uvt[0]*native.v8_v9_uv[used]
+                  np.testing.assert_array_equal(out.uv[used],expected_uv)
+
+              rows.append({'geometry':g['geometry'],'material':mh,'used_vertices':len(used),'placements':len(gn),
+                           'vertices0':k['vertices0'],'vertices1':k['vertices1'],'indices':k['indices'],'stride0':s0,'stride1':s1})
+
+          out={'schema_version':1,'status':'D1_TOWER_809DCD66_RETAIL_VS_REPLAY_CLOSED','cell':'80C98254',
+               'global_target_material_count':len(target_materials),'cell_materials':sorted({r['material'] for r in rows}),
+               'geometry_count':len(rows),'placement_count':len(nodes),'used_vertex_references_per_geometry_sum':total_used,
+               'strides':dict(Counter(f"{r['stride0']}+{r['stride1']}" for r in rows)),'geometry':rows,
+               'proof':'Native 80CA0DDA interface + pinned D1 8+20 reader + exact current package backings + exact world instance/UV records replayed.'}
+          Path('reports/809DCD66_retail_vs_replay.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Canary exact 809DCD66 pixel arithmetic
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          from d1_tower_809dcd66_ps_replay import parallax_uv,rgb_from_samples
+
+          # Direct arithmetic fixtures corresponding to closed native operations.
+          uv=np.array([[0.25,0.75],[0.5,0.5]],dtype=np.float32)
+          world=np.array([[0,0,0],[1,0,0]],dtype=np.float32)
+          N=np.array([[0,0,1],[0,0,1]],dtype=np.float32)
+          T=np.array([[1,0,0],[1,0,0]],dtype=np.float32)
+          B=np.array([[0,1,0],[0,1,0]],dtype=np.float32)
+          cam=np.array([0,0,10],dtype=np.float32)
+          p=parallax_uv(uv,world,N,T,B,cam,0.025)
+          # First point is straight-on; no displacement. Second has a positive
+          # tangent-space X view term and therefore moves U negatively.
+          np.testing.assert_array_equal(p.displaced_uv[0],uv[0])
+          assert p.displaced_uv[1,0] < uv[1,0]
+          np.testing.assert_array_equal(p.displaced_uv[:,1],uv[:,1])
+
+          c2=np.array([0.2,0.3,0.4,9],dtype=np.float32)
+          c3=np.array([0.5,0.2,-0.1,8],dtype=np.float32)
+          c5=np.array([1,2,3,7],dtype=np.float32)
+          t0=np.array([-1,2],dtype=np.float32)
+          t1=np.array([0.5,0.25],dtype=np.float32)
+          rgb=rgb_from_samples(t0,t1,c2=c2,c3=c3,c5=c5,c6_x=4,api13_dword6=2,api13_dword7=0.5)
+          expected=np.stack([
+            c2[:3]*c5[:3]*t1[0]*4,
+            (c2[:3]+c3[:3])*c5[:3]*t1[1]*4,
+          ]).astype(np.float32)
+          np.testing.assert_allclose(rgb,expected,rtol=1e-6,atol=1e-7)
+          out={'status':'D1_TOWER_809DCD66_PS_ARITHMETIC_CANARY','parallax_uv':p.displaced_uv.tolist(),'rgb':rgb.tolist(),
+               'api13_semantics':'dwords 6 and 7 retained as separately parameterized global RGB scales; engine names intentionally withheld'}
+          Path('reports/809DCD66_ps_arithmetic_canary.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-809dcd66-retail-replay
+          path: reports/
+          retention-days: 14
+          compression-level: 6
