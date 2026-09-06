@@ -6,6 +6,11 @@ on:
     paths:
       - '.github/workflows/d1-tower-integrated-articulated-preview-fast.yml'
       - 'tools/d1_tower_recover_articulated_visual_corpus.py'
+      - 'tools/d1_close_world_texture_dependencies.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v2.py'
+      - 'evidence/d1_tower_material_0050_member_catalog.json'
+      - 'evidence/d1_tower_articulated_texture_003b_member_catalog.json'
 
 permissions:
   contents: write
@@ -26,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
-          mkdir -p runtime proof corpus material_expanded models articulated textures selector reports/material_dependency_passes combined
+          mkdir -p runtime proof corpus material_expanded texture_expanded models articulated textures selector reports/material_dependency_passes reports/texture_dependency_passes combined
           curl -fsSL --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl -fsSL --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -51,12 +56,14 @@ jobs:
           assert s['status']=='D1_WORLD_ARTICULATED_SKIN_CENSUS_COMPLETE' and not s['violations']
           assert (s['family_count'],s['mesh_count'],s['runtime_placement_count'])==(7,13,37)
           assert x['status']=='D1_WORLD_ENTITY_DEPENDENCY_EXPANSION_CLOSED'
+          # 0050 is the proven owning-parent external-material dependency. 0155/01db
+          # are exact texture/material families already needed by the articulated set.
           ids=sorted(set(map(str.lower,x['final_package_ids']))|{'0050','0155','01db'})
           open('reports/required_package_ids.txt','w').write('\n'.join(ids)+'\n')
           print('PROOF_ACCEPTED',p['candidate_count'],p['family_count'],p['runtime_placement_count'],'required_families',len(ids))
           PY
 
-      - name: Recover corpus from exact prior offsets; scan only unproven families
+      - name: Recover geometry/material corpus from pinned exact current members
         run: |
           set -euo pipefail
           args=()
@@ -68,6 +75,7 @@ jobs:
             --prior-report proof/tower_activity_package_recovery.json \
             --prior-report proof/tower_entity_dependency_expansion.json \
             --member-catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --member-catalog evidence/d1_tower_material_0050_member_catalog.json \
             --out-dir corpus \
             --report reports/articulated_visual_corpus.json
           python - <<'PY'
@@ -75,8 +83,8 @@ jobs:
           d=json.load(open('reports/articulated_visual_corpus.json'))
           assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED'
           scans=d['split_tar_scanned_package_ids']
-          assert scans==['0050'],scans
-          print('FAST_CORPUS_RECOVERY',d['member_count'],'members; only scanned',scans,'headers',d['split_tar_headers_scanned'])
+          assert scans==[],scans
+          print('FAST_CORPUS_RECOVERY',d['member_count'],'members; zero TAR discovery scans')
           PY
 
       - name: Close all seven exact owning-parent material bindings
@@ -117,8 +125,9 @@ jobs:
           d=json.load(open('reports/tower_articulated_model_export.json'))
           assert d['status']=='D1_WORLD_ARTICULATED_MODEL_SET_COMPLETE',d['errors']
           assert d['requested_model_count']==d['exported_model_count']==7
+          assert (d['geometry_count'],d['triangle_count'],d['active_material_count'])==(86,108643,35),d
           json.dump({'materials':{h:{'visual':True} for h in d['active_materials']}},open('selector/articulated_material_selector.json','w'),indent=2)
-          print('MODELS_EXPORTED',d['geometry_count'],'ranges',d['triangle_count'],'triangles')
+          print('MODELS_EXPORTED',d['geometry_count'],'ranges',d['triangle_count'],'triangles',d['active_material_count'],'materials')
           PY
           python tools/d1_world_articulated_scene.py \
             --articulated-plan proof/tower_articulated_entity_plan.json --model-dir models \
@@ -129,75 +138,121 @@ jobs:
           d=json.load(open('reports/tower_articulated_scene.json'))
           assert d['status']=='D1_WORLD_ARTICULATED_SCENE_COMPLETE'
           assert d['unique_model_count']==7 and d['runtime_placement_count']==d['unique_world_id_count']==37
-          print('PLACEMENTS_ASSEMBLED',d['runtime_placement_count'],'nodes',d['scene_geometry_nodes'])
+          assert (d['scene_geometry_variants'],d['scene_geometry_nodes'])==(86,332),d
+          print('PLACEMENTS_ASSEMBLED',d['runtime_placement_count'],'placements',d['scene_geometry_nodes'],'geometry nodes')
           PY
 
-      - name: Reconstruct and bind articulated textures
+      - name: Recursively close all articulated texture package dependencies
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
           mapfile -t files < <(find corpus material_expanded -maxdepth 1 -name '*.pkg' -type f | sort -u)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
-          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime \
-            --visual-json selector/articulated_material_selector.json --out textures \
-            | tee reports/articulated_texture_export_stdout.txt
-          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o reports/articulated_texture_role_inventory.json
-          python tools/d1_world_apply_preview_materials.py \
-            --input-glb articulated/D1_TOWER_ARTICULATED_SOURCE_OWNED_BIND_POSE.glb \
-            --manifest textures/material_texture_manifest.json --roles reports/articulated_texture_role_inventory.json \
-            --texture-dir textures/textures --include-medium-base --bind-normal-candidates \
-            --out articulated/D1_TOWER_ARTICULATED_SOURCE_OWNED_TEXTURED_BIND_POSE.glb \
-            --report reports/tower_articulated_textured_preview.json
+          python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
+            --runtime runtime \
+            --visual-json selector/articulated_material_selector.json \
+            --package-list reports/packages.txt \
+            --prior-report proof/tower_dependency_corpus.json \
+            --prior-report proof/tower_activity_package_recovery.json \
+            --prior-report proof/tower_entity_dependency_expansion.json \
+            --member-catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --member-catalog evidence/d1_tower_material_0050_member_catalog.json \
+            --member-catalog evidence/d1_tower_articulated_texture_003b_member_catalog.json \
+            --expansion-dir texture_expanded \
+            --work-dir reports/texture_dependency_passes \
+            --out textures \
+            --report reports/tower_articulated_texture_dependency_closure.json
           python - <<'PY'
           import json
+          c=json.load(open('reports/tower_articulated_texture_dependency_closure.json'))
           m=json.load(open('textures/material_texture_manifest.json'))
-          p=json.load(open('reports/tower_articulated_textured_preview.json'))
-          assert not m['material_decode_errors'],m['material_decode_errors']
-          assert not m['texture_errors'],m['missing_texture_package_ids']
+          assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['stop_reason']=='closed_zero_missing_texture_packages',c['stop_reason']
+          assert c['recovered_package_ids']==['003b'],c['recovered_package_ids']
+          assert m['visible_material_count']==35,m
+          assert m['material_decode_errors']==0,m['material_decode_errors']
+          assert m['unique_texture_tags']==55,m['unique_texture_tags']
+          assert m['decoded_texture_tags']==55,m['decoded_texture_tags']
+          assert m['texture_errors']==0,m['texture_errors']
           assert not m['missing_texture_package_ids'],m['missing_texture_package_ids']
-          assert p['textured_geometry_count']>0,p
-          print('ARTICULATED_TEXTURES_BOUND',p['textured_material_count'],p['textured_geometry_count'],p['normal_mapped_geometry_count'])
+          print('ARTICULATED_TEXTURE_DEPENDENCIES_CLOSED',m['decoded_texture_tags'],'/',m['unique_texture_tags'],'textures; added package ids',c['recovered_package_ids'])
           PY
 
-      - name: Merge onto source-driven 588-texture Tower and publish r5
+      - name: Preserve all 55 native articulated textures and bind safe Blender preview roles
         run: |
           set -euo pipefail
-          base_url='https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r4-source-driven/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_SOURCE_DRIVEN.glb'
-          curl --fail --location --retry 12 --retry-delay 10 "$base_url" -o combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_SOURCE_DRIVEN.glb
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o reports/articulated_texture_role_inventory.json
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb articulated/D1_TOWER_ARTICULATED_SOURCE_OWNED_BIND_POSE.glb \
+            --manifest textures/material_texture_manifest.json \
+            --roles reports/articulated_texture_role_inventory.json \
+            --texture-dir textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --expect-exact-textures 55 \
+            --out articulated/D1_TOWER_ARTICULATED_SOURCE_OWNED_EXACT_TEXTURE_RESOURCES.glb \
+            --report reports/tower_articulated_exact_texture_resources.json
+          python - <<'PY'
+          import json
+          r=json.load(open('reports/tower_articulated_exact_texture_resources.json'))
+          assert r['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',r['status']
+          assert r['exact_source_texture_count']==55,r['exact_source_texture_count']
+          assert r['portable_base_bound_material_count']>0,r
+          assert r['final_counts']['materials']==35,r['final_counts']
+          assert r['final_counts']['meshes']==86,r['final_counts']
+          assert r['final_counts']['nodes']==332,r['final_counts']
+          print('ARTICULATED_EXACT_TEXTURE_RESOURCES',r['exact_source_texture_count'],'native +',r['derived_portable_normal_count'],'derived preview normals;',r['portable_base_bound_material_count'],'portable base materials')
+          PY
+
+      - name: Merge onto reproducible r6 588-texture Tower and publish integrated r7
+        run: |
+          set -euo pipefail
+          base_url='https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-baked-common-textured-r6-exact-resources/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb'
+          curl --fail --location --retry 12 --retry-delay 10 "$base_url" -o combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb
+          echo 'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb  combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb' | sha256sum --check --strict
           python tools/d1_gltf_layer_merge.py \
-            --base combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_SOURCE_DRIVEN.glb \
-            --layer articulated_bind_pose=articulated/D1_TOWER_ARTICULATED_SOURCE_OWNED_TEXTURED_BIND_POSE.glb \
-            --out combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_SOURCE_OWNED.glb \
+            --base combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb \
+            --layer articulated_bind_pose=articulated/D1_TOWER_ARTICULATED_SOURCE_OWNED_EXACT_TEXTURE_RESOURCES.glb \
+            --out combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb \
             --report reports/tower_integrated_articulated_merge.json
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
-          m=json.load(open('reports/tower_integrated_articulated_merge.json')); s=json.load(open('reports/tower_articulated_scene.json'))
-          b=m['base_counts']; f=m['final_counts']
+          m=json.load(open('reports/tower_integrated_articulated_merge.json'))
+          s=json.load(open('reports/tower_articulated_scene.json'))
+          a=json.load(open('reports/tower_articulated_exact_texture_resources.json'))
+          b=m['base_counts'];f=m['final_counts'];l=a['final_counts']
           assert m['base_bin_exact_prefix'] and all(x['exact'] for x in m['base_json_exact_prefixes'].values())
-          assert (b['meshes'],b['materials'],b['textures'],b['images'])==(2234,499,588,588),b
-          assert f['meshes']>b['meshes'] and f['nodes']>b['nodes']
-          p=Path('combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_SOURCE_OWNED.glb')
-          out={'schema_version':1,'status':'D1_TOWER_INTEGRATED_ARTICULATED_VISUAL_CHECKPOINT',
-               'static_baseline':{'meshes':2234,'materials':499,'textures':588,'images':588},
+          assert (b['meshes'],b['materials'],b['textures'],b['images'],b['nodes'])==(2234,499,588,588,12438),b
+          for key in ('meshes','materials','textures','images','nodes'):
+              assert f[key]==b[key]+l[key],(key,b[key],l[key],f[key])
+          assert (f['meshes'],f['materials'],f['nodes'])==(2320,534,12770),f
+          p=Path('combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb')
+          out={'schema_version':2,'status':'D1_TOWER_INTEGRATED_ARTICULATED_EXACT_TEXTURE_CHECKPOINT',
+               'static_baseline':{'release':'d1-tower-baked-common-textured-r6-exact-resources','meshes':2234,'materials':499,'textures':588,'images':588,'nodes':12438,
+                                  'sha256':'f85b7ecefae5039d3b591857c90e499bbe8a52c5668ccc18cad1b1323f5825eb'},
                'articulated':{'source_owned_candidates':15,'model_families':7,'runtime_placements':37,
-                              'scene_geometry_variants':s['scene_geometry_variants'],'scene_geometry_nodes':s['scene_geometry_nodes']},
+                              'scene_geometry_variants':s['scene_geometry_variants'],'scene_geometry_nodes':s['scene_geometry_nodes'],
+                              'native_texture_resources':a['exact_source_texture_count'],'derived_portable_normals':a['derived_portable_normal_count'],
+                              'portable_base_materials':a['portable_base_bound_material_count'],'portable_normal_materials':a['portable_normal_bound_material_count']},
                'final_counts':f,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
-               'visual_scope':'37 source-owned articulated placements integrated in exact bind-pose world transforms with stage-0/highest-detail and parent-aware materials. Skin storage is independently validated but armatures/animations are not embedded in this checkpoint.',
+               'visual_scope':'Exact r6 static/common Tower plus all 37 presently proven source-owned articulated placements. Articulated geometry uses retail stage-0/highest-detail selection, exact owning-parent material resolution, recursively closed texture dependencies, and all exact native material texture resources. Bind-pose visual integration only; validated skins/animations are not misrepresented as embedded.',
+               'regeneration_scope':'The integrated GLB is rebuilt from pinned/current package bytes and a reproducible r6 static release. 0050 and 003b use exact current-family SHA-pinned range recovery; unknown future texture package namespaces are discovered only from serialized FileHash package IDs by the generic closure loop.',
                'semantic_scope':'No appearance-based NPC/vendor labels.'}
           json.dump(out,open('reports/FINAL_TOWER_INTEGRATED_ARTICULATED.json','w'),indent=2)
           print(json.dumps(out,indent=2))
           PY
-          tag=d1-tower-baked-common-articulated-r5-source-owned
+          tag=d1-tower-baked-common-articulated-r7-exact-resources
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title 'D1 Tower baked + common + source-owned articulated r5' \
-              --notes 'Current integrated visual checkpoint: exact 588-texture source-driven baked+common Tower plus all 37 presently proven source-owned articulated runtime placements across 7 model/skeleton families. Articulated geometry uses retail stage-0/highest-detail selection and exact owning-parent material resolution. Bind-pose visual integration only; validated skins/animations are not misrepresented as embedded.'
+            gh release create "$tag" --title 'D1 Tower baked + common + articulated r7 exact resources' \
+              --notes 'Reproducible integrated Tower visual checkpoint: r6 exact 588-resource static/common Tower plus all 37 presently proven source-owned articulated runtime placements across 7 model/skeleton families. Articulated texture package dependencies are recursively closed from serialized FileHash package IDs and all native articulated texture resources are preserved. Bind-pose visual integration only; validated skins/animations are not misrepresented as embedded.'
           fi
           gh release upload "$tag" \
-            combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_SOURCE_OWNED.glb \
+            combined/D1_TOWER_BAKED_COMMON_PLUS_ARTICULATED_EXACT_RESOURCES.glb \
             reports/FINAL_TOWER_INTEGRATED_ARTICULATED.json \
             reports/tower_articulated_scene.json reports/tower_articulated_model_export.json \
-            reports/tower_articulated_material_bindings_complete.json --clobber
+            reports/tower_articulated_material_bindings_complete.json \
+            reports/tower_articulated_texture_dependency_closure.json \
+            reports/tower_articulated_exact_texture_resources.json --clobber
 
       - uses: actions/upload-artifact@v4
         if: always()
