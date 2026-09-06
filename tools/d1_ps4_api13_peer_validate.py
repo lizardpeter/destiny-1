@@ -23,18 +23,18 @@ from pathlib import Path
 SHADER = "80CA0BE9"
 GCN_SHA256 = "86282025ea6bbe21ca42153702d14fbf443b5f2d605cf96f5f15d11663170b70"
 
-REQUIRED = [
-    r"s_buffer_load_dwordx2\s+s\[10:11\],\s*s\[12:15\],\s*0x6",
-    r"v_mul_f32\s+v1,\s*s3,\s*v0",
-    r"v_mul_f32\s+v7,\s*s11,\s*v1",
-    r"v_mul_f32\s+v2,\s*s10,\s*v7",
+LOAD = r"s_buffer_load_dwordx2\s+s\[10:11\],\s*s\[12:15\],\s*0x6"
+ALPHA_LOCAL = r"v_mul_f32\s+v1,\s*s3,\s*v0"
+API7 = r"v_mul_f32\s+v7,\s*s11,\s*v1"
+PRODUCT = r"v_mul_f32\s+v2,\s*s10,\s*v7"
+RGB_AFTER_PRODUCT = [
     r"v_mul_f32\s+v3,\s*v3,\s*v2",
     r"v_mul_f32\s+v4,\s*v4,\s*v2",
     r"v_mul_f32\s+v0,\s*v0,\s*v2",
-    r"v_cvt_pkrtz_f16_f32\s+v2,\s*v3,\s*v4",
-    r"v_cvt_pkrtz_f16_f32\s+v0,\s*v0,\s*v1",
-    r"exp\s+mrt0,\s*v2,\s*v2,\s*v0,\s*v0\s+done\s+compr\s+vm",
 ]
+PACK_RG = r"v_cvt_pkrtz_f16_f32\s+v2,\s*v3,\s*v4"
+PACK_BA = r"v_cvt_pkrtz_f16_f32\s+v0,\s*v0,\s*v1"
+EXPORT = r"exp\s+mrt0,\s*v2,\s*v2,\s*v0,\s*v0\s+done\s+compr\s+vm"
 
 
 def code_bytes_from_clrx(text: str) -> bytes:
@@ -52,14 +52,22 @@ def code_bytes_from_clrx(text: str) -> bytes:
         raise ValueError("no CLRX hexcode rows")
     rows.sort()
     out=bytearray()
-    expected=rows[0][0]
-    if expected!=0:
-        raise ValueError(f"first GCN address is {expected:#x}, expected 0")
+    if rows[0][0]!=0:
+        raise ValueError(f"first GCN address is {rows[0][0]:#x}, expected 0")
     for addr,raw in rows:
         if addr!=len(out):
             raise ValueError(f"non-contiguous CLRX code at {addr:#x}, expected {len(out):#x}")
         out.extend(raw)
     return bytes(out)
+
+
+def must(pattern:str,text:str,label:str,violations:list[str],start:int=0):
+    m=re.search(pattern,text[start:],re.I)
+    if not m:
+        violations.append(f"missing {label}: {pattern}")
+        return None
+    # Convert substring-relative positions back to the full text.
+    return (start+m.start(), start+m.end())
 
 
 def main()->int:
@@ -74,43 +82,44 @@ def main()->int:
     if sha!=GCN_SHA256:
         violations.append(f"GCN sha256 {sha} != {GCN_SHA256}")
 
-    positions=[]
-    for pat in REQUIRED:
-        m=re.search(pat,text,re.I)
-        if not m:
-            violations.append(f"missing instruction pattern: {pat}")
-        else:
-            positions.append(m.start())
-    if positions and positions!=sorted(positions):
-        violations.append("required dataflow instructions are not in expected order")
+    load=must(LOAD,text,"api13 dwordx2 load",violations)
+    cursor=load[1] if load else 0
+    alpha=must(ALPHA_LOCAL,text,"separate alpha/local lane construction",violations,cursor)
+    cursor=alpha[1] if alpha else cursor
+    api7=must(API7,text,"api13[7] multiply",violations,cursor)
+    cursor=api7[1] if api7 else cursor
+    product=must(PRODUCT,text,"api13[6]*api13[7] product",violations,cursor)
+    cursor=product[1] if product else cursor
 
-    # The api13 product is formed as v2 = s10 * (s11 * v1).  It then scales the
-    # three RGB lanes v3/v4/v0.  Alpha v1 is packed with blue afterwards and has
-    # no s10/s11 multiplication in between.  Check the bounded suffix directly.
-    load=re.search(REQUIRED[0],text,re.I)
-    export=re.search(REQUIRED[-1],text,re.I)
-    suffix=text[load.start():export.end()] if load and export else ""
-    alpha_api13_refs=[]
-    for line in suffix.splitlines():
-        s=line.strip()
-        if "v1," in s and re.search(r"\bs1[01]\b",s):
-            # v7=s11*v1 is a read of alpha/local intensity into a temporary, not
-            # a write back to alpha.  Record it but distinguish destination.
-            dm=re.search(r"v_mul_f32\s+(v\d+),",s)
-            if dm and dm.group(1)=="v1":
-                alpha_api13_refs.append(s)
-    if alpha_api13_refs:
-        violations.append(f"api13 unexpectedly writes alpha lane v1: {alpha_api13_refs}")
+    rgb_hits=[]
+    for i,pat in enumerate(RGB_AFTER_PRODUCT):
+        hit=must(pat,text,f"RGB lane {i} api13 product multiply",violations,cursor)
+        if hit:
+            rgb_hits.append(hit)
+            cursor=hit[1]
+    pack_rg=must(PACK_RG,text,"RG pack",violations,cursor)
+    cursor=pack_rg[1] if pack_rg else cursor
+    pack_ba=must(PACK_BA,text,"BA pack with untouched alpha lane v1",violations,cursor)
+    cursor=pack_ba[1] if pack_ba else cursor
+    export=must(EXPORT,text,"MRT0 compressed export",violations,cursor)
+
+    # Alpha is v1 at PACK_BA. Between the api13 load and BA packing, allow v1 to
+    # be read as an input (s11*v1) but reject any api13-dependent write to v1.
+    if load and pack_ba:
+        bounded=text[load[0]:pack_ba[0]]
+        for line in bounded.splitlines():
+            if re.search(r"v_mul_f32\s+v1,\s*s1[01]\b",line,re.I):
+                violations.append(f"api13 unexpectedly writes alpha lane v1: {line.strip()}")
 
     out={
-        "schema_version":1,
+        "schema_version":2,
         "status":"D1_PS4_API13_PEER_80CA0BE9_VALIDATED" if not violations else "D1_PS4_API13_PEER_80CA0BE9_FAILED",
         "shader":SHADER,
         "gcn_bytes":len(code),
         "gcn_sha256":sha,
         "api13_descriptor_registers":"s[12:15]",
         "api13_load":{"start_dword":6,"width_dwords":2,"destinations":{"dword6":"s10","dword7":"s11"}},
-        "proven_arithmetic":"rgb *= api13[6] * api13[7]; alpha lane is not multiplied by api13[6] or api13[7]",
+        "proven_arithmetic":"rgb *= api13[6] * api13[7]; alpha lane v1 is packed separately and is not multiplied by api13[6] or api13[7]",
         "producer_name_resolved":False,
         "runtime_values_resolved":False,
         "violations":violations,
