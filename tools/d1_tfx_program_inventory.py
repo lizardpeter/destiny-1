@@ -9,6 +9,13 @@ operands. It does *not* claim which light output slot means colour/intensity/ran
 For constant-indexing opcodes, both Buffer1 and Buffer2 candidate Vec4 values are shown.
 This deliberately avoids assuming which D1 BufferData array is the constant bank before
 retail program dataflow proves it.
+
+Opcode 0x0E is promoted to Merge_3_1: D1 already has the adjacent 0x0C Merge_1_3 and
+0x0D Merge_2_2 identities, while the continued Tiger expression VM retains the exact
+0x0C/0x0D/0x0E sequence as Merge1_3/Merge2_2/Merge3_1. The old Charm D1 interpreter's
+0x0E averaging implementation is explicitly marked "Not correct". Opcode 0x0F is
+similarly the adjacent Cubic operation retained by the continued VM. These names are
+lineage/source closures; light-output semantics remain withheld.
 """
 from __future__ import annotations
 
@@ -20,13 +27,14 @@ from pathlib import Path
 
 PINNED_SOURCE = (
     'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
-    'Tiger/Schema/Shaders/TFX Bytecode/OpCodes.cs + Externs.cs'
+    'Tiger/Schema/Shaders/TFX Bytecode/OpCodes.cs + Externs.cs; '
+    'cohaereo/alkahest expression VM opcode continuity used only to close 0x0E Merge_3_1 and 0x0F Cubic'
 )
 
 OP_NAMES = {
     0x01:'Add',0x02:'Subtract',0x03:'Multiply',0x04:'Divide',0x05:'Multiply2',0x06:'Add2',
     0x07:'IsZero',0x08:'Min',0x09:'Max',0x0A:'LessThan',0x0B:'Dot',0x0C:'Merge_1_3',
-    0x0D:'Merge_2_2',0x0E:'Unk0e',0x0F:'Unk0f',0x10:'Lerp',0x11:'Unk11',
+    0x0D:'Merge_2_2',0x0E:'Merge_3_1',0x0F:'Cubic',0x10:'Lerp',0x11:'Unk11',
     0x12:'MultiplyAdd',0x13:'Clamp',0x15:'Abs',0x16:'Sign',0x17:'Floor',0x18:'Ceil',
     0x19:'Round',0x1A:'Frac',0x1B:'Unk1b',0x1C:'Unk1c',0x1D:'Negate',0x1E:'VecRotSin',
     0x1F:'VecRotCos',0x20:'VecRotSinCos',0x21:'PermuteAllX',0x22:'Permute',0x23:'Saturate',
@@ -86,7 +94,6 @@ def disassemble(raw: bytes, buffer1: list, buffer2: list) -> dict:
         if name is None:
             rows.append({'offset':start,'opcode':f'{op:02X}','name':f'UNKNOWN_{op:02X}','known':False,'raw_hex':f'{op:02X}'})
             unknown.append({'offset':start,'opcode':f'{op:02X}'})
-            # Unknown operand width would desynchronise the remainder; fail closed.
             break
         n=OPERAND_LENGTH.get(op,0)
         if pos+n>len(raw):
@@ -147,7 +154,7 @@ def main()->int:
         rows.append(row);by_program[program_sha].append(b.get('hash'))
     groups=[{'program_sha256':k,'buffer_count':len(v),'buffer_hashes':sorted(v)} for k,v in sorted(by_program.items())]
     out={
-        'schema_version':1,
+        'schema_version':2,
         'status':'D1_TFX_PROGRAM_INVENTORY_COMPLETE' if not violations else 'D1_TFX_PROGRAM_INVENTORY_PARTIAL',
         'pinned_source':PINNED_SOURCE,
         'source_lighting_status':src.get('status'),
@@ -155,10 +162,14 @@ def main()->int:
         'opcode_histogram':dict(op_hist),'extern_histogram':dict(extern_hist),
         'output_slot_histogram':dict(output_slots),'constant_reference_histogram':dict(const_refs),
         'program_groups':groups,'buffers':rows,'violations':violations,
-        'semantic_withholding':'Opcode framing is source-pinned. Output-slot meaning and Buffer1/Buffer2 semantic roles remain unassigned until retail dataflow proves them.'
+        'opcode_promotions':{
+            '0E':{'name':'Merge_3_1','evidence':'adjacent D1 merge sequence plus continued Tiger VM; old D1 averaging implementation explicitly marked Not correct'},
+            '0F':{'name':'Cubic','evidence':'continued adjacent Tiger VM opcode identity'},
+        },
+        'semantic_withholding':'Opcode framing is source-pinned. Light output-slot meaning and Buffer2 semantic role remain unassigned until D1 retail dataflow proves them.'
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
-    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','output_slot_histogram','constant_reference_histogram','violations')},indent=2))
+    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','output_slot_histogram','constant_reference_histogram','opcode_promotions','violations')},indent=2))
     return 0 if not violations else 2
 
 if __name__=='__main__': raise SystemExit(main())
