@@ -1,0 +1,111 @@
+name: D1 Spektar player72 retail animation library
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-player72-retail-animation-library.yml'
+      - 'tools/d1_gltf_append_retail_animation_library.py'
+      - 'tools/d1_gltf_append_retail_animation_library_ps4.py'
+      - 'evidence/d1_player_80A7E499_80A7F90B_exact_clips.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact static 72-joint Spektar checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input out runtime
+          gh api -H 'Accept: application/vnd.github+json' \
+            /repos/${{ github.repository }}/actions/artifacts/9994048656/zip > input/static.zip
+          unzip -q input/static.zip -d input/static
+          GLB=$(find input/static -type f -name 'SPEKTAR_PANDION_TITAN_BUNGIE72_EXACT_GLOVE_COLLAR_STATIC_V1.glb' -print -quit)
+          test -n "$GLB"
+          echo 'ad74e32f3c2802db50080eff4be8e89e44f1e4cd4feaa16ad8c87811782419d4  '"$GLB" | sha256sum --check --strict
+          cp "$GLB" input/SPEKTAR_STATIC.glb
+
+      - name: Install pinned parser and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Append all 104 exact control-selected compatible clips
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,subprocess
+          e=json.load(open('evidence/d1_player_80A7E499_80A7F90B_exact_clips.json'))
+          assert e['counts']['exact_component_and_control_selected']==104
+          clips=e['clip_tags'];assert len(clips)==len(set(clips))==104
+          cmd=['python','tools/d1_gltf_append_retail_animation_library_ps4.py','input/SPEKTAR_STATIC.glb',
+               '--member-catalog','evidence/d1_investment_assets_013f_member_catalog.json',
+               '--member-catalog','evidence/d1_globals_pvp_0169_member_catalog.json',
+               '--runtime','runtime','--parser-root','parser',
+               '--skeleton',e['skeleton'],'--rig',e['runtime_rig'],'--control',e['animation_control'],
+               '--out','out/SPEKTAR_PANDION_TITAN_PLAYER72_RETAIL_ANIMATION_LIBRARY_104.glb',
+               '--report','out/SPEKTAR_PANDION_TITAN_PLAYER72_RETAIL_ANIMATION_LIBRARY_104.json']
+          for h in clips:cmd.extend(['--clip',h])
+          subprocess.run(cmd,check=True)
+          PY
+
+      - name: Lock full library and non-destructive invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pygltflib import GLTF2
+          e=json.load(open('evidence/d1_player_80A7E499_80A7F90B_exact_clips.json'))
+          d=json.load(open('out/SPEKTAR_PANDION_TITAN_PLAYER72_RETAIL_ANIMATION_LIBRARY_104.json'))
+          assert d['input_sha256']=='ad74e32f3c2802db50080eff4be8e89e44f1e4cd4feaa16ad8c87811782419d4'
+          assert d['skeleton']['tag_hash']=='80AD27B2' and d['skeleton']['node_count']==72
+          assert d['runtime_rig']['tag_hash']=='80A7F90B' and d['runtime_rig']['control_count']==66
+          assert d['control']['tag_hash']=='80A7E499' and d['control']['animation_count']==959 and d['control']['state_count']==1142
+          assert d['appended_animation_count']==104 and len(d['animations'])==104
+          assert [x['clip_tag_hash'] for x in d['animations']]==e['clip_tags']
+          assert {x['clip_tag_hash']:x['frame_count'] for x in d['animations']}==e['clip_frame_counts']
+          for k in ('nodes','meshes','skins','materials'):
+              assert d['original_counts'][k]==d['final_counts'][k],(k,d['original_counts'][k],d['final_counts'][k])
+          assert d['original_counts']['nodes']==159 and d['original_counts']['meshes']==87 and d['original_counts']['skins']==1
+          assert d['original_counts']['animations']==0 and d['final_counts']['animations']==104
+          assert len(d['palette'])==72
+          for x in d['animations']:
+              assert x['decoded_track_count']==66 and x['retargeted_track_count']==72 and x['local_track_count']==72,x['clip_tag_hash']
+              assert x['path_node_counts']=={'translation':72,'rotation':72,'scale':72},x['clip_tag_hash']
+              assert x['channel_count']==216 and x['sampler_count']==216,x['clip_tag_hash']
+              assert x['selected_by_control_states'],x['clip_tag_hash']
+          g=GLTF2().load_binary('out/SPEKTAR_PANDION_TITAN_PLAYER72_RETAIL_ANIMATION_LIBRARY_104.glb')
+          assert len(g.nodes)==159 and len(g.meshes)==87 and len(g.skins)==1 and len(g.skins[0].joints)==72
+          assert len(g.animations)==104
+          got=hashlib.sha256(open('out/SPEKTAR_PANDION_TITAN_PLAYER72_RETAIL_ANIMATION_LIBRARY_104.glb','rb').read()).hexdigest()
+          assert got==d['output_sha256']
+          print('D1_PLAYER72_RETAIL_ANIMATION_LIBRARY_104_EXACT',got,d['output_bytes'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PLAYER72-RETAIL-ANIMATION-LIBRARY-104
+          path: out/
+          retention-days: 14
+          compression-level: 0
