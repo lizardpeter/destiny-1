@@ -10,8 +10,15 @@ For every requested clip this tool requires:
   * the runtime rig is the validated 808008B2 -> 8080099B EntityResource form;
   * the clip's ordered runtime-component fingerprint exactly equals the rig's;
   * clip header node/control counts equal the supplied skeleton/rig dimensions;
-  * the pinned D1 parser successfully decodes, retargets and converts every node
-    to local-space tracks.
+  * the pinned D1 parser decodes exactly the runtime-rig control domain, then
+    retargets/expands it to exactly the supplied skeleton-node domain and converts
+    all resulting node tracks to local space.
+
+This distinction is intentional: a D1 animation may advertise 72 skeleton nodes but
+only 66 runtime-rig controls. ``decode_animation`` therefore yields 66 control
+tracks, while ``rig_retarget`` maps/expands those controls to 72 skeleton-node
+tracks. Treating decoded-track count as skeleton-node count would erase the very
+runtime-rig mapping this tool is meant to prove.
 
 Success proves this concrete skeleton/rig/control/clip path is mechanically
 exportable. State/action semantics remain only those explicitly decoded from the
@@ -115,8 +122,10 @@ def main()->int:
         if int(hdr.rig_control_count)!=control_count:raise ValueError(f'{h}: control count {hdr.rig_control_count} != rig {control_count}')
         if native_limit!=control_count:raise ValueError(f'{h}: native control limit {native_limit} != {control_count}')
         decoded=decode_animation(anim);ret=rig_retarget(anim,decoded,skeleton,rig);local=convert_obj_to_local(anim,ret,skeleton)
-        if len(decoded)!=node_count or len(ret)!=node_count or len(local)!=node_count:
-            raise ValueError(f'{h}: track counts decoded={len(decoded)} retargeted={len(ret)} local={len(local)} expected={node_count}')
+        if len(decoded)!=control_count or len(ret)!=node_count or len(local)!=node_count:
+            raise ValueError(
+                f'{h}: track-domain mismatch decoded_controls={len(decoded)}/{control_count} '
+                f'retargeted_nodes={len(ret)}/{node_count} local_nodes={len(local)}/{node_count}')
         channel_counts={'translation':0,'rotation':0,'scale':0}
         frame_counts={'translation':set(),'rotation':set(),'scale':set()}
         for tr in local:
@@ -129,14 +138,15 @@ def main()->int:
             'frame_count':int(hdr.frame_count),'node_count':int(hdr.node_count),'rig_control_count':int(hdr.rig_control_count),
             'native_control_limit':native_limit,'runtime_rig_components':comps,
             'selected_by_control_states':selected[h],
-            'decoded_track_count':len(decoded),'retargeted_track_count':len(ret),'local_track_count':len(local),
+            'decoded_domain':'runtime_controls','decoded_track_count':len(decoded),
+            'retargeted_domain':'skeleton_nodes','retargeted_track_count':len(ret),'local_track_count':len(local),
             'local_channel_node_counts':channel_counts,
             'local_channel_frame_count_sets':{k:sorted(v) for k,v in frame_counts.items()},
             'retarget_success':True,
         })
 
     rep={
-      'schema':'d1_remote_cross_package_animation_retarget/v1',
+      'schema':'d1_remote_cross_package_animation_retarget/v2',
       'skeleton':{'tag_hash':sh,'entry_index':int(se['index']),'entry_size':int(se['file_size']),'node_count':node_count},
       'runtime_rig':{'tag_hash':rh,'entry_index':int(re['index']),'entry_size':int(re['file_size']),'control_count':control_count,
                      'components':target_components,'discriminator_class':u10,'info_class':u18},
@@ -145,7 +155,7 @@ def main()->int:
                  'unique_selected_clip_count':len(selected)},
       'clip_count':len(rows),'clips':rows,
       'catalog_package_ids':[f'{x:04X}' for x in sorted(cats)],
-      'policy':'Every clip is explicitly selected by the exact control, exactly runtime-component compatible with the supplied rig, dimension-compatible with the supplied skeleton, and successfully retargeted by the pinned D1 parser. State semantics are not inferred from motion.'}
+      'policy':'Every clip is explicitly selected by the exact control, exactly runtime-component compatible with the supplied rig, decoded over the exact runtime-control domain, then successfully expanded/retargeted to the exact skeleton-node domain by the pinned D1 parser. State semantics are not inferred from motion.'}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(rep,indent=2)+'\n')
     print(json.dumps({'skeleton':rep['skeleton'],'runtime_rig':rep['runtime_rig'],'control':rep['control'],
                       'clips':[{k:x[k] for k in ('clip_tag_hash','frame_count','native_control_limit','decoded_track_count','retargeted_track_count','local_track_count')} for x in rows]},indent=2))
