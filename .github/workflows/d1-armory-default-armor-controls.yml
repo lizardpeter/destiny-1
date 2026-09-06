@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# These are known historical Armory links used only as control pages to recover
+# class-global/default composition data. They are never substituted for Spektar item data.
 jobs:
   probe:
     runs-on: ubuntu-24.04
