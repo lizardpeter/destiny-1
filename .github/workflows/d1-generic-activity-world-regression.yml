@@ -1,0 +1,188 @@
+name: D1 generic Activity-driven world regression
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["D1 global Activity index"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  tower-regression:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current archive-wide Activity index
+        run: |
+          set -euo pipefail
+          mkdir -p index reports packages runtime validation
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            idx_run='${{ github.event.workflow_run.id }}'
+          else
+            idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          idx="$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
+          plist="$(find index -name packages.txt -print -quit)"
+          test -n "$idx" -a -f "$idx"
+          test -n "$plist" -a -f "$plist"
+          cp "$idx" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$plist" reports/packages.txt
+
+      - name: Install exact Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Close Tower map-root dependencies from Activity hash only
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --activity 80C98019 \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir reports/root_closure \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/activity_root_dependency_closure.json'))
+          r=json.load(open('reports/activity_map_roots.json'))
+          assert c['status']=='D1_WORLD_ACTIVITY_ROOT_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['activity']=='80C98019',c['activity']
+          assert r['status']=='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE',r['violations']
+          assert r['selected_activities']==['80C98019'],r['selected_activities']
+          expected={'reachable_bubble_count':5,'reachable_map_container_count':17,
+                    'reachable_map_data_table_count':122,'total_reachable_map_entries':1418}
+          bad={k:{'expected':v,'actual':r.get(k)} for k,v in expected.items() if r.get(k)!=v}
+          if bad: raise SystemExit('generic Tower Activity-root regression mismatch: '+json.dumps(bad,indent=2))
+          # Critical generalization assertion: no Tower package-id list is an input.
+          assert len(c['recovered_package_ids'])>=1,c['recovered_package_ids']
+          print('GENERIC_ACTIVITY_ROOT_CLOSED',json.dumps({**expected,'recovered_package_ids':c['recovered_package_ids']},sort_keys=True))
+          PY
+
+      - name: Classify every Activity-owned map-data row by serialized resource class
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/activity_map_roots.json \
+            --out reports/map_data_layer_census.json
+          python tools/d1_world_map_resource_subset_plan.py \
+            --census reports/map_data_layer_census.json \
+            --resource-class 80801AEA \
+            --out reports/static_map_roots.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/map_data_layer_census.json'))
+          s=json.load(open('reports/static_map_roots.json'))
+          assert c['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS',c['violations']
+          assert (c['map_data_table_count'],c['entry_count'])==(122,1418),(c['map_data_table_count'],c['entry_count'])
+          assert c['resource_pointer_non_null_entries']==1418,c['resource_pointer_non_null_entries']
+          assert s['status']=='D1_WORLD_MAP_RESOURCE_SUBSET_PLAN_COMPLETE',s['violations']
+          assert s['resource_class']=='80801AEA',s['resource_class']
+          assert (s['map_data_table_count'],s['entry_count'])==(9,337),(s['map_data_table_count'],s['entry_count'])
+          # The exact nine hashes are deliberately not asserted here. This regression
+          # proves the set is derived from Activity ownership + serialized class only.
+          print('GENERIC_STATIC_RENDER_SUBSET_DERIVED',json.dumps({
+            'activity_tables':c['map_data_table_count'],'activity_rows':c['entry_count'],
+            'static_resource_class':'80801AEA','static_tables':s['map_data_table_count'],
+            'static_rows':s['entry_count'],'nonstatic_rows':s['nonmatching_entry_count'],
+            'resource_class_counts':c['resource_class_counts']},sort_keys=True))
+          PY
+
+      - name: Close static resource chains and derive common plus baked targets
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/static_map_roots.json \
+            --out reports/static_map_resource_chain_census.json
+          python tools/d1_world_static_map_target_plan.py \
+            --chain-json reports/static_map_resource_chain_census.json \
+            --out reports/static_map_target_plan.json \
+            --tsv reports/static_map_target_plan.tsv
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/static_map_resource_chain_census.json'))
+          p=json.load(open('reports/static_map_target_plan.json'))
+          expected_chain={'status':'D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED','map_data_table_count':9,
+                          'entry_count':337,'closed_chain_count':337,'direct_d1_baked_entry_count':10,
+                          'no_direct_d1_static_child_entry_count':327,'unique_static_map_count':19,
+                          'unique_direct_d1_static_map_data_count':10}
+          bad={k:{'expected':v,'actual':c.get(k)} for k,v in expected_chain.items() if c.get(k)!=v}
+          if bad: raise SystemExit('generic static chain regression mismatch: '+json.dumps(bad,indent=2))
+          expected_plan={'status':'D1_WORLD_STATIC_MAP_TARGET_PLAN_COMPLETE','map_data_table_count':9,
+                         'source_entry_count':337,'table_scoped_decal_target_count':9,
+                         'table_scoped_target_row_reference_count':327,'baked_static_target_count':10,
+                         'direct_d1_baked_row_count':10,'no_direct_d1_static_child_row_count':327,
+                         'unique_table_scoped_static_maps':9,'unique_baked_static_maps':10}
+          bad={k:{'expected':v,'actual':p.get(k)} for k,v in expected_plan.items() if p.get(k)!=v}
+          if bad: raise SystemExit('generic target-plan regression mismatch: '+json.dumps(bad,indent=2))
+          print('GENERIC_STATIC_TARGET_PLAN_CLOSED',json.dumps({**expected_chain,**expected_plan},sort_keys=True))
+          PY
+
+      - name: Materialize common layer and census all baked static placements
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_table_scoped_decal_census.py "${args[@]}" --runtime runtime \
+            --target-plan reports/static_map_target_plan.json \
+            --out reports/table_scoped_decal_census.json \
+            --validation-dir validation/table_scoped_targets
+          python tools/d1_world_static_map_content_census.py "${args[@]}" --runtime runtime \
+            --chain-json reports/static_map_resource_chain_census.json \
+            --out reports/static_map_content_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/table_scoped_decal_census.json'))
+          b=json.load(open('reports/static_map_content_census.json'))
+          expected_common={'status':'D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE','table_scoped_target_count':9,
+                           'table_scoped_decal_records':327,'table_scoped_singleton_transform_model_records':327,
+                           'table_scoped_unique_entity_models':69,'table_scoped_materialized_record_count':327,
+                           'table_scoped_export_ready_singleton_records':327,'baked_target_count':10}
+          bad={k:{'expected':v,'actual':d.get(k)} for k,v in expected_common.items() if d.get(k)!=v}
+          if bad: raise SystemExit('generic common-layer regression mismatch: '+json.dumps(bad,indent=2))
+          expected_baked={'status':'D1_WORLD_STATIC_MAP_CONTENT_CENSUS_COMPLETE','direct_d1_baked_static_maps':10,
+                          'structurally_valid_baked_static_maps':10,'visual_selection_complete_baked_static_maps':10,
+                          'retail_visible_baked_static_emitters':10,'total_serialized_placements':50148,
+                          'total_retail_visible_placements':11728,'material_cache_unresolved':0}
+          bad={k:{'expected':v,'actual':b.get(k)} for k,v in expected_baked.items() if b.get(k)!=v}
+          if bad: raise SystemExit('generic baked-content regression mismatch: '+json.dumps(bad,indent=2))
+          print('GENERIC_WORLD_STRUCTURE_CLOSED',json.dumps({
+              'activity':'80C98019','common_records':327,'common_models':69,
+              'baked_cells':10,'serialized_placements':50148,'retail_visible_placements':11728},sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-generic-activity-world-regression
+          path: |
+            reports/
+            validation/
+          retention-days: 14
+          compression-level: 6
