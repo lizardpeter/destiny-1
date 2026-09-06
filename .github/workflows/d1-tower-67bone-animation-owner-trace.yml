@@ -1,0 +1,86 @@
+name: D1 Tower 67-bone animation owner trace
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-67bone-animation-owner-trace.yml'
+      - 'tools/d1_corpus_filehash_probe.py'
+      - 'tools/d1_recover_member_catalog.py'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'evidence/d1_tower_shader_dependency_member_catalog.json'
+      - 'evidence/d1_tower_00ef_member_catalog.json'
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Recover only 00EC 00EF and Tower Activity roots
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_shader_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 00ec \
+            --out-dir recovered --report reports/recover_00ec.json
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_00ef_member_catalog.json \
+            --package-list reports/packages.txt --family 00ef \
+            --out-dir recovered --report reports/recover_00ef.json
+          python tools/d1_tower_recover_activity_root_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered --report reports/recover_023d_0244.json
+      - name: Probe homologous animation-owner resources across packages
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t snaps < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${snaps[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_corpus_filehash_probe.py "${args[@]}" --runtime runtime \
+            --tag-hash 809DF581 --tag-hash 809DF582 \
+            --tag-hash 80C7AE48 --tag-hash 80C7AE49 \
+            --tag-hash 809D8886 --tag-hash 809D8887 \
+            --tag-hash 809D8466 --tag-hash 809D856F \
+            --tag-hash 809D8469 --tag-hash 809D846A --tag-hash 809D8572 \
+            --out reports/tower_67bone_owner_trace.json | tee reports/tower_67bone_owner_trace_stdout.txt
+      - name: Summarize literal control and clip edges
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_67bone_owner_trace.json'))
+          watched_owner={'809DF581','809DF582','80C7AE48','80C7AE49','809D8886','809D8887'}
+          controls=[];clips=[];other=[]
+          for r in d['entries']:
+              if r['tag_hash'] not in watched_owner: continue
+              for h in r.get('aligned_resolved_tag_matches',[]):
+                  row={'owner':r['tag_hash'],**h}
+                  if h['reference']=='80802C0E': controls.append(row)
+                  elif h['reference']=='808005A1': clips.append(row)
+                  else: other.append(row)
+          out={'status':'D1_TOWER_67BONE_ANIMATION_OWNER_TRACE','control_edges':controls,'direct_clip_edges':clips,'other_resolved_edges':other,'violations':d['violations']}
+          json.dump(out,open('reports/TOWER_67BONE_ANIMATION_OWNER_TRACE_SUMMARY.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          if d['violations']: raise SystemExit('probe violations')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-67bone-animation-owner-trace
+          path: reports/
+          retention-days: 14
+          compression-level: 6
