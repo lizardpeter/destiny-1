@@ -32,8 +32,8 @@ def test_native_normal_cell_identity_basis_and_constant_bc5():
     attr2 = np.array([[0, 1, 0]] * 3, dtype=np.float32)
     nts, world = mod.native_normal_cell(attr3, attr0, attr1, attr2, normal, mask, bary)
     want = np.array([0.5, 0.0, np.sqrt(0.75)], dtype=np.float32)
-    np.testing.assert_allclose(nts, want, rtol=0, atol=2e-6)
-    np.testing.assert_allclose(world, want, rtol=0, atol=2e-6)
+    np.testing.assert_allclose(nts, np.broadcast_to(want, nts.shape), rtol=0, atol=2e-6)
+    np.testing.assert_allclose(world, np.broadcast_to(want, world.shape), rtol=0, atol=2e-6)
     np.testing.assert_allclose(np.linalg.norm(world, axis=-1), 1.0, rtol=0, atol=2e-6)
 
 
