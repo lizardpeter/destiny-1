@@ -1,0 +1,89 @@
+name: D1 Tower 80CA0B97 card shader probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80ca0b97-card-shader-probe.yml'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_recover_member_catalog.py'
+      - 'evidence/d1_tower_dependency_member_catalog.json'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install exact runtime and recover 01CF
+        run: |
+          set -euo pipefail
+          python -m pip install -q pillow texture2ddecoder
+          mkdir -p runtime source selector textures shader disasm reports
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_dependency_member_catalog.json \
+            --package-list reports/packages.txt --family 01cf --out-dir source --report reports/recover_01cf.json
+          echo 'f45d85c89f46e5ba9585073f105b8a1c1229c4d543b56e38ccc840a0010d297a  source/ps4_env_skies_01cf_0.pkg' | sha256sum --check --strict
+          echo '16a54200f04680d06ed3936afc44aac1eaea8f111cc44acac2fa18cdd394b34f  source/ps4_env_skies_01cf_1.pkg' | sha256sum --check --strict
+          echo '1999fa9d728ef75393f59171325b397cb1356d94322694b6fedd60e339f171f9  source/ps4_env_skies_01cf_2.pkg' | sha256sum --check --strict
+          cat > selector/offender.json <<'JSON'
+          {"materials":{"80B9E8C2":{"visual":true},"80B9E8C3":{"visual":true}}}
+          JSON
+      - name: Decode exact materials and their native texture registers
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find source -maxdepth 1 -name 'ps4_env_skies_01cf_*.pkg' -type f | sort)
+          args=();for f in "${files[@]}";do args+=(--snapshot "$f");done
+          python tools/d1_world_material_texture_export.py "${args[@]}" --runtime runtime --visual-json selector/offender.json --out textures | tee reports/material_texture_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('textures/material_texture_manifest.json'))
+          rows={h:d['materials'][h] for h in ('80B9E8C2','80B9E8C3')}
+          out={'status':'D1_80CA0B97_CARD_MATERIALS_EXACT','materials':{h:{'pixel_shader':r.get('pixel_shader'),'vertex_shader':r.get('vertex_shader'),'bindings':r.get('bindings'),'ps_texture_tags':r.get('ps_texture_tags'),'vs_texture_tags':r.get('vs_texture_tags'),'constants':r.get('constants'),'samplers':r.get('samplers'),'tfx':r.get('tfx')} for h,r in rows.items()},'texture_errors':d.get('texture_errors'),'missing_texture_package_ids':d.get('missing_texture_package_ids')}
+          json.dump(out,open('reports/offender_materials.json','w'),indent=2);print(json.dumps(out,indent=2))
+          assert rows['80B9E8C2']['pixel_shader']=='80B9E8CF'
+          assert rows['80B9E8C3']['pixel_shader']=='80B9E8D0'
+          PY
+      - name: Extract exact native GCN for both card shaders
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find source -maxdepth 1 -name 'ps4_env_skies_01cf_*.pkg' -type f | sort)
+          args=();for f in "${files[@]}";do args+=(--snapshot "$f");done
+          python tools/d1_world_shader_extract.py "${args[@]}" --runtime runtime --manifest textures/material_texture_manifest.json \
+            --shader 80B9E8CF --shader 80B9E8D0 --out-dir shader --report reports/offender_shader_extract.json
+      - name: Build pinned CLRX and disassemble both shaders
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)";test -n "$exe"
+          for f in shader/PS_*_gcn.bin;do b="$(basename "$f" _gcn.bin)";"$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s";grep -q s_endpgm "disasm/${b}.s";done
+          python tools/d1_gcn_image_usage_analyze.py --extract-report reports/offender_shader_extract.json --disasm-dir disasm --out reports/offender_image_usage.json | tee reports/offender_image_usage_stdout.txt
+          echo '--- 80B9E8CF ---';cat disasm/PS_80B9E8CF.s
+          echo '--- 80B9E8D0 ---';cat disasm/PS_80B9E8D0.s
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80ca0b97-card-shader-probe
+          path: |
+            reports/
+            textures/material_texture_manifest.json
+            shader/
+            disasm/
+          retention-days: 14
+          compression-level: 6
