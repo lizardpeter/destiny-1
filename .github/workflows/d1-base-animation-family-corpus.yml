@@ -1,0 +1,116 @@
+name: D1 base animation family corpus
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 base character corpus fast']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    outputs:
+      families: ${{ steps.matrix.outputs.families }}
+      family_count: ${{ steps.matrix.outputs.family_count }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover latest base character corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-BASE-CHARACTER-CORPUS-FAST&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/corpus.zip
+          unzip -q input/corpus.zip -d input/corpus
+          test -f input/corpus/D1_BASE_CHARACTER_CORPUS.json
+      - name: Build exact-family matrix
+        id: matrix
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          d=json.load(open('input/corpus/D1_BASE_CHARACTER_CORPUS.json'))
+          xs=[]
+          for x in d['families']:
+              cc=x.get('class_counts') or {}
+              if x.get('skeletons') and x.get('runtime_rigs') and int(cc.get('80802C0E',0))>0:
+                  xs.append(x['namespace_key'])
+          xs=sorted(set(xs));assert xs and len(xs)<=256,len(xs)
+          print('family_count='+str(len(xs)))
+          print('families='+json.dumps(xs,separators=(',',':')))
+          PY
+
+  probe:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        family: ${{ fromJson(needs.prepare.outputs.families) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover corpus and universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/corpus input/catalog parser runtime out
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=D1-BASE-CHARACTER-CORPUS-FAST&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$url" -o input/corpus.zip
+          unzip -q input/corpus.zip -d input/corpus
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Install pinned parser and verified Oodle
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh
+          rm -rf parser;git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Prove exact control-selected animation paths
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          safe=$(printf '%s' '${{ matrix.family }}' | tr ':/' '__')
+          python tools/d1_remote_animation_family_probe.py input/corpus/D1_BASE_CHARACTER_CORPUS.json \
+            --namespace-key '${{ matrix.family }}' --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --runtime runtime --parser-root parser --out "out/${safe}.json" | tee out/stdout.txt
+          python - <<'PY'
+          import glob,json
+          p=[x for x in glob.glob('out/*.json')][0];d=json.load(open(p))
+          assert d['status']=='D1_ANIMATION_FAMILY_PROBE_COMPLETE'
+          print('D1_ANIMATION_FAMILY_PROBE',d['namespace_key'],'paths',d['successful_path_count'],'families',d['animation_family_count'],'clips',d['mechanically_compatible_clip_count'],'ambiguous',d['ambiguous_mechanical_clip_count'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-ANIM-FAMILY-${{ strategy.job-index }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
