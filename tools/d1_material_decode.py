@@ -12,6 +12,7 @@ PS4_MATERIAL_CLASS='80801AD7'
 XBOX_MATERIAL_CLASS='80801C32'
 
 
+def u16(b,o): return struct.unpack_from('<H',b,o)[0]
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
 def h32(b,o): return f'{u32(b,o):08X}'
 
@@ -52,6 +53,9 @@ def parse_material(b,platform):
     return {
       'declared_file_size':struct.unpack_from('<Q',b,0)[0], 'actual_file_size':len(b),
       'unk08':h32(b,0x08),'unk0c':h32(b,0x0c),'unk10':h32(b,0x10),
+      # Pinned ROI SMaterial_ROI places a 16-bit field at +0x20.  Preserve both
+      # numeric and raw hex forms; engine semantics remain unassigned here.
+      'unk20':u16(b,0x20),'unk20_hex':f'{u16(b,0x20):04X}',
       'vertex_shader':h32(b,0x28),
       'vs_textures':parse_texture_array(b,0x38),
       'vs_tfx_bytecode':parse_byte_array(b,0x50),
