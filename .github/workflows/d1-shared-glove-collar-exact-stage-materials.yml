@@ -1,0 +1,97 @@
+name: D1 shared glove-collar exact stage materials
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-glove-collar-exact-stage-materials.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies and verified Oodle runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Create exact already-proven ownership selection fixture
+        run: |
+          cat > out/80A6A345_selection.json <<'JSON'
+          {
+            "schema": "d1_shared_player_glove_collar_selection/v1",
+            "arrangements": [{
+              "className": "source_proven_shared_player_glove_collar",
+              "arrangement_index": 0,
+              "examples": [{"name": "Bungie GearAsset 984938936-0 -> retail 80A6A345 decoded geometry equivalence"}],
+              "resolved_body_assignments": [{
+                "body_role": "masculine",
+                "entity_resolution": {
+                  "entity_hash": "80A6A022",
+                  "resources": [{
+                    "resource_hash": "80A6A125",
+                    "embedded_model": {"tag_hash": "80A6A345", "resolved": true}
+                  }]
+                }
+              }]
+            }]
+          }
+          JSON
+
+      - name: Decode exact model-parent visual context
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_visual_context_probe.py \
+            --report out/80A6A345_selection.json --body-role masculine \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime -o out/80A6A345_visual_context.json
+
+      - name: Resolve every highest-detail stage-part material through exact parent
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_guardian_stage_part_material_resolve.py \
+            --visual-context out/80A6A345_visual_context.json --model 80A6A345 \
+            --member-catalog evidence/d1_investment_asset_member_catalog.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime -o out/80A6A345_exact_stage_materials.json
+
+      - name: Lock source ownership and print stage-0 draw decisions
+        run: |
+          python - <<'PY'
+          import json
+          v=json.load(open('out/80A6A345_visual_context.json'))
+          s=json.load(open('out/80A6A345_exact_stage_materials.json'))
+          assert v['schema']=='d1_guardian_visual_context_probe/v1' and not v['errors']
+          m=v['models'][0]
+          assert m['tag_hash']=='80A6A345' and m['entity_resource_hash']=='80A6A125'
+          assert (m['render_parent'] or {}).get('embedded_model_tag_hash')=='80A6A345'
+          assert s['schema']=='d1_guardian_stage_part_material_resolve/v1' and not s['errors']
+          print('EXTERNAL MATERIAL BANK',m['render_parent'].get('external_material_tag_hashes'))
+          print('EXTERNAL MAP',m['render_parent'].get('external_materials_map_entries'))
+          for r in s['ranges']:
+              print('RANGE',r['mesh_index'],r['index_offset'],r['index_count'],
+                    'parts',r['part_indices'],'variants',r['variant_shader_indices'],
+                    'dyes',r['gear_dye_change_color_indices'],'materials',r['active_material_hashes'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-shared-glove-collar-exact-stage-materials
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
