@@ -81,7 +81,8 @@ def main() -> int:
         raise SystemExit('global Activity index is not complete')
     a.package_dir.mkdir(parents=True, exist_ok=True)
     a.work_dir.mkdir(parents=True, exist_ok=True)
-    if not snapshots(a.package_dir):
+    initial_snapshot_count = len(snapshots(a.package_dir))
+    if not initial_snapshot_count:
         raise SystemExit('package-dir has no Activity/root packages; close Activity roots first')
 
     passes = []
@@ -97,14 +98,17 @@ def main() -> int:
         new = sorted(set(missing) - recovered_ids)
         row = {
             'pass': i,
+            'snapshot_count': len(snapshots(a.package_dir)),
             'census_returncode': rc,
             'census_status': d.get('status'),
             'light_resource_occurrences': d.get('light_resource_occurrences'),
             'sky_resource_occurrences': d.get('sky_resource_occurrences'),
             'light_record_count': d.get('light_record_count'),
             'transform_record_count': d.get('transform_record_count'),
-            'sky_entity_record_count': d.get('sky_entity_record_count'),
+            'sky_record_count': d.get('sky_record_count'),
             'decoded_light_buffer_count': d.get('decoded_light_buffer_count'),
+            'decoded_sky_model_resource_count': d.get('decoded_sky_model_resource_count'),
+            'sky_entity_model_hash_count': d.get('sky_entity_model_hash_count'),
             'missing_package_ids': missing,
             'new_package_ids': new,
             'violations': d.get('violations', []),
@@ -127,10 +131,10 @@ def main() -> int:
     shutil.copyfile(final_path, a.out)
     closed = final.get('status') == 'D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE'
     report = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_COMPLETE' if closed else 'D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_PARTIAL',
         'stop_reason': stop_reason,
-        'initial_snapshot_count': passes[0].get('snapshot_count') if passes else None,
+        'initial_snapshot_count': initial_snapshot_count,
         'final_snapshot_count': len(snapshots(a.package_dir)),
         'recovered_package_ids': sorted(recovered_ids),
         'passes': passes,
@@ -138,8 +142,9 @@ def main() -> int:
             k: final.get(k) for k in (
                 'status','source_map_data_table_count','source_entry_count','light_resource_occurrences',
                 'sky_resource_occurrences','unique_light_collection_count','unique_sky_collection_count',
-                'light_record_count','transform_record_count','parallel_collection_count',
-                'sky_entity_record_count','light_buffer_hash_count','decoded_light_buffer_count',
+                'light_record_count','transform_record_count','parallel_collection_count','sky_record_count',
+                'light_buffer_hash_count','decoded_light_buffer_count','sky_model_resource_hash_count',
+                'decoded_sky_model_resource_count','sky_entity_model_hash_count','sky_entity_models',
                 'missing_dependency_package_ids','violations'
             )
         },
