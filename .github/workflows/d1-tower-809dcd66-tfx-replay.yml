@@ -1,0 +1,70 @@
+name: D1 Tower 809DCD66 TFX replay
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-809dcd66-tfx-replay.yml'
+      - 'tools/d1_tower_809dcd66_tfx_eval.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover green retail vector-layout proof
+        run: |
+          set -euo pipefail
+          mkdir -p prior reports
+          gh run download 34045866733 -n d1-tower-809dcd66-material-constants -D prior
+          test -f prior/809DCD66_material_vectors.json
+          test -f prior/809DCD66_vector_census.json
+
+      - name: Replay all six retail TFX program families
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_809dcd66_tfx_eval.py \
+            --input prior/809DCD66_material_vectors.json \
+            --out reports/809DCD66_tfx_replay.json \
+            --sample-start 0 --sample-end 12 --sample-count 12001
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/809DCD66_tfx_replay.json'))
+          assert d['status']=='D1_TOWER_809DCD66_TFX_REPLAY_CLOSED',d
+          assert d['material_count']==24,d
+          assert d['program_family_count']==6,d
+          assert d['dynamic_family_count']==5,d
+          assert not d['violations'],d['violations']
+          hist={f['program_bytes']:f['material_count'] for f in d['program_families']}
+          assert hist=={8:10,20:2,25:2,39:2,40:1,41:7},hist
+          static=[r for r in d['materials'] if r['mode']=='static_serialized']
+          dynamic=[r for r in d['materials'] if r['mode']=='dynamic_tfx_to_c6']
+          assert len(static)==10 and len(dynamic)==14,(len(static),len(dynamic))
+          assert sorted(set(r['serialized_c6'][0] for r in static))==[7.0,10.0]
+          assert all(r['serialized_c6']==[0.0,0.0,0.0,0.0] for r in dynamic)
+          # Family envelopes are mathematical bounds from the replay operations,
+          # independent of the sample grid density.
+          env=sorted(tuple(f['mathematical_envelope_x']) for f in d['program_families'] if f.get('mathematical_envelope_x'))
+          assert env==[(0.0,30.0),(0.0,30.0),(0.0,150.0),(0.15,10.0),(4.0,4.5)],env
+          print('REPLAY_CANARY_GREEN')
+          for f in sorted(d['program_families'],key=lambda x:x['program_bytes']):
+              print(f['program_bytes'],f['material_count'],f['expression_x'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-809dcd66-tfx-replay
+          path: reports/
+          retention-days: 14
+          compression-level: 6
