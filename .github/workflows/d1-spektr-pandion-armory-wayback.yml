@@ -1,0 +1,50 @@
+name: D1 Spektar archived Bungie Armory composition probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-spektr-pandion-armory-wayback.yml'
+      - 'tools/d1_wayback_armory_page_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Discover exact archived Armory pages
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python tools/d1_wayback_armory_page_probe.py --item 3032295330 --name 'Spektar Pandion Gauntlets' -o out/gauntlets
+          python tools/d1_wayback_armory_page_probe.py --item 502682246  --name 'Spektar Pandion Plate'     -o out/plate
+          python tools/d1_wayback_armory_page_probe.py --item 1245131119 --name 'Spektar Pandion Mark'      -o out/mark
+          python tools/d1_wayback_armory_page_probe.py --item 1244321427 --name 'Spektar Pandion Helmet'    -o out/helmet
+          python tools/d1_wayback_armory_page_probe.py --item 1247507932 --name 'Spektar Pandion Greaves'   -o out/greaves
+      - name: Summarize composition evidence
+        run: |
+          python - <<'PY'
+          import json,glob,os
+          rows=[]
+          for p in sorted(glob.glob('out/*/report.json')):
+              d=json.load(open(p)); rows.append({
+                'role':os.path.basename(os.path.dirname(p)), 'item':d['item'],'name':d['name'],
+                'cdx_status':d['cdx_status'],'capture_count':d.get('capture_count',0),
+                'selected':d.get('selected'),'snippet_keywords':[x['keyword'] for x in d.get('snippets',[])]})
+          json.dump({'schema':'d1_spektar_armory_wayback_summary/v1','rows':rows},open('out/SUMMARY.json','w'),indent=2)
+          print(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-SPEKTAR-ARCHIVED-ARMORY-COMPOSITION
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 6
