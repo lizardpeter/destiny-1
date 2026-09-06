@@ -1,0 +1,96 @@
+{
+  "schema": "d1_export_class_registry/v1",
+  "policy": "Only byte-validated D1 ROI classes and type/subtype identities are named. Export routes describe currently implemented decoding stages; they do not imply semantic ownership or complete visual fidelity.",
+  "reference_classes": {
+    "80800734": {
+      "label": "s_entity",
+      "semantic_status": "global_byte_validated",
+      "export_route": "entity_graph",
+      "standalone_export": false,
+      "tool": "tools/d1_remote_entity_chain_probe.py",
+      "notes": "Entity root. Requires serialized child/EntityResource relationships before a composed visual export can be claimed."
+    },
+    "80800861": {
+      "label": "EntityResource",
+      "semantic_status": "global_byte_validated",
+      "export_route": "entity_resource_graph",
+      "standalone_export": false,
+      "tool": "tools/d1_remote_character_asset_probe.py",
+      "notes": "Generic EntityResource wrapper; inner class pair determines role."
+    },
+    "80801AB5": {
+      "label": "s_entity_model",
+      "semantic_status": "global_byte_validated",
+      "export_route": "model_geometry",
+      "standalone_export": true,
+      "tool": "tools/d1_remote_model_export.py",
+      "notes": "Geometry can be exported in isolation. Correct visible-range, material, skin, owner, and placement selection remain separate evidence layers."
+    },
+    "80801AD7": {
+      "label": "SMaterial_ROI_PS4",
+      "semantic_status": "global_byte_validated",
+      "export_route": "material_manifest",
+      "standalone_export": true,
+      "tool": "tools/d1_material_decode.py",
+      "notes": "PS4 D1 ROI material. Shader/texture arrays can be decoded; portable rendering requires shader-role translation."
+    },
+    "808005A1": {
+      "label": "s_animation_clip",
+      "semantic_status": "global_byte_validated",
+      "export_route": "animation_clip",
+      "standalone_export": false,
+      "tool": "tools/d1_animation_rig_clip_census.py",
+      "notes": "Clip payload can be decoded, but final skeletal animation requires a proven compatible runtime rig and skeleton/owner path."
+    },
+    "8080222A": {
+      "label": "animation_control_wrapper",
+      "semantic_status": "schema_partial_byte_validated",
+      "export_route": "animation_graph",
+      "standalone_export": false,
+      "tool": null,
+      "notes": "Structured animation/control wrapper; preserved until owner/selector semantics are fully generalized."
+    },
+    "808008B2": {
+      "label": "runtime_rig_payload",
+      "semantic_status": "schema_partial_byte_validated",
+      "export_route": "runtime_rig",
+      "standalone_export": true,
+      "tool": "tools/d1_remote_runtime_rig_probe.py",
+      "notes": "Runtime-rig role/component semantics are proven; some surrounding schema fields remain partial."
+    },
+    "808006BD": {
+      "label": "skeleton_entityresource_link",
+      "semantic_status": "role_byte_validated_schema_partial",
+      "export_route": "skeleton",
+      "standalone_export": true,
+      "tool": "tools/d1_remote_skeleton_resource_probe.py",
+      "notes": "Validated skeleton EntityResource link role."
+    },
+    "8080049A": {
+      "label": "skeleton_hierarchy_transforms",
+      "semantic_status": "role_byte_validated_schema_partial",
+      "export_route": "skeleton",
+      "standalone_export": true,
+      "tool": "tools/d1_remote_skeleton_resource_probe.py",
+      "notes": "Validated skeleton hierarchy/default/inverse transform payload role."
+    }
+  },
+  "type_subtype_classes": {
+    "32:1": {
+      "label": "texture_header",
+      "semantic_status": "global_byte_validated",
+      "export_route": "texture",
+      "standalone_export": true,
+      "tool": "tools/d1_remote_texture_export_generation_safe.py",
+      "notes": "D1 texture-header entry form accepted by the exact texture decoder."
+    },
+    "32:2": {
+      "label": "texture_header",
+      "semantic_status": "global_byte_validated",
+      "export_route": "texture",
+      "standalone_export": true,
+      "tool": "tools/d1_remote_texture_export_generation_safe.py",
+      "notes": "D1 texture-header entry form accepted by the exact texture decoder."
+    }
+  }
+}
