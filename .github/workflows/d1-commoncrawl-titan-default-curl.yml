@@ -1,0 +1,72 @@
+name: D1 Common Crawl Titan defaultArmor IPv4 recovery
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-commoncrawl-titan-default-curl.yml'
+      - 'tools/d1_commoncrawl_armory_curl_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact historical Titan Armory server model via curl IPv4
+        run: |
+          set -euo pipefail
+          mkdir -p out/taikonaut
+          python tools/d1_commoncrawl_armory_curl_probe.py \
+            --item 591060261 --name 'The Taikonaut (Titan control)' \
+            --start-year 2015 --end-year 2017 \
+            --max-collections 4 --workers 8 --max-records 12 \
+            -o out/taikonaut
+
+      - name: Extract literal defaultArmor neighborhoods without interpretation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          root=Path('out/taikonaut')
+          report=json.load(open(root/'report.json'))
+          rows=[]
+          selected=report.get('selected_file')
+          if selected:
+              text=(root/selected).read_text(errors='replace')
+              low=text.lower(); key='defaultarmor'; pos=0
+              while True:
+                  i=low.find(key,pos)
+                  if i<0: break
+                  rows.append({'offset':i,'context':text[max(0,i-4000):i+9000]})
+                  pos=i+len(key)
+          Path('out/defaultArmor_contexts.json').write_text(json.dumps({
+              'schema':'d1_armory_defaultarmor_contexts/v2',
+              'item':591060261,
+              'capture':selected,
+              'contexts':rows,
+              'policy':'Literal source neighborhoods only; no item hashes are inferred from nearby text.'
+          },indent=2)+'\n')
+          print('candidate_count',report.get('candidate_count',0))
+          print('transport successes',sum(1 for q in report.get('queries',[]) if q.get('curl_code')==0),'/',len(report.get('queries',[])))
+          print('selected',selected,'defaultArmor contexts',len(rows))
+          for row in rows:
+              # Bounded console evidence; full neighborhoods remain in artifact.
+              c=row['context']; i=c.lower().find('defaultarmor')
+              print(c[max(0,i-500):i+2500].replace('\n',' ')[:3000])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-COMMONCRAWL-TITAN-DEFAULT-ARMOR-CURL
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
