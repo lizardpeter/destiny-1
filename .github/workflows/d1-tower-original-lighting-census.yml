@@ -1,0 +1,131 @@
+name: D1 Tower original lighting and sky census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-original-lighting-census.yml'
+      - 'tools/d1_world_map_lighting_census.py'
+      - 'tools/d1_close_map_lighting_dependencies.py'
+      - 'tools/d1_world_map_data_layer_census.py'
+      - 'tools/d1_world_activity_root_dependency_closure.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current archive-wide Activity index
+        run: |
+          set -euo pipefail
+          mkdir -p index reports packages runtime reports/root_closure reports/lighting_closure
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          idx="$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
+          plist="$(find index -name packages.txt -print -quit)"
+          test -n "$idx" -a -f "$idx"
+          test -n "$plist" -a -f "$plist"
+          cp "$idx" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$plist" reports/packages.txt
+
+      - name: Install exact Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Close Tower Activity map-root graph from Activity hash only
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --activity 80C98019 \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir reports/root_closure \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/activity_map_roots.json'))
+          assert d['status']=='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE',d.get('violations')
+          assert d['selected_activities']==['80C98019']
+          assert (d['reachable_map_data_table_count'],d['total_reachable_map_entries'])==(122,1418),d
+          print('FULL_TOWER_ACTIVITY_GRAPH',d['reachable_map_data_table_count'],'tables',d['total_reachable_map_entries'],'rows')
+          PY
+
+      - name: Census every Activity-owned map-data resource class
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/activity_map_roots.json \
+            --out reports/map_data_layer_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/map_data_layer_census.json'))
+          assert d['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS',d['violations']
+          assert (d['map_data_table_count'],d['entry_count'])==(122,1418),d
+          print('FULL_RESOURCE_CLASS_COUNTS',json.dumps(d['resource_class_counts'],sort_keys=True))
+          print('LIGHT_ROWS',d['resource_class_counts'].get('80801BEA',0),'SKY_ROWS',d['resource_class_counts'].get('80801BDA',0))
+          PY
+
+      - name: Recursively close original light and sky dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_close_map_lighting_dependencies.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --layer-census reports/map_data_layer_census.json \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir reports/lighting_closure \
+            --out reports/tower_map_lighting_census.json \
+            --report reports/tower_map_lighting_dependency_closure.json
+          rc=$?
+          set -e
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/tower_map_lighting_census.json'))
+          x=json.load(open('reports/tower_map_lighting_dependency_closure.json'))
+          print('LIGHTING_CENSUS',json.dumps({k:c.get(k) for k in (
+            'status','light_resource_occurrences','sky_resource_occurrences',
+            'unique_light_collection_count','unique_sky_collection_count','light_record_count',
+            'transform_record_count','parallel_collection_count','sky_entity_record_count',
+            'light_buffer_hash_count','decoded_light_buffer_count','missing_dependency_package_ids','violations')},indent=2))
+          assert c['light_resource_occurrences']>0,'Tower full Activity graph exposed no SMapLightResource'
+          assert c['sky_resource_occurrences']>0,'Tower full Activity graph exposed no SMapSkyEntResource'
+          assert x['status']=='D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_COMPLETE',x
+          assert c['status']=='D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE',c
+          assert not c['missing_dependency_package_ids'] and not c['violations'],c
+          assert c['light_record_count']>0 and c['transform_record_count']>0,c
+          assert c['decoded_light_buffer_count']==c['light_buffer_hash_count'],c
+          PY
+          test "$rc" -eq 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-original-lighting-census
+          path: reports/
+          retention-days: 14
+          compression-level: 6
