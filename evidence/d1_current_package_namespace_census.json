@@ -1,0 +1,32 @@
+{
+  "schema": "d1_current_package_namespace_census/v1",
+  "packages_txt_sha256": "9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5",
+  "total_pkg_members": 2105,
+  "ordinary_base_members": 1275,
+  "localized_members": 821,
+  "special_members": 9,
+  "localized_package_id_count": 68,
+  "locale_counts": {
+    "de": 116,
+    "en": 117,
+    "fr": 118,
+    "it": 118,
+    "jpn": 118,
+    "pt": 118,
+    "sp": 116
+  },
+  "special_member_names": [
+    "ps4_client_bootstrap_unp3_0.pkg",
+    "ps4_client_bootstrap_unp4_0.pkg",
+    "ps4_client_bootstrap_unpatchable_0.pkg",
+    "ps4_ui_bootflow_unp3_0.pkg",
+    "ps4_ui_bootflow_unp4_0.pkg",
+    "ps4_ui_bootflow_unpatchable_0.pkg",
+    "ps4_ui_startup_unp3_0.pkg",
+    "ps4_ui_startup_unp4_0.pkg",
+    "ps4_ui_startup_unpatchable_0.pkg"
+  ],
+  "ordinary_filename_rule": "..._<4-hex-package-id>_<generation>.pkg",
+  "localized_filename_rule": "..._<4-hex-package-id>_<locale>_<generation>.pkg",
+  "policy": "Counts are an exact partition of the 2,105 .pkg basenames in the current packages.txt. Localized variants are separate physical package namespaces and must not be collapsed into the ordinary package-id family without a locale dimension."
+}
