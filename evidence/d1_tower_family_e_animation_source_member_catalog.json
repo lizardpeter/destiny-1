@@ -1,28 +1,33 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "date": "2026-09-06",
-  "status": "TOWER_FAMILY_E_ANIMATION_SOURCE_MEMBERS_SHA256_PINNED",
-  "policy": "Minimal physical-member set for the already-closed Tower Family-E animated export. These rows pin bytes only. Animation ownership is established separately by TOWER_FAMILY_E_ANIMATION_OWNERSHIP.json. This catalog intentionally contains only the two resident source members needed by the exporter, not complete logical package families.",
+  "status": "TOWER_FAMILY_E_ANIMATION_LOGICAL_SOURCE_FAMILIES_SHA256_PINNED",
+  "policy": "The Family-E animator must stage the complete physical sibling sets for logical D1 package families 00EC and 023D before opening 00EC_5 or 023D_5. EntryReader follows block patch_id ownership into sibling files, so a correct _5 file alone is not a sufficient readable logical package even when its own SHA-256 is exact. These rows pin physical bytes only; animation ownership remains established separately by the closed Family-E ownership report.",
   "families": {
     "00ec": [
-      {
-        "name": "ps4_race_set_all_00ec_5.pkg",
-        "data_offset": 45919511552,
-        "size": 155648,
-        "sha256": "e55e29bfc4fbea417df195996c0289a12308b6dac88cdfd99eacbfe55fdb847a"
-      }
+      {"name":"ps4_race_set_all_00ec_0.pkg","data_offset":45824346624,"size":82720768,"sha256":"0aa6bd52108beaabf1ccbcee316c6e6a4773eaed9e176ed96376f8f7f9519834"},
+      {"name":"ps4_race_set_all_00ec_1.pkg","data_offset":45907067904,"size":10065920,"sha256":"61083f83efb36c6a6f9b410ba78306cac0167063fee4437685ec0ffc4b45d6ad"},
+      {"name":"ps4_race_set_all_00ec_2.pkg","data_offset":45917134336,"size":2072576,"sha256":"7c2bb2487a5c73d1d05f676b3e6d948fe3d79c869ee66506c35a52299db96252"},
+      {"name":"ps4_race_set_all_00ec_3.pkg","data_offset":45919207424,"size":151552,"sha256":"9bb00d2e7e0162b3aa1910f818f86b44dbbf1d485bc574227afb76e3060f731e"},
+      {"name":"ps4_race_set_all_00ec_4.pkg","data_offset":45919359488,"size":151552,"sha256":"4c7a4157772038c129d5c03740116edb0edf46ee623a63387e9fa9a415a72a22"},
+      {"name":"ps4_race_set_all_00ec_5.pkg","data_offset":45919511552,"size":155648,"sha256":"e55e29bfc4fbea417df195996c0289a12308b6dac88cdfd99eacbfe55fdb847a"}
     ],
     "023d": [
-      {
-        "name": "ps4_city_tower_activities_act_023d_5.pkg",
-        "data_offset": 5419706880,
-        "size": 131072,
-        "sha256": "de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695"
-      }
+      {"name":"ps4_city_tower_activities_act_023d_0.pkg","data_offset":5321093120,"size":1544192,"sha256":"a69fc58b6692ac55e08da03c2364058351fbb85db8e06387a28de3cf4748a076"},
+      {"name":"ps4_city_tower_activities_act_023d_1.pkg","data_offset":5322637824,"size":835584,"sha256":"7386776a514488b2ee89fb3259aaa79f1bdaab3991181ea2bd423ab893bfc0f5"},
+      {"name":"ps4_city_tower_activities_act_023d_2.pkg","data_offset":5323473920,"size":49981440,"sha256":"6c51c45edcefcfc4954d0adcbe4c84b17d67c02a5d39512639987063880118f0"},
+      {"name":"ps4_city_tower_activities_act_023d_3.pkg","data_offset":5373455872,"size":4132864,"sha256":"71fe16c95cdaa4dc4119f75c34a3af2ace7798819460f97fa1656624782170b3"},
+      {"name":"ps4_city_tower_activities_act_023d_4.pkg","data_offset":5377589248,"size":42117120,"sha256":"ec698392d37149c03d678dbd8605d66a36084bea4b41d77c7daef7894b1526a9"},
+      {"name":"ps4_city_tower_activities_act_023d_5.pkg","data_offset":5419706880,"size":131072,"sha256":"de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695"}
     ]
   },
+  "negative_evidence": {
+    "workflow_run": 34058554774,
+    "failure": "A byte-exact minimal staging containing only 00EC_5 and 023D_5 failed before any GLB mutation because EntryReader.available(809D8613) was false. d1_entry_extract.EntryReader.available() explicitly follows each block's patch_id through patch_path(), proving the missing sibling files are execution dependencies rather than optional discovery context.",
+    "consequence": "Do not optimize D1 package-family reads down to the physical member containing the entry table. Stage every sibling required by block patch ownership, and for durable workflows prefer the complete current logical family with exact membership/SHA checks."
+  },
   "provenance": {
-    "00ec_5": "Fresh exact recovery in Family-E ownership run 34057701526; same current bytes as prior 67-bone Guardian validation.",
-    "023d_5": "Fresh exact recovery in Family-E ownership run 34057701526; contains the Tower-local owner/control/clip path including 80C7AE98."
+    "00ec": "Offsets from the byte-proven Tower shader dependency catalog; SHA-256 values freshly revalidated in Family-E ownership run 34057701526.",
+    "023d": "Offsets and SHA-256 values from tools/d1_tower_recover_activity_root_corpus.py and freshly revalidated in Family-E ownership run 34057701526."
   }
 }
