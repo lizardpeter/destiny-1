@@ -10,10 +10,11 @@ D1 allocation quantum 0x4000, capped at 0x40000. Compressed blocks are decoded
 with that raw length, then zero-padded to 0x40000 only for the existing logical
 addressing API.
 
-Evidence motivating this rule (Tower 024C current snapshot):
-- block 636: max serialized end 0x24E0, correct Oodle rawLen 0x4000;
-- block 725: max serialized end 0x2EB40, correct Oodle rawLen 0x30000;
-- both fail when rawLen is incorrectly forced to 0x40000.
+Evidence motivating this rule:
+- Tower 024C block 636: max serialized end 0x24E0, correct Oodle rawLen 0x4000;
+- Tower 024C block 725: max serialized end 0x2EB40, correct Oodle rawLen 0x30000;
+- Investment 013F block 114/99: max serialized end 0x351EC, correct rawLen 0x38000;
+- these partial blocks fail when rawLen is incorrectly forced to 0x40000.
 
 Safety:
 - stored block SHA-1 remains mandatory;
