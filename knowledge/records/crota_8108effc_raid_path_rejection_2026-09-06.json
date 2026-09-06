@@ -1,0 +1,248 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "crota_8108effc_raid_path_rejection_2026_09_06",
+  "title": "8108EFFC scripted oryx_squad path is mission_souvenir-owned, not moon_raid_1-owned",
+  "updated_utc": "2026-09-06T21:22:00Z",
+  "nodes": [
+    {
+      "id": "target:crota_end_raid_binary_identity",
+      "kind": "semantic_binary_identity_target",
+      "status": "TARGET",
+      "label": "Crota, Son of Oryx in moon_raid_1",
+      "attrs": {"scenario": "8108E004", "scenario_name": "moon_raid_1:scenario_client"}
+    },
+    {
+      "id": "path:8108EFFC_oryx_squad",
+      "kind": "candidate_proof_path",
+      "status": "REJECTED",
+      "label": "8108EFFC via 8108EF3A/8108EF95/8108EE97",
+      "attrs": {"rejection_scope": "This ownership path cannot prove the Crota's End raid binary identity. The global semantic identity of 8108EFFC remains unresolved."}
+    },
+    {
+      "id": "scenario:8108E004",
+      "kind": "named_scenario_client",
+      "status": "PROVEN",
+      "label": "moon_raid_1:scenario_client",
+      "attrs": {"class": "80800616", "package_id": "0447", "f603_count": 509, "contains_8108EE97": false}
+    },
+    {
+      "id": "scenario:8108E00B",
+      "kind": "named_scenario_client",
+      "status": "PROVEN",
+      "label": "mission_souvenir:scenario_client",
+      "attrs": {"class": "80800616", "package_id": "0447", "f603_count": 264, "contains_8108EE97": true, "contains_8108EFFC_normal_runtime_placement": false}
+    },
+    {
+      "id": "s6e:8108EE4A",
+      "kind": "activity_stage_resource",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {"class": "8080076E", "stage_count": 2, "f603_count": 88, "contains_8108EE97": true}
+    },
+    {
+      "id": "f603:8108EE97",
+      "kind": "activity_entity_resource_wrapper",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {"class": "808003F6", "entity_resource_field_offset": 12}
+    },
+    {
+      "id": "resource:8108EF95",
+      "kind": "EntityResource",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {"class": "80800861", "semantic_role": "scripted_entity_table_owner", "discriminator": "808007BC", "parent_class": "808005A7", "scripted_table_parent_relative_offset": 104}
+    },
+    {
+      "id": "table:8108EF3A",
+      "kind": "scripted_entity_table",
+      "status": "PROVEN",
+      "label": null,
+      "attrs": {"class": "808012D9", "script_family_string_hash": "F9596AE6", "type_string_hash": "D7236F15", "entity_name_string_hash": "AF730B17", "scripted_record_count": 1}
+    },
+    {
+      "id": "entity:8108EFFC",
+      "kind": "s_entity",
+      "status": "UNRESOLVED",
+      "label": null,
+      "attrs": {"model": "8108F1AD", "skeleton_resource": "8108F021", "skeleton_node_count": 72, "identity_note": "Still unresolved globally; only the previous Crota's End raid proof path is rejected."}
+    },
+    {
+      "id": "stringhash:F9596AE6",
+      "kind": "StringHash",
+      "status": "PROVEN",
+      "label": "oryx_squad",
+      "attrs": {"algorithm": "FNV1-32", "independent_retail_preimage_hits": 2}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:mission_owns_s6e_8108EE4A",
+      "subject": "scenario:8108E00B",
+      "predicate": "SERIALIZES_S6E_RESOURCE",
+      "object": "s6e:8108EE4A",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:mission_souvenir_path"]
+    },
+    {
+      "id": "edge:s6e_owns_f603_8108EE97",
+      "subject": "s6e:8108EE4A",
+      "predicate": "SERIALIZES_F603_RESOURCE",
+      "object": "f603:8108EE97",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:oryx_squad_s6e"]
+    },
+    {
+      "id": "edge:f603_owns_resource_8108EF95",
+      "subject": "f603:8108EE97",
+      "predicate": "OWNS_ENTITY_RESOURCE",
+      "object": "resource:8108EF95",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:f603_owner"]
+    },
+    {
+      "id": "edge:resource_owns_table_8108EF3A",
+      "subject": "resource:8108EF95",
+      "predicate": "OWNS_SCRIPTED_ENTITY_TABLE",
+      "object": "table:8108EF3A",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:scripted_resource_schema"]
+    },
+    {
+      "id": "edge:table_serializes_entity_8108EFFC",
+      "subject": "table:8108EF3A",
+      "predicate": "SERIALIZES_SCRIPTED_ENTITY",
+      "object": "entity:8108EFFC",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:scripted_table_one_record"]
+    },
+    {
+      "id": "edge:table_family_oryx_squad",
+      "subject": "table:8108EF3A",
+      "predicate": "HAS_SCRIPT_FAMILY",
+      "object": "stringhash:F9596AE6",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:oryx_squad_preimage"]
+    },
+    {
+      "id": "edge:rejected_path_entity",
+      "subject": "path:8108EFFC_oryx_squad",
+      "predicate": "TERMINATES_AT_ENTITY",
+      "object": "entity:8108EFFC",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:raid_path_rejected"]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:mission_souvenir_path",
+      "status": "PROVEN",
+      "claim": "Exact traversal of named scenario 8108E00B mission_souvenir yields 11 S6E resources including 8108EE4A and 264 unique SF603 resources including 8108EE97; 8108EFFC is not a normal runtime placement in that traversal.",
+      "source_ids": ["source:mission_souvenir_ownership"]
+    },
+    {
+      "id": "assert:oryx_squad_s6e",
+      "status": "PROVEN",
+      "claim": "Source-pinned decoding of S6E resource 8108EE4A yields two stages and 88 unique SF603 resources, including 8108EE97, with zero layout violations.",
+      "source_ids": ["source:oryx_squad_s6e"]
+    },
+    {
+      "id": "assert:f603_owner",
+      "status": "PROVEN",
+      "claim": "Across structured 0447 payloads, the only external owner of 8108EF95 is SF603 wrapper 8108EE97, whose source-defined EntityResource field is at +0x0C.",
+      "source_ids": ["source:entity_resource_backlinks"]
+    },
+    {
+      "id": "assert:scripted_resource_schema",
+      "status": "PROVEN",
+      "claim": "EntityResource 8108EF95 decodes as discriminator 808007BC with parent 808005A7; parent-relative +0x68 is exactly Tag<808012D9> and contains 8108EF3A.",
+      "source_ids": ["source:entity_resource_decode"]
+    },
+    {
+      "id": "assert:scripted_table_one_record",
+      "status": "PROVEN",
+      "claim": "Source-closed 808012D9 decoding shows 8108EF3A contains one actual scripted SMapDataEntry for EntitySK 8108EFFC; the earlier three aligned u32 occurrences were not three entity records.",
+      "source_ids": ["source:scripted_table_schema"]
+    },
+    {
+      "id": "assert:oryx_squad_preimage",
+      "status": "PROVEN",
+      "claim": "D1 FNV1-32 StringHash F9596AE6 resolves exactly to retail string oryx_squad, found independently in 8108EE4A and 8108EF95.",
+      "source_ids": ["source:stringhash_preimages"]
+    },
+    {
+      "id": "assert:raid_path_rejected",
+      "status": "PROVEN",
+      "claim": "The 8108EE97 -> 8108EF95 -> 8108EF3A -> 8108EFFC evidence chain is owned by mission_souvenir and 8108EE97 is absent from the 509 SF603 resources serialized by moon_raid_1. Therefore this path cannot establish the exact Crota's End raid binary identity.",
+      "source_ids": ["source:mission_souvenir_ownership", "source:crota_runtime_placements", "source:oryx_squad_s6e", "source:entity_resource_decode"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:mission_souvenir_ownership",
+      "kind": "actions_artifact_report",
+      "locator": "run 34060517233 / artifact 9997314781 / MISSION_SOUVENIR_RUNTIME_PLACEMENTS.json",
+      "details": {"artifact_zip_sha256": "28c49e72dcf99b83e17080fe5cb6ae22a184bceb8f42d33c5f6165e20acd30d3", "layout_violations": 0}
+    },
+    {
+      "id": "source:crota_runtime_placements",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9995963526 / CROTA_END_RUNTIME_PLACEMENTS.json",
+      "sha256": "a460f9e2500460897d4d34aebf0def24982bc6b80af54166b97839abf3c02ec0",
+      "details": {"f603_count": 509, "contains_8108EE97": false}
+    },
+    {
+      "id": "source:oryx_squad_s6e",
+      "kind": "actions_artifact_report",
+      "locator": "run 34060550048 / artifact 9997318746 / CROTA_ORYX_SQUAD_S6E.json",
+      "details": {"artifact_zip_sha256": "1ba81d97a433cb74485a27875f00629dc1f0b789b00b625d9e5633c9e55df1e6"}
+    },
+    {
+      "id": "source:entity_resource_backlinks",
+      "kind": "actions_artifact_report",
+      "locator": "run 34059015310 / artifact 9996878661 / CROTA_8108EF95_ALL_0447_BACKLINKS.json",
+      "details": {"artifact_zip_sha256": "bf43fcef3a8e4e8569455c8577026ce62c8bdf81d51b764d15b194efa4bd643e"}
+    },
+    {
+      "id": "source:entity_resource_decode",
+      "kind": "actions_artifact_report",
+      "locator": "run 34058697913 / artifact 9996764614 / CROTA_8108EF95_ENTITY_RESOURCE.json",
+      "details": {"artifact_zip_sha256": "08e4ae15bf040089ec4eed3a265dd3c80c62f072c2d1aa73fc564383119c3ba9"}
+    },
+    {
+      "id": "source:stringhash_preimages",
+      "kind": "actions_artifact_report",
+      "locator": "run 34059103385 / artifact 9996928525 / CROTA_STRINGHASH_PREIMAGES.json",
+      "details": {"artifact_zip_sha256": "927475cce77cee1c208d4a1a7fc2ac6c2fafe1e7ac468c2eb42e0dea31e7769b", "F9596AE6": "oryx_squad", "hit_count": 2}
+    },
+    {
+      "id": "source:scripted_table_schema",
+      "kind": "repository_workflow_and_tool",
+      "locator": ".github/workflows/d1-crota-scripted-entity-tables.yml + tools/d1_crota_scripted_entity_table_probe.py",
+      "details": {"canary": "CROTA_8108EF3A_D912_SCHEMA_CLOSED", "scripted_record_count": 1, "entity_name_string_hash": "AF730B17"}
+    }
+  ],
+  "rejections": [
+    {
+      "id": "reject:8108EFFC_oryx_squad_as_raid_proof",
+      "candidate_node": "path:8108EFFC_oryx_squad",
+      "rejected_as": "target:crota_end_raid_binary_identity",
+      "reason": "The complete serialized ownership path is rooted under mission_souvenir:scenario_client, while its SF603 wrapper 8108EE97 is absent from moon_raid_1's exact 509-resource SF603 set. This rejects the proof path, not the unresolved global identity of entity 8108EFFC.",
+      "assertion_ids": ["assert:raid_path_rejected"]
+    }
+  ],
+  "frontiers": [
+    {
+      "id": "frontier:raid_owned_scripted_entities",
+      "question": "Which 808007BC -> 808005A7 scripted EntityResources are actually reachable from moon_raid_1:scenario_client?",
+      "next_proof": "Enumerate only the 509 moon_raid_1 SF603 resources, classify their EntityResource roles with the shared parser, decode every reachable 808012D9 table, and resolve its family/type/EntityName StringHashes.",
+      "related_nodes": ["scenario:8108E004", "target:crota_end_raid_binary_identity"]
+    },
+    {
+      "id": "frontier:8108EFFC_global_identity",
+      "question": "What is the actual semantic identity of entity 8108EFFC?",
+      "next_proof": "Resolve AF730B17, D7236F15, FDBD7070 or another exact semantic owner. Do not infer identity from oryx_squad alone.",
+      "related_nodes": ["entity:8108EFFC", "table:8108EF3A", "stringhash:F9596AE6"]
+    }
+  ]
+}
