@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_RUNTIME_RIG_ANIMATION_OWNER_FAMILY_SPECS",
+  "date": "2026-09-06",
+  "policy": "These are source-owned family identities and expected homologous owner-resource slots only. A family is not animation-closed from this file. Every owner class pair, FileHash slot, control, selector table, skeleton/runtime-rig dimension, and selected clip must be reopened and validated from retail bytes.",
+  "families": {
+    "A": {
+      "entity_model": "80C7AD2A",
+      "skeleton_resource": "80BC60B2",
+      "runtime_rig_resource": "80BC60B4",
+      "expected_node_count": 4,
+      "expected_control_count": 4,
+      "owner_halves": {
+        "low": {
+          "resource_hash": "80BC6412",
+          "class_pair": ["808020BF", "808029D2"],
+          "control_filehash_offset": 272
+        },
+        "high": {
+          "resource_hash": "80C7A2A5",
+          "class_pair": ["80802B92", "808020BB"],
+          "control_filehash_offset": 1096
+        }
+      },
+      "entities": {
+        "80C7A05E": ["592D3113E2C5BDB4"]
+      }
+    },
+    "F": {
+      "entity_model": "80C7AF4C",
+      "skeleton_resource": "80C7AF3A",
+      "runtime_rig_resource": "80C7AF40",
+      "expected_node_count": 2,
+      "expected_control_count": 2,
+      "owner_halves": {
+        "low": {
+          "resource_hash": "80C7AF3D",
+          "class_pair": ["808020BF", "808029D2"],
+          "control_filehash_offset": 272
+        },
+        "high": {
+          "resource_hash": "80C7AF3F",
+          "class_pair": ["80802B92", "808020BB"],
+          "control_filehash_offset": 1096
+        }
+      },
+      "entities": {
+        "80C7ADE5": ["064E5A7957373FA3"],
+        "80C7AE14": ["29191E38D272B06B", "4FB47A0143A95F31", "747235765D9899D9", "CFEA129378E00812"],
+        "80C7AE15": ["0F6676AA91C2392A"],
+        "80C7AE16": ["A7D4B393917E2436"],
+        "80C7AE1B": ["6CB2EB24B545063B"]
+      },
+      "closed_run": 34061302982,
+      "closed_control": "80C7AF4E",
+      "selected_clip_set": ["80C7AF5A", "80C7AF5B", "80C7AF5C"]
+    },
+    "G": {
+      "entity_model": "80C7AE59",
+      "skeleton_resource": "80C7AE32",
+      "runtime_rig_resource": "80C7AE39",
+      "expected_node_count": 3,
+      "expected_control_count": 3,
+      "owner_halves": {
+        "low": {
+          "resource_hash": "80C7AE36",
+          "class_pair": ["808020BF", "808029D2"],
+          "control_filehash_offset": 272
+        },
+        "high": {
+          "resource_hash": "80C7AE38",
+          "class_pair": ["80802B92", "808020BB"],
+          "control_filehash_offset": 1096
+        }
+      },
+      "entities": {
+        "80C7AE17": ["5764137809E7AC7A"],
+        "80C7AE18": ["29E0B9685B2E3BE3"],
+        "80C7AE19": ["380FEB53B471ED5E"]
+      }
+    }
+  },
+  "provenance": "Family and WorldID identities come from the complete source-owned Tower articulated dependency/placement closure. Owner class-pair homology was independently observed in the exact EntityResource census; only Family F is marked with a prior closed run here."
+}
