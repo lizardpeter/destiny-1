@@ -1,0 +1,99 @@
+name: D1 PS4 api13 cross-corpus census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-ps4-api13-census.yml'
+      - 'tools/d1_ps4_api13_census.py'
+      - 'tools/d1_gcn_constant_buffer_usage_analyze.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Download latest exact PS4 shader corpora
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/top upstream/common upstream/light reports
+          top_run="$(gh run list --workflow d1-tower-top-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          common_run="$(gh run list --workflow d1-tower-common-layer-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          light_run="$(gh run list --workflow d1-tower-light-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$top_run" && test -n "$common_run" && test -n "$light_run"
+          gh run download "$top_run" -n d1-tower-top40-pixel-shader-disassembly -D upstream/top
+          gh run download "$common_run" -n d1-tower-common65-pixel-shader-disassembly -D upstream/common
+          gh run download "$light_run" -n d1-tower-light-shader-disassembly -D upstream/light
+          printf 'top=%s\ncommon=%s\nlight=%s\n' "$top_run" "$common_run" "$light_run" | tee reports/upstream_runs.txt
+          test -f upstream/top/reports/top40_shader_extract.json
+          test -d upstream/top/disasm
+          test -f upstream/common/reports/common65_shader_extract.json
+          test -d upstream/common/disasm
+          test -f upstream/light/reports/tower_light_shader_report.json
+          test -d upstream/light/disasm
+
+      - name: Recompute exact constant-buffer mapping for all PS4 corpora
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_constant_buffer_usage_analyze.py \
+            --extract-report upstream/top/reports/top40_shader_extract.json \
+            --disasm-dir upstream/top/disasm \
+            --out reports/top40_constant_buffer_usage.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py \
+            --extract-report upstream/common/reports/common65_shader_extract.json \
+            --disasm-dir upstream/common/disasm \
+            --out reports/common65_constant_buffer_usage.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py \
+            --extract-report upstream/light/reports/tower_light_shader_report.json \
+            --disasm-dir upstream/light/disasm \
+            --out reports/light32_constant_buffer_usage.json
+          python - <<'PY'
+          import json
+          checks=[('top40','reports/top40_constant_buffer_usage.json',40),('common65','reports/common65_constant_buffer_usage.json',65),('light32','reports/light32_constant_buffer_usage.json',32)]
+          for name,path,n in checks:
+              d=json.load(open(path))
+              assert d['status']=='D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED',(name,d.get('violations'))
+              assert d['shader_count']==n,(name,d['shader_count'],n)
+          print('PS4_137_SHADER_CONSTANT_BUFFER_MAPPING_GREEN')
+          PY
+
+      - name: Build PS4-only api13 dword census
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_api13_census.py \
+            --input top40=reports/top40_constant_buffer_usage.json \
+            --input common65=reports/common65_constant_buffer_usage.json \
+            --input light32=reports/light32_constant_buffer_usage.json \
+            --disasm top40=upstream/top/disasm \
+            --disasm common65=upstream/common/disasm \
+            --disasm light32=upstream/light/disasm \
+            --out reports/PS4_API13_CROSS_CORPUS_CENSUS.json \
+            | tee reports/PS4_API13_CROSS_CORPUS_CENSUS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS4_API13_CROSS_CORPUS_CENSUS.json'))
+          assert d['status']=='D1_PS4_API13_CENSUS_COMPLETE',d['violations']
+          assert d['corpus_shader_row_count']==137,d['corpus_shader_row_count']
+          assert '809DCD66' in d['api13_shaders'],d['api13_shaders']
+          assert any(x['shader']=='809DCD66' for x in d['api13_dword6_hits']),d['api13_dword6_hits']
+          assert any(x['shader']=='809DCD66' for x in d['api13_dword7_hits']),d['api13_dword7_hits']
+          print('PS4_809DCD66_API13_6_7_REPRODUCED_IN_CROSS_CORPUS_CENSUS')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-ps4-api13-cross-corpus-census
+          path: reports/
+          retention-days: 14
+          compression-level: 6
