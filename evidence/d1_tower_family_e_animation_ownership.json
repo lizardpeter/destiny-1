@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_FAMILY_E_PLACEMENT_OWNER_EVIDENCE",
+  "provenance": {
+    "source_workflow": ".github/workflows/d1-tower-articulated-validation.yml",
+    "source_run_id": 34005842721,
+    "source_artifact_id": 9981228087,
+    "source_artifact_sha256": "5b0b90659f88a6872277d2ab6cc9a160ec3a8ecab106bebda0d2ea7ae64f0486",
+    "source_report": "tower_articulated_entity_plan.json",
+    "source_dependency_report": "tower_entity_dependency_census.json"
+  },
+  "family": {
+    "model_parent_resource": "80CA0CD8",
+    "entity_model": "80CA0CFC",
+    "skeleton_resource": "809D8613",
+    "skeleton_node_count": 67,
+    "runtime_rig_resource": "809D856E",
+    "runtime_rig_control_count": 67,
+    "children_resource": "809D8566",
+    "runtime_placement_count": 6
+  },
+  "entities": {
+    "80C7AD82": {
+      "runtime_placement_count": 1,
+      "animation_owner_pair": ["809DF581", "809DF582"],
+      "animation_control": "809D856F",
+      "animation_clip": "809D8572",
+      "ownership_scope": "generic_00EF_owner_pair",
+      "world_ids": ["1F763204E6BF153E"]
+    },
+    "80C7AE3E": {
+      "runtime_placement_count": 1,
+      "animation_owner_pair": ["80C7AE48", "80C7AE49"],
+      "animation_control": "80C7AE68",
+      "animation_clip": "80C7AE98",
+      "ownership_scope": "tower_local_023D_owner_pair",
+      "world_ids": ["288E250AFDC06BC7"]
+    },
+    "80CA0CD6": {
+      "runtime_placement_count": 4,
+      "animation_owner_pair": ["809DF581", "809DF582"],
+      "animation_control": "809D856F",
+      "animation_clip": "809D8572",
+      "ownership_scope": "generic_00EF_owner_pair",
+      "world_ids": [
+        "28F88CAFCCE615AC",
+        "5A9D48129FB3D22A",
+        "5F523A4A340754A7",
+        "C588D8EE0F1F493D"
+      ]
+    }
+  },
+  "policy": "WorldID-to-SEntity ownership comes from the source-owned Activity placement/dependency closure. Animation controls and clips are promoted only after literal retail owner/control edges and exact skeleton/runtime-rig clip compatibility are independently revalidated. No semantic idle/vendor name is assigned."
+}
