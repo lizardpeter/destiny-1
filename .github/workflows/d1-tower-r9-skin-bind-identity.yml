@@ -1,0 +1,43 @@
+name: D1 Tower r9 skin bind identity
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-r9-skin-bind-identity.yml'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+      - 'tools/d1_gltf_layer_merge.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q numpy
+      - name: Recover exact articulated r9 release
+        run: |
+          set -euo pipefail
+          mkdir -p input reports
+          curl --fail --location --retry 5 --retry-delay 2 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-tower-articulated-e-f-g-animated-r9-exact-resources/D1_TOWER_ARTICULATED_E_F_G_ANIMATED_R9_EXACT_RESOURCES.glb' \
+            -o input/r9.glb
+          test "$(stat -c%s input/r9.glb)" = 76004468
+          echo '5b459d7ec8e9c9912ce63bb3f988c8c02b87b020bca0b17f4fee120609e237a2  input/r9.glb' | sha256sum --check --strict
+      - name: Prove Family E bind-pose skin algebra
+        run: |
+          python tools/d1_gltf_skin_bind_identity_probe.py input/r9.glb --model 80CA0CFC --max-error 2e-5 -o reports/FAMILY_E_BIND_IDENTITY.json
+      - name: Prove every currently skinned family bind-pose algebra
+        run: |
+          python tools/d1_gltf_skin_bind_identity_probe.py input/r9.glb --model 80CA0CFC --model 80C7AF4C --model 80C7AE59 --max-error 2e-5 -o reports/E_F_G_BIND_IDENTITY.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-r9-skin-bind-identity
+          path: reports/
+          retention-days: 14
