@@ -1,0 +1,61 @@
+name: D1 complete physical location index
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-complete-physical-location-index.yml'
+      - 'tools/d1_complete_physical_location_index.py'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact package list and retained Activity location index
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o out/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  out/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+      - name: Scan only omitted TAR gaps
+        run: |
+          set -euo pipefail
+          python tools/d1_complete_physical_location_index.py \
+            --activity-index out/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list out/packages.txt \
+            --out out/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json \
+            | tee out/complete_location_stdout.txt
+      - name: Validate all physical package namespaces are closed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('out/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json'))
+          c=d['counts']
+          assert d['status']=='D1_COMPLETE_PHYSICAL_LOCATION_INDEX_EXACT'
+          assert c['packages_txt_members']==c['complete_physical_members']==2105,c
+          assert c['retained_activity_members']==1275,c
+          assert c['gap_recovered_members']==830,c
+          assert c['namespace_counts']=={'base':1275,'localized':821,'special':9},c['namespace_counts']
+          assert c['locale_counts']=={'de':116,'en':117,'fr':118,'it':118,'jpn':118,'pt':118,'sp':116},c['locale_counts']
+          assert len(d['members'])==2105 and len({x['name'] for x in d['members']})==2105
+          assert d['trailing_zero_tar_bytes'] in (0,1024)
+          assert d['source']['package_list_sha256']=='9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+          print('D1_ALL_2105_PHYSICAL_PACKAGE_LOCATIONS_EXACT',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_COMPLETE_PHYSICAL_LOCATION_INDEX.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-COMPLETE-PHYSICAL-LOCATION-INDEX
+          path: out/
+          retention-days: 14
+          compression-level: 6
