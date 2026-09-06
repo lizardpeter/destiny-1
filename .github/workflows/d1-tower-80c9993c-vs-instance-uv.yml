@@ -1,0 +1,105 @@
+name: D1 Tower 80C9993C VS instance UV constants
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80c9993c-vs-instance-uv.yml'
+      - 'tools/d1_tower_map_schema_validate.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact Tower families and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet numpy trimesh
+          mkdir -p index runtime packages reports
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 024c --package-id 0250 --out-dir packages --report reports/recovery.json
+
+      - name: Join 80C99827 visible grass draws to exact instance record dwords 12..15
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,sys
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate as schema
+          import d1_tower_static_chunk_export as base
+
+          c=schema.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          d1=schema.validate_static_data_d1(c,'80C994B2')
+          assert '80C99827' in d1.get('static_table_hashes',[]),d1.get('static_table_hashes')
+          assert d1.get('instance_transforms'),d1
+          tb,tsrc=c.payload(d1['instance_transforms'])
+          assert tb is not None and len(tb)==d1['instance_count']*0x40,(len(tb) if tb else None,d1)
+          table=schema.parse_static_table(c,'80C99827',d1['instance_count'])
+          assert table.get('info_entries') and table.get('mesh_entries') and table.get('material_hashes')
+
+          rows=[]
+          for ii in (975,976,977,978):
+              info=table['info_entries'][ii];mesh=table['mesh_entries'][info['static_index']]
+              mh=table['material_hashes'][info['material_index']]
+              assert mh=='80C9993C',(ii,mh)
+              ti=int(info['transform_index']);ic=int(info['instance_count'])
+              inst=[]
+              for local in range(ic):
+                  idx=ti+local;off=idx*0x40
+                  vals=struct.unpack_from('<16f',tb,off)
+                  uv=vals[12:16]
+                  inst.append({'instance_index':idx,'record_offset':off,'float4x4_row_major':[list(vals[r*4:r*4+4]) for r in range(4)],
+                               'dword12_15':list(uv),'uv_scale_s8':uv[0],'uv_translate_x_s9':uv[1],
+                               'uv_translate_y_s10':uv[2],'unused_or_other_s11':uv[3]})
+              rows.append({'info_index':ii,'static_index':info['static_index'],'detail_level':mesh['detail_level'],
+                           'index_offset':mesh['index_offset'],'index_count':mesh['index_count'],'unk0C':mesh['unk0C'],
+                           'transform_index':ti,'instance_count':ic,'instances':inst})
+
+          visible=[r for r in rows if r['detail_level'] in (0,1,2,3,10)]
+          assert sorted(r['static_index'] for r in visible)==[579,799]
+          # Direct instruction closure from VS_80CA0CB7:
+          #   s_buffer_load_dwordx4 s[8:11], CB11, 0xc
+          #   v16 = s9  + s8*v8
+          #   v17 = s10 + s8*v9
+          #   exp param3, v16,v17,v10,v11
+          out={'schema_version':1,'status':'D1_80C9993C_EXACT_INSTANCE_UV_CONSTANT_JOIN',
+               'static_map_data':'80C993CF','d1_static_map_data':'80C994B2','table':'80C99827',
+               'instance_transforms':d1['instance_transforms'],'instance_transform_source':tsrc,
+               'instance_count':d1['instance_count'],'rows':rows,'visible_rows':visible,
+               'vs_80CA0CB7_equation':{'cb_api_slot':11,'cb_byte_offset':48,
+                 'attr3_x':'s9 + s8 * v8','attr3_y':'s10 + s8 * v9','attr3_z':'v10','attr3_w':'v11',
+                 'instance_record_join':'s8,s9,s10,s11 = transform_record float dwords 12,13,14,15 (+0x30..+0x3C)'},
+               'external_crosscheck':'Archived D1Map::GetDataTable independently reads UVTransform floats from +0x30,+0x34,+0x38 of the same 0x40 instance record.',
+               'policy':'The join is based on exact byte offsets and native VS instructions. No UV sign flip or glTF convention adjustment is inserted here.'}
+          Path('reports/80C9993C_exact_instance_uv_constants.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({'status':out['status'],'instance_transforms':out['instance_transforms'],'visible_rows':visible,'equation':out['vs_80CA0CB7_equation']},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-80c9993c-vs-instance-uv
+          path: reports/
+          retention-days: 14
