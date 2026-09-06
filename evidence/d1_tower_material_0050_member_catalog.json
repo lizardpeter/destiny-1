@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_EXTERNAL_MATERIAL_0050_FAMILY_CLOSED",
+  "source_workflow": {
+    "run_id": 34007602029,
+    "artifact_id": 9981698775,
+    "artifact_digest": "sha256:bd9c545fca0ff617a8e7c44fe83a3a15e8bcbdc08d6f8c3cfbd8e7bee6bd7d24",
+    "selection_basis": "The exact owning EntityResource external-material map for model 80C7ABDA selected unresolved serialized Material FileHash 808A048B. Tiger FileHash package decoding yielded package id 0050; the complete current physical family was then recovered and SHA-256 verified. No filename semantic inference was used."
+  },
+  "material_closure": {
+    "model": "80C7ABDA",
+    "model_parent": "80C7ABD2",
+    "previous_missing_selected_material": "808A048B",
+    "selected_part_reference_count": 6,
+    "result": "D1_WORLD_ENTITY_MODEL_MATERIAL_BINDINGS_COMPLETE"
+  },
+  "families": {
+    "0050": [
+      {"name":"ps4_ui_cinematics_0050_0.pkg","data_offset":48744023552,"size":786432,"sha256":"424c0d8428ab8de796fd5ad43488b2f6ae0630318e30d305dea27d5951f3400d"},
+      {"name":"ps4_ui_cinematics_0050_1.pkg","data_offset":48744810496,"size":407552,"sha256":"43561ff49023f1f56d20174952d0728d5277ef73d1d54a9fdf553b35e4a8ecdd"},
+      {"name":"ps4_ui_cinematics_0050_2.pkg","data_offset":48745218560,"size":149504,"sha256":"7bf0b03ccd29d5ae9b5fc6945b61fb0f7b756754f94edfa7bf7e78f2edf0322f"},
+      {"name":"ps4_ui_cinematics_0050_3.pkg","data_offset":48745368576,"size":49152,"sha256":"86c666fb8cd0926acabdc241d4b4394c7d8c41e5433f2fd9a5d8a774d8839f9f"},
+      {"name":"ps4_ui_cinematics_0050_4.pkg","data_offset":48745418240,"size":53248,"sha256":"feeff7beb4663857ee5167acd61f67ac685a61a26b54fbafd70f88b2771fb3f0"},
+      {"name":"ps4_ui_cinematics_0050_5.pkg","data_offset":48745472000,"size":57344,"sha256":"92f1c74850dbae34b3429ac33d6b8080e28b062c347da36ef74596a02d17a9ca"},
+      {"name":"ps4_ui_cinematics_0050_6.pkg","data_offset":48745529856,"size":40960,"sha256":"bea62ba45f9cce691478ac2e37f90dec45703bf48717c74608777778864504c2"}
+    ]
+  },
+  "policy": "Current packages.txt family membership must match these seven members before offsets are reused. Every recovered byte range must revalidate the pinned SHA-256. This catalog accelerates physical recovery only; it is not evidence that a package filename semantically owns a Tower entity."
+}
