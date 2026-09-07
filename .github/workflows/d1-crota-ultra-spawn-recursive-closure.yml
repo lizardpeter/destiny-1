@@ -1,0 +1,180 @@
+name: D1 Crota ultra-spawn recursive closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-ultra-spawn-recursive-closure.yml'
+      - 'tools/d1_remote_entity_dependency_closure.py'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Compile recursive walker
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_entity_dependency_closure.py
+
+      - name: Run typed-only dependency closure
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_entity_dependency_closure.py \
+            --seed 0x8108E5C3 --seed 0x8108E671 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 8 --max-nodes 300 \
+            -o out/CROTA_ULTRA_SPAWN_TYPED_CLOSURE.json \
+            | tee out/typed_stdout.txt
+
+      - name: Run discovery closure with untyped FileHash recursion isolated
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_entity_dependency_closure.py \
+            --seed 0x8108E5C3 --seed 0x8108E671 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 5 --max-nodes 260 --recurse-untyped \
+            -o out/CROTA_ULTRA_SPAWN_DISCOVERY_CLOSURE.json \
+            | tee out/discovery_stdout.txt
+
+      - name: Re-probe all discovered articulated entities canonically
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ULTRA_SPAWN_DISCOVERY_CLOSURE.json'))
+          tags=[]
+          for e in d.get('articulated_entities',[]):
+              h=e['tag_hash']
+              if h not in tags: tags.append(h)
+          print(' '.join('--tag-hash 0x'+h for h in tags))
+          open('out/articulated_tags.txt','w').write('\n'.join(tags)+'\n')
+          PY
+          )
+          echo "ARTICULATED_ARGS=$ARGS" | tee out/articulated_args.txt
+          if [[ -n "$ARGS" ]]; then
+            python tools/d1_remote_exact_s_entity_probe.py $ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime -o out/CROTA_ULTRA_SPAWN_ARTICULATED_ENTITIES.json \
+              | tee out/articulated_stdout.txt
+          else
+            printf '{"schema":"empty","entries":[],"violation_count":0,"violations":[]}\n' > out/CROTA_ULTRA_SPAWN_ARTICULATED_ENTITIES.json
+          fi
+
+      - name: Resolve source-backed names for articulated candidates
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ULTRA_SPAWN_ARTICULATED_ENTITIES.json'))
+          args=[];seen=set()
+          for e in d.get('entries',[]):
+              for h in e.get('specific_name_string_hashes',[]):
+                  k=('s',h)
+                  if k not in seen: seen.add(k); args += ['--string-hash','0x'+h]
+              for h in e.get('generic_name_tags',[]):
+                  k=('g',h)
+                  if k not in seen: seen.add(k); args += ['--generic-name-tag','0x'+h]
+          print(' '.join(args))
+          PY
+          )
+          echo "NAME_ARGS=$ARGS" | tee out/name_args.txt
+          if [[ -n "$ARGS" ]]; then
+            python tools/d1_remote_global_stringhash_resolve.py $ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+              --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+              --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+              --global-package-id 0x072B --global-package-id 0x072F --global-package-id 0x0735 \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime -o out/CROTA_ULTRA_SPAWN_NAMES.json \
+              | tee out/names_stdout.txt
+          else
+            printf '{"schema":"empty","resolved":{},"generic_name_tag_to_string_hash":{},"violation_count":0,"violations":[]}\n' > out/CROTA_ULTRA_SPAWN_NAMES.json
+          fi
+
+      - name: Summarize proof boundary and candidate paths
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import json,collections
+          t=json.load(open('out/CROTA_ULTRA_SPAWN_TYPED_CLOSURE.json'))
+          d=json.load(open('out/CROTA_ULTRA_SPAWN_DISCOVERY_CLOSURE.json'))
+          a=json.load(open('out/CROTA_ULTRA_SPAWN_ARTICULATED_ENTITIES.json'))
+          n=json.load(open('out/CROTA_ULTRA_SPAWN_NAMES.json'))
+          assert not t['violations'],t['violations']
+          assert not d['violations'],d['violations']
+          assert a.get('violation_count',0)==0,a.get('violations')
+          assert n.get('violation_count',0)==0,n.get('violations')
+          print('TYPED_ONLY NODES',t['node_count'],'EDGES',t['edge_count'],'ARTICULATED',len(t['articulated_entities']),'TRUNCATED',t['truncated'])
+          print('DISCOVERY NODES',d['node_count'],'EDGES',d['edge_count'],'TYPED',d['typed_edge_count'],'UNTYPED',d['untyped_literal_edge_count'],'ARTICULATED',len(d['articulated_entities']),'TRUNCATED',d['truncated'])
+          resolved=n.get('resolved',{}); generic=n.get('generic_name_tag_to_string_hash',{})
+          name_map={h:sorted({r.get('string') for r in rows if r.get('string')}) for h,rows in resolved.items()}
+          byh={x['tag_hash']:x for x in a.get('entries',[])}
+          for c in d['articulated_entities']:
+              x=byh.get(c['tag_hash'],{}); names=[]
+              for sh in x.get('specific_name_string_hashes',[]): names += name_map.get(sh,[])
+              for gh in x.get('generic_name_tags',[]):
+                  sh=generic.get(gh)
+                  if sh: names += name_map.get(sh,[])
+              print('ARTICULATED',c['tag_hash'],'DEPTH',c['depth'],'PATH',c['path_class'],
+                    'MODELS',c['embedded_models'],'SKELETONS',c['skeletons'],'NAMES',sorted(set(names)),
+                    'SPECIFIC',x.get('specific_name_string_hashes',[]),'GENERIC',x.get('generic_name_tags',[]))
+          # Print all outgoing edges from the four first-level unique Crota ultra-spawn resources.
+          for root in ('80AAE3A4','8108E679','80AADE40','8108E67A','8108E740'):
+              print('\nRESOURCE_GRAPH',root)
+              for e in d['edges']:
+                  if e['subject']==root:
+                      print(' ',e['predicate'],e['object'],e['evidence_class'],e.get('offset_hex'),e.get('attrs',{}))
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-ULTRA-SPAWN-RECURSIVE-CLOSURE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
