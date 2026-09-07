@@ -10,12 +10,24 @@ by the retail model and chooses the first source-ordered material candidate when
 later render variant repeats the exact same geometry range. Every later variant is
 retained in the report rather than silently discarded.
 
+Crota also exposed a second defect in the old generic exporter: D1 ROI dynamic vertex
+layout is a *stride-pair* decision.  In particular a 0x0C primary stream uses bytes
+8..11 as inline two-bone skin data when position-W is +/-32767, but uses those same
+bytes as UV0 when W is ordinary (and W itself is then the rigid bone index).  Charm's
+pinned ReadD1VertexData does this row-wise and carries the resulting _uvExists state
+into the secondary-stream decoder.  The previous Crota path called independent
+primary_attrs/secondary_attrs heuristics, which could not distinguish these forms.
+
+For exact model 8108E5B7 the source-closed pairs are:
+  mesh 0: primary 0x10 + secondary 0x14 -> position/4-weight + UV/normal/tangent
+  mesh 1: primary 0x0C + secondary 0x14 -> position/2-weight + UV/normal/tangent
+  mesh 2: primary 0x0C + secondary 0x10 -> position+UV/rigid-W + normal/tangent
+Any other pair is fatal in this Crota-specific exporter.
+
 Unlike the generic forensic model exporter, this Blender-facing adapter explicitly
 preserves exact decoded UV0 as custom glTF attribute ``_D1_UV0``. Trimesh drops UVs
-when no portable texture is assigned at export time; that was the concrete reason the
-previous Crota GLB could not subsequently receive the retail atlas. A separate
-loss-preserving adapter promotes this same accessor to TEXCOORD_0 only for the final
-portable Blender material layer.
+when no portable texture is assigned at export time; a later loss-preserving adapter
+promotes this same accessor to TEXCOORD_0 only for the final portable Blender layer.
 
 No texture is assigned a PBR role here and no native shader is approximated here.
 """
@@ -34,13 +46,27 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from d1_entity_model_probe import parse_model
-from d1_entity_model_export import hdr_stride, index_is32, primitive_faces
-from d1_entity_model_corpus_export import HIGHEST_LODS, NULLS, linked, material_info, norm, primary_attrs, secondary_attrs
+from d1_entity_model_export import (
+    decode_vb0,
+    decode_vb0_uv,
+    decode_vb1,
+    hdr_stride,
+    index_is32,
+    primitive_faces,
+)
+from d1_entity_model_corpus_export import HIGHEST_LODS, NULLS, linked, material_info, norm
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_split_tar_extract import SplitHttpTar
 from d1_remote_activity_placements import RemoteCorpus
 
 ENTITY_MODEL_CLASS = '80801AB5'
+CROTA_MODEL = '8108E5B7'
+# Exact retail stream pairs proved from the live model and pinned Charm ROI reader.
+CROTA_STRIDE_PAIRS = {
+    0: (0x10, 0x14),
+    1: (0x0C, 0x14),
+    2: (0x0C, 0x10),
+}
 
 
 def visual_union_ranges(model: dict, binding: dict):
@@ -99,12 +125,82 @@ def visual_union_ranges(model: dict, binding: dict):
     return selected, mesh_summaries
 
 
+def decode_crota_mesh_pair(mesh_index: int, mesh: dict, d0: bytes, s0: int,
+                           d1: bytes | None, s1: int | None):
+    """Decode one exact 8108E5B7 D1 ROI dynamic stream pair like Charm.
+
+    `decode_vb0_uv` implements the position-W sentinel distinction and `decode_vb1`
+    consumes the resulting primary-UV state just like VertexBuffer._uvExists.  UV
+    transform is performed by those helpers exactly once.
+    """
+    expected = CROTA_STRIDE_PAIRS.get(mesh_index)
+    pair = (s0, s1)
+    if expected is None or pair != expected:
+        raise ValueError(f'Crota mesh {mesh_index}: retail stride pair {pair} != pinned expected {expected}')
+    if d1 is None or s1 is None:
+        raise ValueError(f'Crota mesh {mesh_index}: exact secondary stream is required')
+    if len(d0) % s0 or len(d1) % s1:
+        raise ValueError(f'Crota mesh {mesh_index}: stream byte count not divisible by stride')
+    n0, n1 = len(d0) // s0, len(d1) // s1
+    if n0 != n1:
+        raise ValueError(f'Crota mesh {mesh_index}: stream vertex count mismatch {n0} != {n1}')
+
+    uvscale = np.asarray(mesh['texcoord_scale'], dtype=np.float32)
+    uvtrans = np.asarray(mesh['texcoord_translation'], dtype=np.float32)
+    pos = decode_vb0(d0, s0)
+    uv0 = decode_vb0_uv(d0, s0, uvscale, uvtrans)
+    uv1, normal, tangent, color = decode_vb1(
+        d1, s1, uvscale, uvtrans,
+        primary_uv_exists=uv0 is not None,
+        other_stride=s0,
+    )
+    uv = uv0 if uv0 is not None else uv1
+    if uv is None:
+        raise ValueError(f'Crota mesh {mesh_index}: pinned D1 stride-pair decode produced no UV0')
+
+    # Lock the exact position-W interpretation that separates the two 0x0C forms.
+    row_mode = None
+    if s0 == 0x0C:
+        raw16 = np.frombuffer(d0, dtype='<i2').reshape((-1, 6))
+        w = raw16[:, 3]
+        sentinel = (w == 32767) | (w == -32767)
+        if mesh_index == 1:
+            if not np.all(sentinel):
+                raise ValueError('Crota mesh 1: expected every 0x0C position-W to be +/-32767 inline2 sentinel')
+            if uv0 is not None:
+                raise ValueError('Crota mesh 1: inline2 sentinel primary unexpectedly produced UV0')
+            row_mode = '0x0C_all_inline2_sentinel_secondary_uv'
+        elif mesh_index == 2:
+            if np.any(sentinel):
+                raise ValueError('Crota mesh 2: expected every 0x0C position-W to be rigid non-sentinel')
+            if uv0 is None:
+                raise ValueError('Crota mesh 2: rigid 0x0C primary failed to produce UV0')
+            row_mode = '0x0C_all_rigid_w_primary_uv'
+    elif mesh_index == 0:
+        row_mode = '0x10_inline4_secondary_uv'
+
+    layout = {
+        'decoder': 'Charm ReadD1VertexData D1 ROI stride-pair equivalent',
+        'primary_stride': s0,
+        'secondary_stride': s1,
+        'primary_uv': uv0 is not None,
+        'secondary_uv': uv1 is not None,
+        'row_mode': row_mode,
+    }
+    return pos, uv, normal, tangent, color, layout
+
+
 def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir: Path) -> dict:
+    model_hash = norm(model_hash)
+    if model_hash != CROTA_MODEL:
+        raise ValueError(f'this exact visual-union decoder is scoped to Crota model {CROTA_MODEL}, got {model_hash}')
     meta = c.entry_meta(model_hash)
     payload, source = c.payload(model_hash)
     if meta is None or payload is None or norm(meta.get('reference', '')) != ENTITY_MODEL_CLASS:
         raise ValueError(f'{model_hash}: s_entity_model unavailable')
     model = parse_model(payload, 'PS4')
+    if len(model['meshes']) != 3:
+        raise ValueError(f'{model_hash}: expected exact three source meshes, got {len(model["meshes"])}')
     ranges, mesh_summaries = visual_union_ranges(model, binding)
     by_mesh = defaultdict(list)
     for row in ranges:
@@ -116,32 +212,20 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
     for mi, mesh in enumerate(model['meshes']):
         lr0, h0, _, d0 = linked(c, mesh['vertices1'])
         s0 = hdr_stride(h0)
-        pos, uv0, n0, t0, col0 = primary_attrs(d0, s0)
         lr1 = None
         s1 = None
-        uv1 = n1 = t1 = col1 = None
-        secondary_layout = None
+        d1 = None
         if norm(mesh['vertices2']) not in NULLS:
             lr1, h1, _, d1 = linked(c, mesh['vertices2'])
             s1 = hdr_stride(h1)
-            uv1, n1, t1, col1, secondary_layout = secondary_attrs(d1, s1, uv0 is not None, s0)
-            if len(pos) != len(d1) // s1:
-                raise ValueError(f'{model_hash} mesh {mi}: stream vertex count mismatch')
+        pos, uv, normal, tangent, color, pair_layout = decode_crota_mesh_pair(mi, mesh, d0, s0, d1, s1)
+
         lri, ih, _, idata = linked(c, mesh['indices'])
         is32 = index_is32(ih)
         inds = np.frombuffer(idata, dtype='<u4' if is32 else '<u2').astype(np.int64)
-
         scale = np.asarray(mesh['model_scale'][:3], dtype=np.float32)
         trans = np.asarray(mesh['model_translation'][:3], dtype=np.float32)
         pos = (pos * scale + trans).astype(np.float32)
-        uv = uv0 if uv0 is not None else uv1
-        normal = n0 if n0 is not None else n1
-        tangent = t0 if t0 is not None else t1
-        color = col0 if col0 is not None else col1
-        if uv is not None:
-            ts = np.asarray(mesh['texcoord_scale'], dtype=np.float32)
-            tt = np.asarray(mesh['texcoord_translation'], dtype=np.float32)
-            uv = np.column_stack((uv[:, 0] * ts[0] + tt[0], uv[:, 1] * (-ts[1]) + 1.0 - tt[1])).astype(np.float32)
 
         for row in by_mesh.get(mi, []):
             off, count, prim = int(row['index_offset']), int(row['index_count']), int(row['primitive_type'])
@@ -157,7 +241,7 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
             faces = inv.reshape((-1, 3))
             vv = pos[used]
             nn = normal[used] if normal is not None else None
-            uu = uv[used] if uv is not None else None
+            uu = uv[used]
             ttan = tangent[used] if tangent is not None else None
             cc = color[used] if color is not None else None
             mh = row['material']
@@ -168,10 +252,8 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
             visual = trimesh.visual.TextureVisuals(uv=uu, material=mat)
             tm = trimesh.Trimesh(vertices=vv, faces=faces, vertex_normals=nn, visual=visual,
                                  process=False, validate=False)
-            # Preserve source data even though no portable PBR texture role has yet
-            # been selected. Trimesh otherwise omits UV0 from an image-less GLB.
-            if uu is not None:
-                tm.vertex_attributes['_D1_UV0'] = np.asarray(uu, dtype=np.float32)
+            # Preserve source attributes before any portable material role is chosen.
+            tm.vertex_attributes['_D1_UV0'] = np.asarray(uu, dtype=np.float32)
             if cc is not None:
                 tm.vertex_attributes['_D1_COLOR0'] = np.asarray(cc, dtype=np.float32)
             if ttan is not None:
@@ -188,6 +270,7 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
                 'lod_values': row['lod_values'],
                 'dye_indices': row['dye_indices'],
                 'source_vertex_indices': used.tolist(),
+                'd1_roi_stride_pair_layout': pair_layout,
             }
             scene.add_geometry(tm, geom_name=name, node_name=name)
             active_materials.add(mh)
@@ -196,12 +279,12 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
                 'name': name,
                 'source_vertex_count': len(used),
                 'triangle_count': len(faces_global),
-                'has_uv': uu is not None,
+                'has_uv': True,
                 'has_normals': nn is not None,
                 'has_tangents': ttan is not None,
                 'has_colors': cc is not None,
                 'material_info': minfo,
-                'secondary_layout': secondary_layout,
+                'd1_roi_stride_pair_layout': pair_layout,
                 'vertices1': lr0,
                 'vertices2': lr1,
                 'indices': lri,
@@ -217,13 +300,11 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
     glb = out_dir / f'{model_hash}.glb'
     scene.export(glb)
     rep = {
-        'schema_version': 2,
+        'schema_version': 3,
         'status': 'D1_WORLD_ARTICULATED_MODEL_EXPORT_COMPLETE',
         'model': model_hash,
         'source': source,
         'mesh_count': len(model['meshes']),
-        # Historical field retained for compatibility with the exact skin/animation
-        # binder; it now equals the complete visual-union range count.
         'stage0_selected_range_count': len(reports),
         'visual_union_selected_range_count': len(reports),
         'geometry_count': len(scene.geometry),
@@ -237,9 +318,10 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
         'ranges': reports,
         'selection_mode': 'all_unique_highest_detail_ranges_source_first_duplicate_variant',
         'selection_policy': (
-            'All unique highest-detail D1 index ranges are retained. Repeated identical geometry ranges use the '
+            'All unique Charm IsHighestLevel D1 index ranges are retained. Repeated identical geometry ranges use the '
             'first source-ordered material candidate while every later render variant remains explicit in the report. '
-            'Exact decoded UV0 is preserved as _D1_UV0 for a later Blender material adapter.'
+            'Vertex attributes are decoded by the exact D1 ROI primary/secondary stride-pair and position-W sentinel rules; '
+            'UV0 is preserved as _D1_UV0 for the later Blender adapter.'
         ),
     }
     (out_dir / f'{model_hash}.json').write_text(json.dumps(rep, indent=2) + '\n')
@@ -275,7 +357,7 @@ def main() -> int:
     assert all(x['has_uv'] for x in rep['ranges'])
     print('CROTA_VISUAL_UNION', 'RANGES', rep['geometry_count'], 'TRIANGLES', rep['triangle_count'], 'MATERIALS', rep['active_materials'])
     for rr in rep['ranges']:
-        print('RANGE', rr['mesh_index'], rr['index_offset'], rr['index_count'], 'PART', rr['visual_union_source_first_part'], 'MAT', rr['material'], 'DUPLICATES', [(x['part_index'], x['material']) for x in rr['duplicate_render_variants']])
+        print('RANGE', rr['mesh_index'], rr['index_offset'], rr['index_count'], 'PART', rr['visual_union_source_first_part'], 'MAT', rr['material'], 'PAIR', rr['d1_roi_stride_pair_layout']['row_mode'], 'DUPLICATES', [(x['part_index'], x['material']) for x in rr['duplicate_render_variants']])
     return 0
 
 
