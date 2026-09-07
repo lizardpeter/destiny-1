@@ -54,9 +54,9 @@ jobs:
           python tools/d1_remote_tag_payload_dump.py \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
-            --tag 80C88CEF --out-dir out/payloads --report out/MODEL_PAYLOAD.json
+            --tag 80C88CEF --tag 80C88CE2 --out-dir out/payloads --report out/PAYLOADS.json
           python - <<'PY'
-          import json,collections,sys
+          import json,collections,sys,struct
           from pathlib import Path
           sys.path.insert(0,'tools')
           from d1_entity_model_probe import parse_model
@@ -69,7 +69,9 @@ jobs:
           desc=p['external_material_permutation_descriptors']
           aux=p['external_material_aux_index_values']
           model=parse_model(Path('out/payloads/80C88CEF.bin').read_bytes(),'PS4')
-          print('MODEL',p['embedded_model_tag_hash'],'MESHES',model['mesh_count'])
+          rb=Path('out/payloads/80C88CE2.bin').read_bytes()
+          base=int(p['parent_offset'])
+          print('MODEL',p['embedded_model_tag_hash'],'MESHES',model['mesh_count'],'PARENT_BASE',hex(base),'RESOURCE_SIZE',len(rb))
           print('TEXTURE_PLATES',p['texture_plates_roi_entries'])
           print('EXTERNAL_MAP_COUNT',len(mp),'AUX_INDEX_COUNT',len(aux),'DESCRIPTOR_COUNT',len(desc),'EXTERNAL_MATERIAL_COUNT',len(mats))
           print('AUX_INDEX_HEADER',p['external_material_aux_index_table'])
@@ -77,9 +79,6 @@ jobs:
           for r in desc:
               print('PERM_DESC',r['index'],'PAIR0',(r['pair0_count'],r['pair0_start'],r['pair0_aux_indices']),'PAIR1',(r['pair1_count'],r['pair1_start'],r['pair1_aux_indices']))
 
-          # Exact structural invariant: every map row's Unk08 is the start of a
-          # descriptor span whose length is exactly MaterialCount, so descriptor
-          # member j is parallel to material-bank member j.
           for r in mp:
               c=int(r['material_count']); u=int(r['unk08']); s=int(r['material_start_index'])
               assert c>0 and 0<=u and u+c<=len(desc),(r,len(desc))
@@ -100,22 +99,65 @@ jobs:
           print('XUR_MATERIAL_DESCRIPTOR_ROWS',xur_rows)
           Path('out/XUR_MATERIAL_DESCRIPTOR_ROWS.json').write_text(json.dumps(xur_rows,indent=2)+'\n')
 
-          # Preserve model-part correlations too.  ExternalIdentifier is tested
-          # only as a possible independent control; no selector semantics are
-          # inferred from an equality coincidence.
+          # Find the D1 counterpart of MIDA's parent-level switch-key/value table.
+          # Scan only the 0x290-byte 9C1A8080 parent header. A candidate DynamicArray
+          # is admitted only if its pointer resolves inside this exact retail resource.
+          def u32(o): return struct.unpack_from('<I',rb,o)[0]
+          def q64(o): return struct.unpack_from('<q',rb,o)[0]
+          def dyn(field):
+              if field<0 or field+16>len(rb): return None
+              n=u32(field); rel=q64(field+8); data=field+8+rel+0x10
+              if not (0<n<=4096 and 0<=data<len(rb)): return None
+              return {'parent_relative':field-base,'count':n,'field_offset':field,'data_offset':data,'relative':rel,'pad04':u32(field+4)}
+          candidates=[]
+          for ro in range(0,0x290-15,4):
+              x=dyn(base+ro)
+              if x: candidates.append(x)
+          print('PARENT_DYNAMIC_ARRAY_CANDIDATES',candidates)
+          Path('out/PARENT_DYNAMIC_ARRAY_CANDIDATES.json').write_text(json.dumps(candidates,indent=2)+'\n')
+
+          # The +0x250 int16 table contains values up to 53, so a switch-record
+          # source must have at least 54 rows if these are direct record indices.
+          # Test every candidate with >=54 rows against the later-Tiger 0x18-byte
+          # record shape (nested DynamicArray at +0x8), but report rather than assume.
+          nested_reports=[]
+          for ca in candidates:
+              if ca['count']<54: continue
+              for stride in (0x18,0x20,0x28,0x30):
+                  if ca['data_offset']+ca['count']*stride>len(rb): continue
+                  rows=[]; valid=0; hashpairs=[]
+                  for i in range(ca['count']):
+                      eo=ca['data_offset']+i*stride
+                      na=dyn(eo+8)
+                      rr={'index':i,'entry_offset':eo,'nested':na}
+                      if na and na['count']<=32 and na['data_offset']+na['count']*8<=len(rb):
+                          valid+=1
+                          pairs=[]
+                          for j in range(na['count']):
+                              po=na['data_offset']+j*8
+                              pairs.append((f'{u32(po):08X}',f'{u32(po+4):08X}'))
+                          rr['hash_pairs']=pairs; hashpairs.extend(pairs)
+                      rows.append(rr)
+                  rep={'candidate_parent_relative':ca['parent_relative'],'count':ca['count'],'stride':stride,
+                       'valid_nested_count':valid,'unique_hash_pair_count':len(set(hashpairs)),'rows':rows}
+                  nested_reports.append(rep)
+                  if valid:
+                      print('SWITCH_TABLE_SHAPE_CANDIDATE',hex(ca['parent_relative']),ca['count'],'STRIDE',hex(stride),'VALID_NESTED',valid,'UNIQUE_PAIRS',len(set(hashpairs)))
+                      if valid>=min(ca['count'],54):
+                          print('SWITCH_TABLE_FULL_ROWS',rep)
+          Path('out/SWITCH_TABLE_SHAPE_SCAN.json').write_text(json.dumps(nested_reports,indent=2)+'\n')
+
           corr=[]
           for mi,mesh in enumerate(model['meshes']):
               for pi,part in enumerate(mesh['parts']):
                   v=int(part['variant_shader_index'])
-                  if v < 0 or v >= len(mp):
-                      continue
-                  mr=mp[v]; u=int(mr['unk08']); c=int(mr['material_count']); span=desc[u:u+c]
-                  row={'mesh':mi,'part':pi,'variant':v,'external_identifier':int(part['external_identifier']),
-                       'dye':int(part['gear_dye_change_color_index']),'lod':part['lod'],
-                       'unk1a':int(part['unk1a']),'unk1b':int(part['unk1b']),'flags_d1':int(part['flags_d1']),
-                       'unk20':int(part['unk20']),'lod_run':int(part['lod_run']),
-                       'descriptor_start':u,'material_count':c}
-                  corr.append(row)
+                  if v < 0 or v >= len(mp): continue
+                  mr=mp[v]
+                  corr.append({'mesh':mi,'part':pi,'variant':v,'external_identifier':int(part['external_identifier']),
+                               'dye':int(part['gear_dye_change_color_index']),'lod':part['lod'],
+                               'unk1a':int(part['unk1a']),'unk1b':int(part['unk1b']),'flags_d1':int(part['flags_d1']),
+                               'unk20':int(part['unk20']),'lod_run':int(part['lod_run']),
+                               'descriptor_start':int(mr['unk08']),'material_count':int(mr['material_count'])})
           Path('out/PART_PERMUTATION_CORRELATION.json').write_text(json.dumps({'rows':corr},indent=2)+'\n')
           print('PART_COUNT_WITH_EXTERNAL_VARIANT',len(corr))
           print('EXTERNAL_IDENTIFIER_COUNTS',dict(sorted(collections.Counter(r['external_identifier'] for r in corr).items())))
