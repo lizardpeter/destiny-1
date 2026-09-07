@@ -1,0 +1,57 @@
+name: D1 Tower D912 location tail group probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-d912-location-tail-group-probe.yml'
+      - 'tools/d1_d912_location_tail_group_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10000222359'
+  SOURCE_ARTIFACT_ZIP_SHA256: '2d68a70044fb782fff5a133a34430543e94459897e1d0ca5efd4739bca801e05'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact prior all-scenario D912 census
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/census
+      - name: Validate opaque S2B138080 tail as structural D614 group key
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_d912_location_tail_group_probe.py
+          python tools/d1_d912_location_tail_group_probe.py \
+            --scenario input/census/default1.json \
+            --scenario input/census/queen.json \
+            --scenario input/census/harvest.json \
+            --scenario input/census/srl.json \
+            --scenario input/census/fol.json \
+            --scenario input/census/crimson.json \
+            --scenario input/census/chalice.json \
+            --scenario input/census/ambient.json \
+            -o out/TOWER_D912_LOCATION_TAIL_GROUP_PROBE.json | tee out/stdout.txt
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-D912-LOCATION-TAIL-GROUP-PROBE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
