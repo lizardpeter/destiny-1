@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-generic-world-structure-canaries.yml'
       - 'tools/d1_world_activity_root_dependency_closure.py'
+      - 'tools/d1_world_activity_root_dependency_closure_universal.py'
       - 'tools/d1_world_activity_manifest_dependency_plan.py'
       - 'tools/d1_world_activity_map_root_census.py'
       - 'tools/d1_world_map_root_census.py'
@@ -67,7 +68,7 @@ jobs:
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
-          python tools/d1_world_activity_root_dependency_closure.py \
+          python tools/d1_world_activity_root_dependency_closure_universal.py \
             --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
             --package-list reports/packages.txt \
             --activity '${{ matrix.hash }}' \
