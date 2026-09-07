@@ -6,7 +6,11 @@ on:
     paths:
       - '.github/workflows/d1-generic-scenario-activity-canaries.yml'
       - 'tools/d1_remote_activity_graph_extract.py'
+      - 'tools/d1_remote_activity_placements.py'
+      - 'tools/d1_world_activity_entity_table_census.py'
+      - 'tools/d1_world_activity_entity_resource_census.py'
       - 'tools/d1_remote_activity_f603_resource_census.py'
+      - 'tools/d1_remote_s6e_stage_probe.py'
       - 'tools/d1_activity_stage_resource_matrix.py'
 
 permissions:
@@ -73,7 +77,14 @@ jobs:
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python -m py_compile tools/d1_remote_activity_graph_extract.py tools/d1_remote_activity_f603_resource_census.py tools/d1_activity_stage_resource_matrix.py
+          python -m py_compile \
+            tools/d1_remote_activity_graph_extract.py \
+            tools/d1_remote_activity_placements.py \
+            tools/d1_world_activity_entity_table_census.py \
+            tools/d1_world_activity_entity_resource_census.py \
+            tools/d1_remote_activity_f603_resource_census.py \
+            tools/d1_remote_s6e_stage_probe.py \
+            tools/d1_activity_stage_resource_matrix.py
           python tools/d1_remote_activity_graph_extract.py \
             --activity-hash '${{ matrix.hash }}' --activity-name '${{ matrix.name }}' --activity-class 80800616 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
