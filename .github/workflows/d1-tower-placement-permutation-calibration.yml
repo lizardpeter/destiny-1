@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-placement-permutation-calibration.yml'
       - 'tools/d1_remote_tower_placement_permutation_calibration.py'
+      - 'tools/d1_remote_tower_placement_permutation_calibration_v2.py'
 
 permissions: {contents: read, actions: read}
 env:
@@ -36,9 +37,9 @@ jobs:
       - name: Cross-calibrate source-typed placement config against owning model switch banks
         run: |
           set -euo pipefail
-          python -m py_compile tools/d1_remote_tower_placement_permutation_calibration.py
+          python -m py_compile tools/d1_remote_tower_placement_permutation_calibration.py tools/d1_remote_tower_placement_permutation_calibration_v2.py
           set +e
-          python tools/d1_remote_tower_placement_permutation_calibration.py \
+          python tools/d1_remote_tower_placement_permutation_calibration_v2.py \
             --scripted-owner 80C7A251 --scripted-owner 80C7A441 --scripted-owner 80C7A58F --scripted-owner 80C7A719 \
             --scripted-owner 80C7AC71 --scripted-owner 80C7AC81 --scripted-owner 80C7ACB9 \
             --scripted-owner 80C88185 --scripted-owner 80C8831B --scripted-owner 80C88591 \
