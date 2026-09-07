@@ -8,7 +8,14 @@ SUnkActivity_ROI root, then source-closes their EntityResource role:
 SUnkActivity_ROI -> ... -> S6E078080 -> SE9058080 -> S22428080[] ->
 SF6038080 / 808003F6 +0x0C EntityResource / 80800861 ->
 SBC078080 / 808007BC -> SA7058080 / 808005A7 +0x68 ->
-SD9128080 / 808012D9 -> scripted groups/records.
+SD9128080 / 808012D9 -> scripted groups/records + S2B138080 locations.
+
+The SD912 `Locations` array is decoded literally from Charm's ROI schema as
+S2B138080, stride 0x30: Location Vector4 at +0x00 and Rotation Vector4 at +0x10.
+The remaining 0x10-byte tail of each record is preserved as raw hex.  This tool does
+not infer which location belongs to which scripted entity when a table contains more
+than one record/location.  A table with exactly one entity record and exactly one
+location is reported as a singleton co-owned pair, not promoted to a hidden pointer.
 
 No package-neighborhood or visual inference is used. A scripted table is admitted
 only when its SF603 is serialized beneath the selected activity and the shared
@@ -48,6 +55,38 @@ def runtime_placements(c,tables,f603s,viol):
  real=[x for x in rows if norm(x.get('entity_hash','FFFFFFFF')) not in NULLS]
  unique,_=place.runtime_placement_view(real,viol)
  return direct,collapsed,unique
+
+def attach_locations(c,t):
+ """Decode SD912.Locations without assigning them to entity records."""
+ h=norm(t['scripted_entity_table']); b,src=c.payload(h)
+ arr=t.get('locations_array') or {}
+ out=[]
+ if b is None:
+  t.setdefault('violations',[]).append('D912_location_payload_unavailable')
+  t['locations']=out;return
+ if not arr.get('ok'):
+  t['locations']=out;return
+ for i in range(int(arr.get('count',0))):
+  o=int(arr['absolute'])+i*0x30
+  if o<0 or o+0x30>len(b):
+   t.setdefault('violations',[]).append(f'location[{i}]:S2B138080_oob')
+   continue
+  out.append({
+   'index':i,'record_offset':o,
+   'location':scripted.f4(b,o),
+   'rotation':scripted.f4(b,o+0x10),
+   'tail_20_30_hex':b[o+0x20:o+0x30].hex(),
+  })
+ t['locations']=out
+ t['location_count']=len(out)
+ records=t.get('records',[])
+ if len(records)==1 and len(out)==1:
+  r=records[0]
+  t['singleton_entity_location_pair']={
+   'entity_hash':r.get('entity_hash'),'type_string_hash':r.get('type_string_hash'),
+   'world_id_hex':r.get('world_id_hex'),'location':out[0]['location'],'rotation':out[0]['rotation'],
+   'status':'one_entity_record_and_one_location_in_same_source_owned_D912_table',
+  }
 
 def main():
  ap=argparse.ArgumentParser()
@@ -93,14 +132,17 @@ def main():
   viol.extend(f'{fh}:{x}' for x in row['violations'])
  table_hashes=sorted(set(table_hashes))
  parsed=[scripted.parse_d912(c,h,pindex) for h in table_hashes]
+ for t in parsed:attach_locations(c,t)
  for t in parsed:viol.extend(f"{t['scripted_entity_table']}:{x}" for x in t.get('violations',[]))
  records=[r for t in parsed for r in t.get('records',[])]
+ locations=[{'d912':t['scripted_entity_table'],**x} for t in parsed for x in t.get('locations',[])]
+ singleton_pairs=[{'d912':t['scripted_entity_table'],**t['singleton_entity_location_pair']} for t in parsed if t.get('singleton_entity_location_pair')]
  families=collections.Counter(t.get('script_family_string_hash') for t in parsed if t.get('script_family_string_hash') not in (None,*NULLS))
  types=collections.Counter(r.get('type_string_hash') for r in records if r.get('type_string_hash') not in (None,*NULLS))
  names=collections.Counter(r.get('entity_name_string_hash') for r in records if r.get('entity_name_string_hash') not in (None,*NULLS))
  entities=collections.Counter(r.get('entity_hash') for r in records if r.get('entity_hash') not in (None,*NULLS))
  matched=[r for r in records if (r.get('placement_match') or {}).get('world_id_exists') and (r.get('placement_match') or {}).get('entity_matches')]
- out={'schema':'d1_remote_activity_scripted_entity_census/v1',
+ out={'schema':'d1_remote_activity_scripted_entity_census/v2',
       'status':'D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_COMPLETE' if not viol else 'D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_WITH_VIOLATIONS',
       'pinned_source':PINNED_SOURCE,'activity':{'tag_hash':ah,'name':a.activity_name,'class_hash':norm(a.activity_class)},
       'unique_resource_parents':parents,'unique_s6e_resources':s6es,'unique_map_data_tables':tables,
@@ -108,13 +150,15 @@ def main():
       'runtime_placement_count':len(unique),'f603_count':len(f603s),'entity_resource_role_counts':dict(role_counts),
       'scripted_owner_f603_count':sum(1 for x in owners if (x.get('entity_resource_parse') or {}).get('semantic_role')=='scripted_entity_table_owner'),
       'unique_scripted_table_count':len(table_hashes),'unique_scripted_tables':table_hashes,
-      'scripted_record_count':len(records),'placement_matched_scripted_record_count':len(matched),
+      'scripted_record_count':len(records),'scripted_location_count':len(locations),
+      'singleton_entity_location_pair_count':len(singleton_pairs),'singleton_entity_location_pairs':singleton_pairs,
+      'placement_matched_scripted_record_count':len(matched),
       'script_family_string_hash_counts':dict(families),'type_string_hash_counts':dict(types),
       'entity_name_string_hash_counts':dict(names),'scripted_entity_hash_counts':dict(entities),
       'owners':owners,'scripted_tables':parsed,'violations':viol,
-      'policy':'Only scripted tables beneath the supplied exact activity root are admitted. SF603 ownership, EntityResource role, SA705 +0x68 D912 edge and scripted records are serialized retail data; names remain StringHashes until exact preimages are recovered.'}
+      'policy':'Only scripted tables beneath the supplied exact activity root are admitted. SF603 ownership, EntityResource role, SA705 +0x68 D912 edge, scripted records, and S2B138080 location arrays are serialized retail data. Locations are not assigned to entity records when multiplicity makes ownership ambiguous. Names remain StringHashes until exact preimages are recovered.'}
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
- print('STATUS',out['status'],'ACTIVITY',ah,'F603',len(f603s),'SCRIPTED_OWNERS',out['scripted_owner_f603_count'],'TABLES',len(table_hashes),'RECORDS',len(records),'VIOLATIONS',len(viol))
+ print('STATUS',out['status'],'ACTIVITY',ah,'F603',len(f603s),'SCRIPTED_OWNERS',out['scripted_owner_f603_count'],'TABLES',len(table_hashes),'RECORDS',len(records),'LOCATIONS',len(locations),'SINGLETON_PAIRS',len(singleton_pairs),'VIOLATIONS',len(viol))
  print('FAMILIES',dict(families));print('TYPES',dict(types));print('NAME_HASHES',dict(names));print('ENTITIES',dict(entities));print('D912',table_hashes)
  return 0 if not viol else 2
 
