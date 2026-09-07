@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder
-          mkdir -p input/catalog input/aux runtime corpus texture_expanded texture_work textures roles reports out/models out/reports
+          mkdir -p input/catalog input/aux runtime corpus texture_expanded texture_work textures roles reports out/models out/reports out/diagnostics
 
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
@@ -66,12 +66,20 @@ jobs:
           mats=sorted(d['active_materials']); assert len(mats)==14,mats
           json.dump({'materials':{h:{'visual':True} for h in mats}},open('reports/auxiliary_material_selector.json','w'),indent=2)
           def pid(h): return f'{((int(h,16)-0x80800000)>>13)&0x7ff:04x}'
-          ids=sorted({pid(h) for h in mats})
+          direct={pid(h) for h in mats}
+          # These three families are not guessed from the auxiliary materials. They
+          # are the additional exact initial package namespaces in the already closed
+          # 191-material parent spawned-actor texture corpus. Keeping that proven
+          # parent resolution context avoids package-order/hash-alias loss while the
+          # visible selector remains strictly the 14 auxiliary materials.
+          parent_resolution_context={'00ef','0169','024c'}
+          ids=sorted(direct|parent_resolution_context)
           open('reports/required_material_package_ids.txt','w').write('\n'.join(ids)+'\n')
-          print('AUX_SOURCE_ACCEPTED','models',len(glbs),'materials',len(mats),'package_ids',ids)
+          json.dump({'direct_auxiliary_material_package_ids':sorted(direct),'proven_parent_resolution_context_package_ids':sorted(parent_resolution_context),'combined_initial_package_ids':ids},open('reports/auxiliary_initial_corpus_policy.json','w'),indent=2)
+          print('AUX_SOURCE_ACCEPTED','models',len(glbs),'materials',len(mats),'direct_package_ids',sorted(direct),'parent_context',sorted(parent_resolution_context),'combined',ids)
           PY
 
-      - name: Recover exact auxiliary material package families
+      - name: Recover exact auxiliary plus proven parent-resolution package families
         run: |
           set -euo pipefail
           args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/required_material_package_ids.txt
@@ -83,6 +91,7 @@ jobs:
           import json
           d=json.load(open('reports/auxiliary_texture_material_corpus.json'))
           assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED',d
+          assert d['required_family_count']==7,d
           print('AUX_MATERIAL_CORPUS',d['required_family_count'],'families',d['member_count'],'members')
           PY
 
@@ -93,6 +102,7 @@ jobs:
           set -euo pipefail
           mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          set +e
           python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
             --runtime runtime \
             --visual-json reports/auxiliary_material_selector.json \
@@ -102,6 +112,25 @@ jobs:
             --work-dir texture_work \
             --out textures \
             --report reports/auxiliary_texture_dependency_closure.json
+          rc=$?
+          set -e
+          cp reports/auxiliary_texture_dependency_closure.json out/diagnostics/ 2>/dev/null || true
+          cp textures/material_texture_manifest.json out/diagnostics/ 2>/dev/null || true
+          cp reports/auxiliary_initial_corpus_policy.json out/diagnostics/
+          find texture_work -type f \( -name 'material_texture_manifest.json' -o -name '*.stdout.txt' \) -print0 | while IFS= read -r -d '' p; do
+            q="out/diagnostics/${p}"; mkdir -p "$(dirname "$q")"; cp "$p" "$q"
+          done
+          if [ "$rc" -ne 0 ]; then
+            python - <<'PY'
+          import json
+          p='textures/material_texture_manifest.json'
+          d=json.load(open(p))
+          print('AUX_TEXTURE_CLOSURE_DIAGNOSTIC','errors',d.get('texture_errors'),'missing_packages',d.get('missing_texture_package_ids'))
+          for h,r in d.get('textures',{}).items():
+              if r.get('error'): print(' TEXTURE_ERROR',h,r.get('error'),'package',r.get('package_id'),'chain',[(x.get('hash'),x.get('source'),x.get('payload_bytes')) for x in r.get('chain',[])])
+          PY
+            exit "$rc"
+          fi
           python - <<'PY'
           import json
           c=json.load(open('reports/auxiliary_texture_dependency_closure.json'))
@@ -156,20 +185,9 @@ jobs:
               assert d['base_counts']['meshes']==d['final_counts']['meshes'],d
               assert d['base_counts']['nodes']==d['final_counts']['nodes'],d
               assert d['base_counts']['accessors']==d['final_counts']['accessors'],d
-              totals['native_textures']+=d['exact_source_texture_count']
-              totals['vs_edges']+=d['exact_vs_binding_edge_count']
-              totals['ps_edges']+=d['exact_ps_binding_edge_count']
-              totals['preview_base']+=d['portable_base_bound_material_count']
-              totals['preview_normal']+=d['portable_normal_bound_material_count']
+              totals['native_textures']+=d['exact_source_texture_count'];totals['vs_edges']+=d['exact_vs_binding_edge_count'];totals['ps_edges']+=d['exact_ps_binding_edge_count'];totals['preview_base']+=d['portable_base_bound_material_count'];totals['preview_normal']+=d['portable_normal_bound_material_count']
               print('AUX_TEXTURED',os.path.basename(d['output_glb']),'materials',d['material_count'],'native_textures',d['exact_source_texture_count'],'VS',d['exact_vs_binding_edge_count'],'PS',d['exact_ps_binding_edge_count'],'base',d['portable_base_bound_material_count'],'normal',d['portable_normal_bound_material_count'])
-          summary={
-            'schema_version':1,
-            'status':'D1_TOWER_SPAWNED_ACTOR_AUXILIARY_TEXTURED_CHECKPOINT',
-            'model_count':14,
-            'exact_material_count':14,
-            'global_unique_texture_count':json.load(open('textures/material_texture_manifest.json'))['unique_texture_tags'],
-            **totals,
-          }
+          summary={'schema_version':1,'status':'D1_TOWER_SPAWNED_ACTOR_AUXILIARY_TEXTURED_CHECKPOINT','model_count':14,'exact_material_count':14,'global_unique_texture_count':json.load(open('textures/material_texture_manifest.json'))['unique_texture_tags'],**totals}
           json.dump(summary,open('out/reports/TOWER_SPAWNED_ACTOR_AUXILIARY_TEXTURED_SUMMARY.json','w'),indent=2)
           print('AUX_TEXTURED_COMPLETE',summary)
           PY
@@ -178,6 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           cp reports/auxiliary_material_selector.json out/reports/
+          cp reports/auxiliary_initial_corpus_policy.json out/reports/
           cp reports/auxiliary_texture_material_corpus.json out/reports/
           cp reports/auxiliary_texture_dependency_closure.json out/reports/
           cp roles/auxiliary_texture_role_inventory.json out/reports/
