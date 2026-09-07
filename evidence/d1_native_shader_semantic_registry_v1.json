@@ -31,6 +31,16 @@
       "semantic_class": "direct_rgb_bc5_normal_native_w_pack"
     },
     {
+      "gcn_sha256": "749b857954de10c984a7b75dceadd9df5dcb1d4a84546750e650bfc3ecd323b9",
+      "stage": "ps",
+      "shader_headers": ["808768B7", "80A08C16"],
+      "source_proof_status": "D1_XUR_PS_808768B7_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_808768b7_semantic_proof.py",
+      "current_scope_material_count": 2,
+      "semantic_class": "masked_surface_reflection_normal",
+      "frontier": "TFX producer semantics, exact render state, and portable material recreation remain independently gated"
+    },
+    {
       "gcn_sha256": "7d3c95a7d1ce0663ca1d2d715c55cc9e3936d581841c5c7a43ac706bca408fcf",
       "stage": "ps",
       "shader_headers": ["808768C0"],
@@ -131,14 +141,14 @@
     ]
   },
   "source_checkpoint": {
-    "xur_wave7_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE7_EXACT",
-    "closed_gcn_program_count": 12,
-    "wave7_run": 34157508545,
-    "wave7_artifact": 10031461721,
-    "wave7_artifact_sha256": "666ac447b5331e6bfc1dbbda0093e347401205492605736f77c4a680f721fecf"
+    "xur_wave8_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE8_EXACT",
+    "closed_gcn_program_count": 13,
+    "wave8_run": 34158126025,
+    "wave8_artifact": 10031655535,
+    "wave8_artifact_sha256": "6a7e6ebcee8109648894c468de13ae21461d1cd53eda3ca0cdbf8803a9342c53"
   },
   "violations": [],
-  "entry_count": 12,
-  "pixel_shader_entry_count": 9,
+  "entry_count": 13,
+  "pixel_shader_entry_count": 10,
   "vertex_shader_entry_count": 3
 }
