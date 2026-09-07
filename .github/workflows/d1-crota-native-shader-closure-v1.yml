@@ -1,0 +1,137 @@
+name: D1 Crota native shader closure v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-native-shader-closure-v1.yml'
+      - 'tools/d1_crota_shader_trigger.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact catalog, Crota shader package families and runtime
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime corpus shader disasm out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list out/packages.txt \
+            --required-package-id 00ef --required-package-id 0447 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report out/crota_shader_corpus.json
+
+      - name: Extract exact bounded native GCN for Crota shaders
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"pixel_shader_frequency":{"8108E7B7":2}}' > out/minimal_shader_manifest.json
+          mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
+            --manifest out/minimal_shader_manifest.json \
+            --shader 0x809DE9AB --shader 0x809DF743 --shader 0x8108E7B7 \
+            --out-dir shader --report out/CROTA_NATIVE_SHADER_EXTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_NATIVE_SHADER_EXTRACT.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
+          rows={x['shader']:x for x in d['shaders']}
+          assert set(rows)=={'809DE9AB','809DF743','8108E7B7'},rows
+          assert rows['809DE9AB']['native_shader']=='809DE9AC',rows['809DE9AB']
+          assert rows['809DF743']['native_shader']=='809DF744',rows['809DF743']
+          assert rows['8108E7B7']['native_shader']=='8108E864',rows['8108E7B7']
+          for h,r in rows.items(): print('SHADER',h,'NATIVE',r['native_shader'],'GCN_BYTES',r['gcn_bytes'],'GCN_SHA',r['gcn_sha256'],'USAGE',r['usage'])
+          PY
+
+      - name: Build pinned GFX700 disassembler and disassemble exact programs
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          shopt -s nullglob
+          for f in shader/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"
+            test ! -s "disasm/${b}.stderr"
+            grep -q 's_endpgm' "disasm/${b}.s"
+          done
+          test "$(find disasm -type f -name '*.s' | wc -l)" -eq 3
+
+      - name: Prove native texture consumption and preserve pixel-shader dataflow surface
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report out/CROTA_NATIVE_SHADER_EXTRACT.json --disasm-dir disasm \
+            --out out/CROTA_GCN_IMAGE_USAGE.json
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          u=json.load(open('out/CROTA_GCN_IMAGE_USAGE.json'))
+          assert u['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT',u
+          by={x['shader']:x for x in u['shaders']}
+          ps=by['8108E7B7']
+          assert ps['unmatched_image_instruction_count']==0,ps
+          text=Path('disasm/PS_8108E7B7.s').read_text()
+          lines=[]
+          for i,line in enumerate(text.splitlines(),1):
+            if any(k in line for k in ('image_','exp ','v_mul','v_mad','v_add','v_sub','v_cndmask','v_cmp','v_mov','v_min','v_max')):
+              lines.append({'line_number':i,'assembly':line.strip()})
+          out={
+            'schema':'d1_crota_native_shader_closure/v1','status':'D1_CROTA_NATIVE_SHADER_PROGRAMS_EXACT',
+            'materials':['8108E667','8108E66B'],
+            'vertex_shaders':['809DE9AB','809DF743'],'pixel_shader':'8108E7B7',
+            'pixel_textures':[{'index':0,'register':'t0','texture':'8108E7B6','format':'BC4','size':[2048,2048]},{'index':1,'register':'t1','texture':'80AACF2A','format':'BC1','size':[512,512]}],
+            'pixel_image_usage':ps,
+            'pixel_relevant_instructions':lines,
+            'disassembly_file':'disasm/PS_8108E7B7.s',
+            'policy':'GCN bytes are bounded by exact OrbShdr metadata and disassembled with pinned CLRX GFX700. Texture indices are proven from Sony user-data provenance. This checkpoint still does not rename t0/t1 as albedo, mask, normal or any other semantic until output dataflow is source-closed.'
+          }
+          Path('out/CROTA_NATIVE_SHADER_CLOSURE.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('CROTA_PIXEL_SHADER','8108E7B7','IMAGE_INSTRUCTIONS',ps['image_instruction_count'],'USED_TEXTURE_INDICES',ps['used_texture_indices'],'OPCODES',ps['image_opcodes'])
+          print('RELEVANT_LINES',len(lines))
+          PY
+          cp disasm/PS_8108E7B7.s out/PS_8108E7B7_GFX700.s
+          cp disasm/PS_809DE9AB.s out/VS_809DE9AB_GFX700.s
+          cp disasm/PS_809DF743.s out/VS_809DF743_GFX700.s
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-NATIVE-SHADER-CLOSURE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
