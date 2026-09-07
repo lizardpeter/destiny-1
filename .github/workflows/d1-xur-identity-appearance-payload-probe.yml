@@ -55,11 +55,10 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import json,struct,collections
+          import json,struct
           tags=['80C880BA','80C880BE','80C8821E','80C88222','80C8840F','80C88413','80C885C6']
           blobs={h:(Path('out/payloads')/(h+'.bin')).read_bytes() for h in tags}
-          sizes={h:len(b) for h,b in blobs.items()}; assert len(set(sizes.values()))==1,sizes
-          n=next(iter(sizes.values()))
+          sizes={h:len(b) for h,b in blobs.items()}; n=min(sizes.values())
           varying=[]
           for off in range(n):
               vals={b[off] for b in blobs.values()}
@@ -71,15 +70,14 @@ jobs:
                   if x==p+1:p=x
                   else:runs.append([s,p]);s=p=x
               runs.append([s,p])
-          # Census aligned u32s where identity payloads differ. FileHash-looking values
-          # are evidence only; package/class validity is resolved in a follow-up probe.
           words=[]
           for off in range(0,n-3,4):
               vals={h:f'{struct.unpack_from("<I",b,off)[0]:08X}' for h,b in blobs.items()}
               if len(set(vals.values()))>1: words.append({'offset':off,'values':vals})
-          rep={'schema_version':1,'status':'D1_XUR_IDENTITY_PAYLOAD_BYTE_DIFF_COMPLETE','payload_size':n,'tags':tags,'varying_byte_count':len(varying),'varying_runs':runs,'varying_aligned_u32':words}
+          tails={h:{'offset':n,'bytes':len(b)-n,'hex':b[n:].hex()} for h,b in blobs.items() if len(b)>n}
+          rep={'schema_version':2,'status':'D1_XUR_IDENTITY_PAYLOAD_BYTE_DIFF_COMPLETE','sizes':sizes,'common_prefix_length':n,'tags':tags,'varying_byte_count':len(varying),'varying_runs':runs,'varying_aligned_u32':words,'extra_tails':tails}
           Path('out/reports/XUR_IDENTITY_BYTE_DIFF.json').write_text(json.dumps(rep,indent=2)+'\n')
-          print('IDENTITY_DIFF','size',n,'varying_bytes',len(varying),'runs',runs,'varying_u32',len(words))
+          print('IDENTITY_DIFF','sizes',sizes,'common_prefix',n,'varying_bytes',len(varying),'runs',runs,'varying_u32',len(words),'tails',{k:v['bytes'] for k,v in tails.items()})
           for w in words: print(f"+0x{w['offset']:03X}",w['values'])
           PY
           sha256sum out/payloads/*.bin out/reports/*.json > out/SHA256SUMS.txt
