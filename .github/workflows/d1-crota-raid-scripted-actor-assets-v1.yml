@@ -1,0 +1,158 @@
+name: D1 Crota raid scripted actor assets v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-raid-scripted-actor-assets-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  assets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install pinned dependencies and recover corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p input/catalog runtime out/texture_export
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser rev-parse HEAD)" = "$PARSER_COMMIT"
+
+      - name: Build exact 18-actor entity closure
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile \
+            tools/d1_remote_entity_dependency_closure.py \
+            tools/d1_remote_entity_dependency_closure_universal.py \
+            tools/d1_activity_entity_model_plan.py \
+            tools/d1_remote_activity_model_visual_dependency_closure.py \
+            tools/d1_remote_activity_model_material_bindings.py \
+            tools/d1_activity_selected_material_plan.py \
+            tools/d1_remote_activity_material_dependency_closure.py \
+            tools/d1_remote_activity_texture_export.py \
+            tools/d1_activity_actor_animation_seed.py \
+            tools/d1_remote_spawned_actor_animation_options_v3.py
+          python tools/d1_remote_entity_dependency_closure_universal.py \
+            --seed 0x8108E107 --seed 0x8108E484 --seed 0x8108E49B --seed 0x8108E49C --seed 0x8108E49D --seed 0x8108E4B1 \
+            --seed 0x8108EB93 --seed 0x8108EB94 --seed 0x8108EB95 --seed 0x81096305 --seed 0x81096306 --seed 0x81096307 \
+            --seed 0x81096308 --seed 0x81096309 --seed 0x81096624 --seed 0x81096625 --seed 0x81096A1E --seed 0x81097986 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 4 --max-nodes 900 \
+            -o out/crota_raid_scripted_actor_entity_closure.json | tee out/entity_closure.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/crota_raid_scripted_actor_entity_closure.json'))
+          assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE',d.get('status')
+          assert not d['violations'],d['violations'][:20]
+          assert not d['truncated'],d
+          roots=set(d['seeds'])
+          assert len(roots)==18,roots
+          print('RAID_ACTOR_ENTITY_CLOSURE',d['node_count'],d['edge_count'],len(d['articulated_entities']))
+          PY
+
+      - name: Close exact models materials and textures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_activity_entity_model_plan.py \
+            --entity-closure out/crota_raid_scripted_actor_entity_closure.json \
+            -o out/crota_raid_actor_model_plan.json | tee out/model_plan.txt
+          python tools/d1_remote_activity_model_visual_dependency_closure.py \
+            --model-plan out/crota_raid_actor_model_plan.json --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/crota_raid_actor_visual_closure.json | tee out/visual_closure.txt
+          python tools/d1_remote_activity_model_material_bindings.py \
+            --entity-closure out/crota_raid_scripted_actor_entity_closure.json --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/crota_raid_actor_material_bindings.json | tee out/material_bindings.txt
+          python tools/d1_activity_selected_material_plan.py \
+            --visual-closure out/crota_raid_actor_visual_closure.json \
+            --material-bindings out/crota_raid_actor_material_bindings.json \
+            -o out/crota_raid_actor_selected_material_plan.json | tee out/selected_material_plan.txt
+          python tools/d1_remote_activity_material_dependency_closure.py \
+            --selected-material-plan out/crota_raid_actor_selected_material_plan.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/crota_raid_actor_material_dependencies.json | tee out/material_dependencies.txt
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure out/crota_raid_actor_material_dependencies.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --out-dir out/texture_export \
+            | tee out/texture_export.txt
+          python - <<'PY'
+          import json
+          p=json.load(open('out/crota_raid_actor_model_plan.json'))
+          v=json.load(open('out/crota_raid_actor_visual_closure.json'))
+          b=json.load(open('out/crota_raid_actor_material_bindings.json'))
+          s=json.load(open('out/crota_raid_actor_selected_material_plan.json'))
+          m=json.load(open('out/crota_raid_actor_material_dependencies.json'))
+          t=json.load(open('out/texture_export/texture_export_manifest.json'))
+          assert p['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE',p['violations']
+          assert v['status']=='D1_REMOTE_ACTIVITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',v['violations'][:20]
+          assert b['status']=='D1_REMOTE_ACTIVITY_MODEL_MATERIAL_BINDINGS_COMPLETE',b['violations'][:20]
+          assert s['status']=='D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE',(s['violations'],s['unresolved_external_variant_models'])
+          assert m['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',m['violations'][:20]
+          assert t['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',t['violations'][:20]
+          print('RAID_ACTOR_VISUALS','MODELS',p['model_count'],'MATERIALS',s['unique_material_count'],'TEXTURES',m['unique_texture_count'],'PNG',t['png_file_count'])
+          PY
+
+      - name: Close exact retail animation options
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_activity_actor_animation_seed.py \
+            --entity-closure out/crota_raid_scripted_actor_entity_closure.json \
+            -o out/crota_raid_actor_animation_seed.json | tee out/animation_seed.txt
+          python tools/d1_remote_spawned_actor_animation_options_v3.py \
+            --seed out/crota_raid_actor_animation_seed.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --parser-root parser \
+            -o out/crota_raid_actor_animation_options_v3.json | tee out/animation_options.txt
+          python - <<'PY'
+          import json
+          s=json.load(open('out/crota_raid_actor_animation_seed.json'))
+          a=json.load(open('out/crota_raid_actor_animation_options_v3.json'))
+          assert s['status']=='D1_ACTIVITY_ACTOR_ANIMATION_SEED_COMPLETE',s['violations']
+          assert a['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE',a.get('violations',[])[:20]
+          assert a['violation_count']==0,a['violations'][:20]
+          assert a['frontier_count']==0,a['frontiers'][:20]
+          assert a['retarget_pair_failure_count']==0,a
+          print('RAID_ACTOR_ANIMATION','CAPABLE',s['animation_capable_entity_count'],'CONTROLS',a['unique_control_count'],'SELECTED',a['unique_selector_selected_clip_count'],'BANK',a['unique_animation_list_clip_count'],'RETARGETS',a['retarget_pair_success_count'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-RAID-SCRIPTED-ACTOR-ASSETS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
