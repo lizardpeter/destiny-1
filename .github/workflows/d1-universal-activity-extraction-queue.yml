@@ -1,0 +1,58 @@
+name: D1 universal activity extraction queue
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-universal-activity-extraction-queue.yml'
+      - 'tools/d1_activity_inventory_queue.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  INVENTORY_ARTIFACT_ID: '10002170437'
+  INVENTORY_ZIP_SHA256: '805c40110f124c62338601250efaaf383d79bf01ff765f736422ab99b7ab9a5f'
+
+jobs:
+  queue:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact activity inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${INVENTORY_ARTIFACT_ID}/zip" -o input/inventory.zip
+          echo "${INVENTORY_ZIP_SHA256}  input/inventory.zip" | sha256sum --check --strict
+          unzip -q input/inventory.zip -d input/inventory
+      - name: Build lossless queue
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_activity_inventory_queue.py
+          python tools/d1_activity_inventory_queue.py \
+            --inventory input/inventory/D1_UNIVERSAL_NAMED_ACTIVITY_INVENTORY.json \
+            -o out/D1_UNIVERSAL_ACTIVITY_EXTRACTION_QUEUE.json \
+            | tee out/summary.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_UNIVERSAL_ACTIVITY_EXTRACTION_QUEUE.json'))
+          assert d['status']=='D1_ACTIVITY_EXTRACTION_QUEUE_EXACT'
+          assert d['queue_count']==281,d['queue_count']
+          assert d['extraction_method_counts']=={'map_activity_graph':57,'scenario_activity_graph':224},d['extraction_method_counts']
+          assert d['authored_name_family_counts']['raid_named']==4,d['authored_name_family_counts']
+          assert d['authored_name_family_counts']['strike_named']==12,d['authored_name_family_counts']
+          PY
+          sha256sum out/D1_UNIVERSAL_ACTIVITY_EXTRACTION_QUEUE.json out/summary.txt > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-UNIVERSAL-ACTIVITY-EXTRACTION-QUEUE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
