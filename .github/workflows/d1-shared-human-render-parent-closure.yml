@@ -7,6 +7,8 @@ on:
       - '.github/workflows/d1-shared-human-render-parent-closure.yml'
       - 'tools/d1_remote_render_parent_context_probe.py'
       - 'tools/d1_render_owner_probe.py'
+      - 'tools/d1_remote_tag_payload_dump.py'
+      - 'tools/d1_entity_model_probe.py'
 
 permissions:
   contents: read
@@ -31,7 +33,7 @@ jobs:
       - name: Recover exact universal catalog and runtime
         run: |
           set -euo pipefail
-          mkdir -p input/catalog runtime out
+          mkdir -p input/catalog runtime out/payloads
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
           echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
@@ -49,15 +51,24 @@ jobs:
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
             -o out/SHARED_HUMAN_RENDER_PARENT.json | tee out/stdout.txt
+          python tools/d1_remote_tag_payload_dump.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --tag 80C88CEF --out-dir out/payloads --report out/MODEL_PAYLOAD.json
           python - <<'PY'
-          import json,collections
+          import json,collections,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entity_model_probe import parse_model
+
           d=json.load(open('out/SHARED_HUMAN_RENDER_PARENT.json'))
           assert d['error_count']==0 and len(d['rows'])==1,d
           p=d['rows'][0]['render_parent']
           assert p['embedded_model_tag_hash']=='80C88CEF',p
           mats=p['external_material_tag_hashes']; mp=p['external_materials_map_entries']
           sel=p['external_material_selector_table_entries']
-          print('MODEL',p['embedded_model_tag_hash'])
+          model=parse_model(Path('out/payloads/80C88CEF.bin').read_bytes(),'PS4')
+          print('MODEL',p['embedded_model_tag_hash'],'MESHES',model['mesh_count'])
           print('TEXTURE_PLATES',p['texture_plates_roi_entries'])
           print('EXTERNAL_MAP_COUNT',len(mp),'SELECTOR_TABLE_COUNT',len(sel),'EXTERNAL_MATERIAL_COUNT',len(mats))
           print('SELECTOR_TABLE_HEADER',p['external_material_selector_table'])
@@ -75,8 +86,39 @@ jobs:
           print('MULTI_MATERIAL_VARIANTS',multi)
           xur={'80C885E6','80C885E7','80C885E8','80C885E9','80C885EA'}
           print('XUR_BANK_POSITIONS',{h:[i for i,x in enumerate(mats) if x==h] for h in sorted(xur)})
+
+          # Correlate every serialized model part with its map/selector span.  No
+          # semantics are assigned: this reports exact equality relationships
+          # among ExternalIdentifier, dye/control bytes and the four FE1A8080
+          # ushort lanes so the runtime selector can be derived rather than guessed.
+          corr=[]
+          for mi,mesh in enumerate(model['meshes']):
+              for pi,part in enumerate(mesh['parts']):
+                  v=int(part['variant_shader_index'])
+                  if v < 0 or v >= len(mp):
+                      continue
+                  mr=mp[v]; u=mr['unk08']; c=mr['material_count']; span=sel[u:u+c]
+                  ext=int(part['external_identifier']) & 0xffff
+                  dye=int(part['gear_dye_change_color_index'])
+                  controls=[int(part['unk1a']),int(part['unk1b']),int(part['flags_d1']) & 0xffff,int(part['unk20']),int(part['lod_run'])]
+                  matches={lane:[r['index']-u for r in span if r[lane]==ext] for lane in ('unk00','unk02','unk04','unk06')}
+                  local=[{
+                      'member':j,'material':mats[mr['material_start_index']+j],
+                      'selector':{k:span[j][k] for k in ('unk00','unk02','unk04','unk06')}
+                  } for j in range(len(span))]
+                  row={'mesh':mi,'part':pi,'variant':v,'external_identifier':int(part['external_identifier']),
+                       'external_identifier_u16':ext,'dye':dye,'controls':controls,'lod':part['lod'],
+                       'selector_start':u,'material_count':c,'external_id_lane_matches':matches}
+                  corr.append(row)
+                  if v in {5,23,38,39,42,43,44,75,76,77,78,79,80}:
+                      print('TARGET_PART',row,'MEMBERS',local)
+          Path('out/PART_SELECTOR_CORRELATION.json').write_text(json.dumps({'rows':corr},indent=2)+'\n')
+          print('PART_COUNT_WITH_EXTERNAL_VARIANT',len(corr))
+          print('EXTERNAL_IDENTIFIER_COUNTS',dict(sorted(collections.Counter(r['external_identifier'] for r in corr).items())))
+          print('DYE_COUNTS',dict(sorted(collections.Counter(r['dye'] for r in corr).items())))
+          print('EXTERNAL_ID_MATCH_PATTERNS',dict(collections.Counter(tuple((k,tuple(v)) for k,v in sorted(r['external_id_lane_matches'].items())) for r in corr)))
           PY
-          sha256sum out/* > out/SHA256SUMS.txt
+          sha256sum out/* out/payloads/* > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: D1-SHARED-HUMAN-RENDER-PARENT-CLOSURE
