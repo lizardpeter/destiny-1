@@ -1,0 +1,209 @@
+name: D1 shared-human live material switch state
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-human-live-material-switch-state.yml'
+      - 'tools/d1_remote_render_parent_context_probe.py'
+      - 'tools/d1_render_owner_probe.py'
+      - 'tools/d1_remote_tag_payload_dump.py'
+      - 'tools/d1_remote_exact_tag_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/owners out/slots out/reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact shared render-parent switch vocabulary and seven SEntities
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_render_parent_context_probe.py \
+            --entity-resource 80C88CE2 --expected-model 80C88CEF \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/reports/SHARED_HUMAN_RENDER_PARENT.json
+
+          python tools/d1_remote_tag_payload_dump.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --tag 80C880B4 --tag 80C880B5 --tag 80C88216 --tag 80C88217 \
+            --tag 80C883CE --tag 80C883D0 --tag 80C885AA \
+            --out-dir out/owners --report out/reports/OWNER_PAYLOADS.json
+
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 80C880B4 --tag-hash 80C880B5 --tag-hash 80C88216 --tag-hash 80C88217 \
+            --tag-hash 80C883CE --tag-hash 80C883D0 --tag-hash 80C885AA \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/reports/OWNER_EXACT_TAGS.json
+
+      - name: Decode exact SEntity resource slots
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+
+          owners=['80C880B4','80C880B5','80C88216','80C88217','80C883CE','80C883D0','80C885AA']
+          exact=json.load(open('out/reports/OWNER_EXACT_TAGS.json'))
+          erows={r['tag_hash']:r for r in exact['entries']}
+          rows=[]; unique=set()
+
+          def u32(b,o): return struct.unpack_from('<I',b,o)[0]
+          def q64(b,o): return struct.unpack_from('<q',b,o)[0]
+          for h in owners:
+              r=erows[h]
+              assert r['entry']['reference']=='80800734',r
+              b=(Path('out/owners')/(h+'.bin')).read_bytes()
+              assert len(b)==34900,(h,len(b))
+              field=0x20
+              count=u32(b,field); rel=q64(b,field+8); data=field+8+rel+0x10
+              assert count==41,(h,count)
+              assert 0<=data and data+count*0xC<=len(b),(h,data,count,len(b))
+              slots=[]
+              for i in range(count):
+                  o=data+i*0xC
+                  tag=f'{u32(b,o):08X}'
+                  tail=b[o+4:o+0xC].hex().upper()
+                  slots.append({'slot_index':i,'entry_offset':o,'tag_hash':tag,'tail_hex':tail})
+                  if tag!='00000000': unique.add(tag)
+              rows.append({'owner':h,'resource_count':count,'array_data_offset':data,'slots':slots})
+              print('OWNER',h,'RESOURCE_COUNT',count,'SLOTS',[x['tag_hash'] for x in slots])
+          report={'schema':'d1_shared_human_sentity_slots/v1','status':'D1_SHARED_HUMAN_SENTITY_SLOTS_EXACT',
+                  'owners':rows,'unique_nonzero_slot_tags':sorted(unique)}
+          Path('out/reports/SENTITY_SLOTS.json').write_text(json.dumps(report,indent=2)+'\n')
+          Path('out/reports/slot_tags.txt').write_text('\n'.join(sorted(unique))+'\n')
+          print('UNIQUE_NONZERO_SLOT_TAGS',len(unique))
+          PY
+
+      - name: Recover every unique first-level EntityResource slot target
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r h; do
+            test -n "$h" && args+=(--tag "$h")
+          done < out/reports/slot_tags.txt
+          test "${#args[@]}" -gt 0
+          python tools/d1_remote_tag_payload_dump.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            "${args[@]}" --out-dir out/slots --report out/reports/SLOT_PAYLOADS.json
+
+      - name: Scan owners and all first-level resources for exact switch state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json,struct
+          from pathlib import Path
+
+          parent=json.load(open('out/reports/SHARED_HUMAN_RENDER_PARENT.json'))
+          assert parent['error_count']==0 and len(parent['rows'])==1,parent
+          p=parent['rows'][0]['render_parent']
+          records=p['external_material_switch_records']
+          assert len(records)==55,len(records)
+          pairs=[]
+          for r in records:
+              for q in r['pairs']:
+                  pairs.append((r['index'],q['switch_key'],q['value']))
+          keys=sorted({k for _,k,_ in pairs}); values=sorted({v for _,_,v in pairs})
+          pairset=sorted({(k,v) for _,k,v in pairs})
+          print('SWITCH_RECORDS',len(records),'KEYS',keys,'VALUES',len(values),'UNIQUE_PAIRS',len(pairset))
+
+          slots=json.load(open('out/reports/SENTITY_SLOTS.json'))
+          owner_slot={}
+          reverse=collections.defaultdict(list)
+          for o in slots['owners']:
+              owner_slot[o['owner']]=o['slots']
+              for s in o['slots']:
+                  if s['tag_hash']!='00000000': reverse[s['tag_hash']].append({'owner':o['owner'],'slot_index':s['slot_index']})
+
+          def find_all(b,needle):
+              out=[]; start=0
+              while True:
+                  i=b.find(needle,start)
+                  if i<0:return out
+                  out.append(i); start=i+1
+
+          def scan_file(path,kind,tag,owners):
+              b=path.read_bytes(); word_hits=[]; pair_hits=[]
+              for h in keys:
+                  for off in find_all(b,struct.pack('<I',int(h,16))):
+                      word_hits.append({'offset':off,'offset_hex':f'0x{off:X}','hash':h,'role':'switch_key'})
+              for h in values:
+                  for off in find_all(b,struct.pack('<I',int(h,16))):
+                      word_hits.append({'offset':off,'offset_hex':f'0x{off:X}','hash':h,'role':'switch_value'})
+              for k,v in pairset:
+                  needle=struct.pack('<II',int(k,16),int(v,16))
+                  for off in find_all(b,needle):
+                      pair_hits.append({'offset':off,'offset_hex':f'0x{off:X}','switch_key':k,'value':v})
+              return {'kind':kind,'tag_hash':tag,'bytes':len(b),'owners':owners,
+                      'word_hits':sorted(word_hits,key=lambda x:(x['offset'],x['role'],x['hash'])),
+                      'pair_hits':sorted(pair_hits,key=lambda x:(x['offset'],x['switch_key'],x['value']))}
+
+          scans=[]
+          for path in sorted(Path('out/owners').glob('*.bin')):
+              tag=path.stem.upper(); scans.append(scan_file(path,'s_entity',tag,[{'owner':tag}]))
+          for path in sorted(Path('out/slots').glob('*.bin')):
+              tag=path.stem.upper(); scans.append(scan_file(path,'first_level_resource',tag,reverse.get(tag,[])))
+
+          hits=[x for x in scans if x['word_hits'] or x['pair_hits']]
+          by_owner={}
+          for owner in owner_slot:
+              direct=[x for x in hits if x['kind']=='s_entity' and x['tag_hash']==owner]
+              linked=[]
+              tags={s['tag_hash'] for s in owner_slot[owner] if s['tag_hash']!='00000000'}
+              for x in hits:
+                  if x['kind']=='first_level_resource' and x['tag_hash'] in tags: linked.append(x)
+              by_owner[owner]={'direct_hits':direct,'linked_resource_hits':linked}
+          report={'schema':'d1_shared_human_live_material_switch_state/v1',
+                  'status':'D1_SHARED_HUMAN_SWITCH_STATE_FIRST_LEVEL_SCAN_EXACT',
+                  'switch_record_count':len(records),'switch_keys':keys,'switch_value_count':len(values),
+                  'unique_switch_pairs':[{'switch_key':k,'value':v} for k,v in pairset],
+                  'scanned_file_count':len(scans),'hit_file_count':len(hits),'hit_files':hits,'by_owner':by_owner,
+                  'policy':'Exact little-endian byte scan over the seven retail SEntity payloads and every exact first-level EntityResources target. Pair hits require serialized adjacent (switch_key,value) words. A word hit alone is not assigned selector semantics.'}
+          Path('out/reports/LIVE_SWITCH_STATE_SCAN.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('SCANNED_FILES',len(scans),'HIT_FILES',len(hits))
+          for x in hits:
+              print('HIT_FILE',x['kind'],x['tag_hash'],'OWNERS',x['owners'],'WORD_HITS',x['word_hits'],'PAIR_HITS',x['pair_hits'])
+          for owner,r in by_owner.items():
+              print('OWNER_HIT_SUMMARY',owner,'DIRECT',len(r['direct_hits']),'LINKED',[(x['tag_hash'],len(x['word_hits']),len(x['pair_hits'])) for x in r['linked_resource_hits']])
+          PY
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SHARED-HUMAN-LIVE-MATERIAL-SWITCH-STATE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
