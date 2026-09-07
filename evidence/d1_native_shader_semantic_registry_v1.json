@@ -59,6 +59,16 @@
       "semantic_class": "direct_rgb_bc5_normal_alpha_pack"
     },
     {
+      "gcn_sha256": "f60720572d9bd42f06c3fffc3ef5e178f8a9d7917fa8c83d96511830e45b0c00",
+      "stage": "ps",
+      "shader_headers": ["80876579"],
+      "source_proof_status": "D1_XUR_PS_80876579_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_80876579_semantic_proof.py",
+      "current_scope_material_count": 4,
+      "semantic_class": "control_palette_surface_reflection",
+      "frontier": "TFX Frame producer semantics and exact runtime c10 alpha-test threshold evolution remain independently gated; t0 RGB is proven control data, not visible base color"
+    },
+    {
       "gcn_sha256": "24392dbd8f217a832456372a8d9c24d3ef365ab5a0b8bcd362882ca845052964",
       "stage": "vs",
       "shader_headers": ["8087695B", "809DE9AB"],
@@ -101,14 +111,14 @@
     ]
   },
   "source_checkpoint": {
-    "xur_wave4_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE4_EXACT",
-    "closed_gcn_program_count": 9,
-    "wave4_run": 34153013780,
-    "wave4_artifact": 10030000356,
-    "wave4_artifact_sha256": "5533e0faab09cb23ae9d4f9c79d41d4e60a06fc4578bb6d50be27a2a5044283c"
+    "xur_wave5_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE5_EXACT",
+    "closed_gcn_program_count": 10,
+    "wave5_run": 34155152832,
+    "wave5_artifact": 10030701808,
+    "wave5_artifact_sha256": "e62373d1b3ee008498472f0b0a42ed26c6e3086636e98a733debc620240cf1fb"
   },
   "violations": [],
-  "entry_count": 9,
-  "pixel_shader_entry_count": 6,
+  "entry_count": 10,
+  "pixel_shader_entry_count": 7,
   "vertex_shader_entry_count": 3
 }
