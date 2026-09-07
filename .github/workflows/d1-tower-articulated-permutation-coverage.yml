@@ -1,0 +1,118 @@
+name: D1 Tower articulated permutation coverage
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-articulated-permutation-coverage.yml'
+      - 'tools/d1_tower_placement_worldid_attach.py'
+      - 'tools/d1_tower_articulated_permutation_coverage.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  PLACEMENT_ARTIFACT_ID: '10034246419'
+  PLACEMENT_ARTIFACT_SHA256: 'e1d844190a594fd1bc06f578c256f98f40f667561f529137bbc3a36a10f00ba2'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env: {GH_TOKEN: '${{ github.token }}', LINOODLE_SKIP_DLLMAIN: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned placement corpus, universal catalog, articulated proof, and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/placement input/catalog input/proof runtime reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PLACEMENT_ARTIFACT_ID}/zip" -o input/placement.zip
+          echo "${PLACEMENT_ARTIFACT_SHA256}  input/placement.zip" | sha256sum --check --strict
+          unzip -q input/placement.zip -d input/placement
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          proof_url="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=d1-tower-articulated-validation&per_page=20" \
+            | python -c "import json,sys; a=[x for x in json.load(sys.stdin)['artifacts'] if not x['expired']]; assert a; print(a[0]['archive_download_url'])")"
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "$proof_url" -o input/proof.zip
+          unzip -q input/proof.zip -d input/proof
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+          python - <<'PY'
+          import json
+          p=json.load(open('input/proof/tower_articulated_entity_plan.json'))
+          c=json.load(open('input/placement/D1_TOWER_PLACEMENT_PERMUTATION_CORPUS_CALIBRATION.json'))
+          assert p['status']=='D1_WORLD_ARTICULATED_ENTITY_PLAN_COMPLETE',p['status']
+          assert (p['candidate_count'],p['family_count'],p['runtime_placement_count'])==(15,7,37),p
+          assert c['status']=='D1_TOWER_PLACEMENT_PERMUTATION_CROSS_ENTITY_CALIBRATION',c['status']
+          assert not c['violations'],c['violations']
+          print('INPUTS_ACCEPTED',p['runtime_placement_count'],'articulated placements;',c['s152_placement_count'],'typed S152 placements')
+          PY
+
+      - name: Attach exact retail WorldIDs to permutation rows
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_tower_placement_worldid_attach.py tools/d1_tower_articulated_permutation_coverage.py
+          python tools/d1_tower_placement_worldid_attach.py \
+            --calibration input/placement/D1_TOWER_PLACEMENT_PERMUTATION_CORPUS_CALIBRATION.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o reports/D1_TOWER_PLACEMENT_PERMUTATION_WORLDID.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_PLACEMENT_PERMUTATION_WORLDID.json'))
+          assert d['status']=='D1_TOWER_PLACEMENT_WORLDID_ATTACH_COMPLETE',d['violations']
+          assert d['worldid_attached_row_count']==len(d['calibration_rows']),d
+          assert d['proof']['material_permutation_consumer_semantics_proven'] is False,d['proof']
+          print('WORLDID_ATTACH_GREEN',d['worldid_attached_row_count'],'rows',d['unique_world_id_count'],'unique WorldIDs')
+          PY
+
+      - name: Join all 37 articulated runtime placements to exact configuration
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_tower_articulated_permutation_coverage.py \
+            --articulated-plan input/proof/tower_articulated_entity_plan.json \
+            --placement-calibration reports/D1_TOWER_PLACEMENT_PERMUTATION_WORLDID.json \
+            -o reports/D1_TOWER_ARTICULATED_PERMUTATION_COVERAGE.json | tee reports/stdout.txt
+          rc=${PIPESTATUS[0]}; set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_ARTICULATED_PERMUTATION_COVERAGE.json'))
+          assert d['runtime_placement_count']==37,d
+          assert d['proof']['D1_retail_consumer_execution_path_proven'] is False,d['proof']
+          if d['status']=='D1_TOWER_ARTICULATED_PERMUTATION_COVERAGE_COMPLETE':
+              assert d['joined_runtime_placement_count']==37,d
+              assert d['unmatched_runtime_placement_count']==0,d
+              assert d['conflicting_runtime_placement_count']==0,d
+              assert d['unique_model_count']==7,d
+          print('ARTICULATED_PERMUTATION_COVERAGE',d['status'],d['joined_runtime_placement_count'],'/37','variants',d['unique_model_config_variant_count'])
+          PY
+
+      - name: Persist hashes
+        if: always()
+        run: find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-ARTICULATED-PERMUTATION-COVERAGE
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
