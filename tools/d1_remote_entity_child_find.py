@@ -3,12 +3,21 @@
 
 This is a proof-oriented remote scanner for final-era Destiny 1 PS4 Tiger packages.
 It reads the logical package entry/block tables plus only blocks needed by
-EntityResource entries (class/reference 0x80800861).  For ROI EntityChildren:
+EntityResource entries (class/reference 0x80800861).  For ROI EntityChildren the
+source-pinned Charm layout is:
 
   EntityResource.Unk10 -> class 0x80802663 (D1 schema 63268080)
   EntityResource.Unk18 -> class 0x80802708 (D1 schema 08278080)
-  parent + 0x100       -> DynamicArray<S712B8080>
+  parent + 0x100       -> DynamicArray<S712B8080>, stride 0xA0
   S712B8080 + 0x20     -> child Entity FileHash
+  S712B8080 + 0x88     -> DynamicArray<S93278080>, stride 0x40
+  S93278080 + 0x10     -> Rotation Vector4
+  S93278080 + 0x20     -> Translation Vector4
+
+The child/transform offsets are pinned to MontagueM/Charm commit
+50d36ee1f9ecadad7522504c20b1f3f9c97e30af, Tiger/Schema/Entity/EntityStructs.cs,
+and the consumption path is pinned to Entity.GetEntityChildren() in Entity.cs.
+No child socket/bone semantic is inferred from these transforms.
 
 No proprietary Oodle binary is stored by this tool; the caller supplies a
 runtime directory, as with the other package probes in this repository.
@@ -34,6 +43,14 @@ D1_ENTITY_CHILDREN_DISCRIMINATOR = 0x80802663
 D1_ENTITY_CHILDREN_PARENT = 0x80802708
 D1_CHILD_ENTRY_SIZE = 0xA0
 D1_CHILD_ENTITY_OFFSET = 0x20
+D1_CHILD_TRANSFORMS_OFFSET = 0x88
+D1_CHILD_TRANSFORM_SIZE = 0x40
+D1_CHILD_TRANSFORM_ROTATION_OFFSET = 0x10
+D1_CHILD_TRANSFORM_TRANSLATION_OFFSET = 0x20
+PINNED_CHARM = (
+    "MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af "
+    "Tiger/Schema/Entity/EntityStructs.cs + Tiger/Schema/Entity/Entity.cs"
+)
 
 
 def u32(b: bytes, o: int) -> int:
@@ -48,6 +65,12 @@ def i64(b: bytes, o: int) -> int:
     return struct.unpack_from("<q", b, o)[0]
 
 
+def f4(b: bytes, o: int) -> list[float]:
+    if o < 0 or o + 16 > len(b):
+        raise ValueError(f"Vector4 out of bounds at 0x{o:X}/0x{len(b):X}")
+    return list(struct.unpack_from("<4f", b, o))
+
+
 def resource_ptr(b: bytes, field_off: int) -> tuple[int | None, int | None]:
     rel = i64(b, field_off)
     if rel == 0:
@@ -57,6 +80,31 @@ def resource_ptr(b: bytes, field_off: int) -> tuple[int | None, int | None]:
         raise ValueError(f"resource pointer +0x{field_off:X} -> 0x{target:X} outside entry")
     cls = u32(b, target - 4)
     return target, cls
+
+
+def parse_child_transforms(b: bytes, child_entry_off: int) -> dict:
+    field = child_entry_off + D1_CHILD_TRANSFORMS_OFFSET
+    count, data = dyn_header(b, field)
+    rows = []
+    for i in range(count):
+        o = data + i * D1_CHILD_TRANSFORM_SIZE
+        if o < 0 or o + D1_CHILD_TRANSFORM_SIZE > len(b):
+            raise ValueError(
+                f"child transform {i}/{count} at 0x{o:X} exceeds resource size 0x{len(b):X}"
+            )
+        rows.append({
+            "index": i,
+            "entry_offset": o,
+            "rotation": f4(b, o + D1_CHILD_TRANSFORM_ROTATION_OFFSET),
+            "translation": f4(b, o + D1_CHILD_TRANSFORM_TRANSLATION_OFFSET),
+        })
+    return {
+        "array_field": field,
+        "count": count,
+        "data_offset": data,
+        "stride": D1_CHILD_TRANSFORM_SIZE,
+        "items": rows,
+    }
 
 
 def parse_children_resource(b: bytes) -> dict | None:
@@ -80,12 +128,16 @@ def parse_children_resource(b: bytes) -> dict | None:
                 f"child {i}/{count} at 0x{o:X} exceeds resource size 0x{len(b):X}"
             )
         entity = u32(b, o + D1_CHILD_ENTITY_OFFSET)
+        transforms = parse_child_transforms(b, o)
         children.append({
             "index": i,
             "entry_offset": o,
             "entity_hash": f"{entity:08X}",
             "package_id": filehash_pkg_index(entity)[0] if entity not in (0, 0xFFFFFFFF) else None,
             "file_index": filehash_pkg_index(entity)[1] if entity not in (0, 0xFFFFFFFF) else None,
+            "transform_count": transforms["count"],
+            "transforms": transforms["items"],
+            "transforms_array": {k: v for k, v in transforms.items() if k != "items"},
         })
     return {
         "discriminator_class": f"{c10:08X}",
@@ -127,6 +179,7 @@ def main() -> int:
     hits = []
     errors = []
     child_pkg_counts = collections.Counter()
+    transform_count_histogram = collections.Counter()
 
     for n, e in enumerate(candidates, 1):
         try:
@@ -142,6 +195,7 @@ def main() -> int:
             }
             child_resources.append(row)
             for ch in parsed["children"]:
+                transform_count_histogram[ch["transform_count"]] += 1
                 if ch["package_id"] is not None:
                     child_pkg_counts[ch["package_id"]] += 1
                 if ch["entity_hash"] in wanted:
@@ -166,6 +220,9 @@ def main() -> int:
             )
 
     rep = {
+        "schema_version": 2,
+        "status": "D1_ENTITY_CHILDREN_TRANSFORMS_CENSUS",
+        "pinned_source": PINNED_CHARM,
         "package_id": a.package_id,
         "logical_view": r.view.name,
         "entry_count": len(r.entries),
@@ -175,9 +232,14 @@ def main() -> int:
         "wanted_children": sorted(wanted),
         "hits": hits,
         "child_package_counts": {f"{k:04X}": v for k, v in sorted(child_pkg_counts.items())},
+        "child_transform_count_histogram": {str(k): v for k, v in sorted(transform_count_histogram.items())},
         "child_resources": child_resources,
         "error_count": len(errors),
         "errors": errors[:200],
+        "policy": (
+            "Child Entity FileHashes and transforms are decoded only from Charm's exact D1 ROI EntityChildren layout. "
+            "The transform array is preserved literally; no hand/socket/bone semantic is assigned by this tool."
+        ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(rep, indent=2) + "\n")
