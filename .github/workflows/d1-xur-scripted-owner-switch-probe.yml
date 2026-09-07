@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-xur-scripted-owner-switch-probe.yml'
       - 'tools/d1_remote_xur_scripted_owner_switch_probe.py'
+      - 'tools/d1_remote_xur_scripted_owner_switch_probe_v4.py'
 
 permissions: {contents: read, actions: read}
 env:
@@ -35,8 +36,8 @@ jobs:
       - name: Probe scripted Xur owners
         run: |
           set -euo pipefail
-          python -m py_compile tools/d1_remote_xur_scripted_owner_switch_probe.py
-          python tools/d1_remote_xur_scripted_owner_switch_probe.py \
+          python -m py_compile tools/d1_remote_xur_scripted_owner_switch_probe.py tools/d1_remote_xur_scripted_owner_switch_probe_v4.py
+          python tools/d1_remote_xur_scripted_owner_switch_probe_v4.py \
             --owner 80C7A251 --owner 80C7A441 --owner 80C7A58F --owner 80C7A719 --owner 80C7AC71 --owner 80C7AC81 --owner 80C7ACB9 --owner 80C7AD18 \
             --owner 80C88185 --owner 80C8831B --owner 80C88591 --owner 80C88888 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
@@ -57,7 +58,7 @@ jobs:
             'descriptor_A_B_evaluation_semantics_proven':False,
           },d['proof']
           assert all(v is False for v in d['gates'].values())
-          print('XUR_SCRIPTED_OWNER_SWITCH_PROBE_V3_ACCEPTED')
+          print('XUR_SCRIPTED_OWNER_SWITCH_PROBE_V4_CORRECTED_ACCEPTED')
           PY
       - run: find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
