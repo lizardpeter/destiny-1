@@ -1,0 +1,93 @@
+name: D1 shared-human 808005EB variant closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-shared-human-808005eb-variant-closure.yml'
+      - 'tools/d1_remote_tag_payload_dump.py'
+      - 'tools/d1_remote_exact_tag_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/payloads out/reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Dump and resolve the sole remaining per-identity referenced class
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_tag_payload_dump.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --tag 80C8816E --tag 80C8816F --tag 80C882C5 --tag 80C882C6 --tag 80C8887A --tag 80C8887C --tag 80C88888 \
+            --out-dir out/payloads --report out/reports/PAYLOADS.json
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 80C8816E --tag-hash 80C8816F --tag-hash 80C882C5 --tag-hash 80C882C6 \
+            --tag-hash 80C8887A --tag-hash 80C8887C --tag-hash 80C88888 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/reports/EXACT_TAGS.json | tee out/stdout.txt
+      - name: Compare exact seven-way structure and dependency variation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json,struct,collections
+          hs=['80C8816E','80C8816F','80C882C5','80C882C6','80C8887A','80C8887C','80C88888']
+          blobs={h:(Path('out/payloads')/(h+'.bin')).read_bytes() for h in hs}
+          sizes={h:len(b) for h,b in blobs.items()};assert set(sizes.values())=={1536},sizes
+          probe=json.load(open('out/reports/EXACT_TAGS.json')); rows={r['tag_hash']:r for r in probe['entries']}
+          for h in hs:
+              assert rows[h]['entry']['reference']=='808005EB',rows[h]
+              print('RESOURCE',h,'RESOLVED',[(m['offset_hex'],m['tag_hash'],m['entry']['reference'],m['entry']['file_size']) for m in rows[h]['aligned_resolved_tags'] if m['tag_hash']!=h])
+          varying=[]
+          for off in range(0,1536-3,4):
+              vals={h:f'{struct.unpack_from("<I",blobs[h],off)[0]:08X}' for h in hs}
+              if len(set(vals.values()))>1:
+                  rr={h:next(((m['tag_hash'],m['entry']['reference'],m['entry']['file_size']) for m in rows[h]['aligned_resolved_tags'] if m['offset']==off),None) for h in hs}
+                  varying.append({'offset':off,'offset_hex':f'0x{off:X}','values':vals,'resolved':rr})
+          resolved=[x for x in varying if any(v is not None for v in x['resolved'].values())]
+          rep={'schema':'d1_shared_human_808005eb_variant/v1','status':'D1_SHARED_HUMAN_808005EB_VARIANT_EXACT','class':'808005EB','resource_size':1536,
+               'resources':hs,'varying_aligned_u32_count':len(varying),'resolved_varying_u32_count':len(resolved),'varying_words':varying,
+               'policy':'Exact retail seven-way comparison. A resolved dependency is reported only when the universal verified catalog resolves the serialized aligned FileHash; field semantics remain unassigned until independently closed.'}
+          Path('out/reports/VARIANT_MATRIX.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('VARIANT_MATRIX','varying_u32',len(varying),'resolved_varying',len(resolved))
+          for x in resolved:print('RESOLVED_VARIANT',x['offset_hex'],x['values'],x['resolved'])
+          print('UNRESOLVED_VARIANTS')
+          for x in [x for x in varying if not any(v is not None for v in x['resolved'].values())]:print(x['offset_hex'],x['values'])
+          PY
+          sha256sum out/payloads/*.bin out/reports/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-SHARED-HUMAN-808005EB-VARIANT-CLOSURE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
