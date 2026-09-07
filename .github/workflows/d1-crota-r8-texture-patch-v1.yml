@@ -1,0 +1,122 @@
+name: D1 Crota R8 texture patch v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r8-texture-patch-v1.yml'
+      - 'tools/d1_remote_activity_texture_export_v2.py'
+      - 'tools/d1_dds_to_png_v2.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  FRONTIER_ARTIFACT_ID: '10025087283'
+  FRONTIER_ZIP_SHA256: 'd0f5a57eacee0a1cabe5c8553c07230b01df2c191ab916ffa9e6ae9b17f8be6c'
+  TARGET_TEXTURE: '80AD2AA7'
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install runtime and texture decoder dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python -m pip install --disable-pip-version-check --quiet pillow texture2ddecoder
+
+      - name: Recover only compatible source metadata and tiny frontier proof
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FRONTIER_ARTIFACT_ID}/zip" -o input/frontier.zip
+          echo "${FRONTIER_ZIP_SHA256}  input/frontier.zip" | sha256sum --check --strict
+          unzip -q input/frontier.zip -d input/frontier
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o input/packages.txt
+          python - <<'PY'
+          import hashlib,json,glob
+          psha=hashlib.sha256(open('input/packages.txt','rb').read()).hexdigest()
+          cat=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          expected=cat.get('packages_txt_sha256') or cat.get('source',{}).get('package_list_sha256')
+          assert expected==psha,(expected,psha)
+          print('CATALOG_CURRENT_SOURCE_COMPATIBLE',psha)
+          PY
+
+      - name: Build exact one-texture closure from the compatible failed-row proof
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,os
+          paths=glob.glob('input/frontier/**/texture_export_manifest.json',recursive=True)
+          assert len(paths)==1,paths
+          tex=json.load(open(paths[0]))
+          target=os.environ['TARGET_TEXTURE'].upper()
+          rows=[r for r in tex.get('rows',[]) if str(r.get('texture','')).upper()==target]
+          assert len(rows)==1,(target,len(rows))
+          row=rows[0]
+          assert row.get('violations')==["dds_export:NotImplementedError('DDS wrapping for GCN 0x1')"],row.get('violations')
+          proof=dict(row['proof'])
+          tr={'texture':target,**proof}
+          mini={
+            'schema':'d1_remote_activity_material_dependency_closure/v1',
+            'status':'D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',
+            'violations':[],
+            'rows':[{'material':'SELECTIVE_REUSE_PROOF_ONLY','dependencies':{
+              'vertex':{'textures':[]},'pixel':{'textures':[tr]}}}],
+            'selective_reuse':{
+              'base_visual_artifact_id':10024452879,
+              'frontier_artifact_id':10025087283,
+              'texture':target,
+              'policy':'Header/backing identities are copied verbatim from the compatible prior texture-export proof. No material ownership or asset identity is recomputed or invented.'}
+          }
+          json.dump(mini,open('out/R8_MINIMAL_MATERIAL_CLOSURE.json','w'),indent=2)
+          print(json.dumps({'texture':target,'proof':proof},indent=2))
+          PY
+
+      - name: Re-export only the R8 frontier with current adapter
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_activity_texture_export_v2.py \
+            --material-closure out/R8_MINIMAL_MATERIAL_CLOSURE.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/R8_PATCH
+          python - <<'PY'
+          import json,glob,os
+          d=json.load(open('out/R8_PATCH/texture_export_manifest.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',d['violations']
+          assert d['texture_count']==1 and d['dds_file_count']==1 and d['png_file_count']==1,d
+          r=d['rows'][0]
+          assert r['texture']==os.environ['TARGET_TEXTURE']
+          assert r['header_info']['surface_format']==1,r['header_info']
+          assert r['format_name']=='R8_UNORM',r.get('format_name')
+          print('CROTA_R8_PATCH_SOURCE_CLOSED',r['texture'],r['header_info']['width'],r['header_info']['height'])
+          PY
+          sha256sum out/R8_PATCH/textures/* > out/R8_PATCH_SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R8-TEXTURE-PATCH-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
