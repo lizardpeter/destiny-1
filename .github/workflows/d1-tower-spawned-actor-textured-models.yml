@@ -1,0 +1,251 @@
+name: D1 Tower spawned actor exact textured models
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-textured-models.yml'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
+      - 'tools/d1_close_world_texture_dependencies.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  VISUAL_ARTIFACT_ID: '10001232930'
+  VISUAL_ARTIFACT_ZIP_SHA256: 'a662155f8a6259def83474f08b7508c6f1f5f1f87b1d368b924b2648e6737113'
+  SKINNED_ARTIFACT_ID: '10001481050'
+  SKINNED_ARTIFACT_ZIP_SHA256: '6390225a8c0f5ef9c092692ec7b9cf2fff6e5dcb8c3cbb32fb3859564b27a43d'
+  PROP_ARTIFACT_ID: '10001536650'
+  PROP_ARTIFACT_ZIP_SHA256: 'bddaaec0742f13d7c0b18b48d8efe35e11a31e75c85f1186247a58539697675b'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact source artifacts and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder
+          mkdir -p input/catalog input/visual input/skinned input/prop runtime corpus texture_expanded texture_work textures roles out/actors out/prop out/reports reports
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VISUAL_ARTIFACT_ID}/zip" -o input/visual.zip
+          echo "${VISUAL_ARTIFACT_ZIP_SHA256}  input/visual.zip" | sha256sum --check --strict
+          unzip -q input/visual.zip -d input/visual
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SKINNED_ARTIFACT_ID}/zip" -o input/skinned.zip
+          echo "${SKINNED_ARTIFACT_ZIP_SHA256}  input/skinned.zip" | sha256sum --check --strict
+          unzip -q input/skinned.zip -d input/skinned
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PROP_ARTIFACT_ID}/zip" -o input/prop.zip
+          echo "${PROP_ARTIFACT_ZIP_SHA256}  input/prop.zip" | sha256sum --check --strict
+          unzip -q input/prop.zip -d input/prop
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+          python - <<'PY'
+          import glob,json
+          v=json.load(open('input/visual/tower_spawned_actor_model_export.json'))
+          s=json.load(open('input/skinned/TOWER_SPAWNED_ACTOR_SKIN_BIND.json'))
+          p=json.load(open('input/prop/sweeper_attached_model_export.json'))
+          assert v['status']=='D1_WORLD_ARTICULATED_MODEL_SET_COMPLETE' and v['exported_model_count']==13 and v['active_material_count']==189,v
+          assert s['status']=='D1_TOWER_SPAWNED_ACTOR_SKIN_BIND_COMPLETE' and s['model_count']==13 and not s['violations'],s
+          assert p['status']=='D1_WORLD_ARTICULATED_MODEL_SET_COMPLETE' and p['exported_model_count']==1 and p['active_material_count']==2,p
+          assert len(glob.glob('input/skinned/*_SKINNED.glb'))==13
+          assert glob.glob('input/prop/80CA0D19.glb')
+          mats=sorted(set(v['active_materials'])|set(p['active_materials']))
+          assert len(mats)==191,len(mats)
+          json.dump({'materials':{h:{'visual':True} for h in mats}},open('reports/spawned_actor_plus_prop_material_selector.json','w'),indent=2)
+          def pid(h): return f'{((int(h,16)-0x80800000)>>13)&0x7ff:04x}'
+          ids=sorted({pid(h) for h in mats})
+          open('reports/required_material_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          print('SOURCE_CHECKPOINTS_ACCEPTED','actors',v['exported_model_count'],'materials',v['active_material_count'],'prop_materials',p['active_material_count'],'combined',len(mats),'material_package_ids',ids)
+          PY
+
+      - name: Recover exact material package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/required_material_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/spawned_actor_texture_material_corpus.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/spawned_actor_texture_material_corpus.json'))
+          assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED',d
+          print('MATERIAL_CORPUS',d['required_family_count'],'families',d['member_count'],'members','TAR_SCANS',d['split_tar_scanned_package_ids'])
+          PY
+
+      - name: Recursively close all 191 material texture dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
+            --runtime runtime \
+            --visual-json reports/spawned_actor_plus_prop_material_selector.json \
+            --package-list reports/packages.txt \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --expansion-dir texture_expanded \
+            --work-dir texture_work \
+            --out textures \
+            --report reports/spawned_actor_texture_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/spawned_actor_texture_dependency_closure.json'))
+          m=json.load(open('textures/material_texture_manifest.json'))
+          assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['stop_reason']=='closed_zero_missing_texture_packages',c
+          assert m['visible_material_count']==191,m['visible_material_count']
+          assert m['material_decode_errors']==0,m
+          assert m['texture_errors']==0,m
+          assert m['decoded_texture_tags']==m['unique_texture_tags'],m
+          assert not m['missing_texture_package_ids'],m
+          print('TEXTURES_CLOSED','materials',m['visible_material_count'],'textures',m['decoded_texture_tags'],'png_outputs',m['png_outputs'],'recovered_package_ids',c['recovered_package_ids'])
+          PY
+
+      - name: Build evidence-scoped preview role inventory
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json \
+            -o roles/spawned_actor_texture_role_inventory.json
+          python - <<'PY'
+          import json
+          d=json.load(open('roles/spawned_actor_texture_role_inventory.json'))
+          assert d['status']=='D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED'
+          assert d['material_count']==191,d
+          print('ROLE_INVENTORY','materials',d['material_count'],'pixel_shaders',d['pixel_shader_count'],'base',d['preview_base_coverage'],'normal',d['preview_normal_coverage'])
+          PY
+
+      - name: Bind all native VS and PS texture resources to 13 exact skinned actor models
+        run: |
+          set -euo pipefail
+          for p in input/skinned/*_SKINNED.glb; do
+            base="$(basename "$p" _SKINNED.glb)"
+            python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+              --input-glb "$p" \
+              --manifest textures/material_texture_manifest.json \
+              --roles roles/spawned_actor_texture_role_inventory.json \
+              --texture-dir textures/textures \
+              --include-medium-base --bind-normal-candidates \
+              --out "out/actors/${base}_SKINNED_TEXTURED.glb" \
+              --report "out/reports/${base}_TEXTURE_BIND.json"
+          done
+          python - <<'PY'
+          import glob,json,os
+          fs=sorted(glob.glob('out/actors/*_SKINNED_TEXTURED.glb'))
+          rs=sorted(glob.glob('out/reports/*_TEXTURE_BIND.json'))
+          assert len(fs)==13,fs
+          assert len(rs)==13,rs
+          total_tex=total_vs=total_ps=total_base=total_norm=0
+          for r in rs:
+              d=json.load(open(r))
+              assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+              total_tex+=d['exact_source_texture_count'];total_vs+=d['exact_vs_binding_edge_count'];total_ps+=d['exact_ps_binding_edge_count'];total_base+=d['portable_base_bound_material_count'];total_norm+=d['portable_normal_bound_material_count']
+              assert d['final_counts']['materials']==d['material_count']
+              print('ACTOR_TEXTURED',os.path.basename(d['output_glb']),'materials',d['material_count'],'native_textures',d['exact_source_texture_count'],'VS_EDGES',d['exact_vs_binding_edge_count'],'PS_EDGES',d['exact_ps_binding_edge_count'],'preview_base',d['portable_base_bound_material_count'],'preview_normal',d['portable_normal_bound_material_count'])
+          print('ACTOR_TEXTURE_TOTALS','models',len(fs),'embedded_native_texture_instances',total_tex,'VS_EDGES',total_vs,'PS_EDGES',total_ps,'preview_base_materials',total_base,'preview_normal_materials',total_norm)
+          PY
+
+      - name: Texture exact sweeper auxiliary prop candidate
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+            --input-glb input/prop/80CA0D19.glb \
+            --manifest textures/material_texture_manifest.json \
+            --roles roles/spawned_actor_texture_role_inventory.json \
+            --texture-dir textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --out out/prop/80CA0D19_TEXTURED.glb \
+            --report out/reports/80CA0D19_TEXTURE_BIND.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/reports/80CA0D19_TEXTURE_BIND.json'))
+          assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+          assert d['material_count']==2,d
+          print('SWEEPER_PROP_TEXTURED','materials',d['material_count'],'native_textures',d['exact_source_texture_count'],'VS_EDGES',d['exact_vs_binding_edge_count'],'PS_EDGES',d['exact_ps_binding_edge_count'],'preview_base',d['portable_base_bound_material_count'],'preview_normal',d['portable_normal_bound_material_count'],'sha',d['output_sha256'])
+          PY
+
+      - name: Preserve manifests and validate immutable geometry and skin topology
+        run: |
+          set -euo pipefail
+          cp reports/spawned_actor_texture_dependency_closure.json out/reports/
+          cp reports/spawned_actor_texture_material_corpus.json out/reports/
+          cp reports/spawned_actor_plus_prop_material_selector.json out/reports/
+          cp roles/spawned_actor_texture_role_inventory.json out/reports/
+          cp textures/material_texture_manifest.json out/reports/
+          cp input/skinned/TOWER_SPAWNED_ACTOR_SKIN_BIND.json out/reports/
+          cp input/visual/tower_spawned_actor_model_export.json out/reports/
+          cp input/prop/sweeper_attached_model_export.json out/reports/
+          python - <<'PY'
+          import glob,json
+          reports=[]
+          for p in sorted(glob.glob('out/reports/*_TEXTURE_BIND.json')):
+              d=json.load(open(p));reports.append(d)
+              assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES'
+              assert d['base_counts']['meshes']==d['final_counts']['meshes']
+              assert d['base_counts']['nodes']==d['final_counts']['nodes']
+              assert d['base_counts']['accessors']==d['final_counts']['accessors']
+          summary={
+            'schema_version':1,
+            'status':'D1_TOWER_SPAWNED_ACTOR_AND_SWEEPER_PROP_TEXTURED_CHECKPOINT',
+            'actor_model_count':13,
+            'prop_model_count':1,
+            'combined_exact_material_count':191,
+            'global_unique_texture_count':json.load(open('textures/material_texture_manifest.json'))['unique_texture_tags'],
+            'actor_reports':[{
+                'output_glb':d['output_glb'],'output_sha256':d['output_sha256'],'material_count':d['material_count'],
+                'exact_source_texture_count':d['exact_source_texture_count'],'exact_vs_binding_edge_count':d['exact_vs_binding_edge_count'],
+                'exact_ps_binding_edge_count':d['exact_ps_binding_edge_count'],'portable_base_bound_material_count':d['portable_base_bound_material_count'],
+                'portable_normal_bound_material_count':d['portable_normal_bound_material_count']
+            } for d in reports if '80CA0D19_TEXTURED.glb' not in d['output_glb']],
+            'prop_report':next({
+                'output_glb':d['output_glb'],'output_sha256':d['output_sha256'],'material_count':d['material_count'],
+                'exact_source_texture_count':d['exact_source_texture_count'],'exact_vs_binding_edge_count':d['exact_vs_binding_edge_count'],
+                'exact_ps_binding_edge_count':d['exact_ps_binding_edge_count'],'portable_base_bound_material_count':d['portable_base_bound_material_count'],
+                'portable_normal_bound_material_count':d['portable_normal_bound_material_count']
+            } for d in reports if '80CA0D19_TEXTURED.glb' in d['output_glb']),
+            'policy':'All exact native VS and PS Texture TagHash bindings are preserved from the source manifest. Portable base/normal slots are evidence-scoped preview adapters only. Actor skin/geometry topology is unchanged from the exact skinned checkpoint.'
+          }
+          assert len(summary['actor_reports'])==13
+          json.dump(summary,open('out/reports/TOWER_SPAWNED_ACTOR_TEXTURED_CHECKPOINT.json','w'),indent=2)
+          print(json.dumps({k:summary[k] for k in ('status','actor_model_count','prop_model_count','combined_exact_material_count','global_unique_texture_count')},indent=2))
+          PY
+          sha256sum out/actors/*.glb out/prop/*.glb out/reports/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-EXACT-SKINNED-TEXTURED-PLUS-SWEEPER-PROP
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
