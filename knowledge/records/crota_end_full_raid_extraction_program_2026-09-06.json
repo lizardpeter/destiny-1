@@ -1,0 +1,411 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "crota_end_full_raid_extraction_program_2026_09_06",
+  "title": "Crota's End full retail raid extraction program",
+  "updated_utc": "2026-09-07T01:35:00Z",
+  "scope": {
+    "platform": "PS4",
+    "era": "Destiny 1 Rise of Iron final package set",
+    "target": "Deterministic extraction of the complete Crota's End raid from retail packages",
+    "policy": "Every subsystem must be source- or retail-byte-derived. Untyped FileHash occurrences may guide discovery but may not be promoted to ownership, identity, spawn semantics, or render semantics without a closed schema edge."
+  },
+  "nodes": [
+    {
+      "id": "program:crota_end_full_extraction",
+      "kind": "raid_extraction_program",
+      "status": "TARGET",
+      "label": "Complete Crota's End retail extraction",
+      "attrs": {
+        "deliverable": "Reusable raid package -> world + encounters + actors + animation + materials + effects + audio + portable scene pipeline",
+        "coverage_domains": [
+          "activity_and_scenario_roots",
+          "world_geometry",
+          "runtime_placements",
+          "encounter_phase_tables",
+          "scripted_spawn_tables",
+          "combatant_and_boss_entities",
+          "models_and_skeletons",
+          "animations_and_controllers",
+          "materials_textures_shaders",
+          "effects_and_abilities",
+          "audio_dialogue",
+          "final_scene_assembly"
+        ]
+      }
+    },
+    {
+      "id": "activity:810B0002",
+      "kind": "named_activity_root",
+      "status": "PROVEN",
+      "label": "map:moon_hive_raid1:root",
+      "attrs": {"package_id": "0458", "class": "8080052E"}
+    },
+    {
+      "id": "scenario:8108E004",
+      "kind": "named_scenario_client",
+      "status": "PROVEN",
+      "label": "moon_raid_1:scenario_client",
+      "attrs": {"package_id": "0447", "class": "80800616"}
+    },
+    {
+      "id": "stage_map:810978FC",
+      "kind": "stage_map_data_table",
+      "status": "PROVEN",
+      "label": "Crota-stage SMapDataTable",
+      "attrs": {"entry_count": 171, "articulated_crota_body_closed_from_table": false}
+    },
+    {
+      "id": "entity:8108E484",
+      "kind": "s_entity",
+      "status": "PROVEN",
+      "label": "The Oversoul",
+      "attrs": {"model": "8108E5B7", "skeleton_resource": "8108E4BB", "skeleton_node_count": 50}
+    },
+    {
+      "id": "sequence:8108E52E",
+      "kind": "authored_sequence_resource",
+      "status": "PROVEN",
+      "label": "darklens_ultra_spawn.sequence.tft",
+      "attrs": {
+        "class": "808013F3",
+        "serialized_s_entity_filehashes": ["8108E5C3", "8108E671"],
+        "spawn_semantics_of_filehash_fields_closed": false
+      }
+    },
+    {
+      "id": "entity:8108E5C3",
+      "kind": "s_entity",
+      "status": "CANDIDATE",
+      "label": null,
+      "attrs": {"source_relation": "serialized by darklens_ultra_spawn sequence", "first_level_resource_count": 4, "first_level_model": null, "first_level_skeleton": null}
+    },
+    {
+      "id": "entity:8108E671",
+      "kind": "s_entity",
+      "status": "CANDIDATE",
+      "label": null,
+      "attrs": {"source_relation": "serialized by darklens_ultra_spawn sequence", "first_level_resource_count": 2, "first_level_model": null, "first_level_skeleton": null}
+    },
+    {
+      "id": "semantic:crota_son_of_oryx",
+      "kind": "semantic_enemy_target",
+      "status": "TARGET",
+      "label": "Crota, Son of Oryx",
+      "attrs": {"enemy_id": "R1S2RaidMoon0Ultra0", "race_class": "HiveUltraKnightA", "binary_identity_closed": false}
+    },
+    {
+      "id": "domain:world_geometry",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "World geometry and static environment",
+      "attrs": {"goal": "Exact visible geometry, transforms, LOD/pass selection, materials and textures"}
+    },
+    {
+      "id": "domain:runtime_placements",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Runtime placements",
+      "attrs": {"known_moon_raid_1_runtime_placement_count": 282}
+    },
+    {
+      "id": "domain:encounter_logic",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Encounter phases and scripted control",
+      "attrs": {"goal": "Lamps, bridge, hall/council, Deathsinger, Crota finale, wipe/phase/control state"}
+    },
+    {
+      "id": "domain:actors",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Raid actors and combatants",
+      "attrs": {"goal": "Source-owned s_entity -> model -> skeleton identities for bosses, adds, NPC-like objects and encounter actors"}
+    },
+    {
+      "id": "domain:animation",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Animation and controller closure",
+      "attrs": {"goal": "Exact clips, controllers, state selectors, retarget rules and exportable tracks"}
+    },
+    {
+      "id": "domain:materials",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Materials, textures and shaders",
+      "attrs": {"goal": "Exact retail texture chains and portable reconstruction of D1 material semantics"}
+    },
+    {
+      "id": "domain:effects_audio",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Effects, abilities, audio and dialogue",
+      "attrs": {"goal": "Ability/effect resources, particles/decals where extractable, Wwise/dialogue ownership and encounter audio relationships"}
+    },
+    {
+      "id": "domain:scene_assembly",
+      "kind": "raid_extraction_domain",
+      "status": "TARGET",
+      "label": "Final portable raid scene assembly",
+      "attrs": {"goal": "One reproducible export manifest and scene build using only closed source-derived asset relationships"}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:program_activity",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "TARGETS_ACTIVITY",
+      "object": "activity:810B0002",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:raid_roots_closed"]
+    },
+    {
+      "id": "edge:activity_scenario",
+      "subject": "activity:810B0002",
+      "predicate": "USES_SCENARIO",
+      "object": "scenario:8108E004",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:raid_roots_closed"]
+    },
+    {
+      "id": "edge:sequence_e5c3",
+      "subject": "sequence:8108E52E",
+      "predicate": "SERIALIZES_S_ENTITY_FILEHASH",
+      "object": "entity:8108E5C3",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:ultra_spawn_sequence_dependencies"],
+      "attrs": {"byte_offset": 3328, "spawn_semantics_not_inferred": true}
+    },
+    {
+      "id": "edge:sequence_e671",
+      "subject": "sequence:8108E52E",
+      "predicate": "SERIALIZES_S_ENTITY_FILEHASH",
+      "object": "entity:8108E671",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:ultra_spawn_sequence_dependencies"],
+      "attrs": {"byte_offset": 3352, "spawn_semantics_not_inferred": true}
+    },
+    {
+      "id": "edge:crota_body_frontier_e5c3",
+      "subject": "semantic:crota_son_of_oryx",
+      "predicate": "PHYSICAL_ACTOR_FRONTIER",
+      "object": "entity:8108E5C3",
+      "status": "CANDIDATE",
+      "assertion_ids": ["assert:crota_physical_identity_open"]
+    },
+    {
+      "id": "edge:crota_body_frontier_e671",
+      "subject": "semantic:crota_son_of_oryx",
+      "predicate": "PHYSICAL_ACTOR_FRONTIER",
+      "object": "entity:8108E671",
+      "status": "CANDIDATE",
+      "assertion_ids": ["assert:crota_physical_identity_open"]
+    },
+    {
+      "id": "edge:program_world",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:world_geometry",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_placements",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:runtime_placements",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_logic",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:encounter_logic",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_actors",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:actors",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_animation",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:animation",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_materials",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:materials",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_effects_audio",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:effects_audio",
+      "status": "TARGET",
+      "assertion_ids": []
+    },
+    {
+      "id": "edge:program_assembly",
+      "subject": "program:crota_end_full_extraction",
+      "predicate": "REQUIRES_DOMAIN",
+      "object": "domain:scene_assembly",
+      "status": "TARGET",
+      "assertion_ids": []
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:raid_roots_closed",
+      "status": "PROVEN",
+      "claim": "The current retail Crota's End activity root is 810B0002 and the selected moon_raid_1 scenario client is 8108E004; this scenario traversal yields 282 runtime placements.",
+      "source_ids": ["source:crota_end_record"],
+      "details": {"static_placement_traversal_alone_does_not_identify_all_script_spawned_actors": true}
+    },
+    {
+      "id": "assert:stage_map_closed",
+      "status": "PROVEN",
+      "claim": "810978FC is the exact 171-entry Crota-stage SMapDataTable; its exact model owners resolve to non-rigged stage/environment/control entities rather than Crota's articulated physical body.",
+      "source_ids": ["source:stage_map_record"],
+      "details": {"body_identity_from_stage_map": false}
+    },
+    {
+      "id": "assert:squad_alias_not_body",
+      "status": "PROVEN",
+      "claim": "dark_lens.sq_crota__boss is an encounter/squad alias path whose decoded scripted table selects 8108E484, The Oversoul; the squad-controller path is not a direct serialization of Crota's physical articulated body.",
+      "source_ids": ["source:crota_end_record", "source:vocabulary_artifact"],
+      "details": {"do_not_repromote_8108E484_as_crota_body": true}
+    },
+    {
+      "id": "assert:ultra_spawn_sequence_dependencies",
+      "status": "PROVEN",
+      "claim": "Authored sequence resource 8108E52E contains darklens_ultra_spawn.sequence.tft and serializes exact s_entity FileHashes 8108E5C3 at 0xD00 and 8108E671 at 0xD18.",
+      "source_ids": ["source:ultra_physical_artifact", "source:vocabulary_artifact"],
+      "details": {"field_spawn_semantics_closed": false, "literal_filehash_relationship_closed": true}
+    },
+    {
+      "id": "assert:no_named_obj_crota",
+      "status": "PROVEN",
+      "claim": "A package-wide printable scan of 6,636 structured entries and 33,074 printable runs in current retail package 0447 found no authored obj_crota or perf_crota string; Crota-named text is limited to squad/controller, immunity, and funeral-phase ghost-link vocabulary while ultra-Knight actor/control vocabulary is authored explicitly.",
+      "source_ids": ["source:vocabulary_artifact"],
+      "details": {"interpretation": "Supports investigating shared ultra-Knight machinery but does not prove Crota physical identity."}
+    },
+    {
+      "id": "assert:crota_physical_identity_open",
+      "status": "CANDIDATE",
+      "claim": "8108E5C3 and 8108E671 are the current highest-value physical-actor/control frontier because they are exact s_entity FileHashes serialized by the authored darklens_ultra_spawn sequence, but neither has a first-level source-closed model or skeleton and neither is promoted as Crota without deeper typed ownership evidence.",
+      "source_ids": ["source:ultra_physical_artifact"],
+      "details": {"binary_identity_closed": false}
+    },
+    {
+      "id": "assert:raid_scale_proof_policy",
+      "status": "PROVEN",
+      "claim": "The raid extraction program preserves typed exact ownership edges separately from untyped aligned FileHash discovery edges so deeper graph traversal cannot silently turn scalar coincidences into asset ownership.",
+      "source_ids": ["source:recursive_graph_tool"],
+      "details": {"applies_to_all_future_raid_subsystems": true}
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:crota_end_record",
+      "kind": "repository_knowledge_record",
+      "locator": "knowledge/records/crota_end_2026-09-06.json"
+    },
+    {
+      "id": "source:stage_map_record",
+      "kind": "repository_knowledge_record",
+      "locator": "knowledge/records/crota_stage_map_810978fc_2026-09-06.json"
+    },
+    {
+      "id": "source:ultra_physical_artifact",
+      "kind": "actions_artifact_report",
+      "locator": "run 34062595659 / artifact 9997981992 / D1-CROTA-ULTRA-KNIGHT-PHYSICAL-ENTITIES",
+      "sha256": "483f1fec0ed7019d2d4216999c1f2e6407f9358d2176b926f5171e1ad4b08b40",
+      "details": {"producing_commit": "cefd356ca8b139a4f78de07a66f45e4258b5d8bd"}
+    },
+    {
+      "id": "source:vocabulary_artifact",
+      "kind": "actions_artifact_report",
+      "locator": "run 34071724880 / artifact 10000696057 / D1-CROTA-AUTHORED-VOCABULARY",
+      "sha256": "fac6730063c039b6c269a20d41c72d1cf05894b51f224c113512eeae9e6ddcf7",
+      "details": {"producing_commit": "43184af44e372ab35d58d8d0e5bb403d3da48ae5"}
+    },
+    {
+      "id": "source:recursive_graph_tool",
+      "kind": "repository_tool",
+      "locator": "tools/d1_remote_entity_dependency_closure.py",
+      "details": {"commit": "00cfae97e6287dec1851b3a0747212f526640173", "typed_and_untyped_evidence_separated": true}
+    }
+  ],
+  "rejections": [
+    {
+      "id": "reject:oversoul_as_crota_body",
+      "candidate_node": "entity:8108E484",
+      "rejected_as": "semantic:crota_son_of_oryx",
+      "reason": "8108E484 is source-resolved as The Oversoul and the Crota squad alias selects it as an encounter controller target; it must not be promoted as Crota's physical body.",
+      "assertion_ids": ["assert:squad_alias_not_body"]
+    }
+  ],
+  "frontiers": [
+    {
+      "id": "frontier:crota_physical_body",
+      "question": "Which exact articulated s_entity/model/skeleton is Crota's physical body?",
+      "next_proof": "Recursively trace 8108E5C3 and 8108E671 while keeping typed schema edges separate from discovery-only aligned FileHashes, then close any intervening unknown controller class before promoting a discovered articulated actor.",
+      "related_nodes": ["semantic:crota_son_of_oryx", "entity:8108E5C3", "entity:8108E671", "sequence:8108E52E"]
+    },
+    {
+      "id": "frontier:full_world_geometry",
+      "question": "What exact world/static geometry and render-selection rules produce the complete visible Crota's End environment?",
+      "next_proof": "Apply the proven D1 map/static geometry, placement, material, LOD/pass and texture pipelines to all raid world roots and preserve encounter-specific geometry variants.",
+      "related_nodes": ["program:crota_end_full_extraction", "stage_map:810978FC", "domain:world_geometry", "domain:runtime_placements"]
+    },
+    {
+      "id": "frontier:all_encounter_logic",
+      "question": "How are all Crota's End encounter phases, scripted spawns and mechanics represented and connected?",
+      "next_proof": "Generalize the scripted table, squad-instance, objective/performance, lens/phase and controller-family reversals across lamps, bridge, hall/council, Deathsinger and finale resources.",
+      "related_nodes": ["program:crota_end_full_extraction", "domain:encounter_logic"]
+    },
+    {
+      "id": "frontier:raid_actor_catalog",
+      "question": "What is the complete source-owned actor/combatant catalog for Crota's End?",
+      "next_proof": "Enumerate every raid scenario/scripted-spawn s_entity and close exact model, skeleton, names, weapons and controller ownership with reusable graph tooling.",
+      "related_nodes": ["program:crota_end_full_extraction", "domain:actors"]
+    },
+    {
+      "id": "frontier:raid_animation",
+      "question": "Which exact retail animation controllers/clips drive each raid actor and mechanic?",
+      "next_proof": "Connect each closed actor skeleton to source-owned animation state/controller resources and export clips with verified retarget compatibility only.",
+      "related_nodes": ["program:crota_end_full_extraction", "domain:animation"]
+    },
+    {
+      "id": "frontier:raid_materials",
+      "question": "Can all raid world and actor materials be reproduced from exact retail texture/shader inputs?",
+      "next_proof": "Run exact material pointer/texture-chain recovery for raid statics and actors, preserving D1-specific control channels rather than misusing glTF COLOR_0 or reducing shaders to one base texture.",
+      "related_nodes": ["program:crota_end_full_extraction", "domain:materials"]
+    },
+    {
+      "id": "frontier:raid_effects_audio",
+      "question": "What effect, ability, particle, decal, audio and dialogue dependencies belong to each raid encounter?",
+      "next_proof": "Classify reachable effect/ability and dialogue EntityResource schemas, then attach them to exact encounter/actor owners with typed relationships.",
+      "related_nodes": ["program:crota_end_full_extraction", "domain:effects_audio"]
+    },
+    {
+      "id": "frontier:final_scene_assembly",
+      "question": "How will all closed raid assets be assembled reproducibly into one portable extraction?",
+      "next_proof": "Emit a canonical raid manifest that references only proven world, placement, actor, animation, material/effect/audio relationships and drives deterministic scene export.",
+      "related_nodes": ["program:crota_end_full_extraction", "domain:scene_assembly"]
+    }
+  ]
+}
