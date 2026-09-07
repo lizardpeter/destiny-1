@@ -21,6 +21,7 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 
+from d1_filehash import package_hex
 from d1_investment_arrangement_probe import filehash_pkg_index
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_investment_parent_probe import RemoteLogicalPackage
@@ -33,6 +34,14 @@ NULLS={'00000000','FFFFFFFF'}
 
 def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
 def package_of(h):return filehash_pkg_index(int(norm(h),16))[0]
+def package_id_text(h):
+    h=norm(h)
+    return None if h in NULLS else package_hex(h).lower()
+
+# The shared local parser predates the cross-bank FileHash proof. Its pkgid helper is
+# metadata only, but patch it here so every remote universal manifest reports the same
+# source-validated package provenance that is used for actual payload routing.
+act.pkgid=package_id_text
 
 
 class RemoteCorpus:
@@ -138,7 +147,7 @@ def main():
          'unresolved_dependency_hashes':unresolved,'serialized_placement_count':len(real),'runtime_placement_count':len(runtime),'duplicate_serialized_reference_count':dups,
          'unique_entity_count':len(entity_counts),'unique_entity_hashes':unique_entity_hashes,'runtime_entity_counts':dict(entity_counts),'resolved_name_counts':dict(named_counts),
          'runtime_placements':runtime,'direct_tables':direct,'f603_tables':collapsed,'violations':violations,
-         'policy':'Named activity identity is supplied from the exact current D1 named-tag table. All activity/table/entity edges and WorldIDs are serialized retail data. Names are joined only by exact s_entity FileHash; no proximity or visual inference.'}
+         'policy':'Named activity identity is supplied from the exact current D1 named-tag table. All activity/table/entity edges and WorldIDs are serialized retail data. Names are joined only by exact s_entity FileHash; no proximity or visual inference. Package provenance uses the source-validated banked D1 Tiger FileHash decoder.'}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
     print('STATUS',out['status'],'ACTIVITY',ah,a.activity_name,'TABLES',len(tables),'F603',len(f603),'SERIALIZED',len(real),'RUNTIME',len(runtime),'UNIQUE_ENTITIES',len(entity_counts),'VIOLATIONS',len(violations))
     print('NAMES',dict(named_counts))
