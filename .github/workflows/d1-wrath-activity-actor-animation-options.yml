@@ -1,0 +1,123 @@
+name: D1 Wrath activity actor animation options
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-wrath-activity-actor-animation-options.yml'
+      - 'tools/d1_activity_actor_animation_seed.py'
+      - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
+      - 'tools/d1_animation_control_state_map.py'
+      - 'tools/d1_animation_retarget_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  WRATH_SOURCE_ARTIFACT_ID: '10003468849'
+  WRATH_SOURCE_ARTIFACT_ZIP_SHA256: '81c395d9be86c569b96e0de1e79f852f8f7d642aa33344fc7807d505feee0999'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  animation-options:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact catalog, Wrath closure, parser, and runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm
+          mkdir -p input/catalog input/wrath runtime out
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WRATH_SOURCE_ARTIFACT_ID}/zip" -o input/wrath.zip
+          echo "${WRATH_SOURCE_ARTIFACT_ZIP_SHA256}  input/wrath.zip" | sha256sum --check --strict
+          unzip -q input/wrath.zip -d input/wrath
+          test -f input/wrath/wrath/entity_dependency_closure.json
+
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser rev-parse HEAD)" = "$PARSER_COMMIT"
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Derive exact animation-capable actor seeds
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_activity_actor_animation_seed.py
+          python tools/d1_activity_actor_animation_seed.py \
+            --entity-closure input/wrath/wrath/entity_dependency_closure.json \
+            -o out/wrath_activity_actor_animation_seed.json \
+            | tee out/wrath_actor_seed.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/wrath_activity_actor_animation_seed.json'))
+          assert d['status']=='D1_ACTIVITY_ACTOR_ANIMATION_SEED_COMPLETE',d['violations']
+          assert not d['violations'],d['violations']
+          assert d['animation_capable_entity_count']==123,d['animation_capable_entity_count']
+          assert len(d['entity_hashes'])==123
+          for r in d['candidates']:
+              assert len(r['skeleton_resources'])==1,r
+              assert len(r['runtime_rig_resources'])==1,r
+              assert all(len(x['resource_hashes'])==1 for x in r['animation_owner_resources']),r
+          print('WRATH_ACTIVITY_ANIMATION_SEED',d['exact_sentity_count'],d['animation_capable_entity_count'],d['excluded_exact_sentity_count'])
+          PY
+
+      - name: Decode source-owned controls and execute native retarget path
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_spawned_actor_animation_options_v2.py
+          set +e
+          python tools/d1_remote_spawned_actor_animation_options_v2.py \
+            --seed out/wrath_activity_actor_animation_seed.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 --runtime runtime --parser-root parser \
+            -o out/wrath_activity_actor_animation_options.json \
+            | tee out/wrath_animation_options.txt
+          rc=${PIPESTATUS[0]}; set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('out/wrath_activity_actor_animation_options.json'))
+          assert d['schema']=='d1_remote_spawned_actor_animation_options/v2',d.get('schema')
+          assert d['entity_count']==123,d['entity_count']
+          assert d['source_closed_entity_count']+d['preserved_with_frontier_entity_count']+d['violation_entity_count']==123
+          print('WRATH_ANIMATION_OPTIONS_STATUS',d['status'])
+          print('SOURCE_CLOSED',d['source_closed_entity_count'],'FRONTIER',d['preserved_with_frontier_entity_count'],'VIOLATION_ENTITIES',d['violation_entity_count'])
+          print('FAMILIES',d['animation_family_count'],'CONTROLS',d['unique_control_count'])
+          print('SELECTOR_SELECTED_CLIPS',d['unique_selector_selected_clip_count'],'BANK_CLIPS',d['unique_animation_list_clip_count'])
+          print('TARGETS',d['target_count'],'CLOSED_TARGETS',d['closed_target_count'])
+          print('RETARGET_PAIRS',d['retarget_pair_execution_count'],'SUCCESS',d['retarget_pair_success_count'],'FAIL',d['retarget_pair_failure_count'])
+          print('FRONTIERS',d['frontier_count'],'VIOLATIONS',d['violation_count'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-WRATH-ACTIVITY-ACTOR-ANIMATION-OPTIONS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
