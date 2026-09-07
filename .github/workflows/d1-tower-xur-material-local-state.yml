@@ -1,0 +1,232 @@
+name: D1 Tower Xur exact material local state
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-material-local-state.yml'
+      - 'tools/d1_material_stage_state_resolve.py'
+      - 'tools/d1_material_decode.py'
+      - 'tools/d1_ps4_sampler_probe.py'
+      - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_world_material_constant_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHADER_CENSUS_ARTIFACT_ID: '10027557806'
+  SHADER_CENSUS_ZIP_SHA256: 'e26febd88c0fcc05d998ec7dab04efcf1582095ee594a459ec472c530c7a5086'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  state:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned shader census, catalog, runtime and current package list
+        run: |
+          set -euo pipefail
+          mkdir -p input/shader input/catalog runtime reports corpus_initial corpus_payload
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_CENSUS_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "${SHADER_CENSUS_ZIP_SHA256}  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          test -f input/shader/reports/xur_material_texture_manifest.json
+          test -f input/shader/reports/XUR_NATIVE_SHADER_CHECKPOINT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/shader/reports/XUR_NATIVE_SHADER_CHECKPOINT.json'))
+          assert d['status']=='D1_XUR_SHADER_BINARY_AND_IMAGE_RESOURCE_CLOSURE_EXACT',d
+          assert d['material_count']==54,d
+          assert d['shader_header_count']==36,d
+          assert d['unique_bounded_gcn_program_count']==31,d
+          PY
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Derive exact material constant and sampler package families
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('input/shader/reports/xur_material_texture_manifest.json'))
+          mats=d['materials']
+          assert len(mats)==54,len(mats)
+          NULL={'00000000','FFFFFFFF'}
+          def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
+          def pid(h):
+              v=int(h,16);assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          const=set();samp=set()
+          for mh,m in mats.items():
+              for h in (m.get('constants') or {}).values():
+                  h=norm(h)
+                  if h not in NULL:const.add(h)
+              for stage in ('vs','ps'):
+                  for r in ((m.get('samplers') or {}).get(stage) or {}).get('items',[]):
+                      h=norm(r.get('first_dword_hex','FFFFFFFF'))
+                      if h not in NULL:samp.add(h)
+          hashes=set(mats)|const|samp
+          ids=sorted({pid(h) for h in hashes})
+          Path('reports/xur_material_tags.txt').write_text('\n'.join(sorted(mats))+'\n')
+          Path('reports/xur_constant_container_tags.txt').write_text('\n'.join(sorted(const))+'\n')
+          Path('reports/xur_sampler_tags.txt').write_text('\n'.join(sorted(samp))+'\n')
+          Path('reports/initial_package_ids.txt').write_text('\n'.join(ids)+'\n')
+          json.dump({'material_count':len(mats),'constant_container_count':len(const),'sampler_tag_count':len(samp),
+                     'constant_containers':sorted(const),'samplers':sorted(samp),'initial_package_ids':ids},
+                    open('reports/xur_local_state_dependency_seed.json','w'),indent=2)
+          print('XUR_LOCAL_STATE_SEED','materials',len(mats),'constant_containers',len(const),'samplers',len(samp),'package_ids',ids)
+          PY
+
+      - name: Recover exact initial material local-state corpus
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/initial_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus_initial --report reports/xur_local_state_initial_corpus.json
+
+      - name: Discover external constant payload package families from exact FileEntry references
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys,json
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          snaps=sorted(Path('corpus_initial').glob('*.pkg'))
+          c=v5.v3.base.Corpus([p.resolve() for p in snaps],Path('runtime').resolve())
+          tags=[x.strip() for x in open('reports/xur_constant_container_tags.txt') if x.strip()]
+          def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
+          def pid(h):
+              v=int(h,16);assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          rows=[];payloads=set();viol=[]
+          for h in tags:
+              m=c.entry_meta(h)
+              if m is None:
+                  viol.append(f'{h}:metadata unavailable');continue
+              ref=norm(m.get('reference','FFFFFFFF'))
+              if ref in ('FFFFFFFF','00000000'):
+                  viol.append(f'{h}:null payload reference');continue
+              payloads.add(ref);rows.append({'container':h,'meta':m,'payload':ref,'payload_package_id':pid(ref)})
+          if viol:raise SystemExit(repr(viol))
+          initial={x.strip() for x in open('reports/initial_package_ids.txt') if x.strip()}
+          pids=sorted({pid(h) for h in payloads})
+          extra=sorted(set(pids)-initial)
+          Path('reports/constant_payload_tags.txt').write_text('\n'.join(sorted(payloads))+'\n')
+          Path('reports/constant_payload_extra_package_ids.txt').write_text('\n'.join(extra)+('\n' if extra else ''))
+          json.dump({'status':'D1_XUR_CONSTANT_CONTAINER_PAYLOAD_REFS_EXACT','container_count':len(rows),
+                     'unique_payload_count':len(payloads),'payload_package_ids':pids,'extra_package_ids':extra,'rows':rows},
+                    open('reports/xur_constant_payload_refs.json','w'),indent=2)
+          print('XUR_CONSTANT_PAYLOAD_REFS','containers',len(rows),'payloads',len(payloads),'payload_package_ids',pids,'extra',extra)
+          PY
+
+      - name: Recover any extra constant-payload families
+        run: |
+          set -euo pipefail
+          if [ -s reports/constant_payload_extra_package_ids.txt ]; then
+            args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/constant_payload_extra_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py \
+              --package-list reports/packages.txt "${args[@]}" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --out-dir corpus_payload --report reports/xur_local_state_payload_corpus.json
+          else
+            printf '%s\n' '{"status":"D1_XUR_LOCAL_STATE_NO_EXTRA_PAYLOAD_FAMILIES"}' > reports/xur_local_state_payload_corpus.json
+          fi
+
+      - name: Resolve all 54 material-local VS and PS states fail-closed
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial corpus_payload -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t mats < reports/xur_material_tags.txt
+          margs=(); for m in "${mats[@]}"; do margs+=(--material "$m"); done
+          python tools/d1_material_stage_state_resolve.py \
+            "${snaps[@]}" --runtime runtime "${margs[@]}" \
+            --out reports/xur_material_stage_state.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/xur_material_stage_state.json'))
+          assert d['status']=='D1_MATERIAL_STAGE_STATE_EXACT',d
+          assert d['selected_material_count']==54,d
+          assert d['resolved_material_count']==54,d
+          assert d['unique_vertex_shader_count']==11,d
+          assert d['unique_pixel_shader_count']==25,d
+          assert not d['violations'],d['violations']
+          assert d['unique_native_sampler_count']==2,d
+          assert d['unique_external_vector4_container_count']==19,d
+          print('XUR_MATERIAL_LOCAL_STATE_EXACT','materials',d['resolved_material_count'],
+                'TFX_programs_stage_sha',d['unique_tfx_program_count_by_stage_sha'],
+                'external_vec4',d['unique_external_vector4_container_count'],
+                'samplers',d['unique_native_sampler_count'])
+          PY
+
+      - name: Cross-check shader identities and summarize remaining semantic frontier
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          state=json.load(open('reports/xur_material_stage_state.json'))
+          shaders=json.load(open('input/shader/reports/xur_shader_sets.json'))
+          got_vs=set(state['shader_materials']['vs']);got_ps=set(state['shader_materials']['ps'])
+          exp_vs=set(shaders['vertex_shader_frequency']);exp_ps=set(shaders['pixel_shader_frequency'])
+          assert got_vs==exp_vs,(sorted(got_vs-exp_vs),sorted(exp_vs-got_vs))
+          assert got_ps==exp_ps,(sorted(got_ps-exp_ps),sorted(exp_ps-got_ps))
+          tfx_complete=all(r[s]['tfx_disassembly']['complete'] for r in state['materials'].values() for s in ('vs','ps'))
+          assert tfx_complete
+          final={
+            'status':'D1_XUR_MATERIAL_LOCAL_STATE_EXACT',
+            'xur_identity':{'string_hash':'46C55854','entity_model':'80C88CEF'},
+            'material_count':54,
+            'vertex_shader_count':11,'pixel_shader_count':25,
+            'native_shader_program_checkpoint':{'shader_headers':36,'unique_bounded_gcn_programs':31},
+            'unique_material_tfx_programs_by_stage_sha':state['unique_tfx_program_count_by_stage_sha'],
+            'external_vector4_container_count':state['unique_external_vector4_container_count'],
+            'native_sampler_count':state['unique_native_sampler_count'],
+            'all_tfx_programs_framed_completely':True,
+            'material_state4_histogram':state['material_state4_histogram'],
+            'vector_storage_relation_counts':state['vector_storage_relation_counts'],
+            'tfx_opcode_histogram':state['tfx_opcode_histogram'],
+            'tfx_extern_histogram':state['tfx_extern_histogram'],
+            'semantic_recreation_complete':False,
+            'permutation_selection_complete':False,
+            'next_proof_target':'Lift the 31 exact native GCN families together with this exact local TFX/constants/sampler/state corpus; separately close live external-material permutation selection.',
+          }
+          Path('reports/XUR_MATERIAL_LOCAL_STATE_CHECKPOINT.json').write_text(json.dumps(final,indent=2)+'\n')
+          print(json.dumps(final,indent=2))
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-XUR-EXACT-MATERIAL-LOCAL-STATE
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
