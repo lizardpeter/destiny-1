@@ -1,0 +1,97 @@
+name: D1 Tower spawned actor control entity probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-control-entity-probe.yml'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover exact universal catalog and runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Resolve all sixteen unique exact SEntity references
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_exact_s_entity_probe.py \
+            --tag-hash 809D8106 \
+            --tag-hash 809D8107 \
+            --tag-hash 80C885D4 \
+            --tag-hash 80C880D7 \
+            --tag-hash 80C888BF \
+            --tag-hash 80C88229 \
+            --tag-hash 80C888C0 \
+            --tag-hash 80C888C1 \
+            --tag-hash 80C888C2 \
+            --tag-hash 80C888C3 \
+            --tag-hash 80C888C4 \
+            --tag-hash 80C888C5 \
+            --tag-hash 80C888C6 \
+            --tag-hash 80C7AC8E \
+            --tag-hash 80C88228 \
+            --tag-hash 80C889D3 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 \
+            --runtime runtime \
+            -o out/TOWER_SPAWNED_ACTOR_CONTROL_ENTITIES.json \
+            | tee out/stdout.txt
+          python - <<'PY'
+          import collections,json
+          d=json.load(open('out/TOWER_SPAWNED_ACTOR_CONTROL_ENTITIES.json'))
+          assert d['status']=='D1_EXACT_S_ENTITY_PROBE',d['violations']
+          assert len(d['entries'])==16,d
+          model_counts=collections.Counter();bone_counts=collections.Counter();role_counts=collections.Counter();child_total=0
+          rows=[]
+          for e in d['entries']:
+              for m in e.get('embedded_models',[]): model_counts[m]+=1
+              for s in e.get('skeletons',[]): bone_counts[int(s['node_count'])]+=1
+              for r in e.get('resources',[]):
+                  role=(r.get('entity_resource') or {}).get('semantic_role')
+                  if role: role_counts[role]+=1
+              child_total+=len(e.get('child_entities',[]))
+              rows.append({'entity':e['tag_hash'],'models':e.get('embedded_models',[]),'skeletons':[{'resource_hash':s['resource_hash'],'node_count':s['node_count']} for s in e.get('skeletons',[])],'children':e.get('child_entities',[]),'resource_count':e.get('resource_count')})
+          summary={'schema_version':1,'status':'D1_TOWER_SPAWNED_ACTOR_CONTROL_ENTITIES_RESOLVED','entity_count':len(rows),'model_frequency':dict(model_counts),'skeleton_bone_count_frequency':dict(bone_counts),'resource_role_frequency':dict(role_counts),'child_entity_edge_count':child_total,'entities':rows}
+          json.dump(summary,open('out/TOWER_SPAWNED_ACTOR_CONTROL_ENTITIES_SUMMARY.json','w'),indent=2)
+          print('CONTROL_ENTITIES','count',len(rows),'MODELS',dict(model_counts),'BONES',dict(bone_counts),'ROLES',dict(role_counts),'CHILD_EDGES',child_total)
+          for x in rows: print(' ENTITY',x['entity'],'MODELS',x['models'],'SKELS',x['skeletons'],'CHILDREN',[(c['entity_hash'],c.get('transform_count')) for c in x['children']])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-CONTROL-ENTITIES
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
