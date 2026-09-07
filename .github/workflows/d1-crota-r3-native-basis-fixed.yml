@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-crota-r3-native-basis-fixed.yml'
+      - 'tools/d1_crota_r3_trigger.py'
       - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
       - 'tools/d1_gltf_single_skin_geometry_alignment_probe.py'
       - 'tools/d1_gltf_restore_native_tiger_skin_basis.py'
@@ -79,11 +80,9 @@ jobs:
           assert len(old.get('materials',[]))==len(new.get('materials',[]))==2
           assert len(old.get('skins',[]))==len(new.get('skins',[]))==1
           assert len(old.get('animations',[]))==len(new.get('animations',[]))==82
-          for oi,ni in zip(old['meshes'],new['meshes']):
-            assert oi==ni
+          for oi,ni in zip(old['meshes'],new['meshes']): assert oi==ni
           checkpoint={
-            'schema':'d1_crota_r3_native_basis_checkpoint/v1',
-            'status':'D1_CROTA_R3_NATIVE_BASIS_FIXED_COMPLETE',
+            'schema':'d1_crota_r3_native_basis_checkpoint/v1','status':'D1_CROTA_R3_NATIVE_BASIS_FIXED_COMPLETE',
             'input_sha256':hashlib.sha256(Path('input/r2/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb').read_bytes()).hexdigest(),
             'output_sha256':hashlib.sha256(Path('out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb').read_bytes()).hexdigest(),
             'output_bytes':Path('out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb').stat().st_size,
@@ -104,5 +103,3 @@ jobs:
           path: out/
           retention-days: 30
           if-no-files-found: error
-
-# registration trigger
