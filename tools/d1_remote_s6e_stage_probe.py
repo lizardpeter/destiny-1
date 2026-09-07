@@ -8,9 +8,12 @@ Source layout is pinned by Charm ActivityStructsROI.cs:
   S22428080 +0x00 Tag<SF6038080>
   SF6038080 +0x0C EntityResource FileHash
 
-The tool reports those literal edges and parses each EntityResource with the existing
-D1 resource parser. It is intentionally semantic-conservative beyond parser-proven
-roles.
+Every F603 is additionally passed through the already source-validated D1 Activity
+collapse parser.  When its EntityResource pair is 8080092E -> 808007DD, the embedded
+SDD078080.DataEntries are therefore decoded as exact SMapDataEntry placements:
+EntitySK, rotation, translation, WorldID and DataResource.
+
+The tool reports literal serialized edges and does not infer identities from dev names.
 """
 from __future__ import annotations
 import argparse,json,struct,sys
@@ -21,6 +24,7 @@ from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_split_tar_extract import SplitHttpTar
 from d1_remote_activity_placements import RemoteCorpus
 from d1_entity_resource_probe import parse_resource,ENTITY_RESOURCE_CLASS
+import d1_world_activity_entity_resource_census as placements
 
 S6E='8080076E';MAP='808009A2';F603='808003F6';NULLS={'00000000','FFFFFFFF'}
 def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
@@ -58,15 +62,28 @@ def main():
     try:fr['entity_resource_parse']=parse_resource(eb,'PS4')
     except Exception as ex:fr['entity_resource_parse_error']=repr(ex)
    else:viol.append(f'stage[{i}] f603[{j}] entity resource {erh} invalid')
+   # The generic parser deliberately labels some legacy Activity pairs unknown.
+   # Reuse the exact Activity collapse parser to test/parse 8080092E -> 808007DD.
+   try:
+    cp=placements.parse_f603(c,fh);fr['activity_collapse']=cp
+    if cp.get('violations'):viol.extend(f'stage[{i}] f603[{j}] collapse:{x}' for x in cp['violations'])
+   except Exception as ex:
+    fr['activity_collapse_error']=repr(ex);viol.append(f'stage[{i}] f603[{j}] collapse exception:{ex!r}')
    row['f603s'].append(fr)
   stages.append(row)
- out={'schema':'d1_remote_s6e_stage_probe/v1','status':'D1_REMOTE_S6E_STAGE_PROBE_COMPLETE' if not viol else 'D1_REMOTE_S6E_STAGE_PROBE_WITH_VIOLATIONS','s6e':h,'s6e_meta':m,'payload_source':src,'stage_array':arr,'stages':stages,'violations':viol,'policy':'All stage/map/F603/EntityResource edges are literal serialized FileHashes. EntityResource semantics are only those returned by the existing source-crosschecked parser.'}
+ exact_entries=[]
+ for s in stages:
+  for f in s['f603s']:
+   cp=f.get('activity_collapse') or {}
+   for e in cp.get('entries',[]):exact_entries.append({'stage_index':s['stage_index'],'f603':f['f603']['hash'],'entity_resource':(f.get('entity_resource') or {}).get('hash'),**e})
+ out={'schema':'d1_remote_s6e_stage_probe/v2','status':'D1_REMOTE_S6E_STAGE_PROBE_COMPLETE' if not viol else 'D1_REMOTE_S6E_STAGE_PROBE_WITH_VIOLATIONS','s6e':h,'s6e_meta':m,'payload_source':src,'stage_array':arr,'stages':stages,'collapsed_placement_entry_count':len(exact_entries),'collapsed_placement_entries':exact_entries,'violations':viol,'policy':'All stage/map/F603/EntityResource edges are literal serialized FileHashes. 8080092E -> 808007DD resources are decoded only through the source-validated Activity collapse path. Entity identities and transforms in collapsed entries are exact SMapDataEntry fields; dev-name text is provenance, not identity inference.'}
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
- print('STATUS',out['status'],'S6E',h,'STAGES',len(stages),'VIOLATIONS',len(viol))
+ print('STATUS',out['status'],'S6E',h,'STAGES',len(stages),'COLLAPSED_PLACEMENTS',len(exact_entries),'VIOLATIONS',len(viol))
  for s in stages:
   print('STAGE',s['stage_index'],'MAP',s['map_data_table']['hash'],'F603',len(s['f603s']))
   for f in s['f603s']:
-   er=f.get('entity_resource') or {};p=f.get('entity_resource_parse') or {}
-   print(' F603',f['f603']['hash'],'ER',er.get('hash'),'ROLE',p.get('semantic_role'),'D912',p.get('scripted_entity_table_tag_hash'),'DEV',p.get('dev_name'))
+   er=f.get('entity_resource') or {};p=f.get('entity_resource_parse') or {};cp=f.get('activity_collapse') or {}
+   print(' F603',f['f603']['hash'],'ER',er.get('hash'),'ROLE',p.get('semantic_role'),'PAIR',((p.get('unk10') or {}).get('class_hash'),(p.get('unk18') or {}).get('class_hash')),'COLLAPSED',cp.get('collapsed'),'DEV',(cp.get('dev_name') or {}).get('value'),'ENTRIES',len(cp.get('entries',[])))
+   for e in cp.get('entries',[]):print('   ENTRY',e.get('entity_hash'),'WORLD',e.get('world_id_hex'),'T',e.get('translation'),'R',e.get('rotation'),'DATA_CLASS',(e.get('data_resource') or {}).get('resource_class'))
  return 0 if not viol else 2
 if __name__=='__main__':raise SystemExit(main())
