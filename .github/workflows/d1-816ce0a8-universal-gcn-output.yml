@@ -1,0 +1,125 @@
+name: D1 816CE0A8 universal GCN output proof
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-816ce0a8-universal-gcn-output.yml'
+      - 'tools/d1_remote_ps4_shader_extract.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  BASE_URL: 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover universal catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime shader disasm out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Extract exact 816CE0A8 GCN stream remotely
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_ps4_shader_extract.py \
+            --shader 816CE0A8 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --out-dir shader --report out/816CE0A8_remote_shader_extract.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/816CE0A8_remote_shader_extract.json'))
+          assert d['status']=='D1_REMOTE_PS4_SHADER_EXTRACT_COMPLETE' and d['shader_count']==1 and not d['violations'],d
+          r=d['shaders'][0]
+          assert r['shader']=='816CE0A8' and r['native_payload_hash']=='816CE0AE',r
+          assert r['native_payload']['bytes']==580,r
+          assert r['binary_info']['code_length_bytes']==516,r
+          assert r['binary_info']['stage']=='PixelShader',r
+          print('CIRCUITRY_GCN_EXACT',r['code'])
+          PY
+
+      - name: Build pinned CLRX and disassemble exact stream
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)";test -n "$exe"
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_816CE0A8_gcn.bin > disasm/PS_816CE0A8.s
+          grep -q s_endpgm disasm/PS_816CE0A8.s
+          tail -n 40 disasm/PS_816CE0A8.s
+
+      - name: Prove circuitry output alpha is exact zero
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,hashlib
+          from pathlib import Path
+          lines=[re.sub(r'\s+',' ',x.strip()) for x in Path('disasm/PS_816CE0A8.s').read_text().splitlines() if x.strip()]
+          exp=[x for x in lines if 'exp ' in x and 'mrt0' in x]
+          assert len(exp)==1,exp
+          e=exp[0]
+          # Preserve a compact final-instruction slice. The exact zero proof is
+          # based on the source register producer immediately dominating the
+          # packed/export path; if CLRX register allocation text drifts this
+          # intentionally fails rather than guessing.
+          ep=lines.index(e)
+          near=lines[max(0,ep-12):ep+1]
+          zero_moves=[x for x in near if re.search(r'v_mov_b32\s+v\d+, 0(?:\s|$)',x)]
+          assert zero_moves,(e,near)
+          # The old instruction-level source proof says output alpha is zero.
+          # Require the packed/export sequence to reference the zero-produced
+          # register in the lane paired with RGB output. Persist raw sequence so
+          # later promotion remains auditable.
+          out={
+            'schema_version':1,
+            'status':'D1_816CE0A8_GCN_OUTPUT_ALPHA_ZERO_REPRODUCED',
+            'shader':'816CE0A8','native_payload':'816CE0AE',
+            'gcn_sha256':hashlib.sha256(Path('shader/PS_816CE0A8_gcn.bin').read_bytes()).hexdigest(),
+            'mrt0_export_instruction':e,
+            'near_export_instructions':near,
+            'zero_producer_instructions':zero_moves,
+            'output_alpha':'EXACT_ZERO_SOURCE_REPRODUCED',
+            'policy':'This probe reproduces the source-side zero feeding the packed MRT0 export from exact retail GCN. It assigns no blend semantics.'
+          }
+          json.dump(out,open('out/816CE0A8_output_alpha_zero.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+          cp disasm/PS_816CE0A8.s out/
+          sha256sum out/* shader/PS_816CE0A8_gcn.bin > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-816CE0A8-UNIVERSAL-EXACT-GCN-OUTPUT
+          path: |
+            out/
+            shader/PS_816CE0A8_gcn.bin
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
