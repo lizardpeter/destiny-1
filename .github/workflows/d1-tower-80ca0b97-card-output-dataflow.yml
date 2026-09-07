@@ -1,0 +1,65 @@
+name: D1 Tower 80CA0B97 card output dataflow
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80ca0b97-card-output-dataflow.yml'
+      - 'tools/d1_gcn_card_output_dependency_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '9999182073'
+  SOURCE_ARTIFACT_ZIP_SHA256: '60b78ca843fc2fe2cb087b9bc7abf210509040ad09be4f8860740bba4509ff3a'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact source-closed GCN evidence
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/reports/offender_image_usage.json
+          test -f input/source/disasm/PS_80B9E8CF.s
+          test -f input/source/disasm/PS_80B9E8D0.s
+      - name: Prove exact material-texture to MRT0 dependency chain
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_card_output_dependency_probe.py \
+            --image-usage input/source/reports/offender_image_usage.json \
+            --disasm-dir input/source/disasm \
+            -o out/80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY.json'))
+          assert d['status']=='D1_80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY_PROVEN',d
+          assert d['shader_count']==2 and not d['violations'],d
+          rows={x['shader']:x for x in d['shaders']}
+          assert rows['80B9E8CF']['output_structure']['rgb_structure']=='PREMULTIPLIED_BY_FINAL_ALPHA_SCALAR'
+          assert rows['80B9E8D0']['output_structure']['rgb_structure']=='EXPLICIT_ZERO'
+          assert all(x['t0_times_t1_product_feeds_final_alpha_scalar'] for x in rows.values())
+          assert d['blend_mode_semantic']=='WITHHELD'
+          print('CARD_OUTPUT_DATAFLOW_CLOSED',d['portable_rendering_consequence'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-80CA0B97-EXACT-GCN-OUTPUT-DATAFLOW
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
