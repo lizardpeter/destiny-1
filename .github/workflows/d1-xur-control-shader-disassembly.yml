@@ -49,6 +49,14 @@ jobs:
             --shader 80876568 --shader 80876579 --shader 8087656E --shader 8087656A \
             --shader 8087695B --shader 8087695C --shader 80876562 --shader 80876563 --shader 80876801 --shader 80876570 \
             --out-dir shader --report reports/XUR_SHADER_EXTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_SHADER_EXTRACT.json'))
+          assert d['status']=='D1_REMOTE_PS4_SHADER_EXTRACT_COMPLETE',d
+          assert d['shader_count']==10 and d['pixel_shader_count']==4 and d['vertex_shader_count']==6,d
+          assert not d['violations'],d
+          print('XUR_NATIVE_SHADER_STAGE_CLOSURE','PS',d['pixel_shader_count'],'VS',d['vertex_shader_count'])
+          PY
       - name: Build pinned CLRX
         run: |
           set -euo pipefail
@@ -61,19 +69,25 @@ jobs:
         run: |
           set -euo pipefail
           exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
-          for f in shader/PS_*_gcn.bin; do
-            h="$(basename "$f")"; h="${h#PS_}"; h="${h%_gcn.bin}"
-            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${h}_gfx700.s" 2> "disasm/${h}.stderr"
-            test ! -s "disasm/${h}.stderr"; grep -q 's_endpgm' "disasm/${h}_gfx700.s"
+          shopt -s nullglob
+          files=(shader/PS_*_gcn.bin shader/VS_*_gcn.bin)
+          test "${#files[@]}" -eq 10
+          for f in "${files[@]}"; do
+            n="$(basename "$f" _gcn.bin)"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${n}_gfx700.s" 2> "disasm/${n}.stderr"
+            test ! -s "disasm/${n}.stderr"; grep -q 's_endpgm' "disasm/${n}_gfx700.s"
           done
           python - <<'PY'
           from pathlib import Path
           import json,re
           rows=[]
           for p in sorted(Path('disasm').glob('*_gfx700.s')):
-              t=p.read_text(); h=p.name.split('_')[0]
-              rows.append({'shader':h,'lines':len(t.splitlines()),'image_instructions':len(re.findall(r'\bimage_',t)),'exports':len(re.findall(r'\bexp\b',t)),'buffer_loads':len(re.findall(r'\bbuffer_load|\bs_buffer_load',t))})
-          Path('reports/XUR_SHADER_DISASM_SUMMARY.json').write_text(json.dumps({'schema_version':1,'status':'D1_XUR_CONTROL_SHADER_DISASSEMBLY_COMPLETE','shaders':rows},indent=2)+'\n')
+              t=p.read_text(); parts=p.name.split('_'); stage=parts[0]; h=parts[1]
+              rows.append({'shader':h,'stage':stage,'lines':len(t.splitlines()),'image_instructions':len(re.findall(r'\bimage_',t)),'exports':len(re.findall(r'\bexp\b',t)),'buffer_loads':len(re.findall(r'\bbuffer_load|\bs_buffer_load',t))})
+          assert len(rows)==10,rows
+          assert sum(r['stage']=='PS' for r in rows)==4,rows
+          assert sum(r['stage']=='VS' for r in rows)==6,rows
+          Path('reports/XUR_SHADER_DISASM_SUMMARY.json').write_text(json.dumps({'schema_version':2,'status':'D1_XUR_CONTROL_SHADER_DISASSEMBLY_COMPLETE','shaders':rows},indent=2)+'\n')
           print(json.dumps(rows,indent=2))
           PY
           sha256sum shader/* disasm/* reports/* > reports/SHA256SUMS.txt
