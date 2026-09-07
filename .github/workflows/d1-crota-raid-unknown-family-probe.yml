@@ -1,0 +1,133 @@
+name: D1 Crota raid unresolved EntityResource families
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-raid-unknown-family-probe.yml'
+      - 'tools/d1_remote_catalog_entity_resource_probe.py'
+      - 'tools/d1_entity_resource_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  RAID_CENSUS_ARTIFACT_ID: '9999332178'
+  RAID_CENSUS_ZIP_SHA256: 'c65b48d54a6463eb116b0c18c525a8a399873e68cd52a27281f4f7982dfacfee'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact retained evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/raid runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAID_CENSUS_ARTIFACT_ID}/zip" -o input/raid.zip
+          echo "${RAID_CENSUS_ZIP_SHA256}  input/raid.zip" | sha256sum --check --strict
+          unzip -q input/raid.zip -d input/raid
+          test -f input/raid/CROTA_RAID_F603_SCRIPTED_OWNERS.json
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Lock exact unresolved family membership
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          d=json.load(open('input/raid/CROTA_RAID_F603_SCRIPTED_OWNERS.json'))
+          assert d['input_f603_count']==509
+          expected={
+            '808007E8->80800360':30,
+            '808006D5->808005B9':23,
+            '80800560->80800688':22,
+            '80800810->80800904':19,
+            '808003C0->80800386':16,
+            '80802236->8080295E':16,
+          }
+          assert all(d['class_pair_counts'].get(k)==v for k,v in expected.items()),d['class_pair_counts']
+          pathlib.Path('out/FAMILY_MEMBERS.json').write_text(json.dumps({
+            'schema':'d1_crota_raid_unresolved_family_members/v1',
+            'source_run':34067213992,'source_artifact':9999332178,
+            'families':{k:[r['entity_resource_hash'] for r in d['rows'] if f"{r.get('unk10_class')}->{r.get('unk18_class')}"==k] for k in expected}
+          },indent=2)+'\n')
+          for k,v in expected.items(): print('FAMILY',k,v)
+          PY
+
+      - name: Probe every member of six largest unresolved families
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_catalog_entity_resource_probe.py tools/d1_entity_resource_probe.py
+          python - <<'PY' > out/probe_commands.sh
+          import json
+          d=json.load(open('out/FAMILY_MEMBERS.json'))
+          for pair,tags in d['families'].items():
+              stem=pair.replace('->','_')
+              args=' '.join('--tag-hash 0x'+x for x in tags)
+              print(f"python tools/d1_remote_catalog_entity_resource_probe.py {args} --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime -o out/FAMILY_{stem}.json")
+          PY
+          bash -eux out/probe_commands.sh | tee out/probe_stdout.txt
+
+      - name: Summarize exact dependency shapes
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import collections,glob,json,pathlib
+          refs_of_interest={'80800734','80800861','80801AB5','808006BD','8080049A','808008B2','808005A1','80802C0E','808012D9','808009A2'}
+          summary={}
+          for fn in sorted(glob.glob('out/FAMILY_*.json')):
+              if fn.endswith('FAMILY_MEMBERS.json'): continue
+              d=json.load(open(fn)); assert not d['violations'],(fn,d['violations'])
+              rows=d['entries']; pair=pathlib.Path(fn).stem.removeprefix('FAMILY_').replace('_','->',1)
+              sizes=collections.Counter(r['payload_size'] for r in rows)
+              refs=collections.Counter(m['reference'] for r in rows for m in r.get('aligned_resolved_tag_matches',[]))
+              offsets=collections.Counter((m['offset_hex'],m['reference']) for r in rows for m in r.get('aligned_resolved_tag_matches',[]))
+              interesting=[]
+              for r in rows:
+                  hits=[m for m in r.get('aligned_resolved_tag_matches',[]) if m['reference'] in refs_of_interest]
+                  if hits: interesting.append({'tag_hash':r['tag_hash'],'hits':hits})
+              summary[pair]={
+                  'count':len(rows),'payload_sizes':dict(sizes),'resolved_reference_counts':dict(refs),
+                  'common_offset_reference_pairs':[{'offset':o,'reference':ref,'count':n} for (o,ref),n in offsets.most_common()],
+                  'interesting_typed_dependencies':interesting,
+                  'no_resolved_dependency_count':sum(not r.get('aligned_resolved_tag_matches') for r in rows),
+              }
+              print('\nFAMILY',pair,'COUNT',len(rows),'SIZES',dict(sizes))
+              print('REFS',dict(refs))
+              print('TOP_OFFSETS',offsets.most_common(30))
+              print('INTERESTING_TYPED',[(x['tag_hash'],[(h['offset_hex'],h['tag_hash'],h['reference']) for h in x['hits']]) for x in interesting])
+          pathlib.Path('out/CROTA_RAID_UNRESOLVED_FAMILY_SUMMARY.json').write_text(json.dumps({'schema':'d1_crota_raid_unresolved_family_probe/v1','families':summary,'policy':'All dependencies are literal aligned FileHashes resolving through the exact current universal catalog. No semantic role is promoted from adjacency or repetition.'},indent=2)+'\n')
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-RAID-UNRESOLVED-FAMILY-PROBE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
