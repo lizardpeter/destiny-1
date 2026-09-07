@@ -6,7 +6,6 @@ on:
     paths:
       - '.github/workflows/d1-tower-xur-shader-semantic-frontier.yml'
       - 'tools/d1_xur_shader_semantic_frontier.py'
-      - 'notes/D1_XUR_TEXTURE_SHADER_AND_PERMUTATION_STATUS_2026-09-07.md'
 
 permissions:
   contents: read
