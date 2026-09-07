@@ -56,15 +56,22 @@ jobs:
           p=d['rows'][0]['render_parent']
           assert p['embedded_model_tag_hash']=='80C88CEF',p
           mats=p['external_material_tag_hashes']; mp=p['external_materials_map_entries']
+          sel=p['external_material_selector_table_entries']
           print('MODEL',p['embedded_model_tag_hash'])
           print('TEXTURE_PLATES',p['texture_plates_roi_entries'])
-          print('EXTERNAL_MAP_COUNT',len(mp),'EXTERNAL_MATERIAL_COUNT',len(mats))
+          print('EXTERNAL_MAP_COUNT',len(mp),'SELECTOR_TABLE_COUNT',len(sel),'EXTERNAL_MATERIAL_COUNT',len(mats))
+          print('SELECTOR_TABLE_HEADER',p['external_material_selector_table'])
+          for r in sel:
+              print('SELECTOR',r['index'],r['unk00'],r['unk02'],r['unk04'],r['unk06'])
           multi=[]
           for r in mp:
               c=r['material_count'];s=r['material_start_index']
               bank=mats[s:s+c] if c>0 and 0<=s<=len(mats) else []
-              print('VARIANT',r['variant_shader_index'],'COUNT',c,'START',s,'UNK08',r['unk08'],'BANK',bank)
+              u=r['unk08']; sr=sel[u] if 0<=u<len(sel) else None
+              print('VARIANT',r['variant_shader_index'],'COUNT',c,'START',s,'UNK08',u,'SELECTOR_AT_UNK08',sr,'BANK',bank)
               if c>1: multi.append({'variant_shader_index':r['variant_shader_index'],'materials':bank})
+          print('UNK08_COUNTS',dict(sorted(collections.Counter(r['unk08'] for r in mp).items())))
+          print('UNK08_SELECTOR_ROWS',{u:(sel[u] if 0<=u<len(sel) else None) for u in sorted({r['unk08'] for r in mp})})
           print('MULTI_MATERIAL_VARIANTS',multi)
           xur={'80C885E6','80C885E7','80C885E8','80C885E9','80C885EA'}
           print('XUR_BANK_POSITIONS',{h:[i for i,x in enumerate(mats) if x==h] for h in sorted(xur)})
