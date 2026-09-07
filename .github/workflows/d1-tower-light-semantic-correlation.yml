@@ -1,0 +1,104 @@
+name: D1 Tower exact light semantic correlation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-light-semantic-correlation.yml'
+      - 'tools/d1_world_light_semantic_correlation.py'
+      - 'tools/d1_world_light_volume_invariants.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LIGHTING_ARTIFACT_ID: '9982993010'
+  LIGHTING_ARTIFACT_ZIP_SHA256: '6dfd357061f139e18f239c046b0c91e1f2867d3d436709e7cbf9ef19dfdf975b'
+  MATERIAL_ARTIFACT_ID: '9983054758'
+  MATERIAL_ARTIFACT_ZIP_SHA256: '7ead49c5b9ee814111859c2108af0c3d74de8b68d171e1e2f8f90af1f4784030'
+
+jobs:
+  correlate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned source-closed lighting artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p input/lighting input/materials out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LIGHTING_ARTIFACT_ID}/zip" -o input/lighting.zip
+          echo "${LIGHTING_ARTIFACT_ZIP_SHA256}  input/lighting.zip" | sha256sum --check --strict
+          unzip -q input/lighting.zip -d input/lighting
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MATERIAL_ARTIFACT_ID}/zip" -o input/materials.zip
+          echo "${MATERIAL_ARTIFACT_ZIP_SHA256}  input/materials.zip" | sha256sum --check --strict
+          unzip -q input/materials.zip -d input/materials
+          test -f input/lighting/tower_map_lighting_census.json
+          test -f input/lighting/tower_map_light_semantic_probe.json
+          test -f input/lighting/tower_light_tfx_program_inventory.json
+          test -f input/materials/tower_light_material_manifest.json
+
+      - name: Re-prove affine/projective volume invariants from pinned records
+        run: |
+          set -euo pipefail
+          python tools/d1_world_light_volume_invariants.py \
+            --lighting-census input/lighting/tower_map_lighting_census.json \
+            --semantic-probe input/lighting/tower_map_light_semantic_probe.json \
+            --material-manifest input/materials/tower_light_material_manifest.json \
+            --out out/tower_light_volume_invariants.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/tower_light_volume_invariants.json'))
+          assert d['status']=='D1_WORLD_LIGHT_VOLUME_INVARIANTS_PROVEN',d
+          s=d['summary']
+          assert (s['affine_volume_count'],s['projective_volume_count'])==(512,225),s
+          assert s['pixel_shader_cross_kind_count']==0,s
+          print('VOLUME_INVARIANTS_REPROVED',s)
+          PY
+
+      - name: Correlate exact opaque fields, shaders and TFX program families
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_world_light_semantic_correlation.py
+          python tools/d1_world_light_semantic_correlation.py \
+            --lighting-census input/lighting/tower_map_lighting_census.json \
+            --semantic-probe input/lighting/tower_map_light_semantic_probe.json \
+            --material-manifest input/materials/tower_light_material_manifest.json \
+            --volume-invariants out/tower_light_volume_invariants.json \
+            --tfx-inventory input/lighting/tower_light_tfx_program_inventory.json \
+            -o out/tower_light_semantic_correlation.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/tower_light_semantic_correlation.json'))
+          assert d['status']=='D1_TOWER_LIGHT_SEMANTIC_CORRELATION_COMPLETE',d['violations']
+          assert d['instance_count']==737,d
+          assert d['volume_kind_histogram']=={'AFFINE_VOLUME':512,'PROJECTIVE_VOLUME':225},d
+          assert d['unique_material_count']==497,d
+          assert d['unique_pixel_shader_count']==32,d
+          assert d['unique_vertex_shader_count']==8,d
+          assert d['unique_tfx_program_count']==34,d
+          assert d['fully_pure_partition_counts']['pixel_shaders']==32,d
+          print('LIGHT_CORRELATION_CLOSED',json.dumps({k:d[k] for k in ('instance_count','volume_kind_histogram','unique_material_count','unique_pixel_shader_count','unique_vertex_shader_count','unique_tfx_program_count','flags88_value_count','flags8c_value_count','fully_pure_partition_counts')},indent=2))
+          print('FLAGS88_PARTITION',json.dumps(d['flags88_volume_partition'],indent=2))
+          print('FLAGS8C_PARTITION',json.dumps(d['flags8c_volume_partition'],indent=2))
+          PY
+          cp input/lighting/tower_map_light_semantic_probe.json out/
+          cp input/lighting/tower_light_tfx_program_inventory.json out/
+          cp input/materials/tower_light_material_manifest.json out/
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-EXACT-LIGHT-SEMANTIC-CORRELATION
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
