@@ -32,6 +32,16 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
+      - name: Install Python image dependency
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python - <<'PY'
+          import PIL
+          assert PIL.__version__ == '11.3.0', PIL.__version__
+          print('PILLOW', PIL.__version__)
+          PY
+
       - name: Recover verified universal package catalog
         env:
           GH_TOKEN: ${{ github.token }}
