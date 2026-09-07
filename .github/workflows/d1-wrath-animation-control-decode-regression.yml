@@ -1,0 +1,97 @@
+name: D1 Wrath animation control state clip regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-wrath-animation-control-decode-regression.yml'
+      - 'tools/d1_remote_activity_animation_control_decode.py'
+      - 'tools/d1_animation_control_state_map.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  CONTROL_PLAN_ARTIFACT_ID: '10003732330'
+  CONTROL_PLAN_ARTIFACT_ZIP_SHA256: 'cfeddba3d3dd86187f147be523d9a79c2b1a3009c744ba456ff0fdae8c7c3f35'
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact catalog and actor control plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/control runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CONTROL_PLAN_ARTIFACT_ID}/zip" -o input/control.zip
+          echo "${CONTROL_PLAN_ARTIFACT_ZIP_SHA256}  input/control.zip" | sha256sum --check --strict
+          unzip -q input/control.zip -d input/control
+          test -f input/control/wrath_activity_actor_animation_control_plan.json
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Decode exact control state clip selections
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_activity_animation_control_decode.py tools/d1_animation_control_state_map.py
+          python tools/d1_remote_activity_animation_control_decode.py \
+            --control-plan input/control/wrath_activity_actor_animation_control_plan.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime \
+            -o out/wrath_activity_animation_control_decode.json \
+            | tee out/control_decode.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/wrath_activity_animation_control_decode.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_ANIMATION_CONTROL_DECODE_COMPLETE',d['violations'][:20]
+          assert d['actor_count']==123,d['actor_count']
+          assert d['control_count']==45,d['control_count']
+          assert d['violation_count']==0,d['violations'][:20]
+          assert d['unique_state_hash_count']>0,d
+          assert d['unique_selector_selected_clip_count']>0,d
+          assert d['unique_animation_list_bank_clip_count']>=d['unique_selector_selected_clip_count'],d
+          selected=set(d['selector_selected_clip_hashes'])
+          bank=set(d['animation_list_bank_clip_hashes'])
+          assert selected<=bank,(len(selected-bank),sorted(selected-bank)[:20])
+          for ch,r in d['controls'].items():
+              assert not r['violations'],(ch,r['violations'])
+              assert set(r['selector_selected_clip_hashes'])<=set(r['animation_list_clip_hashes']),ch
+          print('WRATH_CONTROL_DECODE_CLOSED',d['control_count'],d['unique_state_hash_count'],d['selector_selected_edge_count'],d['unique_selector_selected_clip_count'],d['unique_animation_list_bank_clip_count'],d['unused_bank_clip_count'])
+          print('KNOWN_STATE_NAMES',d['known_state_name_reference_counts'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-WRATH-ANIMATION-CONTROL-STATE-CLIP-DECODE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
