@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "status": "D1_XUR_SIX_SOURCE_OWNED_LOCATIONS_CLOSED",
+  "source": {
+    "workflow_run_id": 34169850986,
+    "artifact_id": 10035348165,
+    "artifact_zip_sha256": "d1434751738607659e3eb05bd563165e9399c863a7dea673304b62833d692a6f",
+    "report": "D1_XUR_D912_LOCATION_GROUP_CLOSURE.json",
+    "status": "D1_XUR_D912_LOCATION_GROUP_CLOSURE_COMPLETE",
+    "decoded_d912_count": 10,
+    "serialized_location_count": 20,
+    "exact_unique_xur_location_count": 20
+  },
+  "retail_branch_preimages": {
+    "07A04EFA": "sq_boulevard_vendor_black_market",
+    "4AC210DE": "vendor_black_market",
+    "E4105D4B": "sq_underwatch_vendor_black_market"
+  },
+  "locations": [
+    {
+      "branch_string_hash": "07A04EFA",
+      "branch": "sq_boulevard_vendor_black_market",
+      "group_type_string_hash": "721945F6",
+      "position_d1": [-108.12258911132812, 52.13251495361328, -7.194820404052734],
+      "rotation_xyzw_representative": [0.0, 0.0, 0.7071067690849304, -0.7071067690849304],
+      "source_d912s": ["80C7A251", "80C7AC71", "80C88185"],
+      "source_entities": ["80C7ACC8", "80C885AA"],
+      "serialized_occurrence_count": 3
+    },
+    {
+      "branch_string_hash": "07A04EFA",
+      "branch": "sq_boulevard_vendor_black_market",
+      "group_type_string_hash": "2112ABDE",
+      "position_d1": [-135.4258270263672, 20.923768997192383, -8.50601863861084],
+      "rotation_xyzw_representative": [0.0, 0.0, -0.5909504890441895, -0.8067077994346619],
+      "source_d912s": ["80C7A251", "80C7AC71", "80C88185"],
+      "source_entities": ["80C7ACC8", "80C885AA"],
+      "serialized_occurrence_count": 3
+    },
+    {
+      "branch_string_hash": "4AC210DE",
+      "branch": "vendor_black_market",
+      "group_type_string_hash": "7F62493C",
+      "position_d1": [134.2093505859375, 105.71302795410156, -12.917218208312988],
+      "rotation_xyzw_representative": [0.0, 0.0, 0.9073816537857056, -0.42030763626098633],
+      "source_d912s": ["80C7A441", "80C7A719", "80C7AC81", "80C8831B"],
+      "source_entities": ["80C7ACC8", "80C885AA"],
+      "serialized_occurrence_count": 4
+    },
+    {
+      "branch_string_hash": "4AC210DE",
+      "branch": "vendor_black_market",
+      "group_type_string_hash": "FB2B5117",
+      "position_d1": [88.8184585571289, 10.586376190185547, -2.010000228881836],
+      "rotation_xyzw_representative": [0.0, 0.0, 0.7669716477394104, 0.6416809558868408],
+      "source_d912s": ["80C7A441", "80C7A719", "80C7AC81", "80C8831B"],
+      "source_entities": ["80C7ACC8", "80C885AA"],
+      "serialized_occurrence_count": 4
+    },
+    {
+      "branch_string_hash": "E4105D4B",
+      "branch": "sq_underwatch_vendor_black_market",
+      "group_type_string_hash": "F89ADEE0",
+      "position_d1": [14.335704803466797, 90.51947784423828, -6.933929443359375],
+      "rotation_xyzw_representative": [0.0, 0.0, -0.9317919611930847, 0.36299270391464233],
+      "source_d912s": ["80C7A58F", "80C7ACB9", "80C88591"],
+      "source_entities": ["80C7ACC8", "80C885AA"],
+      "serialized_occurrence_count": 3
+    },
+    {
+      "branch_string_hash": "E4105D4B",
+      "branch": "sq_underwatch_vendor_black_market",
+      "group_type_string_hash": "58A7319C",
+      "position_d1": [-9.92314624786377, 43.63385009765625, -6.625764846801758],
+      "rotation_xyzw_representative": [0.0, 0.0, 0.045037463307380676, -0.9989852905273438],
+      "source_d912s": ["80C7A58F", "80C7ACB9", "80C88591"],
+      "source_entities": ["80C7ACC8", "80C885AA"],
+      "serialized_occurrence_count": 3
+    }
+  ],
+  "unresolved_group_type_semantics": [
+    "721945F6",
+    "2112ABDE",
+    "7F62493C",
+    "FB2B5117",
+    "F89ADEE0",
+    "58A7319C"
+  ],
+  "active_location_selected": false,
+  "material_live_selection_gates": {
+    "E6_80C885E6_live_selection_proven": false,
+    "E7_80C885E7_live_selection_proven": false,
+    "E8_80C885E8_live_selection_proven": false
+  },
+  "policy": "The six rows are source-owned Xur placements obtained only from typed SD912 -> SD614 -> S2B138080 structural grouping and unique Xur EntitySK membership. Duplicate D912 serializations collapse only when branch, opaque group type, position, and rotation agree up to quaternion sign. No active scenario, schedule, weekend slot, or material live-selection state is inferred."
+}
