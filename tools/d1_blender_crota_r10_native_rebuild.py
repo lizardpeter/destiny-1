@@ -27,7 +27,6 @@ MAT_PROC = {'D1_8108E7A9', 'D1_8108E7B2'}
 MAT_ATLAS = {'D1_8108E7AA', 'D1_8108E7B3'}
 MAT_DETAIL = {'D1_8108E7B1'}
 ACTIVE = MAT_PROC | MAT_ATLAS | MAT_DETAIL
-PREPASS = {'D1_8108E667', 'D1_8108E66B'}
 PROC_COLOR = (0.18661969900131226, 1.0, 0.8700880408287048, 1.0)
 DETAIL_COLOR = (0.22183096408843994, 1.0, 0.9177990555763245, 1.0)
 
@@ -48,11 +47,25 @@ def find_exact_image(tag: str):
     im = bpy.data.images.get(exact)
     if im is not None:
         return im
-    # Fail closed but tolerate Blender appending a numeric suffix to the exact name.
     hits = [x for x in bpy.data.images if x.name == exact or x.name.startswith(exact + '.')]
     if len(hits) != 1:
         raise RuntimeError(f'expected exact Blender image {exact}, got {[x.name for x in bpy.data.images]}')
     return hits[0]
+
+
+def find_control_image():
+    # The carrier contains an RGB preview made by bit-exact replication of the
+    # decoded BC4 scalar R lane into R/G/B. Blender drops the otherwise-unreferenced
+    # raw BC4 PNG during GLB import. This image is scalar-equivalent and therefore
+    # safe for scalar control math; it is never treated as retail RGB/albedo.
+    exact = 'D1_PREVIEW_SCALAR_RGB_8108E7B6'
+    im = bpy.data.images.get(exact)
+    if im is None:
+        hits = [x for x in bpy.data.images if x.name == exact or x.name.startswith(exact + '.')]
+        if len(hits) != 1:
+            raise RuntimeError(f'expected scalar-equivalent control image {exact}, got {[x.name for x in bpy.data.images]}')
+        im = hits[0]
+    return im
 
 
 def material_names(obj):
@@ -64,9 +77,6 @@ def clean_scene_import(path: Path):
     bpy.ops.import_scene.gltf(filepath=str(path))
 
     removed = []
-    # Carrier keeps source-prepass evidence and may import helper geometry. The
-    # Blender-facing scene admits only Crota mesh objects whose material is one of
-    # the six color-surface families represented by ACTIVE.
     for obj in list(bpy.context.scene.objects):
         if obj.type == 'ARMATURE':
             obj.data.display_type = 'STICK'
@@ -145,12 +155,12 @@ def build_native_material(mat):
     links.new(mix.outputs['Shader'],add.inputs[0]); links.new(emission.outputs['Emission'],add.inputs[1]); links.new(add.outputs['Shader'],out.inputs['Surface'])
 
     tag = mat.name.upper()
-    tex_control = find_exact_image('8108E7B6')
+    tex_control = find_control_image()
     tex_atlas = find_exact_image('8108E951')
     tex_detail = find_exact_image('8108E952')
 
     if tag in MAT_PROC:
-        t = add_tex(nodes, tex_control, 'D1_EXACT_8108E7B6_CONTROL', -820,170)
+        t = add_tex(nodes, tex_control, 'D1_SCALAR_EQUIVALENT_8108E7B6_CONTROL', -820,170)
         ramp = nodes.new('ShaderNodeValToRGB'); ramp.name='D1_PROXY_PROC_COLOR_RAMP'; ramp.label='D1_PROXY_PROC_COLOR_RAMP'; ramp.location=(-500,190)
         ramp.color_ramp.elements[0].position=0.05; ramp.color_ramp.elements[0].color=(0.005,0.025,0.02,1)
         ramp.color_ramp.elements[1].position=0.72; ramp.color_ramp.elements[1].color=PROC_COLOR
@@ -160,7 +170,7 @@ def build_native_material(mat):
         alpha_mul=nodes.new('ShaderNodeMath'); alpha_mul.operation='MULTIPLY'; alpha_mul.name='D1_PROXY_ATTENUATION_SCALE'; alpha_mul.location=(-220,-190); alpha_mul.inputs[1].default_value=0.58
         alpha_bias=nodes.new('ShaderNodeMath'); alpha_bias.operation='ADD'; alpha_bias.name='D1_PROXY_ATTENUATION_BIAS'; alpha_bias.location=(10,-190); alpha_bias.inputs[1].default_value=0.08
         links.new(t.outputs['Color'],alpha_mul.inputs[0]); links.new(alpha_mul.outputs[0],alpha_bias.inputs[0]); links.new(alpha_bias.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E955_COLOR + PS8108E958_ATTENUATION_PROXY_FROM_EXACT_BC4'
+        proxy='PS8108E955_COLOR + PS8108E958_ATTENUATION_PROXY_FROM_SCALAR_EQUIVALENT_BC4'
     elif tag in MAT_ATLAS:
         t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-780,190)
         mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_ATLAS_GREEN_GAIN'; mult.location=(-430,190)
