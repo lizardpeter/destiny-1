@@ -31,6 +31,16 @@
       "semantic_class": "direct_rgb_bc5_normal_native_w_pack"
     },
     {
+      "gcn_sha256": "749b857954de10c984a7b75dceadd9df5dcb1d4a84546750e650bfc3ecd323b9",
+      "stage": "ps",
+      "shader_headers": ["808768B7", "80A08C16"],
+      "source_proof_status": "D1_XUR_PS_808768B7_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_808768b7_semantic_proof.py",
+      "current_scope_material_count": 2,
+      "semantic_class": "surface_normal_masked_reflection",
+      "frontier": "Reserved for the next exact wave only; do not treat as closed until its source proof handler and checkpoint exist"
+    },
+    {
       "gcn_sha256": "7d3c95a7d1ce0663ca1d2d715c55cc9e3936d581841c5c7a43ac706bca408fcf",
       "stage": "ps",
       "shader_headers": ["808768C0"],
@@ -48,6 +58,16 @@
       "handler": "tools/d1_xur_ps_80876edf_semantic_proof.py",
       "current_scope_material_count": 6,
       "semantic_class": "direct_rgb_bc5_normal_pack_modulated"
+    },
+    {
+      "gcn_sha256": "a54830f1a28db733eaba59f8edd12612b41370e82fcbb03f1c8597566ccdf20a",
+      "stage": "ps",
+      "shader_headers": ["80876575"],
+      "source_proof_status": "D1_XUR_PS_80876575_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_80876575_semantic_proof.py",
+      "current_scope_material_count": 2,
+      "semantic_class": "masked_surface_reflection_normal",
+      "frontier": "TFX producer semantics, exact render state, and portable material recreation remain independently gated"
     },
     {
       "gcn_sha256": "cd1acacbbf0fa69a229255ab4d21c8f218fb50b3c031d63a6bb3c866d5dc57a7",
@@ -121,14 +141,14 @@
     ]
   },
   "source_checkpoint": {
-    "xur_wave6_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE6_EXACT",
-    "closed_gcn_program_count": 11,
-    "wave6_run": 34157006522,
-    "wave6_artifact": 10031301274,
-    "wave6_artifact_sha256": "6c7582974b8805ecd218cc7e798378820ed3f08e0b6c2a7432dbcf25ce50f8c4"
+    "xur_wave7_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE7_EXACT",
+    "closed_gcn_program_count": 12,
+    "wave7_run": 34157508545,
+    "wave7_artifact": 10031461721,
+    "wave7_artifact_sha256": "666ac447b5331e6bfc1dbbda0093e347401205492605736f77c4a680f721fecf"
   },
   "violations": [],
-  "entry_count": 11,
-  "pixel_shader_entry_count": 8,
+  "entry_count": 13,
+  "pixel_shader_entry_count": 10,
   "vertex_shader_entry_count": 3
 }
