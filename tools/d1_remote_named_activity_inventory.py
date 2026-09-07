@@ -2,17 +2,15 @@
 """Inventory current D1 named activity roots across a verified split-TAR corpus.
 
 This is the remote counterpart to d1_world_activity_map_root_census.py's named-tag
-selection. It reads only package metadata ranges: the current physical package header
-and its serialized 0x44-byte named/global tag table. No package payload decompression
-is needed.
+selection. It reads only current package metadata ranges: header plus serialized
+0x44-byte named/global tag table. No package payload decompression is needed.
 
-The inventory preserves aliases and distinguishes the two source-pinned D1 activity
-classes:
-  8080052E  SActivity_ROI      (map/bubble activity roots)
-  80800616  SUnkActivity_ROI   (scenario/entity activity roots)
+Source-pinned D1 activity named classes:
+  8080052E  SActivity_ROI
+  80800616  SUnkActivity_ROI
 
-Package filenames and named aliases are provenance/discovery text only. They are not
-used to infer activity type, encounter identity, or asset ownership.
+Aliases and physical source ownership are preserved. Package filenames/names are
+provenance text only, not gameplay-category or ownership inference.
 """
 from __future__ import annotations
 
@@ -41,11 +39,12 @@ def norm(v: object) -> str:
 
 
 def filehash_package_id(h: str) -> int | None:
+    """Exact D1 Tiger FileHash package decode used by the established project path."""
     v = int(norm(h), 16)
-    if v < 0x80800000:
+    if v in (0, 0xFFFFFFFF):
         return None
-    x = v - 0x80800000
-    return (x >> 13) & 0x7FF
+    pkg = ((v >> 13) & 0x3FF) + ((((v >> 23) & 3) - 1) * 0x400)
+    return pkg if pkg >= 0 else None
 
 
 def load_catalogs(paths: list[Path]) -> dict[int, list[dict]]:
@@ -113,12 +112,12 @@ def main() -> int:
     ap.add_argument("--base-url", required=True)
     ap.add_argument("--part-count", type=int, default=10)
     ap.add_argument("-o", "--output", type=Path, required=True)
-    args = ap.parse_args()
+    a = ap.parse_args()
 
-    families = load_catalogs(args.member_catalog)
-    base = args.base_url.rstrip("/")
+    families = load_catalogs(a.member_catalog)
+    base = a.base_url.rstrip("/")
     archive = SplitHttpTar(
-        [f"{base}/packages.tar.{i:03d}" for i in range(1, args.part_count + 1)],
+        [f"{base}/packages.tar.{i:03d}" for i in range(1, a.part_count + 1)],
         retries=6,
         timeout=90,
     )
@@ -128,7 +127,9 @@ def main() -> int:
     violations = []
     for n, pkg in enumerate(sorted(families), 1):
         member = choose_current(families[pkg])
-        head = archive.read_at(int(member["data_offset"]), 0x140)
+        data_offset = int(member["data_offset"])
+        size = int(member["size"])
+        head = archive.read_at(data_offset, 0x140)
         h = parse_header(io.BytesIO(head))
         if int(h["pkg_id"]) != pkg:
             violations.append(
@@ -141,16 +142,13 @@ def main() -> int:
         if count == 0:
             raw = b""
         else:
-            if off <= 0:
-                violations.append(f"{member['name']}:nonzero_named_count_with_bad_offset:{off}")
-                continue
-            size = count * NAMED_SLOT_STRIDE
-            if off + size > int(member["size"]):
+            table_bytes = count * NAMED_SLOT_STRIDE
+            if off <= 0 or off + table_bytes > size:
                 violations.append(
-                    f"{member['name']}:named_table_oob:{off}+{size}>{member['size']}"
+                    f"{member['name']}:named_table_bounds:{off}+{table_bytes}>{size}"
                 )
                 continue
-            raw = archive.read_at(int(member["data_offset"]) + off, size)
+            raw = archive.read_at(data_offset + off, table_bytes)
         actual_sha = hashlib.sha1(raw).hexdigest()
         absent_zero = count == 0 and off == 0 and expected_sha == NULL_SHA1
         sha_matches = True if absent_zero else (
@@ -161,13 +159,11 @@ def main() -> int:
 
         parsed = parse_named(raw)
         if len(parsed) != count:
-            violations.append(
-                f"{member['name']}:named_parse_count:{len(parsed)}!={count}"
-            )
+            violations.append(f"{member['name']}:named_parse_count:{len(parsed)}!={count}")
         pkg_rows = []
         for e in parsed:
-            raw_cls = norm(e["class_hash"])
             th = norm(e["tag_hash"])
+            raw_cls = norm(e["class_hash"])
             encoded_pkg = filehash_package_id(th)
             if encoded_pkg != pkg:
                 violations.append(
@@ -190,7 +186,7 @@ def main() -> int:
             {
                 "package_id": f"{pkg:04X}",
                 "member": member["name"],
-                "member_size": int(member["size"]),
+                "member_size": size,
                 "filename_generation": int(member.get("filename_generation", -1)),
                 "header_patch_id": int(member.get("header_patch_id", -1)),
                 "named_tag_table_count": count,
@@ -212,7 +208,6 @@ def main() -> int:
         map_roots + scenario_roots,
         key=lambda x: (x["source_package_id"], x["tag_hash"]),
     )
-
     report = {
         "schema": "d1_remote_named_activity_inventory/v1",
         "status": (
@@ -220,10 +215,7 @@ def main() -> int:
             if not violations
             else "D1_REMOTE_NAMED_ACTIVITY_INVENTORY_WITH_VIOLATIONS"
         ),
-        "source_classes": {
-            "activity_roi": ACTIVITY_ROI,
-            "unk_activity_roi": UNK_ACTIVITY_ROI,
-        },
+        "source_classes": {"activity_roi": ACTIVITY_ROI, "unk_activity_roi": UNK_ACTIVITY_ROI},
         "package_family_count": len(families),
         "package_scan_count": len(packages),
         "current_named_row_count": len(all_rows),
@@ -240,18 +232,17 @@ def main() -> int:
         "packages": packages,
         "violations": violations,
         "policy": (
-            "Current package selection is by highest header patch id then filename generation "
-            "within the checksum-pinned member catalog. Named rows and aliases are serialized "
-            "retail metadata. Only source-pinned named classes 8080052E and 80800616 are admitted "
-            "as activity roots. Package filenames and names are provenance/discovery text and do "
-            "not by themselves establish gameplay category or ownership."
+            "Current package selection is highest header patch id then filename generation in the "
+            "checksum-pinned catalog. Named rows/aliases are serialized retail metadata. Only "
+            "source-pinned named classes 8080052E and 80800616 are activity roots. FileHash package "
+            "validation uses the exact D1 Tiger high-package decode. Filenames and names are "
+            "provenance/discovery text, not gameplay-category or ownership proof."
         ),
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    a.output.parent.mkdir(parents=True, exist_ok=True)
+    a.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
-        "STATUS", report["status"],
-        "PACKAGES", report["package_scan_count"],
+        "STATUS", report["status"], "PACKAGES", report["package_scan_count"],
         "NAMED_ROWS", report["current_named_row_count"],
         "UNIQUE_NAMED", report["current_unique_named_tag_count"],
         "MAP_ROOTS", report["map_activity_root_count"],
@@ -263,8 +254,7 @@ def main() -> int:
     for r in activity_roots:
         print(
             "ACTIVITY", r["tag_hash"], r["class_hash_canonical"],
-            r["source_package_id"], r.get("name"), r.get("aliases"),
-            r["source_member"],
+            r["source_package_id"], r.get("name"), r.get("aliases"), r["source_member"],
         )
     return 0 if not violations else 2
 
