@@ -26,34 +26,63 @@ Therefore:
 - native texture TagHashes and shader-register indices are preserved exactly;
 - portable `baseColorTexture` / `normalTexture` bindings remain preview adapters only.
 
-## Shader closure: binaries/resources are recoverable, Xur shader semantics are not yet fully recreated
+## Native shader binary/resource closure: solved for the current 54-material Xur checkpoint
 
-The repository already has a validated PS4 shader path:
+Workflow `.github/workflows/d1-tower-xur-all-native-shader-census.yml` completed successfully in GitHub Actions run `34145462195`, job `101816429667`.
 
-1. material -> D1 VS/PS shader header TagHash;
-2. shader header -> native Orbis shader payload FileHash;
-3. exact `OrbShdr` footer and bounded machine-code length;
-4. exact native GCN bytes;
-5. CLRX GFX700 disassembly to `s_endpgm`;
-6. instruction/resource census and image-resource usage analysis.
+Durable workflow commit: `7e2353c9044e92a2191b96d5843b2e56a2f2f125`.
 
-`notes/PS4_09A_SHADER_DATAFLOW.md` proves that this path can reach instruction-level equations for individual retail D1 materials, including exact UV transforms, normal reconstruction, cubemap sampling, palette math, output MRT behavior, and local constant usage.
+Proof artifact:
 
-That does **not** mean all 54 Xur materials have already had their native shader arithmetic lifted/recreated. The current Xur GLB explicitly preserves the policy:
+- name: `D1-TOWER-XUR-ALL-NATIVE-SHADER-CENSUS`
+- artifact ID: `10027557806`
+- artifact ZIP SHA-256: `e26febd88c0fcc05d998ec7dab04efcf1582095ee594a459ec472c530c7a5086`
+- artifact size: 323,302 bytes
+- 156 files
 
-> All exact native D1 texture bindings are retained. Portable base/normal preview bindings remain an approximation where native shader semantics are not yet recreated.
+The completed census proves:
 
-Open Xur shader work therefore consists of:
+- 54 exact Xur materials;
+- 25 unique pixel-shader header TagHashes;
+- 11 unique vertex-shader header TagHashes;
+- 36 total unique shader headers;
+- 36/36 shader headers resolved to native Orbis shader payloads;
+- 36/36 bounded native GCN payloads extracted with zero errors;
+- total bounded GCN size = 30,428 bytes;
+- all 36 bounded programs CLRX-disassemble in pinned raw `GFX700` mode through `s_endpgm` with no decoder stderr;
+- 31 unique bounded GCN programs after grouping exact code by SHA-256;
+- no additional native-program package family was required after resolving the exact headers;
+- all 25 Xur pixel shaders were analyzed for native image-resource usage;
+- 116 native GCN image instructions were found;
+- all 116/116 image instructions were resolved back to exact D1 texture-resource indices;
+- 0 unmatched image instructions;
+- 0 missing pixel-shader disassemblies;
+- the existing proven shader-role table remains valid against this Xur-native census with zero validation errors.
 
-- census every unique Xur VS and PS;
-- recover every native payload with zero missing shader/package dependencies;
-- bounded-disassemble every unique native shader;
-- map every native image instruction back to exact `t#` resources;
-- recover material-local constant blocks/samplers/TFX streams for all 54 materials;
-- lift per-shader arithmetic and output/MRT behavior;
+The fail-closed final status is:
+
+`D1_XUR_SHADER_BINARY_AND_IMAGE_RESOURCE_CLOSURE_EXACT`
+
+This is stronger than merely retaining shader TagHashes in a GLB: the exact retail PS4 machine code itself is now recovered and bounded for every VS and PS used by the current 54-material Xur checkpoint, and every native pixel-shader image instruction is connected back to the exact serialized D1 `t#` resource namespace.
+
+## Shader semantic recreation: still open
+
+Binary/resource closure is not the same thing as retail-equivalent portable shading.
+
+`notes/PS4_09A_SHADER_DATAFLOW.md` proves that our existing pipeline can lift individual D1 native programs to instruction-level equations, including UV transforms, normal reconstruction, cubemap sampling, palette math, output MRT behavior, and local constant usage. We must now apply that semantic lifting systematically to Xur's **31 unique bounded GCN programs**, rather than treating all 54 materials independently.
+
+Remaining shader work is:
+
+- recover and classify all material-local constant blocks for the 54 materials;
+- recover exact sampler descriptors and TFX streams;
+- group materials by the 31 exact GCN program families plus their local state;
+- lift per-program arithmetic, interpolant semantics, output/MRT behavior, and alpha behavior;
 - recover required higher-level/global constant producers;
 - recover exact render/blend/depth/raster state where it changes the visible result;
-- only then reproduce the retail shader in a portable renderer rather than approximating it with glTF PBR.
+- distinguish instruction-proven texture semantics from preview-only role guesses;
+- implement a retail-equivalent portable renderer/material adapter from those recovered equations and states.
+
+Until that is done, the current glTF `baseColorTexture` / `normalTexture` assignments remain a preview adapter and must not be described as the retail shader.
 
 ## Material permutation selection: current `main` is still permutation-index 0
 
@@ -79,4 +108,9 @@ The current MIDA/Charm-family implementation contains a later-strategy `ModelPer
 
 ## Immediate continuation
 
-The next durable checkpoint is an Xur-specific all-shader census/disassembly workflow that reuses the pinned exact textured artifact, subsets the exact 54-material manifest, recovers every VS/PS header and native dependency package, disassembles all unique shader binaries, validates PS image-resource usage against exact `t#` texture bindings, and emits a small proof artifact. After that, shader families can be grouped by identical native code/usage so semantic lifting work is done once per unique program rather than once per material.
+Two proof tracks can now proceed without guessing:
+
+1. **Xur shader semantic lifting** — operate on the 31 exact bounded GCN program families, recover their exact material-local inputs and render state, and turn instruction-level behavior into a reusable D1 shader IR / portable implementation.
+2. **D1 live external-material permutation selection** — calibrate the exact D1 `0x80801A9C` model-parent layout from retail bytes, identify its descriptor/index/switch structures without importing later-strategy offsets, locate the instantiated Xur switch-key/value state, and make external-material selection fail-closed and source-owned.
+
+The final Xur visual checkpoint should only be promoted once these two tracks meet: exact selected material member + exact native-equivalent shading for that member.
