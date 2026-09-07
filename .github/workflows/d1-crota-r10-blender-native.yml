@@ -14,6 +14,7 @@ permissions:
 env:
   R9_ARTIFACT_ID: '10034027803'
   R9_ZIP_SHA256: 'a2c4c934f15aeca02a69d5695507f6fb61a23f1d198c58580ba51313e0b63a2f'
+  LIBGL_ALWAYS_SOFTWARE: '1'
 
 jobs:
   build:
@@ -27,9 +28,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends blender python3-numpy
+          sudo apt-get install -y --no-install-recommends \
+            blender python3-numpy xvfb xauth libegl1 libgl1 libglx-mesa0 libgl1-mesa-dri libegl-mesa0
           blender --version | tee blender-version.txt
-          blender --background --python-expr "import sys,numpy; print('BLENDER_PYTHON',sys.version); print('BLENDER_NUMPY',numpy.__version__); print('BLENDER_SYS_PATH',sys.path)" | tee blender-python.txt
+          xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python-expr \
+            "import sys,numpy,bpy; print('BLENDER_PYTHON',sys.version); print('BLENDER_NUMPY',numpy.__version__); print('BLENDER_ENGINE',bpy.context.scene.render.engine)" \
+            | tee blender-python.txt
           grep -q 'BLENDER_NUMPY' blender-python.txt
       - name: Recover exact R9 carrier files
         run: |
@@ -45,7 +49,7 @@ jobs:
       - name: Build Blender-native bind scene and render
         run: |
           set -euo pipefail
-          blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
+          xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
             --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb \
             --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend \
             --preview out/CROTA_R10_BIND_PREVIEW.png \
@@ -56,7 +60,7 @@ jobs:
       - name: Build Blender-native one-animation scene and render
         run: |
           set -euo pipefail
-          blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
+          xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
             --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb \
             --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_ANIM_809D9D19.blend \
             --preview out/CROTA_R10_ANIM_FRAME1_PREVIEW.png \
@@ -67,7 +71,7 @@ jobs:
       - name: Build full 82-action Blender scene
         run: |
           set -euo pipefail
-          blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
+          xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
             --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_FULL_82.glb \
             --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_FULL_82.blend \
             --preview out/CROTA_R10_FULL_FRAME1_PREVIEW.png \
@@ -96,9 +100,9 @@ jobs:
           assert len(meshes)==6,[o.name for o in meshes]
           print(json.dumps({'status':'CROTA_R10_BLEND_VALID','materials':sorted(active),'visible_meshes':len(meshes),'armatures':len(arms),'animations':len(bpy.data.actions),'frame_range':[bpy.context.scene.frame_start,bpy.context.scene.frame_end]},indent=2))
           PY
-          blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend --python /tmp/validate_crota_r10.py | tee out/validate-bind.txt
-          blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_ANIM_809D9D19.blend --python /tmp/validate_crota_r10.py | tee out/validate-anim.txt
-          blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_FULL_82.blend --python /tmp/validate_crota_r10.py | tee out/validate-full.txt
+          xvfb-run -a blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend --python /tmp/validate_crota_r10.py | tee out/validate-bind.txt
+          xvfb-run -a blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_ANIM_809D9D19.blend --python /tmp/validate_crota_r10.py | tee out/validate-anim.txt
+          xvfb-run -a blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_FULL_82.blend --python /tmp/validate_crota_r10.py | tee out/validate-full.txt
           for f in out/validate-bind.txt out/validate-anim.txt out/validate-full.txt; do grep -q 'CROTA_R10_BLEND_VALID' "$f"; done
           sha256sum out/* > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
