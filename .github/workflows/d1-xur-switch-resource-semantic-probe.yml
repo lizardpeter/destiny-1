@@ -57,7 +57,7 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/D1_XUR_SWITCH_RESOURCE_SEMANTIC_PROBE.json'))
-          assert d['schema']=='d1_remote_xur_switch_resource_semantic_probe/v1',d
+          assert d['schema']=='d1_remote_xur_switch_resource_semantic_probe/v2',d
           assert d['status']=='D1_XUR_SWITCH_RESOURCE_SEMANTIC_FRONTIER',d
           assert not d['violations'],d['violations']
           assert d['candidate_80C885CC'] is not None,d
