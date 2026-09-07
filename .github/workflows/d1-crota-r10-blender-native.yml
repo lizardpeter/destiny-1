@@ -1,5 +1,5 @@
 name: D1 Crota R10 Blender native material
-# Trigger after exact six-surface Blender scene filter update.
+# Trigger after scalar-equivalent BC4 control binding update.
 
 on:
   workflow_dispatch:
