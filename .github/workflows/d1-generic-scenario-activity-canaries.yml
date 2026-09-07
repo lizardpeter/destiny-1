@@ -17,6 +17,7 @@ on:
       - 'tools/d1_remote_entity_dependency_closure_universal.py'
       - 'tools/d1_activity_entity_model_plan.py'
       - 'tools/d1_remote_activity_model_visual_dependency_closure.py'
+      - 'tools/d1_remote_activity_model_material_bindings.py'
       - 'tools/d1_filehash.py'
 
 permissions:
@@ -97,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_filehash.py
-          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py tools/d1_activity_entity_model_plan.py tools/d1_remote_activity_model_visual_dependency_closure.py
+          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py tools/d1_activity_entity_model_plan.py tools/d1_remote_activity_model_visual_dependency_closure.py tools/d1_remote_activity_model_material_bindings.py
 
       - name: Extract exact scenario activity graph and dependency seeds
         run: |
@@ -197,7 +198,6 @@ jobs:
           else
             python - <<'PY'
           import json
-          p=json.load(open('out/${{ matrix.id }}/activity_entity_model_plan.json'))
           d={
             'schema':'d1_remote_activity_model_visual_dependency_closure/v1',
             'status':'D1_REMOTE_ACTIVITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',
@@ -222,6 +222,42 @@ jobs:
           assert d['model_count']==p['model_count'],(d['model_count'],p['model_count'])
           assert not d['violations'],d['violations']
           print('MODEL_VISUAL', '${{ matrix.id }}', d['model_count'], d['buffer_header_count'], d['backing_payload_count'], d['inline_material_count'], d['external_variant_part_count'])
+          PY
+
+      - name: Resolve exact external material variants
+        if: ${{ matrix.deep_closure }}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_activity_model_material_bindings.py \
+            --entity-closure 'out/${{ matrix.id }}/entity_dependency_closure.json' \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime \
+            -o 'out/${{ matrix.id }}/activity_model_material_bindings.json' \
+            | tee 'out/${{ matrix.id }}.material_bindings.txt'
+          python - <<'PY'
+          import json
+          v=json.load(open('out/${{ matrix.id }}/activity_model_visual_dependency_closure.json'))
+          m=json.load(open('out/${{ matrix.id }}/activity_model_material_bindings.json'))
+          assert m['status']=='D1_REMOTE_ACTIVITY_MODEL_MATERIAL_BINDINGS_COMPLETE',m['violations'][:10]
+          assert m['validated_pair_count']==m['model_parent_pair_count'],m
+          inline=set(v.get('inline_materials',[]))
+          selected=set(m.get('selected_materials',[]))
+          union=sorted(inline|selected)
+          unresolved_models=sorted({x['model'] for x in v.get('external_variant_parts',[])}-{x['model'] for x in m.get('bindings',[])})
+          plan={
+            'schema':'d1_activity_selected_material_plan/v1',
+            'status':'D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE' if not unresolved_models else 'D1_ACTIVITY_SELECTED_MATERIAL_PLAN_PARTIAL',
+            'inline_material_count':len(inline),'owner_selected_material_count':len(selected),
+            'unique_material_count':len(union),'materials':union,
+            'visual_external_variant_part_count':v.get('external_variant_part_count',0),
+            'owner_external_variant_part_count':m.get('external_variant_part_count',0),
+            'unresolved_external_variant_models':unresolved_models,
+            'policy':'Material union contains exact inline model materials plus exact owner-selected materials. External variants without an exact model-parent owner remain unresolved rather than guessed.'
+          }
+          json.dump(plan,open('out/${{ matrix.id }}/activity_selected_material_plan.json','w'),indent=2);open('out/${{ matrix.id }}/activity_selected_material_plan.json','a').write('\n')
+          print('MATERIAL_PLAN', '${{ matrix.id }}', plan['status'], plan['unique_material_count'], 'UNRESOLVED_VARIANT_MODELS',len(unresolved_models))
           PY
 
       - name: Hash outputs
