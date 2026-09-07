@@ -1,0 +1,121 @@
+name: D1 Tower spawned actor family action libraries native-basis r2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-family-animation-libraries-native-r2.yml'
+      - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
+      - 'tools/d1_gltf_restore_native_tiger_skin_basis.py'
+      - 'tools/d1_gltf_restore_native_tiger_animation_basis.py'
+      - 'tools/d1_gltf_single_skin_geometry_alignment_probe.py'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10003117487'
+  SOURCE_ARTIFACT_ZIP_SHA256: '7b2a66cc3da6461ebede90187c79d431d0bb9dc9c92513f44ea49d89289f99e1'
+
+jobs:
+  correct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q numpy scipy
+
+      - name: Recover exact six-family action-library checkpoint
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input out/models out/reports/basis out/reports/bind out/reports/alignment
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test "$(find input/source/models -maxdepth 1 -name '*_ALL_ACTIONS.glb' -type f | wc -l)" = 6
+          test -f input/source/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json
+
+      - name: Restore native D1 basis on all six skin/action families
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gltf_restore_native_tiger_skin_animation_basis.py \
+            tools/d1_gltf_single_skin_geometry_alignment_probe.py \
+            tools/d1_gltf_skin_bind_identity_probe.py
+          for src in input/source/models/*_ALL_ACTIONS.glb; do
+            stem="$(basename "$src" _ALL_ACTIONS.glb)"
+            python tools/d1_gltf_restore_native_tiger_skin_animation_basis.py "$src" \
+              --out "out/models/${stem}_ALL_ACTIONS_NATIVE_D1.glb" \
+              --report "out/reports/basis/${stem}.json"
+            python tools/d1_gltf_skin_bind_identity_probe.py "out/models/${stem}_ALL_ACTIONS_NATIVE_D1.glb" \
+              --max-error 2e-5 -o "out/reports/bind/${stem}.json"
+            python tools/d1_gltf_single_skin_geometry_alignment_probe.py "out/models/${stem}_ALL_ACTIONS_NATIVE_D1.glb" \
+              -o "out/reports/alignment/${stem}.json"
+          done
+
+      - name: Enforce action identity and native-basis closure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,os,hashlib
+          old=json.load(open('input/source/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json'))
+          assert old['status']=='D1_TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES_COMPLETE',old
+          old_by={f['representative_model']:f for f in old['families']}
+          rows=[]
+          basis_files=sorted(glob.glob('out/reports/basis/*.json'))
+          assert len(basis_files)==6,basis_files
+          for bp in basis_files:
+              stem=os.path.basename(bp)[:-5]
+              model=stem.split('_',1)[0]
+              b=json.load(open(bp));bind=json.load(open(f'out/reports/bind/{stem}.json'));al=json.load(open(f'out/reports/alignment/{stem}.json'))
+              assert b['status']=='D1_GLTF_NATIVE_TIGER_SKIN_ANIMATION_BASIS_RESTORED',b
+              assert bind['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and bind['tested_skinned_mesh_nodes']>0,bind
+              assert bind['max_observed_error']<=2e-5,bind
+              assert al['status']=='D1_GLTF_SINGLE_SKIN_GEOMETRY_ALIGNMENT_DIAGNOSTIC_COMPLETE',al
+              assert al['model']==model,(al['model'],model)
+              assert al['geometry_extent'][2]>al['geometry_extent'][1],al['geometry_extent']
+              assert al['skeleton_extent'][2]>al['skeleton_extent'][1],al['skeleton_extent']
+              assert float(al['centroid_distance_median'])<0.05,(model,al['centroid_distance_median'])
+              of=old_by[model]
+              assert b['animation_count']==of['appended_animation_count'],(b,of)
+              out=b['output'];h=hashlib.sha256(open(out,'rb').read()).hexdigest()
+              rows.append({'representative_model':model,'skeleton':of['skeleton'],'runtime_rig':of['runtime_rig'],'control':of['control'],
+                           'family_models':of['family_models'],'actor_entity_count':of['actor_entity_count'],
+                           'animation_count':b['animation_count'],'exact_dimension_animation_count':of['exact_dimension_animation_count'],
+                           'native_retarget_required_animation_count':of['native_retarget_required_animation_count'],
+                           'joint_targeted_channel_count':b['joint_targeted_channel_count'],
+                           'converted_animation_output_accessor_count':b['converted_animation_output_accessor_count'],
+                           'alignment_centroid_distance_median':al['centroid_distance_median'],
+                           'bind_identity_error_max':bind['max_observed_error'],
+                           'output_glb':out,'output_sha256':h,'output_bytes':os.path.getsize(out)})
+          assert len(rows)==6 and sum(x['actor_entity_count'] for x in rows)==57,rows
+          summary={'schema_version':1,'status':'D1_TOWER_SPAWNED_ACTOR_NATIVE_BASIS_FAMILY_ACTION_LIBRARIES_CLOSED',
+                   'source_artifact_id':10003117487,'source_artifact_zip_sha256':'7b2a66cc3da6461ebede90187c79d431d0bb9dc9c92513f44ea49d89289f99e1',
+                   'family_count':6,'actor_entity_count':57,'source_model_count':13,
+                   'families':rows,
+                   'policy':'The source-closed selector-selected action libraries are unchanged except for the exact inverse of the pinned parser [x,y,z]->[y,z,x] basis on skin bind transforms and joint-targeted animation outputs. No state/default/loop semantics are invented.'}
+          json.dump(summary,open('out/reports/TOWER_SPAWNED_ACTOR_NATIVE_BASIS_FAMILY_ACTION_LIBRARIES.json','w'),indent=2)
+          print(json.dumps({'status':summary['status'],'family_count':6,'actors':57,
+                            'actions_by_family':{r['representative_model']:r['animation_count'] for r in rows},
+                            'alignment_medians':{r['representative_model']:r['alignment_centroid_distance_median'] for r in rows},
+                            'bind_error_max':max(r['bind_identity_error_max'] for r in rows)},indent=2))
+          PY
+          cp input/source/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json out/reports/SOURCE_FAMILY_ANIMATION_LIBRARIES.json
+          sha256sum out/models/*.glb out/reports/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-NATIVE-D1-FAMILY-ALL-ACTION-LIBRARIES
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
