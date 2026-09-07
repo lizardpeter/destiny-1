@@ -1,0 +1,85 @@
+name: D1 Crota exact squad-instance payload family
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-squad-instance-raw-payloads.yml'
+      - 'tools/d1_crota_raid_candidate_probe.py'
+      - 'tools/d1_playable_guardian_entity_resource_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/raw
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Extract exact raw payloads and structural word census
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import hashlib,json,re,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          from d1_crota_raid_candidate_probe import LazyExactHashResolver
+          from d1_split_tar_extract import SplitHttpTar
+          tags='''8108E08F 8108E090 8108E091 8108E295 8108E3CB 8108E3CC 8108E2C7 8108E2C8 8108E2E7 8108E2E8 8108E2E9 8108E2F8 8108E2F9 8108E2FA 8108E412 8108E414 8108E415 8108E416 8108E417'''.split()
+          catalogs=load_catalogs([Path('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json')])
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          r=LazyExactHashResolver(arc,catalogs,Path('runtime'))
+          rows=[]
+          for h in tags:
+              pkg=((int(h,16)-0x80800000)>>13)&0x7ff; v=r.view(pkg)
+              e=next(x for x in v.entries if x['tag_hash'].upper()==h)
+              assert e['reference'].upper()=='80800861'
+              b=v.entry(e['index']); Path(f'out/raw/{h}.bin').write_bytes(b)
+              strings=[{'offset':m.start(),'text':m.group().decode('ascii')} for m in re.finditer(rb'[ -~]{4,}',b)]
+              class_words=[]
+              for off in range(0,len(b)-3,4):
+                  x=struct.unpack_from('<I',b,off)[0]
+                  if (x & 0xFFFF0000)==0x80800000:
+                      class_words.append({'offset':off,'value':f'{x:08X}'})
+              rows.append({'tag_hash':h,'size':len(b),'sha256':hashlib.sha256(b).hexdigest(),'strings':strings,'class_words':class_words})
+          assert next(x for x in rows if x['tag_hash']=='8108E295')['strings'][-1]['text']=='dark_lens.sq_crota__boss'
+          Path('out/SQUAD_INSTANCE_RAW_MANIFEST.json').write_text(json.dumps({'schema':'d1_crota_squad_instance_raw_payloads/v1','source':'current retail PS4 exact package family','members':rows},indent=2)+'\n')
+          print('MEMBERS',len(rows))
+          for x in rows: print(x['tag_hash'],x['size'],x['strings'][-1] if x['strings'] else None)
+          PY
+          sha256sum out/raw/*.bin out/SQUAD_INSTANCE_RAW_MANIFEST.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-SQUAD-INSTANCE-RAW-PAYLOADS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
