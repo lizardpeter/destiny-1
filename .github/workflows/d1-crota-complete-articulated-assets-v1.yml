@@ -1,0 +1,253 @@
+name: D1 Crota complete articulated assets v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-complete-articulated-assets-v1.yml'
+      - 'tools/d1_remote_model_export_all_parts.py'
+      - 'tools/d1_remote_animation_bank_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  ARTICULATED_CENSUS_ARTIFACT_ID: '10022295192'
+  ARTICULATED_CENSUS_ZIP_SHA256: '6305705d439d0db0b14f25c36a12c0e0e5e305a41a3848259f5682bab2eb44b7'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  complete:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover verified retail corpus census and parser
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p input/catalog input/census runtime parser out/textures out/models_all_parts out/animation_bank
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTICULATED_CENSUS_ARTIFACT_ID}/zip" -o input/census.zip
+          echo "${ARTICULATED_CENSUS_ZIP_SHA256}  input/census.zip" | sha256sum --check --strict
+          unzip -q input/census.zip -d input/census
+          cp input/census/CROTA_RAID_UNACCOUNTED_ARTICULATED_V3.json out/
+          cp input/census/CROTA_RAID_ARTICULATED_CANDIDATES_V3.json out/
+          cp input/census/CROTA_RAID_ARTICULATED_NAMES_V3.json out/
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+          git -C parser-src checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser-src rev-parse HEAD)" = "$PARSER_COMMIT"
+
+      - name: Build exact dependency closure for all 129 raid-local articulated candidates
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('input/census/CROTA_RAID_UNACCOUNTED_ARTICULATED_V3.json'))
+          rows=d['all_articulated']
+          hs=[]
+          for r in rows:
+              h=r['entity']
+              if h not in hs: hs.append(h)
+          assert len(hs)==129,len(hs)
+          print(' '.join('--seed 0x'+h for h in hs))
+          PY
+          )
+          python tools/d1_remote_entity_dependency_closure_universal.py $ARGS \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 4 --max-nodes 12000 \
+            -o out/crota_all_articulated_entity_closure.json | tee out/entity_closure.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/crota_all_articulated_entity_closure.json'))
+          assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE',d.get('status')
+          assert not d['violations'],d['violations'][:20]
+          assert not d['truncated'],d
+          assert len(d['seeds'])==129,len(d['seeds'])
+          print('ENTITY_CLOSURE','NODES',d['node_count'],'EDGES',d['edge_count'],'ARTICULATED',len(d['articulated_entities']))
+          PY
+
+      - name: Close every articulated model material shader and texture dependency
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_activity_entity_model_plan.py --entity-closure out/crota_all_articulated_entity_closure.json \
+            -o out/crota_all_articulated_model_plan.json | tee out/model_plan.txt
+          python tools/d1_remote_activity_model_visual_dependency_closure.py \
+            --model-plan out/crota_all_articulated_model_plan.json --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/crota_all_articulated_visual_closure.json | tee out/visual_closure.txt
+          python tools/d1_remote_activity_model_material_bindings.py \
+            --entity-closure out/crota_all_articulated_entity_closure.json --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/crota_all_articulated_material_bindings.json | tee out/material_bindings.txt
+          python tools/d1_activity_selected_material_plan.py \
+            --visual-closure out/crota_all_articulated_visual_closure.json --material-bindings out/crota_all_articulated_material_bindings.json \
+            -o out/crota_all_articulated_selected_material_plan.json | tee out/selected_material_plan.txt
+          python tools/d1_remote_activity_material_dependency_closure.py \
+            --selected-material-plan out/crota_all_articulated_selected_material_plan.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/crota_all_articulated_material_dependencies.json | tee out/material_dependencies.txt
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure out/crota_all_articulated_material_dependencies.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --out-dir out/textures \
+            | tee out/texture_export.txt
+          python - <<'PY'
+          import json
+          p=json.load(open('out/crota_all_articulated_model_plan.json'))
+          v=json.load(open('out/crota_all_articulated_visual_closure.json'))
+          b=json.load(open('out/crota_all_articulated_material_bindings.json'))
+          s=json.load(open('out/crota_all_articulated_selected_material_plan.json'))
+          m=json.load(open('out/crota_all_articulated_material_dependencies.json'))
+          t=json.load(open('out/textures/texture_export_manifest.json'))
+          assert p['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE',p['violations']
+          assert v['status']=='D1_REMOTE_ACTIVITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',v['violations'][:20]
+          assert b['status']=='D1_REMOTE_ACTIVITY_MODEL_MATERIAL_BINDINGS_COMPLETE',b['violations'][:20]
+          assert s['status']=='D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE',(s['violations'],s['unresolved_external_variant_models'])
+          assert m['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',m['violations'][:20]
+          assert t['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',t['violations'][:20]
+          print('VISUAL_ASSETS','MODELS',p['model_count'],'MATERIALS',s['unique_material_count'],'TEXTURES',m['unique_texture_count'],'PNG',t['png_file_count'])
+          PY
+
+      - name: Preserve every serialized model part LOD and material variant
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools')
+          from d1_investment_arrangement_probe import filehash_pkg_index
+          full=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          p=json.load(open('out/crota_all_articulated_model_plan.json'))
+          v=json.load(open('out/crota_all_articulated_visual_closure.json'))
+          hs=list(p['model_hashes'])+list(v['buffer_headers'])+list(v['backing_payload_hashes'])
+          pkgs=sorted({filehash_pkg_index(int(h,16))[0] for h in hs})
+          keys=[f'{x:04X}' for x in pkgs]
+          missing=[k for k in keys if k not in full['families']]
+          assert not missing,missing
+          out=dict(full)
+          out['families']={k:full['families'][k] for k in keys}
+          out['package_family_count']=len(keys)
+          out['scope']='crota_all_articulated_all_part_geometry_exact_dependency_packages'
+          json.dump(out,open('input/catalog/D1_CROTA_ALL_ARTICULATED_GEOMETRY_CATALOG.json','w'),indent=2)
+          print('GEOMETRY_PACKAGE_FAMILIES',keys)
+          PY
+          python tools/d1_remote_model_export_all_parts.py \
+            --model-plan out/crota_all_articulated_model_plan.json \
+            --member-catalog input/catalog/D1_CROTA_ALL_ARTICULATED_GEOMETRY_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --out-dir out/models_all_parts -o out/crota_all_articulated_all_parts_export.json \
+            | tee out/all_parts_export.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/crota_all_articulated_all_parts_export.json'))
+          p=json.load(open('out/crota_all_articulated_model_plan.json'))
+          assert d['status']=='D1_REMOTE_MODEL_EXPORT_ALL_PARTS_COMPLETE',d
+          assert d['model_count']==p['model_count'],(d['model_count'],p['model_count'])
+          print('ALL_PART_GEOMETRY','MODELS',d['model_count'],'DRAWABLE_SERIALIZED_PART_VARIANTS',d['drawable_serialized_part_variant_count'],'TRIANGLES_WITH_VARIANTS',d['triangle_count_with_variants'])
+          PY
+
+      - name: Close every animation control selector and serialized animation-list bank
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_activity_actor_animation_seed.py \
+            --entity-closure out/crota_all_articulated_entity_closure.json \
+            -o out/crota_all_articulated_animation_seed.json | tee out/animation_seed.txt
+          python tools/d1_remote_spawned_actor_animation_options_v3.py \
+            --seed out/crota_all_articulated_animation_seed.json --member-catalog "$C" --base-url "$B" --part-count 10 \
+            --runtime runtime --parser-root parser-src -o out/crota_all_articulated_animation_options_v3.json \
+            | tee out/animation_options.txt
+          python tools/d1_remote_animation_bank_export.py \
+            --animation-options out/crota_all_articulated_animation_options_v3.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --parser-root parser-src \
+            --out-dir out/animation_bank -o out/crota_all_articulated_animation_bank_export.json \
+            | tee out/animation_bank_export.txt
+          python - <<'PY'
+          import json
+          s=json.load(open('out/crota_all_articulated_animation_seed.json'))
+          a=json.load(open('out/crota_all_articulated_animation_options_v3.json'))
+          b=json.load(open('out/crota_all_articulated_animation_bank_export.json'))
+          assert s['status']=='D1_ACTIVITY_ACTOR_ANIMATION_SEED_COMPLETE',s['violations']
+          assert a['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE',a.get('violations',[])[:20]
+          assert a['violation_count']==0,a['violations'][:20]
+          assert a['frontier_count']==0,a['frontiers'][:20]
+          assert a['retarget_pair_failure_count']==0,a
+          assert b['status']=='D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE',b['violations'][:20]
+          assert b['exported_raw_clip_count']==a['unique_animation_list_clip_count'],(b['exported_raw_clip_count'],a['unique_animation_list_clip_count'])
+          print('ANIMATION_ASSETS','CAPABLE_ENTITIES',s['animation_capable_entity_count'],'CONTROLS',a['unique_control_count'],
+                'SELECTOR_CLIPS',a['unique_selector_selected_clip_count'],'BANK_CLIPS',a['unique_animation_list_clip_count'],
+                'RAW_EXPORTED',b['exported_raw_clip_count'],'RETARGET_PAIRS',a['retarget_pair_success_count'])
+          PY
+
+      - name: Write comprehensive forensic index and checksums
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          c=json.load(open('input/census/CROTA_RAID_UNACCOUNTED_ARTICULATED_V3.json'))
+          p=json.load(open('out/crota_all_articulated_model_plan.json'))
+          s=json.load(open('out/crota_all_articulated_selected_material_plan.json'))
+          m=json.load(open('out/crota_all_articulated_material_dependencies.json'))
+          t=json.load(open('out/textures/texture_export_manifest.json'))
+          a=json.load(open('out/crota_all_articulated_animation_options_v3.json'))
+          b=json.load(open('out/crota_all_articulated_animation_bank_export.json'))
+          g=json.load(open('out/crota_all_articulated_all_parts_export.json'))
+          idx={
+            'schema':'d1_crota_complete_articulated_assets/v1',
+            'status':'D1_CROTA_COMPLETE_ARTICULATED_ASSETS_V1_COMPLETE',
+            'raid_local_articulated_seed_count':len(c['all_articulated']),
+            'known_scripted_seed_count':sum(x['state']=='KNOWN_SCRIPTED' for x in c['all_articulated']),
+            'rejected_seed_count':sum(x['state'].startswith('REJECTED_') for x in c['all_articulated']),
+            'unaccounted_discovery_seed_count':sum(x['state']=='UNACCOUNTED' for x in c['all_articulated']),
+            'unique_model_count':p['model_count'],
+            'drawable_serialized_part_variant_count':g['drawable_serialized_part_variant_count'],
+            'unique_selected_material_count':s['unique_material_count'],
+            'unique_texture_count':m['unique_texture_count'],
+            'png_texture_count':t['png_file_count'],
+            'animation_control_count':a['unique_control_count'],
+            'selector_selected_clip_count':a['unique_selector_selected_clip_count'],
+            'animation_list_bank_clip_count':a['unique_animation_list_clip_count'],
+            'raw_animation_clip_count':b['exported_raw_clip_count'],
+            'retarget_pair_success_count':a['retarget_pair_success_count'],
+            'crota_identity_policy':'Crota physical identity remains unpromoted unless an exact R1S2RaidMoon0Ultra0/HiveUltraKnightA spawn or archetype ownership edge is recovered. Inclusion in this complete raid-local asset archive is not Crota identity proof.',
+            'geometry_policy':'All non-empty serialized mesh parts are preserved independently in models_all_parts, including duplicate ranges across LOD/material variants.',
+            'texture_policy':'Every exact texture dependency reachable from source-selected materials is exported in the texture exporter native DDS+PNG outputs; D1 shader register semantics are not guessed into portable PBR roles.',
+            'animation_policy':'Every unique serialized animation-list bank clip is retained verbatim and decoded. Selector-selected clips additionally retain exact control-state and native-retarget proof.'
+          }
+          json.dump(idx,open('out/COMPLETE_ARTICULATED_ASSET_INDEX.json','w'),indent=2)
+          print(json.dumps(idx,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-COMPLETE-ARTICULATED-ASSETS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
