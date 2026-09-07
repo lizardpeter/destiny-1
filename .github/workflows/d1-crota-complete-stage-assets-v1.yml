@@ -1,0 +1,151 @@
+name: D1 Crota complete stage assets v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-complete-stage-assets-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  complete:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover corpus runtime and parser
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p input/catalog runtime out/textures out/models_all_parts out/animation_bank
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+          git -C parser-src checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser-src rev-parse HEAD)" = "$PARSER_COMMIT"
+
+      - name: Decode exact Crota stage placement roots
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_remote_exact_map_data_table_probe.py \
+            --tag-hash 0x810978FC --tag-hash 0x8108E2FF --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/CROTA_COMPLETE_STAGE_MAP_TABLES.json | tee out/map_tables.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_COMPLETE_STAGE_MAP_TABLES.json'))
+          assert d['violation_count']==0,d['violations']
+          hs=[]
+          for t in d['tables']:
+              for h in t.get('unique_entity_hashes',[]):
+                  if h not in hs:hs.append(h)
+          json.dump({'schema':'d1_crota_stage_root_set/v1','root_count':len(hs),'roots':hs},open('out/CROTA_COMPLETE_STAGE_ROOTS.json','w'),indent=2)
+          print('STAGE_ROOTS',len(hs),'TABLES',[(t['tag_hash'],t['entry_count']) for t in d['tables']])
+          PY
+
+      - name: Close every placed stage entity and render dependency
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_COMPLETE_STAGE_ROOTS.json'))
+          print(' '.join('--seed 0x'+h for h in d['roots']))
+          PY
+          )
+          python tools/d1_remote_entity_dependency_closure_universal.py $ARGS --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            --max-depth 4 --max-nodes 12000 -o out/crota_complete_stage_entity_closure.json | tee out/entity_closure.txt
+          python tools/d1_activity_entity_model_plan.py --entity-closure out/crota_complete_stage_entity_closure.json \
+            -o out/crota_complete_stage_model_plan.json | tee out/model_plan.txt
+          python tools/d1_remote_activity_model_visual_dependency_closure.py --model-plan out/crota_complete_stage_model_plan.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime -o out/crota_complete_stage_visual_closure.json | tee out/visual_closure.txt
+          python tools/d1_remote_activity_model_material_bindings.py --entity-closure out/crota_complete_stage_entity_closure.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime -o out/crota_complete_stage_material_bindings.json | tee out/material_bindings.txt
+          python tools/d1_activity_selected_material_plan.py --visual-closure out/crota_complete_stage_visual_closure.json \
+            --material-bindings out/crota_complete_stage_material_bindings.json -o out/crota_complete_stage_selected_material_plan.json | tee out/selected_material_plan.txt
+          python tools/d1_remote_activity_material_dependency_closure.py --selected-material-plan out/crota_complete_stage_selected_material_plan.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime -o out/crota_complete_stage_material_dependencies.json | tee out/material_dependencies.txt
+          python tools/d1_remote_activity_texture_export.py --material-closure out/crota_complete_stage_material_dependencies.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --out-dir out/textures | tee out/texture_export.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/crota_complete_stage_entity_closure.json'));assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE' and not d['truncated'] and not d['violations'],d
+          for f,status in [('crota_complete_stage_model_plan.json','D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE'),('crota_complete_stage_visual_closure.json','D1_REMOTE_ACTIVITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE'),('crota_complete_stage_material_bindings.json','D1_REMOTE_ACTIVITY_MODEL_MATERIAL_BINDINGS_COMPLETE'),('crota_complete_stage_selected_material_plan.json','D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE'),('crota_complete_stage_material_dependencies.json','D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE')]:
+              x=json.load(open('out/'+f));assert x['status']==status,(f,x.get('status'),x.get('violations',[])[:10])
+          t=json.load(open('out/textures/texture_export_manifest.json'));assert t['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',t.get('violations',[])[:10]
+          print('STAGE_VISUALS','MODELS',json.load(open('out/crota_complete_stage_model_plan.json'))['model_count'],'MATERIALS',json.load(open('out/crota_complete_stage_selected_material_plan.json'))['unique_material_count'],'TEXTURES',json.load(open('out/crota_complete_stage_material_dependencies.json'))['unique_texture_count'])
+          PY
+
+      - name: Export every placed stage model part and LOD variant
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY'
+          import json,sys
+          sys.path.insert(0,'tools')
+          from d1_investment_arrangement_probe import filehash_pkg_index
+          full=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'));p=json.load(open('out/crota_complete_stage_model_plan.json'));v=json.load(open('out/crota_complete_stage_visual_closure.json'))
+          hs=list(p['model_hashes'])+list(v['buffer_headers'])+list(v['backing_payload_hashes']);keys=sorted({f'{filehash_pkg_index(int(h,16))[0]:04X}' for h in hs});assert all(k in full['families'] for k in keys),keys
+          o=dict(full);o['families']={k:full['families'][k] for k in keys};o['package_family_count']=len(keys);o['scope']='crota_complete_stage_all_part_geometry_packages';json.dump(o,open('input/catalog/D1_CROTA_COMPLETE_STAGE_GEOMETRY_CATALOG.json','w'),indent=2);print('GEOMETRY_PACKAGES',keys)
+          PY
+          python tools/d1_remote_model_export_all_parts.py --model-plan out/crota_complete_stage_model_plan.json \
+            --member-catalog input/catalog/D1_CROTA_COMPLETE_STAGE_GEOMETRY_CATALOG.json --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --out-dir out/models_all_parts -o out/crota_complete_stage_all_parts_export.json | tee out/all_parts_export.txt
+
+      - name: Close and preserve every stage-linked animation bank
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json;B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_activity_actor_animation_seed.py --entity-closure out/crota_complete_stage_entity_closure.json -o out/crota_complete_stage_animation_seed.json | tee out/animation_seed.txt
+          python tools/d1_remote_spawned_actor_animation_options_v3.py --seed out/crota_complete_stage_animation_seed.json --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --parser-root parser-src \
+            -o out/crota_complete_stage_animation_options_v3.json | tee out/animation_options.txt
+          python - <<'PY'
+          import json
+          a=json.load(open('out/crota_complete_stage_animation_options_v3.json'));assert a['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE' and a['violation_count']==0 and a['frontier_count']==0 and a['retarget_pair_failure_count']==0,a
+          print('STAGE_ANIMATION','CONTROLS',a['unique_control_count'],'SELECTOR',a['unique_selector_selected_clip_count'],'BANK',a['unique_animation_list_clip_count'])
+          PY
+          python tools/d1_remote_animation_bank_export.py --animation-options out/crota_complete_stage_animation_options_v3.json --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --parser-root parser-src \
+            --out-dir out/animation_bank -o out/crota_complete_stage_animation_bank_export.json | tee out/animation_bank_export.txt
+
+      - name: Write complete stage index and checksums
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('out/CROTA_COMPLETE_STAGE_ROOTS.json'));m=json.load(open('out/crota_complete_stage_model_plan.json'));g=json.load(open('out/crota_complete_stage_all_parts_export.json'));s=json.load(open('out/crota_complete_stage_selected_material_plan.json'));t=json.load(open('out/crota_complete_stage_material_dependencies.json'));a=json.load(open('out/crota_complete_stage_animation_options_v3.json'));b=json.load(open('out/crota_complete_stage_animation_bank_export.json'))
+          assert g['status']=='D1_REMOTE_MODEL_EXPORT_ALL_PARTS_COMPLETE';assert b['status']=='D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE',b.get('violations',[])[:20]
+          out={'schema':'d1_crota_complete_stage_assets/v1','status':'D1_CROTA_COMPLETE_STAGE_ASSETS_V1_COMPLETE','stage_table_hashes':['810978FC','8108E2FF'],'unique_placed_root_entity_count':r['root_count'],'unique_model_count':m['model_count'],'drawable_serialized_part_variant_count':g['drawable_serialized_part_variant_count'],'unique_selected_material_count':s['unique_material_count'],'unique_texture_count':t['unique_texture_count'],'animation_control_count':a['unique_control_count'],'selector_selected_clip_count':a['unique_selector_selected_clip_count'],'animation_list_bank_clip_count':a['unique_animation_list_clip_count'],'raw_animation_clip_count':b['exported_raw_clip_count'],'policy':'Exact stage tables define placement roots. All model/material/texture/animation closure is source-derived. All non-empty serialized model parts/LODs are retained; no Crota body identity is inferred from placement or package locality.'};json.dump(out,open('out/COMPLETE_STAGE_ASSET_INDEX.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-COMPLETE-STAGE-ASSETS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
