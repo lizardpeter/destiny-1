@@ -7,10 +7,11 @@ standard D1 model-parent resources:
     Unk10 ResourcePointer -> class 0x80801A80 (model discriminator)
     Unk18 ResourcePointer -> class 0x80801A9C (model parent)
 
-It then records the embedded model FileHash, TexturePlatesROI,
-ExternalMaterialsMap, the intervening D1 FE1A8080 8-byte table, and
-ExternalMaterials. This is intended for resolving VariantShaderIndex-based D1
-mesh parts without guessing material/texture bindings.
+It records the embedded model FileHash, TexturePlatesROI, ExternalMaterialsMap,
+the two serialized tables immediately before ExternalMaterials, and the
+ExternalMaterials bank.  The 8-byte FE1A8080 rows are preserved losslessly and
+also exposed as two (count, signed-start) pairs; that interpretation is
+structural only and does not assign the underlying switch-key semantics.
 """
 from __future__ import annotations
 
@@ -31,6 +32,10 @@ D1_MODEL_PARENT = 0x80801A9C
 MODEL_OFF = 0x15C
 TEXTURE_PLATES_ARRAY_OFF = 0x1A8
 EXTERNAL_MAP_ARRAY_OFF = 0x230
+# D1 has an otherwise-unmodelled int16 DynamicArray directly before FE1A8080.
+# This is the D1 structural counterpart of the permutation-index array present
+# in later Tiger layouts; semantics are intentionally not assumed here.
+EXTERNAL_AUX_INDEX_ARRAY_OFF = 0x250
 EXTERNAL_SELECTOR_TABLE_ARRAY_OFF = 0x260
 EXTERNAL_MATERIALS_ARRAY_OFF = 0x270
 TEXTURE_PLATE_ENTRY_SIZE = 0x30
@@ -41,6 +46,10 @@ EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE = 0x08
 
 def u16(b: bytes, o: int) -> int:
     return struct.unpack_from("<H", b, o)[0]
+
+
+def i16(b: bytes, o: int) -> int:
+    return struct.unpack_from("<h", b, o)[0]
 
 
 def u32(b: bytes, o: int) -> int:
@@ -103,6 +112,14 @@ def dynamic_array(b: bytes, field: int, elem_size: int) -> dict:
     return d
 
 
+def _slice_indices(values: list[int], count: int, start: int) -> list[int] | None:
+    if count == 0 and start == -1:
+        return []
+    if count < 0 or start < 0 or start + count > len(values):
+        return None
+    return values[start:start + count]
+
+
 def parse_parent_resource(b: bytes) -> dict | None:
     p10 = resource_ptr(b, 0x10)
     p18 = resource_ptr(b, 0x18)
@@ -148,26 +165,46 @@ def parse_parent_resource(b: bytes) -> dict | None:
             })
     out["external_materials_map_entries"] = map_rows
 
+    aux = dynamic_array(b, base + EXTERNAL_AUX_INDEX_ARRAY_OFF, 2)
+    out["external_material_aux_index_table"] = aux
+    aux_values: list[int] = []
+    if not aux.get("error"):
+        for i in range(aux["count"]):
+            aux_values.append(i16(b, aux["data_offset"] + i * 2))
+    out["external_material_aux_index_values"] = aux_values
+
     # Charm's D1 schema places DynamicArrayUnloaded<FE1A8080> at parent +0x260.
-    # FE1A8080 is exactly 8 bytes (four ushorts).  Existing tooling does not
-    # assign semantics to it, so preserve the serialized values verbatim.  It
-    # sits structurally between ExternalMaterialsMap and ExternalMaterials and
-    # is therefore high-value evidence for exact external-material selection.
+    # Preserve all four words, but additionally expose words 1 and 3 as signed
+    # because -1 is serialized as the empty-range sentinel.  The row therefore
+    # has an exact structural form of two (count,start) pairs.
     selector = dynamic_array(b, base + EXTERNAL_SELECTOR_TABLE_ARRAY_OFF, EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE)
     out["external_material_selector_table"] = selector
     selector_rows = []
     if not selector.get("error"):
         for i in range(selector["count"]):
             o = selector["data_offset"] + i * EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE
+            c0 = u16(b, o)
+            s0 = i16(b, o + 2)
+            c1 = u16(b, o + 4)
+            s1 = i16(b, o + 6)
             selector_rows.append({
                 "index": i,
                 "entry_offset": o,
-                "unk00": u16(b, o),
+                "unk00": c0,
                 "unk02": u16(b, o + 2),
-                "unk04": u16(b, o + 4),
+                "unk04": c1,
                 "unk06": u16(b, o + 6),
+                "pair0_count": c0,
+                "pair0_start": s0,
+                "pair1_count": c1,
+                "pair1_start": s1,
+                "pair0_aux_indices": _slice_indices(aux_values, c0, s0),
+                "pair1_aux_indices": _slice_indices(aux_values, c1, s1),
             })
     out["external_material_selector_table_entries"] = selector_rows
+    # Alias with the more accurate structural name while retaining the older
+    # selector-table keys for downstream compatibility.
+    out["external_material_permutation_descriptors"] = selector_rows
 
     mats = dynamic_array(b, base + EXTERNAL_MATERIALS_ARRAY_OFF, 4)
     out["external_materials"] = mats
