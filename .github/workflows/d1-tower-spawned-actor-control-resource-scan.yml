@@ -23,9 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.13'}
+        with:
+          python-version: '3.13'
+
       - name: Recover exact universal catalog and runtime
-        env: {GH_TOKEN: ${{ github.token }}}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p input/catalog runtime out
@@ -38,8 +41,10 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Scan all nine exact 808024B4 to 80802408 resources
-        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+
+      - name: Scan all nine exact actor control resources
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
         run: |
           set -euo pipefail
           python tools/d1_remote_entity_resource_filehash_scan.py \
@@ -53,33 +58,64 @@ jobs:
             --tag-hash 80C885B4 \
             --tag-hash 80C889BA \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
-            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
-            --runtime runtime -o out/TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_FILEHASH_SCAN.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 \
+            --runtime runtime \
+            -o out/TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_FILEHASH_SCAN.json \
             | tee out/stdout.txt
           python - <<'PY'
-          import collections,json
-          d=json.load(open('out/TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_FILEHASH_SCAN.json'))
-          assert d['status']=='D1_REMOTE_ENTITY_RESOURCE_FILEHASH_SCAN_COMPLETE',d['violations']
-          assert len(d['resources'])==9,d
-          expected=('808024B4','80802408')
+          import collections
+          import json
+
+          d = json.load(open('out/TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_FILEHASH_SCAN.json'))
+          assert d['status'] == 'D1_REMOTE_ENTITY_RESOURCE_FILEHASH_SCAN_COMPLETE', d['violations']
+          assert len(d['resources']) == 9, d
+          expected = ('808024B4', '80802408')
           for r in d['resources']:
-              assert tuple(r['outer_pair'])==expected,(r['tag_hash'],r['outer_pair'])
-          byref=collections.Counter()
-          clips=[];entities=[];rigs=[]
+              assert tuple(r['outer_pair']) == expected, (r['tag_hash'], r['outer_pair'])
+
+          byref = collections.Counter()
+          clips = []
+          entities = []
+          entity_resources = []
           for r in d['resources']:
               for h in r['hits']:
-                  ref=h['entry']['reference'].upper();byref[ref]+=1
-                  row={'resource':r['tag_hash'],'offset':h['offset_hex'],'value':h['value'],'reference':ref,'size':h['entry']['file_size']}
-                  if ref=='808005A1': clips.append(row)
-                  if ref=='80800734': entities.append(row)
-                  if ref=='80800861': rigs.append(row)
-          summary={'schema_version':1,'status':'D1_TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_SCAN_COMPLETE','resource_count':9,'reference_class_frequency':dict(byref),'animation_clip_hits':clips,'s_entity_hits':entities,'entity_resource_hits':rigs}
-          json.dump(summary,open('out/TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_SUMMARY.json','w'),indent=2)
-          print('CONTROL_SCAN','resources',len(d['resources']),'classes',dict(byref),'ANIMATION_CLIPS',len(clips),'S_ENTITIES',len(entities),'ENTITY_RESOURCES',len(rigs))
-          for x in clips: print(' CLIP',x)
-          for x in entities: print(' S_ENTITY',x)
+                  ref = h['entry']['reference'].upper()
+                  byref[ref] += 1
+                  row = {
+                      'resource': r['tag_hash'],
+                      'offset': h['offset_hex'],
+                      'value': h['value'],
+                      'reference': ref,
+                      'size': h['entry']['file_size'],
+                  }
+                  if ref == '808005A1':
+                      clips.append(row)
+                  if ref == '80800734':
+                      entities.append(row)
+                  if ref == '80800861':
+                      entity_resources.append(row)
+
+          summary = {
+              'schema_version': 1,
+              'status': 'D1_TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_SCAN_COMPLETE',
+              'resource_count': 9,
+              'reference_class_frequency': dict(byref),
+              'animation_clip_hits': clips,
+              's_entity_hits': entities,
+              'entity_resource_hits': entity_resources,
+          }
+          json.dump(summary, open('out/TOWER_SPAWNED_ACTOR_CONTROL_RESOURCE_SUMMARY.json', 'w'), indent=2)
+          print('CONTROL_SCAN', 'resources', len(d['resources']), 'classes', dict(byref),
+                'ANIMATION_CLIPS', len(clips), 'S_ENTITIES', len(entities),
+                'ENTITY_RESOURCES', len(entity_resources))
+          for x in clips:
+              print(' CLIP', x)
+          for x in entities:
+              print(' S_ENTITY', x)
           PY
           sha256sum out/* > out/SHA256SUMS.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: D1-TOWER-SPAWNED-ACTOR-CONTROL-RESOURCE-SCAN
