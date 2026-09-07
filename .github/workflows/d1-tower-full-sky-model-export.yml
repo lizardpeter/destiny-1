@@ -1,0 +1,237 @@
+name: D1 Tower full sky model and texture export
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-full-sky-model-export.yml'
+      - 'tools/d1_entity_model_corpus_export.py'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_close_world_texture_dependencies.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
+      - 'tools/d1_world_map_lighting_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  export-sky:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Tower lighting/sky census and universal catalog
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh pygltflib
+          mkdir -p input/lighting input/catalog runtime recovered texture_expanded texture_work textures roles reports models textured out
+
+          light_run="$(gh run list --workflow d1-tower-original-lighting-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$light_run"
+          gh run download "$light_run" -n d1-tower-original-lighting-census -D input/lighting
+          test -f input/lighting/tower_map_lighting_census.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('input/lighting/tower_map_lighting_census.json'))
+          assert d['status']=='D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE',d
+          assert d['source_map_data_table_count']==122,d
+          assert d['source_entry_count']==1418,d
+          assert d['light_record_count']==737,d
+          assert d['sky_record_count']==109,d
+          assert d['unique_sky_collection_count']==3,d
+          assert d['decoded_sky_model_resource_count']==39,d
+          assert d['sky_model_resource_hash_count']==39,d
+          assert d['sky_entity_model_hash_count']==39,d
+          models=sorted(d['sky_entity_models'])
+          assert len(models)==39 and len(set(models))==39,models
+          open('reports/sky_models.txt','w').write('\n'.join(models)+'\n')
+          json.dump({
+            'schema':'d1_tower_sky_model_plan/v1',
+            'status':'D1_TOWER_SKY_MODEL_PLAN_COMPLETE',
+            'activity':'80C98019','map_data_table_count':122,'map_entry_count':1418,
+            'sky_collection_count':3,'sky_record_count':109,
+            'sky_model_resource_count':39,'entity_model_count':39,
+            'entity_models':models,
+            'sky_collections':d['sky_collections'],
+            'sky_model_resources':d['sky_model_resources'],
+            'policy':'Every model is reached through exact Activity-owned SMapSkyEntResource -> SMapSkyEntities -> SkyRecord -> SkyModelResource -> EntityModel. No default sky or time-of-day variant is selected.'
+          },open('reports/tower_sky_model_plan.json','w'),indent=2)
+          print('SKY_PLAN_CLOSED','models',len(models),'records',d['sky_record_count'],'collections',d['unique_sky_collection_count'])
+          PY
+
+      - name: Recover current Tower and environment package corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_recover_current_corpus.py \
+            --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt \
+            --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
+            --out-dir recovered --report reports/sky_global_texture_family_recovery.json
+
+      - name: Export all 39 source-owned sky EntityModels
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t sky < reports/sky_models.txt
+          margs=(); for h in "${sky[@]}"; do margs+=(--model "$h"); done
+          set +e
+          python tools/d1_entity_model_corpus_export.py "${args[@]}" --runtime runtime "${margs[@]}" \
+            --mode most-detailed --out-dir models --summary reports/tower_sky_model_export.json \
+            | tee reports/tower_sky_model_export.stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+          python - <<'PY'
+          import collections,json
+          d=json.load(open('reports/tower_sky_model_export.json'))
+          assert d['requested_models']==39,d
+          assert d['failed_models']==0,d
+          rejected=collections.Counter(); external=[]; selected=0; mats=set(); highest={0,1,2,3,10}
+          for r in d['models']:
+            assert r.get('ok'),r
+            for mesh in r.get('meshes',[]):
+              for p in mesh.get('parts',[]):
+                if p.get('selected'):
+                  selected+=1
+                  mi=p.get('material_info') or {};h=str(mi.get('hash') or p.get('material') or '').upper()
+                  if h and h not in {'00000000','FFFFFFFF'}:mats.add(h)
+                for reason in p.get('rejection_reasons',[]):
+                  rejected[reason]+=1
+                  if reason=='external_variant_without_parent_resource' and int(p.get('lod',-1)) in highest:
+                    external.append({'model':r['model'],'mesh':mesh['mesh_index'],'part':p['part_index'],'lod':p['lod'],'variant_shader_index':p.get('variant_shader_index'),'inline_material':p.get('material')})
+          summary={
+            'schema':'d1_tower_sky_visual_closure/v1',
+            'status':'D1_TOWER_SKY_VISUAL_MODELS_SOURCE_CLOSED' if not external else 'D1_TOWER_SKY_VISUAL_MODELS_EXTERNAL_VARIANT_FRONTIER',
+            'model_count':39,'selected_part_count':selected,'active_material_count':len(mats),'active_materials':sorted(mats),
+            'zero_geometry_models':d['zero_selected_geometry_models'],
+            'rejection_reason_histogram':dict(rejected),'highest_lod_external_variant_parts':external,
+          }
+          json.dump(summary,open('reports/tower_sky_visual_closure.json','w'),indent=2)
+          json.dump({'materials':{h:{'visual':True} for h in sorted(mats)}},open('reports/sky_material_selector.json','w'),indent=2)
+          print(json.dumps(summary,indent=2))
+          if external:
+            raise SystemExit('Sky models contain exact highest-LOD external material variants; parent/material ownership must be closed before calling the sky visual export complete')
+          if d['zero_selected_geometry_models']:
+            raise SystemExit('Sky model(s) emitted zero highest-detail geometry: '+json.dumps(d['zero_selected_geometry_models']))
+          PY
+
+      - name: Recursively close every exact sky material texture dependency
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
+            --runtime runtime --visual-json reports/sky_material_selector.json \
+            --package-list reports/packages.txt \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --expansion-dir texture_expanded --work-dir texture_work --out textures \
+            --report reports/tower_sky_texture_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/tower_sky_texture_dependency_closure.json'))
+          m=json.load(open('textures/material_texture_manifest.json'))
+          assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert m['material_decode_errors']==0 and m['texture_errors']==0,m
+          assert m['decoded_texture_tags']==m['unique_texture_tags'],m
+          assert not m['missing_texture_package_ids'],m
+          print('SKY_TEXTURES_CLOSED','materials',m['visible_material_count'],'textures',m['unique_texture_tags'],'png',m['png_outputs'])
+          PY
+
+      - name: Bind exact shader resources and portable texture previews to every sky model
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json \
+            -o roles/tower_sky_texture_roles.json
+          n=0
+          for p in models/*.glb; do
+            base="$(basename "$p" .glb)"
+            python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+              --input-glb "$p" --manifest textures/material_texture_manifest.json \
+              --roles roles/tower_sky_texture_roles.json --texture-dir textures/textures \
+              --include-medium-base --bind-normal-candidates \
+              --out "textured/${base}_SKY_EXACT_TEXTURES.glb" \
+              --report "reports/${base}_sky_texture_bind.json"
+            n=$((n+1))
+          done
+          test "$n" -eq 39
+          python - <<'PY'
+          import glob,json,os
+          rows=[]
+          for p in sorted(glob.glob('reports/*_sky_texture_bind.json')):
+            d=json.load(open(p))
+            assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+            for k in ('meshes','nodes','accessors'):
+              assert d['base_counts'][k]==d['final_counts'][k],(p,k,d)
+            rows.append({
+              'file':os.path.basename(d['output_glb']),'sha256':d['output_sha256'],'bytes':d['output_bytes'],
+              'materials':d['material_count'],'exact_source_textures':d['exact_source_texture_count'],
+              'vs_binding_edges':d['exact_vs_binding_edge_count'],'ps_binding_edges':d['exact_ps_binding_edge_count'],
+              'portable_base_materials':d['portable_base_bound_material_count'],
+              'portable_normal_materials':d['portable_normal_bound_material_count'],
+            })
+          assert len(rows)==39,rows
+          man=json.load(open('textures/material_texture_manifest.json'))
+          out={
+            'schema':'d1_tower_sky_textured_model_set/v1','status':'D1_TOWER_SKY_TEXTURED_MODEL_SET_COMPLETE',
+            'model_count':39,'sky_record_count':109,'sky_collection_count':3,
+            'unique_material_count':man['visible_material_count'],'unique_texture_count':man['unique_texture_tags'],
+            'models':rows,
+            'selection_policy':'All 39 EntityModels are Activity-owned through exact sky resource chains. Highest-detail geometry only. No default sky collection/record is inferred. Native shader/t# bindings remain authoritative; portable PBR fields are previews only where role evidence exists.'
+          }
+          json.dump(out,open('reports/TOWER_SKY_TEXTURED_MODEL_SET.json','w'),indent=2)
+          print('SKY_MODEL_SET_COMPLETE',out['model_count'],'models',out['unique_material_count'],'materials',out['unique_texture_count'],'textures')
+          PY
+
+      - name: Package exact sky source records, textures, and models
+        run: |
+          set -euo pipefail
+          mkdir -p out/models out/reports out/textures
+          cp textured/*.glb out/models/
+          cp reports/tower_sky_model_plan.json out/reports/
+          cp reports/tower_sky_model_export.json out/reports/
+          cp reports/tower_sky_visual_closure.json out/reports/
+          cp reports/tower_sky_texture_dependency_closure.json out/reports/
+          cp reports/TOWER_SKY_TEXTURED_MODEL_SET.json out/reports/
+          cp roles/tower_sky_texture_roles.json out/reports/
+          cp textures/material_texture_manifest.json out/reports/
+          cp input/lighting/tower_map_lighting_census.json out/reports/
+          cp -a textures/textures/. out/textures/
+          sha256sum out/models/* out/reports/* out/textures/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-ALL-SKY-MODELS-EXACT-TEXTURES
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
