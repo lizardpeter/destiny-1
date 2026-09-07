@@ -60,14 +60,14 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import json,struct,collections
+          import json,struct
           hs=['80C8816E','80C8816F','80C882C5','80C882C6','80C8887A','80C8887C','80C88888']
           blobs={h:(Path('out/payloads')/(h+'.bin')).read_bytes() for h in hs}
           sizes={h:len(b) for h,b in blobs.items()};assert set(sizes.values())=={1536},sizes
           probe=json.load(open('out/reports/EXACT_TAGS.json')); rows={r['tag_hash']:r for r in probe['entries']}
           for h in hs:
               assert rows[h]['entry']['reference']=='808005EB',rows[h]
-              print('RESOURCE',h,'RESOLVED',[(m['offset_hex'],m['tag_hash'],m['entry']['reference'],m['entry']['file_size']) for m in rows[h]['aligned_resolved_tags'] if m['tag_hash']!=h])
+              print('RESOURCE',h,'RESOLVED',[(f"0x{m['offset']:X}",m['tag_hash'],m['entry']['reference'],m['entry']['file_size']) for m in rows[h]['aligned_resolved_tags'] if m['tag_hash']!=h])
           varying=[]
           for off in range(0,1536-3,4):
               vals={h:f'{struct.unpack_from("<I",blobs[h],off)[0]:08X}' for h in hs}
