@@ -32,7 +32,7 @@ if str(HERE) not in sys.path:
 from d1_filehash import decode_int, plausible_int
 from d1_investment_arrangement_probe import parse_assignment_map
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
-from d1_remote_model_tgxm_signature_match import LazyExactHashResolver
+from d1_remote_investment_parent_probe import RemoteLogicalPackage
 from d1_split_tar_extract import SplitHttpTar
 
 ASSIGNMENT_MAP = "80A7E1DD"
@@ -47,6 +47,52 @@ def parts(v: int) -> tuple[int, int]:
     if not plausible_int(v):
         raise ValueError(f"not a plausible D1 FileHash: {v:08X}")
     return decode_int(v)
+
+
+class LazyExactHashResolver:
+    """Resolve FileHashes only through their encoded verified package family.
+
+    Kept local to this sparse census so importing it does not drag the model/export
+    stack (NumPy/trimesh) into a proof path that only needs exact PKG entry bytes.
+    """
+
+    def __init__(self, arc: SplitHttpTar, catalogs: dict[int, dict], runtime: Path):
+        self.arc = arc
+        self.catalogs = catalogs
+        self.runtime = runtime
+        self.views: dict[int, RemoteLogicalPackage] = {}
+        self.maps: dict[int, dict[str, dict]] = {}
+
+    def view(self, pkg: int) -> RemoteLogicalPackage:
+        if pkg not in self.catalogs:
+            raise KeyError(f"no verified member catalog for package {pkg:04X}")
+        if pkg not in self.views:
+            self.views[pkg] = RemoteLogicalPackage(self.arc, self.catalogs[pkg], self.runtime)
+        return self.views[pkg]
+
+    def hash_map(self, pkg: int) -> dict[str, dict]:
+        if pkg not in self.maps:
+            view = self.view(pkg)
+            m: dict[str, dict] = {}
+            for e in view.entries:
+                h = e["tag_hash"].upper()
+                if h in m:
+                    raise ValueError(f"duplicate FileHash {h} in package {pkg:04X}")
+                m[h] = e
+            self.maps[pkg] = m
+        return self.maps[pkg]
+
+    def locate(self, tag_hash: str) -> tuple[RemoteLogicalPackage, dict]:
+        h = norm(tag_hash)
+        pkg, _ = parts(int(h, 16))
+        e = self.hash_map(pkg).get(h)
+        if e is None:
+            raise KeyError(f"{h}: not present in exact logical package {pkg:04X}")
+        return self.view(pkg), e
+
+    def bytes(self, tag_hash: str) -> tuple[RemoteLogicalPackage, dict, bytes]:
+        view, e = self.locate(tag_hash)
+        return view, e, view.entry(e["index"])
 
 
 def main() -> int:
