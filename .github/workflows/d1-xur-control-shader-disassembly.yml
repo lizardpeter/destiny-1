@@ -1,0 +1,89 @@
+name: D1 Xur control shader disassembly
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-control-shader-disassembly.yml'
+      - 'tools/d1_remote_ps4_shader_extract.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  disasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime shader reports disasm
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Extract exact native shader programs
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_ps4_shader_extract.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --shader 80876568 --shader 80876579 --shader 8087656E --shader 8087656A \
+            --shader 8087695B --shader 8087695C --shader 80876562 --shader 80876563 --shader 80876801 --shader 80876570 \
+            --out-dir shader --report reports/XUR_SHADER_EXTRACT.json
+      - name: Build pinned CLRX
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
+          cmake --build clrx/build --target clrxdisasm -j2
+      - name: Disassemble exact bounded GCN
+        run: |
+          set -euo pipefail
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          for f in shader/PS_*_gcn.bin; do
+            h="$(basename "$f")"; h="${h#PS_}"; h="${h%_gcn.bin}"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${h}_gfx700.s" 2> "disasm/${h}.stderr"
+            test ! -s "disasm/${h}.stderr"; grep -q 's_endpgm' "disasm/${h}_gfx700.s"
+          done
+          python - <<'PY'
+          from pathlib import Path
+          import json,re
+          rows=[]
+          for p in sorted(Path('disasm').glob('*_gfx700.s')):
+              t=p.read_text(); h=p.name.split('_')[0]
+              rows.append({'shader':h,'lines':len(t.splitlines()),'image_instructions':len(re.findall(r'\bimage_',t)),'exports':len(re.findall(r'\bexp\b',t)),'buffer_loads':len(re.findall(r'\bbuffer_load|\bs_buffer_load',t))})
+          Path('reports/XUR_SHADER_DISASM_SUMMARY.json').write_text(json.dumps({'schema_version':1,'status':'D1_XUR_CONTROL_SHADER_DISASSEMBLY_COMPLETE','shaders':rows},indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+          sha256sum shader/* disasm/* reports/* > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-XUR-CONTROL-SHADER-DISASSEMBLY
+          path: |
+            shader/
+            disasm/
+            reports/
+          retention-days: 30
+          if-no-files-found: error
