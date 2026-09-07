@@ -1,0 +1,180 @@
+name: D1 Tower spawned actor exact family animation libraries
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-family-animation-libraries.yml'
+      - 'tools/d1_gltf_append_retargeted_retail_animation_library.py'
+      - 'tools/d1_gltf_append_retail_animation_library.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  SKINNED_ARTIFACT_ID: '10001481050'
+  SKINNED_ARTIFACT_ZIP_SHA256: '6390225a8c0f5ef9c092692ec7b9cf2fff6e5dcb8c3cbb32fb3859564b27a43d'
+  ANIMATION_OPTIONS_ARTIFACT_ID: '10002619228'
+  ANIMATION_OPTIONS_ARTIFACT_ZIP_SHA256: '39c460d12e604e27c0fd76f9cd1d5176f3eb0d51b1af205bdfb6e5d67445e9da'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact skin and animation checkpoints
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm pygltflib
+          mkdir -p input/catalog input/skinned input/options runtime out/models out/reports
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SKINNED_ARTIFACT_ID}/zip" -o input/skinned.zip
+          echo "${SKINNED_ARTIFACT_ZIP_SHA256}  input/skinned.zip" | sha256sum --check --strict
+          unzip -q input/skinned.zip -d input/skinned
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ANIMATION_OPTIONS_ARTIFACT_ID}/zip" -o input/options.zip
+          echo "${ANIMATION_OPTIONS_ARTIFACT_ZIP_SHA256}  input/options.zip" | sha256sum --check --strict
+          unzip -q input/options.zip -d input/options
+
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Prove family/model plan
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_append_retargeted_retail_animation_library.py
+          python - <<'PY'
+          import json,collections,glob,os
+          s=json.load(open('input/skinned/TOWER_SPAWNED_ACTOR_SKIN_BIND.json'))
+          o=json.load(open('input/options/TOWER_SPAWNED_ACTOR_ANIMATION_OPTIONS_V2.json'))
+          assert s['status']=='D1_TOWER_SPAWNED_ACTOR_SKIN_BIND_COMPLETE' and s['model_count']==13 and not s['violations'],s
+          assert o['status']=='D1_TOWER_SPAWNED_ACTOR_ANIMATION_OPTIONS_COMPLETE' and o['source_closed_entity_count']==57,o
+          targets={(x['skeleton'],x['runtime_rig']):x for x in o['targets']}
+          groups=collections.defaultdict(list)
+          for r in s['models']:
+              key=(r['skeleton'],r['runtime_rig'])
+              assert key in targets,key
+              groups[key].append(r['model'])
+          assert len(groups)==6,groups
+          plan=[]
+          for key,models in sorted(groups.items()):
+              t=targets[key];models=sorted(models);rep=models[0]
+              inp=f'input/skinned/{rep}_SKINNED.glb';assert os.path.exists(inp),inp
+              plan.append({
+                  'skeleton':key[0],'runtime_rig':key[1],'control':t['control'],
+                  'representative_model':rep,'family_models':models,
+                  'selector_state_count':t['selector_state_count'],
+                  'selected_clip_count':t['selector_selected_unique_clip_count'],
+                  'bank_clip_count':t['animation_list_count'],
+                  'expected_exact_dimension_count':t['exact_dimension_clip_count'],
+                  'expected_native_retarget_count':t['native_retarget_required_clip_count'],
+              })
+          assert sum(len(x['family_models']) for x in plan)==13
+          json.dump({'status':'D1_TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_EXPORT_PLAN','family_count':6,'model_count':13,'families':plan},open('out/reports/FAMILY_ANIMATION_EXPORT_PLAN.json','w'),indent=2)
+          for x in plan: print('FAMILY_PLAN',x)
+          PY
+
+      - name: Append every selector-selected action to one exact skin per family
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/families.tsv
+          import json
+          d=json.load(open('out/reports/FAMILY_ANIMATION_EXPORT_PLAN.json'))
+          for x in d['families']:
+              print('\t'.join([x['representative_model'],x['skeleton'],x['runtime_rig'],x['control']]))
+          PY
+          while IFS=$'\t' read -r model skel rig control; do
+            echo "BUILD_FAMILY $model $skel $rig $control"
+            python tools/d1_gltf_append_retargeted_retail_animation_library.py \
+              "input/skinned/${model}_SKINNED.glb" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --runtime runtime --parser-root parser \
+              --skeleton "$skel" --rig "$rig" --control "$control" \
+              --out "out/models/${model}_${skel}_${control}_ALL_ACTIONS.glb" \
+              --report "out/reports/${model}_${skel}_${control}_ALL_ACTIONS.json"
+          done < /tmp/families.tsv
+
+      - name: Enforce family action canaries and build reusable catalog
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,os
+          plan=json.load(open('out/reports/FAMILY_ANIMATION_EXPORT_PLAN.json'))
+          reports=[]
+          for x in plan['families']:
+              p=f"out/reports/{x['representative_model']}_{x['skeleton']}_{x['control']}_ALL_ACTIONS.json"
+              d=json.load(open(p));reports.append(d)
+              assert d['status']=='D1_GLTF_RETARGETED_RETAIL_ANIMATION_LIBRARY_APPENDED',d
+              assert d['appended_animation_count']==x['selected_clip_count'],(d,x)
+              assert d['control']['selector_selected_unique_clip_count']==x['selected_clip_count'],(d,x)
+              assert d['control']['animation_list_bank_count']==x['bank_clip_count'],(d,x)
+              assert d['exact_dimension_animation_count']==x['expected_exact_dimension_count'],(d,x)
+              assert d['native_retarget_required_animation_count']==x['expected_native_retarget_count'],(d,x)
+              for k in ('nodes','meshes','skins','materials'):
+                  assert d['original_counts'][k]==d['final_counts'][k],(k,d)
+              print('FAMILY_CLOSED',x['representative_model'],x['skeleton'],x['runtime_rig'],x['control'],
+                    'actions',d['appended_animation_count'],'exact_dims',d['exact_dimension_animation_count'],
+                    'native_retarget',d['native_retarget_required_animation_count'],'bytes',d['output_bytes'])
+          assert len(reports)==6
+          options=json.load(open('input/options/TOWER_SPAWNED_ACTOR_ANIMATION_OPTIONS_V2.json'))
+          catalog={
+            'schema':'d1_tower_spawned_actor_family_animation_library/v1',
+            'status':'D1_TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES_COMPLETE',
+            'actor_entity_count':57,'source_model_count':13,'animation_family_count':6,
+            'unique_control_count':options['unique_control_count'],
+            'unique_selector_selected_clip_count':options['unique_selector_selected_clip_count'],
+            'unique_animation_list_bank_clip_count':options['unique_animation_list_clip_count'],
+            'retarget_pair_execution_count':options['retarget_pair_execution_count'],
+            'families':[],
+            'policy':'One exact source-skinned representative GLB carries the complete selector-selected action library for each skeleton/runtime-rig/control family. Other source models in that family share the same validated animation family without duplicating hundreds of actions. No idle/default state is selected.',
+          }
+          optfam={(f['skeleton'],f['runtime_rig'],tuple(f['controls'])):f for f in options['families']}
+          for x,d in zip(plan['families'],reports):
+              of=optfam[(x['skeleton'],x['runtime_rig'],(x['control'],))]
+              catalog['families'].append({
+                **x,'actor_entity_count':of['entity_count'],'actor_entities':of['entities'],
+                'output_glb':d['output'],'output_sha256':d['output_sha256'],'output_bytes':d['output_bytes'],
+                'appended_animation_count':d['appended_animation_count'],
+                'exact_dimension_animation_count':d['exact_dimension_animation_count'],
+                'native_retarget_required_animation_count':d['native_retarget_required_animation_count'],
+              })
+          assert sum(x['actor_entity_count'] for x in catalog['families'])==57
+          json.dump(catalog,open('out/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json','w'),indent=2)
+          print('FAMILY_LIBRARIES_COMPLETE','families',len(catalog['families']),'actors',catalog['actor_entity_count'],'models',catalog['source_model_count'],'unique_selected',catalog['unique_selector_selected_clip_count'])
+          PY
+          cp input/options/TOWER_SPAWNED_ACTOR_ANIMATION_OPTIONS_V2.json out/reports/
+          cp input/skinned/TOWER_SPAWNED_ACTOR_SKIN_BIND.json out/reports/
+          sha256sum out/models/*.glb out/reports/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-EXACT-FAMILY-ALL-ACTION-LIBRARIES
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
