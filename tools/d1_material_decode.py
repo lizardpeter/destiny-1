@@ -31,6 +31,18 @@ def parse_byte_array(b,o):
     count,off,end=checked_rel_array(b,o,1,'byte array')
     return {'count':count,'offset':off,'bytes_hex':b[off:end].hex()}
 
+def parse_vec4_array(b,o,label='vec4 array'):
+    count,off,_=checked_rel_array(b,o,16,label)
+    return {
+        'count':count,'offset':off,'elem_size':16,
+        'items':[{
+            'index':i,
+            'offset':off+i*16,
+            'value':list(struct.unpack_from('<4f',b,off+i*16)),
+            'raw_hex':b[off+i*16:off+(i+1)*16].hex(),
+        } for i in range(count)]
+    }
+
 def parse_sampler_array(b,o):
     count,off,_=checked_rel_array(b,o,16,'sampler array')
     items=[]
@@ -50,23 +62,38 @@ def parse_sampler_array(b,o):
 
 def parse_material(b,platform):
     if len(b)<0x330: raise ValueError('material entry too small for D1 ROI semantic fields')
-    return {
+    # Charm SMaterial_ROI pins the surrounding fields, and Charm's deserializer
+    # establishes DynamicArray<T> as a serialized 0x10-byte type whose next
+    # unpinned field advances by exactly 0x10.  Therefore the previously unnamed
+    # inline arrays are source-closed at:
+    #   VS: bytecode 0x50 -> constants 0x60 -> samplers 0x70 -> cbuffers 0x80
+    #   PS: bytecode 0x2D0 -> constants 0x2E0 -> samplers 0x2F0 -> cbuffers 0x300
+    # This layout is independently consistent with the exact retail relative-array
+    # headers.  See notes/PS4_ROI_MATERIAL_INLINE_ARRAY_LAYOUT.md.
+    d={
       'declared_file_size':struct.unpack_from('<Q',b,0)[0], 'actual_file_size':len(b),
       'unk08':h32(b,0x08),'unk0c':h32(b,0x0c),'unk10':h32(b,0x10),
-      # Pinned ROI SMaterial_ROI places a 16-bit field at +0x20.  Preserve both
-      # numeric and raw hex forms; engine semantics remain unassigned here.
+      # Pinned ROI SMaterial_ROI places a 16-bit field at +0x20. Preserve the
+      # historical view plus the full four-byte state window for exact PS4 work.
       'unk20':u16(b,0x20),'unk20_hex':f'{u16(b,0x20):04X}',
+      'material_state4_hex':b[0x20:0x24].hex().upper(),
+      'material_state4_u8':list(b[0x20:0x24]),
       'vertex_shader':h32(b,0x28),
       'vs_textures':parse_texture_array(b,0x38),
       'vs_tfx_bytecode':parse_byte_array(b,0x50),
+      'vs_tfx_bytecode_constants':parse_vec4_array(b,0x60,'VS TFX bytecode constants'),
       'vs_samplers':parse_sampler_array(b,0x70),
+      'vs_cbuffers':parse_vec4_array(b,0x80,'VS cbuffers'),
       'vs_vector4_container':h32(b,0xAC),
       'pixel_shader':h32(b,0x2A8),
       'ps_textures':parse_texture_array(b,0x2B8),
       'ps_tfx_bytecode':parse_byte_array(b,0x2D0),
+      'ps_tfx_bytecode_constants':parse_vec4_array(b,0x2E0,'PS TFX bytecode constants'),
       'ps_samplers':parse_sampler_array(b,0x2F0),
+      'ps_cbuffers':parse_vec4_array(b,0x300,'PS cbuffers'),
       'ps_vector4_container':h32(b,0x32C),
     }
+    return d
 
 def annotate(r, d):
     by={e['tag_hash'].upper():e for e in r.entries}
