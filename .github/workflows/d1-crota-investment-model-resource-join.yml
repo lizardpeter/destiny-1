@@ -1,0 +1,97 @@
+name: D1 Crota Investment model-resource join
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-investment-model-resource-join.yml'
+      - 'tools/d1_crota_investment_model_resource_join.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
+  BULK_ARTIFACT_ID: '9961752114'
+  BULK_ZIP_SHA256: 'fc8ddd8dc9f992c15356a65976c538b0d95e3d901ffb0ee8991bb6632ea3154d'
+  BULK_PACKAGES_TXT_SHA256: '9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover authoritative Investment graph and compatible catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/bulk input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BULK_ARTIFACT_ID}/zip" -o input/bulk.zip
+          echo "${BULK_ZIP_SHA256}  input/bulk.zip" | sha256sum --check --strict
+          unzip -q input/bulk.zip -d input/bulk
+          echo "${BULK_PACKAGES_TXT_SHA256}  input/bulk/packages.txt" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 "$BASE_URL/packages.txt" -o input/current_packages.txt
+          echo "${BULK_PACKAGES_TXT_SHA256}  input/current_packages.txt" | sha256sum --check --strict
+          cmp -s input/bulk/packages.txt input/current_packages.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('input/bulk/art_arrangements_resolved.json'))
+          r=d['remote_parent_resolution']
+          assert d['arrangement_count']==4473
+          assert r['resolved_parent_count']==8230
+          print('AUTHORITATIVE_INVESTMENT_GRAPH',d['arrangement_count'],r['resolved_parent_count'])
+          PY
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl -fsSL --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Join exact final Investment records to the three model resources
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_investment_model_resource_join.py \
+            input/bulk/art_arrangements_resolved.json \
+            --target-resource 80AADD3E=80AA83E6 \
+            --target-resource 80AB026E=80AA9B44 \
+            --target-resource 8166A3E8=8166A3EC \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/CROTA_INVESTMENT_MODEL_RESOURCE_JOIN.json | tee out/join_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_INVESTMENT_MODEL_RESOURCE_JOIN.json'))
+          assert d['status']=='D1_CROTA_INVESTMENT_MODEL_RESOURCE_JOIN_COMPLETE',d['errors'][:10]
+          assert d['exact_final_records_verified']==d['unique_final_destination_count'],(d['exact_final_records_verified'],d['unique_final_destination_count'])
+          print('INVESTMENT_MODEL_JOIN_FINALS',d['unique_final_destination_count'])
+          print('FINAL_REFERENCE_DISTRIBUTION',d['final_reference_distribution'])
+          print('FINAL_S_ENTITIES',d['s_entity_final_count'],'PARSED',d['parsed_s_entity_final_count'])
+          print('HITS',d['hit_source_count'],'BY_RESOURCE',d['hit_occurrences_by_resource'])
+          for h in d['hits']:
+              print('HIT',h['entity_data_hash'],'PKG',h['package_id'],'RES',[(x['resource_hash'],x['embedded_model_tag_hash']) for x in h['matching_resources']], 'CONTEXTS',len(h['art_arrangement_contexts']))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-INVESTMENT-MODEL-RESOURCE-JOIN
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
