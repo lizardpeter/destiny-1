@@ -1,4 +1,5 @@
 name: D1 Crota R10 Blender native material
+# Registered workflow trigger.
 
 on:
   workflow_dispatch:
@@ -68,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > /tmp/validate_crota_r10.py <<'PY'
-          import bpy, json, sys
+          import bpy, json
           active={'D1_8108E7A9','D1_8108E7AA','D1_8108E7B1','D1_8108E7B2','D1_8108E7B3'}
           mats={m.name for m in bpy.data.materials}
           assert active <= mats,(active-mats)
