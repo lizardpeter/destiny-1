@@ -34,7 +34,7 @@ jobs:
       - name: Recover pinned exact Xur texture checkpoint and runtime
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check -q numpy scipy pyglm pygltflib
+          python -m pip install --disable-pip-version-check -q numpy scipy pyglm pygltflib trimesh
           mkdir -p input/catalog input/textured runtime out/reports
 
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
