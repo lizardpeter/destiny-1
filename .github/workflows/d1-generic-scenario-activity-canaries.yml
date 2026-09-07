@@ -12,6 +12,7 @@ on:
       - 'tools/d1_remote_activity_f603_resource_census.py'
       - 'tools/d1_remote_s6e_stage_probe.py'
       - 'tools/d1_activity_stage_resource_matrix.py'
+      - 'tools/d1_activity_asset_dependency_seeds.py'
 
 permissions:
   contents: read
@@ -84,18 +85,29 @@ jobs:
             tools/d1_world_activity_entity_resource_census.py \
             tools/d1_remote_activity_f603_resource_census.py \
             tools/d1_remote_s6e_stage_probe.py \
-            tools/d1_activity_stage_resource_matrix.py
+            tools/d1_activity_stage_resource_matrix.py \
+            tools/d1_activity_asset_dependency_seeds.py
           python tools/d1_remote_activity_graph_extract.py \
             --activity-hash '${{ matrix.hash }}' --activity-name '${{ matrix.name }}' --activity-class 80800616 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime --output-dir 'out/${{ matrix.id }}' \
             | tee 'out/${{ matrix.id }}.orchestrator.txt'
+          python tools/d1_activity_asset_dependency_seeds.py \
+            --graph-dir 'out/${{ matrix.id }}' \
+            -o 'out/${{ matrix.id }}/activity_asset_dependency_seeds.json' \
+            | tee 'out/${{ matrix.id }}.asset_seeds.txt'
           python - <<'PY'
           import json
-          d=json.load(open('out/${{ matrix.id }}/activity_graph_manifest.json'))
-          assert d['status']=='D1_REMOTE_ACTIVITY_GRAPH_EXACT',d
-          assert d['activity']['tag_hash']=='${{ matrix.hash }}'
+          g=json.load(open('out/${{ matrix.id }}/activity_graph_manifest.json'))
+          s=json.load(open('out/${{ matrix.id }}/activity_asset_dependency_seeds.json'))
+          assert g['status']=='D1_REMOTE_ACTIVITY_GRAPH_EXACT',g
+          assert g['activity']['tag_hash']=='${{ matrix.hash }}'
+          assert g['counts']['unique_root_entities'] > 0 or g['counts']['runtime_placements'] == 0,g['counts']
+          assert s['status']=='D1_ACTIVITY_ASSET_DEPENDENCY_SEEDS_EXACT',s
+          assert s['activity']['tag_hash']=='${{ matrix.hash }}'
+          assert s['counts'].get('s_entities',0) == g['counts']['unique_root_entities'],(s['counts'],g['counts'])
+          assert s['closure_seed_count'] >= s['counts'].get('s_entities',0)
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
