@@ -1,4 +1,5 @@
 name: D1 Crota R10 Blender native material
+# Trigger after exact six-surface Blender scene filter update.
 
 on:
   workflow_dispatch:
@@ -98,6 +99,7 @@ jobs:
           assert all(o.hide_get() and o.hide_render for o in arms),[(o.name,o.hide_get(),o.hide_render) for o in arms]
           meshes=[o for o in bpy.context.scene.objects if o.type=='MESH' and not o.hide_get()]
           assert len(meshes)==6,[o.name for o in meshes]
+          assert all(o.name.startswith('8108E5B7_') for o in meshes),[o.name for o in meshes]
           print(json.dumps({'status':'CROTA_R10_BLEND_VALID','materials':sorted(active),'visible_meshes':len(meshes),'armatures':len(arms),'animations':len(bpy.data.actions),'frame_range':[bpy.context.scene.frame_start,bpy.context.scene.frame_end]},indent=2))
           PY
           xvfb-run -a blender --background out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend --python /tmp/validate_crota_r10.py | tee out/validate-bind.txt
