@@ -35,6 +35,7 @@ from d1_texture_export import (
     decode_header, expected_base_size, unswizzle_ps4, make_dds, FORMAT_NAME
 )
 from d1_dds_to_png import decode_dds
+from d1_filehash import decode_int, plausible_int
 
 MAT_CLASS='80801AD7'
 
@@ -84,12 +85,15 @@ def norm(h:str)->str:
 
 
 def pkg_id_from_tag(h:str)->str|None:
+    """Decode a D1 Tiger FileHash with the shared bank-aware routing rule."""
     try:
-        x=int(norm(h),16)
+        v=int(norm(h),16)
     except Exception:
         return None
-    if x<0x80800000: return None
-    return f'{((x-0x80800000)>>13)&0xFFFF:04x}'
+    if not plausible_int(v):
+        return None
+    pkg,_=decode_int(v)
+    return f'{pkg:04x}'
 
 
 def resolve_chain(c, h:str, max_depth:int=4):
@@ -296,7 +300,8 @@ def main()->int:
             p=pkg_id_from_tag(h)
             if p is not None: missing_pkg[p]+=1
     report={
-        'schema_version':2,'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT',
+        'schema_version':3,'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT',
+        'filehash_routing':'d1_filehash.decode_int/bank-aware',
         'visible_material_count':len(visible),'material_decode_errors':len(errors),
         'unique_texture_tags':len(unique),'decoded_texture_tags':len(unique)-len(missing),
         'texture_errors':len(missing),
@@ -304,7 +309,7 @@ def main()->int:
         'missing_texture_package_ids':dict(sorted(missing_pkg.items())),
         'pixel_shader_frequency':dict(shader_freq.most_common()),
         'materials':materials,'texture_references':dict(texture_refs),'textures':textures,
-        'policy':'Exact material/shader/register/texture relationships are preserved. Missing dependency package IDs follow the deepest serialized unresolved texture/backing FileHash edge when available, rather than assuming the header namespace. Texture semantic roles are only named for independently instruction-proven shader families; all others remain t#.',
+        'policy':'Exact material/shader/register/texture relationships are preserved. Missing dependency package IDs follow the deepest serialized unresolved texture/backing FileHash edge when available, using the shared bank-aware D1 Tiger decoder rather than the obsolete 0x80800000 subtraction rule. Texture semantic roles are only named for independently instruction-proven shader families; all others remain t#.',
     }
     (a.out/'material_texture_manifest.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({k:report[k] for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},indent=2))
