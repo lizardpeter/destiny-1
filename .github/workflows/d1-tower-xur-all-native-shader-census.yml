@@ -1,0 +1,399 @@
+name: D1 Tower Xur all native shader census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-all-native-shader-census.yml'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_validate_shader_texture_roles.py'
+      - 'tools/d1_shader_texture_roles.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  TEXTURED_ARTIFACT_ID: '10002235124'
+  TEXTURED_ARTIFACT_ZIP_SHA256: '2aefb07ee0b18f4da756beaf0fca60cb1e938067d68fffaf36a79ca9c8701823'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned Xur texture proof, universal catalog, and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/textured prior runtime reports corpus_initial corpus_native shader/first shader/all disasm disasm_ps
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TEXTURED_ARTIFACT_ID}/zip" -o input/textured.zip
+          echo "${TEXTURED_ARTIFACT_ZIP_SHA256}  input/textured.zip" | sha256sum --check --strict
+          unzip -q input/textured.zip -d input/textured
+
+          xrep="$(find input/textured -type f -name '80C88CEF_TEXTURE_BIND.json' -print -quit)"
+          manifest="$(find input/textured -type f -name 'material_texture_manifest.json' -print -quit)"
+          test -n "$xrep" -a -f "$xrep" -a -n "$manifest" -a -f "$manifest"
+          cp "$xrep" prior/XUR_80C88CEF_TEXTURE_BIND.json
+          cp "$manifest" prior/full_material_texture_manifest.json
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Build exact 54-material Xur manifest and shader sets
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import copy,json
+          from collections import Counter,defaultdict
+          from pathlib import Path
+
+          bind=json.load(open('prior/XUR_80C88CEF_TEXTURE_BIND.json'))
+          full=json.load(open('prior/full_material_texture_manifest.json'))
+          assert bind['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',bind
+          assert bind['material_count']==54,bind
+          assert bind['exact_source_texture_count']==104,bind
+          assert bind['exact_vs_binding_edge_count']==0,bind
+          assert bind['exact_ps_binding_edge_count']==232,bind
+
+          mats=sorted({str(r['material']).upper() for r in bind['materials']})
+          assert len(mats)==54,len(mats)
+          missing=sorted(set(mats)-set(full.get('materials',{})))
+          assert not missing,missing
+
+          ps=Counter();vs=Counter();stages=defaultdict(set);textures=set()
+          compact={}
+          for mh in mats:
+              m=full['materials'][mh]
+              compact[mh]={k:copy.deepcopy(m.get(k)) for k in (
+                  'vertex_shader','pixel_shader','bindings','constants','samplers','tfx',
+                  'ps_texture_tags','vs_texture_tags') if k in m}
+              for stage,key,counter in [('vs','vertex_shader',vs),('ps','pixel_shader',ps)]:
+                  sh=m.get(key)
+                  if sh and str(sh).upper() not in ('00000000','FFFFFFFF'):
+                      sh=str(sh).upper();counter[sh]+=1;stages[sh].add(stage)
+              for b in m.get('bindings',[]):
+                  t=str(b.get('texture') or '').upper()
+                  if t and t not in ('00000000','FFFFFFFF'):textures.add(t)
+
+          sub=copy.deepcopy(full)
+          sub['status']='D1_XUR_EXACT_MATERIAL_TEXTURE_MANIFEST_SUBSET'
+          sub['materials']={h:copy.deepcopy(full['materials'][h]) for h in mats}
+          sub['textures']={h:copy.deepcopy(full['textures'][h]) for h in sorted(textures) if h in full.get('textures',{})}
+          sub['visible_material_count']=len(mats)
+          sub['pixel_shader_frequency']=dict(sorted(ps.items()))
+          sub['vertex_shader_frequency']=dict(sorted(vs.items()))
+          sub['scope']={'identity':'Xur','string_hash':'46C55854','entity_model':'80C88CEF','material_count':54}
+          Path('reports/xur_material_texture_manifest.json').write_text(json.dumps(sub,indent=2)+'\n')
+          Path('reports/xur_material_shader_inputs.json').write_text(json.dumps({
+              'status':'D1_XUR_EXACT_MATERIAL_SHADER_INPUTS','material_count':54,'materials':compact},indent=2)+'\n')
+
+          all_sh=sorted(stages)
+          Path('reports/all_shader_tags.txt').write_text('\n'.join(all_sh)+'\n')
+          Path('reports/ps_shader_tags.txt').write_text('\n'.join(sorted(ps))+'\n')
+          Path('reports/vs_shader_tags.txt').write_text('\n'.join(sorted(vs))+'\n')
+          Path('reports/xur_shader_sets.json').write_text(json.dumps({
+              'status':'D1_XUR_SHADER_SET_EXACT_FROM_54_MATERIALS',
+              'material_count':54,'unique_shader_header_count':len(all_sh),
+              'unique_pixel_shader_count':len(ps),'unique_vertex_shader_count':len(vs),
+              'pixel_shader_frequency':dict(sorted(ps.items())),
+              'vertex_shader_frequency':dict(sorted(vs.items())),
+              'shader_stages':{h:sorted(stages[h]) for h in all_sh},
+          },indent=2)+'\n')
+
+          def pid(h):
+              v=int(h,16)
+              assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          ids=sorted({pid(h) for h in mats+all_sh})
+          Path('reports/initial_package_ids.txt').write_text('\n'.join(ids)+'\n')
+          print('XUR_SHADER_SET','materials',len(mats),'PS',len(ps),'VS',len(vs),'all_headers',len(all_sh),'initial_package_ids',ids)
+          PY
+
+      - name: Recover exact Xur material and shader-header package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/initial_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus_initial --report reports/xur_initial_shader_corpus.json
+
+      - name: Resolve every native shader payload FileHash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial -maxdepth 1 -type f -name '*.pkg' | sort)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t shaders < reports/all_shader_tags.txt
+          sargs=(); for s in "${shaders[@]}"; do sargs+=(--shader "$s"); done
+          set +e
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
+            --manifest reports/xur_material_texture_manifest.json "${sargs[@]}" \
+            --out-dir shader/first --report reports/xur_shader_first_pass.json
+          rc=$?
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/xur_shader_first_pass.json'))
+          expected={x.strip() for x in open('reports/all_shader_tags.txt') if x.strip()}
+          rows={r['shader']:r for r in d['shaders']}
+          assert set(rows)==expected,(len(rows),len(expected))
+          unresolved=[h for h,r in rows.items() if not r.get('header_meta') or not r.get('native_shader')]
+          assert not unresolved,{'shader_headers_not_resolved':unresolved}
+          def pid(h): return f'{((int(h,16)-0x80800000)>>13)&0x7ff:04x}'
+          initial={x.strip() for x in open('reports/initial_package_ids.txt') if x.strip()}
+          native_tags=sorted({r['native_shader'] for r in rows.values() if r.get('native_shader') not in (None,'00000000','FFFFFFFF')})
+          native_ids=sorted({pid(h) for h in native_tags})
+          new_ids=sorted(set(native_ids)-initial)
+          Path('reports/native_shader_tags.txt').write_text('\n'.join(native_tags)+'\n')
+          Path('reports/native_package_ids.txt').write_text('\n'.join(new_ids)+('\n' if new_ids else ''))
+          print('NATIVE_SHADER_REFS','headers',len(rows),'native_tags',len(native_tags),'native_package_ids',native_ids,'new_package_ids',new_ids)
+          PY
+
+      - name: Recover any additional native-program package families
+        run: |
+          set -euo pipefail
+          if [ -s reports/native_package_ids.txt ]; then
+            args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/native_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py \
+              --package-list reports/packages.txt "${args[@]}" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --out-dir corpus_native --report reports/xur_native_shader_corpus.json
+          else
+            printf '%s\n' '{"status":"D1_XUR_NATIVE_SHADER_CORPUS_NO_ADDITIONAL_FAMILIES"}' > reports/xur_native_shader_corpus.json
+          fi
+
+      - name: Extract every unique Xur VS and PS native GCN program fail-closed
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial corpus_native -maxdepth 1 -type f -name '*.pkg' | sort -u)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t shaders < reports/all_shader_tags.txt
+          sargs=(); for s in "${shaders[@]}"; do sargs+=(--shader "$s"); done
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
+            --manifest reports/xur_material_texture_manifest.json "${sargs[@]}" \
+            --out-dir shader/all --report reports/xur_all_shader_extract.json
+          python - <<'PY'
+          import json,glob
+          d=json.load(open('reports/xur_all_shader_extract.json'))
+          expected=[x.strip() for x in open('reports/all_shader_tags.txt') if x.strip()]
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT',d
+          assert d['error_count']==0,d
+          assert d['selected_count']==len(expected),(d['selected_count'],len(expected))
+          assert len(glob.glob('shader/all/PS_*_gcn.bin'))==len(expected)
+          print('XUR_ALL_NATIVE_GCN_EXACT','shader_headers',len(expected),'gcn_bytes',sum(r['gcn_bytes'] for r in d['shaders']))
+          PY
+
+      - name: Build pinned CLRX disassembler
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
+          cmake --build clrx/build --target clrxdisasm -j2
+
+      - name: Disassemble all bounded Xur shader programs
+        run: |
+          set -euo pipefail
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          count=0; failures=0
+          shopt -s nullglob
+          for f in shader/all/PS_*_gcn.bin; do
+            count=$((count+1)); b="$(basename "$f" _gcn.bin)"
+            if ! "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"; then failures=$((failures+1)); fi
+            test ! -s "disasm/${b}.stderr" || failures=$((failures+1))
+            grep -q 's_endpgm' "disasm/${b}.s" || failures=$((failures+1))
+          done
+          expected="$(wc -l < reports/all_shader_tags.txt)"
+          test "$count" -eq "$expected"
+          test "$failures" -eq 0
+
+      - name: Build stage-aware native-program census
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,shutil
+          from collections import defaultdict
+          from pathlib import Path
+          ext=json.load(open('reports/xur_all_shader_extract.json'))
+          sets=json.load(open('reports/xur_shader_sets.json'))
+          stages={k:set(v) for k,v in sets['shader_stages'].items()}
+          groups=defaultdict(list);rows=[]
+          for r in ext['shaders']:
+              sh=r['shader'];p=Path('disasm')/f'PS_{sh}.s';text=p.read_text(errors='replace')
+              assert 's_endpgm' in text,sh
+              ops=[]
+              for line in text.splitlines():
+                  s=line.strip()
+                  if not s or s.startswith(('.', '#', ';')):continue
+                  m=re.search(r'\b([sv]_[A-Za-z0-9_]+|image_[A-Za-z0-9_]+|buffer_[A-Za-z0-9_]+)\b',s)
+                  if m:ops.append(m.group(1))
+              image=[x for x in ops if x.startswith('image_')]
+              sha=r['gcn_sha256'];groups[sha].append(sh)
+              rows.append({
+                  'shader':sh,'stages':sorted(stages.get(sh,set())),'native_shader':r['native_shader'],
+                  'native_sha256':r['native_sha256'],'gcn_sha256':sha,'gcn_bytes':r['gcn_bytes'],
+                  'usage':r['usage'],'image_instruction_count_lexical':len(image),
+                  'image_ops_lexical':sorted(set(image)),'instruction_count_approx':len(ops),
+                  'disassembly':str(p),
+              })
+          out={
+              'status':'D1_XUR_ALL_NATIVE_SHADER_DISASSEMBLY_EXACT',
+              'material_count':54,'shader_header_count':len(rows),
+              'vertex_shader_header_count':sum(1 for r in rows if 'vs' in r['stages']),
+              'pixel_shader_header_count':sum(1 for r in rows if 'ps' in r['stages']),
+              'dual_stage_header_count':sum(1 for r in rows if len(r['stages'])>1),
+              'unique_bounded_gcn_program_count':len(groups),
+              'bounded_gcn_groups':{k:sorted(v) for k,v in sorted(groups.items())},
+              'shaders':rows,
+              'semantic_lifting_complete':False,
+              'policy':'All listed programs are exact bounded retail PS4 GCN and CLRX-disassemble cleanly. This census does not claim portable shader semantic recreation.',
+          }
+          Path('reports/xur_shader_disassembly_census.json').write_text(json.dumps(out,indent=2)+'\n')
+
+          psset=set(sets['pixel_shader_frequency'])
+          psrows=[r for r in ext['shaders'] if r['shader'] in psset]
+          psext={**ext,'selected_count':len(psrows),'error_count':0,'shaders':psrows,
+                 'status':'D1_WORLD_PIXEL_SHADER_GCN_EXACT'}
+          Path('reports/xur_ps_shader_extract.json').write_text(json.dumps(psext,indent=2)+'\n')
+          for sh in sorted(psset):
+              shutil.copyfile(Path('disasm')/f'PS_{sh}.s',Path('disasm_ps')/f'PS_{sh}.s')
+          print('XUR_SHADER_CENSUS','headers',len(rows),'unique_gcn_programs',len(groups),'PS',len(psset),'VS',len(sets['vertex_shader_frequency']))
+          PY
+
+      - name: Map every Xur PS image instruction to exact D1 texture indices
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report reports/xur_ps_shader_extract.json \
+            --disasm-dir disasm_ps --out reports/xur_ps_image_usage.json
+          rc=$?
+          set -e
+          echo "$rc" > reports/xur_ps_image_usage.rc
+
+          set +e
+          python tools/d1_validate_shader_texture_roles.py \
+            --image-usage reports/xur_ps_image_usage.json \
+            --manifest reports/xur_material_texture_manifest.json \
+            --out reports/xur_proven_role_validation.json
+          role_rc=$?
+          set -e
+          echo "$role_rc" > reports/xur_proven_role_validation.rc
+
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          u=json.load(open('reports/xur_ps_image_usage.json'))
+          man=json.load(open('reports/xur_material_texture_manifest.json'))
+          bind=json.load(open('prior/XUR_80C88CEF_TEXTURE_BIND.json'))
+          byu={r['shader']:r for r in u.get('shaders',[])}
+          byps=defaultdict(list)
+          for mh,m in man['materials'].items():
+              ps=m.get('pixel_shader')
+              if ps:byps[ps].append((mh,m))
+          rows=[]
+          for ps,mats in sorted(byps.items()):
+              ur=byu.get(ps);used=set(ur.get('used_texture_indices',[])) if ur else set()
+              material_rows=[]
+              for mh,m in mats:
+                  bound={int(b['texture_index']) for b in m.get('bindings',[]) if b.get('stage')=='ps'}
+                  material_rows.append({
+                      'material':mh,'serialized_ps_texture_indices':sorted(bound),
+                      'native_used_texture_indices':sorted(used),
+                      'intersection':sorted(bound&used),
+                      'serialized_not_observed_in_image_ops':sorted(bound-used),
+                      'native_image_indices_not_material_serialized':sorted(used-bound),
+                  })
+              rows.append({'pixel_shader':ps,'native_usage_available':ur is not None,'materials':material_rows})
+          exact=(u.get('status')=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT' and u.get('unmatched_image_instruction_count')==0)
+          out={
+              'status':'D1_XUR_SHADER_BINARY_AND_IMAGE_RESOURCE_CLOSURE_EXACT' if exact else 'D1_XUR_SHADER_BINARY_EXACT_IMAGE_RESOURCE_PARTIAL',
+              'texture_checkpoint':{
+                  'material_count':bind['material_count'],'exact_source_texture_count':bind['exact_source_texture_count'],
+                  'exact_vs_binding_edge_count':bind['exact_vs_binding_edge_count'],'exact_ps_binding_edge_count':bind['exact_ps_binding_edge_count'],
+                  'portable_base_bound_material_count':bind['portable_base_bound_material_count'],
+                  'portable_normal_bound_material_count':bind['portable_normal_bound_material_count'],
+              },
+              'image_usage_status':u.get('status'),'image_instruction_count':u.get('image_instruction_count'),
+              'unmatched_image_instruction_count':u.get('unmatched_image_instruction_count'),
+              'pixel_shader_count':u.get('shader_count'),'per_shader_material_register_comparison':rows,
+              'native_shader_semantic_recreation_complete':False,
+              'portable_gltf_pbr_is_authoritative':False,
+              'next_proof_target':'Lift unique bounded GCN program families plus material constants/samplers/TFX and higher-level render state into a retail-equivalent portable shader implementation.',
+          }
+          Path('reports/XUR_SHADER_TEXTURE_CLOSURE.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','image_usage_status','image_instruction_count','unmatched_image_instruction_count','pixel_shader_count')},indent=2))
+          if not exact:
+              raise SystemExit('Xur PS image-resource provenance is not yet fail-closed exact')
+          PY
+
+      - name: Final proof manifest and hashes
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('reports/XUR_SHADER_TEXTURE_CLOSURE.json')
+          if p.exists():
+              d=json.loads(p.read_text())
+              c=json.load(open('reports/xur_shader_disassembly_census.json'))
+              final={
+                  'status':d['status'],
+                  'xur_identity':{'string_hash':'46C55854','entity_model':'80C88CEF'},
+                  'material_count':54,
+                  'exact_source_texture_count':d['texture_checkpoint']['exact_source_texture_count'],
+                  'exact_ps_binding_edge_count':d['texture_checkpoint']['exact_ps_binding_edge_count'],
+                  'shader_header_count':c['shader_header_count'],
+                  'unique_bounded_gcn_program_count':c['unique_bounded_gcn_program_count'],
+                  'vertex_shader_header_count':c['vertex_shader_header_count'],
+                  'pixel_shader_header_count':c['pixel_shader_header_count'],
+                  'native_shader_semantic_recreation_complete':False,
+                  'selection_permutation_evaluator_complete':False,
+                  'proof_boundary':'Textures and native shader binaries/resource usage can be exact while retail shader semantics and live external-material permutation selection remain open.',
+              }
+              Path('reports/XUR_NATIVE_SHADER_CHECKPOINT.json').write_text(json.dumps(final,indent=2)+'\n')
+              print(json.dumps(final,indent=2))
+          PY
+          find reports shader/all disasm disasm_ps -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-XUR-ALL-NATIVE-SHADER-CENSUS
+          path: |
+            reports/
+            shader/all/
+            disasm/
+            disasm_ps/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
