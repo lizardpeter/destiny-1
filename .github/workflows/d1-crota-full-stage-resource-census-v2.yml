@@ -1,0 +1,115 @@
+name: D1 Crota full stage resource census v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-full-stage-resource-census-v2.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STAGE_V1_ARTIFACT_ID: '10001580133'
+  STAGE_V1_ZIP_SHA256: 'ee908627978f5d4194b131041de6c9ea1344695c29668e35d6d04acb61b7341c'
+  RUNTIME_PLACEMENTS_ARTIFACT_ID: '9995963526'
+  RUNTIME_PLACEMENTS_ZIP_SHA256: '69d03bac70adbc70a4950d0874f8245e825363e7578cd6d73a68c8a2dfc9b117'
+  F603_CENSUS_ARTIFACT_ID: '9999332178'
+  F603_CENSUS_ZIP_SHA256: 'c65b48d54a6463eb116b0c18c525a8a399873e68cd52a27281f4f7982dfacfee'
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact retained stage inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/stage input/placements input/f603 out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STAGE_V1_ARTIFACT_ID}/zip" -o input/stage.zip
+          echo "${STAGE_V1_ZIP_SHA256}  input/stage.zip" | sha256sum --check --strict
+          unzip -q input/stage.zip -d input/stage
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME_PLACEMENTS_ARTIFACT_ID}/zip" -o input/placements.zip
+          echo "${RUNTIME_PLACEMENTS_ZIP_SHA256}  input/placements.zip" | sha256sum --check --strict
+          unzip -q input/placements.zip -d input/placements
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${F603_CENSUS_ARTIFACT_ID}/zip" -o input/f603.zip
+          echo "${F603_CENSUS_ZIP_SHA256}  input/f603.zip" | sha256sum --check --strict
+          unzip -q input/f603.zip -d input/f603
+          test -d input/stage/stages
+          test -f input/placements/CROTA_END_RUNTIME_PLACEMENTS.json
+          test -f input/f603/CROTA_RAID_F603_SCRIPTED_OWNERS.json
+
+      - name: Build corrected stage occurrence and reuse matrix
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import collections, glob, json
+          placements=json.load(open('input/placements/CROTA_END_RUNTIME_PLACEMENTS.json'))
+          f603=json.load(open('input/f603/CROTA_RAID_F603_SCRIPTED_OWNERS.json'))
+          assert not placements['violations'],placements['violations']
+          assert not f603['violations'],f603['violations']
+          fby={r['f603']:r for r in f603['rows']}
+          expected=set(placements['unique_f603_entity_resources'])
+          assert len(expected)==509,len(expected)
+          occurrences=[]; containers=[]
+          pair_stage=collections.defaultdict(list);pair_container=collections.defaultdict(set)
+          pair_dev=collections.defaultdict(set);pair_f603=collections.defaultdict(list)
+          resource_occ=collections.Counter()
+          for path in sorted(glob.glob('input/stage/stages/*.json')):
+            p=json.load(open(path)); assert not p['violations'],(path,p['violations'])
+            s6e=p['s6e']; stages=[]
+            for s in p['stages']:
+              pc=collections.Counter();roles=collections.Counter();devs=[];rows=[]
+              for x in s['f603s']:
+                fh=x['f603']['hash']
+                if fh in ('00000000','FFFFFFFF'): continue
+                assert fh in fby,fh
+                r=fby[fh]; occurrences.append(fh); resource_occ[fh]+=1
+                pair=f"{r.get('unk10_class') or 'NONE'}->{r.get('unk18_class') or 'NONE'}"
+                role=r.get('semantic_role','unknown');pc[pair]+=1;roles[role]+=1
+                cp=x.get('activity_collapse') or {}; dev=(cp.get('dev_name') or {}).get('value')
+                if dev:devs.append(dev);pair_dev[pair].add(dev)
+                pair_stage[pair].append((s6e,s['stage_index'],fh,r.get('entity_resource_hash'),dev))
+                pair_container[pair].add(s6e);pair_f603[pair].append(fh)
+                rows.append({'f603':fh,'entity_resource':r.get('entity_resource_hash'),'pair':pair,'semantic_role':role,'dev_name':dev,'scripted_entity_table':r.get('scripted_entity_table_hash')})
+              stages.append({'stage_index':s['stage_index'],'map_data_table':s['map_data_table']['hash'],'f603_occurrence_count':len(rows),'pair_counts':dict(pc),'role_counts':dict(roles),'dev_names':devs,'resources':rows})
+            containers.append({'s6e':s6e,'stage_count':len(stages),'stages':stages})
+          unique=set(occurrences)
+          assert len(occurrences)==547,len(occurrences)
+          assert len(unique)==509,len(unique)
+          assert unique==expected,(len(unique^expected),sorted(unique^expected)[:20])
+          shared={h:n for h,n in resource_occ.items() if n>1}
+          assert sum(n-1 for n in shared.values())==38,shared
+          pair_summary=[]
+          for pair,n in sorted(f603['class_pair_counts'].items(),key=lambda kv:(-kv[1],kv[0])):
+            # f603 class-pair counts are unique-resource counts; stage occurrences can exceed n due reuse.
+            unique_pair=set(pair_f603[pair]); locs=pair_stage[pair]
+            assert len(unique_pair)==n,(pair,n,len(unique_pair))
+            keys=sorted({(x[0],x[1]) for x in locs})
+            pair_summary.append({'pair':pair,'unique_resource_count':n,'stage_occurrence_count':len(locs),'s6e_containers':sorted(pair_container[pair]),'stage_keys':[{'s6e':a,'stage_index':b} for a,b in keys],'stage_count':len(keys),'dev_names':sorted(pair_dev[pair]),'f603_hashes':sorted(unique_pair),'finale_e17c_stage7_occurrence_count':sum(a=='8108E17C' and b==7 for a,b,*_ in locs),'ultra_e17f_stage1_occurrence_count':sum(a=='8108E17F' and b==1 for a,b,*_ in locs)})
+          out={'schema':'d1_crota_full_stage_resource_census/v2','status':'D1_CROTA_FULL_STAGE_RESOURCE_CENSUS_EXACT','activity':placements['activity'],'s6e_count':len(containers),'stage_occurrence_count':len(occurrences),'unique_f603_count':len(unique),'shared_unique_f603_count':len(shared),'shared_occurrence_excess_count':sum(n-1 for n in shared.values()),'shared_f603_occurrence_counts':dict(sorted(shared.items())),'containers':containers,'class_pair_summary':pair_summary,'policy':'Every S6E/stage/F603 edge is source-layout-derived. Stage occurrence count intentionally preserves repeated use of the same exact F603 across multiple stages; unique_f603_count is the deduplicated ownership corpus. Dev names are emitted only through the source-validated Activity collapse path. Reuse is preserved rather than treated as a parser duplicate.'}
+          open('out/CROTA_FULL_STAGE_RESOURCE_CENSUS_V2.json','w').write(json.dumps(out,indent=2)+'\n')
+          print('CROTA_STAGE_CENSUS_CLOSED','S6E',out['s6e_count'],'OCCURRENCES',out['stage_occurrence_count'],'UNIQUE',out['unique_f603_count'],'SHARED_UNIQUE',out['shared_unique_f603_count'],'EXCESS',out['shared_occurrence_excess_count'])
+          for c in containers:
+            if c['s6e'] in ('8108E17C','8108E17D','8108E17F'):
+              for s in c['stages']:
+                print('FOCUS_STAGE',c['s6e'],s['stage_index'],'MAP',s['map_data_table'],'F603',s['f603_occurrence_count'],'DEVS',s['dev_names'])
+          PY
+          sha256sum out/CROTA_FULL_STAGE_RESOURCE_CENSUS_V2.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-FULL-STAGE-RESOURCE-CENSUS-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
