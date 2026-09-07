@@ -1,0 +1,179 @@
+name: D1 Crota 81096A26 shared scripted handoff
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-81096a26-shared-handoff.yml'
+      - 'tools/d1_remote_exact_tag_probe.py'
+      - 'tools/d1_remote_catalog_backlinks.py'
+      - 'tools/d1_remote_stringhash_preimage_scan.py'
+      - 'tools/d1_remote_catalog_entity_resource_probe.py'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal member catalog
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact shared D912 unk10 target 81096A26
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_exact_tag_probe.py
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 0x81096A26 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --min-string 4 \
+            -o out/CROTA_81096A26_EXACT_TAG.json | tee out/exact_tag_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_81096A26_EXACT_TAG.json'))
+          assert d['violation_count']==0,d['violations']
+          e=d['entries'][0]
+          assert e['tag_hash']=='81096A26',e
+          print('HANDOFF_CLASS',e['entry']['reference'],'TYPE',e['entry']['type'],'SUBTYPE',e['entry']['subtype'],'SIZE',e['payload_size'])
+          print('HANDOFF_STRINGS',[(hex(x['offset']),x['string']) for x in e['printable_strings']])
+          print('HANDOFF_REFS',[(hex(x['offset']),x['tag_hash'],x['entry']['reference']) for x in e['aligned_resolved_tags']])
+          PY
+
+      - name: Decode 81096A26 with exact typed parser when supported
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          REF=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_81096A26_EXACT_TAG.json'))
+          print(d['entries'][0]['entry']['reference'])
+          PY
+          )
+          echo "HANDOFF_REFERENCE=$REF" | tee out/typed_dispatch.txt
+          case "$REF" in
+            80800861)
+              python tools/d1_remote_catalog_entity_resource_probe.py \
+                --tag-hash 0x81096A26 \
+                --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+                --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+                -o out/CROTA_81096A26_ENTITY_RESOURCE.json | tee out/typed_stdout.txt
+              ;;
+            80800734)
+              python tools/d1_remote_exact_s_entity_probe.py \
+                --tag-hash 0x81096A26 \
+                --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+                --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+                -o out/CROTA_81096A26_S_ENTITY.json | tee out/typed_stdout.txt
+              ;;
+            *)
+              echo "NO_EXISTING_TYPED_PARSER_DISPATCH_FOR_$REF" | tee out/typed_stdout.txt
+              ;;
+          esac
+
+      - name: Find exact structured backlinks to shared handoff
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x0450 --scan-package-id 0x0458 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --target 0x81096A26 --target 0x8108E300 --target 0x8108E361 \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_81096A26_BACKLINKS.json | tee out/backlinks_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_81096A26_BACKLINKS.json'))
+          assert d['error_count']==0,d['errors']
+          print('BACKLINK_COUNTS',d['occurrences_by_target'])
+          print('BACKLINK_CLASSES',d['hit_sources_by_reference'])
+          for x in d['hits']:
+              print('BACKLINK',x['package_id'],x['source_tag_hash'],x['reference'],x['targets'])
+          PY
+
+      - name: Search exact retail FNV1 preimages for ultra-Knight handoff names
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_stringhash_preimage_scan.py \
+            --package-id 0x0447 --package-id 0x044B --package-id 0x0450 --package-id 0x0458 \
+            --target 0xC4E73319 --target 0x70DF810D --target 0x7D04C786 --target 0xA384A910 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_ULTRA_KNIGHT_HANDOFF_PREIMAGES.json | tee out/preimages_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ULTRA_KNIGHT_HANDOFF_PREIMAGES.json'))
+          assert d['error_count']==0,d['errors']
+          print('PREIMAGE_COUNTS',d['hit_counts'])
+          for x in d['hits']:
+              print('PREIMAGE_HIT',x.get('matched_targets') or [x.get('target')],repr(x['preimage']),x['package_id'],x['source_tag_hash'],x['source_reference'],hex(x['byte_offset']))
+          PY
+
+      - name: Persist proof summary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib,pathlib
+          tag=json.load(open('out/CROTA_81096A26_EXACT_TAG.json'))['entries'][0]
+          back=json.load(open('out/CROTA_81096A26_BACKLINKS.json'))
+          pre=json.load(open('out/CROTA_ULTRA_KNIGHT_HANDOFF_PREIMAGES.json'))
+          out={
+            'schema':'d1_crota_81096a26_shared_handoff/v1',
+            'status':'D1_CROTA_81096A26_SHARED_HANDOFF_EXACT',
+            'source_scripted_tables':[
+              {'d912':'8108E300','family_hash':'A384A910','family':'dark_lens.sq_crota','unk10_file_hash':'81096A26'},
+              {'d912':'8108E361','family_hash':'7D04C786','family':'sq_ultra_knight','unk10_file_hash':'81096A26'},
+            ],
+            'handoff':{
+              'tag_hash':'81096A26','reference':tag['entry']['reference'],'type':tag['entry']['type'],'subtype':tag['entry']['subtype'],
+              'size':tag['payload_size'],'payload_sha256':tag['payload_sha256'],
+              'printable_strings':tag['printable_strings'],'aligned_resolved_tags':tag['aligned_resolved_tags'],
+            },
+            'backlink_occurrences':back['occurrences_by_target'],
+            'backlink_source_classes':back['hit_sources_by_reference'],
+            'preimage_hit_counts':pre['hit_counts'],
+            'policy':'81096A26 is admitted because two independently decoded raid D912 tables serialize it in the same source-mapped unk10 FileHash field. Exact tag/backlink/preimage evidence is preserved, but no physical Crota identity is promoted unless a typed downstream schema establishes that ownership.',
+          }
+          pathlib.Path('out/CROTA_81096A26_SHARED_HANDOFF_SUMMARY.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in out.items() if k not in ('handoff','policy')},indent=2))
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-81096A26-SHARED-HANDOFF
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
