@@ -37,7 +37,7 @@ jobs:
       - name: Recover exact skin and animation checkpoints
         run: |
           set -euo pipefail
-          python -m pip install -q numpy scipy pyglm pygltflib
+          python -m pip install -q numpy scipy pyglm pygltflib trimesh
           mkdir -p input/catalog input/skinned input/options runtime out/models out/reports
 
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
