@@ -1,0 +1,62 @@
+name: D1 Xur candidate permutation evaluator
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-candidate-permutation-evaluator.yml'
+      - 'tools/d1_xur_candidate_permutation_evaluator.py'
+
+permissions: {contents: read, actions: read}
+env:
+  STATIC_ARTIFACT_ID: '10032195917'
+  STATIC_ARTIFACT_SHA256: '6cb45ab3bb0d683969b6e253f967942cc54185613c3dcfbded7936eb1a208a91'
+  CONFIG_ARTIFACT_ID: '10034212898'
+  CONFIG_ARTIFACT_SHA256: 'ce49034b69d4656f98bf0df9f80ef976ce9e692488bd9bf39e1edff015a5c705'
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned proof artifacts
+        run: |
+          set -euo pipefail; mkdir -p input/static input/config reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STATIC_ARTIFACT_ID}/zip" -o input/static.zip
+          echo "${STATIC_ARTIFACT_SHA256}  input/static.zip" | sha256sum --check --strict
+          unzip -q input/static.zip -d input/static
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CONFIG_ARTIFACT_ID}/zip" -o input/config.zip
+          echo "${CONFIG_ARTIFACT_SHA256}  input/config.zip" | sha256sum --check --strict
+          unzip -q input/config.zip -d input/config
+      - name: Evaluate candidate permutation rule fail closed
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xur_candidate_permutation_evaluator.py
+          python tools/d1_xur_candidate_permutation_evaluator.py \
+            --static-graph input/static/D1_XUR_MODEL_PARENT_PERMUTATION_STATIC_GRAPH.json \
+            --placement-config input/config/D1_XUR_SCRIPTED_OWNER_SWITCH_PROBE.json \
+            -o reports/D1_XUR_CANDIDATE_PERMUTATION_EVALUATOR.json | tee reports/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_XUR_CANDIDATE_PERMUTATION_EVALUATOR.json'))
+          assert d['status']=='D1_XUR_CANDIDATE_PERMUTATION_EVALUATION_UNIQUE',d
+          assert d['model_switch_configuration_pairs']==[['26170C92','4AC210DE']],d['model_switch_configuration_pairs']
+          assert d['descriptor_B_companion_invariant']['descriptor_count']==108,d
+          assert d['descriptor_B_companion_invariant']['same_keys_all_B_invalid_count']==108,d
+          assert d['variant_group_count']==81,d
+          assert d['unique_candidate_group_count']==81,d
+          c=d['E6_E7_E8_candidate_consequences']
+          assert c['E6']['occurrences'][0]['candidate_members'][0]['material_tag_hash']=='80C8864B',c['E6']
+          assert c['E7']['occurrences'][0]['candidate_members'][0]['material_tag_hash']=='80C88650',c['E7']
+          assert all(x['candidate_members'][0]['material_tag_hash']=='80C885E8' for x in c['E8']['occurrences']),c['E8']
+          assert d['proof']['D1_retail_consumer_execution_path_proven'] is False,d['proof']
+          assert d['proof']['descriptor_evaluation_algorithm_source_closed'] is False,d['proof']
+          assert all(v is False for v in d['gates'].values()),d['gates']
+          print('XUR_CANDIDATE_PERMUTATION_EVALUATOR_ACCEPTED_FAIL_CLOSED')
+          PY
+      - run: find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: D1-XUR-CANDIDATE-PERMUTATION-EVALUATOR, path: reports/, retention-days: 90, if-no-files-found: error}
