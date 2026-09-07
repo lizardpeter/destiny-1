@@ -1,0 +1,118 @@
+name: D1 native shader semantic registry validate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-native-shader-semantic-registry-validate.yml'
+      - 'evidence/d1_native_shader_semantic_registry_v1.json'
+      - 'tools/d1_shader_semantic_registry_lookup.py'
+      - 'spec/D1_CHARACTER_RENDERING_REUSE.md'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  WAVE3_ARTIFACT_ID: '10029537974'
+  WAVE3_ZIP_SHA256: 'a25bcc0eae93760161852c3263b1b3df28c14f1a00b03a2043876613f5ae5e33'
+  WAVE4_ARTIFACT_ID: '10030000356'
+  WAVE4_ZIP_SHA256: '5533e0faab09cb23ae9d4f9c79d41d4e60a06fc4578bb6d50be27a2a5044283'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact shader proof waves
+        run: |
+          set -euo pipefail
+          mkdir -p input/wave3 input/wave4 reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WAVE3_ARTIFACT_ID}/zip" -o input/wave3.zip
+          echo "${WAVE3_ZIP_SHA256}  input/wave3.zip" | sha256sum --check --strict
+          unzip -q input/wave3.zip -d input/wave3
+          test -f input/wave3/XUR_SHADER_SEMANTIC_PROGRESS_WAVE3.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WAVE4_ARTIFACT_ID}/zip" -o input/wave4.zip
+          echo "${WAVE4_ZIP_SHA256}  input/wave4.zip" | sha256sum --check --strict
+          unzip -q input/wave4.zip -d input/wave4
+          test -f input/wave4/XUR_SHADER_SEMANTIC_PROGRESS_WAVE4.json
+          test -f input/wave4/XUR_RUNTIME_TEXTURE_GAP_CENSUS.json
+
+      - name: Prove registry equals all currently closed exact native GCN programs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.load(open('evidence/d1_native_shader_semantic_registry_v1.json'))
+          p=json.load(open('input/wave4/XUR_SHADER_SEMANTIC_PROGRESS_WAVE4.json'))
+          assert r['status']=='D1_NATIVE_SHADER_SEMANTIC_REGISTRY_V1_EXACT',r
+          assert r['registry_key']=='bounded_native_gcn_sha256',r
+          assert r['entry_count']==9 and r['pixel_shader_entry_count']==6 and r['vertex_shader_entry_count']==3,r
+          assert not r['violations'],r
+          entries=r['entries']
+          keys=[(x['stage'],x['gcn_sha256']) for x in entries]
+          assert len(keys)==len(set(keys))==9,keys
+          exact={("ps",x) for x in p['closed_pixel_gcn_sha256']}|{("vs",x) for x in p['closed_vertex_gcn_sha256']}
+          assert set(keys)==exact,(set(keys)^exact)
+          for row in entries:
+              assert Path(row['handler']).is_file(),row
+              assert len(row['gcn_sha256'])==64 and all(c in '0123456789abcdef' for c in row['gcn_sha256']),row
+              assert row['source_proof_status'].endswith('EXACT'),row
+          gap=json.load(open('input/wave4/XUR_RUNTIME_TEXTURE_GAP_CENSUS.json'))
+          assert gap['status']=='D1_MATERIAL_RUNTIME_TEXTURE_GAP_CENSUS_EXACT',gap
+          assert gap['materials_with_runtime_binding_gaps']==2 and gap['missing_index_histogram']=={'2':2},gap
+          out={
+            'status':'D1_NATIVE_SHADER_SEMANTIC_REGISTRY_V1_VALIDATED_EXACT',
+            'registry_entries':len(entries),
+            'pixel_shader_entries':sum(x['stage']=='ps' for x in entries),
+            'vertex_shader_entries':sum(x['stage']=='vs' for x in entries),
+            'matches_wave4_closed_program_set_exactly':True,
+            'runtime_texture_gap_policy_preserved':True,
+            'source_wave4_status':p['status'],
+            'source_wave4_closed_programs':p['native_gcn_programs_complete'],
+            'violations':[],
+          }
+          Path('reports/D1_NATIVE_SHADER_SEMANTIC_REGISTRY_VALIDATION.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Prove exact lookup and fail-closed miss behavior
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,subprocess,sys
+          r=json.load(open('evidence/d1_native_shader_semantic_registry_v1.json'))
+          for row in r['entries']:
+              cp=subprocess.run([sys.executable,'tools/d1_shader_semantic_registry_lookup.py','--gcn-sha256',row['gcn_sha256'],'--stage',row['stage']],capture_output=True,text=True)
+              assert cp.returncode==0,(row,cp.stdout,cp.stderr)
+              d=json.loads(cp.stdout);assert d['status']=='D1_SHADER_SEMANTIC_REGISTRY_EXACT_MATCH' and d['match']['gcn_sha256']==row['gcn_sha256'],d
+          cp=subprocess.run([sys.executable,'tools/d1_shader_semantic_registry_lookup.py','--gcn-sha256','0'*64,'--stage','ps'],capture_output=True,text=True)
+          assert cp.returncode==3,(cp.stdout,cp.stderr)
+          d=json.loads(cp.stdout);assert d['status']=='D1_SHADER_SEMANTIC_REGISTRY_NO_EXACT_MATCH' and d['match'] is None,d
+          print('REGISTRY_LOOKUP_FAIL_CLOSED_OK')
+          PY
+
+      - name: Persist hashes
+        run: |
+          set -euo pipefail
+          cp evidence/d1_native_shader_semantic_registry_v1.json reports/
+          cp spec/D1_CHARACTER_RENDERING_REUSE.md reports/
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-NATIVE-SHADER-SEMANTIC-REGISTRY-V1
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
