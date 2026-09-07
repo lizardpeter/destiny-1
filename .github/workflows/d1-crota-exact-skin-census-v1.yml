@@ -1,0 +1,99 @@
+name: D1 Crota exact skin census v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-exact-skin-census-v1.yml'
+      - 'tools/d1_world_articulated_skin_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog and runtime
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Inspect exact Crota model skin storage
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_activity_placements import RemoteCorpus
+          from d1_world_articulated_skin_census import inspect_family, PINNED_PROJECT_PROOF
+          cats=load_catalogs([Path('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json')])
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          c=RemoteCorpus(arc,cats,Path('runtime'))
+          seed={
+            'family_key':'CROTA_SON_OF_ORYX_8108E484',
+            'entities':['8108E484'],
+            'models':['8108E5B7'],
+            'skeleton_resources':['8108E4BB'],
+            'bone_counts':[50],
+            'runtime_rig_resources':['8108E4CB'],
+            'runtime_placement_count':1,
+            'serialized_placement_reference_count':1,
+            'source_entity_count':1,
+          }
+          f=inspect_family(c,seed)
+          viol=list(f.get('violations',[])); front=list(f.get('frontiers',[]))
+          out={
+            'schema':'d1_crota_exact_skin_census/v1',
+            'status':'D1_CROTA_EXACT_SKIN_CENSUS_COMPLETE' if not viol and not front else ('D1_CROTA_EXACT_SKIN_CENSUS_FRONTIER' if not viol else 'D1_CROTA_EXACT_SKIN_CENSUS_PARTIAL'),
+            'semantic_identity':{'entity':'8108E484','entity_name_hash':'64C53DB9','entity_name':'Crota, Son of Oryx'},
+            'project_proof_basis':PINNED_PROJECT_PROOF,
+            'family_count':1,'families':[f],
+            'mesh_count':int(f.get('mesh_count',0)),
+            'inline_mesh_count':int(f.get('inline_mesh_count',0)),
+            'separate_old_weights_mesh_count':int(f.get('separate_old_weights_mesh_count',0)),
+            'unsupported_inline_mesh_count':int(f.get('unsupported_inline_mesh_count',0)),
+            'unsupported_separate_old_weights_mesh_count':int(f.get('unsupported_separate_old_weights_mesh_count',0)),
+            'frontiers':front,'violations':viol,
+            'policy':'Identity/model/skeleton/runtime-rig are the exact source-closed Crota chain. Skin storage is decoded only through source-closed D1 PS4 formats; no influence is fabricated, normalized, repaired or guessed.'
+          }
+          Path('out/CROTA_EXACT_SKIN_CENSUS.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('STATUS',out['status'],'MESHES',out['mesh_count'],'INLINE',out['inline_mesh_count'],'SEPARATE',out['separate_old_weights_mesh_count'],'FRONTIERS',len(front),'VIOLATIONS',len(viol))
+          for m in f.get('meshes',[]):
+            s=m.get('skin') or {}
+            print('MESH',m['mesh_index'],'V1',m['vertices1'],'PRIMARY_STRIDE',m.get('primary_stride'),'OLD_WEIGHTS',m['old_weights'],'STORAGE',s.get('storage'),'WEIGHT_STRIDE',s.get('stride'),'VERTICES',s.get('vertex_count'),'MODES',s.get('mode_counts'),'BONE_DOMAIN',s.get('bone_domain'),'SUMS',s.get('weight_sum_min'),s.get('weight_sum_max'))
+          assert out['status']=='D1_CROTA_EXACT_SKIN_CENSUS_COMPLETE',out
+          assert out['mesh_count']==3,out['mesh_count']
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-EXACT-SKIN-CENSUS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
