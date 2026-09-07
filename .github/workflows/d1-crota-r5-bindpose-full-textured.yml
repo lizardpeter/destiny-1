@@ -1,0 +1,290 @@
+name: D1 Crota R5 bind-pose and full textured exports
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r5-bindpose-full-textured.yml'
+      - 'tools/d1_crota_visual_union_export.py'
+      - 'tools/d1_remote_single_actor_rigged_animated_glb.py'
+      - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
+      - 'tools/d1_gltf_promote_uv_wrap_zup.py'
+      - 'tools/d1_gltf_bind_crota_blender_materials.py'
+      - 'tools/d1_gltf_strip_animations_preserve.py'
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  ACTOR_ARTIFACT_ID: '10005225514'
+  ACTOR_ZIP_SHA256: '6687cb12dcc423152592bdaff9e7efd86c119fa5b4e5e11cd885cc05ee20491b'
+  SKIN_ARTIFACT_ID: '10027692774'
+  SKIN_ZIP_SHA256: 'f459f939f698449940c96bf42b24894c602c7750b0d668d902483c8e8e7d51a2'
+  BODY_ARTIFACT_ID: '10027389376'
+  BODY_ZIP_SHA256: '9cb9f25e01138bf89de4b641e19308bcbc3f2ca49f73f223b0a01890ffca0ca4'
+  STAGE_ARTIFACT_ID: '10029430581'
+  STAGE_ZIP_SHA256: '8d449a34f83eaeabd9b8c894301905181675a0d1592765f938a39ca7c4d174c6'
+  SHADER_ARTIFACT_ID: '10030265852'
+  SHADER_ZIP_SHA256: '05bed80356309a0b03d86a9b0c12493e4faf9730d393171e0e189b0d4050f2f7'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover pinned source-closed Crota evidence
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib pillow
+          mkdir -p input/catalog input/actor input/skin input/body input/stage input/shader runtime out/geometry out/native out/portable out/final out/reports
+          fetch_artifact() {
+            local id="$1" zip="$2" sha="$3" dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "$sha  $zip" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          fetch_artifact "$CATALOG_ARTIFACT_ID" input/catalog.zip "$CATALOG_ZIP_SHA256" input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          fetch_artifact "$ACTOR_ARTIFACT_ID" input/actor.zip "$ACTOR_ZIP_SHA256" input/actor
+          fetch_artifact "$SKIN_ARTIFACT_ID" input/skin.zip "$SKIN_ZIP_SHA256" input/skin
+          fetch_artifact "$BODY_ARTIFACT_ID" input/body.zip "$BODY_ZIP_SHA256" input/body
+          fetch_artifact "$STAGE_ARTIFACT_ID" input/stage.zip "$STAGE_ZIP_SHA256" input/stage
+          fetch_artifact "$SHADER_ARTIFACT_ID" input/shader.zip "$SHADER_ZIP_SHA256" input/shader
+          test -f input/actor/crota_raid_actor_material_bindings.json
+          test -f input/actor/texture_export/texture_export_manifest.json
+          test -f input/skin/CROTA_EXACT_SKIN_CENSUS.json
+          test -f input/body/CROTA_ANIMATION_OPTIONS_V3.json
+          test -f input/stage/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json
+          test -f input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser rev-parse HEAD)" = "$PARSER_COMMIT"
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Export nine exact MostDetailed ranges with pinned ROI stride-pair decoder
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_visual_union_export.py \
+            --material-bindings input/actor/crota_raid_actor_material_bindings.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --out-dir out/geometry --model 0x8108E5B7 --parent 0x8108E4BA \
+            | tee out/reports/geometry_stdout.txt
+          python - <<'PY'
+          import json,collections,struct
+          from pathlib import Path
+          r=json.load(open('out/geometry/8108E5B7.json'))
+          assert r['status']=='D1_WORLD_ARTICULATED_MODEL_EXPORT_COMPLETE',r
+          assert r['schema_version']==3,r
+          assert r['mesh_count']==3,r
+          assert r['geometry_count']==r['visual_union_selected_range_count']==9,r
+          assert r['active_material_count']==7,r['active_materials']
+          assert all(x['has_uv'] for x in r['ranges']),r['ranges']
+          by=collections.Counter(int(x['mesh_index']) for x in r['ranges'])
+          assert by=={0:3,2:6},by
+          pairs={int(x['mesh_index']):x['d1_roi_stride_pair_layout']['row_mode'] for x in r['ranges']}
+          assert pairs[0]=='0x10_inline4_secondary_uv',pairs
+          assert pairs[2]=='0x0C_all_rigid_w_primary_uv',pairs
+          # Mesh 1 has no Charm IsHighestLevel parts, but its source streams are still
+          # decoded and validated by the exporter. Do not promote LOD7/9 as fake torso geometry.
+          assert r['meshes'][1]['highest_detail_part_count']==0,r['meshes'][1]
+          raw=Path('out/geometry/8108E5B7.glb').read_bytes(); n,t=struct.unpack_from('<II',raw,12); assert t==0x4e4f534a
+          d=json.loads(raw[20:20+n].decode().rstrip(' \x00'))
+          assert len(d['meshes'])==9
+          for i,m in enumerate(d['meshes']):
+              a=m['primitives'][0]['attributes']
+              assert '_D1_UV0' in a and 'TEXCOORD_0' not in a,(i,a)
+          print('CROTA_R5_GEOMETRY_CLOSED','RANGES',r['geometry_count'],'TRIANGLES',r['triangle_count'],'BOUNDS',r['bounds'])
+          print('RANGE_SOURCE_MESH_COUNTS',dict(by))
+          PY
+
+      - name: Bind exact retail skin and all 82 source-selected animations
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_single_actor_rigged_animated_glb.py \
+            out/geometry/8108E5B7.glb \
+            --entity 0x8108E484 --model 0x8108E5B7 --skeleton 0x8108E4BB \
+            --runtime-rig 0x8108E4CB --control 0x8108E5C0 --bone-count 50 \
+            --model-report out/geometry/8108E5B7.json \
+            --skin-census input/skin/CROTA_EXACT_SKIN_CENSUS.json \
+            --animation-options input/body/CROTA_ANIMATION_OPTIONS_V3.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser \
+            --fps 30 \
+            --out out/native/CROTA_R5_PARSER_BASIS.glb \
+            --report out/reports/CROTA_R5_SKIN_ANIMATION_BIND.json \
+            | tee out/reports/skin_animation_stdout.txt
+          python - <<'PY'
+          import json
+          r=json.load(open('out/reports/CROTA_R5_SKIN_ANIMATION_BIND.json'))
+          assert r['status']=='D1_SINGLE_ACTOR_RIGGED_ANIMATED_GLB_COMPLETE',r
+          assert r['selected_range_count']==9,r
+          assert r['skeleton_node_count']==50 and r['runtime_rig_control_count']==44,r
+          assert r['selected_clip_count']==r['animation_count']==82,r
+          assert r['native_retarget_success_count']==82 and r['native_retarget_failure_count']==0,r
+          assert r['raw_weight_sum_min']==r['raw_weight_sum_max']==255,r
+          print('CROTA_R5_SKIN_ANIMATION_CLOSED','VERTICES',r['bound_vertex_count'],'JOINTS',r['skeleton_node_count'],'ANIMATIONS',r['animation_count'])
+          PY
+
+      - name: Restore parser-derived skeleton and animation tracks to native D1 Z-up
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_restore_native_tiger_skin_animation_basis.py \
+            out/native/CROTA_R5_PARSER_BASIS.glb \
+            --out out/native/CROTA_R5_NATIVE_D1_ZUP.glb \
+            --report out/reports/CROTA_R5_NATIVE_BASIS.json
+          python tools/d1_gltf_single_skin_geometry_alignment_probe.py \
+            out/native/CROTA_R5_NATIVE_D1_ZUP.glb \
+            -o out/reports/CROTA_R5_NATIVE_ALIGNMENT.json
+          python - <<'PY'
+          import json
+          b=json.load(open('out/reports/CROTA_R5_NATIVE_BASIS.json'))
+          a=json.load(open('out/reports/CROTA_R5_NATIVE_ALIGNMENT.json'))
+          assert b['status']=='D1_GLTF_NATIVE_TIGER_SKIN_ANIMATION_BASIS_RESTORED',b
+          assert b['skin_count']==1 and b['joint_node_count']==50 and b['animation_count']==82,b
+          assert b['binary_byte_length_unchanged'],b
+          assert a['joint_count']==50 and a['tested_mesh_count']==9,a
+          ge=a['geometry_extent']; se=a['skeleton_extent']
+          assert ge[2]>ge[1] and se[2]>se[1],(ge,se)
+          assert a['centroid_distance_median'] < 0.50,a['centroid_distance_median']
+          print('CROTA_R5_NATIVE_ALIGNMENT','GEOMETRY_EXTENT',ge,'SKELETON_EXTENT',se,'MEDIAN',a['centroid_distance_median'])
+          PY
+
+      - name: Apply one proven D1 Z-up to glTF Y-up standalone root and promote UV0
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_promote_uv_wrap_zup.py \
+            out/native/CROTA_R5_NATIVE_D1_ZUP.glb \
+            --expect-meshes 9 --expect-skins 1 --expect-animations 82 --expect-joints 50 \
+            --out out/portable/CROTA_R5_UPRIGHT_UNTEXTURED.glb \
+            --report out/reports/CROTA_R5_PORTABLE_ROOT_UV.json
+          python - <<'PY'
+          import json,math
+          r=json.load(open('out/reports/CROTA_R5_PORTABLE_ROOT_UV.json'))
+          assert r['status']=='D1_GLTF_UV_AND_ZUP_TO_YUP_ROOT_COMPLETE',r
+          assert r['uv_promoted_mesh_count']==9 and r['binary_identical'],r
+          s=math.sqrt(.5); q=r['portable_root_rotation_xyzw']
+          assert max(abs(a-b) for a,b in zip(q,[-s,0.,0.,s]))<1e-12,q
+          print('CROTA_R5_PORTABLE_ROOT',q)
+          PY
+
+      - name: Embed exact retail textures and build Blender-visible material view
+        run: |
+          set -euo pipefail
+          common=(
+            --input-glb out/portable/CROTA_R5_UPRIGHT_UNTEXTURED.glb
+            --stage-state input/stage/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json
+            --texture-manifest input/actor/texture_export/texture_export_manifest.json
+            --texture-dir input/actor/texture_export
+            --gcn-usage input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json
+          )
+          python tools/d1_gltf_bind_crota_blender_materials.py "${common[@]}" \
+            --preview-mode conservative \
+            --out out/final/CROTA_SON_OF_ORYX_R5_EXACT_RESOURCES_FULL_82.glb \
+            --report out/reports/CROTA_R5_EXACT_MATERIALS.json
+          python tools/d1_gltf_bind_crota_blender_materials.py "${common[@]}" \
+            --preview-mode visible \
+            --out out/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_FULL_82.glb \
+            --report out/reports/CROTA_R5_VISIBLE_MATERIALS.json
+
+      - name: Create animation-free textured bind-pose inspection file
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_strip_animations_preserve.py \
+            out/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_FULL_82.glb \
+            --expect-animations 82 \
+            --out out/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_BIND_POSE.glb \
+            --report out/reports/CROTA_R5_BIND_POSE_VIEW.json
+          python - <<'PY'
+          import json
+          r=json.load(open('out/reports/CROTA_R5_BIND_POSE_VIEW.json'))
+          assert r['status']=='D1_GLTF_BIND_POSE_INSPECTION_VIEW_COMPLETE',r
+          assert r['removed_animation_count']==82 and r['mesh_count']==9 and r['skin_count']==1,r
+          assert r['material_count']==7 and r['image_count']==5,r
+          print('CROTA_R5_BIND_POSE_READY',r['output_sha256'])
+          PY
+
+      - name: Final fail-closed R5 validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib
+          from pathlib import Path
+          def load(path):
+              raw=Path(path).read_bytes(); assert raw[:4]==b'glTF'
+              n,t=struct.unpack_from('<II',raw,12); assert t==0x4e4f534a
+              d=json.loads(raw[20:20+n].decode().rstrip(' \x00'))
+              return raw,d
+          full='out/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_FULL_82.glb'
+          bind='out/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_BIND_POSE.glb'
+          exact='out/final/CROTA_SON_OF_ORYX_R5_EXACT_RESOURCES_FULL_82.glb'
+          fraw,f=load(full); braw,b=load(bind); eraw,e=load(exact)
+          expected_tags={'8108E7B6','80AACF2A','80AAD0E1','8108E951','8108E952'}
+          for name,d,anims in [('full',f,82),('bind',b,0),('exact',e,82)]:
+              assert len(d.get('meshes',[]))==9,(name,'meshes')
+              assert len(d.get('materials',[]))==7,(name,'materials')
+              assert len(d.get('skins',[]))==1 and len(d['skins'][0].get('joints',[]))==50,(name,'skin')
+              assert len(d.get('animations',[]))==anims,(name,'animations',len(d.get('animations',[])))
+              assert len(d.get('images',[]))==5 and len(d.get('textures',[]))==5,(name,'textures')
+              assert {x.get('extras',{}).get('d1_taghash') for x in d['images']}==expected_tags,(name,'tags')
+              for mi,m in enumerate(d['meshes']):
+                  attrs=m['primitives'][0]['attributes']
+                  assert 'TEXCOORD_0' in attrs and '_D1_UV0' not in attrs,(name,mi,attrs)
+              si=int(d.get('scene',0)); roots=d['scenes'][si]['nodes']; assert len(roots)==1,(name,roots)
+              root=d['nodes'][roots[0]]; assert root['name']=='D1_ZUP_TO_GLTF_YUP',(name,root)
+          tex_by_name={x['name']:i for i,x in enumerate(f['textures'])}
+          atlas=tex_by_name['D1_TEXTURE_8108E951']
+          mats={m['extras']['d1_material_taghash']:m for m in f['materials']}
+          for mh in ('8108E7AA','8108E7B3'):
+              assert mats[mh]['pbrMetallicRoughness']['baseColorTexture']['index']==atlas,(mh,mats[mh])
+          def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          geom=json.load(open('out/geometry/8108E5B7.json'))
+          align=json.load(open('out/reports/CROTA_R5_NATIVE_ALIGNMENT.json'))
+          cp={
+            'schema':'d1_crota_r5_blender_checkpoint/v1',
+            'status':'D1_CROTA_R5_BIND_POSE_AND_FULL_TEXTURED_COMPLETE',
+            'entity':'8108E484','entity_name':'Crota, Son of Oryx','model':'8108E5B7',
+            'source_mesh_count':3,'most_detailed_range_count':9,
+            'source_mesh_range_counts':{'0':3,'1':0,'2':6},
+            'triangle_count':geom['triangle_count'],'geometry_bounds_native':geom['bounds'],
+            'material_count':7,'exact_texture_count':5,'joint_count':50,'runtime_rig_control_count':44,
+            'full_animation_count':82,'bind_pose_animation_count':0,
+            'native_geometry_extent':align['geometry_extent'],'native_skeleton_extent':align['skeleton_extent'],
+            'native_alignment_median':align['centroid_distance_median'],
+            'full_glb':full,'full_bytes':len(fraw),'full_sha256':sha(full),
+            'bind_pose_glb':bind,'bind_pose_bytes':len(braw),'bind_pose_sha256':sha(bind),
+            'exact_resources_glb':exact,'exact_resources_bytes':len(eraw),'exact_resources_sha256':sha(exact),
+            'coordinate_policy':'mesh, skeleton, inverse binds and animation tracks agree in native D1 Z-up; entire standalone actor is wrapped once by D1_ZUP_TO_GLTF_YUP root',
+            'vertex_policy':'pinned Charm D1 ROI stride-pair/position-W sentinel decode; no independent 0x0C stream heuristic',
+            'inspection_policy':'bind-pose GLB removes only Animation JSON objects so Blender cannot auto-select an unproven startup action; full 82-action GLB is preserved separately'
+          }
+          Path('out/CROTA_R5_CHECKPOINT.json').write_text(json.dumps(cp,indent=2)+'\n')
+          print(json.dumps(cp,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-R5-BINDPOSE-FULL-TEXTURED
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
