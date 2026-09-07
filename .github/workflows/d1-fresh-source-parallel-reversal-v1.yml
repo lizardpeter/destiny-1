@@ -1,0 +1,525 @@
+name: D1 fresh-source parallel Crota and Tower reversal v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-fresh-source-parallel-reversal-v1.yml'
+      - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
+      - 'tools/d1_remote_animation_bank_export.py'
+      - 'tools/d1_remote_model_export_all_parts.py'
+      - 'tools/d1_remote_activity_graph_extract.py'
+      - 'tools/d1_activity_asset_dependency_seeds.py'
+      - 'tools/d1_remote_entity_dependency_closure_universal.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  PARSER_COMMIT: b9fdc3a43dd28118113275624fcc9054b75855f4
+
+jobs:
+  fresh-index:
+    name: Fresh retail source index
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Enforce no cross-run extraction inputs
+        run: |
+          set -euo pipefail
+          wf='.github/workflows/d1-fresh-source-parallel-reversal-v1.yml'
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/d1-fresh-source-parallel-reversal-v1.yml')
+          text=p.read_text()
+          forbidden={
+            'actions artifact REST input':'/actions/artifacts/',
+            'prior Actions run download':'gh run download',
+            'release asset input':'releases/download',
+            'prior report CLI input':'--prior-report',
+            'hard-coded prior artifact id':'ARTIFACT_ID',
+          }
+          bad=[f'{name}: {needle}' for name,needle in forbidden.items() if needle in text]
+          if bad: raise SystemExit('FORBIDDEN_CROSS_RUN_INPUTS: '+repr(bad))
+          print('FRESH_SOURCE_POLICY_GUARD_OK')
+          PY
+
+      - name: Build live current package and Activity index
+        run: |
+          set -euo pipefail
+          mkdir -p fresh
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o fresh/packages.txt
+          test -s fresh/packages.txt
+          python tools/d1_remote_activity_index.py \
+            --package-list fresh/packages.txt \
+            --out fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+            --tsv fresh/D1_CURRENT_ACTIVITY_INDEX.tsv \
+            | tee fresh/activity_index_stdout.txt
+          python tools/d1_universal_member_catalog.py \
+            --activity-index fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list fresh/packages.txt \
+            --out fresh/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            | tee fresh/member_catalog_stdout.txt
+
+      - name: Validate and fingerprint fresh source metadata
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          idx=json.load(open('fresh/D1_CURRENT_ACTIVITY_INDEX.json'))
+          cat=json.load(open('fresh/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          psha=sha('fresh/packages.txt')
+          assert idx['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',idx.get('violations',[])[:20]
+          assert not idx.get('violations'),idx['violations'][:20]
+          assert idx['source']['package_list_sha256']==psha,(idx['source']['package_list_sha256'],psha)
+          assert cat['schema']=='d1_remote_package_member_catalog/v1'
+          assert cat['packages_txt_sha256']==psha,(cat['packages_txt_sha256'],psha)
+          by={x['tag_hash']:x for x in idx['current_d1_activities']}
+          assert '80C98019' in by,'Tower activity not rediscovered from current retail index'
+          manifest={
+            'schema':'d1_fresh_source_run_manifest/v1',
+            'status':'D1_FRESH_SOURCE_INDEX_COMPLETE',
+            'github_sha':os.environ['GITHUB_SHA'],
+            'github_run_id':os.environ['GITHUB_RUN_ID'],
+            'base_url':os.environ['BASE_URL'],
+            'packages_txt_sha256':psha,
+            'activity_index_sha256':sha('fresh/D1_CURRENT_ACTIVITY_INDEX.json'),
+            'member_catalog_sha256':sha('fresh/D1_UNIVERSAL_MEMBER_CATALOG.json'),
+            'physical_member_count':cat['physical_member_count'],
+            'package_family_count':cat['package_family_count'],
+            'current_activity_count':idx['current_d1_activity_count'],
+            'tower_activity':by['80C98019'],
+            'input_policy':'Generated in this workflow run directly from current retail packages.txt and split TAR. No prior extraction, model, texture, animation, census, Action artifact, release asset, or prior report is an input.'
+          }
+          json.dump(manifest,open('fresh/FRESH_SOURCE_MANIFEST.json','w'),indent=2)
+          print(json.dumps(manifest,indent=2))
+          PY
+          (cd fresh && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-SOURCE-INDEX-${{ github.run_id }}
+          path: fresh/
+          retention-days: 7
+          if-no-files-found: error
+
+  crota-stage:
+    name: Crota stage fresh extraction
+    needs: fresh-index
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: D1-FRESH-SOURCE-INDEX-${{ github.run_id }}
+          path: fresh
+
+      - name: Setup current runtime and parser
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p runtime parser-src out/textures out/models_all_parts out/animation_bank
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+          git -C parser-src checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser-src rev-parse HEAD)" = "$PARSER_COMMIT"
+
+      - name: Fresh Crota stage roots and complete entity closure
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_remote_exact_map_data_table_probe.py \
+            --tag-hash 0x810978FC --tag-hash 0x8108E2FF \
+            --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/stage_tables.json | tee out/stage_tables.txt
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/stage_tables.json'));assert d['violation_count']==0,d['violations']
+          hs=[]
+          for t in d['tables']:
+              for h in t.get('unique_entity_hashes',[]):
+                  if h not in hs: hs.append(h)
+          json.dump({'roots':hs,'root_count':len(hs)},open('out/stage_roots.json','w'),indent=2)
+          print(' '.join('--seed 0x'+h for h in hs))
+          PY
+          )
+          python tools/d1_remote_entity_dependency_closure_universal.py $ARGS \
+            --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --max-depth 6 --max-nodes 20000 -o out/entity_closure.json | tee out/entity_closure.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/entity_closure.json'))
+          assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE' and not d['truncated'] and not d['violations'],d
+          print('CROTA_STAGE_ENTITY_CLOSURE',d['node_count'],d['edge_count'],len(d['articulated_entities']))
+          PY
+
+      - name: Fresh stage models materials textures and every serialized part
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_activity_entity_model_plan.py --entity-closure out/entity_closure.json -o out/model_plan.json
+          python tools/d1_remote_activity_model_visual_dependency_closure.py --model-plan out/model_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/visual_closure.json
+          python tools/d1_remote_activity_model_material_bindings.py --entity-closure out/entity_closure.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/material_bindings.json
+          python tools/d1_activity_selected_material_plan.py --visual-closure out/visual_closure.json --material-bindings out/material_bindings.json -o out/selected_material_plan.json
+          python tools/d1_remote_activity_material_dependency_closure.py --selected-material-plan out/selected_material_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/material_dependencies.json
+          python tools/d1_remote_activity_texture_export.py --material-closure out/material_dependencies.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/textures
+          python tools/d1_remote_model_export_all_parts.py --model-plan out/model_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/models_all_parts -o out/all_parts_export.json
+
+      - name: Fresh stage animation closure including exact empty banks
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_activity_actor_animation_seed.py --entity-closure out/entity_closure.json -o out/animation_seed.json
+          python tools/d1_remote_spawned_actor_animation_options_v3.py --seed out/animation_seed.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser-src -o out/animation_options.json
+          python tools/d1_remote_animation_bank_export.py --animation-options out/animation_options.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser-src --out-dir out/animation_bank -o out/animation_bank_export.json
+
+      - name: Validate fresh-source Crota stage result
+        run: |
+          set -euo pipefail
+          cp fresh/FRESH_SOURCE_MANIFEST.json out/FRESH_SOURCE_MANIFEST.json
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          src=json.load(open('fresh/FRESH_SOURCE_MANIFEST.json'))
+          m=json.load(open('out/model_plan.json'));g=json.load(open('out/all_parts_export.json'));s=json.load(open('out/selected_material_plan.json'));t=json.load(open('out/material_dependencies.json'));a=json.load(open('out/animation_options.json'));b=json.load(open('out/animation_bank_export.json'))
+          assert m['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE',m.get('violations')
+          assert g['status']=='D1_REMOTE_MODEL_EXPORT_ALL_PARTS_COMPLETE',g
+          assert s['status']=='D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE',s.get('violations')
+          assert t['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',t.get('violations')
+          assert a['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE',a
+          assert b['status']=='D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE',b
+          out={'schema':'d1_fresh_crota_stage_assets/v1','status':'D1_FRESH_CROTA_STAGE_ASSETS_COMPLETE','source':src,
+               'root_entity_count':json.load(open('out/stage_roots.json'))['root_count'],'model_count':m['model_count'],
+               'serialized_drawable_part_variant_count':g['drawable_serialized_part_variant_count'],'material_count':s['unique_material_count'],
+               'texture_count':t['unique_texture_count'],'animation_controls':a['unique_control_count'],
+               'animation_bank_clips':a['unique_animation_list_clip_count'],'raw_animation_clips':b['exported_raw_clip_count'],
+               'policy':'Every payload was reopened from current retail split TAR in this workflow run using current checked-out tools. No prior extraction artifact is an input.'}
+          json.dump(out,open('out/PRODUCTION_MANIFEST.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-CROTA-STAGE-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+
+  crota-articulated:
+    name: Crota articulated fresh extraction
+    needs: fresh-index
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: D1-FRESH-SOURCE-INDEX-${{ github.run_id }}
+          path: fresh
+      - name: Setup runtime parser and dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p runtime parser-src out/textures out/models_all_parts out/animation_bank
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+          git -C parser-src checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser-src rev-parse HEAD)" = "$PARSER_COMMIT"
+
+      - name: Rediscover every raid-local articulated entity from retail
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_crota_raid_candidate_probe.py \
+            --raid-package-id 0x0447 --raid-package-id 0x044B --raid-package-id 0x0458 \
+            --hive-arch-package-id 0x0075 --hive-arch-package-id 0x0077 --hive-arch-package-id 0x075D \
+            --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/articulated_census.json | tee out/articulated_census.txt
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/articulated_census.json'));assert d['error_count']==0,d['errors'][:20]
+          hs=[]
+          for r in d['articulated_candidates']:
+              h=r['entity_hash']
+              if h not in hs: hs.append(h)
+          assert hs,'fresh census found no articulated entities'
+          json.dump({'seed_count':len(hs),'seeds':hs},open('out/articulated_seeds.json','w'),indent=2)
+          print(' '.join('--seed 0x'+h for h in hs))
+          PY
+          )
+          python tools/d1_remote_entity_dependency_closure_universal.py $ARGS --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --max-depth 6 --max-nodes 30000 -o out/entity_closure.json | tee out/entity_closure.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/entity_closure.json'));assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE' and not d['truncated'] and not d['violations'],d
+          print('CROTA_ARTICULATED_ENTITY_CLOSURE',d['node_count'],d['edge_count'],len(d['articulated_entities']))
+          PY
+
+      - name: Close all articulated visual assets and every serialized part
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_activity_entity_model_plan.py --entity-closure out/entity_closure.json -o out/model_plan.json
+          python tools/d1_remote_activity_model_visual_dependency_closure.py --model-plan out/model_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/visual_closure.json
+          python tools/d1_remote_activity_model_material_bindings.py --entity-closure out/entity_closure.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/material_bindings.json
+          python tools/d1_activity_selected_material_plan.py --visual-closure out/visual_closure.json --material-bindings out/material_bindings.json -o out/selected_material_plan.json
+          python tools/d1_remote_activity_material_dependency_closure.py --selected-material-plan out/selected_material_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/material_dependencies.json
+          python tools/d1_remote_activity_texture_export.py --material-closure out/material_dependencies.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/textures
+          python tools/d1_remote_model_export_all_parts.py --model-plan out/model_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/models_all_parts -o out/all_parts_export.json
+
+      - name: Close every source-owned articulated animation and full bank
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_activity_actor_animation_seed.py --entity-closure out/entity_closure.json -o out/animation_seed.json
+          python tools/d1_remote_spawned_actor_animation_options_v3.py --seed out/animation_seed.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser-src -o out/animation_options.json
+          python tools/d1_remote_animation_bank_export.py --animation-options out/animation_options.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser-src --out-dir out/animation_bank -o out/animation_bank_export.json
+
+      - name: Validate fresh-source articulated result
+        run: |
+          set -euo pipefail
+          cp fresh/FRESH_SOURCE_MANIFEST.json out/FRESH_SOURCE_MANIFEST.json
+          python - <<'PY'
+          import json
+          src=json.load(open('fresh/FRESH_SOURCE_MANIFEST.json'));se=json.load(open('out/articulated_seeds.json'));m=json.load(open('out/model_plan.json'));g=json.load(open('out/all_parts_export.json'));s=json.load(open('out/selected_material_plan.json'));t=json.load(open('out/material_dependencies.json'));a=json.load(open('out/animation_options.json'));b=json.load(open('out/animation_bank_export.json'))
+          assert m['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE';assert g['status']=='D1_REMOTE_MODEL_EXPORT_ALL_PARTS_COMPLETE';assert s['status']=='D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE';assert t['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE';assert a['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE';assert b['status']=='D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE'
+          out={'schema':'d1_fresh_crota_articulated_assets/v1','status':'D1_FRESH_CROTA_ARTICULATED_ASSETS_COMPLETE','source':src,'fresh_articulated_seed_count':se['seed_count'],'model_count':m['model_count'],'serialized_drawable_part_variant_count':g['drawable_serialized_part_variant_count'],'material_count':s['unique_material_count'],'texture_count':t['unique_texture_count'],'animation_controls':a['unique_control_count'],'selector_selected_clips':a['unique_selector_selected_clip_count'],'animation_bank_clips':a['unique_animation_list_clip_count'],'raw_animation_clips':b['exported_raw_clip_count'],'retarget_pair_success_count':a['retarget_pair_success_count'],'retarget_pair_failure_count':a['retarget_pair_failure_count'],'policy':'Fresh retail census is the extraction seed. No historical 129-candidate list, known actor list, rejection list, model export, texture export or animation report is an input.'}
+          assert out['retarget_pair_failure_count']==0,out
+          json.dump(out,open('out/PRODUCTION_MANIFEST.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-CROTA-ARTICULATED-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+
+  tower-activity-assets:
+    name: Tower dynamic and articulated fresh extraction
+    needs: fresh-index
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: D1-FRESH-SOURCE-INDEX-${{ github.run_id }}
+          path: fresh
+      - name: Setup runtime parser and dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p runtime parser-src out/graph out/textures out/models_all_parts out/animation_bank
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+          git -C parser-src checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser-src rev-parse HEAD)" = "$PARSER_COMMIT"
+
+      - name: Rediscover Tower Activity graph and source-owned asset seeds
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_remote_activity_graph_extract.py \
+            --activity-hash 80C98019 --activity-name 'map:city_tower:8be28003:root' --activity-class 80800616 \
+            --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --output-dir out/graph
+          python tools/d1_activity_asset_dependency_seeds.py --graph-dir out/graph -o out/dependency_seeds.json
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/dependency_seeds.json'));assert d['status']=='D1_ACTIVITY_ASSET_DEPENDENCY_SEEDS_EXACT',d['violations']
+          hs=d['closure_seed_hashes'];assert hs
+          print(' '.join('--seed 0x'+h for h in hs))
+          PY
+          )
+          python tools/d1_remote_entity_dependency_closure_universal.py $ARGS --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --max-depth 6 --max-nodes 40000 -o out/entity_closure.json | tee out/entity_closure.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/entity_closure.json'));assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE' and not d['truncated'] and not d['violations'],d
+          print('TOWER_ENTITY_CLOSURE',d['node_count'],d['edge_count'],len(d['articulated_entities']))
+          PY
+
+      - name: Fresh Tower models materials textures and every serialized part
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_activity_entity_model_plan.py --entity-closure out/entity_closure.json -o out/model_plan.json
+          python tools/d1_remote_activity_model_visual_dependency_closure.py --model-plan out/model_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/visual_closure.json
+          python tools/d1_remote_activity_model_material_bindings.py --entity-closure out/entity_closure.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/material_bindings.json
+          python tools/d1_activity_selected_material_plan.py --visual-closure out/visual_closure.json --material-bindings out/material_bindings.json -o out/selected_material_plan.json
+          python tools/d1_remote_activity_material_dependency_closure.py --selected-material-plan out/selected_material_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime -o out/material_dependencies.json
+          python tools/d1_remote_activity_texture_export.py --material-closure out/material_dependencies.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/textures
+          python tools/d1_remote_model_export_all_parts.py --model-plan out/model_plan.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir out/models_all_parts -o out/all_parts_export.json
+
+      - name: Fresh Tower animation controls and full banks
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          C=fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python tools/d1_activity_actor_animation_seed.py --entity-closure out/entity_closure.json -o out/animation_seed.json
+          python tools/d1_remote_spawned_actor_animation_options_v3.py --seed out/animation_seed.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser-src -o out/animation_options.json
+          python tools/d1_remote_animation_bank_export.py --animation-options out/animation_options.json --member-catalog "$C" --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser-src --out-dir out/animation_bank -o out/animation_bank_export.json
+
+      - name: Validate fresh-source Tower activity assets
+        run: |
+          set -euo pipefail
+          cp fresh/FRESH_SOURCE_MANIFEST.json out/FRESH_SOURCE_MANIFEST.json
+          python - <<'PY'
+          import json
+          src=json.load(open('fresh/FRESH_SOURCE_MANIFEST.json'));graph=json.load(open('out/graph/activity_graph_manifest.json'));m=json.load(open('out/model_plan.json'));g=json.load(open('out/all_parts_export.json'));s=json.load(open('out/selected_material_plan.json'));t=json.load(open('out/material_dependencies.json'));a=json.load(open('out/animation_options.json'));b=json.load(open('out/animation_bank_export.json'))
+          assert graph['status']=='D1_REMOTE_ACTIVITY_GRAPH_EXACT';assert m['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE';assert g['status']=='D1_REMOTE_MODEL_EXPORT_ALL_PARTS_COMPLETE';assert s['status']=='D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE';assert t['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE';assert a['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE';assert b['status']=='D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE';assert a['retarget_pair_failure_count']==0,a
+          out={'schema':'d1_fresh_tower_activity_assets/v1','status':'D1_FRESH_TOWER_ACTIVITY_ASSETS_COMPLETE','source':src,'activity_graph_counts':graph['counts'],'model_count':m['model_count'],'serialized_drawable_part_variant_count':g['drawable_serialized_part_variant_count'],'material_count':s['unique_material_count'],'texture_count':t['unique_texture_count'],'animation_controls':a['unique_control_count'],'selector_selected_clips':a['unique_selector_selected_clip_count'],'animation_bank_clips':a['unique_animation_list_clip_count'],'raw_animation_clips':b['exported_raw_clip_count'],'policy':'Tower Activity graph and all assets were rediscovered from current retail source in this workflow run. No prior Tower proof report, GLB, package recovery, census, texture export or animation artifact is an input.'}
+          json.dump(out,open('out/PRODUCTION_MANIFEST.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-TOWER-ACTIVITY-ASSETS-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+
+  tower-static:
+    name: Tower baked static fresh extraction
+    needs: fresh-index
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: D1-FRESH-SOURCE-INDEX-${{ github.run_id }}
+          path: fresh
+      - name: Setup static extraction runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p runtime packages work out/reports out/baked_cells out/merged out/textures out/texture_expanded
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Rediscover Tower map roots and baked-static chain from fresh index
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py --index fresh/D1_CURRENT_ACTIVITY_INDEX.json --package-list fresh/packages.txt --activity 80C98019 --runtime runtime --package-dir packages --work-dir work/root --root-out out/reports/activity_map_roots.json --report out/reports/activity_root_dependency_closure.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort); args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime --map-root-json out/reports/activity_map_roots.json --out out/reports/map_data_layer_census.json
+          python tools/d1_world_map_resource_subset_plan.py --census out/reports/map_data_layer_census.json --resource-class 80801AEA --out out/reports/static_map_roots.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort); args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime --map-root-json out/reports/static_map_roots.json --out out/reports/static_map_resource_chain_census.json
+          python tools/d1_world_static_visual_dependency_closure.py --index fresh/D1_CURRENT_ACTIVITY_INDEX.json --package-list fresh/packages.txt --chain-json out/reports/static_map_resource_chain_census.json --runtime runtime --package-dir packages --work-dir work/baked --validation-out out/reports/baked_validation.json --report out/reports/baked_dependency_closure.json
+          python - <<'PY'
+          import json
+          for f,status in [('activity_root_dependency_closure.json','D1_WORLD_ACTIVITY_ROOT_DEPENDENCY_CLOSURE_COMPLETE'),('static_map_resource_chain_census.json','D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED'),('baked_dependency_closure.json','D1_WORLD_STATIC_VISUAL_DEPENDENCY_CLOSURE_COMPLETE')]:
+              d=json.load(open('out/reports/'+f));assert d['status']==status,(f,d.get('status'),d.get('violations') or d.get('validation_failures'))
+          d=json.load(open('out/reports/baked_dependency_closure.json'));assert not d.get('validation_failures'),d['validation_failures']
+          cells=sorted(x['static_map_data'] for x in d['baked_cells']);assert cells and len(cells)==len(set(cells)),cells
+          open('out/reports/baked_cells.txt','w').write('\n'.join(cells)+'\n');print('FRESH_TOWER_BAKED_CELLS',len(cells))
+          PY
+
+      - name: Export all fresh discovered baked cells and exact textures
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort); snap=(); for f in "${files[@]}"; do snap+=(--snapshot "$f"); done
+          while read -r h; do
+            python tools/d1_world_static_visual_export.py "${snap[@]}" --runtime runtime --validation-json out/reports/baked_validation.json --static-map-data "$h" --out "out/baked_cells/${h}.glb" --json "out/baked_cells/${h}.json" --basis gltf-y-up
+          done < out/reports/baked_cells.txt
+          python - <<'PY'
+          import glob,json
+          rows=[json.load(open(p)) for p in sorted(glob.glob('out/baked_cells/*.json'))];assert rows and all(x['decode_error_count']==0 for x in rows)
+          mats={}
+          for x in rows:
+              for h,m in x.get('materials',{}).items():
+                  if m.get('visual'):mats[h.upper()]={'visual':True}
+          summary={'status':'D1_FRESH_TOWER_BAKED_EXPORT_SET_COMPLETE','cells':len(rows),'serialized_placements':sum(x['serialized_placements'] for x in rows),'retail_visible_placements':sum(x['retail_visible_placements'] for x in rows),'geometry_variants':sum(x['geometry_variants'] for x in rows),'unique_visual_materials':len(mats)}
+          json.dump(summary,open('out/reports/baked_export_summary.json','w'),indent=2);json.dump({'status':'D1_GENERIC_ACTIVITY_VISIBLE_MATERIAL_SELECTOR','activity':'80C98019','materials':dict(sorted(mats.items()))},open('out/reports/visual_material_selector.json','w'),indent=2);print(json.dumps(summary,indent=2))
+          PY
+          first="$(head -n1 out/reports/baked_cells.txt)"; layers=(); while read -r h; do [ "$h" = "$first" ] && continue; layers+=(--layer "baked_${h}=out/baked_cells/${h}.glb"); done < out/reports/baked_cells.txt
+          python tools/d1_gltf_layer_merge.py --base "out/baked_cells/${first}.glb" "${layers[@]}" --out out/merged/TOWER_BAKED_STATIC_UNTEXTURED.glb --report out/reports/baked_merge.json
+          python tools/d1_close_world_texture_dependencies_indexed.py --snapshot-dir packages --runtime runtime --visual-json out/reports/visual_material_selector.json --index fresh/D1_CURRENT_ACTIVITY_INDEX.json --package-list fresh/packages.txt --expansion-dir out/texture_expanded --work-dir work/textures --out out/textures --report out/reports/texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py out/textures/material_texture_manifest.json -o out/reports/static_texture_role_inventory.json
+          python tools/d1_gltf_bind_exact_shader_textures.py --input-glb out/merged/TOWER_BAKED_STATIC_UNTEXTURED.glb --manifest out/textures/material_texture_manifest.json --roles out/reports/static_texture_role_inventory.json --texture-dir out/textures/textures --include-medium-base --bind-normal-candidates --out out/merged/TOWER_BAKED_STATIC_EXACT_TEXTURES.glb --report out/reports/static_exact_texture_resources.json
+
+      - name: Validate fresh-source Tower static result
+        run: |
+          set -euo pipefail
+          cp fresh/FRESH_SOURCE_MANIFEST.json out/FRESH_SOURCE_MANIFEST.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          src=json.load(open('fresh/FRESH_SOURCE_MANIFEST.json'));s=json.load(open('out/reports/baked_export_summary.json'));t=json.load(open('out/textures/material_texture_manifest.json'));r=json.load(open('out/reports/static_exact_texture_resources.json'));p=Path('out/merged/TOWER_BAKED_STATIC_EXACT_TEXTURES.glb')
+          assert s['status']=='D1_FRESH_TOWER_BAKED_EXPORT_SET_COMPLETE';assert t['material_decode_errors']==0 and t['texture_errors']==0,t;assert r['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',r
+          out={'schema':'d1_fresh_tower_baked_static/v1','status':'D1_FRESH_TOWER_BAKED_STATIC_COMPLETE','source':src,**{k:s[k] for k in ('cells','serialized_placements','retail_visible_placements','geometry_variants','unique_visual_materials')},'exact_native_texture_resources':r['exact_source_texture_count'],'final_glb_bytes':p.stat().st_size,'final_glb_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'policy':'All map roots, package recovery, baked geometry, materials and textures were derived from the same-run current retail index. No prior Tower GLB, table list, package recovery report or texture export is an input.'}
+          json.dump(out,open('out/PRODUCTION_MANIFEST.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-TOWER-STATIC-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+
+  cross-check:
+    name: Parallel source fingerprint cross-check
+    needs: [crota-stage, crota-articulated, tower-activity-assets, tower-static]
+    if: always() && needs.crota-stage.result == 'success' && needs.crota-articulated.result == 'success' && needs.tower-activity-assets.result == 'success' && needs.tower-static.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: D1-FRESH-*-${{ github.run_id }}
+          path: all
+      - name: Require one shared source fingerprint across Crota and Tower
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json
+          rows=[]
+          for p in glob.glob('all/**/PRODUCTION_MANIFEST.json',recursive=True):
+              d=json.load(open(p));s=d['source'];rows.append((p,s['github_sha'],s['packages_txt_sha256'],s['activity_index_sha256'],s['member_catalog_sha256']))
+          assert len(rows)==4,rows
+          sigs={r[1:] for r in rows};assert len(sigs)==1,rows
+          out={'status':'D1_FRESH_PARALLEL_CROTA_TOWER_SOURCE_FINGERPRINT_MATCH','production_manifest_count':len(rows),'shared_fingerprint':dict(zip(('github_sha','packages_txt_sha256','activity_index_sha256','member_catalog_sha256'),next(iter(sigs)))),'manifests':[x[0] for x in rows]}
+          print(json.dumps(out,indent=2));json.dump(out,open('PARALLEL_SOURCE_CROSSCHECK.json','w'),indent=2)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-PARALLEL-CROSSCHECK-${{ github.run_id }}
+          path: PARALLEL_SOURCE_CROSSCHECK.json
+          retention-days: 14
