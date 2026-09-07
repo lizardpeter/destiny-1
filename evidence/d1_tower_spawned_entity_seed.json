@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_SPAWNED_ENTITY_SEED_FROM_EXACT_AI_CENSUS",
+  "source_workflow_run": 34069387525,
+  "source_artifact_id": 10000066590,
+  "source_status": "D1_TOWER_AI_SPAWNER_CENSUS_COMPLETE",
+  "source_violation_count": 0,
+  "policy": "These 57 EntitySK FileHashes are the exact unique spawned entities recovered from the source-pinned Charm SBC078080 -> SA7058080 -> SD9128080 Tower AI carrier path. This file is a durable seed only; every entity and dependency must be reopened from retail bytes before classification or export.",
+  "entity_hashes": [
+    "80C7A272", "80C7A273", "80C7A2B3", "80C7A2B4", "80C7A2B5", "80C7A2B6", "80C7A2F5", "80C7A2F6",
+    "80C7A32A", "80C7A32B", "80C7A32C", "80C7A32D", "80C7A32E", "80C7A5AC", "80C7A5AD", "80C7A5AE",
+    "80C7A5AF", "80C7A5B0", "80C7AC88", "80C7AC89", "80C7ACC4", "80C7ACC5", "80C7ACC6", "80C7ACC7",
+    "80C7ACC8", "80C7ACCD", "80C7ACCE", "80C7ACCF", "80C7AF79", "80C7B004", "80C880B4", "80C880B5",
+    "80C880B6", "80C880B7", "80C88214", "80C88215", "80C88216", "80C88217", "80C883C8", "80C883C9",
+    "80C883CA", "80C883CB", "80C883CC", "80C883CE", "80C883CF", "80C883D0", "80C883D1", "80C883D2",
+    "80C885A3", "80C885A4", "80C885A5", "80C885A6", "80C885A7", "80C885A8", "80C885A9", "80C885AA", "80C885DA"
+  ]
+}
