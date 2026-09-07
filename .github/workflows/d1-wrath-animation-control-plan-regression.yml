@@ -1,0 +1,80 @@
+name: D1 Wrath actor animation control ownership regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-wrath-animation-control-plan-regression.yml'
+      - 'tools/d1_activity_actor_animation_seed.py'
+      - 'tools/d1_activity_actor_animation_control_plan.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  WRATH_SOURCE_ARTIFACT_ID: '10003468849'
+  WRATH_SOURCE_ARTIFACT_ZIP_SHA256: '81c395d9be86c569b96e0de1e79f852f8f7d642aa33344fc7807d505feee0999'
+
+jobs:
+  control-plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover retained exact Wrath closure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/wrath out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WRATH_SOURCE_ARTIFACT_ID}/zip" -o input/wrath.zip
+          echo "${WRATH_SOURCE_ARTIFACT_ZIP_SHA256}  input/wrath.zip" | sha256sum --check --strict
+          unzip -q input/wrath.zip -d input/wrath
+          test -f input/wrath/wrath/entity_dependency_closure.json
+
+      - name: Derive exact actor structures and close control owner fields
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_activity_actor_animation_seed.py tools/d1_activity_actor_animation_control_plan.py
+          python tools/d1_activity_actor_animation_seed.py \
+            --entity-closure input/wrath/wrath/entity_dependency_closure.json \
+            -o out/wrath_activity_actor_animation_seed.json \
+            | tee out/actor_seed.txt
+          python tools/d1_activity_actor_animation_control_plan.py \
+            --entity-closure input/wrath/wrath/entity_dependency_closure.json \
+            --actor-seed out/wrath_activity_actor_animation_seed.json \
+            -o out/wrath_activity_actor_animation_control_plan.json \
+            | tee out/control_plan.txt
+          python - <<'PY'
+          import json
+          s=json.load(open('out/wrath_activity_actor_animation_seed.json'))
+          d=json.load(open('out/wrath_activity_actor_animation_control_plan.json'))
+          assert s['status']=='D1_ACTIVITY_ACTOR_ANIMATION_SEED_COMPLETE' and not s['violations'],s
+          assert s['animation_capable_entity_count']==123,s['animation_capable_entity_count']
+          assert d['status']=='D1_ACTIVITY_ACTOR_ANIMATION_CONTROL_PLAN_COMPLETE',d
+          assert d['actor_count']==123,d['actor_count']
+          assert d['source_closed_actor_count']==123,d['source_closed_actor_count']
+          assert d['fixed_owner_edge_count']==246,d['fixed_owner_edge_count']
+          assert d['owner_agreement_count']==123,d['owner_agreement_count']
+          assert d['unique_control_count']==45,d['unique_control_count']
+          assert d['frontier_count']==0,d['frontiers'][:20]
+          assert d['violation_count']==0,d['violations'][:20]
+          for r in d['actors']:
+              assert r['owner_pair_controls_agree'] and len(r['control_hashes'])==1,r
+              assert all(x['control_reference']=='80802C0E' for x in r['owner_edges']),r
+          print('WRATH_ANIMATION_CONTROL_PLAN_CLOSED',d['actor_count'],d['fixed_owner_edge_count'],d['unique_control_count'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-WRATH-ACTOR-ANIMATION-CONTROL-PLAN
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
