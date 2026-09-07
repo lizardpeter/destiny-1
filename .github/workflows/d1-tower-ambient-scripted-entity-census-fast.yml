@@ -1,0 +1,101 @@
+name: D1 Tower ambient exact scripted-entity census fast
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-ambient-scripted-entity-census-fast.yml'
+      - 'tools/d1_remote_activity_scripted_entity_census.py'
+      - 'tools/d1_entity_resource_probe.py'
+      - 'tools/d1_world_scripted_entity_identity_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Enumerate scripted entities owned only by ambient City Tower
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_activity_scripted_entity_census.py
+          set +e
+          python tools/d1_remote_activity_scripted_entity_census.py \
+            --activity-hash 80C88003 --activity-name 'ambient_city_tower:scenario_client' --activity-class 80800616 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            -o out/TOWER_AMBIENT_SCRIPTED_ENTITY_CENSUS.json | tee out/stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+      - name: Summarize ambient actor population and broom-near records
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,math
+          d=json.load(open('out/TOWER_AMBIENT_SCRIPTED_ENTITY_CENSUS.json'))
+          assert d['activity']['tag_hash']=='80C88003'
+          broom=(127.7325210571289,93.54338836669922,-9.023451805114746)
+          rows=[]
+          for t in d['scripted_tables']:
+              for r in t.get('records',[]):
+                  tr=r.get('translation')
+                  if not tr or len(tr)<3: continue
+                  dist=math.sqrt(sum((float(tr[i])-broom[i])**2 for i in range(3)))
+                  rows.append((dist,t['scripted_entity_table'],r.get('group_index'),r.get('record_index'),r.get('entity_hash'),r.get('world_id_hex'),r.get('type_string_hash'),r.get('entity_name_string_hash'),tr))
+          rows.sort()
+          print('F603',d['f603_count'])
+          print('SCRIPTED_OWNERS',d['scripted_owner_f603_count'])
+          print('D912_COUNT',d['unique_scripted_table_count'])
+          print('RECORDS',d['scripted_record_count'])
+          print('FAMILIES',d['script_family_string_hash_counts'])
+          print('TYPES',d['type_string_hash_counts'])
+          print('NAMES',d['entity_name_string_hash_counts'])
+          print('ENTITIES',d['scripted_entity_hash_counts'])
+          print('NEAREST_TO_BROOM')
+          for x in rows[:30]: print(x)
+          json.dump([{'distance_to_broom':x[0],'d912':x[1],'group_index':x[2],'record_index':x[3],'entity_hash':x[4],'world_id_hex':x[5],'type_string_hash':x[6],'entity_name_string_hash':x[7],'translation':x[8]} for x in rows[:100]],open('out/TOWER_AMBIENT_NEAREST_BROOM.json','w'),indent=2)
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-AMBIENT-SCRIPTED-ENTITY-CENSUS-FAST
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
