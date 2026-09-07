@@ -9,8 +9,9 @@ Source-pinned D1 activity named classes:
   8080052E  SActivity_ROI
   80800616  SUnkActivity_ROI
 
-Aliases and physical source ownership are preserved. Package filenames/names are
-provenance text only, not gameplay-category or ownership inference.
+D1's named table is global-registration metadata: a package may register a named
+FileHash whose encoded physical package is a different family. Both the registering
+package and encoded target package are therefore preserved explicitly.
 """
 from __future__ import annotations
 
@@ -84,24 +85,36 @@ def merge_rows(rows: list[dict]) -> tuple[list[dict], list[str]]:
     for h in sorted(grouped):
         xs = grouped[h]
         classes = sorted({x["class_hash_canonical"] for x in xs})
-        packages = sorted({x["source_package_id"] for x in xs})
         if len(classes) != 1:
             violations.append(f"current_named_tag_class_conflict:{h}:{classes}")
-        if len(packages) != 1:
-            violations.append(f"current_named_tag_package_conflict:{h}:{packages}")
         aliases = []
         indices = []
+        registrations = []
         for x in xs:
             name = x.get("name")
             if name not in aliases:
                 aliases.append(name)
             indices.append(int(x["index"]))
+            registrations.append(
+                {
+                    "registered_by_package_id": x["registered_by_package_id"],
+                    "source_member": x["source_member"],
+                    "source_generation": x["source_generation"],
+                    "source_patch_id": x["source_patch_id"],
+                    "named_table_index": int(x["index"]),
+                    "name": name,
+                }
+            )
         display = max((x for x in aliases if x is not None), key=len, default=None)
         base = dict(xs[0])
         base["name"] = display
         base["aliases"] = aliases
         base["named_table_indices"] = indices
         base["alias_count"] = len(xs)
+        base["registration_package_ids"] = sorted(
+            {x["registered_by_package_id"] for x in xs}
+        )
+        base["registrations"] = registrations
         merged.append(base)
     return merged, violations
 
@@ -125,6 +138,7 @@ def main() -> int:
     packages = []
     all_rows = []
     violations = []
+    cross_package_registration_count = 0
     for n, pkg in enumerate(sorted(families), 1):
         member = choose_current(families[pkg])
         data_offset = int(member["data_offset"])
@@ -165,16 +179,22 @@ def main() -> int:
             th = norm(e["tag_hash"])
             raw_cls = norm(e["class_hash"])
             encoded_pkg = filehash_package_id(th)
-            if encoded_pkg != pkg:
+            if encoded_pkg is None or encoded_pkg not in families:
                 violations.append(
-                    f"{member['name']}:named_tag_pkg_mismatch:{th}:{encoded_pkg!r}!={pkg:04X}"
+                    f"{member['name']}:named_tag_target_package_absent:{th}:{encoded_pkg!r}"
                 )
+            cross = encoded_pkg is not None and encoded_pkg != pkg
+            if cross:
+                cross_package_registration_count += 1
             row = {
                 **e,
                 "tag_hash": th,
                 "class_hash_raw_uint": raw_cls,
                 "class_hash_charm_display": charm_display(raw_cls),
                 "class_hash_canonical": canonical_named_class(raw_cls),
+                "registered_by_package_id": f"{pkg:04X}",
+                "tag_encoded_package_id": None if encoded_pkg is None else f"{encoded_pkg:04X}",
+                "cross_package_registration": cross,
                 "source_package_id": f"{pkg:04X}",
                 "source_member": member["name"],
                 "source_generation": int(member.get("filename_generation", -1)),
@@ -195,6 +215,9 @@ def main() -> int:
                 "named_tag_table_sha1_actual": actual_sha,
                 "named_tag_table_sha1_matches": sha_matches,
                 "named_class_counts": dict(Counter(x["class_hash_canonical"] for x in pkg_rows)),
+                "cross_package_named_registration_count": sum(
+                    1 for x in pkg_rows if x["cross_package_registration"]
+                ),
             }
         )
         if n % 50 == 0:
@@ -206,7 +229,7 @@ def main() -> int:
     scenario_roots = [x for x in merged if x["class_hash_canonical"] == UNK_ACTIVITY_ROI]
     activity_roots = sorted(
         map_roots + scenario_roots,
-        key=lambda x: (x["source_package_id"], x["tag_hash"]),
+        key=lambda x: (x["tag_encoded_package_id"] or "", x["tag_hash"]),
     )
     report = {
         "schema": "d1_remote_named_activity_inventory/v1",
@@ -221,11 +244,17 @@ def main() -> int:
         "current_named_row_count": len(all_rows),
         "current_unique_named_tag_count": len(merged),
         "current_alias_row_count": len(all_rows) - len(merged),
+        "cross_package_named_registration_count": cross_package_registration_count,
         "current_unique_class_counts": dict(Counter(x["class_hash_canonical"] for x in merged)),
         "map_activity_root_count": len(map_roots),
         "scenario_activity_root_count": len(scenario_roots),
         "activity_root_count": len(activity_roots),
-        "packages_with_activity_roots": len({x["source_package_id"] for x in activity_roots}),
+        "packages_registering_activity_roots": len(
+            {p for x in activity_roots for p in x["registration_package_ids"]}
+        ),
+        "physical_packages_containing_activity_roots": len(
+            {x["tag_encoded_package_id"] for x in activity_roots if x["tag_encoded_package_id"]}
+        ),
         "map_activity_roots": map_roots,
         "scenario_activity_roots": scenario_roots,
         "activity_roots": activity_roots,
@@ -233,10 +262,11 @@ def main() -> int:
         "violations": violations,
         "policy": (
             "Current package selection is highest header patch id then filename generation in the "
-            "checksum-pinned catalog. Named rows/aliases are serialized retail metadata. Only "
-            "source-pinned named classes 8080052E and 80800616 are activity roots. FileHash package "
-            "validation uses the exact D1 Tiger high-package decode. Filenames and names are "
-            "provenance/discovery text, not gameplay-category or ownership proof."
+            "checksum-pinned catalog. Named rows/aliases are serialized retail global-registration "
+            "metadata. The registering package and FileHash-encoded physical target package are "
+            "preserved separately and may legitimately differ. Only source-pinned named classes "
+            "8080052E and 80800616 are admitted as activity roots. Names remain provenance/discovery "
+            "text and do not create ownership edges."
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
@@ -245,16 +275,20 @@ def main() -> int:
         "STATUS", report["status"], "PACKAGES", report["package_scan_count"],
         "NAMED_ROWS", report["current_named_row_count"],
         "UNIQUE_NAMED", report["current_unique_named_tag_count"],
+        "CROSS_PACKAGE_REGISTRATIONS", report["cross_package_named_registration_count"],
         "MAP_ROOTS", report["map_activity_root_count"],
         "SCENARIO_ROOTS", report["scenario_activity_root_count"],
         "ALL_ACTIVITY_ROOTS", report["activity_root_count"],
-        "ACTIVITY_PACKAGES", report["packages_with_activity_roots"],
+        "REGISTERING_PACKAGES", report["packages_registering_activity_roots"],
+        "PHYSICAL_ACTIVITY_PACKAGES", report["physical_packages_containing_activity_roots"],
         "VIOLATIONS", len(violations),
     )
     for r in activity_roots:
         print(
             "ACTIVITY", r["tag_hash"], r["class_hash_canonical"],
-            r["source_package_id"], r.get("name"), r.get("aliases"), r["source_member"],
+            "TARGET_PKG", r.get("tag_encoded_package_id"),
+            "REGISTERED_BY", r.get("registration_package_ids"),
+            r.get("name"), r.get("aliases"),
         )
     return 0 if not violations else 2
 
