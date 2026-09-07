@@ -1,0 +1,187 @@
+name: D1 fresh-source parallel Crota and Tower reversal v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-fresh-source-parallel-reversal-v2.yml'
+      - 'tools/d1_fresh_activity_asset_target.py'
+      - 'tools/d1_fresh_tower_static_target.py'
+      - 'tools/d1_world_static_all_serialized_export.py'
+      - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
+      - 'tools/d1_remote_animation_bank_export.py'
+      - 'tools/d1_remote_model_export_all_parts.py'
+      - 'tools/d1_remote_activity_graph_extract.py'
+      - 'tools/d1_activity_asset_dependency_seeds.py'
+      - 'tools/d1_remote_entity_dependency_closure_universal.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  PARSER_COMMIT: b9fdc3a43dd28118113275624fcc9054b75855f4
+
+jobs:
+  production:
+    name: Fresh ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: crota-stage
+            parser: yes
+          - target: crota-articulated
+            parser: yes
+          - target: tower-activity
+            parser: yes
+          - target: tower-static
+            parser: no
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Enforce fresh-source workflow policy
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/d1-fresh-source-parallel-reversal-v2.yml').read_text()
+          needles={
+            'cross-run artifact REST':'/actions/'+'artifacts/',
+            'prior run download':'gh run'+' download',
+            'release asset input':'releases/'+'download',
+            'prior report argument':'--prior'+'-report',
+            'hard-coded old artifact id':'ARTIFACT'+'_'+'ID',
+            'download-artifact action':'actions/'+'download-artifact',
+          }
+          bad=[f'{k}:{v}' for k,v in needles.items() if v in text]
+          if bad: raise SystemExit('FRESH_SOURCE_POLICY_VIOLATION '+repr(bad))
+          print('FRESH_SOURCE_POLICY_GUARD_OK')
+          PY
+
+      - name: Build this worker's live current retail index
+        run: |
+          set -euo pipefail
+          mkdir -p fresh runtime out
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o fresh/packages.txt
+          test -s fresh/packages.txt
+          python tools/d1_remote_activity_index.py \
+            --package-list fresh/packages.txt \
+            --out fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+            --tsv fresh/D1_CURRENT_ACTIVITY_INDEX.tsv \
+            | tee fresh/activity_index_stdout.txt
+          python tools/d1_universal_member_catalog.py \
+            --activity-index fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list fresh/packages.txt \
+            --out fresh/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            | tee fresh/member_catalog_stdout.txt
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          idx=json.load(open('fresh/D1_CURRENT_ACTIVITY_INDEX.json'));cat=json.load(open('fresh/D1_UNIVERSAL_MEMBER_CATALOG.json'));psha=sha('fresh/packages.txt')
+          assert idx['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE' and not idx.get('violations'),idx.get('violations',[])[:20]
+          assert idx['source']['package_list_sha256']==psha
+          assert cat['schema']=='d1_remote_package_member_catalog/v1' and cat['packages_txt_sha256']==psha
+          by={x['tag_hash']:x for x in idx['current_d1_activities']};assert '80C98019' in by,'current retail index did not rediscover Tower'
+          d={'schema':'d1_fresh_source_run_manifest/v1','status':'D1_FRESH_SOURCE_INDEX_COMPLETE','worker_target':os.environ['MATRIX_TARGET'],'github_sha':os.environ['GITHUB_SHA'],'github_run_id':os.environ['GITHUB_RUN_ID'],'base_url':os.environ['BASE_URL'],'packages_txt_sha256':psha,'activity_index_sha256':sha('fresh/D1_CURRENT_ACTIVITY_INDEX.json'),'member_catalog_sha256':sha('fresh/D1_UNIVERSAL_MEMBER_CATALOG.json'),'physical_member_count':cat['physical_member_count'],'package_family_count':cat['package_family_count'],'current_activity_count':idx['current_d1_activity_count'],'tower_activity':by['80C98019'],'input_policy':'This worker independently built its index/catalog from the current retail packages.txt and split TAR. It consumes no extraction artifact from any prior run or sibling worker.'}
+          json.dump(d,open('fresh/FRESH_SOURCE_MANIFEST.json','w'),indent=2);print(json.dumps(d,indent=2))
+          PY
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+
+      - name: Install current extraction runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          if [ '${{ matrix.parser }}' = 'yes' ]; then
+            git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+            git -C parser-src checkout --quiet "$PARSER_COMMIT"
+            test "$(git -C parser-src rev-parse HEAD)" = "$PARSER_COMMIT"
+          fi
+
+      - name: Run current fresh-source target pipeline
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          if [ '${{ matrix.target }}' = 'tower-static' ]; then
+            python tools/d1_fresh_tower_static_target.py \
+              --activity-index fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+              --package-list fresh/packages.txt \
+              --fresh-source-manifest fresh/FRESH_SOURCE_MANIFEST.json \
+              --runtime runtime --out-dir out | tee out/target_stdout.txt
+          else
+            python tools/d1_fresh_activity_asset_target.py \
+              --target '${{ matrix.target }}' \
+              --member-catalog fresh/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --fresh-source-manifest fresh/FRESH_SOURCE_MANIFEST.json \
+              --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+              --parser-root parser-src --out-dir out | tee out/target_stdout.txt
+          fi
+
+      - name: Validate production provenance and checksums
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          src=json.load(open('fresh/FRESH_SOURCE_MANIFEST.json'));prod=json.load(open('out/PRODUCTION_MANIFEST.json'))
+          assert prod['status'] in ('D1_FRESH_ACTIVITY_ASSET_TARGET_COMPLETE','D1_FRESH_TOWER_STATIC_TARGET_COMPLETE'),prod.get('status')
+          psrc=prod['source'];keys=('github_sha','packages_txt_sha256','activity_index_sha256','member_catalog_sha256')
+          assert all(psrc[k]==src[k] for k in keys),(psrc,src)
+          assert src['github_sha']==os.environ['GITHUB_SHA']
+          print('PRODUCTION_PROVENANCE_CLOSED',os.environ['MATRIX_TARGET'],{k:src[k] for k in keys})
+          PY
+          cp fresh/FRESH_SOURCE_MANIFEST.json out/FRESH_SOURCE_MANIFEST.json
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-PRODUCTION-${{ matrix.target }}-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+
+  cross-check:
+    name: Cross-check parallel Crota and Tower findings
+    needs: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: D1-FRESH-PRODUCTION-*-${{ github.run_id }}
+          path: all
+      - name: Require one retail source fingerprint and summarize shared findings
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json
+          rows=[]
+          for p in sorted(glob.glob('all/**/PRODUCTION_MANIFEST.json',recursive=True)):
+              d=json.load(open(p));s=d['source'];rows.append({'path':p,'manifest':d,'sig':(s['github_sha'],s['packages_txt_sha256'],s['activity_index_sha256'],s['member_catalog_sha256'])})
+          assert len(rows)==4,[x['path'] for x in rows]
+          sigs={x['sig'] for x in rows};assert len(sigs)==1,[x['sig'] for x in rows]
+          summaries={}
+          for x in rows:
+              d=x['manifest'];key=d.get('target') or 'tower-static'
+              summaries[key]={k:v for k,v in d.items() if k in ('model_count','serialized_drawable_part_variant_count','triangle_count_with_variants','selected_material_count','texture_count','animation_capable_entity_count','animation_control_count','selector_selected_clip_count','animation_list_bank_clip_count','raw_animation_clip_count','baked_cell_count','serialized_placement_count','retail_visible_placement_count','all_serialized_exported_placement_count','retail_geometry_variant_count','all_serialized_geometry_variant_count','retail_visible_material_count','all_serialized_material_count','retail_exact_texture_count','all_serialized_exact_texture_count')}
+          names=set(summaries)
+          assert {'crota-stage','crota-articulated','tower-activity','tower-static'}<=names,names
+          sig=next(iter(sigs));out={'schema':'d1_fresh_parallel_crosscheck/v1','status':'D1_FRESH_PARALLEL_CROTA_TOWER_SOURCE_FINGERPRINT_MATCH','shared_source':dict(zip(('github_sha','packages_txt_sha256','activity_index_sha256','member_catalog_sha256'),sig)),'targets':summaries,'reuse_policy':'No production target consumed a sibling or prior-run extraction. Cross-check occurs only after all four independently regenerated targets complete.'}
+          json.dump(out,open('PARALLEL_CROSSCHECK.json','w'),indent=2);print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-FRESH-PARALLEL-CROSSCHECK-${{ github.run_id }}
+          path: PARALLEL_CROSSCHECK.json
+          retention-days: 14
