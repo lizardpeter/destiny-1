@@ -1,0 +1,125 @@
+name: D1 Crota Investment final-entity semantic join v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-investment-final-entity-semantic-join-v1.yml'
+      - 'tools/d1_crota_investment_final_entity_semantic_join.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  BULK_ARTIFACT_ID: '9961752114'
+  BULK_ZIP_SHA256: 'fc8ddd8dc9f992c15356a65976c538b0d95e3d901ffb0ee8991bb6632ea3154d'
+  BULK_PACKAGES_TXT_SHA256: '9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative bulk art-arrangement resolution
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input/bulk input/catalog runtime out
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BULK_ARTIFACT_ID}/zip" -o input/bulk.zip
+          echo "${BULK_ZIP_SHA256}  input/bulk.zip" | sha256sum --check --strict
+          unzip -q input/bulk.zip -d input/bulk
+          test -f input/bulk/art_arrangements_resolved.json
+          test -f input/bulk/packages.txt
+          echo "${BULK_PACKAGES_TXT_SHA256}  input/bulk/packages.txt" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('input/bulk/art_arrangements_resolved.json'))
+          r=d['remote_parent_resolution']
+          assert d['arrangement_count']==4473,d['arrangement_count']
+          assert r['unique_parent_count']==8280,r['unique_parent_count']
+          assert r['resolved_parent_count']==8230,r['resolved_parent_count']
+          print('BULK_PARENT_RESOLUTION',r['resolved_parent_count'],'/',r['unique_parent_count'])
+          PY
+
+      - name: Recover compatible current universal member catalog
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o input/current_packages.txt
+          echo "${BULK_PACKAGES_TXT_SHA256}  input/current_packages.txt" | sha256sum --check --strict
+          cmp -s input/bulk/packages.txt input/current_packages.txt
+          python - <<'PY'
+          import hashlib,json
+          psha=hashlib.sha256(open('input/current_packages.txt','rb').read()).hexdigest()
+          cat=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          expected=cat.get('packages_txt_sha256') or (cat.get('source') or {}).get('package_list_sha256')
+          assert expected==psha,(expected,psha)
+          print('BULK_AND_CURRENT_PACKAGE_CORPUS_IDENTICAL',psha)
+          PY
+
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Join exact Crota and Hive semantic hashes to selected final entities
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_investment_final_entity_semantic_join.py \
+            input/bulk/art_arrangements_resolved.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --target HiveUltraKnightA=2F28D739 \
+            --target R1S2RaidMoon0Ultra0=1FD437C8 \
+            --target RaidMoon0=ECBF97D6 \
+            --target OversoulThrone=E0265F7C \
+            --target CrotaSonOfOryx=2EA84559 \
+            --target Crota=2CF43F68 \
+            --target crota=ACC65F88 \
+            --target UltraKnight=7B1F58EE \
+            --target ultra_knight=6C64AE47 \
+            --target Cleaver=E8EDA4A9 \
+            --target Shredder=17842842 \
+            -o out/CROTA_INVESTMENT_FINAL_ENTITY_SEMANTIC_JOIN.json | tee out/join_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_INVESTMENT_FINAL_ENTITY_SEMANTIC_JOIN.json'))
+          assert d['status']=='D1_CROTA_INVESTMENT_FINAL_ENTITY_SEMANTIC_JOIN_COMPLETE',d['errors'][:20]
+          assert d['unique_final_entity_count']>1000,d['unique_final_entity_count']
+          print('FINAL_ENTITIES',d['unique_final_entity_count'])
+          print('HIT_SOURCES',d['hit_source_count'])
+          print('BY_TARGET',d['hit_occurrences_by_target'])
+          for h in d['hits']:
+              print('SEMANTIC_JOIN_HIT',h['entity_data_hash'],h['reference'],h['semantic_hits'],'contexts',len(h['art_arrangement_contexts']))
+          PY
+
+      - name: Checksum and upload
+        run: |
+          set -euo pipefail
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-INVESTMENT-FINAL-ENTITY-SEMANTIC-JOIN-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
