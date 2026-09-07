@@ -44,12 +44,13 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Decode all ultra-Knight named EntityResources
+      - name: Decode Crota and ultra-Knight scripted owner EntityResources
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_remote_catalog_entity_resource_probe.py \
-            --tag-hash 0x8108E421 --tag-hash 0x8108E2E7 --tag-hash 0x8108E2E0 \
+            --tag-hash 0x8108E39C --tag-hash 0x8108E421 \
+            --tag-hash 0x8108E2E7 --tag-hash 0x8108E2E0 \
             --tag-hash 0x8108E2D6 --tag-hash 0x8108E2D8 --tag-hash 0x8108E2ED \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
@@ -61,24 +62,41 @@ jobs:
           python tools/d1_remote_catalog_backlinks.py \
             --scan-package-id 0x0447 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
-            --target 0x8108E421 --target 0x8108E2E7 --target 0x8108E2E0 \
+            --target 0x8108E39C --target 0x8108E421 --target 0x8108E300 --target 0x8108E361 \
+            --target 0x8108E2E7 --target 0x8108E2E0 \
             --target 0x8108E2D6 --target 0x8108E2D8 --target 0x8108E2ED --target 0x8108E52E \
-            --target 0x7D04C786 --target 0x0906F4B3 --target 0xC4E73319 \
+            --target 0xA384A910 --target 0x7D04C786 --target 0x0906F4B3 --target 0xC4E73319 \
             --target 0x46ECB6D1 --target 0xBAE2C2BA --target 0x70DF810D --target 0x7EB45754 \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime --max-entry-size 8000000 \
             -o out/CROTA_ULTRA_KNIGHT_ALL_BACKLINKS.json | tee out/backlinks_stdout.txt
-      - name: Lock exact known Oversoul name-tag relation
+      - name: Lock exact Crota versus ultra-Knight owner relation
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           r=json.load(open('out/CROTA_ULTRA_KNIGHT_ENTITY_RESOURCES.json'))
           assert not r['violations'],r['violations']
+          em={x['tag_hash']:x for x in r['entries']}
+          expected={'8108E39C':'8108E300','8108E421':'8108E361'}
+          for owner,table in expected.items():
+              x=em[owner]; er=x['entity_resource']
+              assert er.get('semantic_role')=='scripted_entity_table_owner',er
+              assert er.get('scripted_entity_table_tag_hash')==table,(owner,er)
+              print('SCRIPT_OWNER',owner,'TABLE',table,'SIZE',x['payload_size'],'SHA',x['payload_sha256'],
+                    'U10',(er.get('unk10') or {}).get('class_hash'),'U18',(er.get('unk18') or {}).get('class_hash'))
+              print('  MATCHES',[(hex(m['offset']),m['tag_hash'],m['reference']) for m in x['aligned_resolved_tag_matches']])
+          a=em['8108E39C']; u=em['8108E421']
+          def refs(x): return {(m['offset'],m['tag_hash'],m['reference']) for m in x['aligned_resolved_tag_matches']}
+          print('OWNER_SAME_SIZE',a['payload_size']==u['payload_size'])
+          print('OWNER_SAME_PREFIX128',a['prefix128']==u['prefix128'])
+          print('OWNER_SAME_SUFFIX128',a['suffix128']==u['suffix128'])
+          print('CROTA_UNIQUE_REFS',sorted(refs(a)-refs(u)))
+          print('ULTRA_UNIQUE_REFS',sorted(refs(u)-refs(a)))
           for x in r['entries']:
+              if x['tag_hash'] in expected: continue
               er=x['entity_resource']
               print('RESOURCE',x['tag_hash'],'ROLE',er.get('semantic_role'),'U10',(er.get('unk10') or {}).get('class_hash'),'U18',(er.get('unk18') or {}).get('class_hash'))
-              print('  MATCHES',[(hex(m['offset']),m['tag_hash'],m['reference']) for m in x['aligned_resolved_tag_matches']])
           b=json.load(open('out/CROTA_ULTRA_KNIGHT_ALL_BACKLINKS.json'))
           assert b['error_count']==0,b['errors']
           print('BY_TARGET',b['occurrences_by_target'])
