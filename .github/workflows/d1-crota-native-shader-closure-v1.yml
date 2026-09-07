@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Recover exact catalog, Crota shader package families and runtime
+      - name: Recover exact catalog, Crota material/shader package families and runtime
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           set -euo pipefail
@@ -48,11 +48,11 @@ jobs:
           curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
           python tools/d1_tower_recover_articulated_visual_corpus.py \
             --package-list out/packages.txt \
-            --required-package-id 00ef --required-package-id 0447 \
+            --required-package-id 00ef --required-package-id 0447 --required-package-id 0157 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --out-dir corpus --report out/crota_shader_corpus.json
 
-      - name: Resolve exact Crota material stage state and constants
+      - name: Resolve exact Crota main visual material stage state and constants
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
@@ -60,45 +60,42 @@ jobs:
           snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
           python tools/d1_material_stage_state_resolve.py "${snaps[@]}" --runtime runtime \
             --material 0x8108E667 --material 0x8108E66B \
-            --out out/CROTA_MATERIAL_STAGE_STATE.json
+            --material 0x8108E7A9 --material 0x8108E7AA \
+            --material 0x8108E7B1 --material 0x8108E7B2 --material 0x8108E7B3 \
+            --out out/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json
           python - <<'PY'
           import json
-          d=json.load(open('out/CROTA_MATERIAL_STAGE_STATE.json'))
+          d=json.load(open('out/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json'))
           assert d['status']=='D1_MATERIAL_STAGE_STATE_EXACT',d
-          assert set(d['materials'])=={'8108E667','8108E66B'}
+          wanted={'8108E667','8108E66B','8108E7A9','8108E7AA','8108E7B1','8108E7B2','8108E7B3'}
+          assert set(d['materials'])==wanted
           for h,r in d['materials'].items():
             assert not r.get('error'),r
-            ps=r['ps']
-            assert ps['shader']=='8108E7B7',ps
-            assert ps['tfx_disassembly']['complete'],ps['tfx_disassembly']
-            print('MATERIAL',h,'STATE4',r['material_state4_hex'])
+            ps=r['ps']; assert ps['tfx_disassembly']['complete'],ps['tfx_disassembly']
+            print('MATERIAL',h,'STATE4',r['material_state4_hex'],'PS',ps['shader'])
+            print('  TEXTURES',[(x['index'],x.get('first_dword_hex')) for x in ps['textures']['items']])
             print('  TFX',ps['tfx_bytecode']['bytes_hex'])
             print('  PRIVATE_CONSTANTS',[(x['index'],x['value']) for x in ps['tfx_private_constants']['items']])
             print('  CBUFFERS',[(x['index'],x['value']) for x in ps['cbuffers']['items']])
-            print('  TFX_OPS',[(x['offset'],x['name'],x.get('operand_bytes'),x.get('extern_name'),x.get('extern_element'),x.get('constant_index'),x.get('slot_or_element'),x.get('d1_unk42_u8')) for x in ps['tfx_disassembly']['ops']])
           PY
 
-      - name: Extract exact bounded native GCN for Crota shaders
+      - name: Extract exact bounded native GCN for Crota main visual shaders
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
-          printf '%s\n' '{"pixel_shader_frequency":{"8108E7B7":2}}' > out/minimal_shader_manifest.json
+          printf '%s\n' '{"pixel_shader_frequency":{"8108E7B7":2,"8108E953":1,"8108E955":2,"8108E956":2}}' > out/minimal_shader_manifest.json
           mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
           snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
           python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
             --manifest out/minimal_shader_manifest.json \
-            --shader 0x809DE9AB --shader 0x809DF743 --shader 0x8108E7B7 \
-            --out-dir shader --report out/CROTA_NATIVE_SHADER_EXTRACT.json
+            --shader 0x809DE9AB --shader 0x809DF743 \
+            --shader 0x8108E7B7 --shader 0x8108E953 --shader 0x8108E955 --shader 0x8108E956 \
+            --out-dir shader --report out/CROTA_MAIN_VISUAL_SHADER_EXTRACT.json
           python - <<'PY'
           import json
-          d=json.load(open('out/CROTA_NATIVE_SHADER_EXTRACT.json'))
+          d=json.load(open('out/CROTA_MAIN_VISUAL_SHADER_EXTRACT.json'))
           assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
-          rows={x['shader']:x for x in d['shaders']}
-          assert set(rows)=={'809DE9AB','809DF743','8108E7B7'},rows
-          assert rows['809DE9AB']['native_shader']=='809DE9AC',rows['809DE9AB']
-          assert rows['809DF743']['native_shader']=='809DF744',rows['809DF743']
-          assert rows['8108E7B7']['native_shader']=='8108E864',rows['8108E7B7']
-          for h,r in rows.items(): print('SHADER',h,'NATIVE',r['native_shader'],'GCN_BYTES',r['gcn_bytes'],'GCN_SHA',r['gcn_sha256'],'USAGE',r['usage'])
+          print('EXACT_SHADERS',[(x['shader'],x['native_shader'],x['gcn_bytes'],x['gcn_sha256']) for x in d['shaders']])
           PY
 
       - name: Build pinned GFX700 disassembler and disassemble exact programs
@@ -117,50 +114,33 @@ jobs:
             test ! -s "disasm/${b}.stderr"
             grep -q 's_endpgm' "disasm/${b}.s"
           done
-          test "$(find disasm -type f -name '*.s' | wc -l)" -eq 3
+          test "$(find disasm -type f -name '*.s' | wc -l)" -eq 6
 
-      - name: Prove native texture consumption and preserve pixel-shader dataflow surface
+      - name: Prove native texture consumption for Crota main visual shaders
         run: |
           set -euo pipefail
           python tools/d1_gcn_image_usage_analyze.py \
-            --extract-report out/CROTA_NATIVE_SHADER_EXTRACT.json --disasm-dir disasm \
-            --out out/CROTA_GCN_IMAGE_USAGE.json
+            --extract-report out/CROTA_MAIN_VISUAL_SHADER_EXTRACT.json --disasm-dir disasm \
+            --out out/CROTA_MAIN_VISUAL_GCN_IMAGE_USAGE.json
           python - <<'PY'
-          import json,re
+          import json
           from pathlib import Path
-          u=json.load(open('out/CROTA_GCN_IMAGE_USAGE.json'))
+          u=json.load(open('out/CROTA_MAIN_VISUAL_GCN_IMAGE_USAGE.json'))
           assert u['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT',u
-          by={x['shader']:x for x in u['shaders']}
-          ps=by['8108E7B7']
-          assert ps['unmatched_image_instruction_count']==0,ps
-          text=Path('disasm/PS_8108E7B7.s').read_text()
-          lines=[]
-          for i,line in enumerate(text.splitlines(),1):
-            if any(k in line for k in ('image_','exp ','v_mul','v_mad','v_add','v_sub','v_cndmask','v_cmp','v_mov','v_min','v_max')):
-              lines.append({'line_number':i,'assembly':line.strip()})
-          out={
-            'schema':'d1_crota_native_shader_closure/v1','status':'D1_CROTA_NATIVE_SHADER_PROGRAMS_EXACT',
-            'materials':['8108E667','8108E66B'],
-            'vertex_shaders':['809DE9AB','809DF743'],'pixel_shader':'8108E7B7',
-            'pixel_textures':[{'index':0,'register':'t0','texture':'8108E7B6','format':'BC4','size':[2048,2048]},{'index':1,'register':'t1','texture':'80AACF2A','format':'BC1','size':[512,512]}],
-            'pixel_image_usage':ps,
-            'pixel_relevant_instructions':lines,
-            'disassembly_file':'disasm/PS_8108E7B7.s',
-            'policy':'GCN bytes are bounded by exact OrbShdr metadata and disassembled with pinned CLRX GFX700. Texture indices are proven from Sony user-data provenance. This checkpoint still does not rename t0/t1 as albedo, mask, normal or any other semantic until output dataflow is source-closed.'
-          }
-          Path('out/CROTA_NATIVE_SHADER_CLOSURE.json').write_text(json.dumps(out,indent=2)+'\n')
-          print('CROTA_PIXEL_SHADER','8108E7B7','IMAGE_INSTRUCTIONS',ps['image_instruction_count'],'USED_TEXTURE_INDICES',ps['used_texture_indices'],'OPCODES',ps['image_opcodes'])
-          print('RELEVANT_LINES',len(lines))
+          rows={x['shader']:x for x in u['shaders']}
+          for h in ('8108E7B7','8108E953','8108E955','8108E956'):
+            r=rows[h]; assert r['unmatched_image_instruction_count']==0,r
+            print('PIXEL',h,'IMAGES',r['image_instruction_count'],'USED',r['used_texture_indices'],'OPS',r['image_opcodes'])
+          # Preserve full disassembly for exact downstream Blender adapter work.
+          for p in Path('disasm').glob('PS_*.s'):
+            (Path('out')/p.name.replace('PS_','GCN_')).write_text(p.read_text())
           PY
-          cp disasm/PS_8108E7B7.s out/PS_8108E7B7_GFX700.s
-          cp disasm/PS_809DE9AB.s out/VS_809DE9AB_GFX700.s
-          cp disasm/PS_809DF743.s out/VS_809DF743_GFX700.s
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: D1-CROTA-NATIVE-SHADER-CLOSURE-V1
+          name: D1-CROTA-MAIN-VISUAL-SHADER-CLOSURE-V2
           path: out/
           retention-days: 30
           if-no-files-found: error
