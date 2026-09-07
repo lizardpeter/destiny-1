@@ -1,0 +1,18 @@
+{
+  "schema": "d1_tower_sweeper_entity_seed/v1",
+  "status": "D1_TOWER_SWEEPER_ENTITY_SEED_SOURCE_OWNED",
+  "source_s6e": "80C7ADE8",
+  "source_activity": "80C7A9E8",
+  "source_activity_name": "city_tower_chalice:scenario_client",
+  "entity_hashes": [
+    "80C7AE3E",
+    "80CA0CD6",
+    "80C7A9A7"
+  ],
+  "roles": {
+    "80C7AE3E": ["sweeper_bot_snowangel collapsed SMapDataEntry EntitySK"],
+    "80CA0CD6": ["sweeper_bot[0] collapsed SMapDataEntry EntitySK", "sweeper_bot[1] collapsed SMapDataEntry EntitySK", "sweeper_bot[2] collapsed SMapDataEntry EntitySK"],
+    "80C7A9A7": ["object_lantern_carry[0..5] collapsed SMapDataEntry EntitySK"]
+  },
+  "policy": "Entity hashes are copied only from exact SMapDataEntry.EntitySK fields decoded beneath S6E 80C7ADE8. Dev names identify the owning F603 placement resources but are not used to invent or substitute EntitySK hashes."
+}
