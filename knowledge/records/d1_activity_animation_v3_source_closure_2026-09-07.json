@@ -1,0 +1,197 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "d1_activity_animation_v3_source_closure_2026-09-07",
+  "date": "2026-09-07",
+  "status": "SOURCE_CLOSED",
+  "scope": "Destiny 1 PS4 activity-owned spawned-actor animation option discovery, selector decoding, native clip decode/retarget validation, and generic activity option planning",
+  "proof_policy": [
+    "Actor-to-animation-control identity is established only by the two independently calibrated fixed EntityResource owner fields; package locality, adjacency, names, skeleton similarity, and animation-bank residency are not ownership evidence.",
+    "Only clips selected by decoded 80802C0E selector records become runtime animation options. Animation-list bank residents not selected by a selector remain audit data only.",
+    "No idle/default/startup state, loop behavior, synchronization behavior, or unknown state-name semantic is inferred.",
+    "The retail implicit-null selector tail remains an explicit null choice. 00000000 is never promoted to an 808005A1 clip.",
+    "The Tiger parser adapter changes host-language integer arithmetic only. It does not modify retail bytes, codec routes, interpolation, quantization, frame counts, control maps, or retarget equations.",
+    "Exact controls with zero states, zero bank clips, and zero selected clips are source-closed empty option sets; they do not require a fabricated animation or a vacuous retarget execution."
+  ],
+  "ownership": {
+    "runtime_rig_pair": ["808008B2", "8080099B"],
+    "owner_fields": [
+      {
+        "entity_resource_pair": ["808020BF", "808029D2"],
+        "control_field_offset_hex": "0x110"
+      },
+      {
+        "entity_resource_pair": ["80802B92", "808020BB"],
+        "control_field_offset_hex": "0x448"
+      }
+    ],
+    "wrath_exact_sentity_count": 241,
+    "wrath_animation_capable_actor_count": 123,
+    "independent_owner_field_count": 246,
+    "owner_pair_agreement_count": 123,
+    "unique_exact_80802c0e_control_count": 45,
+    "control_plan_artifact": {
+      "artifact_id": 10003732330,
+      "zip_sha256": "cfeddba3d3dd86187f147be523d9a79c2b1a3009c744ba456ff0fdae8c7c3f35",
+      "file": "wrath_activity_actor_animation_control_plan.json"
+    }
+  },
+  "selector_format": {
+    "control_reference": "80802C0E",
+    "clip_reference": "808005A1",
+    "animation_list_count_offset_hex": "0x08",
+    "animation_list_pointer_offset_hex": "0x10",
+    "selector_count_offset_hex": "0x68",
+    "selector_pointer_offset_hex": "0x70",
+    "selector_record_stride_hex": "0x20",
+    "state_hash_record_offset_hex": "0x10",
+    "scalar_record_offset_hex": "0x14",
+    "packed_selection_record_offset_hex": "0x18",
+    "packed_selection": "high16=count, low16=start",
+    "explicit_empty_sentinel_hex": "0000FFFF",
+    "implicit_null_tail_rule": {
+      "required_count": 2,
+      "required_start": "final declared animation-list index",
+      "required_end": "exactly one logical slot beyond declared animation-list count",
+      "required_serialized_boundary_word": "00000000",
+      "selection_kind": "range_with_implicit_null_tail",
+      "promotion": "the final in-bank clip remains selected; the boundary zero is represented as one implicit null and is not a clip"
+    },
+    "wrath_retail_census": {
+      "exact_control_count": 45,
+      "selector_record_count": 2297,
+      "ordinary_in_bank_selector_count": 2294,
+      "explicit_empty_sentinel_count": 1,
+      "implicit_null_tail_selector_count": 2,
+      "other_out_of_bounds_selector_count": 0,
+      "implicit_null_tail_controls": ["817A55AD", "817BD0EC"],
+      "workflow_run_id": 34081796314,
+      "artifact_id": 10003920891,
+      "artifact_zip_sha256": "dbafd80e5c3a0ed1c798caf96860f5f28c97037ac530346355636d2dc8e656bd"
+    },
+    "implementation": {
+      "tool": "tools/d1_animation_control_state_map_v2.py",
+      "commit": "a7bc3978f63428968b3f676c636317df59e1364a",
+      "unit_test": "tests/test_animation_control_state_map_v2.py",
+      "unit_workflow": ".github/workflows/d1-animation-selector-v2-unit.yml",
+      "unit_workflow_run_id": 34083210817,
+      "unit_result": "SUCCESS"
+    }
+  },
+  "codec1_host_arithmetic_closure": {
+    "affected_exact_target": {
+      "skeleton": "8179E48C",
+      "runtime_rig": "8179E49D",
+      "control": "8179E573",
+      "node_count": 92,
+      "rig_control_count": 82,
+      "runtime_components": [
+        {"hash": "B790801B", "count": 57},
+        {"hash": "2382380D", "count": 25}
+      ]
+    },
+    "formerly_failing_clips": [
+      {
+        "clip": "8179E6A6",
+        "frame_count": 242,
+        "uncompressed_translation_offset": 32670,
+        "required_scalar_count": 726,
+        "exact_end": 33396
+      },
+      {
+        "clip": "8179E6AE",
+        "frame_count": 141,
+        "uncompressed_translation_offset": 32571,
+        "required_scalar_count": 423,
+        "exact_end": 32994
+      },
+      {
+        "clip": "8179E6B8",
+        "frame_count": 352,
+        "uncompressed_translation_offset": 32736,
+        "required_scalar_count": 1056,
+        "exact_end": 33792
+      }
+    ],
+    "root_cause": "The pinned third-party Tag_Array_NP.read_vec retained codec-1 array_7 routes as NumPy int16 scalars and computed new_offset = offset + amount before slicing. Valid retail spans crossing 32767 therefore wrapped negative and produced empty slices. Each observed retail span is valid and ends exactly at its serialized uncompressed buffer boundary.",
+    "fix_scope": "Convert offset and amount to Python int before slice arithmetic in Tag_Array_NP.read_vec/read_scalar; preserve all codec and retail semantics unchanged.",
+    "probe": {
+      "workflow_run_id": 34081855799,
+      "artifact_id": 10003938344,
+      "artifact_zip_sha256": "8a562eeaa4151c080715de856c53cba8f69646c10e838cac50f9e98b7bd9b571"
+    },
+    "implementation": {
+      "tool": "tools/d1_tiger_animation_safe_offsets.py",
+      "commit": "df25c5d46f13f4e9758cc8410f81cf89534e07bb",
+      "unit_test": "tests/test_tiger_animation_safe_offsets.py",
+      "unit_workflow": ".github/workflows/d1-tiger-animation-safe-offset-unit.yml",
+      "unit_workflow_run_id": 34083334443,
+      "unit_result": "SUCCESS"
+    }
+  },
+  "exact_empty_control_semantics": {
+    "control": "80AA9AF8",
+    "state_count": 0,
+    "animation_list_count": 0,
+    "selector_selected_clip_count": 0,
+    "wrath_target_count": 4,
+    "interpretation": "source-closed empty runtime option set",
+    "prohibited_interpretation": "missing animation requiring substitution or fabricated default"
+  },
+  "wrath_v3_runtime_closure": {
+    "tool": "tools/d1_remote_spawned_actor_animation_options_v3.py",
+    "tool_commit": "bdfae8c9229599077084dc6ae7630e2e3e621037",
+    "workflow": ".github/workflows/d1-wrath-animation-v3-closure.yml",
+    "workflow_commit": "859f714bb0f653bd84a625b76e636ac1efb0aadf",
+    "workflow_run_id": 34083142538,
+    "artifact_id": 10004419400,
+    "artifact_zip_sha256": "44ea758ee89d6ae79b91db714813d27e162d1966b631e86483e92cfffc98d2e3",
+    "artifact_size_bytes": 1207127,
+    "status": "D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE",
+    "actor_count": 123,
+    "source_closed_actor_count": 123,
+    "unique_control_count": 45,
+    "target_count": 52,
+    "closed_target_count": 52,
+    "native_retarget_pair_execution_count": 2909,
+    "native_retarget_pair_success_count": 2909,
+    "native_retarget_pair_failure_count": 0,
+    "unique_selector_selected_clip_count": 1144,
+    "unique_animation_list_bank_clip_count": 1739,
+    "implicit_null_selector_count": 2,
+    "exact_empty_control_target_count": 4,
+    "frontier_count": 0,
+    "violation_count": 0,
+    "formerly_failing_clips_now_successful": ["8179E6A6", "8179E6AE", "8179E6B8"]
+  },
+  "generic_activity_option_plan": {
+    "tool": "tools/d1_activity_actor_animation_option_plan_v2.py",
+    "tool_commit": "98154ddffce6b82183a4005b6510db18c75c4051",
+    "workflow": ".github/workflows/d1-wrath-generic-animation-option-plan-v2.yml",
+    "workflow_commit": "efb266c0483ada2f6b732f7a2d433b5fea544555",
+    "workflow_run_id": 34083530874,
+    "artifact_id": 10004441266,
+    "artifact_zip_sha256": "e0985c1051d26a54c9a63dffade33a543d94d7daa7cbb99c3dfedea8c02ddb4f",
+    "artifact_size_bytes": 655721,
+    "output_file": "wrath_activity_actor_animation_option_plan_v2.json",
+    "status": "D1_ACTIVITY_ACTOR_ANIMATION_OPTION_PLAN_COMPLETE",
+    "actor_count": 123,
+    "source_closed_actor_count": 123,
+    "family_count": 52,
+    "unique_control_count": 45,
+    "unique_state_hash_count": 1095,
+    "unique_selector_selected_clip_count": 1144,
+    "unique_animation_list_bank_clip_count": 1739,
+    "native_retarget_pair_execution_count": 2909,
+    "native_retarget_pair_success_count": 2909,
+    "native_retarget_pair_failure_count": 0,
+    "implicit_null_selector_count": 2,
+    "exact_empty_control_target_count": 4,
+    "frontier_count": 0,
+    "violation_count": 0
+  },
+  "next_universal_frontiers": [
+    "source-close effects/VFX dependencies from exact activity/entity/control ownership",
+    "source-close audio/event dependencies from exact activity/entity/control ownership",
+    "assemble deterministic static + dynamic + scripted + visual-material + animation products into a generic portable scene without weakening shader-native or ownership semantics"
+  ]
+}
