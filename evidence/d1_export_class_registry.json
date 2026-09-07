@@ -98,6 +98,14 @@
       "tool": "tools/d1_world_map_root_census.py",
       "notes": "Pinned D1 SMapDataTable. +0x08 is DynamicArray<SMapDataEntry> with exact 0x90-byte rows. Placement meaning remains tied to world/activity ownership."
     },
+    "808012D9": {
+      "label": "SD912_scripted_entity_table",
+      "semantic_status": "source_pinned_global_byte_validated",
+      "export_route": "world_scripted_entity_table",
+      "standalone_export": false,
+      "tool": "tools/d1_remote_activity_scripted_entity_census.py",
+      "notes": "Pinned D1 SD912 scripted-entity table. Script-family/type StringHashes, SMapDataEntry-backed entity records, and locations are decoded only in activity ownership context; table presence alone does not establish actor identity."
+    },
     "808091E0": {
       "label": "SBubbleDefinition",
       "semantic_status": "source_pinned_global_byte_validated",
