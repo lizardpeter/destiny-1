@@ -1,0 +1,108 @@
+name: D1 Xur eight scenario D912 membership
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-eight-scenario-d912-membership.yml'
+      - 'tools/d1_remote_activity_scripted_entity_census.py'
+      - 'tools/d1_world_activity_entity_table_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/scenarios
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Parse all eight exact current Tower scenario roots
+        run: |
+          set -euo pipefail
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          run_one() {
+            h="$1"; n="$2"
+            python tools/d1_remote_activity_scripted_entity_census.py \
+              --activity-hash "$h" --activity-name "$n" --activity-class 80800616 \
+              --member-catalog "$C" --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+              --part-count 10 --runtime runtime -o "out/scenarios/${h}.json" | tee "out/scenarios/${h}.txt"
+          }
+          run_one 80C7A005 'city_tower_default1:scenario_client'
+          run_one 80C7A00B 'city_tower_queen:scenario_client'
+          run_one 80C7A013 'city_tower_harvest:scenario_client'
+          run_one 80C7A0A2 'city_tower_srl:scenario_client'
+          run_one 80C7A0A7 'city_tower_fol:scenario_client'
+          run_one 80C7A0F2 'city_tower_crimson:scenario_client'
+          run_one 80C7A9E8 'city_tower_chalice:scenario_client'
+          run_one 80C88003 'ambient_city_tower:scenario_client'
+      - name: Close exact scenario to Xur D912 membership
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,os
+          X=set('80C7A251 80C7A441 80C7A58F 80C7A719 80C7AC71 80C7AC81 80C7ACB9 80C88185 80C8831B 80C88591'.split())
+          branch={
+            '80C7A251':'sq_boulevard_vendor_black_market','80C7AC71':'sq_boulevard_vendor_black_market','80C88185':'sq_boulevard_vendor_black_market',
+            '80C7A441':'vendor_black_market','80C7A719':'vendor_black_market','80C7AC81':'vendor_black_market','80C8831B':'vendor_black_market',
+            '80C7A58F':'sq_underwatch_vendor_black_market','80C7ACB9':'sq_underwatch_vendor_black_market','80C88591':'sq_underwatch_vendor_black_market',
+          }
+          rows=[]; seen=set(); violations=[]
+          for p in sorted(glob.glob('out/scenarios/*.json')):
+              d=json.load(open(p))
+              if d['status']!='D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_COMPLETE': violations.append(f"{p}:{d['status']}:{d.get('violations')}")
+              owned=set(d.get('unique_scripted_tables',[]))
+              hits=sorted(owned & X);seen.update(hits)
+              rows.append({
+                'activity_hash':d['activity']['tag_hash'],'activity_name':d['activity']['name'],
+                'source_owned_f603_count':d['f603_count'],'source_owned_d912_count':d['unique_scripted_table_count'],
+                'xur_d912s':hits,'xur_d912_count':len(hits),
+                'xur_branches':sorted({branch[h] for h in hits}),
+              })
+          missing=sorted(X-seen)
+          out={
+            'schema_version':1,
+            'status':'D1_XUR_EIGHT_SCENARIO_D912_MEMBERSHIP_COMPLETE' if not violations else 'D1_XUR_EIGHT_SCENARIO_D912_MEMBERSHIP_VIOLATIONS',
+            'scenario_count':len(rows),'xur_target_d912_count':len(X),'xur_seen_d912_count':len(seen),'xur_missing_d912s':missing,
+            'scenarios':rows,'violations':violations,
+            'gates':{'active_xur_branch_selected':False,'active_xur_group_type_selected':False,'E6_80C885E6_live_selection_proven':False,'E7_80C885E7_live_selection_proven':False,'E8_80C885E8_live_selection_proven':False},
+            'policy':'Membership is admitted only through the source-pinned SUnkActivity_ROI -> S6E -> SE905 -> S2242[] -> SF603 -> EntityResource -> D912 path. A D912 present in a scenario proves source ownership by that scenario, not that its black-market branch/group is runtime-active.'
+          }
+          json.dump(out,open('out/D1_XUR_EIGHT_SCENARIO_D912_MEMBERSHIP.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          assert len(rows)==8,rows
+          assert not violations,violations
+          PY
+      - name: Persist hashes
+        run: |
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-EIGHT-SCENARIO-D912-MEMBERSHIP
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
