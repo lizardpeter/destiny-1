@@ -1,0 +1,122 @@
+name: D1 Tower 80CA0B97 universal texture closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-80ca0b97-universal-texture-closure.yml'
+      - 'tools/d1_remote_activity_material_dependency_closure.py'
+      - 'tools/d1_remote_activity_texture_export.py'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_dds_to_png.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  BASE_URL: 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover universal catalog and exact runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q pillow texture2ddecoder numpy
+          mkdir -p input/catalog runtime reports exported
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          cat > input/card_material_plan.json <<'JSON'
+          {
+            "schema":"d1_activity_selected_material_plan/v1",
+            "status":"D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE",
+            "materials":["80B9E8C2","80B9E8C3"],
+            "unique_material_count":2,
+            "unresolved_external_variant_models":[],
+            "provenance":"Exact stage-selected materials for Tower common-card EntityModel 80CA0B97, previously source-closed by d1-tower-80ca0b97-card-shader-probe."
+          }
+          JSON
+
+      - name: Close both card material dependency graphs through universal corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_activity_material_dependency_closure.py \
+            --selected-material-plan input/card_material_plan.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o reports/80CA0B97_universal_material_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/80CA0B97_universal_material_closure.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',d
+          assert d['materials']==['80B9E8C2','80B9E8C3'],d
+          assert d['textures']==['80B9E867','80B9F76D'],d
+          assert d['unique_texture_count']==2 and not d['violations'],d
+          for r in d['rows']:
+              assert not r['violations'],r
+              assert r['dependencies']['pixel']['texture_count']==2,r
+              for t in r['dependencies']['pixel']['textures']:
+                  assert t['final_payload_hash'] and t['base_size_validation']['sufficient'] is True,t
+          print('UNIVERSAL_CARD_DEPENDENCIES_CLOSED','materials',d['material_count'],'textures',d['textures'])
+          PY
+
+      - name: Export both exact native textures and census alpha
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure reports/80CA0B97_universal_material_closure.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir exported
+          python - <<'PY'
+          import json,glob,os
+          from PIL import Image
+          m=json.load(open('exported/texture_export_manifest.json'))
+          assert m['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',m
+          assert m['texture_count']==2 and m['png_file_count']==2 and not m['violations'],m
+          rows=[]
+          for r in m['rows']:
+              p=next((x for x in r['files'] if x['kind']=='png'),None);assert p,r
+              path=os.path.join('exported',p['path']);im=Image.open(path).convert('RGBA');a=im.getchannel('A');hist=a.histogram();n=im.width*im.height
+              nonopaque=n-hist[255];zero=hist[0];partial=nonopaque-zero
+              rows.append({'texture':r['texture'],'width':im.width,'height':im.height,'format_name':r.get('format_name'),
+                           'backing_hash':r.get('backing_hash'),'png_path':p['path'],'png_sha256':p['sha256'],
+                           'alpha_min':a.getextrema()[0],'alpha_max':a.getextrema()[1],
+                           'alpha_zero_pixels':zero,'alpha_partial_pixels':partial,'alpha_nonopaque_pixels':nonopaque,
+                           'alpha_nonopaque_fraction':nonopaque/n})
+          out={'schema_version':1,'status':'D1_80CA0B97_EXACT_TEXTURE_ALPHA_CENSUS_COMPLETE','model':'80CA0B97',
+               'materials':['80B9E8C2','80B9E8C3'],'textures':rows,
+               'policy':'Alpha statistics are measured from exact universally resolved retail texture payloads. No blend/cutout mode is inferred from alpha alone.'}
+          json.dump(out,open('reports/80CA0B97_exact_texture_alpha_census.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+          cp exported/texture_export_manifest.json reports/
+          cp -r exported/textures reports/exact_textures
+          sha256sum reports/*json reports/exact_textures/* > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-80CA0B97-UNIVERSAL-EXACT-TEXTURE-CLOSURE
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
