@@ -8,12 +8,13 @@ Source layout is pinned by Charm ActivityStructsROI.cs:
   S22428080 +0x00 Tag<SF6038080>
   SF6038080 +0x0C EntityResource FileHash
 
-Every F603 is additionally passed through the already source-validated D1 Activity
-collapse parser.  When its EntityResource pair is 8080092E -> 808007DD, the embedded
-SDD078080.DataEntries are therefore decoded as exact SMapDataEntry placements:
-EntitySK, rotation, translation, WorldID and DataResource.
+A zero-count DynamicArray is valid without dereferencing its serialized relative
+pointer. The calculated pointer evidence is retained, but an out-of-payload target
+is not a bounds violation when count == 0.
 
-The tool reports literal serialized edges and does not infer identities from dev names.
+Every F603 is additionally passed through the already source-validated D1 Activity
+collapse parser. When its EntityResource pair is 8080092E -> 808007DD, the embedded
+SDD078080.DataEntries are decoded as exact SMapDataEntry placements.
 """
 from __future__ import annotations
 import argparse,json,struct,sys
@@ -33,8 +34,11 @@ def i32(b,o):return struct.unpack_from('<i',b,o)[0]
 def i64(b,o):return struct.unpack_from('<q',b,o)[0]
 def hx(v):return f'{v:08X}'
 def dyn(b,o,stride):
+ if o+0x10>len(b):return {'count':None,'relative':None,'absolute':None,'end':None,'stride':stride,'ok':False,'error':'descriptor_oob'}
  c=i32(b,o);rel=i64(b,o+8);a=o+8+rel+0x10;end=a+max(c,0)*stride
- return {'count':c,'relative':rel,'absolute':a,'end':end,'stride':stride,'ok':c>=0 and a>=0 and end<=len(b)}
+ pointer_ok=c>=0 and a>=0 and end<=len(b)
+ return {'count':c,'relative':rel,'absolute':a,'end':end,'stride':stride,'ok':c==0 or pointer_ok,
+         'serialized_pointer_bounds_ok':pointer_ok,'zero_count_no_dereference':c==0}
 
 def meta(c,h):
  h=norm(h);m=c.entry_meta(h);return {'hash':h,'exists':m is not None,'reference':None if m is None else norm(m.get('reference')),'meta':m}
@@ -62,8 +66,6 @@ def main():
     try:fr['entity_resource_parse']=parse_resource(eb,'PS4')
     except Exception as ex:fr['entity_resource_parse_error']=repr(ex)
    else:viol.append(f'stage[{i}] f603[{j}] entity resource {erh} invalid')
-   # The generic parser deliberately labels some legacy Activity pairs unknown.
-   # Reuse the exact Activity collapse parser to test/parse 8080092E -> 808007DD.
    try:
     cp=placements.parse_f603(c,fh);fr['activity_collapse']=cp
     if cp.get('violations'):viol.extend(f'stage[{i}] f603[{j}] collapse:{x}' for x in cp['violations'])
@@ -76,7 +78,7 @@ def main():
   for f in s['f603s']:
    cp=f.get('activity_collapse') or {}
    for e in cp.get('entries',[]):exact_entries.append({'stage_index':s['stage_index'],'f603':f['f603']['hash'],'entity_resource':(f.get('entity_resource') or {}).get('hash'),**e})
- out={'schema':'d1_remote_s6e_stage_probe/v2','status':'D1_REMOTE_S6E_STAGE_PROBE_COMPLETE' if not viol else 'D1_REMOTE_S6E_STAGE_PROBE_WITH_VIOLATIONS','s6e':h,'s6e_meta':m,'payload_source':src,'stage_array':arr,'stages':stages,'collapsed_placement_entry_count':len(exact_entries),'collapsed_placement_entries':exact_entries,'violations':viol,'policy':'All stage/map/F603/EntityResource edges are literal serialized FileHashes. 8080092E -> 808007DD resources are decoded only through the source-validated Activity collapse path. Entity identities and transforms in collapsed entries are exact SMapDataEntry fields; dev-name text is provenance, not identity inference.'}
+ out={'schema':'d1_remote_s6e_stage_probe/v2','status':'D1_REMOTE_S6E_STAGE_PROBE_COMPLETE' if not viol else 'D1_REMOTE_S6E_STAGE_PROBE_WITH_VIOLATIONS','s6e':h,'s6e_meta':m,'payload_source':src,'stage_array':arr,'stages':stages,'collapsed_placement_entry_count':len(exact_entries),'collapsed_placement_entries':exact_entries,'violations':viol,'policy':'All stage/map/F603/EntityResource edges are literal serialized FileHashes. Zero-count DynamicArrays are valid without dereferencing their serialized pointer; calculated pointer evidence is retained. 8080092E -> 808007DD resources are decoded only through the source-validated Activity collapse path. Entity identities and transforms in collapsed entries are exact SMapDataEntry fields; dev-name text is provenance, not identity inference.'}
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
  print('STATUS',out['status'],'S6E',h,'STAGES',len(stages),'COLLAPSED_PLACEMENTS',len(exact_entries),'VIOLATIONS',len(viol))
  for s in stages:
