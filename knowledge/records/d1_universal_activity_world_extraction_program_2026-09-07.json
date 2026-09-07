@@ -1,0 +1,217 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "d1_universal_activity_world_extraction_program_2026_09_07",
+  "title": "Universal Destiny 1 activity, world, encounter and asset extraction program",
+  "updated_utc": "2026-09-07T02:15:00Z",
+  "scope": {
+    "game": "Destiny 1",
+    "platform_reference": "PS4 retail Rise of Iron-era corpus",
+    "target": "Every source-discoverable activity/world, including patrol destinations, story missions, strikes, raids, social spaces, arenas and other activity variants",
+    "first_regression_canary": "Crota's End / moon_raid_1"
+  },
+  "nodes": [
+    {
+      "id": "program:d1_universal_activity_extractor",
+      "kind": "extraction_program",
+      "status": "TARGET",
+      "label": "Destiny 1 universal activity/world extractor",
+      "attrs": {
+        "crota_special_cases_permitted": false,
+        "proof_policy": "source-layout and exact-retail ownership edges only"
+      }
+    },
+    {
+      "id": "corpus:ps4_universal_package_catalog",
+      "kind": "retail_package_corpus",
+      "status": "PROVEN",
+      "label": "Verified PS4 ordinary base-package namespace",
+      "attrs": {
+        "package_family_count": 337,
+        "catalog_schema": "d1_remote_package_member_catalog/v1"
+      }
+    },
+    {
+      "id": "inventory:named_activity_roots",
+      "kind": "activity_root_inventory",
+      "status": "TARGET",
+      "label": "All current named D1 activity roots",
+      "attrs": {
+        "activity_classes": ["8080052E", "80800616"],
+        "remote_metadata_only_scan": true
+      }
+    },
+    {
+      "id": "pipeline:activity_graph",
+      "kind": "reusable_pipeline",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "Named activity -> S6E stages -> F603 resources -> placements/controllers/actors",
+      "attrs": {
+        "preserves_shared_stage_resources": true,
+        "typed_edges_separate_from_untyped_discovery": true
+      }
+    },
+    {
+      "id": "pipeline:asset_export",
+      "kind": "reusable_pipeline",
+      "status": "TARGET",
+      "label": "Activity graph -> models, rigs, animation, materials, textures, effects, audio -> deterministic export",
+      "attrs": {
+        "target_outputs": ["lossless manifests", "GLB/glTF", "Blender-ready scenes", "encounter partitions"]
+      }
+    },
+    {
+      "id": "canary:moon_raid_1",
+      "kind": "regression_canary",
+      "status": "PROVEN",
+      "label": "Crota's End moon_raid_1 activity graph",
+      "attrs": {
+        "activity_hash": "8108E004",
+        "unique_f603_count": 509,
+        "f603_stage_occurrence_count": 547,
+        "shared_f603_count": 19,
+        "s6e_container_count": 10,
+        "stage_count": 40,
+        "runtime_placement_count": 282,
+        "scripted_record_count": 243
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:corpus_to_inventory",
+      "subject": "corpus:ps4_universal_package_catalog",
+      "predicate": "ENUMERATES_INPUT_FOR",
+      "object": "inventory:named_activity_roots",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:catalog_scope"]
+    },
+    {
+      "id": "edge:inventory_to_activity_graph",
+      "subject": "inventory:named_activity_roots",
+      "predicate": "DRIVES",
+      "object": "pipeline:activity_graph",
+      "status": "TARGET",
+      "assertion_ids": ["assert:universal_goal"]
+    },
+    {
+      "id": "edge:activity_to_assets",
+      "subject": "pipeline:activity_graph",
+      "predicate": "DRIVES",
+      "object": "pipeline:asset_export",
+      "status": "TARGET",
+      "assertion_ids": ["assert:universal_goal"]
+    },
+    {
+      "id": "edge:crota_canary",
+      "subject": "canary:moon_raid_1",
+      "predicate": "VALIDATES",
+      "object": "pipeline:activity_graph",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:crota_generic_matrix"]
+    },
+    {
+      "id": "edge:program_uses_pipeline",
+      "subject": "program:d1_universal_activity_extractor",
+      "predicate": "REQUIRES",
+      "object": "pipeline:activity_graph",
+      "status": "TARGET",
+      "assertion_ids": ["assert:universal_goal"]
+    },
+    {
+      "id": "edge:program_requires_assets",
+      "subject": "program:d1_universal_activity_extractor",
+      "predicate": "REQUIRES",
+      "object": "pipeline:asset_export",
+      "status": "TARGET",
+      "assertion_ids": ["assert:universal_goal"]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:catalog_scope",
+      "status": "PROVEN",
+      "claim": "The checksum-pinned universal PS4 member catalog contains 337 package families in the ordinary base-package namespace and is the current remote corpus for activity-root discovery.",
+      "source_ids": ["source:universal_catalog"]
+    },
+    {
+      "id": "assert:crota_generic_matrix",
+      "status": "PROVEN",
+      "claim": "The generic activity-stage resource matrix reproduces moon_raid_1 without one-owner assumptions: 509 unique F603 resources occur 547 times across 40 stages in 10 S6E containers, with 19 resources shared between stages.",
+      "source_ids": ["source:crota_matrix_run", "source:generic_matrix_tool"]
+    },
+    {
+      "id": "assert:universal_goal",
+      "status": "TARGET",
+      "claim": "All current D1 activities should be extracted through reusable schemas and ownership rules rather than activity-specific code, ultimately producing complete world geometry, placements, actors, controllers, animations, materials, effects and audio for maps, missions, strikes, raids, social spaces and other activity variants.",
+      "source_ids": ["source:generic_matrix_tool", "source:named_inventory_tool"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:universal_catalog",
+      "kind": "actions_artifact_report",
+      "locator": "artifact 9994811238 / D1_UNIVERSAL_MEMBER_CATALOG.json",
+      "sha256": "58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72",
+      "details": {
+        "artifact_zip_sha256": "404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a"
+      }
+    },
+    {
+      "id": "source:generic_matrix_tool",
+      "kind": "repository_source",
+      "locator": "tools/d1_activity_stage_resource_matrix.py @ 3c8601279bbf40da32cb253ad5616a5c56b2193b",
+      "details": {
+        "policy": "unique resources and serialized stage occurrences are represented separately"
+      }
+    },
+    {
+      "id": "source:crota_matrix_run",
+      "kind": "actions_workflow_run",
+      "locator": "run 34075448593 @ ebc7c5ca075c243f9495cc71e8fe40af4e555f66",
+      "details": {
+        "conclusion": "success"
+      }
+    },
+    {
+      "id": "source:named_inventory_tool",
+      "kind": "repository_source",
+      "locator": "tools/d1_remote_named_activity_inventory.py @ 5d84c62a2b8bf506236db9328b9fbdf7d52ea168",
+      "details": {
+        "activity_classes": ["8080052E", "80800616"]
+      }
+    }
+  ],
+  "rejections": [],
+  "frontiers": [
+    {
+      "id": "frontier:complete_activity_inventory",
+      "question": "What is the exact current retail inventory of source-named D1 activity roots across all 337 package families?",
+      "next_proof": "Complete the remote named-table scan, preserve aliases, and checksum-pin the inventory artifact.",
+      "related_nodes": ["corpus:ps4_universal_package_catalog", "inventory:named_activity_roots"]
+    },
+    {
+      "id": "frontier:universal_orchestrator",
+      "question": "Can every admitted activity root be processed through one deterministic orchestration path?",
+      "next_proof": "Create a generic runner that performs activity traversal, F603 classification, S6E probing, shared-resource matrix construction, scripted-actor census and dependency closure from one inventory record.",
+      "related_nodes": ["inventory:named_activity_roots", "pipeline:activity_graph"]
+    },
+    {
+      "id": "frontier:world_geometry",
+      "question": "How are every activity's static world geometry, map data layers and environment dependencies assembled into one exportable scene?",
+      "next_proof": "Generalize the source-validated Tower/static map pipelines into an activity-root-driven world assembler and validate on structurally different destinations.",
+      "related_nodes": ["pipeline:asset_export"]
+    },
+    {
+      "id": "frontier:encounter_resources",
+      "question": "What are the remaining EntityResource class-pair schemas used for objectives, squads, phase controls, volumes, devices and special bosses?",
+      "next_proof": "Reverse each class pair across multiple activities using source layouts and cross-activity calibration; never infer role from Crota-only names.",
+      "related_nodes": ["pipeline:activity_graph", "canary:moon_raid_1"]
+    },
+    {
+      "id": "frontier:complete_asset_dependencies",
+      "question": "Can model/rig/animation/material/texture/effect/audio dependencies be closed automatically for every activity-owned entity and world object?",
+      "next_proof": "Promote solved entity, model, material, animation, shader, effect and audio schemas into a dependency walker with exact ownership provenance and deterministic export assembly.",
+      "related_nodes": ["pipeline:asset_export"]
+    }
+  ]
+}
