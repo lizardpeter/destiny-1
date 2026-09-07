@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "record_type": "d1_exact_reverse_engineering_evidence",
+  "subject": "Crota's End moon_raid_1 SF603 dialogue EntityResource family",
+  "date": "2026-09-06",
+  "status": "SOURCE_CLOSED_DIALOGUE_BRANCH_NOT_RUNTIME_SPAWN_PROOF",
+  "activity_root": {
+    "tag_hash": "8108E004",
+    "label": "moon_raid_1:scenario_client",
+    "exact_sf603_count": 509
+  },
+  "census_evidence": {
+    "workflow_run_id": 34067213992,
+    "artifact_id": 9999332178,
+    "artifact_name": "D1-CROTA-RAID-OWNED-SCRIPTED-ENTITIES",
+    "report": "CROTA_RAID_F603_SCRIPTED_OWNERS.json",
+    "class_pair": "808026B9->808028DA",
+    "exact_occurrence_count": 19,
+    "note": "Count was reread directly from the retained exact artifact. Earlier working notes that listed eight were stale and are superseded by this record."
+  },
+  "source_proof": {
+    "repository": "MontagueM/Charm",
+    "commit": "50d36ee1f9ecadad7522504c20b1f3f9c97e30af",
+    "entity_structs_file": "Tiger/Schema/Entity/EntityStructs.cs",
+    "entity_structs_blob": "01615f5c09a41bb68bc0aa57e5d8087ba181007e",
+    "dialogue_file": "Tiger/Schema/Audio/Dialogue.cs",
+    "dialogue_blob": "40af87985ada47ab036760df3c07edd33e12a08f",
+    "discriminator_schema": "SB9268080 / 808026B9",
+    "parent_schema": "SDA288080 / 808028DA",
+    "typed_field": "SDA288080.Unk68",
+    "typed_field_offset": "0x68",
+    "typed_field_type": "Entity?",
+    "runtime_use": "DialogueD1 tests EntityResource.Unk10 as SB9268080, casts Unk18 as SDA288080, follows Unk68 as an Entity, then walks that Entity's EntityResources to collect Wwise dialogue resources."
+  },
+  "implementation": {
+    "tool": "tools/d1_entity_resource_probe.py",
+    "commit": "f903dc757c4f5f96ad3fed38a24053ca16a88ef1",
+    "semantic_role": "dialogue_entity_owner",
+    "decoded_field": "dialogue_entity_tag_hash",
+    "field_offset_in_parent": "0x68"
+  },
+  "conclusion": "The 19 moon_raid_1 SF603 resources with class pair 808026B9->808028DA belong to the source-defined D1 dialogue/audio entity traversal family. Their typed Entity edge is preserved and may be decoded for dialogue ownership, but this family is not evidence of Crota's runtime boss-body spawn or identity.",
+  "policy": "Do not promote an Entity reached through this family as Crota merely because it is raid-owned, articulated, or adjacent to Crota encounter resources. Crota identity still requires an independent typed semantic/ownership edge appropriate to the runtime actor."
+}
