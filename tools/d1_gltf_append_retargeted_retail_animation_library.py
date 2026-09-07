@@ -40,26 +40,31 @@ from d1_remote_model_tgxm_signature_match import LazyExactHashResolver
 from d1_split_tar_extract import SplitHttpTar
 
 
-def node_extra_int(extras:dict|None,*keys:str)->int|None:
-    """Read integer GLB provenance markers without losing their exact encoding.
+def node_extra_index(extras:dict|None,*keys:str)->int|None:
+    if not isinstance(extras,dict):return None
+    for k in keys:
+        if k not in extras:continue
+        try:return int(extras[k])
+        except Exception:return None
+    return None
 
-    Older player checkpoints used numeric JSON values while the spawned-actor skin
-    binder deliberately stores 32-bit bone hashes as zero-padded hexadecimal strings
-    such as ``E5685C1A``. Both encodings are exact; accept either and fail closed on
-    anything else.
+
+def node_extra_hash(extras:dict|None,*keys:str)->int|None:
+    """Read exact 32-bit hash provenance.
+
+    Spawned-actor skin checkpoints store hashes as zero-padded hexadecimal strings.
+    A hash made only of decimal digits is still hexadecimal (for example 92403903),
+    so unlike generic integer parsing we must always use base 16 for string hashes.
+    Legacy numeric JSON hash markers are accepted as their integer value.
     """
     if not isinstance(extras,dict):return None
     for k in keys:
         if k not in extras:continue
         v=extras[k]
         try:
-            if isinstance(v,str):
-                s=v.strip()
-                try:return int(s,0)
-                except ValueError:return int(s,16)
+            if isinstance(v,str):return int(v.strip().removeprefix('0x').removeprefix('0X'),16)
             return int(v)
-        except Exception:
-            return None
+        except Exception:return None
     return None
 
 
@@ -131,11 +136,11 @@ def main() -> int:
     for i,(joint,nd) in enumerate(zip(joints,sk.node_defs)):
         if not (0<=int(joint)<len(g.nodes)):raise ValueError(f'skin joint node {joint} out of GLB node range')
         node=g.nodes[int(joint)];ex=node.extras if isinstance(node.extras,dict) else {}
-        gi=node_extra_int(ex,'d1PublishedPlayerBoneIndex','d1BoneIndex')
-        gh=node_extra_int(ex,'d1PublishedPlayerBoneHash','d1BoneHash')
+        gi=node_extra_index(ex,'d1PublishedPlayerBoneIndex','d1BoneIndex')
+        gh=node_extra_hash(ex,'d1PublishedPlayerBoneHash','d1BoneHash')
         expected=int(nd.bone_hash)&0xffffffff
         if gi is None or gi!=i:raise ValueError(f'joint slot {i}: GLB bone index marker {gi!r} != {i}')
-        if gh is None or (gh&0xffffffff)!=expected:raise ValueError(f'joint slot {i}: GLB bone hash {gh!r} != retail {expected:08X}')
+        if gh is None or (gh&0xffffffff)!=expected:raise ValueError(f'joint slot {i}: GLB bone hash {None if gh is None else f"{gh&0xffffffff:08X}"} != retail {expected:08X}')
         palette.append({'slot':i,'gltf_node':int(joint),'bone_hash':f'{expected:08X}','name':node.name})
 
     extras=g.extras if isinstance(g.extras,dict) else {}
