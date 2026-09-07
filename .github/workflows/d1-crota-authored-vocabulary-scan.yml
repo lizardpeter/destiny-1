@@ -1,0 +1,117 @@
+name: D1 Crota authored vocabulary scan
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-authored-vocabulary-scan.yml'
+      - 'tools/d1_remote_stringhash_preimage_scan.py'
+      - 'tools/d1_remote_exact_tag_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Scan exact authored Crota and ultra-Knight strings
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_stringhash_preimage_scan.py \
+            --package-id 0x0447 \
+            --contains crota --contains ultra_knight \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --min-len 4 --max-len 256 --max-entry-size 8000000 \
+            -o out/CROTA_AUTHORED_VOCABULARY.json | tee out/vocabulary_stdout.txt
+
+      - name: Probe every exact source carrying those strings
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_AUTHORED_VOCABULARY.json'))
+          assert not d['errors'],d['errors']
+          tags=[]
+          for h in d['hits']:
+              t=h['source_tag_hash']
+              if t not in tags: tags.append(t)
+          print(' '.join('--tag-hash 0x'+t for t in tags))
+          open('out/source_tags.txt','w').write('\n'.join(tags)+'\n')
+          PY
+          )
+          if [[ -n "$ARGS" ]]; then
+            python tools/d1_remote_exact_tag_probe.py $ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime --min-string 4 -o out/CROTA_AUTHORED_VOCABULARY_SOURCES.json \
+              | tee out/source_probe_stdout.txt
+          else
+            printf '{"schema":"empty","entries":[],"violation_count":0,"violations":[]}\n' > out/CROTA_AUTHORED_VOCABULARY_SOURCES.json
+          fi
+
+      - name: Summarize source-controlled vocabulary graph
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import json,collections
+          v=json.load(open('out/CROTA_AUTHORED_VOCABULARY.json'))
+          s=json.load(open('out/CROTA_AUTHORED_VOCABULARY_SOURCES.json'))
+          assert not v['errors'],v['errors']; assert s.get('violation_count',0)==0,s.get('violations')
+          em={e['tag_hash']:e for e in s.get('entries',[])}
+          print('SCANNED_ENTRIES',v['scanned_structured_entries'],'PRINTABLE_RUNS',v['scanned_printable_runs'])
+          print('COUNTS',v['contains_hit_counts'])
+          by=collections.defaultdict(list)
+          for h in v['hits']: by[h['source_tag_hash']].append(h)
+          for tag,hits in by.items():
+              e=em[tag]; print('\nSOURCE',tag,'CLASS',e['entry']['reference'],'SIZE',e['payload_size'])
+              for h in hits: print(' STRING',hex(h['byte_offset']),h['string_hash'],repr(h['preimage']))
+              refs=[]
+              for m in e.get('aligned_resolved_tags',[]):
+                  if m['tag_hash']==tag: continue
+                  refs.append((hex(m['offset']),m['tag_hash'],m['entry']['reference']))
+              print(' REFS',refs[:100])
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-AUTHORED-VOCABULARY
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
