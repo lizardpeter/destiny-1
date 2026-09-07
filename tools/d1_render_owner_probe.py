@@ -8,10 +8,19 @@ standard D1 model-parent resources:
     Unk18 ResourcePointer -> class 0x80801A9C (model parent)
 
 It records the embedded model FileHash, TexturePlatesROI, ExternalMaterialsMap,
-the two serialized tables immediately before ExternalMaterials, and the
-ExternalMaterials bank.  The 8-byte FE1A8080 rows are preserved losslessly and
-also exposed as two (count, signed-start) pairs; that interpretation is
-structural only and does not assign the underlying switch-key semantics.
+the D1 external-material permutation/switch tables, and ExternalMaterials.
+
+The material-permutation structures are decoded losslessly and structurally:
+  * parent +0x50: switch-record array (0x18-byte records), each containing a
+    nested array of exact 32-bit (switch_key, value) hash pairs at record +0x8;
+  * parent +0x250: signed int16 indices into that switch-record array;
+  * parent +0x260: 8-byte descriptors containing two (count, signed-start)
+    ranges into the int16 index array;
+  * ExternalMaterialsMap.Unk08: start of the descriptor span parallel to that
+    map row's material span.
+
+No runtime matching semantics are invented here. The parser exposes the exact
+retail graph so downstream code can prove the active permutation separately.
 """
 from __future__ import annotations
 
@@ -29,12 +38,13 @@ ENTITY_RESOURCE_CLASS = "80800861"
 D1_MODEL_DISCRIMINATOR = 0x80801A80
 D1_MODEL_PARENT = 0x80801A9C
 
+EXTERNAL_SWITCH_RECORD_ARRAY_OFF = 0x50
+EXTERNAL_SWITCH_RECORD_SIZE = 0x18
+EXTERNAL_SWITCH_PAIR_ARRAY_IN_RECORD_OFF = 0x08
+EXTERNAL_SWITCH_PAIR_SIZE = 0x08
 MODEL_OFF = 0x15C
 TEXTURE_PLATES_ARRAY_OFF = 0x1A8
 EXTERNAL_MAP_ARRAY_OFF = 0x230
-# D1 has an otherwise-unmodelled int16 DynamicArray directly before FE1A8080.
-# This is the D1 structural counterpart of the permutation-index array present
-# in later Tiger layouts; semantics are intentionally not assumed here.
 EXTERNAL_AUX_INDEX_ARRAY_OFF = 0x250
 EXTERNAL_SELECTOR_TABLE_ARRAY_OFF = 0x260
 EXTERNAL_MATERIALS_ARRAY_OFF = 0x270
@@ -87,7 +97,7 @@ def resource_ptr(b: bytes, o: int) -> dict:
 def dynamic_array(b: bytes, field: int, elem_size: int) -> dict:
     """Decode Charm-style D1 DynamicArray<T>.
 
-    D1 layout used by the entity-model parent:
+    D1 layout used by these entity-model-parent structures:
       +0x00 u32 count
       +0x08 signed relative qword
 
@@ -120,6 +130,21 @@ def _slice_indices(values: list[int], count: int, start: int) -> list[int] | Non
     return values[start:start + count]
 
 
+def _resolve_switch_record_indices(indices: list[int] | None, rows: list[dict]) -> list[dict] | None:
+    if indices is None:
+        return None
+    out: list[dict] = []
+    for idx in indices:
+        if idx < 0 or idx >= len(rows):
+            return None
+        r = rows[idx]
+        out.append({
+            "switch_record_index": idx,
+            "pairs": r.get("pairs", []),
+        })
+    return out
+
+
 def parse_parent_resource(b: bytes) -> dict | None:
     p10 = resource_ptr(b, 0x10)
     p18 = resource_ptr(b, 0x18)
@@ -137,6 +162,36 @@ def parse_parent_resource(b: bytes) -> dict | None:
         "parent_offset": base,
         "embedded_model_tag_hash": f"{u32(b, base + MODEL_OFF):08X}",
     }
+
+    # Exact D1 switch-record source table. Each 0x18-byte row owns a nested
+    # DynamicArray of 8-byte hash pairs at row+0x8. The leading 8 bytes remain
+    # unnamed and are preserved verbatim as two u32 words.
+    switch_arr = dynamic_array(b, base + EXTERNAL_SWITCH_RECORD_ARRAY_OFF, EXTERNAL_SWITCH_RECORD_SIZE)
+    out["external_material_switch_record_table"] = switch_arr
+    switch_rows: list[dict] = []
+    if not switch_arr.get("error"):
+        for i in range(switch_arr["count"]):
+            o = switch_arr["data_offset"] + i * EXTERNAL_SWITCH_RECORD_SIZE
+            nested = dynamic_array(b, o + EXTERNAL_SWITCH_PAIR_ARRAY_IN_RECORD_OFF, EXTERNAL_SWITCH_PAIR_SIZE)
+            pairs: list[dict] = []
+            if not nested.get("error"):
+                for j in range(nested["count"]):
+                    po = nested["data_offset"] + j * EXTERNAL_SWITCH_PAIR_SIZE
+                    pairs.append({
+                        "index": j,
+                        "entry_offset": po,
+                        "switch_key": f"{u32(b, po):08X}",
+                        "value": f"{u32(b, po + 4):08X}",
+                    })
+            switch_rows.append({
+                "index": i,
+                "entry_offset": o,
+                "unk00": f"{u32(b, o):08X}",
+                "unk04": f"{u32(b, o + 4):08X}",
+                "pair_array": nested,
+                "pairs": pairs,
+            })
+    out["external_material_switch_records"] = switch_rows
 
     plate = dynamic_array(b, base + TEXTURE_PLATES_ARRAY_OFF, TEXTURE_PLATE_ENTRY_SIZE)
     out["texture_plates_roi"] = plate
@@ -173,10 +228,10 @@ def parse_parent_resource(b: bytes) -> dict | None:
             aux_values.append(i16(b, aux["data_offset"] + i * 2))
     out["external_material_aux_index_values"] = aux_values
 
-    # Charm's D1 schema places DynamicArrayUnloaded<FE1A8080> at parent +0x260.
-    # Preserve all four words, but additionally expose words 1 and 3 as signed
-    # because -1 is serialized as the empty-range sentinel.  The row therefore
-    # has an exact structural form of two (count,start) pairs.
+    # D1 FE1A8080 rows are exactly 8 bytes. Preserve all four words and expose
+    # words 1 and 3 as signed starts because -1 is the serialized empty-range
+    # sentinel. Each row therefore describes two exact ranges into the aux
+    # index table, which in turn resolves to the switch-record table above.
     selector = dynamic_array(b, base + EXTERNAL_SELECTOR_TABLE_ARRAY_OFF, EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE)
     out["external_material_selector_table"] = selector
     selector_rows = []
@@ -187,6 +242,8 @@ def parse_parent_resource(b: bytes) -> dict | None:
             s0 = i16(b, o + 2)
             c1 = u16(b, o + 4)
             s1 = i16(b, o + 6)
+            idx0 = _slice_indices(aux_values, c0, s0)
+            idx1 = _slice_indices(aux_values, c1, s1)
             selector_rows.append({
                 "index": i,
                 "entry_offset": o,
@@ -198,12 +255,12 @@ def parse_parent_resource(b: bytes) -> dict | None:
                 "pair0_start": s0,
                 "pair1_count": c1,
                 "pair1_start": s1,
-                "pair0_aux_indices": _slice_indices(aux_values, c0, s0),
-                "pair1_aux_indices": _slice_indices(aux_values, c1, s1),
+                "pair0_aux_indices": idx0,
+                "pair1_aux_indices": idx1,
+                "pair0_switch_records": _resolve_switch_record_indices(idx0, switch_rows),
+                "pair1_switch_records": _resolve_switch_record_indices(idx1, switch_rows),
             })
     out["external_material_selector_table_entries"] = selector_rows
-    # Alias with the more accurate structural name while retaining the older
-    # selector-table keys for downstream compatibility.
     out["external_material_permutation_descriptors"] = selector_rows
 
     mats = dynamic_array(b, base + EXTERNAL_MATERIALS_ARRAY_OFF, 4)
@@ -215,8 +272,37 @@ def parse_parent_resource(b: bytes) -> dict | None:
             mat_rows.append(f"{u32(b, o):08X}")
     out["external_material_tag_hashes"] = mat_rows
 
-    # Record the exact current Charm-style variant-0 selection for convenience,
-    # while keeping the complete banks above so no information is discarded.
+    # Join each map row to its exact parallel descriptor/material members. This
+    # is structural ownership only; `selected` remains unknown until live entity
+    # switch state is independently recovered.
+    permutation_banks = []
+    for row in map_rows:
+        c = int(row["material_count"])
+        s = int(row["material_start_index"])
+        u = int(row["unk08"])
+        members = []
+        valid = c > 0 and 0 <= s and s + c <= len(mat_rows) and 0 <= u and u + c <= len(selector_rows)
+        if valid:
+            for j in range(c):
+                members.append({
+                    "member_index": j,
+                    "material_bank_index": s + j,
+                    "material_tag_hash": mat_rows[s + j],
+                    "descriptor_index": u + j,
+                    "descriptor": selector_rows[u + j],
+                })
+        permutation_banks.append({
+            "variant_shader_index": row["variant_shader_index"],
+            "material_count": c,
+            "material_start_index": s,
+            "descriptor_start_index": u,
+            "valid_parallel_span": valid,
+            "members": members,
+        })
+    out["external_material_permutation_banks"] = permutation_banks
+
+    # Retain the historical Charm-style member-0 result only as an explicit
+    # compatibility observation. It is not claimed to be the retail selector.
     selected = []
     for row in map_rows:
         c = row["material_count"]
