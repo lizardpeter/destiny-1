@@ -1,0 +1,235 @@
+name: D1 Crota exact rigged animated export v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-exact-rigged-animated-export-v1.yml'
+      - 'tools/d1_remote_single_actor_rigged_animated_glb.py'
+      - 'tools/d1_world_articulated_model_export.py'
+      - 'tools/d1_tower_spawned_actor_skin_bind.py'
+      - 'tools/d1_tower_family_e_animated_layer.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  RAID_ACTOR_ASSET_ARTIFACT_ID: '10005225514'
+  RAID_ACTOR_ASSET_ZIP_SHA256: '6687cb12dcc423152592bdaff9e7efd86c119fa5b4e5e11cd885cc05ee20491b'
+  MATERIAL_BINDINGS_SHA256: '84bcac8236bde3cb9e5c5faad5d1cc2d20768a5bfe89a62c5797de863f3e6fb8'
+  MATERIAL_DEPENDENCIES_SHA256: 'd488fd455b799e6348ea48452f66935b0831a32163629dac63a4be79ca82a36c'
+  TEXTURE_MANIFEST_SHA256: 'b23ac685f6ad0fb22643ce52f3271a7358ff5472d6321735950197970add4125'
+  SKIN_ARTIFACT_ID: '10027692774'
+  SKIN_ARTIFACT_ZIP_SHA256: 'f459f939f698449940c96bf42b24894c602c7750b0d668d902483c8e8e7d51a2'
+  BODY_ANIMATION_ARTIFACT_ID: '10027389376'
+  BODY_ANIMATION_ARTIFACT_ZIP_SHA256: '9cb9f25e01138bf89de4b641e19308bcbc3f2ca49f73f223b0a01890ffca0ca4'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact retained proof artifacts, parser and runtime
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib
+          mkdir -p input/catalog input/actor input/skin input/body runtime out/geometry out/textures
+
+          fetch_artifact() {
+            local id="$1" dst="$2" sha="$3" dir="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$dst"
+            echo "$sha  $dst" | sha256sum --check --strict
+            unzip -q "$dst" -d "$dir"
+          }
+          fetch_artifact "$CATALOG_ARTIFACT_ID" input/catalog.zip "$CATALOG_ZIP_SHA256" input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          fetch_artifact "$RAID_ACTOR_ASSET_ARTIFACT_ID" input/actor.zip "$RAID_ACTOR_ASSET_ZIP_SHA256" input/actor
+          echo "$MATERIAL_BINDINGS_SHA256  input/actor/crota_raid_actor_material_bindings.json" | sha256sum --check --strict
+          echo "$MATERIAL_DEPENDENCIES_SHA256  input/actor/crota_raid_actor_material_dependencies.json" | sha256sum --check --strict
+          echo "$TEXTURE_MANIFEST_SHA256  input/actor/texture_export/texture_export_manifest.json" | sha256sum --check --strict
+          fetch_artifact "$SKIN_ARTIFACT_ID" input/skin.zip "$SKIN_ARTIFACT_ZIP_SHA256" input/skin
+          test -f input/skin/CROTA_EXACT_SKIN_CENSUS.json
+          fetch_artifact "$BODY_ANIMATION_ARTIFACT_ID" input/body.zip "$BODY_ANIMATION_ARTIFACT_ZIP_SHA256" input/body
+          test -f input/body/CROTA_ANIMATION_OPTIONS_V3.json
+
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser rev-parse HEAD)" = "$PARSER_COMMIT"
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Export exact stage-0 highest-detail Crota geometry and material selection
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_remote_activity_placements import RemoteCorpus
+          from d1_world_articulated_model_export import export_one
+          bd=json.load(open('input/actor/crota_raid_actor_material_bindings.json'))
+          assert bd['status']=='D1_WORLD_ENTITY_MODEL_MATERIAL_BINDINGS_COMPLETE',bd['status']
+          assert not bd['violations'],bd['violations']
+          rows=[x for x in bd['bindings'] if x['model']=='8108E5B7' and x['parent_resource']=='8108E4BA']
+          assert len(rows)==1,len(rows)
+          assert rows[0]['validation_ok'],rows[0]
+          cats=load_catalogs([Path('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json')])
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          c=RemoteCorpus(arc,cats,Path('runtime'))
+          rep=export_one(c,'8108E5B7',rows[0],Path('out/geometry'))
+          assert rep['status']=='D1_WORLD_ARTICULATED_MODEL_EXPORT_COMPLETE',rep
+          assert rep['model']=='8108E5B7' and rep['mesh_count']==3,rep
+          assert rep['stage0_selected_range_count']==rep['geometry_count']==len(rep['ranges']),rep
+          assert rep['triangle_count']>0 and rep['active_material_count']>0,rep
+          print('CROTA_EXACT_GEOMETRY','RANGES',rep['geometry_count'],'TRIANGLES',rep['triangle_count'],'ACTIVE_MATERIALS',rep['active_material_count'])
+          print('ACTIVE_MATERIAL_HASHES',rep['active_materials'])
+          PY
+
+      - name: Build Crota-only exact shader-register and texture subset
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,glob,shutil,hashlib
+          from pathlib import Path
+          mr=json.load(open('out/geometry/8108E5B7.json'))
+          active=set(mr['active_materials'])
+          dep=json.load(open('input/actor/crota_raid_actor_material_dependencies.json'))
+          assert dep['status']=='D1_ACTIVITY_MATERIAL_DEPENDENCIES_COMPLETE',dep['status']
+          rows=[x for x in dep['rows'] if x['material'] in active]
+          assert len(rows)==len(active),(len(rows),len(active),sorted(active-set(x['material'] for x in rows)))
+          assert all(not x.get('violations') for x in rows)
+          textures={}; shaders={}
+          for row in rows:
+            for stage in ('vertex','pixel'):
+              d=(row.get('dependencies') or {}).get(stage) or {}
+              sh=(d.get('shader') or {}).get('tag_hash')
+              if sh and sh not in ('00000000','FFFFFFFF'): shaders[sh]=d.get('shader')
+              for t in d.get('textures',[]):
+                textures[t['texture']]=t
+          texdir=Path('out/textures'); texdir.mkdir(exist_ok=True)
+          copied=[]
+          for h in sorted(textures):
+            matches=sorted(glob.glob(f'input/actor/texture_export/textures/{h}_*'))
+            assert matches,h
+            for src in matches:
+              dst=texdir/Path(src).name; shutil.copy2(src,dst)
+              copied.append({'texture':h,'file':str(dst.relative_to(Path('out'))),'bytes':dst.stat().st_size,'sha256':hashlib.sha256(dst.read_bytes()).hexdigest()})
+          out={
+            'schema':'d1_crota_exact_material_texture_subset/v1',
+            'status':'D1_CROTA_EXACT_MATERIAL_TEXTURE_SUBSET_COMPLETE',
+            'entity':'8108E484','entity_name':'Crota, Son of Oryx','model':'8108E5B7','model_parent':'8108E4BA',
+            'active_material_count':len(active),'active_materials':sorted(active),
+            'material_rows':rows,
+            'unique_texture_count':len(textures),'textures':textures,
+            'unique_shader_count':len(shaders),'shaders':shaders,
+            'copied_texture_files':copied,
+            'policy':'Materials are only those selected by the exact stage-0/highest-detail owning-parent binding for 8108E5B7. Texture register names and shader dependencies are preserved exactly. No D1 t# register is guessed into a glTF PBR semantic.'
+          }
+          Path('out/CROTA_EXACT_MATERIAL_TEXTURE_SUBSET.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('CROTA_MATERIAL_TEXTURE_SUBSET','MATERIALS',len(active),'TEXTURES',len(textures),'SHADERS',len(shaders),'FILES',len(copied))
+          print('TEXTURE_HASHES',sorted(textures))
+          print('SHADER_HASHES',sorted(shaders))
+          PY
+
+      - name: Bind exact Crota skin and append all source-selected animations
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_single_actor_rigged_animated_glb.py
+          python tools/d1_remote_single_actor_rigged_animated_glb.py \
+            out/geometry/8108E5B7.glb \
+            --entity 0x8108E484 --model 0x8108E5B7 --skeleton 0x8108E4BB \
+            --runtime-rig 0x8108E4CB --control 0x8108E5C0 --bone-count 50 \
+            --model-report out/geometry/8108E5B7.json \
+            --skin-census input/skin/CROTA_EXACT_SKIN_CENSUS.json \
+            --animation-options input/body/CROTA_ANIMATION_OPTIONS_V3.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser \
+            --fps 30 --out out/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb \
+            --report out/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.json \
+            | tee out/rigged_animated_stdout.txt
+
+      - name: Validate final Crota-only checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          from pygltflib import GLTF2
+          r=json.load(open('out/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.json'))
+          m=json.load(open('out/CROTA_EXACT_MATERIAL_TEXTURE_SUBSET.json'))
+          assert r['status']=='D1_SINGLE_ACTOR_RIGGED_ANIMATED_GLB_COMPLETE',r
+          assert r['entity']=='8108E484' and r['model']=='8108E5B7',r
+          assert r['skeleton_node_count']==50 and r['runtime_rig_control_count']==44,r
+          assert r['selector_state_count']==128,r['selector_state_count']
+          assert r['selected_clip_count']==82 and r['animation_count']==82,r
+          assert r['native_retarget_success_count']==82 and r['native_retarget_failure_count']==0,r
+          assert r['binary_prefix_exact'],r
+          assert r['triangle_count']>0 and r['selected_range_count']>0,r
+          assert m['status']=='D1_CROTA_EXACT_MATERIAL_TEXTURE_SUBSET_COMPLETE',m
+          g=GLTF2().load_binary('out/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb')
+          assert len(g.skins or [])==1 and len(g.skins[0].joints or [])==50
+          assert len(g.animations or [])==82
+          assert all(len(a.channels or [])>0 for a in g.animations)
+          checkpoint={
+            'schema':'d1_crota_exact_export_checkpoint/v1',
+            'status':'D1_CROTA_SON_OF_ORYX_EXACT_EXPORT_CHECKPOINT_COMPLETE',
+            'identity':{'script_family':'dark_lens.sq_crota','script_family_hash':'A384A910','entity_name_hash':'64C53DB9','entity_name':'Crota, Son of Oryx','s_entity':'8108E484'},
+            'physical':{'model':'8108E5B7','model_parent':'8108E4BA','skeleton':'8108E4BB','bones':50,'runtime_rig':'8108E4CB','runtime_rig_controls':44,'animation_control':'8108E5C0'},
+            'visual':{'selected_ranges':r['selected_range_count'],'triangles':r['triangle_count'],'active_material_count':m['active_material_count'],'active_materials':m['active_materials'],'unique_texture_count':m['unique_texture_count'],'texture_hashes':sorted(m['textures']),'unique_shader_count':m['unique_shader_count'],'shader_hashes':sorted(m['shaders'])},
+            'animation':{'selector_states':128,'animation_list_entries':r['animation_list_entry_count'],'unique_animation_list_clips':r['unique_animation_list_clip_count'],'selected_clips':82,'native_retarget_success':82,'native_retarget_failure':0,'gltf_animations':82,'default_action':'UNRESOLVED','loop_semantic':'UNRESOLVED'},
+            'glb':{'file':'CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb','bytes':Path('out/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb').stat().st_size,'sha256':r['output_sha256'],'geometry_binary_prefix_exact':True},
+            'material_policy':'Exact material hashes and native shader-register texture bindings are packaged beside the GLB. The GLB does not guess D1 shader t# roles into portable PBR slots.',
+            'animation_policy':'All 82 exact selector-selected clips are exported as separate glTF Animation objects. No default/startup action, loop rule or synchronization behavior is invented.'
+          }
+          Path('out/CROTA_EXACT_EXPORT_CHECKPOINT.json').write_text(json.dumps(checkpoint,indent=2)+'\n')
+          print(json.dumps(checkpoint,indent=2))
+          PY
+          cat > out/README.txt <<'EOF'
+          CROTA, SON OF ORYX — EXACT SOURCE-CLOSED D1 PS4 CHECKPOINT
+
+          Open in Blender:
+            CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb
+
+          This file is the exact source-owned Crota physical entity 8108E484:
+            model       8108E5B7
+            skeleton    8108E4BB (50 joints)
+            runtime rig 8108E4CB (44 controls)
+            control     8108E5C0
+
+          All exact selector-selected animation clips are embedded as separate glTF
+          Animation objects. No default/startup action or loop behavior is guessed.
+
+          The GLB preserves exact selected Material hashes but deliberately does NOT
+          guess Destiny 1 shader-register textures into glTF PBR roles. The exact
+          native material/shader/register dependency proof and exact decoded retail
+          texture files are supplied in CROTA_EXACT_MATERIAL_TEXTURE_SUBSET.json and
+          textures/ for the next shader-portability pass.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-SON-OF-ORYX-EXACT-RIGGED-ANIMATED-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
