@@ -106,7 +106,9 @@ jobs:
           assert g['counts']['unique_root_entities'] > 0 or g['counts']['runtime_placements'] == 0,g['counts']
           assert s['status']=='D1_ACTIVITY_ASSET_DEPENDENCY_SEEDS_EXACT',s
           assert s['activity']['tag_hash']=='${{ matrix.hash }}'
-          assert s['counts'].get('s_entities',0) == g['counts']['unique_root_entities'],(s['counts'],g['counts'])
+          assert s['counts'].get('placement_entities',0) == g['counts']['unique_root_entities'],(s['counts'],g['counts'])
+          assert s['counts'].get('s_entities',0) >= s['counts'].get('placement_entities',0)
+          assert s['counts'].get('scripted_only_entities',0) == len(set(s['seed_groups'].get('scripted_entities',[]))-set(s['seed_groups'].get('placement_entities',[])))
           assert s['closure_seed_count'] >= s['counts'].get('s_entities',0)
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
