@@ -2,9 +2,10 @@
 """Inventory/disassemble preserved D1 TFX bytecode without evaluating unknown semantics.
 
 Primary input is ``d1_world_map_lighting_census.py`` output. Opcode identities and
-operand widths are independently transcribed from the pinned Charm TFX bytecode schema.
-The tool records constant references, extern references, output slots and complete raw
-operands. It does *not* claim which light output slot means colour/intensity/range.
+operand widths are independently transcribed from the pinned Charm TFX bytecode schema,
+except where exact D1 retail byte streams independently close a strategy-specific framing
+fact. The tool records constant references, extern references, output slots and complete
+raw operands. It does *not* claim which light output slot means colour/intensity/range.
 
 For constant-indexing opcodes, both Buffer1 and Buffer2 candidate Vec4 values are shown.
 This deliberately avoids assuming which D1 BufferData array is the constant bank before
@@ -16,6 +17,13 @@ Opcode 0x0E is promoted to Merge_3_1: D1 already has the adjacent 0x0C Merge_1_3
 0x0E averaging implementation is explicitly marked "Not correct". Opcode 0x0F is
 similarly the adjacent Cubic operation retained by the continued VM. These names are
 lineage/source closures; light-output semantics remain withheld.
+
+D1 opcode 0x42 remains semantically unnamed. The pinned Charm table labels it ``Unk42``
+and gives no operand, but exact Rise-of-Iron PS4 material bytecode proves that D1 framing
+consumes one following u8. In the Xur 54-material checkpoint this closes every one of 108
+VS/PS streams, accounts for 54 exact 0x42 occurrences, and every consumed value is a
+valid index into that stage's serialized CBuffer Vec4 array. This tool therefore promotes
+only the D1 operand width (one u8), not the operation's meaning.
 """
 from __future__ import annotations
 
@@ -28,7 +36,8 @@ from pathlib import Path
 PINNED_SOURCE = (
     'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
     'Tiger/Schema/Shaders/TFX Bytecode/OpCodes.cs + Externs.cs; '
-    'cohaereo/alkahest expression VM opcode continuity used only to close 0x0E Merge_3_1 and 0x0F Cubic'
+    'cohaereo/alkahest expression VM opcode continuity used only to close 0x0E Merge_3_1 and 0x0F Cubic; '
+    'D1 ROI PS4 retail material corpus independently closes only 0x42 operand width as one u8'
 )
 
 OP_NAMES = {
@@ -53,6 +62,7 @@ OP_NAMES = {
 OPERAND_LENGTH = {
     0x22:1,0x34:1,0x35:1,0x37:1,0x38:1,0x39:1,0x3A:1,0x3B:1,
     0x3C:2,0x3D:2,0x3E:2,0x3F:2,0x40:2,0x41:2,
+    0x42:1,
     0x43:1,0x44:1,0x45:1,0x46:1,0x47:1,0x48:1,0x49:1,0x4A:1,0x4B:1,0x4C:1,0x4D:1,
     0x4E:4,0x4F:1,0x50:1,0x52:2,0x53:2,0x54:2,
 }
@@ -117,6 +127,8 @@ def disassemble(raw: bytes, buffer1: list, buffer2: list) -> dict:
         if op in range(0x3C,0x42) and len(args)==2:
             row['extern_id']=args[0];row['extern_name']=EXTERNS.get(args[0],f'UNKNOWN_EXTERN_{args[0]}')
             row['extern_element']=args[1]
+        if op==0x42 and args:
+            row['d1_unk42_u8']=args[0]
         if op in (0x43,0x44,0x45,0x46,0x47) and args:
             row['slot_or_element']=args[0]
         rows.append(row)
@@ -154,7 +166,7 @@ def main()->int:
         rows.append(row);by_program[program_sha].append(b.get('hash'))
     groups=[{'program_sha256':k,'buffer_count':len(v),'buffer_hashes':sorted(v)} for k,v in sorted(by_program.items())]
     out={
-        'schema_version':2,
+        'schema_version':3,
         'status':'D1_TFX_PROGRAM_INVENTORY_COMPLETE' if not violations else 'D1_TFX_PROGRAM_INVENTORY_PARTIAL',
         'pinned_source':PINNED_SOURCE,
         'source_lighting_status':src.get('status'),
@@ -166,10 +178,17 @@ def main()->int:
             '0E':{'name':'Merge_3_1','evidence':'adjacent D1 merge sequence plus continued Tiger VM; old D1 averaging implementation explicitly marked Not correct'},
             '0F':{'name':'Cubic','evidence':'continued adjacent Tiger VM opcode identity'},
         },
-        'semantic_withholding':'Opcode framing is source-pinned. Light output-slot meaning and Buffer2 semantic role remain unassigned until D1 retail dataflow proves them.'
+        'framing_promotions':{
+            '42':{
+                'name':'Unk42',
+                'operand_bytes':1,
+                'evidence':'exact D1 ROI PS4 retail material streams require one following u8; semantics intentionally withheld',
+            },
+        },
+        'semantic_withholding':'Most opcode framing is source-pinned. D1 0x42 has a retail-proven one-u8 width but remains semantically unnamed. Light output-slot meaning and Buffer2 semantic role remain unassigned until D1 retail dataflow proves them.'
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
-    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','output_slot_histogram','constant_reference_histogram','opcode_promotions','violations')},indent=2))
+    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','output_slot_histogram','constant_reference_histogram','opcode_promotions','framing_promotions','violations')},indent=2))
     return 0 if not violations else 2
 
 if __name__=='__main__': raise SystemExit(main())
