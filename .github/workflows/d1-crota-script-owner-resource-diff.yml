@@ -1,4 +1,5 @@
 name: D1 Crota scripted owner EntityResource diff
+# Triggered after workflow registration.
 
 on:
   workflow_dispatch:
@@ -89,8 +90,6 @@ jobs:
               print(' CLASSES',rows[-1]['unk10_class'],rows[-1]['unk18_class'])
               print(' STRINGS',[(hex(x['offset']),x['string']) for x in rows[-1]['printable_strings']])
               print(' REFS',[(hex(x['offset']),x['tag_hash'],x['reference']) for x in e['aligned_resolved_tag_matches']])
-          # Exact tag probe gives full structural runs but not payload bytes; compare all reported
-          # resolved refs/strings and the parser-owned prefix/suffix without pretending unknown bytes have semantics.
           a,b=rows
           diff={
             'same_size':a['size']==b['size'],
