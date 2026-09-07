@@ -1,0 +1,171 @@
+name: D1 generic world structure canaries
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-generic-world-structure-canaries.yml'
+      - 'tools/d1_world_activity_root_dependency_closure.py'
+      - 'tools/d1_world_activity_manifest_dependency_plan.py'
+      - 'tools/d1_world_activity_map_root_census.py'
+      - 'tools/d1_world_map_root_census.py'
+      - 'tools/d1_world_map_data_layer_census.py'
+      - 'tools/d1_world_map_resource_subset_plan.py'
+      - 'tools/d1_world_static_map_resource_chain_census.py'
+      - 'tools/d1_world_static_map_target_plan.py'
+      - 'tools/d1_tag_manifest_resolver.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  world-canary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: city_tower
+            hash: '80C98019'
+          - id: cosmodrome
+            hash: '80CDA002'
+          - id: venus
+            hash: '81004002'
+          - id: moon_hive_raid1
+            hash: '810B0002'
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current archive-wide Activity index
+        run: |
+          set -euo pipefail
+          mkdir -p index reports packages runtime
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          idx="$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
+          plist="$(find index -name packages.txt -print -quit)"
+          test -n "$idx" -a -f "$idx" -a -n "$plist" -a -f "$plist"
+          cp "$idx" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$plist" reports/packages.txt
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Close map-root dependencies from Activity hash only
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --activity '${{ matrix.hash }}' \
+            --runtime runtime --package-dir packages \
+            --work-dir reports/root_closure \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+          python - <<'PY'
+          import json
+          h='${{ matrix.hash }}'
+          c=json.load(open('reports/activity_root_dependency_closure.json'))
+          r=json.load(open('reports/activity_map_roots.json'))
+          assert c['status']=='D1_WORLD_ACTIVITY_ROOT_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['activity']==h,(c['activity'],h)
+          assert r['status']=='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE',r['violations']
+          assert r['selected_activities']==[h],r['selected_activities']
+          assert r['reachable_bubble_count']>0,r
+          assert r['reachable_map_container_count']>0,r
+          assert r['reachable_map_data_table_count']>0,r
+          assert r['total_reachable_map_entries']>0,r
+          assert len(r['bubble_definitions'])==r['reachable_bubble_count'],r
+          assert len(r['map_containers'])==r['reachable_map_container_count'],r
+          assert len(r['map_data_tables'])==r['reachable_map_data_table_count'],r
+          assert sum(r['map_data_table_entry_counts'].values())==r['total_reachable_map_entries'],r
+          print('WORLD_ROOT',h,r['reachable_bubble_count'],r['reachable_map_container_count'],r['reachable_map_data_table_count'],r['total_reachable_map_entries'])
+          PY
+
+      - name: Classify every Activity-owned map row
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/activity_map_roots.json \
+            --out reports/map_data_layer_census.json
+          python tools/d1_world_map_resource_subset_plan.py \
+            --census reports/map_data_layer_census.json \
+            --resource-class 80801AEA \
+            --out reports/static_map_roots.json
+          python - <<'PY'
+          import json
+          r=json.load(open('reports/activity_map_roots.json'))
+          c=json.load(open('reports/map_data_layer_census.json'))
+          s=json.load(open('reports/static_map_roots.json'))
+          assert c['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS',c['violations']
+          assert c['map_data_table_count']==r['reachable_map_data_table_count'],(c['map_data_table_count'],r['reachable_map_data_table_count'])
+          assert c['entry_count']==r['total_reachable_map_entries'],(c['entry_count'],r['total_reachable_map_entries'])
+          assert sum(c['resource_class_counts'].values())==c['entry_count'],c
+          assert s['status']=='D1_WORLD_MAP_RESOURCE_SUBSET_PLAN_COMPLETE',s['violations']
+          assert s['resource_class']=='80801AEA',s
+          assert s['source_map_data_table_count']==c['map_data_table_count'],s
+          assert s['source_entry_count']==c['entry_count'],s
+          assert s['entry_count']+s['nonmatching_entry_count']==s['source_entry_count'],s
+          assert s['mixed_table_count']==0,s
+          assert s['map_data_table_count']==len(s['map_data_tables']),s
+          assert s['map_data_table_count']>0,s
+          print('WORLD_LAYERS',json.dumps({'classes':c['resource_class_counts'],'static_tables':s['map_data_table_count'],'static_rows':s['entry_count'],'other_rows':s['nonmatching_entry_count']},sort_keys=True))
+          PY
+
+      - name: Close static-map ownership and execution targets
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/static_map_roots.json \
+            --out reports/static_map_resource_chain_census.json
+          python tools/d1_world_static_map_target_plan.py \
+            --chain-json reports/static_map_resource_chain_census.json \
+            --out reports/static_map_target_plan.json \
+            --tsv reports/static_map_target_plan.tsv
+          python - <<'PY'
+          import json
+          s=json.load(open('reports/static_map_roots.json'))
+          c=json.load(open('reports/static_map_resource_chain_census.json'))
+          p=json.load(open('reports/static_map_target_plan.json'))
+          assert c['status']=='D1_WORLD_STATIC_MAP_RESOURCE_CHAIN_CLOSED',c['violations']
+          assert c['map_data_table_count']==s['map_data_table_count'],c
+          assert c['entry_count']==s['entry_count'],c
+          assert c['closed_chain_count']==c['entry_count'],c
+          assert c['direct_d1_baked_entry_count']+c['no_direct_d1_static_child_entry_count']==c['entry_count'],c
+          assert c['unique_static_map_count']>0,c
+          assert p['status']=='D1_WORLD_STATIC_MAP_TARGET_PLAN_COMPLETE',p['violations']
+          assert p['map_data_table_count']==c['map_data_table_count'],p
+          assert p['source_entry_count']==c['entry_count'],p
+          assert p['table_scoped_decal_target_count']==c['map_data_table_count'],p
+          assert p['direct_d1_baked_row_count']+p['no_direct_d1_static_child_row_count']==p['source_entry_count'],p
+          assert p['direct_d1_baked_row_count']==c['direct_d1_baked_entry_count'],(p,c)
+          print('WORLD_STATIC_CHAIN',json.dumps({'tables':c['map_data_table_count'],'rows':c['entry_count'],'static_maps':c['unique_static_map_count'],'baked_rows':c['direct_d1_baked_entry_count'],'common_rows':c['no_direct_d1_static_child_entry_count'],'baked_targets':p['baked_static_target_count']},sort_keys=True))
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GENERIC-WORLD-STRUCTURE-${{ matrix.id }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
