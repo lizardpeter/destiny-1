@@ -1,0 +1,122 @@
+name: D1 Xur model parent permutation static graph
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-model-parent-permutation-static-graph.yml'
+      - 'tools/d1_model_parent_permutation_static_graph_close.py'
+      - 'notes/D1_XUR_WAVE8_AND_PERMUTATION_LAYOUT_FRONTIER_2026-09-07.md'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LAYOUT_ARTIFACT_ID: '10032044604'
+  LAYOUT_ZIP_SHA256: '9237d933626e4b93997859b91487e0f62ee85fa1c444cea33a6a7a327dea2333'
+
+jobs:
+  close-static-graph:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact Xur model-parent layout
+        run: |
+          set -euo pipefail
+          mkdir -p input/layout reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LAYOUT_ARTIFACT_ID}/zip" -o input/layout.zip
+          echo "${LAYOUT_ZIP_SHA256}  input/layout.zip" | sha256sum --check --strict
+          unzip -q input/layout.zip -d input/layout
+          test -f input/layout/D1_XUR_MODEL_PARENT_PERMUTATION_LAYOUT.json
+
+      - name: Close exact static external-material reference graph
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_model_parent_permutation_static_graph_close.py
+          python tools/d1_model_parent_permutation_static_graph_close.py \
+            --layout-report input/layout/D1_XUR_MODEL_PARENT_PERMUTATION_LAYOUT.json \
+            -o reports/D1_XUR_MODEL_PARENT_PERMUTATION_STATIC_GRAPH.json | tee reports/stdout.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_XUR_MODEL_PARENT_PERMUTATION_STATIC_GRAPH.json'))
+          assert d['status']=='D1_XUR_MODEL_PARENT_PERMUTATION_STATIC_REFERENCE_GRAPH_EXACT',d
+          assert d['target_model']=='80C88CEF',d
+          assert d['model_entity_resource']=='80C88CE2',d
+          assert d['source_entities']==['80C7ACC8','80C885AA'],d
+          assert d['counts']=={
+            'external_material_map':81,
+            'indirect_switch_index_u16':46,
+            'descriptors_FE1A8080':108,
+            'switch_records':55,
+            'switch_key_value_pairs':164,
+            'external_materials':820,
+          },d['counts']
+          assert len(d['variant_members'])==820,len(d['variant_members'])
+          assert len(d['descriptors'])==108,len(d['descriptors'])
+          assert len(d['switch_records'])==55,len(d['switch_records'])
+          assert len(d['indirect_switch_record_indices'])==46,len(d['indirect_switch_record_indices'])
+          assert not d['violations'],d['violations']
+          assert d['live_configuration_state_complete'] is False,d
+          assert d['retail_material_member_selection_complete'] is False,d
+
+          # Exact descriptor-group partition forced by ExternalMaterialsMap.Unk08.
+          expected=[
+            {'start':0,'count':12},{'start':12,'count':14},{'start':26,'count':13},
+            {'start':39,'count':24},{'start':63,'count':24},{'start':87,'count':4},
+            {'start':91,'count':6},{'start':97,'count':2},{'start':99,'count':4},
+            {'start':103,'count':3},{'start':106,'count':2},
+          ]
+          assert d['descriptor_groups']==expected,d['descriptor_groups']
+
+          # Preserve the exact Xur-neighborhood facts without turning them into
+          # a live-selection claim.
+          bymat={}
+          for x in d['variant_members']:
+            bymat.setdefault(x['material_tag_hash'],[]).append(x)
+          for h in ('80C885E6','80C885E7','80C885E8','80C885E9','80C885EA'):
+            assert h in bymat,h
+          for h in ('80C885E6','80C885E7','80C885E8'):
+            assert any(not x['descriptor_list_a']['switch_record_indices'] and not x['descriptor_list_b']['switch_record_indices'] for x in bymat[h]),(h,bymat[h])
+          print('D1_XUR_STATIC_PERMUTATION_GRAPH_EXACT')
+          PY
+
+      - name: Persist provenance and hashes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.load(open('reports/D1_XUR_MODEL_PARENT_PERMUTATION_STATIC_GRAPH.json'))
+          p={
+            'status':d['status'],
+            'workflow_commit':os.environ['GITHUB_SHA'],
+            'source_layout_artifact':{
+              'artifact_id':int(os.environ['LAYOUT_ARTIFACT_ID']),
+              'zip_sha256':os.environ['LAYOUT_ZIP_SHA256'],
+            },
+            'model_entity_resource':d['model_entity_resource'],
+            'model_entity_resource_sha256':d['model_entity_resource_sha256'],
+            'counts':d['counts'],
+            'live_configuration_state_complete':False,
+            'retail_material_member_selection_complete':False,
+          }
+          Path('reports/CHECKPOINT.json').write_text(json.dumps(p,indent=2)+'\n')
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-MODEL-PARENT-PERMUTATION-STATIC-GRAPH
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
