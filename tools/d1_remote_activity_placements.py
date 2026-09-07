@@ -130,12 +130,13 @@ def main():
         x['known_models']=nm.get('models',[]);x['known_skeletons']=nm.get('skeletons',[])
         m=c.entry_meta(x['entity_hash']);x['entity_reference']=None if m is None else norm(m.get('reference'))
     entity_counts=collections.Counter(norm(x['entity_hash']) for x in runtime)
+    unique_entity_hashes=sorted(entity_counts)
     named_counts=collections.Counter(n for x in runtime for n in x.get('resolved_names',[]))
     out={'schema':'d1_remote_activity_placements/v1','status':'D1_REMOTE_ACTIVITY_PLACEMENTS_COMPLETE' if not violations else 'D1_REMOTE_ACTIVITY_PLACEMENTS_WITH_VIOLATIONS',
          'activity':{'tag_hash':ah,'name':a.activity_name,'class_hash':norm(a.activity_class),'package_id':f'{package_of(ah):04X}'},
          'activity_parse':parsed,'unique_resource_parents':parents,'unique_s6e_resources':s6es,'unique_map_data_tables':tables,'unique_f603_entity_resources':f603,
          'unresolved_dependency_hashes':unresolved,'serialized_placement_count':len(real),'runtime_placement_count':len(runtime),'duplicate_serialized_reference_count':dups,
-         'unique_entity_count':len(entity_counts),'runtime_entity_counts':dict(entity_counts),'resolved_name_counts':dict(named_counts),
+         'unique_entity_count':len(entity_counts),'unique_entity_hashes':unique_entity_hashes,'runtime_entity_counts':dict(entity_counts),'resolved_name_counts':dict(named_counts),
          'runtime_placements':runtime,'direct_tables':direct,'f603_tables':collapsed,'violations':violations,
          'policy':'Named activity identity is supplied from the exact current D1 named-tag table. All activity/table/entity edges and WorldIDs are serialized retail data. Names are joined only by exact s_entity FileHash; no proximity or visual inference.'}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
