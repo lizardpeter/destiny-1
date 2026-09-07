@@ -1,0 +1,268 @@
+name: D1 Crota R4 upright textured Blender export
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r4-blender-upright-textured.yml'
+      - 'tools/d1_crota_r4_trigger.py'
+      - 'tools/d1_crota_visual_union_export.py'
+      - 'tools/d1_remote_single_actor_rigged_animated_glb.py'
+      - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
+      - 'tools/d1_gltf_promote_uv_wrap_zup.py'
+      - 'tools/d1_gltf_bind_crota_blender_materials.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  ACTOR_ARTIFACT_ID: '10005225514'
+  ACTOR_ZIP_SHA256: '6687cb12dcc423152592bdaff9e7efd86c119fa5b4e5e11cd885cc05ee20491b'
+  SKIN_ARTIFACT_ID: '10027692774'
+  SKIN_ZIP_SHA256: 'f459f939f698449940c96bf42b24894c602c7750b0d668d902483c8e8e7d51a2'
+  BODY_ARTIFACT_ID: '10027389376'
+  BODY_ZIP_SHA256: '9cb9f25e01138bf89de4b641e19308bcbc3f2ca49f73f223b0a01890ffca0ca4'
+  STAGE_ARTIFACT_ID: '10029430581'
+  STAGE_ZIP_SHA256: '8d449a34f83eaeabd9b8c894301905181675a0d1592765f938a39ca7c4d174c6'
+  SHADER_ARTIFACT_ID: '10029567530'
+  SHADER_ZIP_SHA256: 'ec360281f3fd4346a194a2778d37ec2e7a39cec04586d7b1aa9b6a92ac7920d5'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover all source-closed Crota layers
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh pygltflib pillow
+          mkdir -p input/catalog input/actor input/skin input/body input/stage input/shader runtime out/geometry out/native out/portable out/final
+          fetch_artifact() {
+            local id="$1" zip="$2" sha="$3" dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "$sha  $zip" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          fetch_artifact "$CATALOG_ARTIFACT_ID" input/catalog.zip "$CATALOG_ZIP_SHA256" input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          fetch_artifact "$ACTOR_ARTIFACT_ID" input/actor.zip "$ACTOR_ZIP_SHA256" input/actor
+          fetch_artifact "$SKIN_ARTIFACT_ID" input/skin.zip "$SKIN_ZIP_SHA256" input/skin
+          fetch_artifact "$BODY_ARTIFACT_ID" input/body.zip "$BODY_ZIP_SHA256" input/body
+          fetch_artifact "$STAGE_ARTIFACT_ID" input/stage.zip "$STAGE_ZIP_SHA256" input/stage
+          fetch_artifact "$SHADER_ARTIFACT_ID" input/shader.zip "$SHADER_ZIP_SHA256" input/shader
+          test -f input/actor/crota_raid_actor_material_bindings.json
+          test -f input/actor/texture_export/texture_export_manifest.json
+          test -f input/skin/CROTA_EXACT_SKIN_CENSUS.json
+          test -f input/body/CROTA_ANIMATION_OPTIONS_V3.json
+          test -f input/stage/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json
+          test -f input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser rev-parse HEAD)" = "$PARSER_COMMIT"
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Export complete nine-range highest-detail Crota geometry with exact UV preservation
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_visual_union_export.py \
+            --material-bindings input/actor/crota_raid_actor_material_bindings.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --out-dir out/geometry --model 0x8108E5B7 --parent 0x8108E4BA \
+            | tee out/geometry_stdout.txt
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          r=json.load(open('out/geometry/8108E5B7.json'))
+          assert r['status']=='D1_WORLD_ARTICULATED_MODEL_EXPORT_COMPLETE',r
+          assert r['geometry_count']==r['visual_union_selected_range_count']==9,r
+          assert r['active_material_count']==7,r['active_materials']
+          assert all(x['has_uv'] for x in r['ranges']),r['ranges']
+          raw=Path('out/geometry/8108E5B7.glb').read_bytes(); n,t=struct.unpack_from('<II',raw,12); assert t==0x4e4f534a
+          d=json.loads(raw[20:20+n].decode().rstrip(' \x00'))
+          assert len(d['meshes'])==9,d.keys()
+          for i,m in enumerate(d['meshes']):
+              a=m['primitives'][0]['attributes']; assert '_D1_UV0' in a,(i,a); assert 'TEXCOORD_0' not in a,(i,a)
+          print('GEOMETRY_9_RANGES_UV_EXACT','TRIANGLES',r['triangle_count'],'MATERIALS',r['active_materials'])
+          PY
+
+      - name: Bind exact retail skin and all 82 selected Crota animations
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_single_actor_rigged_animated_glb.py \
+            out/geometry/8108E5B7.glb \
+            --entity 0x8108E484 --model 0x8108E5B7 --skeleton 0x8108E4BB \
+            --runtime-rig 0x8108E4CB --control 0x8108E5C0 --bone-count 50 \
+            --model-report out/geometry/8108E5B7.json \
+            --skin-census input/skin/CROTA_EXACT_SKIN_CENSUS.json \
+            --animation-options input/body/CROTA_ANIMATION_OPTIONS_V3.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser \
+            --fps 30 \
+            --out out/native/CROTA_R4_PARSER_BASIS.glb \
+            --report out/CROTA_R4_SKIN_ANIMATION_BIND.json \
+            | tee out/skin_animation_stdout.txt
+          python - <<'PY'
+          import json
+          r=json.load(open('out/CROTA_R4_SKIN_ANIMATION_BIND.json'))
+          assert r['status']=='D1_SINGLE_ACTOR_RIGGED_ANIMATED_GLB_COMPLETE',r
+          assert r['selected_range_count']==9 and r['skeleton_node_count']==50 and r['runtime_rig_control_count']==44,r
+          assert r['selected_clip_count']==r['animation_count']==82,r
+          assert r['native_retarget_success_count']==82 and r['native_retarget_failure_count']==0,r
+          print('SKIN_ANIMATION_EXACT','RANGES',r['selected_range_count'],'JOINTS',r['skeleton_node_count'],'ANIMATIONS',r['animation_count'])
+          PY
+
+      - name: Restore skeleton and all actions from parser basis to native D1 model basis
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_restore_native_tiger_skin_animation_basis.py \
+            out/native/CROTA_R4_PARSER_BASIS.glb \
+            --out out/native/CROTA_R4_NATIVE_D1_ZUP.glb \
+            --report out/CROTA_R4_NATIVE_BASIS.json
+          python - <<'PY'
+          import json
+          r=json.load(open('out/CROTA_R4_NATIVE_BASIS.json'))
+          assert r['status']=='D1_GLTF_NATIVE_TIGER_SKIN_ANIMATION_BASIS_RESTORED',r
+          assert r['skin_count']==1 and r['joint_node_count']==50 and r['animation_count']==82,r
+          assert r['binary_byte_length_unchanged'],r
+          print('NATIVE_D1_BASIS_RESTORED','JOINTS',r['joint_node_count'],'ACTIONS',r['animation_count'])
+          PY
+
+      - name: Promote exact UV and wrap the whole actor once with proven D1 Z-up to glTF Y-up root
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_promote_uv_wrap_zup.py \
+            out/native/CROTA_R4_NATIVE_D1_ZUP.glb \
+            --expect-meshes 9 --expect-skins 1 --expect-animations 82 --expect-joints 50 \
+            --out out/portable/CROTA_R4_UPRIGHT_UNTEXTURED.glb \
+            --report out/CROTA_R4_PORTABLE_ROOT_UV.json
+          python - <<'PY'
+          import json,math
+          r=json.load(open('out/CROTA_R4_PORTABLE_ROOT_UV.json'))
+          assert r['status']=='D1_GLTF_UV_AND_ZUP_TO_YUP_ROOT_COMPLETE',r
+          assert r['uv_promoted_mesh_count']==9 and r['binary_identical'],r
+          q=r['portable_root_rotation_xyzw']; s=math.sqrt(.5)
+          assert max(abs(q[i]-[-s,0,0,s][i]) for i in range(4))<1e-12,q
+          print('PORTABLE_ROOT_EXACT',q,'UV_MESHES',r['uv_promoted_mesh_count'])
+          PY
+
+      - name: Embed exact five-texture Crota corpus and create conservative + visible Blender views
+        run: |
+          set -euo pipefail
+          common=(
+            --input-glb out/portable/CROTA_R4_UPRIGHT_UNTEXTURED.glb
+            --stage-state input/stage/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json
+            --texture-manifest input/actor/texture_export/texture_export_manifest.json
+            --texture-dir input/actor/texture_export
+            --gcn-usage input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json
+          )
+          python tools/d1_gltf_bind_crota_blender_materials.py "${common[@]}" \
+            --preview-mode conservative \
+            --out out/final/CROTA_SON_OF_ORYX_R4_EXACT_RESOURCES.glb \
+            --report out/CROTA_R4_EXACT_RESOURCES_MATERIALS.json
+          python tools/d1_gltf_bind_crota_blender_materials.py "${common[@]}" \
+            --preview-mode visible \
+            --out out/final/CROTA_SON_OF_ORYX_R4_BLENDER_UPRIGHT_TEXTURED.glb \
+            --report out/CROTA_R4_BLENDER_VISIBLE_MATERIALS.json
+
+      - name: Final structural validation and checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib,shutil
+          from pathlib import Path
+          def glb(path):
+              raw=Path(path).read_bytes(); assert raw[:4]==b'glTF'; n,t=struct.unpack_from('<II',raw,12); assert t==0x4e4f534a
+              return raw,json.loads(raw[20:20+n].decode().rstrip(' \x00'))
+          exact_path='out/final/CROTA_SON_OF_ORYX_R4_EXACT_RESOURCES.glb'
+          visible_path='out/final/CROTA_SON_OF_ORYX_R4_BLENDER_UPRIGHT_TEXTURED.glb'
+          eraw,e=glb(exact_path); vraw,v=glb(visible_path)
+          for name,d in [('exact',e),('visible',v)]:
+              assert len(d.get('meshes',[]))==9,(name,len(d.get('meshes',[])))
+              assert len(d.get('materials',[]))==7,(name,len(d.get('materials',[])))
+              assert len(d.get('skins',[]))==1 and len(d['skins'][0]['joints'])==50,name
+              assert len(d.get('animations',[]))==82,name
+              assert len(d.get('images',[]))==5 and len(d.get('textures',[]))==5,name
+              tags={x.get('extras',{}).get('d1_taghash') for x in d['images']}
+              assert tags=={'8108E7B6','80AACF2A','80AAD0E1','8108E951','8108E952'},(name,tags)
+              for i,m in enumerate(d['meshes']):
+                  a=m['primitives'][0]['attributes']; assert 'TEXCOORD_0' in a and '_D1_UV0' not in a,(name,i,a)
+              si=int(d.get('scene',0)); roots=d['scenes'][si]['nodes']; assert len(roots)==1,(name,roots)
+              root=d['nodes'][roots[0]]; assert root['name']=='D1_ZUP_TO_GLTF_YUP',(name,root)
+              assert root['rotation'][0]<-.7071 and abs(root['rotation'][1])<1e-9 and abs(root['rotation'][2])<1e-9 and root['rotation'][3]>.7071,root['rotation']
+          # The visible view must genuinely contain portable image bindings, including
+          # the exact 2048 Crota body atlas on both 8108E7AA and 8108E7B3.
+          tex_by_name={x['name']:i for i,x in enumerate(v['textures'])}
+          assert 'D1_TEXTURE_8108E951' in tex_by_name
+          mat={m['extras']['d1_material_taghash']:m for m in v['materials']}
+          atlas_i=tex_by_name['D1_TEXTURE_8108E951']
+          for h in ('8108E7AA','8108E7B3'):
+              assert mat[h]['pbrMetallicRoughness']['baseColorTexture']['index']==atlas_i,(h,mat[h])
+          cp={
+            'schema':'d1_crota_r4_blender_checkpoint/v1',
+            'status':'D1_CROTA_R4_BLENDER_UPRIGHT_TEXTURED_COMPLETE',
+            'identity':{'entity':'8108E484','name':'Crota, Son of Oryx','model':'8108E5B7','skeleton':'8108E4BB','runtime_rig':'8108E4CB','control':'8108E5C0'},
+            'geometry':{'highest_detail_unique_ranges':9,'materials':7},
+            'rig':{'joints':50,'runtime_controls':44},
+            'animation':{'gltf_actions':82,'native_retarget_success':82,'native_retarget_failure':0},
+            'portable_basis':{'source':'D1 native Z-up','target':'glTF Y-up','root':'D1_ZUP_TO_GLTF_YUP','rotation_xyzw':v['nodes'][v['scenes'][int(v.get('scene',0))]['nodes'][0]]['rotation']},
+            'textures':{'exact_embedded':5,'tag_hashes':['80AACF2A','80AAD0E1','8108E7B6','8108E951','8108E952'],'body_atlas':'8108E951'},
+            'exact_resources_glb':{'file':Path(exact_path).name,'bytes':len(eraw),'sha256':hashlib.sha256(eraw).hexdigest()},
+            'blender_visible_glb':{'file':Path(visible_path).name,'bytes':len(vraw),'sha256':hashlib.sha256(vraw).hexdigest()},
+            'policy':'Native D1 identity/geometry/skin/animation/shader/t# and retail texture resources remain source-closed. One proven D1_ZUP_TO_GLTF_YUP scene root is the only portable axis conversion. Portable PBR material slots are explicitly preview adapters; exact native shader evidence is retained in material extras and sidecars.'
+          }
+          Path('out/CROTA_R4_CHECKPOINT.json').write_text(json.dumps(cp,indent=2)+'\n')
+          # Package the exact native shader evidence beside the Blender file.
+          for p in Path('input/shader').glob('PS_*_GFX700.s'):
+              shutil.copy2(p,Path('out/final')/p.name)
+          shutil.copy2('input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json','out/final/CROTA_VISUAL_GCN_IMAGE_USAGE.json')
+          shutil.copy2('input/stage/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json','out/final/CROTA_MAIN_VISUAL_MATERIAL_STAGE_STATE.json')
+          print(json.dumps(cp,indent=2))
+          PY
+          cat > out/final/README.txt <<'EOF'
+          CROTA, SON OF ORYX — R4 BLENDER EXPORT
+
+          Recommended Blender import:
+            CROTA_SON_OF_ORYX_R4_BLENDER_UPRIGHT_TEXTURED.glb
+
+          Exact-resource conservative view:
+            CROTA_SON_OF_ORYX_R4_EXACT_RESOURCES.glb
+
+          R4 corrections versus the broken R2/R3 files:
+          - complete 9-range highest-detail Crota geometry instead of stage0-only 3 ranges;
+          - source UV0 preserved and promoted to TEXCOORD_0;
+          - exact retail 50-joint skin and 82 selector-selected actions retained;
+          - parser-space skeleton/action data restored to native D1 model basis;
+          - one proven D1_ZUP_TO_GLTF_YUP root applied to the complete articulated actor;
+          - all 5 exact retail Crota textures embedded in the GLB;
+          - 8108E951 2048x2048 Crota colour atlas bound on native direct-colour shader materials;
+          - native PS shader hashes, t# texture bindings, TFX/constants and GCN usage remain in material extras / sidecars.
+
+          Portable glTF PBR nodes are a Blender preview of the native shader, not a claim that glTF can exactly implement GCN/Tfx rendering.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-R4-BLENDER-UPRIGHT-TEXTURED
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
