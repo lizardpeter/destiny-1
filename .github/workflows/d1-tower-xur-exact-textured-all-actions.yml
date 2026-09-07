@@ -1,0 +1,147 @@
+name: D1 Tower Xur exact textured all actions
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-exact-textured-all-actions.yml'
+      - 'tools/d1_gltf_append_retargeted_retail_animation_library.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  TEXTURED_ARTIFACT_ID: '10002235124'
+  TEXTURED_ARTIFACT_ZIP_SHA256: '2aefb07ee0b18f4da756beaf0fca60cb1e938067d68fffaf36a79ca9c8701823'
+  XUR_INPUT_SHA256: '436564b5997b30a6ff883ae293f69c263a7d16fc55e94b9c616367b0b01272ab'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact Xur texture checkpoint and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy scipy pyglm pygltflib
+          mkdir -p input/catalog input/textured runtime out/reports
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TEXTURED_ARTIFACT_ID}/zip" -o input/textured.zip
+          echo "${TEXTURED_ARTIFACT_ZIP_SHA256}  input/textured.zip" | sha256sum --check --strict
+          unzip -q input/textured.zip -d input/textured
+
+          xur="$(find input/textured -type f -name '80C88CEF_SKINNED_TEXTURED.glb' -print -quit)"
+          trep="$(find input/textured -type f -name '80C88CEF_TEXTURE_BIND.json' -print -quit)"
+          test -n "$xur" -a -f "$xur" -a -n "$trep" -a -f "$trep"
+          echo "${XUR_INPUT_SHA256}  ${xur}" | sha256sum --check --strict
+          cp "$xur" input/XUR_80C88CEF_SKINNED_TEXTURED.glb
+          cp "$trep" out/reports/XUR_80C88CEF_TEXTURE_BIND.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('out/reports/XUR_80C88CEF_TEXTURE_BIND.json'))
+          assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+          assert d['material_count']==54,d
+          assert d['exact_source_texture_count']==104,d
+          assert d['exact_vs_binding_edge_count']==0,d
+          assert d['exact_ps_binding_edge_count']==232,d
+          assert d['portable_base_bound_material_count']==52,d
+          assert d['portable_normal_bound_material_count']==45,d
+          print('XUR_TEXTURE_CHECKPOINT_ACCEPTED','materials',d['material_count'],'native_textures',d['exact_source_texture_count'],'PS_edges',d['exact_ps_binding_edge_count'],'preview_base',d['portable_base_bound_material_count'],'preview_normal',d['portable_normal_bound_material_count'])
+          PY
+
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Append every exact selector-selected Xur-family action
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_append_retargeted_retail_animation_library.py \
+            input/XUR_80C88CEF_SKINNED_TEXTURED.glb \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --runtime runtime --parser-root parser \
+            --skeleton 809D80C9 --rig 809D80D3 --control 809D80FC \
+            --out out/D1_TOWER_XUR_80C88CEF_EXACT_TEXTURED_ALL_ACTIONS.glb \
+            --report out/reports/XUR_80C88CEF_ALL_ACTIONS.json
+
+      - name: Prove animation append is non-destructive to Xur visual resources
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pygltflib import GLTF2
+
+          src='input/XUR_80C88CEF_SKINNED_TEXTURED.glb'
+          dst='out/D1_TOWER_XUR_80C88CEF_EXACT_TEXTURED_ALL_ACTIONS.glb'
+          rep=json.load(open('out/reports/XUR_80C88CEF_ALL_ACTIONS.json'))
+          assert rep['status']=='D1_GLTF_RETARGETED_RETAIL_ANIMATION_LIBRARY_APPENDED',rep
+          assert rep['skeleton']['tag_hash']=='809D80C9' and rep['skeleton']['node_count']==70,rep
+          assert rep['runtime_rig']['tag_hash']=='809D80D3' and rep['runtime_rig']['control_count']==64,rep
+          assert rep['control']['tag_hash']=='809D80FC',rep
+          assert rep['appended_animation_count']==267,rep
+          assert rep['exact_dimension_animation_count']==199,rep
+          assert rep['native_retarget_required_animation_count']==68,rep
+
+          a=GLTF2().load_binary(src);b=GLTF2().load_binary(dst)
+          aj=json.loads(a.to_json());bj=json.loads(b.to_json())
+          for key in ('materials','textures','images','meshes','nodes','skins','scenes','scene'):
+              assert aj.get(key)==bj.get(key),key
+          assert len(b.animations or [])==267,len(b.animations or [])
+          assert len(a.materials or [])==54,len(a.materials or [])
+          assert len(b.materials or [])==54,len(b.materials or [])
+          abin=bytes(a.binary_blob() or b'');bbin=bytes(b.binary_blob() or b'')
+          assert bbin[:len(abin)]==abin,'original Xur binary payload is not an exact prefix'
+          out_sha=hashlib.sha256(open(dst,'rb').read()).hexdigest()
+          manifest={
+            'schema':'d1_tower_xur_exact_export/v1',
+            'status':'D1_TOWER_XUR_EXACT_TEXTURED_ALL_ACTIONS_COMPLETE',
+            'source_name_hash':'46C55854',
+            'source_name':'Xur',
+            'source_entities':['80C7ACC8','80C885AA'],
+            'entity_model':'80C88CEF',
+            'skeleton':'809D80C9','runtime_rig':'809D80D3','animation_control':'809D80FC',
+            'material_count':54,'exact_source_texture_count':104,'exact_ps_binding_edge_count':232,
+            'portable_base_bound_material_count':52,'portable_normal_bound_material_count':45,
+            'selector_selected_action_count':267,'exact_dimension_action_count':199,'native_retarget_action_count':68,
+            'visual_resource_arrays_exactly_preserved':True,'input_binary_prefix_exact':True,
+            'output_glb':dst,'output_bytes':__import__('os').path.getsize(dst),'output_sha256':out_sha,
+            'identity_policy':'Xur identity is source StringHash 46C55854. The two serialized Tower SEntities remain distinct; no live-week/default-location semantics are inferred.',
+            'visual_policy':'All exact native D1 texture bindings are retained. Portable base/normal preview bindings remain an approximation where native shader semantics are not yet recreated.',
+            'animation_policy':'All and only unique clips selected by the exact 809D80FC control-state table are exported. No idle/default/startup action is invented.'
+          }
+          json.dump(manifest,open('out/reports/XUR_EXPORT_MANIFEST.json','w'),indent=2)
+          print('XUR_EXPORT_COMPLETE',json.dumps(manifest,sort_keys=True))
+          PY
+          sha256sum out/D1_TOWER_XUR_80C88CEF_EXACT_TEXTURED_ALL_ACTIONS.glb out/reports/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-XUR-EXACT-TEXTURED-ALL-ACTIONS
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
