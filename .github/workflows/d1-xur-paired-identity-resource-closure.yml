@@ -1,0 +1,124 @@
+name: D1 Xur paired identity resource closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-paired-identity-resource-closure.yml'
+      - 'tools/d1_remote_tag_payload_dump.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/payloads out/reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Dump both halves for all seven identities sharing model 80C88CEF
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_tag_payload_dump.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --tag 80C880B9 --tag 80C880BA --tag 80C880BD --tag 80C880BE \
+            --tag 80C8821D --tag 80C8821E --tag 80C88221 --tag 80C88222 \
+            --tag 80C8840E --tag 80C8840F --tag 80C88412 --tag 80C88413 \
+            --tag 80C885C5 --tag 80C885C6 \
+            --out-dir out/payloads --report out/reports/PAIRED_IDENTITY_PAYLOADS.json
+      - name: Prove fixed paired layout and classify every varying aligned word
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json,struct,collections
+          pairs=[
+            ('80C880B9','80C880BA','080760B4'),('80C880BD','80C880BE','6BC7A0F5'),
+            ('80C8821D','80C8821E','6C94ED20'),('80C88221','80C88222','D745F67C'),
+            ('80C8840E','80C8840F','FE7C7BA3'),('80C88412','80C88413','2207B0A3'),
+            ('80C885C5','80C885C6','A6ADA445')]
+          blobs={h:(Path('out/payloads')/(h+'.bin')).read_bytes() for p in pairs for h in p[:2]}
+          # First-half resources are expected to share one exact fixed length.
+          first_sizes={a:len(blobs[a]) for a,_,_ in pairs}; assert set(first_sizes.values())=={1872},first_sizes
+          # Identity key occurs exactly once at +0x6C0 in first half and +0x608 in second half.
+          key_proofs=[]
+          for a,b,key in pairs:
+              needle=struct.pack('<I',int(key,16))
+              oa=[i for i in range(len(blobs[a])-3) if blobs[a][i:i+4]==needle]
+              ob=[i for i in range(len(blobs[b])-3) if blobs[b][i:i+4]==needle]
+              assert oa==[0x6C0],(a,key,oa); assert ob==[0x608],(b,key,ob)
+              key_proofs.append({'first':a,'second':b,'identity_key':key,'first_offset':0x6C0,'second_offset':0x608,
+                                 'first_size':len(blobs[a]),'second_size':len(blobs[b])})
+          # Compare the seven same-role 1872-byte first halves.
+          first={a:blobs[a] for a,_,_ in pairs}; n=1872
+          varying=[]
+          for off in range(n):
+              if len({x[off] for x in first.values()})>1:varying.append(off)
+          runs=[]
+          if varying:
+              s=p=varying[0]
+              for x in varying[1:]:
+                  if x==p+1:p=x
+                  else:runs.append([s,p]);s=p=x
+              runs.append([s,p])
+          words=[]
+          for off in range(0,n-3,4):
+              vals={h:f'{struct.unpack_from("<I",b,off)[0]:08X}' for h,b in first.items()}
+              if len(set(vals.values()))>1: words.append({'offset':off,'values':vals})
+          # Literal known Xur material/model/resource references inside either half are especially valuable.
+          targets=['80C88CEF','80C88CE2','80C885E6','80C885E7','80C885E8','80C885E9','80C885EA','809D80C9','809D80D3','809D80FC']
+          refs=[]
+          for h,b in blobs.items():
+              for t in targets:
+                  needle=struct.pack('<I',int(t,16)); offs=[];start=0
+                  while True:
+                      p=b.find(needle,start)
+                      if p<0:break
+                      offs.append(p);start=p+1
+                  if offs:refs.append({'source':h,'target':t,'offsets':offs})
+          # Also expose aligned words in Xur's first half around all structurally varying regions.
+          xb=blobs['80C885C5']
+          xur_words=[{'offset':o,'u32':f'{struct.unpack_from("<I",xb,o)[0]:08X}'} for o in range(0,len(xb)-3,4)]
+          rep={'schema_version':1,'status':'D1_SHARED_HUMAN_PAIRED_IDENTITY_RESOURCE_MATRIX_COMPLETE',
+               'model':'80C88CEF','pair_count':7,'key_proofs':key_proofs,'first_half_size':1872,
+               'first_half_varying_byte_count':len(varying),'first_half_varying_runs':runs,
+               'first_half_varying_aligned_u32':words,'known_target_references':refs,'xur_first_half_words':xur_words,
+               'policy':'Exact retail payload comparison only. Shared fixed offsets prove a repeated two-resource identity architecture; field semantics are not assigned from byte similarity alone.'}
+          Path('out/reports/PAIRED_IDENTITY_MATRIX.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('PAIRED_IDENTITY_MATRIX','varying_bytes',len(varying),'runs',runs,'varying_u32',len(words),'known_refs',len(refs))
+          for w in words: print(f"FIRST +0x{w['offset']:03X}",w['values'])
+          for r in refs: print('KNOWN_REF',r)
+          PY
+          sha256sum out/payloads/*.bin out/reports/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-PAIRED-IDENTITY-RESOURCE-CLOSURE
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
