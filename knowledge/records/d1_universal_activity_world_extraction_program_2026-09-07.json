@@ -2,11 +2,11 @@
   "schema": "d1_knowledge_record/v1",
   "record_id": "d1_universal_activity_world_extraction_program_2026_09_07",
   "title": "Universal Destiny 1 activity, world, encounter and asset extraction program",
-  "updated_utc": "2026-09-07T02:15:00Z",
+  "updated_utc": "2026-09-07T02:31:00Z",
   "scope": {
     "game": "Destiny 1",
     "platform_reference": "PS4 retail Rise of Iron-era corpus",
-    "target": "Every source-discoverable activity/world, including patrol destinations, story missions, strikes, raids, social spaces, arenas and other activity variants",
+    "target": "Every source-discoverable activity/world, including patrol destinations, story missions, strikes, raids, social spaces, arenas, PvP and other activity variants",
     "first_regression_canary": "Crota's End / moon_raid_1"
   },
   "nodes": [
@@ -33,28 +33,51 @@
     {
       "id": "inventory:named_activity_roots",
       "kind": "activity_root_inventory",
-      "status": "TARGET",
+      "status": "PROVEN",
       "label": "All current named D1 activity roots",
       "attrs": {
         "activity_classes": ["8080052E", "80800616"],
-        "remote_metadata_only_scan": true
+        "remote_metadata_only_scan": true,
+        "named_table_rows": 1111,
+        "unique_named_tags": 736,
+        "alias_rows": 375,
+        "cross_package_named_registrations": 13,
+        "map_activity_roots": 57,
+        "scenario_activity_roots": 224,
+        "total_activity_roots": 281,
+        "registering_package_families": 167,
+        "physical_activity_package_families": 174,
+        "violations": 0
       }
     },
     {
-      "id": "pipeline:activity_graph",
+      "id": "pipeline:scenario_activity_graph",
       "kind": "reusable_pipeline",
-      "status": "STRONGLY_SUPPORTED",
-      "label": "Named activity -> S6E stages -> F603 resources -> placements/controllers/actors",
+      "status": "PROVEN",
+      "label": "SUnkActivity_ROI -> S6E stages -> F603 resources -> placements/controllers/scripted actors",
       "attrs": {
+        "named_class": "80800616",
         "preserves_shared_stage_resources": true,
-        "typed_edges_separate_from_untyped_discovery": true
+        "typed_edges_separate_from_untyped_discovery": true,
+        "crota_end_to_end_canary_passed": true
+      }
+    },
+    {
+      "id": "pipeline:map_activity_graph",
+      "kind": "reusable_pipeline",
+      "status": "PROVEN",
+      "label": "SActivity_ROI -> BubbleDefinition -> MapContainer -> SMapDataTable",
+      "attrs": {
+        "named_class": "8080052E",
+        "cross_world_canaries": ["city_tower", "cosmo", "venus", "moon_hive_raid1"],
+        "cross_world_canary_violations": 0
       }
     },
     {
       "id": "pipeline:asset_export",
       "kind": "reusable_pipeline",
       "status": "TARGET",
-      "label": "Activity graph -> models, rigs, animation, materials, textures, effects, audio -> deterministic export",
+      "label": "Activity graphs -> models, rigs, animation, materials, textures, effects, audio -> deterministic export",
       "attrs": {
         "target_outputs": ["lossless manifests", "GLB/glTF", "Blender-ready scenes", "encounter partitions"]
       }
@@ -72,7 +95,21 @@
         "s6e_container_count": 10,
         "stage_count": 40,
         "runtime_placement_count": 282,
+        "scripted_owner_count": 192,
+        "scripted_table_count": 192,
         "scripted_record_count": 243
+      }
+    },
+    {
+      "id": "canary:map_cross_world",
+      "kind": "regression_canary_set",
+      "status": "PROVEN",
+      "label": "Generic map-root graph across Tower, Cosmodrome, Venus and Crota's End",
+      "attrs": {
+        "city_tower": {"bubbles": 5, "map_containers": 17, "map_data_tables": 122, "map_entries": 1418},
+        "cosmo": {"bubbles": 22, "map_containers": 346, "map_data_tables": 1033, "map_entries": 8775},
+        "venus": {"bubbles": 29, "map_containers": 136, "map_data_tables": 931, "map_entries": 7280},
+        "moon_hive_raid1": {"bubbles": 15, "map_containers": 94, "map_data_tables": 255, "map_entries": 1535}
       }
     }
   ],
@@ -83,19 +120,35 @@
       "predicate": "ENUMERATES_INPUT_FOR",
       "object": "inventory:named_activity_roots",
       "status": "PROVEN",
-      "assertion_ids": ["assert:catalog_scope"]
+      "assertion_ids": ["assert:catalog_scope", "assert:exact_activity_inventory"]
     },
     {
-      "id": "edge:inventory_to_activity_graph",
+      "id": "edge:inventory_to_scenario_graph",
       "subject": "inventory:named_activity_roots",
       "predicate": "DRIVES",
-      "object": "pipeline:activity_graph",
+      "object": "pipeline:scenario_activity_graph",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:scenario_orchestrator"]
+    },
+    {
+      "id": "edge:inventory_to_map_graph",
+      "subject": "inventory:named_activity_roots",
+      "predicate": "DRIVES",
+      "object": "pipeline:map_activity_graph",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:map_graph_canaries"]
+    },
+    {
+      "id": "edge:scenario_to_assets",
+      "subject": "pipeline:scenario_activity_graph",
+      "predicate": "DRIVES",
+      "object": "pipeline:asset_export",
       "status": "TARGET",
       "assertion_ids": ["assert:universal_goal"]
     },
     {
-      "id": "edge:activity_to_assets",
-      "subject": "pipeline:activity_graph",
+      "id": "edge:map_to_assets",
+      "subject": "pipeline:map_activity_graph",
       "predicate": "DRIVES",
       "object": "pipeline:asset_export",
       "status": "TARGET",
@@ -105,16 +158,32 @@
       "id": "edge:crota_canary",
       "subject": "canary:moon_raid_1",
       "predicate": "VALIDATES",
-      "object": "pipeline:activity_graph",
+      "object": "pipeline:scenario_activity_graph",
       "status": "PROVEN",
-      "assertion_ids": ["assert:crota_generic_matrix"]
+      "assertion_ids": ["assert:scenario_orchestrator"]
     },
     {
-      "id": "edge:program_uses_pipeline",
+      "id": "edge:map_canaries",
+      "subject": "canary:map_cross_world",
+      "predicate": "VALIDATES",
+      "object": "pipeline:map_activity_graph",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:map_graph_canaries"]
+    },
+    {
+      "id": "edge:program_requires_scenario",
       "subject": "program:d1_universal_activity_extractor",
       "predicate": "REQUIRES",
-      "object": "pipeline:activity_graph",
-      "status": "TARGET",
+      "object": "pipeline:scenario_activity_graph",
+      "status": "PROVEN",
+      "assertion_ids": ["assert:universal_goal"]
+    },
+    {
+      "id": "edge:program_requires_map",
+      "subject": "program:d1_universal_activity_extractor",
+      "predicate": "REQUIRES",
+      "object": "pipeline:map_activity_graph",
+      "status": "PROVEN",
       "assertion_ids": ["assert:universal_goal"]
     },
     {
@@ -134,16 +203,28 @@
       "source_ids": ["source:universal_catalog"]
     },
     {
-      "id": "assert:crota_generic_matrix",
+      "id": "assert:exact_activity_inventory",
       "status": "PROVEN",
-      "claim": "The generic activity-stage resource matrix reproduces moon_raid_1 without one-owner assumptions: 509 unique F603 resources occur 547 times across 40 stages in 10 S6E containers, with 19 resources shared between stages.",
-      "source_ids": ["source:crota_matrix_run", "source:generic_matrix_tool"]
+      "claim": "Scanning the current named/global tables for all 337 package families yields 1,111 serialized rows, 736 unique named tags and exactly 281 source-named activity roots: 57 SActivity_ROI map roots and 224 SUnkActivity_ROI scenario roots. Thirteen named rows are legitimate cross-package registrations; registering package and FileHash-encoded physical target are preserved separately. The final inventory has zero violations.",
+      "source_ids": ["source:activity_inventory"]
+    },
+    {
+      "id": "assert:scenario_orchestrator",
+      "status": "PROVEN",
+      "claim": "The generic scenario activity graph orchestrator reproduces the complete moon_raid_1 canary end-to-end with 282 runtime placements, 10 S6E resources, 509 unique F603 resources, 547 F603 stage occurrences, 40 stages, 192 scripted-table owners, 192 D912 tables and 243 scripted records.",
+      "source_ids": ["source:scenario_orchestrator_run", "source:scenario_orchestrator_tool"]
+    },
+    {
+      "id": "assert:map_graph_canaries",
+      "status": "PROVEN",
+      "claim": "One generic remote SActivity_ROI parser closes Tower, Cosmodrome, Venus and Crota's End map roots with zero violations despite substantially different world sizes. It preserves the source-pinned SActivity_ROI -> BubbleDefinition -> MapContainer -> SMapDataTable chain.",
+      "source_ids": ["source:map_canary_run", "source:map_graph_tool"]
     },
     {
       "id": "assert:universal_goal",
       "status": "TARGET",
-      "claim": "All current D1 activities should be extracted through reusable schemas and ownership rules rather than activity-specific code, ultimately producing complete world geometry, placements, actors, controllers, animations, materials, effects and audio for maps, missions, strikes, raids, social spaces and other activity variants.",
-      "source_ids": ["source:generic_matrix_tool", "source:named_inventory_tool"]
+      "claim": "All 281 current named D1 activity roots should ultimately produce complete deterministic exports through reusable schemas and ownership rules, including world geometry, placements, actors, controllers, animations, materials, effects and audio rather than activity-specific code.",
+      "source_ids": ["source:activity_inventory", "source:scenario_orchestrator_tool", "source:map_graph_tool"]
     }
   ],
   "sources": [
@@ -152,60 +233,59 @@
       "kind": "actions_artifact_report",
       "locator": "artifact 9994811238 / D1_UNIVERSAL_MEMBER_CATALOG.json",
       "sha256": "58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72",
-      "details": {
-        "artifact_zip_sha256": "404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a"
-      }
+      "details": {"artifact_zip_sha256": "404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a"}
     },
     {
-      "id": "source:generic_matrix_tool",
+      "id": "source:activity_inventory",
+      "kind": "actions_artifact_report",
+      "locator": "run 34076150936 / artifact 10002170437 / D1_UNIVERSAL_NAMED_ACTIVITY_INVENTORY.json",
+      "sha256": "41ee28f9a51faeec45019fc44887d0c4d95b961d0b8a6dfa593824d11bc96d70",
+      "details": {"artifact_zip_sha256": "805c40110f124c62338601250efaaf383d79bf01ff765f736422ab99b7ab9a5f", "violations": 0}
+    },
+    {
+      "id": "source:scenario_orchestrator_tool",
       "kind": "repository_source",
-      "locator": "tools/d1_activity_stage_resource_matrix.py @ 3c8601279bbf40da32cb253ad5616a5c56b2193b",
-      "details": {
-        "policy": "unique resources and serialized stage occurrences are represented separately"
-      }
+      "locator": "tools/d1_remote_activity_graph_extract.py @ d1353ca5ed134a54150b216c6f0511dfc306f122",
+      "details": {"output_schema": "d1_remote_activity_graph_extract/v1"}
     },
     {
-      "id": "source:crota_matrix_run",
+      "id": "source:scenario_orchestrator_run",
       "kind": "actions_workflow_run",
-      "locator": "run 34075448593 @ ebc7c5ca075c243f9495cc71e8fe40af4e555f66",
-      "details": {
-        "conclusion": "success"
-      }
+      "locator": "run 34075799583 / artifact 10002006786 @ e0c55019f3457b00300d18339114834e0be17cb2",
+      "details": {"conclusion": "success", "artifact_zip_sha256": "cd1fc30e30fe4e7f1f2355e1df92dd986b2f2384ba9c6b7915822a7acc9212e1"}
     },
     {
-      "id": "source:named_inventory_tool",
+      "id": "source:map_graph_tool",
       "kind": "repository_source",
-      "locator": "tools/d1_remote_named_activity_inventory.py @ 5d84c62a2b8bf506236db9328b9fbdf7d52ea168",
-      "details": {
-        "activity_classes": ["8080052E", "80800616"]
-      }
+      "locator": "tools/d1_remote_map_activity_graph.py @ 27a7f2584d3b835b7abb29c3e22f9102b994ca66",
+      "details": {"output_schema": "d1_remote_map_activity_graph/v1"}
+    },
+    {
+      "id": "source:map_canary_run",
+      "kind": "actions_workflow_run",
+      "locator": "run 34076066388 @ 55e163a48dd62132a9c2fd0581a68943abbd643b",
+      "details": {"conclusion": "success", "canaries": ["city_tower", "cosmo", "venus", "moon_hive_raid1"]}
     }
   ],
   "rejections": [],
   "frontiers": [
     {
-      "id": "frontier:complete_activity_inventory",
-      "question": "What is the exact current retail inventory of source-named D1 activity roots across all 337 package families?",
-      "next_proof": "Complete the remote named-table scan, preserve aliases, and checksum-pin the inventory artifact.",
-      "related_nodes": ["corpus:ps4_universal_package_catalog", "inventory:named_activity_roots"]
-    },
-    {
-      "id": "frontier:universal_orchestrator",
-      "question": "Can every admitted activity root be processed through one deterministic orchestration path?",
-      "next_proof": "Create a generic runner that performs activity traversal, F603 classification, S6E probing, shared-resource matrix construction, scripted-actor census and dependency closure from one inventory record.",
-      "related_nodes": ["inventory:named_activity_roots", "pipeline:activity_graph"]
+      "id": "frontier:scenario_diversity",
+      "question": "Does the generic scenario graph close without structural assumptions across raids, strikes, patrols, social spaces and PvP?",
+      "next_proof": "Run structurally diverse scenario-root canaries and generalize any valid zero-S6E, zero-F603 or alternate-resource cases rather than adding activity-name special cases.",
+      "related_nodes": ["inventory:named_activity_roots", "pipeline:scenario_activity_graph"]
     },
     {
       "id": "frontier:world_geometry",
-      "question": "How are every activity's static world geometry, map data layers and environment dependencies assembled into one exportable scene?",
-      "next_proof": "Generalize the source-validated Tower/static map pipelines into an activity-root-driven world assembler and validate on structurally different destinations.",
-      "related_nodes": ["pipeline:asset_export"]
+      "question": "How are every map root's static world geometry, map data layers and environment dependencies assembled into one exportable scene?",
+      "next_proof": "Generalize the source-validated Tower/static map geometry and material pipelines into an SActivity_ROI-driven world assembler and validate on structurally different destinations.",
+      "related_nodes": ["pipeline:map_activity_graph", "pipeline:asset_export"]
     },
     {
       "id": "frontier:encounter_resources",
       "question": "What are the remaining EntityResource class-pair schemas used for objectives, squads, phase controls, volumes, devices and special bosses?",
       "next_proof": "Reverse each class pair across multiple activities using source layouts and cross-activity calibration; never infer role from Crota-only names.",
-      "related_nodes": ["pipeline:activity_graph", "canary:moon_raid_1"]
+      "related_nodes": ["pipeline:scenario_activity_graph", "canary:moon_raid_1"]
     },
     {
       "id": "frontier:complete_asset_dependencies",
