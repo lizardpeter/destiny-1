@@ -140,7 +140,9 @@ jobs:
           assert r['skeleton_node_count']==50 and r['runtime_rig_control_count']==44,r
           assert r['selected_clip_count']==r['animation_count']==82,r
           assert r['native_retarget_success_count']==82 and r['native_retarget_failure_count']==0,r
-          assert r['raw_weight_sum_min']==r['raw_weight_sum_max']==255,r
+          assert len(r['skin_bindings'])==9,r['skin_bindings']
+          assert all(x['raw_weight_sum_min']==255 and x['raw_weight_sum_max']==255 for x in r['skin_bindings']),r['skin_bindings']
+          assert float(r['float32_weight_sum_abs_error_max']) <= 1.3e-7,r['float32_weight_sum_abs_error_max']
           print('CROTA_R5_SKIN_ANIMATION_CLOSED','VERTICES',r['bound_vertex_count'],'JOINTS',r['skeleton_node_count'],'ANIMATIONS',r['animation_count'])
           PY
 
