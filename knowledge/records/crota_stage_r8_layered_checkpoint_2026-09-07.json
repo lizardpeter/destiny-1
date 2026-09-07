@@ -1,0 +1,76 @@
+{
+  "schema": "d1_crota_layered_checkpoint/v1",
+  "date": "2026-09-07",
+  "status": "SOURCE_CLOSED_LAYERED_CHECKPOINT",
+  "policy": {
+    "checkpoint_reuse": "Reuse an extraction layer when its retail-source fingerprint and exact producer/dependency semantics are unchanged. Regenerate only the first stale layer and its dependents.",
+    "identity_boundary": "No physical Crota s_entity/model is promoted without an exact source-backed HiveUltraKnightA/R1S2RaidMoon0Ultra0 spawn/archetype ownership edge."
+  },
+  "current_retail_source": {
+    "packages_txt_sha256": "9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5",
+    "activity_index_sha256": "c9ae37a384bcf3dd3d83dfcdc9df9203c95e7e3d3268b0ab358261ee399dd35f",
+    "member_catalog_sha256": "1b7131aafdcafa9a91f04fe89eda90f5d2084fcf1212d66cf229d2c0407a7a43",
+    "physical_member_count": 1275,
+    "package_family_count": 337
+  },
+  "fresh_crota_stage": {
+    "workflow_run_id": 34136634309,
+    "job_id": 101789043551,
+    "github_sha": "b60f17727c107e221a89b8562ad88d0f264268a1",
+    "artifact_id": 10025231231,
+    "artifact_zip_sha256": "82cf442f08980288526ed2ec191166bc82683bec28339c57c58055dc2e73b47d",
+    "artifact_bytes": 101889003,
+    "stage_tables": ["810978FC", "8108E2FF"],
+    "seed_roots": ["810978FD", "810978FE", "810978FF", "81097900", "81097901", "80BB602C", "8108E35F", "81097863"],
+    "entity_closure_nodes": 35,
+    "entity_closure_edges": 397,
+    "typed_edges": 29,
+    "articulated_entities": 0,
+    "models": 5,
+    "serialized_drawable_part_variants": 74,
+    "triangles_with_variants": 58185,
+    "selected_materials": 20,
+    "textures": 40,
+    "animation_capable_entities": 0,
+    "animation_controls": 0,
+    "animation_bank_clips": 0,
+    "status": "D1_FRESH_ACTIVITY_ASSET_TARGET_COMPLETE"
+  },
+  "compatible_comprehensive_articulated_visual_base": {
+    "workflow_run_id": 34133293190,
+    "source_commit": "1f8d971a730c4af0dc335a5359753cf42fb6464a",
+    "artifact_id": 10024452879,
+    "artifact_zip_sha256": "3e317ef6538c7fc8e64e95fc372d63d140dff0f893bb34d121fb9c5afb530dd5",
+    "input_articulated_seeds": 129,
+    "dependency_nodes": 1166,
+    "models": 94,
+    "selected_materials": 683,
+    "texture_resources_attempted": 394,
+    "textures_source_closed_before_patch": 393,
+    "compatibility_basis": "All entity/model/material/texture producer and dependency files used by this layer were byte-identical to current main when checked. Later changes were animation/orchestration/checkpoint tooling plus the additive R8 portable texture adapter."
+  },
+  "r8_texture_patch": {
+    "texture": "80AD2AA7",
+    "width": 4096,
+    "height": 2048,
+    "gcn_surface_format": 1,
+    "portable_format": "R8_UNORM",
+    "full_resolution_backing": "80AE04E1",
+    "backing_type_subtype": [5, 1],
+    "source_mapping": "Pinned Charm PS4 GcnSurfaceFormat.Format8 (0x01) -> DXGI_FORMAT_R8_UNORM, 8 bits per pixel.",
+    "workflow_run_id": 34139519081,
+    "artifact_id": 10025325454,
+    "artifact_zip_sha256": "d855240629c394635f759c62a11d07fc4969150c8176e9bed0afc608dd60a1b6",
+    "artifact_bytes": 3187,
+    "dds_outputs": 1,
+    "png_outputs": 1,
+    "violations": 0,
+    "result": "The compatible 94-model / 683-material Crota articulated visual base is upgraded from 393/394 to 394/394 source texture resources by this one-texture patch without regenerating unchanged upstream layers."
+  },
+  "remaining_frontiers": [
+    "Physical Crota archetype handoff: exact HiveUltraKnightA/R1S2RaidMoon0Ultra0 -> physical s_entity/model ownership.",
+    "Complete fresh crota-articulated current-tool run is still executing; if it differs from the compatible layered base, invalidate only the affected layer(s).",
+    "Full Crota's End environment beyond the exact stage-table subset must continue through the generic world/static activity pipeline.",
+    "Final native shader semantic recreation remains separate from exact material/texture identity closure."
+  ]
+}
