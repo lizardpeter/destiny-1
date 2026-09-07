@@ -209,3 +209,5 @@ def main()->int:
 
 if __name__=='__main__':
     raise SystemExit(main())
+
+# Dependency-closure rerun marker: bank-aware FileHash backing traversal is now authoritative.
