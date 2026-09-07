@@ -32,7 +32,7 @@ from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_activity_placements import RemoteCorpus
 from d1_remote_s_entity_resource_package_find import S_ENTITY_REF, parse_entity_resources
 from d1_remote_tower_descriptor_selection_calibration import parse_graph
-from d1_remote_tower_placement_permutation_calibration_v2 import discover_smap_placements
+from d1_remote_tower_placement_permutation_calibration import discover_smap_placements
 from d1_split_tar_extract import SplitHttpTar
 
 MODEL = '80C88434'
