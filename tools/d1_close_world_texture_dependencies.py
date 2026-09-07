@@ -10,10 +10,13 @@ This driver turns d1_world_material_texture_export.py into a self-closing stage:
       -> rerun until missing_texture_package_ids == {}
 
 Missing package IDs are produced by serialized D1 Texture FileHashes/backing
-references inside the exporter.  They are never inferred from filenames or from
-visual appearance.  Checked-in member catalogs and prior reports may provide exact
-current physical offsets/SHA-256s; if a required family has no complete matching
-catalog, only that family is discovered by scanning the public split TAR.
+references inside the exporter.  When a header/stream is already present but its
+next backing FileHash is absent, the deepest unresolved serialized backing edge is
+authoritative; the dependency is not incorrectly charged to the header package.
+They are never inferred from filenames or from visual appearance. Checked-in member
+catalogs and prior reports may provide exact current physical offsets/SHA-256s; if a
+required family has no complete matching catalog, only that family is discovered by
+scanning the public split TAR.
 
 This is intentionally generic so character/NPC/world exporters do not need a new
 hard-coded workflow every time an otherwise complete material set crosses into a
@@ -142,12 +145,13 @@ def main()->int:
     if a.out.exists():shutil.rmtree(a.out)
     last=a.work_dir/f'pass_{len(passes)-1:02d}'
     shutil.copytree(last,a.out)
-    report={'schema_version':1,'status':'D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE' if closed else 'D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_PARTIAL',
+    report={'schema_version':2,'status':'D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE' if closed else 'D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_PARTIAL',
             'stop_reason':stop,'initial_snapshot_count':len(initial),'final_snapshot_count':len(snapshots),
             'initial_package_ids':sorted({x for x in (pid(p.name) for p in initial) if x}),'final_package_ids':sorted(present_ids),
             'recovered_package_ids':sorted({r['package_id'] for r in recovered}),'recovered_member_count':len(recovered),'recovered_members':recovered,
             'provenance_sources':provenance,'passes':passes,'final_manifest_summary':{
                 k:final_manifest.get(k) for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},
+            'dependency_package_reporting_policy':'Use the deepest serialized unresolved texture/backing FileHash package when the exporter exposes one; use the texture header package only as a fallback when no deeper source edge exists.',
             'policy':'Package expansion is driven only by exact exporter-reported missing texture FileHash package IDs. Complete current family membership is verified before pinned offsets are reused; otherwise only that family is scanned. No visual or filename semantic guess is permitted.'}
     a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({k:report[k] for k in ('status','stop_reason','initial_snapshot_count','final_snapshot_count','recovered_package_ids','recovered_member_count','final_manifest_summary')},indent=2))
