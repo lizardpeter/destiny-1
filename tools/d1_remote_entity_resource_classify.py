@@ -7,6 +7,12 @@ resolved class 0x80800861 EntityResources it applies the source-crosschecked
 EntityResource parser and records the exact semantic discriminator/parent classes.
 Unknown, unavailable, and uncatalogued resources remain explicit instead of being
 named from adjacency or package conventions.
+
+Logical package views are opened lazily.  This matters for the universal catalog:
+an entity normally touches only a small subset of the retail package namespace, so
+classification should not instantiate every package family before reading one
+Resource[].  The lazy path is semantically identical to the earlier eager path but
+makes the same source-proven classifier practical as a whole-game primitive.
 """
 from __future__ import annotations
 import argparse, json, sys
@@ -40,14 +46,20 @@ def main()->int:
     catalogs=load_catalogs(a.member_catalog)
     base=a.base_url.rstrip('/')
     arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,a.part_count+1)],retries=6,timeout=90)
-    views={pkg:RemoteLogicalPackage(arc,fam,a.runtime) for pkg,fam in sorted(catalogs.items())}
+    views={}
+    def get_view(pkg:int):
+        if pkg not in catalogs:
+            return None
+        if pkg not in views:
+            views[pkg]=RemoteLogicalPackage(arc,catalogs[pkg],a.runtime)
+        return views[pkg]
 
     rows=[]; errors=[]
     for eh in entities:
         pkg,idx=filehash_pkg_index(int(eh,16))
-        if pkg not in views:
+        v=get_view(pkg)
+        if v is None:
             raise SystemExit(f'entity {eh}: package {pkg:04X} has no verified member catalog')
-        v=views[pkg]
         if not (0<=idx<len(v.entries)): raise ValueError(f'{eh}: file index {idx} outside package entry table')
         e=v.entries[idx]
         if e['tag_hash'].upper()!=eh or e['reference'].upper()!=S_ENTITY_REF:
@@ -59,9 +71,9 @@ def main()->int:
             out={**r,'resolution_status':'uncatalogued_package','entry':None,'entity_resource':None}
             if rp is None:
                 out['resolution_status']='null_or_invalid_hash'; classified.append(out); continue
-            if rp not in views:
+            rv=get_view(rp)
+            if rv is None:
                 classified.append(out); continue
-            rv=views[rp]
             if ri is None or not (0<=ri<len(rv.entries)):
                 out['resolution_status']='file_index_out_of_range'; classified.append(out); continue
             re=rv.entries[ri]
@@ -98,13 +110,15 @@ def main()->int:
             status_counts[r['resolution_status']]=status_counts.get(r['resolution_status'],0)+1
             er=r.get('entity_resource') or {}; role=er.get('semantic_role')
             if role: role_counts[role]=role_counts.get(role,0)+1
-    rep={'schema':'d1_remote_entity_resource_classify/v1','entities':rows,
-         'verified_catalog_package_ids':[f'{x:04X}' for x in sorted(views)],
+    rep={'schema':'d1_remote_entity_resource_classify/v2','entities':rows,
+         'verified_catalog_package_ids':[f'{x:04X}' for x in sorted(catalogs)],
+         'opened_package_ids':[f'{x:04X}' for x in sorted(views)],
+         'opened_package_count':len(views),
          'position_comparison':position_comparison,'resolution_status_counts':status_counts,
          'entity_resource_role_counts':role_counts,'error_count':len(errors),'errors':errors,
-         'policy':'Only exact s_entity Resource[] FileHashes and verified catalog resolution are classified. Semantic roles are emitted only when the validated EntityResource discriminator parser proves them; all other resources remain class hashes/unknowns.'}
+         'policy':'Only exact s_entity Resource[] FileHashes and verified catalog resolution are classified. Semantic roles are emitted only when the validated EntityResource discriminator parser proves them; all other resources remain class hashes/unknowns. Package views are opened lazily with no change to FileHash routing or classification semantics.'}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(rep,indent=2)+'\n')
-    print('ENTITIES',entities,'CATALOGS',rep['verified_catalog_package_ids'])
+    print('ENTITIES',entities,'OPENED_PACKAGES',rep['opened_package_ids'])
     print('STATUS',status_counts);print('ENTITY_RESOURCE_ROLES',role_counts);print('ERRORS',len(errors))
     for i,p in enumerate(position_comparison):
         if not p['all_equal']: print('VARIANT_RESOURCE',i,p['hashes'])
