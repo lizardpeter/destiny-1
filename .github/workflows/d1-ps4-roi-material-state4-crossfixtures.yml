@@ -1,0 +1,111 @@
+name: D1 PS4 ROI material state4 cross-fixtures
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-ps4-roi-material-state4-crossfixtures.yml'
+      - 'tools/d1_remote_ps4_roi_material_state4.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  BASE_URL: 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover universal catalog and exact runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out source_ref
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 4 'https://raw.githubusercontent.com/cohaereo/alkahest/c632a562e88b5b805098152658b915d1c59f0f9a/crates/data/tfx/technique.rs' -o source_ref/alkahest_technique.rs
+          curl -fsSL --retry 4 'https://raw.githubusercontent.com/cohaereo/alkahest/c632a562e88b5b805098152658b915d1c59f0f9a/crates/render/builtin/gpu/blend_states.txt' -o source_ref/alkahest_blend_states.txt
+
+      - name: Read exact four-byte state windows
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_ps4_roi_material_state4.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --material 809C475F --material 816CE240 --material 80B9E8C2 --material 80B9E8C3 \
+            -o out/material_state4.json
+
+      - name: Correlate lane zero with pinned Tiger PipelineState source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,hashlib
+          from pathlib import Path
+          d=json.load(open('out/material_state4.json'))
+          assert d['status']=='D1_REMOTE_PS4_ROI_MATERIAL_STATE4_COMPLETE' and not d['violations'],d
+          rows={r['material']:r for r in d['rows']}
+          assert set(rows)=={'809C475F','816CE240','80B9E8C2','80B9E8C3'},rows
+          tech=Path('source_ref/alkahest_technique.rs').read_text()
+          blends=Path('source_ref/alkahest_blend_states.txt').read_text()
+          # Pinned independent source: PipelineState is exactly four u8 lanes in
+          # blend/depth-stencil/rasterizer/depth-bias order, and high bit marks
+          # an override while low seven bits select the state index.
+          needed=[
+            'blend_state: u8', 'depth_stencil_state: u8', 'rasterizer_state: u8', 'depth_bias_state: u8',
+            'if self.blend_state & 0x80 != 0', 'Some((self.blend_state & 0x7f) as usize)'
+          ]
+          for s in needed: assert s in tech,s
+          # Extract exact blend target zero for source table entries 0,2,8.
+          pat=re.compile(r'QuadBlendState \{ unk0: (\d+), render_targets: \[\n\s*RenderTargetBlendDesc \{ ([^\n]+) \},')
+          desc={int(i):x for i,x in pat.findall(blends)}
+          for i in (0,2,8): assert i in desc,(i,sorted(desc))
+          assert 'blend_enable: BOOL(0)' in desc[0] and 'src_blend: One' in desc[0] and 'dest_blend: Zero' in desc[0],desc[0]
+          assert 'blend_enable: BOOL(1)' in desc[2] and 'src_blend: One' in desc[2] and 'dest_blend: One' in desc[2],desc[2]
+          assert 'blend_enable: BOOL(1)' in desc[8] and 'src_blend: One' in desc[8] and 'dest_blend: InvSrcAlpha' in desc[8],desc[8]
+          observed={h:r['lanes_u8'] for h,r in rows.items()}
+          out={
+            'schema_version':1,
+            'status':'D1_PS4_ROI_STATE4_CROSS_SOURCE_CORRELATION_COMPLETE',
+            'alkahest_commit':'c632a562e88b5b805098152658b915d1c59f0f9a',
+            'alkahest_technique_sha256':hashlib.sha256(Path('source_ref/alkahest_technique.rs').read_bytes()).hexdigest(),
+            'alkahest_blend_states_sha256':hashlib.sha256(Path('source_ref/alkahest_blend_states.txt').read_bytes()).hexdigest(),
+            'd1_material_state_lanes':observed,
+            'source_pipeline_state_lane_order':['blend_state','depth_stencil_state','rasterizer_state','depth_bias_state'],
+            'source_blend_descriptors':{str(i):desc[i] for i in (0,2,8)},
+            'lane0_selected_indices':{h:((v[0]&0x7f) if (v[0]&0x80) else None) for h,v in observed.items()},
+            'promotion':'SOURCE_CORRELATED_ONLY',
+            'policy':'This artifact proves the exact D1 bytes and the independent Tiger PipelineState source mapping. It does not by itself assert that the D1 +0x20 field is semantically identical; shader-output cross-fixture validation is the next promotion gate.'
+          }
+          json.dump(out,open('out/cross_source_correlation.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+          sha256sum out/*.json source_ref/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PS4-ROI-MATERIAL-STATE4-CROSS-FIXTURES
+          path: |
+            out/
+            source_ref/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
