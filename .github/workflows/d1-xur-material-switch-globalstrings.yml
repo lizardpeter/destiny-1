@@ -1,0 +1,87 @@
+name: D1 Xur material switch GlobalStrings
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-material-switch-globalstrings.yml'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+      - 'notes/D1_XUR_PERMUTATION_STATIC_GRAPH_EXACT_2026-09-07.md'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog and Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Resolve exact switch keys and values
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_global_stringhash_resolve.py \
+            --string-hash 51E7A18D --string-hash 4C58EF8F --string-hash 26170C92 --string-hash 6EECD523 \
+            --string-hash 6DFE676D --string-hash 237B2A6A --string-hash 4AC210DE --string-hash 562B37AD \
+            --string-hash 5869948C --string-hash 5EE47B3A --string-hash 6093B6B7 --string-hash 676A29BB \
+            --string-hash 693AC432 --string-hash 6C4E2617 --string-hash 7365B554 --string-hash AE1880F4 \
+            --string-hash C2D87ACF --string-hash D5A2FB2C --string-hash D93AF609 --string-hash E32027FC \
+            --string-hash 31BAEAC2 --string-hash 742F9CDE --string-hash 871AC0EA --string-hash 9932E645 \
+            --string-hash 4B375162 --string-hash 6CC50CB8 \
+            --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+            --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+            --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o reports/D1_XUR_MATERIAL_SWITCH_GLOBALSTRINGS.json | tee reports/stdout.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_XUR_MATERIAL_SWITCH_GLOBALSTRINGS.json'))
+          assert d['schema']=='d1_remote_global_stringhash_resolve/v1',d
+          assert d['violation_count']==0,d['violations']
+          assert len(d['target_string_hashes'])==26,len(d['target_string_hashes'])
+          compact={h:sorted({x['string'] for x in rows if x.get('ok') and x.get('string') is not None}) for h,rows in d['resolved'].items()}
+          json.dump(compact,open('reports/D1_XUR_MATERIAL_SWITCH_GLOBALSTRINGS_COMPACT.json','w'),indent=2)
+          print('RESOLVED_NONEMPTY',{k:v for k,v in compact.items() if v})
+          print('UNRESOLVED',d['unresolved_target_hashes'])
+          PY
+
+      - name: Persist hashes
+        run: |
+          set -euo pipefail
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-MATERIAL-SWITCH-GLOBALSTRINGS
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
