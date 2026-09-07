@@ -1,0 +1,190 @@
+name: D1 Tower Xur shader semantic wave 6
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-shader-semantic-wave6.yml'
+      - 'tools/d1_xur_ps_80876952_semantic_proof.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHADER_CENSUS_ARTIFACT_ID: '10027557806'
+  SHADER_CENSUS_ZIP_SHA256: 'e26febd88c0fcc05d998ec7dab04efcf1582095ee594a459ec472c530c7a5086'
+  MATERIAL_STATE_ARTIFACT_ID: '10028092407'
+  MATERIAL_STATE_ZIP_SHA256: '83c5b4af4590d986fb917ddc9da4098e2d1272ad30025db8395f53cac61e4407'
+  WAVE5_ARTIFACT_ID: '10030701808'
+  WAVE5_ZIP_SHA256: 'e62373d1b3ee008498472f0b0a42ed26c6e3086636e98a733debc620240cf1fb'
+
+jobs:
+  semantic-wave6:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact upstream checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/shader input/state input/wave5 reports
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_CENSUS_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "${SHADER_CENSUS_ZIP_SHA256}  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          test -f input/shader/reports/xur_shader_disassembly_census.json
+          test -f input/shader/reports/xur_ps_image_usage.json
+          test -f input/shader/reports/xur_material_texture_manifest.json
+          test -f input/shader/disasm/PS_80876952.s
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MATERIAL_STATE_ARTIFACT_ID}/zip" -o input/state.zip
+          echo "${MATERIAL_STATE_ZIP_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          test -f input/state/xur_material_stage_state.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WAVE5_ARTIFACT_ID}/zip" -o input/wave5.zip
+          echo "${WAVE5_ZIP_SHA256}  input/wave5.zip" | sha256sum --check --strict
+          unzip -q input/wave5.zip -d input/wave5
+          test -f input/wave5/XUR_SHADER_SEMANTIC_FRONTIER_WAVE5.json
+          test -f input/wave5/XUR_SHADER_SEMANTIC_PROGRESS_WAVE5.json
+
+      - name: Close Xur PS 80876952 reflection family
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_ps_80876952_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --texture-manifest input/shader/reports/xur_material_texture_manifest.json \
+            --disassembly input/shader/disasm/PS_80876952.s \
+            --out reports/XUR_PS_80876952_SEMANTIC_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_PS_80876952_SEMANTIC_PROOF.json'))
+          assert d['status']=='D1_XUR_PS_80876952_DATAFLOW_SEMANTICS_EXACT',d
+          assert d['shader']=='80876952',d
+          assert d['gcn_sha256']=='cd1acacbbf0fa69a229255ab4d21c8f218fb50b3c031d63a6bb3c866d5dc57a7',d
+          assert d['scope_material_count']==3,d
+          assert not d['violations'],d['violations']
+          print('XUR_80876952_REFLECTION_DATAFLOW_EXACT')
+          PY
+
+      - name: Promote exact wave 6 semantic coverage
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          frontier=json.load(open('input/wave5/XUR_SHADER_SEMANTIC_FRONTIER_WAVE5.json'))
+          prior=json.load(open('input/wave5/XUR_SHADER_SEMANTIC_PROGRESS_WAVE5.json'))
+          proof=json.load(open('reports/XUR_PS_80876952_SEMANTIC_PROOF.json'))
+          assert prior['status']=='D1_XUR_NATIVE_GCN_DATAFLOW_WAVE5_EXACT',prior
+          assert proof['status']=='D1_XUR_PS_80876952_DATAFLOW_SEMANTICS_EXACT',proof
+
+          closed_ps=set(prior['closed_pixel_gcn_sha256'])|{proof['gcn_sha256']}
+          closed_vs=set(prior['closed_vertex_gcn_sha256'])
+          closed=closed_ps|closed_vs
+
+          for r in frontier['native_gcn_lifting_queue']:
+              r['semantic_lifting_complete']=r['gcn_sha256'] in closed
+          for r in frontier['stage_structural_lifting_queue']:
+              r['semantic_lifting_complete']=r['gcn_sha256'] in closed
+          for r in frontier['material_structural_families']:
+              r['semantic_lifting_complete']=r['vs_gcn_sha256'] in closed_vs and r['ps_gcn_sha256'] in closed_ps
+
+          both=sorted({m for r in frontier['material_structural_families'] if r['semantic_lifting_complete'] for m in r['materials']})
+          ps_mats=sorted({m for r in frontier['material_structural_families'] if r['ps_gcn_sha256'] in closed_ps for m in r['materials']})
+          vs_mats=sorted({m for r in frontier['material_structural_families'] if r['vs_gcn_sha256'] in closed_vs for m in r['materials']})
+          newly_both=sorted(set(both)-set(prior['materials']))
+
+          progress={
+            'status':'D1_XUR_NATIVE_GCN_DATAFLOW_WAVE6_EXACT',
+            'native_gcn_programs_complete':sum(r['semantic_lifting_complete'] for r in frontier['native_gcn_lifting_queue']),
+            'native_gcn_programs_total':frontier['native_gcn_program_count'],
+            'stage_structural_units_complete':sum(r['semantic_lifting_complete'] for r in frontier['stage_structural_lifting_queue']),
+            'stage_structural_units_total':frontier['stage_structural_unit_count'],
+            'material_structural_families_both_stages_complete':sum(r['semantic_lifting_complete'] for r in frontier['material_structural_families']),
+            'material_structural_families_total':frontier['material_structural_family_count'],
+            'materials_with_both_stage_native_dataflow_complete':len(both),
+            'materials_total':frontier['material_count'],
+            'materials':both,
+            'pixel_shader_material_coverage':len(ps_mats),
+            'vertex_shader_material_coverage':len(vs_mats),
+            'closed_pixel_gcn_sha256':sorted(closed_ps),
+            'closed_vertex_gcn_sha256':sorted(closed_vs),
+            'new_wave6_shader':'80876952',
+            'new_wave6_materials':proof['scope_materials'],
+            'new_wave6_materials_with_both_stages_closed':newly_both,
+            'tfx_producer_semantics_complete':False,
+            'render_state_semantics_complete':False,
+            'permutation_selection_complete':False,
+            'portable_recreation_complete':False,
+          }
+          assert progress['native_gcn_programs_complete']==11,progress
+          assert progress['stage_structural_units_complete']==16,progress
+          assert progress['material_structural_families_both_stages_complete']==12,progress
+          assert progress['materials_with_both_stage_native_dataflow_complete']==32,progress
+          assert progress['pixel_shader_material_coverage']==34,progress
+          assert progress['vertex_shader_material_coverage']==48,progress
+          assert newly_both==['808764C9','808767AE','808767AF'],newly_both
+
+          frontier['native_dataflow_progress']=progress
+          Path('reports/XUR_SHADER_SEMANTIC_FRONTIER_WAVE6.json').write_text(json.dumps(frontier,indent=2)+'\n')
+          Path('reports/XUR_SHADER_SEMANTIC_PROGRESS_WAVE6.json').write_text(json.dumps(progress,indent=2)+'\n')
+          lines=[
+            '# Xur native shader semantic progress — wave 6','',
+            f"Status: `{progress['status']}`",'',
+            f"- Native GCN binaries with exact instruction-level dataflow: **{progress['native_gcn_programs_complete']} / {progress['native_gcn_programs_total']}**",
+            f"- Stage structural units covered: **{progress['stage_structural_units_complete']} / {progress['stage_structural_units_total']}**",
+            f"- Combined material structural families with both VS+PS dataflow closed: **{progress['material_structural_families_both_stages_complete']} / {progress['material_structural_families_total']}**",
+            f"- Materials with both current VS+PS binaries dataflow-closed: **{progress['materials_with_both_stage_native_dataflow_complete']} / {progress['materials_total']}**",
+            f"- Pixel-shader material coverage: **{progress['pixel_shader_material_coverage']} / {progress['materials_total']}**",
+            f"- Vertex-shader material coverage: **{progress['vertex_shader_material_coverage']} / {progress['materials_total']}**",'',
+            '- PS `80876952` is now instruction-level closed for three materials.',
+            '- The family reconstructs blended/detail normals, a camera-relative reflection vector, explicit cubemap LOD behavior, and native MRT packing from exact retail inputs.',
+            '- All three scoped materials already use previously closed VS binaries, so all three become both-stage closed in this wave.',
+            '- TFX producer semantics, render state, live material permutation selection, unresolved fetch-shader details, and portable retail-equivalent recreation remain independent gates.'
+          ]
+          Path('reports/XUR_SHADER_SEMANTIC_PROGRESS_WAVE6.md').write_text('\n'.join(lines)+'\n')
+          print(json.dumps(progress,indent=2))
+          PY
+
+      - name: Persist provenance and hashes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          out={
+            'status':'D1_XUR_NATIVE_GCN_DATAFLOW_WAVE6_EXACT',
+            'source_artifacts':{
+              'native_shader_census':{'artifact_id':int(os.environ['SHADER_CENSUS_ARTIFACT_ID']),'zip_sha256':os.environ['SHADER_CENSUS_ZIP_SHA256']},
+              'material_local_state':{'artifact_id':int(os.environ['MATERIAL_STATE_ARTIFACT_ID']),'zip_sha256':os.environ['MATERIAL_STATE_ZIP_SHA256']},
+              'wave5':{'artifact_id':int(os.environ['WAVE5_ARTIFACT_ID']),'zip_sha256':os.environ['WAVE5_ZIP_SHA256']},
+            },
+            'workflow_commit':os.environ['GITHUB_SHA'],
+            'new_exact_shader':'80876952',
+            'semantic_recreation_complete':False,
+            'permutation_selection_complete':False,
+          }
+          Path('reports/XUR_SHADER_SEMANTIC_WAVE6_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-XUR-SHADER-SEMANTIC-WAVE6
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
