@@ -1,0 +1,157 @@
+name: D1 Crota's End basic visual checkpoint v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-basic-visual-checkpoint-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  RAID_ACTOR_ASSET_ARTIFACT_ID: '10005225514'
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install dependencies and recover exact catalogs/assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh scipy
+          mkdir -p input/catalog input/actor_assets runtime out/models out/textures
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAID_ACTOR_ASSET_ARTIFACT_ID}/zip" -o input/actor_assets.zip
+          unzip -q input/actor_assets.zip -d input/actor_assets
+          cp -a input/actor_assets/texture_export/textures/. out/textures/
+          cp input/actor_assets/crota_raid_actor_model_plan.json out/
+          cp input/actor_assets/crota_raid_actor_selected_material_plan.json out/
+          cp input/actor_assets/crota_raid_actor_animation_options_v3.json out/
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Export the 10 exact raid actor models
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python -m py_compile tools/d1_remote_model_export.py tools/d1_entity_model_export.py
+          python tools/d1_remote_model_export.py \
+            --model 809D9839 \
+            --model 809DEA3C \
+            --model 809DECFF \
+            --model 809DEE2F \
+            --model 8108E113 \
+            --model 8108E5B7 \
+            --model 8108EBBE \
+            --model 8108EBD5 \
+            --model 81096362 \
+            --model 81096670 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --part-count 10 \
+            --runtime runtime \
+            --out-dir out/models \
+            --combined-glb out/CROTAS_END_ACTORS_OVERLAID.glb \
+            -o out/model_export_report.json | tee out/model_export.txt
+
+      - name: Build spaced Blender gallery checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math
+          from pathlib import Path
+          import numpy as np
+          import trimesh
+
+          out=Path('out')
+          report=json.load(open(out/'model_export_report.json'))
+          plan=json.load(open(out/'crota_raid_actor_model_plan.json'))
+          owners={m['model']:[o['entity_hash'] for o in m.get('articulated_owners',[])] for m in plan['models']}
+          scene=trimesh.Scene()
+          rows=[]
+          spacing=6.0
+          cols=5
+          for i,m in enumerate(report['models']):
+              tag=m['tag_hash']
+              src=trimesh.load(m['glb'],force='scene',process=False)
+              x=(i%cols)*spacing
+              y=(i//cols)*spacing
+              # Center each model on its own bounds before spacing so the gallery is readable.
+              b=src.bounds
+              center=(b[0]+b[1])*0.5 if b is not None else np.zeros(3)
+              T=trimesh.transformations.translation_matrix([x-center[0],y-center[1],-center[2]])
+              for gi,(name,g) in enumerate(src.geometry.items()):
+                  gg=g.copy()
+                  gg.apply_transform(T)
+                  n=f'{tag}_{gi}_{name}'
+                  scene.add_geometry(gg,geom_name=n,node_name=n)
+              rows.append({'model':tag,'owners':owners.get(tag,[]),'gallery_position':[x,y,0.0],'triangles':m['triangle_count'],'geometry_count':m['geometry_count']})
+          gallery=out/'CROTAS_END_ACTOR_GALLERY_BASIC.glb'
+          scene.export(gallery)
+          check=trimesh.load(gallery,force='scene',process=False)
+          manifest={
+            'status':'D1_CROTAS_END_BASIC_VISUAL_CHECKPOINT',
+            'scope':'10 source-proven scripted raid actor/Oversoul models; Crota physical body intentionally omitted pending exact archetype ownership closure',
+            'gallery_glb':str(gallery),
+            'model_count':len(rows),
+            'geometry_count':len(check.geometry),
+            'triangle_count':sum(r['triangles'] for r in rows),
+            'bounds':check.bounds.tolist() if check.bounds is not None else None,
+            'models':rows,
+            'textures_directory':'textures/',
+            'texture_binding_note':'Retail textures are included from the exact 167-material/66-source-texture closure, but this basic gallery does not guess D1 shader t# roles into glTF PBR slots.',
+            'crota_note':'No ordinary Knight or Ultra Knight model has been substituted for Crota. Crota remains omitted until the physical HiveUltraKnightA spawn/archetype edge is source-proven.'
+          }
+          json.dump(manifest,open(out/'CHECKPOINT_MANIFEST.json','w'),indent=2)
+          print(json.dumps(manifest,indent=2))
+          PY
+
+          cat > out/README.txt <<'EOF'
+          CROTAS END BASIC VISUAL CHECKPOINT
+
+          Start with: CROTAS_END_ACTOR_GALLERY_BASIC.glb
+
+          This checkpoint intentionally contains the 10 exact source-proven models used by the
+          18 ordinary Crota's End scripted actor families, including the source-proven Oversoul
+          model family. The models are spaced into a gallery so they can be inspected in Blender.
+
+          Individual geometry-only GLBs are in models/.
+          Exact retail DDS/PNG textures from the closed raid actor material library are in textures/.
+
+          IMPORTANT LIMITATIONS OF THIS BASIC CHECKPOINT:
+          - Crota's physical body is NOT included yet. No guessed Knight substitute is used.
+          - The gallery GLB is geometry-first. Exact D1 shader texture registers are not guessed into
+            glTF baseColor/normal/roughness slots. The retail textures are supplied separately.
+          - Rig/animation proof manifests are included, but animations are not embedded into this
+            basic gallery GLB yet.
+          - This checkpoint is the actor-library view, not yet the consolidated full raid world scene.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTAS-END-BASIC-VISUAL-CHECKPOINT-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
