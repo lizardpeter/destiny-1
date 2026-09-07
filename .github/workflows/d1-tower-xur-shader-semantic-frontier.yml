@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-xur-shader-semantic-frontier.yml'
       - 'tools/d1_xur_shader_semantic_frontier.py'
+      - 'tools/d1_xur_ps_80876edf_semantic_proof.py'
 
 permissions:
   contents: read
@@ -38,6 +39,8 @@ jobs:
           unzip -q input/shader.zip -d input/shader
           test -f input/shader/reports/xur_shader_disassembly_census.json
           test -f input/shader/reports/xur_ps_image_usage.json
+          test -f input/shader/reports/xur_material_texture_manifest.json
+          test -f input/shader/disasm/PS_80876EDF.s
 
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MATERIAL_STATE_ARTIFACT_ID}/zip" -o input/state.zip
@@ -89,6 +92,50 @@ jobs:
           Path('reports/XUR_SHADER_SEMANTIC_FRONTIER.md').write_text('\n'.join(lines)+'\n')
           PY
 
+      - name: Lift highest-coverage PS 80876EDF dataflow exactly
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_ps_80876edf_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --texture-manifest input/shader/reports/xur_material_texture_manifest.json \
+            --disassembly input/shader/disasm/PS_80876EDF.s \
+            --out reports/XUR_PS_80876EDF_SEMANTIC_PROOF.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/XUR_PS_80876EDF_SEMANTIC_PROOF.json'))
+          assert d['status']=='D1_XUR_PS_80876EDF_DATAFLOW_SEMANTICS_EXACT',d
+          assert d['scope_material_count']==6,d
+          assert d['pixel_shader_dataflow_complete_for_scoped_binary'] is True,d
+          assert d['tfx_producer_semantics_complete'] is False,d
+          assert d['portable_material_recreation_complete'] is False,d
+          assert not d['violations'],d['violations']
+          e=d['instruction_level_equations']
+          lines=[
+            '# Xur PS 80876EDF exact native dataflow', '',
+            f"Status: `{d['status']}`", '',
+            f"GCN SHA-256: `{d['gcn_sha256']}`", '',
+            'Scoped materials: ' + ', '.join(f"`{x}`" for x in d['scope_materials']), '',
+            '## Exact equations', '',
+            f"- `{e['normal_xy_symbolic']}`",
+            f"- `{e['normal_z']}`",
+            f"- `{e['basis_transform']}`",
+            f"- `{e['packing_scale']}`",
+            f"- `{e['mrt1_rgb']}`",
+            f"- `{e['mrt1_alpha_symbolic']}`",
+            f"- `{e['mrt0_rgb']}`",
+            f"- `{e['mrt0_alpha']}`", '',
+            '## Proven texture roles', '',
+            '- `t1`: signed XY normal-vector source (BC5 / linear).',
+            '- `t0`: direct MRT0 RGB source (BC1 / native sRGB); higher-level albedo/base-color naming remains withheld.',
+            '- `t2`: sampled-red normal-vector packing-scale modulator (BC1 / native sRGB); roughness/gloss naming remains withheld.', '',
+            'This closes the native PS dataflow for this exact GCN binary, not TFX `Unk49` producer semantics, high-level render-target naming, or the full portable material/render-state implementation.'
+          ]
+          Path('reports/XUR_PS_80876EDF_SEMANTIC_PROOF.md').write_text('\n'.join(lines)+'\n')
+          PY
+
       - name: Persist checkpoint provenance and hashes
         run: |
           set -euo pipefail
@@ -108,6 +155,9 @@ jobs:
               },
             },
             'workflow_commit':os.environ['GITHUB_SHA'],
+            'promoted_pixel_shader_dataflow_proofs':[
+              {'shader':'80876EDF','status':'D1_XUR_PS_80876EDF_DATAFLOW_SEMANTICS_EXACT','material_count':6}
+            ],
             'semantic_recreation_complete':False,
             'permutation_selection_complete':False,
           }
