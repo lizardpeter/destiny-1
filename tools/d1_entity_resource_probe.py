@@ -38,6 +38,14 @@ D1_SCRIPTED_ENTITY_DISCRIMINATOR=0x808007BC
 D1_SCRIPTED_ENTITY_PARENT=0x808005A7
 D1_SCRIPTED_ENTITY_TABLE_CLASS=0x808012D9
 D1_SCRIPTED_ENTITY_TABLE_OFFSET=0x68
+# Charm pinned D1 ROI EntityStructs.cs + Audio/Dialogue.cs:
+# SB9268080 (B9268080) selects SDA288080 (DA288080), whose +0x68 field is
+# Entity? Unk68. DialogueD1 follows this entity and then walks its EntityResources
+# to collect Wwise dialogue. This is a dialogue/audio ownership edge, not a
+# generic runtime-spawn edge.
+D1_DIALOGUE_ENTITY_DISCRIMINATOR=0x808026B9
+D1_DIALOGUE_ENTITY_PARENT=0x808028DA
+D1_DIALOGUE_ENTITY_OFFSET=0x68
 
 KNOWN={
  D1_MODEL_DISCRIMINATOR:'entity_model_discriminator',D1_MODEL_PARENT:'entity_model_parent',
@@ -50,6 +58,8 @@ KNOWN={
  D1_SCRIPTED_ENTITY_DISCRIMINATOR:'scripted_entity_table_discriminator',
  D1_SCRIPTED_ENTITY_PARENT:'scripted_entity_table_parent_SA7058080',
  D1_SCRIPTED_ENTITY_TABLE_CLASS:'scripted_entity_table_SD9128080',
+ D1_DIALOGUE_ENTITY_DISCRIMINATOR:'dialogue_entity_discriminator_SB9268080',
+ D1_DIALOGUE_ENTITY_PARENT:'dialogue_entity_parent_SDA288080',
 }
 
 def u32(b,o): return struct.unpack_from('<I',b,o)[0]
@@ -78,6 +88,7 @@ def parse_resource(b, platform=None):
         f'{D1_GENERIC_NAME_DISCRIMINATOR:08X}':'entity_name_generic',
         f'{D1_SPECIFIC_NAME_DISCRIMINATOR:08X}':'entity_name_specific',
         f'{D1_SCRIPTED_ENTITY_DISCRIMINATOR:08X}':'scripted_entity_table_owner',
+        f'{D1_DIALOGUE_ENTITY_DISCRIMINATOR:08X}':'dialogue_entity_owner',
     }.get(discr,'other_or_unknown')
     if d['semantic_role']=='entity_model':
         p=d['unk18'];t=p.get('target_offset');model_rel=0x1C4 if platform=='XboxOne' else 0x15C
@@ -106,6 +117,11 @@ def parse_resource(b, platform=None):
         d['scripted_entity_table_expected_class']=f'{D1_SCRIPTED_ENTITY_TABLE_CLASS:08X}'
         if p.get('class_hash')==f'{D1_SCRIPTED_ENTITY_PARENT:08X}' and isinstance(t,int) and t+off+4<=len(b):
             d['scripted_entity_table_tag_hash']=f'{u32(b,t+off):08X}'
+    elif d['semantic_role']=='dialogue_entity_owner':
+        p=d['unk18'];t=p.get('target_offset');off=D1_DIALOGUE_ENTITY_OFFSET
+        d['dialogue_entity_field_offset_in_parent']=off
+        if p.get('class_hash')==f'{D1_DIALOGUE_ENTITY_PARENT:08X}' and isinstance(t,int) and t+off+4<=len(b):
+            d['dialogue_entity_tag_hash']=f'{u32(b,t+off):08X}'
     return d
 
 def main():
