@@ -1,0 +1,181 @@
+name: D1 Crota exact body rig and animation v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-exact-body-animation-v1.yml'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_runtime_rig_probe.py'
+      - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
+      - 'tools/d1_animation_control_state_map_v2.py'
+      - 'tools/d1_tiger_animation_safe_offsets.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact catalog, pinned parser, and runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pyglm trimesh
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
+          git -C parser checkout --quiet "$PARSER_COMMIT"
+          test "$(git -C parser rev-parse HEAD)" = "$PARSER_COMMIT"
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Reopen exact Crota physical s_entity and lock core resources
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_exact_s_entity_probe.py \
+            --tag-hash 0x8108E484 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/CROTA_EXACT_S_ENTITY_8108E484.json | tee out/s_entity_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_EXACT_S_ENTITY_8108E484.json'))
+          assert d['violation_count']==0,d['violations']
+          assert len(d['entries'])==1,d['entries']
+          e=d['entries'][0]
+          assert e['tag_hash']=='8108E484',e
+          assert e['entry']['reference']=='80800734',e['entry']
+          assert e['resource_count']==58,e['resource_count']
+          assert e['embedded_models']==['8108E5B7'],e.get('embedded_models')
+          sk=[(x['resource_hash'],x['node_count']) for x in e.get('skeletons',[])]
+          assert sk==[('8108E4BB',50)],sk
+          rigs=[]; owners={}
+          for r in e['resources']:
+              er=r.get('entity_resource') or {}
+              pair=(er.get('unk10_class'),er.get('unk18_class'))
+              if pair==('808008B2','8080099B'): rigs.append(r['resource_hash'])
+              if pair in (('808020BF','808029D2'),('80802B92','808020BB')):
+                  owners.setdefault(pair,[]).append(r['resource_hash'])
+          assert rigs==['8108E4CB'],rigs
+          assert all(len(owners.get(p,[]))==1 for p in (('808020BF','808029D2'),('80802B92','808020BB'))),owners
+          print('CROTA_BODY','8108E484','MODEL','8108E5B7','SKELETON','8108E4BB','BONES',50,'RIG',rigs[0])
+          print('ANIMATION_OWNERS',owners)
+          open('out/CROTA_EXACT_ANIMATION_OWNER_TAGS.json','w').write(json.dumps({'rig':rigs[0],'owners':{f'{a}->{b}':v for (a,b),v in owners.items()}},indent=2)+'\n')
+          PY
+
+      - name: Decode exact Crota runtime rig
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_runtime_rig_probe.py \
+            --rig-resource 0x8108E4CB \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser \
+            -o out/CROTA_RUNTIME_RIG_8108E4CB.json | tee out/rig_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RUNTIME_RIG_8108E4CB.json'))
+          assert d['rig_resource_tag_hash']=='8108E4CB',d
+          assert (d['discriminator_class'],d['info_class'])==('808008B2','8080099B'),d
+          assert d['control_count']>0,d
+          print('CROTA_RUNTIME_RIG_CONTROLS',d['control_count'],'COMPONENTS',d['runtime_rig_components'])
+          PY
+
+      - name: Execute exact single-entity animation v3 closure
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_animation_control_state_map_v2.py \
+            tools/d1_tiger_animation_safe_offsets.py \
+            tools/d1_remote_spawned_actor_animation_options_v3.py
+          python tools/d1_remote_spawned_actor_animation_options_v3.py \
+            --entity 0x8108E484 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --parser-root parser \
+            -o out/CROTA_ANIMATION_OPTIONS_V3.json | tee out/animation_stdout.txt
+
+      - name: Validate and summarize exact Crota animation population
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          d=json.load(open('out/CROTA_ANIMATION_OPTIONS_V3.json'))
+          assert d['schema']=='d1_remote_spawned_actor_animation_options/v3',d.get('schema')
+          assert d['entity_count']==1,d['entity_count']
+          assert d['entities'][0]['entity']=='8108E484',d['entities']
+          assert d['violation_count']==0,d['violations'][:20]
+          assert d['frontier_count']==0,d['frontiers'][:20]
+          assert d['retarget_pair_failure_count']==0,d['retarget_pair_failure_count']
+          assert d['retarget_pair_success_count']==d['retarget_pair_execution_count'],d
+          assert d['closed_target_count']==d['target_count'],d
+          assert d['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE',d['status']
+          row=d['entities'][0]
+          out={
+              'schema':'d1_crota_exact_body_animation_checkpoint/v1',
+              'status':'D1_CROTA_EXACT_BODY_ANIMATION_SOURCE_CLOSED',
+              'semantic_identity':{
+                  'script_family':'dark_lens.sq_crota','script_family_hash':'A384A910',
+                  'entity_name_hash':'64C53DB9','entity_name':'Crota, Son of Oryx',
+                  'physical_s_entity':'8108E484',
+              },
+              'physical':{'model':'8108E5B7','skeleton_resource':'8108E4BB','skeleton_node_count':50,'runtime_rig':'8108E4CB'},
+              'animation':{
+                  'control_hashes':row.get('control_hashes',[]),
+                  'control_count':len(row.get('control_hashes',[])),
+                  'target_count':d['target_count'],
+                  'unique_control_count':d['unique_control_count'],
+                  'unique_selector_selected_clip_count':d['unique_selector_selected_clip_count'],
+                  'unique_selector_selected_clip_hashes':d['unique_selector_selected_clip_hashes'],
+                  'unique_animation_list_clip_count':d['unique_animation_list_clip_count'],
+                  'retarget_pair_execution_count':d['retarget_pair_execution_count'],
+                  'retarget_pair_success_count':d['retarget_pair_success_count'],
+                  'exact_empty_control_target_count':d['exact_empty_control_target_count'],
+                  'implicit_null_selector_count':d['implicit_null_selector_count'],
+              },
+              'policy':'Identity comes from the source-mapped D912 SMapDataEntry EntitySK plus S331 EntityName 64C53DB9 resolved through exact GlobalStrings. Physical resources come only from s_entity 8108E484 Resource[]. Animation controls come only from the two calibrated owner class pairs and their fixed source-proven 80802C0E fields; every selected clip must pass the pinned native D1 retarget path.',
+          }
+          pathlib.Path('out/CROTA_EXACT_BODY_ANIMATION_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('CROTA_ANIMATION_SOURCE_CLOSED','CONTROLS',out['animation']['unique_control_count'],'SELECTED_CLIPS',out['animation']['unique_selector_selected_clip_count'],'BANK_CLIPS',out['animation']['unique_animation_list_clip_count'],'RETARGETS',out['animation']['retarget_pair_execution_count'])
+          print('CONTROL_HASHES',out['animation']['control_hashes'])
+          print('SELECTED_CLIP_HASHES',out['animation']['unique_selector_selected_clip_hashes'])
+          PY
+
+      - name: Hash and upload
+        if: always()
+        run: |
+          set -euo pipefail
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-EXACT-BODY-ANIMATION-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
