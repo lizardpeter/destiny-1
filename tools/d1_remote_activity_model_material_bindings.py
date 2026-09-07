@@ -9,7 +9,9 @@ and applies the source-pinned D1 material selection logic from
 package corpus.
 
 This closes both direct model materials and external VariantShaderIndex materials.
-No model/material proximity, package adjacency, name, or visual similarity is used.
+Source-proven null Material sentinels are retained as explicit non-renderable parts
+and are not emitted as material dependencies. No model/material proximity, package
+adjacency, name, or visual similarity is used.
 """
 from __future__ import annotations
 
@@ -98,6 +100,7 @@ def main() -> int:
     bindings = []
     selected = Counter()
     selection_counts = Counter()
+    selection_status_counts = Counter()
     for (model, parent) in sorted(pair_owners):
         row = bind_model(c, model, parent)
         row["owning_entities"] = sorted(pair_owners[(model, parent)])
@@ -108,6 +111,7 @@ def main() -> int:
         for mesh in row.get("meshes", []):
             for part in mesh.get("parts", []):
                 selection_counts[part.get("selection", "unknown")] += 1
+                selection_status_counts[part.get("selection_status", "UNKNOWN")] += 1
                 sm = part.get("selected_material") or {}
                 h = norm(sm.get("hash")) if sm.get("hash") else None
                 if h and h not in NULLS:
@@ -115,7 +119,7 @@ def main() -> int:
         bindings.append(row)
 
     out = {
-        "schema": "d1_remote_activity_model_material_bindings/v1",
+        "schema": "d1_remote_activity_model_material_bindings/v2",
         "status": "D1_REMOTE_ACTIVITY_MODEL_MATERIAL_BINDINGS_COMPLETE" if not violations else "D1_REMOTE_ACTIVITY_MODEL_MATERIAL_BINDINGS_WITH_VIOLATIONS",
         "source_entity_closure": str(a.entity_closure),
         "model_parent_pair_count": len(bindings),
@@ -123,7 +127,10 @@ def main() -> int:
         "owning_entity_count": len({e for xs in pair_owners.values() for e in xs}),
         "part_count": sum(int(x.get("part_count", 0)) for x in bindings),
         "external_variant_part_count": sum(int(x.get("external_variant_part_count", 0)) for x in bindings),
+        "explicit_null_material_part_count": sum(int(x.get("explicit_null_material_part_count", 0)) for x in bindings),
+        "renderable_material_part_count": sum(int(x.get("renderable_material_part_count", 0)) for x in bindings),
         "selection_counts": dict(selection_counts),
+        "selection_status_counts": dict(selection_status_counts),
         "unique_selected_material_count": len(selected),
         "selected_material_reference_counts": dict(sorted(selected.items())),
         "selected_materials": sorted(selected),
@@ -132,8 +139,11 @@ def main() -> int:
         "policy": (
             "Model-parent ownership is admitted only from exact source-parsed s_entity resource records whose "
             "EntityResource semantic role is entity_model and whose embedded model hash is parser-proven. Material "
-            "selection then uses the source-pinned D1 external-material map/range semantics. No package adjacency, "
-            "developer name, or visual similarity creates a binding."
+            "selection then uses the source-pinned D1 external-material map/range semantics. The pinned ROI "
+            "EntityModel implementation explicitly skips DynamicMeshPart when its resolved Material is null, so "
+            "00000000/FFFFFFFF selected Material sentinels are preserved as non-renderable parts and excluded from "
+            "material dependencies. Any non-null missing/wrong-class material remains a hard failure. No package "
+            "adjacency, developer name, or visual similarity creates a binding."
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
@@ -145,6 +155,8 @@ def main() -> int:
         "OWNERS", out["owning_entity_count"],
         "PARTS", out["part_count"],
         "EXTERNAL_VARIANTS", out["external_variant_part_count"],
+        "NULL_PARTS", out["explicit_null_material_part_count"],
+        "RENDERABLE_PARTS", out["renderable_material_part_count"],
         "MATERIALS", out["unique_selected_material_count"],
         "VIOLATIONS", len(violations),
     )
