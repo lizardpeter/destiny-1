@@ -1,0 +1,151 @@
+name: D1 Crota Investment Hive parent census v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-investment-hive-parent-census-v1.yml'
+      - 'tools/d1_remote_investment_hive_parent_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover compatible current member catalog and runtime
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o input/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          psha=hashlib.sha256(open('input/packages.txt','rb').read()).hexdigest()
+          cat=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          expected=cat.get('packages_txt_sha256') or (cat.get('source') or {}).get('package_list_sha256')
+          assert expected==psha,(expected,psha)
+          print('CURRENT_CATALOG_COMPATIBLE',psha)
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Find every Investment parent landing in shared Hive packages
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_investment_hive_parent_census.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --target-package-id 0x0075 --target-package-id 0x0077 --target-package-id 0x075D \
+            -o out/INVESTMENT_HIVE_PARENT_CENSUS.json | tee out/census_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/INVESTMENT_HIVE_PARENT_CENSUS.json'))
+          assert d['status']=='D1_REMOTE_INVESTMENT_HIVE_PARENT_CENSUS_COMPLETE',(d['errors'][:20],d['invalid_parent_hashes'][:20])
+          assert d['hit_count']>0,d
+          print('HIVE_HITS',d['hit_count'],'UNIQUE_FINAL',d['unique_final_hash_count'],'SENTITIES',d['unique_final_sentity_count'])
+          PY
+
+      - name: Close exact final Hive s_entities and their typed visual dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t seeds < <(python - <<'PY'
+          import json
+          d=json.load(open('out/INVESTMENT_HIVE_PARENT_CENSUS.json'))
+          for h in d['unique_final_sentities']: print(h)
+          PY
+          )
+          test "${#seeds[@]}" -gt 0
+          args=()
+          for h in "${seeds[@]}"; do args+=(--seed "$h"); done
+          python tools/d1_remote_entity_dependency_closure_universal.py \
+            "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --max-depth 6 --max-nodes 4000 \
+            -o out/INVESTMENT_HIVE_ENTITY_CLOSURE.json | tee out/closure_stdout.txt
+          python - <<'PY'
+          import json,collections
+          c=json.load(open('out/INVESTMENT_HIVE_PARENT_CENSUS.json'))
+          g=json.load(open('out/INVESTMENT_HIVE_ENTITY_CLOSURE.json'))
+          assert g['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE',g.get('violations',[])[:20]
+          assert not g.get('truncated'),g
+          node_by={str(n.get('tag_hash','')).upper():n for n in g.get('nodes',[])}
+          assignments=collections.defaultdict(set)
+          parents=collections.defaultdict(set)
+          for r in c['hits']:
+              h=r['final_entity_data_hash']
+              if r['final_reference']=='80800734':
+                  assignments[h].update(r['assignment_hashes']); parents[h].add(r['parent_hash'])
+          rows=[]
+          for h in c['unique_final_sentities']:
+              n=node_by.get(h,{})
+              resources=n.get('resources') or []
+              models=[]; skels=[]; names=[]; rigs=[]
+              for r in resources:
+                  er=r.get('entity_resource') or {}
+                  role=er.get('semantic_role')
+                  rh=str(r.get('resource_hash','')).upper()
+                  if role=='entity_model': models.append(rh)
+                  elif role=='entity_skeleton': skels.append(rh)
+                  elif role in ('generic_name','specific_name'): names.append({'role':role,'resource':rh,'target':er.get('target_tag_hash') or er.get('entity_name_tag_hash')})
+                  pair=(str(er.get('unk10_class','')).upper(),str(er.get('unk18_class','')).upper())
+                  if pair==('808008B2','8080099B'): rigs.append(rh)
+              rows.append({
+                  'entity':h,'assignments':sorted(assignments[h]),'parents':sorted(parents[h]),
+                  'path_class':n.get('path_class'),'articulated':bool(n.get('articulated')),
+                  'models':models,'skeletons':skels,'runtime_rigs':rigs,'name_resources':names,
+                  'node_printable_strings':n.get('printable_strings') or [],
+              })
+          out={
+              'schema':'d1_investment_hive_articulated_catalog/v1',
+              'status':'D1_INVESTMENT_HIVE_ARTICULATED_CATALOG_EXACT',
+              'final_sentity_count':len(rows),
+              'articulated_count':sum(x['articulated'] for x in rows),
+              'with_model_count':sum(bool(x['models']) for x in rows),
+              'with_skeleton_count':sum(bool(x['skeletons']) for x in rows),
+              'unique_model_count':len({m for x in rows for m in x['models']}),
+              'unique_skeleton_count':len({s for x in rows for s in x['skeletons']}),
+              'rows':rows,
+              'policy':'Investment assignment ownership and EntityParent +0x10 are exact. Articulation/model/skeleton evidence comes only from typed s_entity Resource[] closure. Assignment hashes remain semantically opaque until independently resolved.'
+          }
+          json.dump(out,open('out/INVESTMENT_HIVE_ARTICULATED_CATALOG.json','w'),indent=2)
+          print(json.dumps({k:v for k,v in out.items() if k not in ('rows','policy')},indent=2))
+          for x in rows:
+              if x['articulated'] or x['models'] or x['skeletons']:
+                  print('ARTICULATED_CANDIDATE',json.dumps(x,separators=(',',':')))
+          PY
+
+      - name: Checksum and upload
+        run: |
+          set -euo pipefail
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-INVESTMENT-HIVE-PARENT-CENSUS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
