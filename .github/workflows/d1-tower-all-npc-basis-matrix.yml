@@ -1,0 +1,112 @@
+name: D1 Tower all NPC basis matrix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-all-npc-basis-matrix.yml'
+      - 'tools/d1_gltf_fix_standalone_articulated_basis.py'
+      - 'tools/d1_gltf_articulated_basis_alignment_probe.py'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SKINNED_ARTIFACT_ID: '10001481050'
+  SKINNED_ARTIFACT_ZIP_SHA256: '6390225a8c0f5ef9c092692ec7b9cf2fff6e5dcb8c3cbb32fb3859564b27a43d'
+
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact 13-family skinned Tower checkpoint
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy scipy
+          mkdir -p input out/fixed out/reports/pre out/reports/fix out/reports/post out/reports/bind
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SKINNED_ARTIFACT_ID}/zip" -o input/skinned.zip
+          echo "${SKINNED_ARTIFACT_ZIP_SHA256}  input/skinned.zip" | sha256sum --check --strict
+          unzip -q input/skinned.zip -d input/artifact
+          mapfile -t files < <(find input/artifact -type f -name '*_SKINNED.glb' | sort)
+          test "${#files[@]}" -eq 13
+          cp input/artifact/TOWER_SPAWNED_ACTOR_SKIN_BIND.json out/reports/ || true
+          printf '%s\n' "${files[@]}" > input/files.txt
+      - name: Prove the parser/model basis mismatch across all 13 visual families
+        run: |
+          set -euo pipefail
+          while read -r f; do
+            m="$(basename "$f" _SKINNED.glb)"
+            python tools/d1_gltf_articulated_basis_alignment_probe.py "$f" --model "$m" \
+              --expect-mesh-axis Z --expect-joint-axis Y --allow-mismatch -o "out/reports/pre/${m}.json"
+          done < input/files.txt
+          python - <<'PY'
+          import glob,json
+          rows=[]
+          for p in sorted(glob.glob('out/reports/pre/*.json')):
+              d=json.load(open(p)); rows.append(d)
+              assert d['status']=='D1_GLTF_ARTICULATED_BASIS_ALIGNMENT_COMPLETE',d
+              assert d['mesh_bounds']['dominant_axis']=='Z',d
+              assert d['joint_bounds']['dominant_axis']=='Y',d
+              assert d['dominant_axes_aligned'] is False,d
+          assert len(rows)==13
+          print('ALL_13_PRE_FIX_Z_VS_Y_MISMATCH_CLOSED')
+          PY
+      - name: Apply the same source-derived articulated basis adapter to all families
+        run: |
+          set -euo pipefail
+          while read -r f; do
+            m="$(basename "$f" _SKINNED.glb)"
+            python tools/d1_gltf_fix_standalone_articulated_basis.py "$f" --model "$m" \
+              --out "out/fixed/${m}_BLENDER_BASIS_FIXED.glb" --report "out/reports/fix/${m}.json"
+          done < input/files.txt
+      - name: Prove all 13 final actors are Y-up and all bind poses remain valid
+        run: |
+          set -euo pipefail
+          for f in out/fixed/*_BLENDER_BASIS_FIXED.glb; do
+            m="$(basename "$f" _BLENDER_BASIS_FIXED.glb)"
+            python tools/d1_gltf_articulated_basis_alignment_probe.py "$f" --model "$m" \
+              --expect-mesh-axis Y --expect-joint-axis Y -o "out/reports/post/${m}.json"
+            python tools/d1_gltf_skin_bind_identity_probe.py "$f" --max-error 0.00002 -o "out/reports/bind/${m}.json"
+          done
+          python - <<'PY'
+          import glob,json,pathlib
+          pre={pathlib.Path(p).stem:json.load(open(p)) for p in glob.glob('out/reports/pre/*.json')}
+          fix={pathlib.Path(p).stem:json.load(open(p)) for p in glob.glob('out/reports/fix/*.json')}
+          post={pathlib.Path(p).stem:json.load(open(p)) for p in glob.glob('out/reports/post/*.json')}
+          bind={pathlib.Path(p).stem:json.load(open(p)) for p in glob.glob('out/reports/bind/*.json')}
+          assert set(pre)==set(fix)==set(post)==set(bind) and len(pre)==13
+          rows=[]
+          for m in sorted(pre):
+              a,b,c,d=pre[m],fix[m],post[m],bind[m]
+              assert b['status']=='D1_STANDALONE_ARTICULATED_PARSER_AND_GLTF_BASIS_FIXED',b
+              assert b['bin_byte_length_unchanged'] is True,b
+              assert c['status']=='D1_GLTF_ARTICULATED_BASIS_ALIGNMENT_COMPLETE' and c['dominant_axes_aligned'],c
+              assert c['mesh_bounds']['dominant_axis']==c['joint_bounds']['dominant_axis']=='Y',c
+              assert d['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and not d['violations'] and d['max_observed_error']<=2e-5,d
+              rows.append({'model':m,'skeleton':b['skeleton'],'joint_count':b['joint_count'],'mesh_nodes':b['skinned_mesh_node_count'],
+                           'pre_mesh_axis':a['mesh_bounds']['dominant_axis'],'pre_joint_axis':a['joint_bounds']['dominant_axis'],
+                           'post_mesh_axis':c['mesh_bounds']['dominant_axis'],'post_joint_axis':c['joint_bounds']['dominant_axis'],
+                           'max_bind_error':d['max_observed_error']})
+          out={'schema_version':1,'status':'D1_TOWER_ALL_13_NPC_FAMILIES_BASIS_REPAIR_PROVEN','family_count':13,
+               'unique_skeletons':sorted({r['skeleton'] for r in rows}),'rows':rows,
+               'conclusion':'The tiger-animation-parser articulated basis mismatch and the native-D1-to-glTF adapter are shared pipeline behavior across every exact Tower spawned-actor visual family in this checkpoint.'}
+          pathlib.Path('out/reports/TOWER_ALL_NPC_BASIS_MATRIX.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+          sha256sum out/fixed/*.glb out/reports/**/*.json out/reports/TOWER_ALL_NPC_BASIS_MATRIX.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ALL-NPC-BASIS-MATRIX
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
