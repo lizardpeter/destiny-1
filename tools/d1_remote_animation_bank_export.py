@@ -6,6 +6,10 @@ appenders, this tool intentionally includes selector-unused animation-list entri
 Every exact s_animation_clip payload is written verbatim, SHA-256 pinned, parsed by
 the pinned D1 ROI parser, and passed through decode_animation. No gameplay state or
 semantic ownership is invented for clips that are present in a bank but not selected.
+
+An exact source-closed animation population may contain zero animation-list bank
+clips. That is represented as a complete empty export, not as an error and never by
+fabricating a placeholder clip.
 """
 from __future__ import annotations
 
@@ -37,6 +41,33 @@ def read_animation_filebacked(read_animation, payload: bytes, version):
         return read_animation(f, version)
 
 
+def write_empty(a, src: dict, selected: set[str]) -> int:
+    a.out_dir.mkdir(parents=True, exist_ok=True)
+    out = {
+        'schema': 'd1_remote_animation_bank_export/v1',
+        'status': 'D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE',
+        'source_closed_empty_bank': True,
+        'animation_list_unique_clip_count': 0,
+        'selector_selected_unique_clip_count': len(selected),
+        'animation_list_only_unique_clip_count': 0,
+        'exported_raw_clip_count': 0,
+        'parsed_clip_count': 0,
+        'decoded_clip_count': 0,
+        'clips': [],
+        'violations': [],
+        'policy': (
+            'The source-closed animation options serialize zero unique animation-list bank clips. The exact export is '
+            'therefore empty. No placeholder clip, default state, or inferred animation is created.'
+        ),
+    }
+    if selected:
+        raise ValueError(f'zero animation-list bank but selector-selected clips exist: {sorted(selected)}')
+    a.output.parent.mkdir(parents=True, exist_ok=True)
+    a.output.write_text(json.dumps(out, indent=2) + '\n')
+    print(json.dumps({k:v for k,v in out.items() if k not in ('clips','violations')}, indent=2))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--animation-options', type=Path, required=True)
@@ -56,7 +87,7 @@ def main() -> int:
     selected = {norm(x) for x in src.get('unique_selector_selected_clip_hashes', [])}
     clips = list(dict.fromkeys(bank))
     if not clips:
-        raise SystemExit('no animation-list bank clips')
+        return write_empty(a, src, selected)
 
     cats = load_catalogs(a.member_catalog)
     base = a.base_url.rstrip('/')
@@ -113,6 +144,7 @@ def main() -> int:
     out = {
         'schema': 'd1_remote_animation_bank_export/v1',
         'status': 'D1_REMOTE_ANIMATION_BANK_EXPORT_COMPLETE' if len(rows) == len(clips) and not violations else 'D1_REMOTE_ANIMATION_BANK_EXPORT_INCOMPLETE',
+        'source_closed_empty_bank': False,
         'animation_list_unique_clip_count': len(clips),
         'selector_selected_unique_clip_count': len(selected),
         'animation_list_only_unique_clip_count': len(set(clips) - selected),
@@ -124,7 +156,8 @@ def main() -> int:
         'policy': (
             'Every unique FileHash serialized in a source-closed animation-list bank is retained, including clips not '
             'selected by any decoded control state. Raw files are exact retail payloads; parser/decode success does not '
-            'promote an unused bank clip to a gameplay state or actor identity.'
+            'promote an unused bank clip to a gameplay state or actor identity. A source-closed zero-bank population is '
+            'represented by a complete empty export rather than a fabricated clip.'
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
