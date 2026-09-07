@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "status": "D1_NATIVE_SHADER_SEMANTIC_REGISTRY_V1_EXACT",
+  "registry_key": "bounded_native_gcn_sha256",
+  "entries": [
+    {
+      "gcn_sha256": "05eac4afa0c0e050b3f1237424cb984d20923f619d20066bccd333498e7c80f8",
+      "stage": "ps",
+      "shader_headers": ["808764AA"],
+      "source_proof_status": "D1_XUR_PS_808764AA_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_808764aa_semantic_proof.py",
+      "current_scope_material_count": 4,
+      "semantic_class": "normal_reflected_cube_surface"
+    },
+    {
+      "gcn_sha256": "63f5479f10e58f07dd891f29aef0a0bea640cb4890d80ea447c4422d51d51bf1",
+      "stage": "ps",
+      "shader_headers": ["8087688C"],
+      "source_proof_status": "D1_XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_EXACT",
+      "handler": "tools/d1_xur_ps_direct_rgb_normal_families_proof.py",
+      "current_scope_material_count": 4,
+      "semantic_class": "direct_rgb_bc5_normal"
+    },
+    {
+      "gcn_sha256": "6c9b8513d1a067fbf304b0fe0bc3f112a278718315c628d60b270925e085f24c",
+      "stage": "ps",
+      "shader_headers": ["80AAE1C7"],
+      "source_proof_status": "D1_XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_EXACT",
+      "handler": "tools/d1_xur_ps_direct_rgb_normal_families_proof.py",
+      "current_scope_material_count": 3,
+      "semantic_class": "direct_rgb_bc5_normal_native_w_pack"
+    },
+    {
+      "gcn_sha256": "7d3c95a7d1ce0663ca1d2d715c55cc9e3936d581841c5c7a43ac706bca408fcf",
+      "stage": "ps",
+      "shader_headers": ["808768C0"],
+      "source_proof_status": "D1_XUR_PS_808768C0_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_808768c0_semantic_proof.py",
+      "current_scope_material_count": 5,
+      "semantic_class": "dual_normal_reflected_cube_fresnel_detail",
+      "frontier": "runtime texture-index 2 descriptor is absent from two scoped serialized materials and remains unresolved"
+    },
+    {
+      "gcn_sha256": "966131017fed6ba96524161765eeab841bcf09d4c7757deec82273f17e783ca8",
+      "stage": "ps",
+      "shader_headers": ["80876EDF"],
+      "source_proof_status": "D1_XUR_PS_80876EDF_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_ps_80876edf_semantic_proof.py",
+      "current_scope_material_count": 6,
+      "semantic_class": "direct_rgb_bc5_normal_pack_modulated"
+    },
+    {
+      "gcn_sha256": "cf5f9064a00c0e099fa0981262ded869775ac82e58487c3ce75f3452fb8a15ab",
+      "stage": "ps",
+      "shader_headers": ["80AADCB3"],
+      "source_proof_status": "D1_XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_EXACT",
+      "handler": "tools/d1_xur_ps_direct_rgb_normal_families_proof.py",
+      "current_scope_material_count": 5,
+      "semantic_class": "direct_rgb_bc5_normal_alpha_pack"
+    },
+    {
+      "gcn_sha256": "24392dbd8f217a832456372a8d9c24d3ef365ab5a0b8bcd362882ca845052964",
+      "stage": "vs",
+      "shader_headers": ["8087695B", "809DE9AB"],
+      "source_proof_status": "D1_XUR_VS_24392DBD_FOUR_INFLUENCE_DQ_EXACT",
+      "handler": "tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py",
+      "current_scope_material_count": 14,
+      "semantic_class": "four_influence_dual_quaternion_skinning",
+      "frontier": "fetch-shader weight/source encoding remains independently gated"
+    },
+    {
+      "gcn_sha256": "a5ad940fbf21746563f6585b889ac91b4220c94a3559e768028c894454bcdc12",
+      "stage": "vs",
+      "shader_headers": ["8087695C", "809DF743", "80A08C19"],
+      "source_proof_status": "D1_XUR_VS_A5AD940F_DATAFLOW_SEMANTICS_EXACT",
+      "handler": "tools/d1_xur_vs_8087695c_family_semantic_proof.py",
+      "current_scope_material_count": 31,
+      "semantic_class": "single_palette_dual_quaternion_transform",
+      "frontier": "fetch-shader source layout remains independently gated"
+    },
+    {
+      "gcn_sha256": "b045462d7896e5c5012e8587076f6c669455b35009c197cd1c50d4e7529a1ab6",
+      "stage": "vs",
+      "shader_headers": ["80876960"],
+      "source_proof_status": "D1_XUR_VS_80876960_TWO_INFLUENCE_DQ_EXACT",
+      "handler": "tools/d1_xur_vs_80876960_semantic_proof.py",
+      "current_scope_material_count": 3,
+      "semantic_class": "two_influence_dual_quaternion_skinning",
+      "frontier": "fetch-shader source layout remains independently gated"
+    }
+  ],
+  "reuse_contract": {
+    "safe_match": "stage + exact bounded native GCN SHA-256",
+    "safe_reuse": "instruction-level native shader equations/semantic handler only; bind the future asset own exact material textures, constants, TFX, samplers and runtime/global values",
+    "requires_revalidation": "fetch-shader byte layout, texture descriptor completion, TFX/global producers, render/blend/depth/raster state, material permutation selection, portable renderer implementation",
+    "forbidden_shortcuts": [
+      "matching only serialized shader TagHash",
+      "matching appearance",
+      "matching character/NPC class",
+      "assuming Xur literal textures/constants apply to another asset"
+    ]
+  },
+  "source_checkpoint": {
+    "xur_wave4_status": "D1_XUR_NATIVE_GCN_DATAFLOW_WAVE4_EXACT",
+    "closed_gcn_program_count": 9,
+    "wave4_run": 34153013780,
+    "wave4_artifact": 10030000356,
+    "wave4_artifact_sha256": "5533e0faab09cb23ae9d4f9c79d41d4e60a06fc4578bb6d50be27a2a5044283"
+  },
+  "violations": [],
+  "entry_count": 9,
+  "pixel_shader_entry_count": 6,
+  "vertex_shader_entry_count": 3
+}
