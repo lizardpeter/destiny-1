@@ -1,4 +1,4 @@
-name: D1 Tower spawned 72-bone actor name resolve
+name: D1 Tower complete spawned actor name resolve
 
 on:
   workflow_dispatch:
@@ -43,13 +43,18 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Resolve source-owned actor name hashes
+      - name: Resolve every source-owned specific and generic actor name hash
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_remote_global_stringhash_resolve.py \
-            --string-hash 3DD61977 --string-hash 89888FA6 \
-            --string-hash ABA2ECB5 --string-hash EF633EC9 \
+            --string-hash F601D671 --string-hash 8413796D --string-hash E95D67D8 --string-hash 5AF97FF9 \
+            --string-hash DE27E1CA --string-hash 3DD61977 --string-hash A9952906 --string-hash FC4385EE \
+            --string-hash 036C43FB --string-hash CE37E96D --string-hash F6A97A50 --string-hash A6EC62CF \
+            --string-hash 46C55854 --string-hash 89888FA6 --string-hash A9384843 --string-hash 4B3F3899 \
+            --string-hash 8669EFB2 \
+            --string-hash 3C86BCB5 --string-hash 4AC0FB33 --string-hash ABA2ECB5 --string-hash 6EF37339 \
+            --string-hash 3E9D984C --string-hash EF633EC9 \
             --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
             --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
             --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
@@ -62,7 +67,8 @@ jobs:
           print('CONTAINERS',d['global_container_count'])
           print('UNRESOLVED',d['unresolved_target_hashes'])
           for h,rows in d['resolved'].items():
-              print(h,[x.get('string') for x in rows])
+              vals=[x.get('string') for x in rows]
+              if vals: print(h,vals)
           PY
           sha256sum out/* > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
