@@ -1,0 +1,196 @@
+name: D1 Tower spawned actor auxiliary exact textured models
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-auxiliary-textured-models.yml'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
+      - 'tools/d1_close_world_texture_dependencies.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  AUXILIARY_VISUAL_ARTIFACT_ID: '10002147751'
+  AUXILIARY_VISUAL_ARTIFACT_ZIP_SHA256: '77be4fb0278353e42bb3cfa61e5a1d019b9063e06206feedd9d64e54c4e1dfc2'
+
+jobs:
+  texture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact auxiliary visual checkpoint and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder
+          mkdir -p input/catalog input/aux runtime corpus texture_expanded texture_work textures roles reports out/models out/reports
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUXILIARY_VISUAL_ARTIFACT_ID}/zip" -o input/aux.zip
+          echo "${AUXILIARY_VISUAL_ARTIFACT_ZIP_SHA256}  input/aux.zip" | sha256sum --check --strict
+          unzip -q input/aux.zip -d input/aux
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+          python - <<'PY'
+          import glob,json
+          d=json.load(open('input/aux/tower_spawned_actor_auxiliary_model_export.json'))
+          assert d['status']=='D1_WORLD_ARTICULATED_MODEL_SET_COMPLETE',d
+          assert d['requested_model_count']==d['exported_model_count']==14,d
+          assert d['geometry_count']==18,d
+          assert d['active_material_count']==14,d
+          glbs=sorted(glob.glob('input/aux/*.glb')); assert len(glbs)==14,glbs
+          mats=sorted(d['active_materials']); assert len(mats)==14,mats
+          json.dump({'materials':{h:{'visual':True} for h in mats}},open('reports/auxiliary_material_selector.json','w'),indent=2)
+          def pid(h): return f'{((int(h,16)-0x80800000)>>13)&0x7ff:04x}'
+          ids=sorted({pid(h) for h in mats})
+          open('reports/required_material_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          print('AUX_SOURCE_ACCEPTED','models',len(glbs),'materials',len(mats),'package_ids',ids)
+          PY
+
+      - name: Recover exact auxiliary material package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/required_material_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/auxiliary_texture_material_corpus.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/auxiliary_texture_material_corpus.json'))
+          assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED',d
+          print('AUX_MATERIAL_CORPUS',d['required_family_count'],'families',d['member_count'],'members')
+          PY
+
+      - name: Recursively close all auxiliary material texture dependencies
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
+            --runtime runtime \
+            --visual-json reports/auxiliary_material_selector.json \
+            --package-list reports/packages.txt \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --expansion-dir texture_expanded \
+            --work-dir texture_work \
+            --out textures \
+            --report reports/auxiliary_texture_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/auxiliary_texture_dependency_closure.json'))
+          m=json.load(open('textures/material_texture_manifest.json'))
+          assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['stop_reason']=='closed_zero_missing_texture_packages',c
+          assert m['visible_material_count']==14,m
+          assert m['material_decode_errors']==0,m
+          assert m['texture_errors']==0,m
+          assert m['decoded_texture_tags']==m['unique_texture_tags'],m
+          assert not m['missing_texture_package_ids'],m
+          print('AUX_TEXTURES_CLOSED','materials',m['visible_material_count'],'textures',m['decoded_texture_tags'],'png_outputs',m['png_outputs'],'recovered_packages',c['recovered_package_ids'])
+          PY
+
+      - name: Build evidence-scoped auxiliary texture role inventory
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json \
+            -o roles/auxiliary_texture_role_inventory.json
+          python - <<'PY'
+          import json
+          d=json.load(open('roles/auxiliary_texture_role_inventory.json'))
+          assert d['status']=='D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED',d
+          assert d['material_count']==14,d
+          print('AUX_ROLE_INVENTORY','materials',d['material_count'],'pixel_shaders',d['pixel_shader_count'],'base',d['preview_base_coverage'],'normal',d['preview_normal_coverage'])
+          PY
+
+      - name: Bind exact native shader resources to all 14 auxiliary GLBs
+        run: |
+          set -euo pipefail
+          for p in input/aux/*.glb; do
+            base="$(basename "$p" .glb)"
+            python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+              --input-glb "$p" \
+              --manifest textures/material_texture_manifest.json \
+              --roles roles/auxiliary_texture_role_inventory.json \
+              --texture-dir textures/textures \
+              --include-medium-base --bind-normal-candidates \
+              --out "out/models/${base}_TEXTURED.glb" \
+              --report "out/reports/${base}_TEXTURE_BIND.json"
+          done
+          python - <<'PY'
+          import glob,json,os
+          fs=sorted(glob.glob('out/models/*_TEXTURED.glb'))
+          rs=sorted(glob.glob('out/reports/*_TEXTURE_BIND.json'))
+          assert len(fs)==14,fs
+          assert len(rs)==14,rs
+          totals={'native_textures':0,'vs_edges':0,'ps_edges':0,'preview_base':0,'preview_normal':0}
+          for p in rs:
+              d=json.load(open(p))
+              assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+              assert d['base_counts']['meshes']==d['final_counts']['meshes'],d
+              assert d['base_counts']['nodes']==d['final_counts']['nodes'],d
+              assert d['base_counts']['accessors']==d['final_counts']['accessors'],d
+              totals['native_textures']+=d['exact_source_texture_count']
+              totals['vs_edges']+=d['exact_vs_binding_edge_count']
+              totals['ps_edges']+=d['exact_ps_binding_edge_count']
+              totals['preview_base']+=d['portable_base_bound_material_count']
+              totals['preview_normal']+=d['portable_normal_bound_material_count']
+              print('AUX_TEXTURED',os.path.basename(d['output_glb']),'materials',d['material_count'],'native_textures',d['exact_source_texture_count'],'VS',d['exact_vs_binding_edge_count'],'PS',d['exact_ps_binding_edge_count'],'base',d['portable_base_bound_material_count'],'normal',d['portable_normal_bound_material_count'])
+          summary={
+            'schema_version':1,
+            'status':'D1_TOWER_SPAWNED_ACTOR_AUXILIARY_TEXTURED_CHECKPOINT',
+            'model_count':14,
+            'exact_material_count':14,
+            'global_unique_texture_count':json.load(open('textures/material_texture_manifest.json'))['unique_texture_tags'],
+            **totals,
+          }
+          json.dump(summary,open('out/reports/TOWER_SPAWNED_ACTOR_AUXILIARY_TEXTURED_SUMMARY.json','w'),indent=2)
+          print('AUX_TEXTURED_COMPLETE',summary)
+          PY
+
+      - name: Preserve exact manifests and hashes
+        run: |
+          set -euo pipefail
+          cp reports/auxiliary_material_selector.json out/reports/
+          cp reports/auxiliary_texture_material_corpus.json out/reports/
+          cp reports/auxiliary_texture_dependency_closure.json out/reports/
+          cp roles/auxiliary_texture_role_inventory.json out/reports/
+          cp textures/material_texture_manifest.json out/reports/
+          cp input/aux/tower_spawned_actor_auxiliary_visual_plan.json out/reports/
+          cp input/aux/tower_spawned_actor_auxiliary_material_bindings.json out/reports/
+          cp input/aux/tower_spawned_actor_auxiliary_model_export.json out/reports/
+          sha256sum out/models/* out/reports/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-AUXILIARY-EXACT-TEXTURED-MODELS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
