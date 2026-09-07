@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-common-layer-exact-textures.yml'
       - 'tools/d1_gltf_bind_exact_shader_textures.py'
+      - 'tools/d1_gltf_apply_80ca0b97_card_composition_preview.py'
       - 'tools/d1_world_material_texture_export.py'
       - 'tools/d1_world_texture_role_inventory.py'
       - 'tools/d1_shader_texture_roles.py'
@@ -144,7 +145,29 @@ jobs:
           print('COMMON_GLTF_EXACT_RESOURCES',d['final_counts'])
           PY
 
-      - name: Merge onto exact ten-cell baked base and require 588 resources
+      - name: Apply source-constrained 80CA0B97 card composition preview
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_apply_80ca0b97_card_composition_preview.py \
+            --input-glb common/D1_TOWER_COMMON_LAYER_EXACT_TEXTURE_RESOURCES.glb \
+            --manifest textures/material_texture_manifest.json \
+            --texture-dir textures/textures \
+            --out common/D1_TOWER_COMMON_LAYER_EXACT_TEXTURE_RESOURCES_CARD_FIXED.glb \
+            --report reports/common_layer_80ca0b97_card_composition.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_80ca0b97_card_composition.json'))
+          assert d['status']=='D1_80CA0B97_CARD_SOURCE_CONSTRAINED_PREVIEW_BUILT',d
+          assert d['source_bin_exact_prefix'] is True,d
+          assert [x['material'] for x in d['materials']]==['80B9E8C2','80B9E8C3'],d['materials']
+          assert d['original_counts']['images']==51 and d['original_counts']['textures']==51,d['original_counts']
+          assert d['final_counts']['images']==53 and d['final_counts']['textures']==53,d['final_counts']
+          assert d['final_counts']['materials']==99 and d['final_counts']['meshes']==163 and d['final_counts']['nodes']==709,d['final_counts']
+          assert d['exact_native_contract']['blend_state_index']==8,d['exact_native_contract']
+          print('CARD_COMPOSITION_FIXED',d['output_sha256'],d['final_counts'])
+          PY
+
+      - name: Merge card-corrected common layer onto exact ten-cell baked base
         run: |
           set -euo pipefail
           curl --fail --location --retry 4 --retry-delay 3 \
@@ -154,21 +177,22 @@ jobs:
 
           python tools/d1_gltf_layer_merge.py \
             --base combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
-            --layer common_decal=common/D1_TOWER_COMMON_LAYER_EXACT_TEXTURE_RESOURCES.glb \
-            --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb \
-            --report reports/combined_exact_texture_gltf.json
+            --layer common_decal=common/D1_TOWER_COMMON_LAYER_EXACT_TEXTURE_RESOURCES_CARD_FIXED.glb \
+            --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb \
+            --report reports/combined_card_fixed_gltf.json
 
           python - <<'PY'
           import json
-          g=json.load(open('reports/combined_exact_texture_gltf.json'))
+          g=json.load(open('reports/combined_card_fixed_gltf.json'))
           p=json.load(open('reports/common_layer_exact_texture_resources.json'))
+          card=json.load(open('reports/common_layer_80ca0b97_card_composition.json'))
           assert g['base_bin_exact_prefix'] and all(x['exact'] for x in g['base_json_exact_prefixes'].values()),g
           b=g['base_counts'];f=g['final_counts']
           assert (b['images'],b['textures'],b['materials'],b['meshes'],b['nodes'])==(537,537,400,2071,11728),b
-          assert (f['images'],f['textures'],f['materials'],f['meshes'],f['nodes'])==(588,588,499,2234,12438),f
+          assert (f['images'],f['textures'],f['materials'],f['meshes'],f['nodes'])==(590,590,499,2234,12438),f
           out={
-            'schema_version':3,
-            'status':'D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES',
+            'schema_version':4,
+            'status':'D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED',
             'logical_source_records':12055,
             'baked_placements':11728,
             'common_source_records':327,
@@ -178,31 +202,36 @@ jobs:
             'common_pixel_shader_families':65,
             'common_exact_source_textures':p['exact_source_texture_count'],
             'common_derived_portable_normals':p['derived_portable_normal_count'],
-            'common_portable_base_materials':p['portable_base_bound_material_count'],
-            'common_portable_normal_materials':p['portable_normal_bound_material_count'],
+            'card_derived_portable_alpha_proxies':2,
+            'card_model':'80CA0B97',
+            'card_materials':['80B9E8C2','80B9E8C3'],
+            'card_exact_blend_state_index':card['exact_native_contract']['blend_state_index'],
+            'card_exact_blend_equation':card['exact_native_contract']['blend_equation'],
+            'card_proxy_status':card['portable_proxy_contract']['status'],
             'base_images':b['images'],'combined_images':f['images'],
             'base_textures':b['textures'],'combined_textures':f['textures'],
             'combined_meshes':f['meshes'],'combined_materials':f['materials'],'combined_nodes':f['nodes'],
             'bytes':g['output_bytes'],'sha256':g['output_sha256'],
-            'texture_resource_policy':'All 50 exact common-layer shader texture tags are embedded once and retain native pixel-shader/t# metadata. One additional RGB normal is explicitly derived from the selected BC5 preview normal. Non-PBR mask/scalar/cubemap/native resources are preserved rather than discarded.',
-            'regeneration_policy':'Everything in this GLB is regenerated from the current package corpus, source-driven common model census, exact material texture manifest, and checked-in shader role table. No expired GLB artifact is an input.'
+            'texture_resource_policy':'All 50 exact common-layer shader texture tags are embedded once and retain native pixel-shader/t# metadata. One RGB normal plus two 80CA0B97 card alpha preview textures are explicitly derived portable resources. The card proxies use only the exact BC4 t0/t1 source product and are marked non-native-equivalent because dynamic TFX/global terms remain withheld.',
+            'regeneration_policy':'Everything in this GLB is regenerated from the current package corpus, source-driven common model census, exact material texture manifest, checked-in shader role table, and source-constrained 80CA0B97 card adapter. No expired GLB artifact is an input.'
           }
-          json.dump(out,open('reports/FINAL_COMMON_EXACT_TEXTURE_RESOURCES.json','w'),indent=2)
+          json.dump(out,open('reports/FINAL_COMMON_CARD_FIXED.json','w'),indent=2)
           print(json.dumps(out,indent=2))
           PY
 
-      - name: Publish reproducible 588-texture Tower checkpoint
+      - name: Publish reproducible card-corrected Tower checkpoint
         run: |
           set -euo pipefail
-          tag=d1-tower-baked-common-textured-r6-exact-resources
+          tag=d1-tower-baked-common-textured-r7-card-composition
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
-              --title 'D1 Tower baked + common textured r6 exact resources' \
-              --notes 'Reproducible Tower static/common visual checkpoint. Preserves the exact 537-texture ten-cell baked base and embeds all 50 exact common-layer shader texture resources once, plus one explicitly derived portable RGB normal. Native material pixel-shader/t# binding metadata is retained even when a resource has no direct glTF PBR slot. Expected combined topology: 12,438 nodes, 2,234 meshes, 499 materials, 588 textures/images.'
+              --title 'D1 Tower baked + common textured r7 card composition' \
+              --notes 'Reproducible Tower static/common visual checkpoint. Preserves the exact ten-cell baked base, all 50 exact common-layer shader texture resources, and adds the source-constrained 80CA0B97 card composition adapter. Materials 80B9E8C2/80B9E8C3 retain their exact native blend-state-8 contract while Blender receives two explicitly marked alpha proxies derived only from exact BC4 textures 80B9F76D and 80B9E867. Expected combined topology: 12,438 nodes, 2,234 meshes, 499 materials, 590 textures/images.'
           fi
           gh release upload "$tag" \
-            combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_EXACT_RESOURCES.glb \
-            reports/FINAL_COMMON_EXACT_TEXTURE_RESOURCES.json \
+            combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb \
+            reports/FINAL_COMMON_CARD_FIXED.json \
+            reports/common_layer_80ca0b97_card_composition.json \
             reports/common_layer_exact_texture_resources.json --clobber
 
       - uses: actions/upload-artifact@v4
