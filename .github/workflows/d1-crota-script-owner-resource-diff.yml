@@ -1,0 +1,145 @@
+name: D1 Crota scripted owner EntityResource diff
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-script-owner-resource-diff.yml'
+      - 'tools/d1_remote_catalog_entity_resource_probe.py'
+      - 'tools/d1_remote_exact_tag_probe.py'
+      - 'tools/d1_remote_catalog_backlinks.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  diff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog and runtime
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl --fail --location --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Decode both exact scripted-table owner EntityResources
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_catalog_entity_resource_probe.py \
+            --tag-hash 0x8108E39C --tag-hash 0x8108E421 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/CROTA_SCRIPT_OWNER_ENTITY_RESOURCES.json | tee out/resources_stdout.txt
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 0x8108E39C --tag-hash 0x8108E421 --tag-hash 0x8108E300 --tag-hash 0x8108E361 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --min-string 4 \
+            -o out/CROTA_SCRIPT_OWNER_EXACT_TAGS.json | tee out/tags_stdout.txt
+
+      - name: Produce structural and byte-level owner diff
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('out/CROTA_SCRIPT_OWNER_ENTITY_RESOURCES.json'))
+          t=json.load(open('out/CROTA_SCRIPT_OWNER_EXACT_TAGS.json'))
+          assert not r['violations'],r['violations']
+          assert t['violation_count']==0,t['violations']
+          em={x['tag_hash']:x for x in r['entries']}
+          tm={x['tag_hash']:x for x in t['entries']}
+          expected={'8108E39C':'8108E300','8108E421':'8108E361'}
+          rows=[]
+          for h,d912 in expected.items():
+              e=em[h]; er=e['entity_resource']
+              assert e['entry']['reference']=='80800861',e['entry']
+              assert er['semantic_role']=='scripted_entity_table_owner',er
+              assert er['scripted_entity_table_tag_hash']==d912,(h,er)
+              rows.append({
+                'owner':h,'owner_sha256':e['payload_sha256'],'size':e['payload_size'],
+                'unk10_class':(er.get('unk10') or {}).get('class_hash'),
+                'unk18_class':(er.get('unk18') or {}).get('class_hash'),
+                'scripted_entity_table':d912,
+                'aligned_resolved_tags':e['aligned_resolved_tag_matches'],
+                'prefix128':e['prefix128'],'suffix128':e['suffix128'],
+                'printable_strings':tm[h]['printable_strings'],
+              })
+              print('OWNER',h,'TABLE',d912,'SIZE',e['payload_size'],'SHA',e['payload_sha256'])
+              print(' CLASSES',rows[-1]['unk10_class'],rows[-1]['unk18_class'])
+              print(' STRINGS',[(hex(x['offset']),x['string']) for x in rows[-1]['printable_strings']])
+              print(' REFS',[(hex(x['offset']),x['tag_hash'],x['reference']) for x in e['aligned_resolved_tag_matches']])
+          # Exact tag probe gives full structural runs but not payload bytes; compare all reported
+          # resolved refs/strings and the parser-owned prefix/suffix without pretending unknown bytes have semantics.
+          a,b=rows
+          diff={
+            'same_size':a['size']==b['size'],
+            'same_unk10_class':a['unk10_class']==b['unk10_class'],
+            'same_unk18_class':a['unk18_class']==b['unk18_class'],
+            'same_prefix128':a['prefix128']==b['prefix128'],
+            'same_suffix128':a['suffix128']==b['suffix128'],
+            'a_unique_resolved_refs':sorted(set((x['offset'],x['tag_hash'],x['reference']) for x in a['aligned_resolved_tags'])-set((x['offset'],x['tag_hash'],x['reference']) for x in b['aligned_resolved_tags'])),
+            'b_unique_resolved_refs':sorted(set((x['offset'],x['tag_hash'],x['reference']) for x in b['aligned_resolved_tags'])-set((x['offset'],x['tag_hash'],x['reference']) for x in a['aligned_resolved_tags'])),
+          }
+          out={
+            'schema':'d1_crota_script_owner_resource_diff/v1',
+            'status':'D1_CROTA_SCRIPT_OWNER_RESOURCE_DIFF_EXACT',
+            'dark_lens_sq_crota':rows[0],
+            'sq_ultra_knight':rows[1],
+            'structural_diff':diff,
+            'policy':'Both owners are decoded only through the pinned 808007BC -> 808005A7 +0x68 -> 808012D9 EntityResource schema. Differences are reported structurally and are not assigned semantics unless the pinned source provides them.'
+          }
+          open('out/CROTA_SCRIPT_OWNER_RESOURCE_DIFF.json','w').write(json.dumps(out,indent=2)+'\n')
+          print('DIFF',json.dumps(diff,indent=2))
+          PY
+
+      - name: Trace exact owner and table backlinks across raid package families
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_catalog_backlinks.py \
+            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x0450 --scan-package-id 0x0458 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --target 0x8108E39C --target 0x8108E421 --target 0x8108E300 --target 0x8108E361 \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime --max-entry-size 8000000 \
+            -o out/CROTA_SCRIPT_OWNER_BACKLINKS.json | tee out/backlinks_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SCRIPT_OWNER_BACKLINKS.json'))
+          assert d['error_count']==0,d['errors']
+          print('COUNTS',d['occurrences_by_target'])
+          print('CLASSES',d['hit_sources_by_reference'])
+          for x in d['hits']: print('BACKLINK',x['package_id'],x['source_tag_hash'],x['reference'],x['targets'])
+          PY
+
+      - name: Checksum and upload
+        run: |
+          set -euo pipefail
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-SCRIPT-OWNER-RESOURCE-DIFF
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
