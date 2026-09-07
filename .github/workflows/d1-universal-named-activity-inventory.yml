@@ -1,0 +1,70 @@
+name: D1 universal named activity inventory
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-universal-named-activity-inventory.yml'
+      - 'tools/d1_remote_named_activity_inventory.py'
+      - 'tools/d1_world_activity_map_root_census.py'
+      - 'tools/d1_pkg_probe.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal member catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Inventory all current named activity roots
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_named_activity_inventory.py
+          python tools/d1_remote_named_activity_inventory.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            -o out/D1_UNIVERSAL_NAMED_ACTIVITY_INVENTORY.json \
+            | tee out/summary.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_UNIVERSAL_NAMED_ACTIVITY_INVENTORY.json'))
+          assert d['status']=='D1_REMOTE_NAMED_ACTIVITY_INVENTORY_EXACT',d['violations'][:20]
+          assert d['package_family_count']==337,d['package_family_count']
+          assert d['package_scan_count']==337,d['package_scan_count']
+          assert d['activity_root_count']==d['map_activity_root_count']+d['scenario_activity_root_count']
+          assert not d['violations'],d['violations']
+          assert any(x['tag_hash']=='8108E004' for x in d['scenario_activity_roots'])
+          PY
+          sha256sum out/D1_UNIVERSAL_NAMED_ACTIVITY_INVENTORY.json out/summary.txt > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-UNIVERSAL-NAMED-ACTIVITY-INVENTORY
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
