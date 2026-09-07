@@ -1,0 +1,147 @@
+name: D1 generic activity portable visual canary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-generic-activity-portable-visual-canary.yml'
+      - 'tools/d1_activity_selected_material_plan.py'
+      - 'tools/d1_remote_activity_material_dependency_closure.py'
+      - 'tools/d1_remote_activity_texture_export.py'
+      - 'tools/d1_material_decode.py'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_dds_to_png.py'
+      - 'tools/d1_filehash.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  ACTIVITY_SOURCE_ARTIFACT_ID: '10003228390'
+  ACTIVITY_SOURCE_ARTIFACT_ZIP_SHA256: '7db926355c0aac4e53d0f30e06af7b0799855bdc83048c12b37fe61020067963'
+
+jobs:
+  anomaly-portable-visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install pinned portable image dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          python - <<'PY'
+          import PIL, texture2ddecoder
+          assert PIL.__version__ == '11.3.0', PIL.__version__
+          print('PILLOW',PIL.__version__,'TEXTURE2DDECODER',getattr(texture2ddecoder,'__version__','1.0.6'))
+          PY
+
+      - name: Recover verified catalog and generic activity closure artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/activity runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ACTIVITY_SOURCE_ARTIFACT_ID}/zip" -o input/activity.zip
+          echo "${ACTIVITY_SOURCE_ARTIFACT_ZIP_SHA256}  input/activity.zip" | sha256sum --check --strict
+          unzip -q input/activity.zip -d input/activity
+          test -f input/activity/anomaly_pvp/activity_model_visual_dependency_closure.json
+          test -f input/activity/anomaly_pvp/activity_model_material_bindings.json
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build exact selected Material plan from generic activity closure
+        run: |
+          set -euo pipefail
+          python tools/d1_activity_selected_material_plan.py \
+            --visual-closure input/activity/anomaly_pvp/activity_model_visual_dependency_closure.json \
+            --material-bindings input/activity/anomaly_pvp/activity_model_material_bindings.json \
+            -o out/activity_selected_material_plan.json \
+            | tee out/selected_material_plan.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/activity_selected_material_plan.json'))
+          assert d['status']=='D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE',d
+          assert not d['violations'],d['violations']
+          assert d['unique_material_count']==32,d['unique_material_count']
+          assert not d['unresolved_external_variant_models'],d['unresolved_external_variant_models']
+          print('GENERIC_SELECTED_MATERIAL_PLAN',d['unique_material_count'])
+          PY
+
+      - name: Close exact Material shader texture dependencies
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_activity_material_dependency_closure.py tools/d1_remote_activity_texture_export.py
+          python tools/d1_filehash.py
+          python tools/d1_remote_activity_material_dependency_closure.py \
+            --selected-material-plan out/activity_selected_material_plan.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime \
+            -o out/activity_material_dependency_closure.json \
+            | tee out/material_dependency_closure.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/activity_material_dependency_closure.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',d['violations'][:20]
+          assert not d['violations'],d['violations'][:20]
+          assert d['material_count']==32,d['material_count']
+          assert d['unique_texture_count']==48,d['unique_texture_count']
+          assert d['unique_shader_count']==35,d['unique_shader_count']
+          assert d['unique_vector4_container_count']==16,d['unique_vector4_container_count']
+          assert d['typed_edge_count']==394,d['typed_edge_count']
+          print('GENERIC_MATERIAL_DEPENDENCY_CLOSURE',d['material_count'],d['unique_texture_count'],d['unique_shader_count'],d['typed_edge_count'])
+          PY
+
+      - name: Materialize exact portable textures
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure out/activity_material_dependency_closure.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --out-dir out/texture_export \
+            | tee out/texture_export.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/texture_export/texture_export_manifest.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',d['violations'][:20]
+          assert not d['violations'],d['violations'][:20]
+          assert d['texture_count']==48,d['texture_count']
+          assert d['dds_file_count']==58,d['dds_file_count']
+          assert d['png_file_count']==58,d['png_file_count']
+          print('GENERIC_PORTABLE_TEXTURE_EXPORT',d['texture_count'],d['dds_file_count'],d['png_file_count'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GENERIC-ACTIVITY-ANOMALY-PORTABLE-VISUAL
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
