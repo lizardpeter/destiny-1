@@ -35,6 +35,7 @@ jobs:
       - name: Probe scripted Xur owners
         run: |
           set -euo pipefail
+          python -m py_compile tools/d1_remote_xur_scripted_owner_switch_probe.py
           python tools/d1_remote_xur_scripted_owner_switch_probe.py \
             --owner 80C7A251 --owner 80C7A441 --owner 80C7A58F --owner 80C7A719 --owner 80C7AC71 --owner 80C7AC81 --owner 80C7ACB9 --owner 80C7AD18 \
             --owner 80C88185 --owner 80C8831B --owner 80C88591 --owner 80C88888 \
@@ -43,12 +44,13 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/D1_XUR_SCRIPTED_OWNER_SWITCH_PROBE.json'))
-          assert d['schema']=='d1_remote_xur_scripted_owner_switch_probe/v1'
+          assert d['schema']=='d1_remote_xur_scripted_owner_switch_probe/v2'
           assert d['status']=='D1_XUR_SCRIPTED_OWNER_SWITCH_FRONTIER'
           assert not d['violations']
           assert sum(r.get('is_source_pinned_SD912_scripted_entity_table',False) for r in d['rows'])==10
+          assert sum(len(r.get('placement_contexts',[])) for r in d['rows'])==62
           assert all(v is False for v in d['gates'].values())
-          print('XUR_SCRIPTED_OWNER_SWITCH_PROBE_ACCEPTED')
+          print('XUR_SCRIPTED_OWNER_SWITCH_PROBE_V2_ACCEPTED')
           PY
       - run: find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
