@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Fail-closed semantic probe for Xur switch-bearing direct EntityResources.
 
-This probe exists specifically to distinguish serialized switch definition/permutation
-banks from a genuine instantiated selector/configuration consumer.  It never promotes
-raw key/value co-occurrence, descriptor adjacency, or default-member proximity to live
-state.
+This probe distinguishes serialized switch definition/permutation banks from a genuine
+instantiated selector/configuration consumer. It never promotes raw key/value
+co-occurrence, descriptor adjacency, default-member proximity, or an untyped FileHash
+to live state.
 
-The two current targets are:
+Current targets:
 - 80C88CE2: source-closed model-owner/static permutation definition resource.
-- 80C885CC: direct Xur EntityResource carrying exact 26170C92 key/value pairs and still
-  requiring semantic closure.
+- 80C885CC: direct Xur EntityResource carrying 26170C92 structures whose semantic
+  ownership is being closed.
 """
 from __future__ import annotations
 
@@ -45,7 +45,6 @@ VALUES = {
     "6EECD523": ["4B375162", "6CC50CB8", "871AC0EA"],
 }
 MATERIALS = ["80C885E6", "80C885E7", "80C885E8", "80C885E9", "80C885EA"]
-NULLS = {"00000000", "FFFFFFFF"}
 
 
 def norm(x: str) -> str:
@@ -67,10 +66,25 @@ def offsets(blob: bytes, needle: bytes) -> list[int]:
         start = off + 1
 
 
-def context(blob: bytes, off: int, n: int = 24) -> str:
+def context(blob: bytes, off: int, n: int = 32) -> str:
     lo = max(0, off - n)
     hi = min(len(blob), off + 8 + n)
     return blob[lo:hi].hex()
+
+
+def u32_window(blob: bytes, off: int, radius_words: int = 10) -> list[dict]:
+    lo = max(0, (off // 4 - radius_words) * 4)
+    hi = min(len(blob) - (len(blob) % 4), (off // 4 + radius_words + 2) * 4)
+    out = []
+    for p in range(lo, hi, 4):
+        v = struct.unpack_from("<I", blob, p)[0]
+        row = {"offset": p, "offset_hex": f"0x{p:X}", "u32": f"{v:08X}"}
+        if 0x80800000 <= v <= 0x817FFFFF:
+            row["current_filehash_range"] = True
+        if p == off:
+            row["target"] = True
+        out.append(row)
+    return out
 
 
 def pointer_summary(p: dict) -> dict:
@@ -85,14 +99,21 @@ def pointer_summary(p: dict) -> dict:
     }
 
 
-def classify_hit(off: int, er: dict) -> dict:
+def classify_hit(blob: bytes, off: int, er: dict) -> dict:
     regions = []
     for name in ("unk08", "unk10", "unk18"):
         p = er.get(name) or {}
         t = p.get("target_offset")
         if isinstance(t, int) and off >= t:
             regions.append({"pointer": name, "relative_to_target": off - t})
-    return {"offset": off, "offset_hex": f"0x{off:X}", "aligned4": off % 4 == 0, "pointer_regions": regions}
+    return {
+        "offset": off,
+        "offset_hex": f"0x{off:X}",
+        "aligned4": off % 4 == 0,
+        "pointer_regions": regions,
+        "context_hex": context(blob, off),
+        "u32_window": u32_window(blob, off),
+    }
 
 
 def aligned_filehashes(blob: bytes) -> list[dict]:
@@ -140,7 +161,7 @@ def main() -> int:
             pair_hits = []
             material_hits = {}
             for k in KEYS:
-                hs = [classify_hit(o, er) for o in offsets(blob, le(k))]
+                hs = [classify_hit(blob, o, er) for o in offsets(blob, le(k))]
                 if hs:
                     key_hits[k] = hs
                 for v in VALUES[k]:
@@ -148,11 +169,10 @@ def main() -> int:
                         pair_hits.append({
                             "key": k,
                             "value": v,
-                            **classify_hit(o, er),
-                            "context_hex": context(blob, o),
+                            **classify_hit(blob, o, er),
                         })
             for m in MATERIALS:
-                hs = [classify_hit(o, er) for o in offsets(blob, le(m))]
+                hs = [classify_hit(blob, o, er) for o in offsets(blob, le(m))]
                 if hs:
                     material_hits[m] = hs
 
@@ -188,6 +208,7 @@ def main() -> int:
         candidate_summary = {
             "tag_hash": "80C885CC",
             "semantic_role": cand.get("semantic_role"),
+            "unk08_class": (cand.get("unk08") or {}).get("class_hash"),
             "unk10_class": (cand.get("unk10") or {}).get("class_hash"),
             "unk18_class": (cand.get("unk18") or {}).get("class_hash"),
             "key_hit_counts": {k: len(v) for k, v in cand.get("key_hits", {}).items()},
@@ -203,7 +224,7 @@ def main() -> int:
         }
 
     report = {
-        "schema": "d1_remote_xur_switch_resource_semantic_probe/v1",
+        "schema": "d1_remote_xur_switch_resource_semantic_probe/v2",
         "status": "D1_XUR_SWITCH_RESOURCE_SEMANTIC_FRONTIER" if not violations else "D1_XUR_SWITCH_RESOURCE_SEMANTIC_PROBE_VIOLATIONS",
         "resources": rows,
         "candidate_80C885CC": candidate_summary,
@@ -214,7 +235,7 @@ def main() -> int:
         },
         "violations": violations,
         "policy": (
-            "Raw key/value/material occurrence, adjacency, and null/default descriptor proximity are discovery evidence only. "
+            "Raw key/value/material occurrence, adjacency, null/default descriptor proximity, and untyped FileHash equality are discovery evidence only. "
             "A gate may pass only after the owning resource schema establishes selector/configuration consumer semantics and the retail evaluation path is closed."
         ),
     }
