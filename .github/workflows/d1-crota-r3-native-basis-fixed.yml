@@ -1,0 +1,106 @@
+name: D1 Crota r3 native-basis fixed
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r3-native-basis-fixed.yml'
+      - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
+      - 'tools/d1_gltf_single_skin_geometry_alignment_probe.py'
+      - 'tools/d1_gltf_restore_native_tiger_skin_basis.py'
+      - 'tools/d1_gltf_restore_native_tiger_animation_basis.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_ARTIFACT_ID: '10027962707'
+      INPUT_ARTIFACT_ZIP_SHA256: 'fa10904ea93465868eb4fbd3f8631aee7838af9e1e5c66ea84670c0980bb6a90'
+      INPUT_GLB_SHA256: '0a587d7fa80cd3dacc5773aebdcbed678044d90e5f6b19cbbbdffaea4a044100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact r2 Crota checkpoint
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${INPUT_ARTIFACT_ID}/zip" -o input/r2.zip
+          echo "$INPUT_ARTIFACT_ZIP_SHA256  input/r2.zip" | sha256sum --check --strict
+          unzip -q input/r2.zip -d input/r2
+          echo "$INPUT_GLB_SHA256  input/r2/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb" | sha256sum --check --strict
+      - name: Prove pre-fix geometry skeleton basis mismatch
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_single_skin_geometry_alignment_probe.py \
+            input/r2/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb \
+            -o out/CROTA_R2_ALIGNMENT_BEFORE.json
+      - name: Restore exact native Tiger basis for skin and all 82 actions
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_restore_native_tiger_skin_animation_basis.py \
+            input/r2/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb \
+            --out out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb \
+            --report out/CROTA_R3_NATIVE_BASIS_REPORT.json
+      - name: Prove post-fix alignment and invariant preservation
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_single_skin_geometry_alignment_probe.py \
+            out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb \
+            -o out/CROTA_R3_ALIGNMENT_AFTER.json
+          python - <<'PY'
+          import json,struct,hashlib,shutil
+          from pathlib import Path
+          before=json.load(open('out/CROTA_R2_ALIGNMENT_BEFORE.json'))
+          after=json.load(open('out/CROTA_R3_ALIGNMENT_AFTER.json'))
+          rep=json.load(open('out/CROTA_R3_NATIVE_BASIS_REPORT.json'))
+          assert rep['status']=='D1_GLTF_NATIVE_TIGER_SKIN_ANIMATION_BASIS_RESTORED',rep
+          assert rep['skin_count']==1 and rep['joint_node_count']==50,rep
+          assert rep['animation_count']==82,rep
+          assert rep['joint_targeted_channel_count']==82*150,rep
+          assert rep['binary_byte_length_unchanged'],rep
+          b=float(before['centroid_distance_median']); a=float(after['centroid_distance_median'])
+          assert a < b*0.20,(a,b,a/b)
+          def gltf_json(p):
+            raw=Path(p).read_bytes(); assert raw[:4]==b'glTF'
+            n,t=struct.unpack_from('<II',raw,12); assert t==0x4e4f534a
+            return json.loads(raw[20:20+n].decode('utf-8').rstrip(' \x00'))
+          old=gltf_json('input/r2/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb')
+          new=gltf_json('out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb')
+          assert len(old.get('meshes',[]))==len(new.get('meshes',[]))==3
+          assert len(old.get('materials',[]))==len(new.get('materials',[]))==2
+          assert len(old.get('skins',[]))==len(new.get('skins',[]))==1
+          assert len(old.get('animations',[]))==len(new.get('animations',[]))==82
+          for oi,ni in zip(old['meshes'],new['meshes']):
+            assert oi==ni
+          checkpoint={
+            'schema':'d1_crota_r3_native_basis_checkpoint/v1',
+            'status':'D1_CROTA_R3_NATIVE_BASIS_FIXED_COMPLETE',
+            'input_sha256':hashlib.sha256(Path('input/r2/CROTA_SON_OF_ORYX_EXACT_RIGGED_ANIMATED.glb').read_bytes()).hexdigest(),
+            'output_sha256':hashlib.sha256(Path('out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb').read_bytes()).hexdigest(),
+            'output_bytes':Path('out/CROTA_SON_OF_ORYX_R3_NATIVE_BASIS_FIXED.glb').stat().st_size,
+            'geometry_meshes':3,'materials':2,'skins':1,'joints':50,'animations':82,
+            'before_alignment_median':b,'after_alignment_median':a,'alignment_ratio':a/b,
+            'source_weights_changed':False,'source_joint_indices_changed':False,'mesh_geometry_changed':False,
+            'fix':'inverse of tiger-animation-parser [x,y,z]->[y,z,x] basis applied to skeleton bind data and every joint animation output'
+          }
+          Path('out/CROTA_R3_CHECKPOINT.json').write_text(json.dumps(checkpoint,indent=2)+'\n')
+          shutil.copytree('input/r2/textures','out/textures',dirs_exist_ok=True)
+          shutil.copy2('input/r2/CROTA_EXACT_MATERIAL_TEXTURE_SUBSET.json','out/CROTA_EXACT_MATERIAL_TEXTURE_SUBSET.json')
+          print(json.dumps(checkpoint,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R3-NATIVE-BASIS-FIXED
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
