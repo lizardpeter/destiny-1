@@ -1,0 +1,171 @@
+name: D1 Crota R8 native-color clean Blender views
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r8-native-color-clean-blender.yml'
+      - 'tools/d1_gltf_crota_r8_native_color_preview.py'
+
+env:
+  R7_ARTIFACT_ID: '10032934547'
+  R7_ZIP_SHA256: '348face537fa34f18e0b6bef69da3dc312106386467657aa76bffefadaf09b37'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact green R7 color-stage checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input/r7 out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${R7_ARTIFACT_ID}/zip" -o input/r7.zip
+          echo "$R7_ZIP_SHA256  input/r7.zip" | sha256sum --check --strict
+          unzip -q input/r7.zip -d input/r7
+          test -f input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_BIND_POSE.glb
+          test -f input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_ANIM_809D9D19.glb
+          test -f input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_FULL_82.glb
+          python - <<'PY'
+          import json
+          d=json.load(open('input/r7/CROTA_R7_CHECKPOINT.json'))
+          assert d['status']=='D1_CROTA_R7_COLOR_SURFACE_PREVIEW_COMPLETE',d
+          assert d['visible_color_range_count']==6 and d['visible_color_triangle_count']==33750,d
+          print('R7_SOURCE_GREEN')
+          PY
+      - name: Build PBR bind-pose preview without false BC4 albedo
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r8_native_color_preview.py \
+            input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_BIND_POSE.glb \
+            --mode pbr \
+            --out out/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb \
+            --report out/CROTA_R8_BIND_REPORT.json
+      - name: Build unlit geometry and color diagnostic
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r8_native_color_preview.py \
+            input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_BIND_POSE.glb \
+            --mode diagnostic-unlit \
+            --out out/CROTA_SON_OF_ORYX_R8_UNLIT_GEOMETRY_COLOR_CHECK.glb \
+            --report out/CROTA_R8_UNLIT_REPORT.json
+      - name: Build clean one-animation test
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r8_native_color_preview.py \
+            input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_ANIM_809D9D19.glb \
+            --mode pbr \
+            --out out/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb \
+            --report out/CROTA_R8_ANIM_REPORT.json
+      - name: Build full 82-action library
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r8_native_color_preview.py \
+            input/r7/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_FULL_82.glb \
+            --mode pbr \
+            --out out/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb \
+            --report out/CROTA_R8_FULL_REPORT.json
+      - name: Write clean Blender import helpers
+        run: |
+          set -euo pipefail
+          cat > out/CROTA_R8_IMPORT_BIND_POSE_CLEAN.py <<'PY'
+          # Run this inside Blender's Scripting workspace.
+          # It intentionally deletes the current scene first so old Crota imports
+          # cannot overlap the new file. Put the R8 GLB in your Downloads folder.
+          import bpy
+          from pathlib import Path
+          TARGET='CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb'
+          p=Path.home()/'Downloads'/TARGET
+          if not p.exists():
+              raise FileNotFoundError(f'Put {TARGET} in {p.parent}')
+          bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.import_scene.gltf(filepath=str(p))
+          for obj in bpy.context.scene.objects:
+              if obj.type=='ARMATURE':
+                  obj.data.display_type='STICK'; obj.show_in_front=False; obj.hide_set(True)
+                  if obj.animation_data:
+                      obj.animation_data.action=None
+                      for tr in obj.animation_data.nla_tracks: tr.mute=True
+          bpy.context.scene.frame_start=1; bpy.context.scene.frame_end=1; bpy.context.scene.frame_set(1)
+          print('CROTA_R8_CLEAN_BIND_IMPORTED',p)
+          PY
+          cat > out/CROTA_R8_IMPORT_ANIM_809D9D19_CLEAN.py <<'PY'
+          # Run this inside Blender's Scripting workspace. Deletes all previous scene
+          # content, imports exactly one Crota, hides the armature display, and limits
+          # the timeline to this exact 61-frame clip.
+          import bpy
+          from pathlib import Path
+          TARGET='CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb'
+          p=Path.home()/'Downloads'/TARGET
+          if not p.exists():
+              raise FileNotFoundError(f'Put {TARGET} in {p.parent}')
+          bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.import_scene.gltf(filepath=str(p))
+          for obj in bpy.context.scene.objects:
+              if obj.type=='ARMATURE':
+                  obj.data.display_type='STICK'; obj.show_in_front=False; obj.hide_set(True)
+          bpy.context.scene.frame_start=1; bpy.context.scene.frame_end=61; bpy.context.scene.frame_set(1)
+          print('CROTA_R8_CLEAN_ANIM_IMPORTED',p,'FRAMES 1-61')
+          PY
+      - name: Final fail-closed R8 validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib
+          from pathlib import Path
+          files={
+            'bind':('out/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb',0),
+            'unlit':('out/CROTA_SON_OF_ORYX_R8_UNLIT_GEOMETRY_COLOR_CHECK.glb',0),
+            'anim':('out/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb',1),
+            'full':('out/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb',82),
+          }
+          def load(p):
+              b=Path(p).read_bytes(); jl,jt=struct.unpack_from('<II',b,12); assert jt==0x4e4f534a
+              return b,json.loads(b[20:20+jl].decode().rstrip(' \x00'))
+          rows={}
+          for k,(p,na) in files.items():
+              b,d=load(p); root=d['scenes'][int(d.get('scene',0))]['nodes'][0]
+              vis=[x for x in d['nodes'][root]['children'] if d['nodes'][x].get('mesh') is not None]
+              assert len(vis)==6,(k,vis)
+              assert len(d.get('skins',[]))==1 and len(d['skins'][0]['joints'])==50,(k,'skin')
+              assert len(d.get('animations',[]))==na,(k,'anim')
+              mats={m.get('extras',{}).get('d1_material_taghash'):m for m in d['materials']}
+              for mh in ('8108E7A9','8108E7B2'):
+                  pbr=mats[mh]['pbrMetallicRoughness']; assert 'baseColorTexture' not in pbr,(k,mh,pbr)
+                  assert pbr['baseColorFactor']==[0.18661969900131226,1.0,0.8700880408287048,1.0],(k,mh,pbr)
+              for mh in ('8108E7AA','8108E7B3','8108E7B1'):
+                  assert 'baseColorTexture' in mats[mh]['pbrMetallicRoughness'],(k,mh)
+              if k=='unlit':
+                  assert 'KHR_materials_unlit' in d.get('extensionsUsed',[]),d.get('extensionsUsed')
+              rows[k]={'path':p,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),'animations':na}
+          cp={
+            'schema':'d1_crota_r8_native_color_clean_blender/v1',
+            'status':'D1_CROTA_R8_NATIVE_COLOR_CLEAN_BLENDER_COMPLETE',
+            'entity':'8108E484','model':'8108E5B7','visible_ranges':6,'visible_triangles':33750,'joints':50,
+            'procedural_color_materials':['8108E7A9','8108E7B2'],
+            'direct_atlas_materials':['8108E7AA','8108E7B3'],
+            'detail_material':'8108E7B1','exact_color_atlas':'8108E951',
+            'preview_animation':'809D9D19','preview_animation_frames':61,
+            'outputs':rows,
+            'clean_import_policy':'Use supplied Blender scripts or a brand-new Blender file. Existing .001/.002/.003 Crota imports at the same origin invalidate visual comparison through overlap/z-fighting and mixed poses.',
+            'material_policy':'PS 8108E955 exact cbuffer color is shown without falsely multiplying BC4 control texture 8108E7B6 as albedo. Direct native color-sample materials retain exact retail color textures.',
+          }
+          Path('out/CROTA_R8_CHECKPOINT.json').write_text(json.dumps(cp,indent=2)+'\n'); print(json.dumps(cp,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R8-NATIVE-COLOR-CLEAN-BLENDER
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
