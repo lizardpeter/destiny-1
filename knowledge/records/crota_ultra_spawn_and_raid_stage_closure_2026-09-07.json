@@ -1,0 +1,139 @@
+{
+  "schema": "d1_crota_ultra_spawn_and_raid_stage_closure/v1",
+  "date": "2026-09-07",
+  "status": "SOURCE_CLOSED_WITH_PHYSICAL_BODY_FRONTIER",
+  "target": {
+    "activity": "Crota's End",
+    "boss": "Crota, Son of Oryx",
+    "semantic_id": "R1S2RaidMoon0Ultra0",
+    "race_class": "HiveUltraKnightA",
+    "raid": "RaidMoon0",
+    "location": "OversoulThrone"
+  },
+  "physical_body_frontier": {
+    "source_sequence": "8108E52E",
+    "literal_path": "content\\sandbox_dlc01\\characters\\raids\\moon\\darklens\\ultra_knight\\sequences\\darklens_ultra_spawn.sequence.tft",
+    "exact_sequence_entity_dependencies": ["8108E5C3", "8108E671"],
+    "typed_recursive_closure_artifact": {
+      "artifact_id": 10005016855,
+      "zip_sha256": "b1c158ff9d6c3cbb3a549f124d9d1c2415b9e6a189caf80bd58b7e37045231d0",
+      "workflow_run": 34085004051,
+      "workflow_commit": "88b781b9d1e3860c4518401aceadcdda53c00716"
+    },
+    "typed_result": {
+      "node_count": 7,
+      "typed_edge_count": 6,
+      "articulated_entity_count": 0,
+      "conclusion": "The source-typed ultra-spawn dependency path terminates in composition/control resources and does not yet serialize Crota's articulated body as an ordinary child/entity-model dependency."
+    },
+    "source_owned_composition_resources": ["8108E679", "8108E740"],
+    "rejected_discovery_candidate": {
+      "entity": "80D13277",
+      "model": "80D1329F",
+      "skeleton_resource": "80D1327F",
+      "bone_count": 18,
+      "reason": "The only path reaches the candidate by interpreting aligned dwords inside Wwise stream bytes as FileHashes. The chain is 8108E5C3 -> 8108E679 -> 809DD961 Wwise event -> 809DD992 Wwise stream -> untyped aligned values -> 80D13277. This is discovery noise, not semantic ownership, and is explicitly rejected as Crota."
+    }
+  },
+  "ultra_spawn_composition_audio": {
+    "status": "D1_REMOTE_ACTIVITY_AUDIO_COMPOSITION_CLOSURE_COMPLETE",
+    "composition_resource_count": 2,
+    "validated_composition_resource_count": 2,
+    "typed_event": "809DD961",
+    "typed_streams": [
+      "809DD992",
+      "809DD99A",
+      "809DD99B",
+      "809DD99C",
+      "809DD99D",
+      "809DD99E",
+      "809DD99F"
+    ],
+    "typed_stream_count": 7,
+    "unclosed_aligned_event_sighting_count": 0,
+    "violation_count": 0,
+    "non_audio_polymorphic_variant_count": 27,
+    "non_audio_variant_class_counts": {
+      "80800691": 6,
+      "808025C1": 2,
+      "8080037A": 11,
+      "80801A6D": 2,
+      "8080052F": 3,
+      "80802891": 1,
+      "808028A6": 1,
+      "8080050E": 1
+    },
+    "artifact": {
+      "artifact_id": 10005183759,
+      "zip_sha256": "6314906d0b60eb6d39e3c9ace844ef23344b385dd179b9d49a478f342c0f9cba",
+      "workflow_run": 34085880733,
+      "workflow_commit": "32dffab16276a85378a05c9d1f73c4e80e7f39b0"
+    },
+    "policy": "Composition sound arrays are polymorphic D1 ResourcePointer arrays. Only target class 80801F00 is promoted through +0x20 to an exact 8080080A Wwise event; other valid target classes remain non-audio variants."
+  },
+  "ultra_spawn_nested_visual_frontier": {
+    "probe_artifact": {
+      "artifact_id": 10004994334,
+      "zip_sha256": "d4f69a616ea0954a10c9d28c352c47792d506bbb30df530f778b1cafe4cae4ee",
+      "workflow_run": 34085274122,
+      "workflow_commit": "fc1d910bdb60cbdf4cf1d27e8b1b8a5fca61f007"
+    },
+    "observed_structured_tag_classes": {
+      "80801C40": 11,
+      "80801BD9": 2,
+      "80801B7B": 3
+    },
+    "observed_exact_material_reference_class": "80801AD7",
+    "material_tags_observed_in_structured_records": [
+      "8108E72E", "8108E72F", "8108E730", "8108E733", "8108E735", "8108E736", "8108E737", "8108E738", "8108E739", "8108E73A", "8108E73B", "8108E73D", "8108E73E"
+    ],
+    "proof_boundary": "The material FileHashes are exact and occur in exact structured tags reached from the Crota ultra-spawn composition, but the outer 80801C40/80801BD9/80801B7B layouts are not yet source-semantic-closed. They are therefore not yet promoted as Crota body texture ownership."
+  },
+  "raid_stage_matrix": {
+    "status": "D1_CROTA_FULL_STAGE_RESOURCE_CENSUS_EXACT",
+    "s6e_container_count": 10,
+    "stage_f603_occurrence_count": 547,
+    "unique_f603_resource_count": 509,
+    "shared_unique_f603_count": 19,
+    "shared_occurrence_excess_count": 38,
+    "artifact": {
+      "artifact_id": 10005193057,
+      "zip_sha256": "3f42e1e04b5e121b332a158c6ec63f1dd15ef0b3d310c429a3e6a63eb01237ed",
+      "workflow_run": 34085918853,
+      "workflow_commit": "2040631be3495d6db3e1e0a36579bacdf119136d"
+    },
+    "finale_stage_8108E17C_7_dev_names": [
+      "o_ghost_hall_door",
+      "dark_lens.o_throne_static",
+      "dark_lens.o_lens_skybox",
+      "dark_lens.o_lens_attack",
+      "dark_lens.o_throne_animated",
+      "crystal.o_crystal",
+      "barriers.o_side_barrier",
+      "barriers.o_window_barrier"
+    ],
+    "finale_adjacent_stage_dev_names": [
+      "raid1_lens_bridge_phase.o_transition_fx",
+      "raid1_lens_bridge_phase.no_exit_door",
+      "raid1_lens_finale_phase.o_invisible_device_controller_prison"
+    ],
+    "ultra_stage_8108E17F_1_dev_names": [
+      "o_start_encounter_glyph",
+      "o_health_chalice"
+    ],
+    "policy": "Stage occurrences intentionally retain legitimate reuse. 547 is the exact number of stage uses; 509 is the exact deduplicated F603 corpus. Shared resources are not parser duplicates."
+  },
+  "raid_scripted_actor_asset_closure": {
+    "workflow_run": 34085220924,
+    "workflow_commit": "c0b3d19b018db02765eb7b16d52331ccd4abdb8b",
+    "status_at_checkpoint": "visual_material_texture_pass_complete_animation_pass_running",
+    "source_owned_actor_family_count": 18,
+    "note": "This branch covers ordinary source-proven raid combatant families and is not evidence for Crota's physical body identity."
+  },
+  "next_frontiers": [
+    "Close the obj_ultra_knight/perf_ultra_knight gameplay handoff into the physical Hive Ultra Knight archetype/model owner.",
+    "Source-identify outer structured classes 80801C40, 80801BD9 and 80801B7B before promoting their exact 80801AD7 materials as Crota visual ownership.",
+    "When the 18-family raid actor animation workflow completes, persist its exact texture/material/animation counts and artifacts.",
+    "Feed the corrected 10-container Crota's End stage matrix into the generic world visual/material pipeline for full raid scene reconstruction."
+  ]
+}
