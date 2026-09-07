@@ -1,0 +1,120 @@
+name: D1 Tower spawned actor native-basis skins r2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-native-basis-r2.yml'
+      - 'tools/d1_gltf_restore_native_tiger_skin_basis.py'
+      - 'tools/d1_gltf_single_skin_geometry_alignment_probe.py'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+      - 'tools/d1_gltf_layer_merge.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10001481050'
+  SOURCE_ARTIFACT_ZIP_SHA256: '6390225a8c0f5ef9c092692ec7b9cf2fff6e5dcb8c3cbb32fb3859564b27a43d'
+
+jobs:
+  correct-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q numpy scipy
+
+      - name: Recover exact 13-model skinned checkpoint
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input out reports/before reports/after reports/bind reports/basis
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test "$(find input/source -maxdepth 1 -name '*_SKINNED.glb' -type f | wc -l)" = 13
+
+      - name: Measure source basis mismatch and restore native D1 skin basis
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gltf_restore_native_tiger_skin_basis.py \
+            tools/d1_gltf_single_skin_geometry_alignment_probe.py \
+            tools/d1_gltf_skin_bind_identity_probe.py
+          for src in input/source/*_SKINNED.glb; do
+            base="$(basename "$src" _SKINNED.glb)"
+            python tools/d1_gltf_single_skin_geometry_alignment_probe.py "$src" \
+              -o "reports/before/${base}.json"
+            python tools/d1_gltf_restore_native_tiger_skin_basis.py "$src" \
+              --out "out/${base}_SKINNED_NATIVE_D1.glb" \
+              --report "reports/basis/${base}.json"
+            python tools/d1_gltf_skin_bind_identity_probe.py "out/${base}_SKINNED_NATIVE_D1.glb" \
+              --max-error 2e-5 -o "reports/bind/${base}.json"
+            python tools/d1_gltf_single_skin_geometry_alignment_probe.py "out/${base}_SKINNED_NATIVE_D1.glb" \
+              -o "reports/after/${base}.json"
+          done
+
+      - name: Enforce all-family native-basis closure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,os,hashlib
+          rows=[]
+          before=sorted(glob.glob('reports/before/*.json'))
+          assert len(before)==13,before
+          for bp in before:
+              model=os.path.basename(bp)[:-5]
+              ap=f'reports/after/{model}.json'; ip=f'reports/bind/{model}.json'; rp=f'reports/basis/{model}.json'
+              pre=json.load(open(bp));post=json.load(open(ap));bind=json.load(open(ip));basis=json.load(open(rp))
+              assert pre['status']=='D1_GLTF_SINGLE_SKIN_GEOMETRY_ALIGNMENT_DIAGNOSTIC_COMPLETE',pre
+              assert post['status']=='D1_GLTF_SINGLE_SKIN_GEOMETRY_ALIGNMENT_DIAGNOSTIC_COMPLETE',post
+              assert basis['status']=='D1_GLTF_NATIVE_TIGER_SKIN_BASIS_RESTORED',basis
+              assert bind['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and bind['tested_skinned_mesh_nodes']>0,bind
+              assert bind['max_observed_error'] <= 2e-5,bind
+              ge=post['geometry_extent'];prese=pre['skeleton_extent'];se=post['skeleton_extent']
+              # These Tower actor models are native D1 Z-up geometry. The bad parser basis is Y-up.
+              assert ge[2] > ge[1],(model,ge)
+              assert prese[1] > prese[2],(model,prese)
+              assert se[2] > se[1],(model,se)
+              premed=float(pre['centroid_distance_median']);postmed=float(post['centroid_distance_median'])
+              assert postmed < premed*0.20,(model,premed,postmed)
+              out=f'out/{model}_SKINNED_NATIVE_D1.glb'
+              h=hashlib.sha256(open(out,'rb').read()).hexdigest()
+              rows.append({'model':model,'skeleton':post['skeleton'],'runtime_rig':post['runtime_rig'],
+                           'bone_count':post['joint_count'],'geometry_extent':ge,
+                           'skeleton_extent_before':prese,'skeleton_extent_after':se,
+                           'centroid_distance_median_before':premed,
+                           'centroid_distance_median_after':postmed,
+                           'improvement_ratio':postmed/premed,
+                           'bind_identity_error_max':bind['max_observed_error'],
+                           'output_sha256':h,'output_bytes':os.path.getsize(out)})
+          summary={'schema_version':1,'status':'D1_TOWER_SPAWNED_ACTOR_NATIVE_BASIS_SKINS_CLOSED',
+                   'model_count':len(rows),'source_artifact_id':10001481050,
+                   'source_artifact_zip_sha256':'6390225a8c0f5ef9c092692ec7b9cf2fff6e5dcb8c3cbb32fb3859564b27a43d',
+                   'models':rows,
+                   'policy':'The only mutation is the source-proven inverse of tiger-animation-parser [x,y,z]->[y,z,x] on joint bind TRS and inverse-bind matrices. Native D1 geometry, exact JOINTS/WEIGHTS, materials and topology are unchanged. No animation or actor-state semantics are selected.'}
+          json.dump(summary,open('reports/TOWER_SPAWNED_ACTOR_NATIVE_BASIS_SKINS.json','w'),indent=2)
+          print(json.dumps({'status':summary['status'],'model_count':len(rows),
+                            'median_improvement_ratios':{r['model']:r['improvement_ratio'] for r in rows},
+                            'bind_error_max':max(r['bind_identity_error_max'] for r in rows)},indent=2))
+          PY
+          cp reports/TOWER_SPAWNED_ACTOR_NATIVE_BASIS_SKINS.json out/
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-NATIVE-D1-SKINNED-MODELS
+          path: |
+            out/
+            reports/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
