@@ -1,0 +1,314 @@
+name: D1 Tower Xur corpus-calibrated textured all actions v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-corpus-calibrated-textured-all-actions-v2.yml'
+      - 'tools/d1_xur_corpus_calibrated_material_bindings.py'
+      - 'tools/d1_world_articulated_model_export.py'
+      - 'tools/d1_tower_spawned_actor_skin_bind_v2.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
+      - 'tools/d1_gltf_append_retargeted_retail_animation_library.py'
+
+permissions: {contents: write, actions: read}
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  VISUAL_ARTIFACT_ID: '10001232930'
+  VISUAL_ARTIFACT_ZIP_SHA256: 'a662155f8a6259def83474f08b7508c6f1f5f1f87b1d368b924b2648e6737113'
+  SKIN_CENSUS_ARTIFACT_ID: '10001306768'
+  SKIN_CENSUS_ZIP_SHA256: 'cb9a2d4401d6ca70b42536b73f90fe7b06f2ad885bcfac4443e3c6fee3c315df'
+  PARSER_COMMIT: 'b9fdc3a43dd28118113275624fcc9054b75855f4'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env: {GH_TOKEN: '${{ github.token }}', LINOODLE_SKIP_DLLMAIN: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned source checkpoints, parser, and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy scipy pyglm pygltflib trimesh pillow texture2ddecoder
+          mkdir -p input/catalog input/visual input/skin runtime parser_tmp parser corpus models models_all skinned texture_expanded texture_work textures roles out/reports reports
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VISUAL_ARTIFACT_ID}/zip" -o input/visual.zip
+          echo "${VISUAL_ARTIFACT_ZIP_SHA256}  input/visual.zip" | sha256sum --check --strict
+          unzip -q input/visual.zip -d input/visual
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SKIN_CENSUS_ARTIFACT_ID}/zip" -o input/skin.zip
+          echo "${SKIN_CENSUS_ZIP_SHA256}  input/skin.zip" | sha256sum --check --strict
+          unzip -q input/skin.zip -d input/skin
+
+          curl --fail --location --retry 4 "https://codeload.github.com/SolUnshadowed/tiger-animation-parser/tar.gz/${PARSER_COMMIT}" -o parser.tar.gz
+          tar -xzf parser.tar.gz -C parser_tmp
+          pdir="$(find parser_tmp -mindepth 1 -maxdepth 1 -type d -print -quit)"; test -n "$pdir"
+          cp -a "$pdir"/. parser/
+          test -f parser/tag/game_version.py
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+          test -f input/visual/tower_spawned_actor_visual_plan.json
+          test -f input/visual/tower_spawned_actor_model_export.json
+          test -f input/skin/TOWER_SPAWNED_ACTOR_SKIN_CENSUS.json
+          test "$(find input/visual -maxdepth 1 -name '*.glb' | wc -l)" -eq 13
+
+      - name: Build exact Xur-only geometry plan from the proven shared model family
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          src=json.load(open('input/visual/tower_spawned_actor_visual_plan.json'))
+          assert src['status']=='D1_WORLD_ARTICULATED_ENTITY_PLAN_COMPLETE',src
+          dep=src['model_dependencies']['80C88CEF']; assert not dep['violations'],dep
+          sample=next(x for x in src['candidates'] if x['models']==['80C88CEF'])
+          assert sample['model_parent_resources']==['80C88CE2']
+          assert sample['skeleton_resources']==['809D80C9']
+          assert sample['runtime_rig_resources']==['809D80D3']
+          cands=[]
+          for entity in ('80C7ACC8','80C885AA'):
+              x=dict(sample); x['entity']=entity; x['specific_name_hashes']=['46C55854']; x['source_identity_scope']='source_typed_xur_scripted_entity'; cands.append(x)
+          ids={'003b','00ec','0244'}
+          out={
+            'schema_version':2,'status':'D1_WORLD_ARTICULATED_ENTITY_PLAN_COMPLETE','semantic_scope':'D1_TOWER_XUR_SCRIPTED_VISUAL_MODEL_PLAN',
+            'candidate_count':2,'family_count':1,'unique_model_count':1,'candidates':cands,
+            'families':[{'family_id':'XUR','model':'80C88CEF','model_parent_resource':'80C88CE2','entity_count':2,'entities':['80C7ACC8','80C885AA'],'skeleton_resources':['809D80C9'],'runtime_rig_resources':['809D80D3'],'bone_counts':[70]}],
+            'model_dependencies':{'80C88CEF':dep},'required_initial_package_ids':sorted(ids),'violations':[],
+            'policy':'Standalone Xur visual plan. Entity identity uses the two source-typed scripted Tower SEntities. Shared model/skeleton/rig identity is inherited only from the already closed 80C88CEF family; no spawned-actor location semantics are imported.'
+          }
+          json.dump(out,open('reports/XUR_VISUAL_PLAN.json','w'),indent=2)
+          print('XUR_PLAN',out['candidate_count'],out['required_initial_package_ids'])
+          PY
+
+      - name: Build the 121-material corpus-calibrated Xur binding
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_corpus_calibrated_material_bindings.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --runtime runtime \
+            --config-pair 26170C92=4AC210DE \
+            -o reports/XUR_CORPUS_CALIBRATED_MATERIAL_BINDINGS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_CORPUS_CALIBRATED_MATERIAL_BINDINGS.json'))
+          assert d['status']=='D1_WORLD_ENTITY_MODEL_MATERIAL_BINDINGS_COMPLETE',d['violations']
+          assert d['xur_status']=='D1_XUR_CORPUS_CALIBRATED_VISUAL_MATERIAL_BINDINGS_COMPLETE',d
+          assert d['external_variant_part_count']==297 and len(d['calibrated_external_part_selections'])==297,d
+          assert d['unique_selected_material_count']==121,d
+          assert d['required_selected_material_package_ids']==['003b','00ec','00ef','0244'],d
+          assert d['proof']['D1_retail_consumer_execution_path_proven'] is False,d['proof']
+          print('XUR_BINDING_GREEN','parts',d['part_count'],'external',d['external_variant_part_count'],'materials',d['unique_selected_material_count'])
+          PY
+
+      - name: Recover exact Xur geometry and selected-material package families
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt \
+            --required-package-id 003b --required-package-id 00ec --required-package-id 00ef --required-package-id 0244 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/XUR_VISUAL_CORPUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_VISUAL_CORPUS.json')); assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED',d
+          print('XUR_CORPUS',d['required_family_count'],'families',d['member_count'],'members')
+          PY
+
+      - name: Export corrected Xur geometry/material selection
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_articulated_model_export.py "${args[@]}" \
+            --runtime runtime --articulated-plan reports/XUR_VISUAL_PLAN.json \
+            --material-bindings reports/XUR_CORPUS_CALIBRATED_MATERIAL_BINDINGS.json \
+            --out-dir models --summary reports/XUR_MODEL_EXPORT.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('reports/XUR_MODEL_EXPORT.json'))
+          assert d['status']=='D1_WORLD_ARTICULATED_MODEL_SET_COMPLETE',d['errors']
+          assert d['requested_model_count']==d['exported_model_count']==1,d
+          r=d['models'][0]; assert r['model']=='80C88CEF',r
+          assert r['active_material_count']==121,(r['active_material_count'],r['active_materials'])
+          assert os.path.isfile('models/80C88CEF.glb')
+          print('XUR_GEOMETRY_EXPORTED','ranges',r['geometry_count'],'triangles',r['triangle_count'],'materials',r['active_material_count'])
+          PY
+
+      - name: Replace only Xur in the exact 13-model visual set
+        run: |
+          set -euo pipefail
+          cp input/visual/*.glb models_all/
+          cp models/80C88CEF.glb models_all/80C88CEF.glb
+          python - <<'PY'
+          import json
+          old=json.load(open('input/visual/tower_spawned_actor_model_export.json'))
+          new=json.load(open('reports/XUR_MODEL_EXPORT.json'))
+          nr=new['models'][0]
+          rows=[nr if x['model']=='80C88CEF' else x for x in old['models']]
+          assert len(rows)==13 and sum(x['model']=='80C88CEF' for x in rows)==1
+          mats=sorted({h for x in rows for h in x.get('active_materials',[])})
+          out=dict(old);out['models']=rows;out['active_materials']=mats;out['active_material_count']=len(mats)
+          out['geometry_count']=sum(int(x['geometry_count']) for x in rows);out['triangle_count']=sum(int(x['triangle_count']) for x in rows)
+          out['xur_material_selection_adapter']='D1_XUR_CORPUS_CALIBRATED_VISUAL_MATERIAL_BINDINGS_COMPLETE'
+          out['xur_retail_consumer_execution_path_proven']=False
+          json.dump(out,open('reports/TOWER_MODEL_EXPORT_XUR_REPLACED.json','w'),indent=2)
+          print('MODEL_SET_XUR_REPLACED','models',len(rows),'unique_materials',len(mats))
+          PY
+
+      - name: Rebind all 13 exact skins with corrected Xur as the only visual replacement
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_spawned_actor_skin_bind_v2.py \
+            --model-dir models_all --model-report reports/TOWER_MODEL_EXPORT_XUR_REPLACED.json \
+            --skin-census input/skin/TOWER_SPAWNED_ACTOR_SKIN_CENSUS.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --parser-root parser --out-dir skinned --report reports/TOWER_SKIN_BIND_XUR_REPLACED.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('reports/TOWER_SKIN_BIND_XUR_REPLACED.json'))
+          assert d['status']=='D1_TOWER_SPAWNED_ACTOR_SKIN_BIND_COMPLETE',d['violations']
+          assert d['model_count']==13,d
+          r=next(x for x in d['models'] if x['model']=='80C88CEF')
+          assert r['bone_count']==70,r
+          assert r['binary_prefix_exact'] is True,r
+          assert os.path.isfile('skinned/80C88CEF_SKINNED.glb')
+          print('XUR_SKIN_REBOUND','bones',r['bone_count'],'vertices',r['bound_vertex_count'],'sha',r['output_sha256'])
+          PY
+
+      - name: Close exact texture dependencies for the corrected 121-material Xur set
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          b=json.load(open('reports/XUR_CORPUS_CALIBRATED_MATERIAL_BINDINGS.json'))
+          mats=sorted(b['selected_material_reference_counts'])
+          assert len(mats)==121
+          json.dump({'status':'D1_XUR_CORPUS_CALIBRATED_MATERIAL_SELECTOR','materials':{h:{'visual':True} for h in mats}},open('reports/XUR_MATERIAL_SELECTOR.json','w'),indent=2)
+          PY
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
+            --runtime runtime --visual-json reports/XUR_MATERIAL_SELECTOR.json \
+            --package-list reports/packages.txt --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --expansion-dir texture_expanded --work-dir texture_work --out textures \
+            --report reports/XUR_TEXTURE_DEPENDENCY_CLOSURE.json
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o roles/XUR_TEXTURE_ROLE_INVENTORY.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/XUR_TEXTURE_DEPENDENCY_CLOSURE.json'));m=json.load(open('textures/material_texture_manifest.json'));r=json.load(open('roles/XUR_TEXTURE_ROLE_INVENTORY.json'))
+          assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['stop_reason']=='closed_zero_missing_texture_packages',c
+          assert m['visible_material_count']==121,m
+          assert m['material_decode_errors']==0 and m['texture_errors']==0,m
+          assert m['decoded_texture_tags']==m['unique_texture_tags'],m
+          assert not m['missing_texture_package_ids'],m
+          assert r['material_count']==121,r
+          print('XUR_TEXTURES_CLOSED','materials',m['visible_material_count'],'textures',m['decoded_texture_tags'],'pixel_shaders',r['pixel_shader_count'])
+          PY
+
+      - name: Bind every exact native texture resource to corrected Xur
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+            --input-glb skinned/80C88CEF_SKINNED.glb \
+            --manifest textures/material_texture_manifest.json --roles roles/XUR_TEXTURE_ROLE_INVENTORY.json \
+            --texture-dir textures/textures --include-medium-base --bind-normal-candidates \
+            --out out/D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED.glb \
+            --report out/reports/XUR_CORPUS_CALIBRATED_TEXTURE_BIND.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/reports/XUR_CORPUS_CALIBRATED_TEXTURE_BIND.json'))
+          assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+          assert d['material_count']==121,d
+          assert d['exact_source_texture_count']>0,d
+          assert d['final_counts']['materials']==121,d['final_counts']
+          print('XUR_TEXTURE_BIND','native_textures',d['exact_source_texture_count'],'PS_edges',d['exact_ps_binding_edge_count'],'base',d['portable_base_bound_material_count'],'normal',d['portable_normal_bound_material_count'])
+          PY
+
+      - name: Append all exact selector-owned retail actions without inventing a default
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_append_retargeted_retail_animation_library.py \
+            out/D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED.glb \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --runtime runtime --parser-root parser \
+            --skeleton 809D80C9 --rig 809D80D3 --control 809D80FC \
+            --out out/D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb \
+            --report out/reports/XUR_CORPUS_CALIBRATED_ALL_ACTIONS.json
+          python - <<'PY'
+          import hashlib,json,os
+          from pygltflib import GLTF2
+          b=json.load(open('reports/XUR_CORPUS_CALIBRATED_MATERIAL_BINDINGS.json'))
+          t=json.load(open('out/reports/XUR_CORPUS_CALIBRATED_TEXTURE_BIND.json'))
+          a=json.load(open('out/reports/XUR_CORPUS_CALIBRATED_ALL_ACTIONS.json'))
+          assert a['status']=='D1_GLTF_RETARGETED_RETAIL_ANIMATION_LIBRARY_APPENDED',a
+          assert a['appended_animation_count']==267,a
+          assert a['exact_dimension_animation_count']==199,a
+          assert a['native_retarget_required_animation_count']==68,a
+          p='out/D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb'
+          g=GLTF2().load_binary(p)
+          assert len(g.materials or [])==121,len(g.materials or [])
+          assert len(g.skins or [])==1,len(g.skins or [])
+          assert len(g.animations or [])==267,len(g.animations or [])
+          manifest={
+            'schema':'d1_tower_xur_corpus_calibrated_export/v2','status':'D1_TOWER_XUR_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS_COMPLETE',
+            'source_name_hash':'46C55854','source_name':'Xur','source_entities':['80C7ACC8','80C885AA'],'entity_model':'80C88CEF',
+            'configuration_pairs':b['configuration_pairs'],'part_count':b['part_count'],'external_variant_part_count':b['external_variant_part_count'],
+            'selected_material_count':b['unique_selected_material_count'],'exact_source_texture_count':t['exact_source_texture_count'],
+            'exact_ps_binding_edge_count':t['exact_ps_binding_edge_count'],'portable_base_bound_material_count':t['portable_base_bound_material_count'],
+            'portable_normal_bound_material_count':t['portable_normal_bound_material_count'],'selector_selected_action_count':a['appended_animation_count'],
+            'skin_joint_count':len((g.skins or [])[0].joints or []),'D1_retail_consumer_execution_path_proven':False,
+            'descriptor_evaluation_algorithm_source_closed':False,'E6_E7_E8_live_selection_gates':b['gates'],
+            'output_glb':p,'output_bytes':os.path.getsize(p),'output_sha256':hashlib.sha256(open(p,'rb').read()).hexdigest(),
+            'visual_policy':'Geometry, skin, selected Material FileHashes, native texture resources, and animation identities are source-backed. External material selection uses the 70,281/70,281 deterministic Tower corpus-calibrated descriptor-A subset/max-specificity rule with the source-typed Xur S152 configuration. This remains a visual adapter, not a claim that the retail evaluator execution path is source-closed.',
+            'animation_policy':'All and only unique clips selected by the exact 809D80FC control-state table are exported. No idle/default/startup action is invented.'
+          }
+          json.dump(manifest,open('out/reports/XUR_CORPUS_CALIBRATED_EXPORT_MANIFEST.json','w'),indent=2)
+          print('XUR_V2_COMPLETE',json.dumps(manifest,sort_keys=True))
+          PY
+
+      - name: Persist and publish the corrected standalone Xur checkpoint
+        run: |
+          set -euo pipefail
+          cp reports/XUR_CORPUS_CALIBRATED_MATERIAL_BINDINGS.json out/reports/
+          cp reports/XUR_MODEL_EXPORT.json out/reports/
+          cp reports/TOWER_SKIN_BIND_XUR_REPLACED.json out/reports/
+          cp reports/XUR_TEXTURE_DEPENDENCY_CLOSURE.json out/reports/
+          cp roles/XUR_TEXTURE_ROLE_INVENTORY.json out/reports/
+          cp textures/material_texture_manifest.json out/reports/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+          tag=d1-tower-xur-corpus-calibrated-textured-actions-r2
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title 'D1 Tower Xur corpus-calibrated textured all-actions r2' \
+              --notes 'Standalone Blender Xur checkpoint rebuilt from the source-owned 80C88CEF model with the Tower corpus-calibrated external-material selector applied to source-typed configuration 26170C92=4AC210DE. All 297 external parts resolve uniquely and the corrected model carries 121 selected materials instead of the old Charm member-0 54-material checkpoint. Native texture bindings and the exact skin/action library are rebuilt. Formal retail evaluator and E6/E7/E8 live-selection gates remain fail-closed.'
+          fi
+          gh release upload "$tag" out/D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb out/reports/XUR_CORPUS_CALIBRATED_EXPORT_MANIFEST.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-XUR-CORPUS-CALIBRATED-TEXTURED-ALL-ACTIONS-V2
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
