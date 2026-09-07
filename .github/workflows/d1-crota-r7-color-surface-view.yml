@@ -1,4 +1,5 @@
 name: D1 Crota R7 color-surface Blender views
+# Registered workflow trigger.
 
 on:
   workflow_dispatch:
