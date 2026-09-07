@@ -1,0 +1,113 @@
+name: D1 Crota texture frontier selective reuse v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-articulated-texture-frontier-reuse-v2.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_COMMIT: '1f8d971a730c4af0dc335a5359753cf42fb6464a'
+      SOURCE_ARTIFACT_ID: '10024452879'
+      SOURCE_ARTIFACT_SHA256: '3e317ef6538c7fc8e64e95fc372d63d140dff0f893bb34d121fb9c5afb530dd5'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require visual producer files unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$SOURCE_COMMIT" HEAD -- \
+            tools/d1_activity_entity_model_plan.py \
+            tools/d1_remote_activity_model_visual_dependency_closure.py \
+            tools/d1_remote_activity_model_material_bindings.py \
+            tools/d1_activity_selected_material_plan.py \
+            tools/d1_remote_activity_material_dependency_closure.py \
+            tools/d1_remote_activity_texture_export.py \
+            tools/d1_material_decode.py \
+            tools/d1_texture_export.py \
+            tools/d1_dds_to_png.py \
+            tools/d1_filehash.py \
+            tools/d1_remote_entity_dependency_closure.py \
+            tools/d1_remote_entity_dependency_closure_universal.py
+          printf '%s\n' "source_commit=$SOURCE_COMMIT" "current_commit=$GITHUB_SHA" "compatible=true" > COMPATIBILITY.txt
+
+      - name: Download pinned checkpoint and extract manifests
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o checkpoint.zip
+          echo "${SOURCE_ARTIFACT_SHA256}  checkpoint.zip" | sha256sum --check --strict
+          mkdir -p inspect
+          unzip -p checkpoint.zip crota_all_articulated_model_plan.json > inspect/model_plan.json
+          unzip -p checkpoint.zip crota_all_articulated_selected_material_plan.json > inspect/selected_material_plan.json
+          unzip -p checkpoint.zip crota_all_articulated_material_dependencies.json > inspect/material_dependencies.json
+          unzip -p checkpoint.zip textures/texture_export_manifest.json > inspect/texture_export_manifest.json
+          test -s inspect/texture_export_manifest.json
+
+      - name: Isolate exact violation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          model=json.load(open('inspect/model_plan.json'))
+          plan=json.load(open('inspect/selected_material_plan.json'))
+          deps=json.load(open('inspect/material_dependencies.json'))
+          tex=json.load(open('inspect/texture_export_manifest.json'))
+          violations=tex.get('violations') or []
+          rows=tex.get('textures') or []
+          if isinstance(rows, dict):
+              by={str(k).upper():v for k,v in rows.items()}
+          else:
+              by={str(r.get('texture') or r.get('tag_hash') or '').upper():r for r in rows if r.get('texture') or r.get('tag_hash')}
+          bad=[]
+          for v in violations:
+              h=v.get('texture') or v.get('tag_hash') or v.get('hash')
+              if h: bad.append(str(h).upper())
+          out={
+              'schema':'d1_crota_articulated_texture_frontier/v2',
+              'checkpoint_artifact_id':10024452879,
+              'checkpoint_visual_producers_unchanged':True,
+              'model_count':model.get('model_count'),
+              'selected_material_count':plan.get('unique_material_count'),
+              'material_dependency_texture_count':deps.get('unique_texture_count'),
+              'texture_export_status':tex.get('status'),
+              'dds_file_count':tex.get('dds_file_count'),
+              'png_file_count':tex.get('png_file_count'),
+              'violation_count':len(violations),
+              'violations':violations,
+              'bad_texture_rows':{h:by.get(h) for h in dict.fromkeys(bad)},
+          }
+          print(json.dumps(out,indent=2))
+          open('CROTA_ARTICULATED_TEXTURE_FRONTIER.json','w').write(json.dumps(out,indent=2)+'\n')
+          assert out['model_count']==94
+          assert out['selected_material_count']==683
+          assert out['material_dependency_texture_count']==394
+          assert out['violation_count']==1
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-ARTICULATED-TEXTURE-FRONTIER-V2
+          path: |
+            COMPATIBILITY.txt
+            CROTA_ARTICULATED_TEXTURE_FRONTIER.json
+            inspect/texture_export_manifest.json
+          retention-days: 30
