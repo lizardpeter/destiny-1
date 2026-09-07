@@ -6,8 +6,10 @@ on:
     paths:
       - '.github/workflows/d1-activity-material-dependency-canary.yml'
       - 'tools/d1_remote_activity_material_dependency_closure.py'
+      - 'tools/d1_remote_activity_texture_export.py'
       - 'tools/d1_material_decode.py'
       - 'tools/d1_texture_export.py'
+      - 'tools/d1_dds_to_png.py'
       - 'tools/d1_remote_activity_placements.py'
       - 'tools/d1_filehash.py'
       - 'tests/fixtures/d1_anomaly_pvp_selected_material_plan.json'
@@ -54,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python -m py_compile tools/d1_remote_activity_material_dependency_closure.py
+          python -m py_compile tools/d1_remote_activity_material_dependency_closure.py tools/d1_remote_activity_texture_export.py
           python tools/d1_filehash.py
           python tools/d1_remote_activity_material_dependency_closure.py \
             --selected-material-plan tests/fixtures/d1_anomaly_pvp_selected_material_plan.json \
@@ -80,7 +82,29 @@ jobs:
                       assert t['register']==f"t{t['texture_index']}"
           print('ANOMALY_MATERIAL_CLOSURE',d['material_count'],d['unique_texture_count'],d['unique_shader_count'],d['unique_vector4_container_count'],d['typed_edge_count'])
           PY
-          sha256sum out/anomaly_material_dependency_closure.json > out/SHA256SUMS.txt
+
+      - name: Materialize exact Anomaly textures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure out/anomaly_material_dependency_closure.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --out-dir out/texture_export \
+            | tee out/anomaly_texture_export.txt
+          python - <<'PY'
+          import json
+          m=json.load(open('out/anomaly_material_dependency_closure.json'))
+          t=json.load(open('out/texture_export/texture_export_manifest.json'))
+          assert t['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',t['violations'][:20]
+          assert not t['violations'],t['violations'][:20]
+          assert t['texture_count']==m['unique_texture_count'],(t['texture_count'],m['unique_texture_count'])
+          assert t['dds_file_count']>0,t
+          assert t['png_file_count']>0,t
+          print('ANOMALY_TEXTURE_EXPORT',t['texture_count'],t['dds_file_count'],t['png_file_count'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
