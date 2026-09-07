@@ -1,0 +1,88 @@
+name: D1 Wrath generic activity animation option plan v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-wrath-generic-animation-option-plan-v2.yml'
+      - 'tools/d1_activity_actor_animation_option_plan_v2.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CONTROL_PLAN_ARTIFACT_ID: '10003732330'
+  CONTROL_PLAN_ARTIFACT_ZIP_SHA256: 'cfeddba3d3dd86187f147be523d9a79c2b1a3009c744ba456ff0fdae8c7c3f35'
+  V3_ARTIFACT_ID: '10004419400'
+  V3_ARTIFACT_ZIP_SHA256: '44ea758ee89d6ae79b91db714813d27e162d1966b631e86483e92cfffc98d2e3'
+
+jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover independently proven control ownership and v3 runtime options
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/control input/v3 out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CONTROL_PLAN_ARTIFACT_ID}/zip" -o input/control.zip
+          echo "${CONTROL_PLAN_ARTIFACT_ZIP_SHA256}  input/control.zip" | sha256sum --check --strict
+          unzip -q input/control.zip -d input/control
+          test -f input/control/wrath_activity_actor_animation_control_plan.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V3_ARTIFACT_ID}/zip" -o input/v3.zip
+          echo "${V3_ARTIFACT_ZIP_SHA256}  input/v3.zip" | sha256sum --check --strict
+          unzip -q input/v3.zip -d input/v3
+          test -f input/v3/wrath_activity_actor_animation_options_v3.json
+
+      - name: Build generic source-closed activity animation plan
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_activity_actor_animation_option_plan.py \
+            tools/d1_activity_actor_animation_option_plan_v2.py
+          python tools/d1_activity_actor_animation_option_plan_v2.py \
+            --control-plan input/control/wrath_activity_actor_animation_control_plan.json \
+            --animation-options input/v3/wrath_activity_actor_animation_options_v3.json \
+            -o out/wrath_activity_actor_animation_option_plan_v2.json \
+            | tee out/normalize.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/wrath_activity_actor_animation_option_plan_v2.json'))
+          assert d['schema']=='d1_activity_actor_animation_option_plan/v2',d.get('schema')
+          assert d['status']=='D1_ACTIVITY_ACTOR_ANIMATION_OPTION_PLAN_COMPLETE',d['status']
+          assert d['upstream_animation_options_schema']=='d1_remote_spawned_actor_animation_options/v3',d
+          assert d['actor_count']==123,d['actor_count']
+          assert d['source_closed_actor_count']==123,d['source_closed_actor_count']
+          assert d['frontier_actor_count']==0,d
+          assert d['violation_actor_count']==0,d
+          assert d['frontier_count']==0,d['frontiers'][:20]
+          assert d['violation_count']==0,d['violations'][:20]
+          assert d['unique_control_count']==45,d['unique_control_count']
+          assert d['unique_selector_selected_clip_count']==1144,d['unique_selector_selected_clip_count']
+          assert d['unique_animation_list_bank_clip_count']==1739,d['unique_animation_list_bank_clip_count']
+          assert d['native_retarget_pair_execution_count']==2909,d['native_retarget_pair_execution_count']
+          assert d['native_retarget_pair_success_count']==2909,d['native_retarget_pair_success_count']
+          assert d['native_retarget_pair_failure_count']==0,d['native_retarget_pair_failure_count']
+          assert d['implicit_null_selector_count']==2,d['implicit_null_selector_count']
+          assert set(d['implicit_null_selector_controls'])=={'817A55AD','817BD0EC'},d['implicit_null_selector_controls']
+          assert d['exact_empty_control_target_count']==4,d['exact_empty_control_target_count']
+          assert all(a['status']=='SOURCE_CLOSED' for a in d['actors']),[a for a in d['actors'] if a['status']!='SOURCE_CLOSED'][:5]
+          print('WRATH_GENERIC_ACTIVITY_ANIMATION_PLAN_CLOSED',d['actor_count'],d['family_count'],d['unique_control_count'],d['unique_state_hash_count'],d['unique_selector_selected_clip_count'],d['unique_animation_list_bank_clip_count'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-WRATH-GENERIC-ACTIVITY-ANIMATION-OPTION-PLAN-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
