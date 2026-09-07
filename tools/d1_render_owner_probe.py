@@ -8,9 +8,9 @@ standard D1 model-parent resources:
     Unk18 ResourcePointer -> class 0x80801A9C (model parent)
 
 It then records the embedded model FileHash, TexturePlatesROI,
-ExternalMaterialsMap, and ExternalMaterials. This is intended for resolving
-VariantShaderIndex-based D1 mesh parts without guessing material/texture
-bindings.
+ExternalMaterialsMap, the intervening D1 FE1A8080 8-byte table, and
+ExternalMaterials. This is intended for resolving VariantShaderIndex-based D1
+mesh parts without guessing material/texture bindings.
 """
 from __future__ import annotations
 
@@ -31,10 +31,16 @@ D1_MODEL_PARENT = 0x80801A9C
 MODEL_OFF = 0x15C
 TEXTURE_PLATES_ARRAY_OFF = 0x1A8
 EXTERNAL_MAP_ARRAY_OFF = 0x230
+EXTERNAL_SELECTOR_TABLE_ARRAY_OFF = 0x260
 EXTERNAL_MATERIALS_ARRAY_OFF = 0x270
 TEXTURE_PLATE_ENTRY_SIZE = 0x30
 TEXTURE_PLATE_TAG_OFF = 0x28
 EXTERNAL_MAP_ENTRY_SIZE = 0x0C
+EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE = 0x08
+
+
+def u16(b: bytes, o: int) -> int:
+    return struct.unpack_from("<H", b, o)[0]
 
 
 def u32(b: bytes, o: int) -> int:
@@ -141,6 +147,27 @@ def parse_parent_resource(b: bytes) -> dict | None:
                 "unk08": i32(b, o + 8),
             })
     out["external_materials_map_entries"] = map_rows
+
+    # Charm's D1 schema places DynamicArrayUnloaded<FE1A8080> at parent +0x260.
+    # FE1A8080 is exactly 8 bytes (four ushorts).  Existing tooling does not
+    # assign semantics to it, so preserve the serialized values verbatim.  It
+    # sits structurally between ExternalMaterialsMap and ExternalMaterials and
+    # is therefore high-value evidence for exact external-material selection.
+    selector = dynamic_array(b, base + EXTERNAL_SELECTOR_TABLE_ARRAY_OFF, EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE)
+    out["external_material_selector_table"] = selector
+    selector_rows = []
+    if not selector.get("error"):
+        for i in range(selector["count"]):
+            o = selector["data_offset"] + i * EXTERNAL_SELECTOR_TABLE_ENTRY_SIZE
+            selector_rows.append({
+                "index": i,
+                "entry_offset": o,
+                "unk00": u16(b, o),
+                "unk02": u16(b, o + 2),
+                "unk04": u16(b, o + 4),
+                "unk06": u16(b, o + 6),
+            })
+    out["external_material_selector_table_entries"] = selector_rows
 
     mats = dynamic_array(b, base + EXTERNAL_MATERIALS_ARRAY_OFF, 4)
     out["external_materials"] = mats
