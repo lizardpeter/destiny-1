@@ -17,7 +17,7 @@ env:
   MATERIAL_STATE_ARTIFACT_ID: '10028092407'
   MATERIAL_STATE_ZIP_SHA256: '83c5b4af4590d986fb917ddc9da4098e2d1272ad30025db8395f53cac61e4407'
   WAVE4_ARTIFACT_ID: '10030000356'
-  WAVE4_ZIP_SHA256: '5533e0faab09cb23ae9d4f9c79d41d4e60a06fc4578bb6d50be27a2a5044283'
+  WAVE4_ZIP_SHA256: '5533e0faab09cb23ae9d4f9c79d41d4e60a06fc4578bb6d50be27a2a5044283c'
 
 jobs:
   semantic-wave5:
@@ -74,8 +74,11 @@ jobs:
           assert d['shader']=='80876579',d
           assert d['gcn_sha256']=='f60720572d9bd42f06c3fffc3ef5e178f8a9d7917fa8c83d96511830e45b0c00',d
           assert d['scope_material_count']==4,d
-          assert d['control_texture_semantics']['t0_is_visible_base_color'] is False,d
-          assert d['control_texture_semantics']['t1_is_surface_rgba'] is True,d
+          root=d['xur_psychedelic_preview_root_cause']
+          assert root['proven'] is True and root['control_texture']=='80876551',root
+          assert 'not a direct visible RGB surface source' in d['promoted_texture_semantics']['t0'],d['promoted_texture_semantics']
+          assert 'RGBA surface atlas' in d['promoted_texture_semantics']['t1'],d['promoted_texture_semantics']
+          assert d['pixel_shader_dataflow_complete_for_scoped_binary'] is True,d
           assert not d['violations'],d['violations']
           print('XUR_80876579_CONTROL_PALETTE_EXACT')
           PY
