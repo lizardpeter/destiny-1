@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Join authoritative D1 Investment final EntityDataROI records to exact model resources.
 
-Input is the already source-closed art_arrangements_resolved.json.  For every exact
+Input is the already source-closed art_arrangements_resolved.json. For every exact
 final EntityDataROI destination selected by arrangement -> assignment -> EntityParent
-+0x10, this tool reads only that serialized final record.  If and only if the record
++0x10, this tool reads only that serialized final record. If and only if the record
 is an s_entity (80800734), its source-parsed Resource[] is compared by exact FileHash
 equality against requested model-owning EntityResources.
 
-This is deliberately narrower than package-wide scanning: a hit proves the full
-Investment selection path reaches an s_entity that directly owns the requested
-EntityResource.  A miss is reported without inventing an indirect edge.
+Null/unresolved arrangement slots are source-preserved absences and are counted but
+never dereferenced or converted into candidates.
 """
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ from d1_split_tar_extract import SplitHttpTar
 
 
 def norm(v: str) -> str:
-    return v.upper().removeprefix('0X').zfill(8)
+    return str(v).upper().removeprefix('0X').zfill(8)
 
 
 def parse_pair(v: str) -> tuple[str, str]:
@@ -55,17 +54,30 @@ def main() -> int:
     targets = dict(a.target_resource)
     target_set = set(targets)
 
-    # Preserve every exact arrangement context while deduplicating physical reads.
     finals: dict[tuple[int, int, str], dict] = {}
+    null_entity_slots = 0
+    unresolved_entity_slots = 0
+    malformed_resolved_slots = 0
+    resolved_entity_slots = 0
     for arr in src.get('arrangements', []):
         for ent in arr.get('entities', []):
+            if ent is None:
+                null_entity_slots += 1
+                continue
+            if not isinstance(ent, dict):
+                malformed_resolved_slots += 1
+                continue
             if not ent.get('resolved'):
+                unresolved_entity_slots += 1
                 continue
             pkg = ent.get('entity_data_package_id')
             idx = ent.get('entity_data_file_index')
-            h = norm(ent.get('entity_data_hash', ''))
-            if not isinstance(pkg, int) or not isinstance(idx, int):
+            raw_hash = ent.get('entity_data_hash')
+            if not isinstance(pkg, int) or not isinstance(idx, int) or not raw_hash:
+                malformed_resolved_slots += 1
                 continue
+            h = norm(raw_hash)
+            resolved_entity_slots += 1
             key = (pkg, idx, h)
             row = finals.setdefault(key, {
                 'package_id': pkg,
@@ -76,7 +88,7 @@ def main() -> int:
             row['contexts'].append({
                 'arrangement_index': arr.get('arrangement_index'),
                 'source': arr.get('source'),
-                'assignment_hashes': list(arr.get('assignment_hashes', [])),
+                'assignment_hashes': list(arr.get('assignment_hashes') or []),
                 'parent_hash': ent.get('parent_hash'),
             })
 
@@ -141,10 +153,16 @@ def main() -> int:
         print('INVESTMENT_MODEL_RESOURCE_HIT', json.dumps(row, separators=(',', ':')), flush=True)
 
     rep = {
-        'schema': 'd1_crota_investment_model_resource_join/v1',
+        'schema': 'd1_crota_investment_model_resource_join/v2',
         'status': 'D1_CROTA_INVESTMENT_MODEL_RESOURCE_JOIN_COMPLETE' if not errors else 'D1_CROTA_INVESTMENT_MODEL_RESOURCE_JOIN_ERRORS',
         'arrangement_count': src.get('arrangement_count'),
         'resolved_parent_count': (src.get('remote_parent_resolution') or {}).get('resolved_parent_count'),
+        'slot_counts': {
+            'null_entity_slots': null_entity_slots,
+            'unresolved_entity_slots': unresolved_entity_slots,
+            'malformed_resolved_slots': malformed_resolved_slots,
+            'resolved_entity_slots': resolved_entity_slots,
+        },
         'unique_final_destination_count': len(finals),
         'exact_final_records_verified': exact_final_count,
         'final_reference_distribution': dict(sorted(refs.items())),
@@ -158,15 +176,15 @@ def main() -> int:
         'errors': errors,
         'policy': (
             'Only final EntityDataROI records selected by the authoritative serialized Investment arrangement graph are read. '
-            'A model-resource hit requires final class 80800734 and exact source-parsed s_entity Resource[] FileHash equality. '
-            'No semantic literal scan, package locality, adjacency, or appearance participates.'
+            'Null and unresolved arrangement slots remain absences. A model-resource hit requires final class 80800734 and exact '
+            'source-parsed s_entity Resource[] FileHash equality. No semantic literal scan, locality, adjacency, or appearance participates.'
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(rep, indent=2) + '\n')
-    print('FINALS', len(finals), 'VERIFIED', exact_final_count, 'S_ENTITIES', s_entity_count,
-          'PARSED', parsed_s_entity_count, 'HITS', len(hits), 'BY_RESOURCE', dict(target_occ),
-          'REFS', dict(refs), 'ERRORS', len(errors))
+    print('SLOTS', rep['slot_counts'], 'FINALS', len(finals), 'VERIFIED', exact_final_count,
+          'S_ENTITIES', s_entity_count, 'PARSED', parsed_s_entity_count, 'HITS', len(hits),
+          'BY_RESOURCE', dict(target_occ), 'REFS', dict(refs), 'ERRORS', len(errors))
     return 0 if not errors else 2
 
 
