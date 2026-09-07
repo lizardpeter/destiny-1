@@ -1,0 +1,102 @@
+name: D1 Crota squad neighborhood direct probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-squad-neighborhood-fast.yml'
+      - 'tools/d1_remote_exact_tag_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe both exact plus-minus-eight neighborhoods
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          tags=[]
+          for lo,hi in [(0xE28D,0xE29D),(0xE2DF,0xE2EF)]:
+              tags += [f'8108{x:04X}' for x in range(lo,hi+1)]
+          print(' '.join('--tag-hash 0x'+h for h in tags))
+          open('out/requested_tags.txt','w').write('\n'.join(tags)+'\n')
+          PY
+          )
+          python tools/d1_remote_exact_tag_probe.py $ARGS \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --min-string 4 -o out/CROTA_SQUAD_NEIGHBOR_DIRECT.json \
+            | tee out/probe_stdout.txt
+
+      - name: Summarize exact structure
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import json
+          d=json.load(open('out/CROTA_SQUAD_NEIGHBOR_DIRECT.json'))
+          assert d['violation_count']==0,d['violations']
+          em={e['tag_hash']:e for e in d['entries']}
+          for target in ('8108E295','8108E2E7'):
+              ti=int(target[-4:],16)
+              print('\nTARGET',target)
+              for i in range(ti-8,ti+9):
+                  h=f'8108{i:04X}';e=em[h];en=e['entry'];er=e.get('entity_resource') or {}
+                  strings=[s['string'] for s in e.get('printable_strings',[]) if len(s['string'])>=4]
+                  refs=[]
+                  for m in e.get('aligned_resolved_tags',[]):
+                      if m['tag_hash']==h: continue
+                      refs.append((hex(m['offset']),m['tag_hash'],m['entry']['reference']))
+                  print(f"{i-ti:+d}",h,'REF',en['reference'],'SIZE',e['payload_size'],
+                        'ER',er.get('semantic_role'),er.get('unk10_class'),er.get('unk18_class'),
+                        'STRINGS',strings[:20],'REFS',refs[:40])
+          print('\nRELATIVE_CLASS_COMPARISON')
+          for r in range(-8,9):
+              a=em[f'8108{0xE295+r:04X}'];b=em[f'8108{0xE2E7+r:04X}']
+              print(r,a['tag_hash'],a['entry']['reference'],a['payload_size'],'|',
+                    b['tag_hash'],b['entry']['reference'],b['payload_size'],
+                    'SAME_CLASS',a['entry']['reference']==b['entry']['reference'])
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-SQUAD-NEIGHBORHOOD-DIRECT
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
