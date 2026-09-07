@@ -10,6 +10,8 @@ on:
       - 'tools/d1_world_activity_entity_table_census.py'
       - 'tools/d1_world_activity_entity_resource_census.py'
       - 'tools/d1_remote_activity_f603_resource_census.py'
+      - 'tools/d1_remote_activity_scripted_entity_census.py'
+      - 'tools/d1_world_scripted_entity_identity_census.py'
       - 'tools/d1_remote_s6e_stage_probe.py'
       - 'tools/d1_activity_stage_resource_matrix.py'
       - 'tools/d1_activity_asset_dependency_seeds.py'
@@ -98,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_filehash.py
-          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py tools/d1_activity_entity_model_plan.py tools/d1_remote_activity_model_visual_dependency_closure.py tools/d1_remote_activity_model_material_bindings.py
+          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py tools/d1_activity_entity_model_plan.py tools/d1_remote_activity_model_visual_dependency_closure.py tools/d1_remote_activity_model_material_bindings.py tools/d1_remote_activity_scripted_entity_census.py tools/d1_world_scripted_entity_identity_census.py
 
       - name: Extract exact scenario activity graph and dependency seeds
         run: |
@@ -110,6 +112,8 @@ jobs:
             tools/d1_world_activity_entity_table_census.py \
             tools/d1_world_activity_entity_resource_census.py \
             tools/d1_remote_activity_f603_resource_census.py \
+            tools/d1_remote_activity_scripted_entity_census.py \
+            tools/d1_world_scripted_entity_identity_census.py \
             tools/d1_remote_s6e_stage_probe.py \
             tools/d1_activity_stage_resource_matrix.py \
             tools/d1_activity_asset_dependency_seeds.py
@@ -127,6 +131,7 @@ jobs:
           import json
           g=json.load(open('out/${{ matrix.id }}/activity_graph_manifest.json'))
           s=json.load(open('out/${{ matrix.id }}/activity_asset_dependency_seeds.json'))
+          x=json.load(open('out/${{ matrix.id }}/activity_scripted_entities.json'))
           assert g['status']=='D1_REMOTE_ACTIVITY_GRAPH_EXACT',g
           assert g['activity']['tag_hash']=='${{ matrix.hash }}'
           assert g['counts']['unique_root_entities'] > 0 or g['counts']['runtime_placements'] == 0,g['counts']
@@ -136,6 +141,9 @@ jobs:
           assert s['counts'].get('s_entities',0) >= s['counts'].get('placement_entities',0)
           assert s['counts'].get('scripted_only_entities',0) == len(set(s['seed_groups'].get('scripted_entities',[]))-set(s['seed_groups'].get('placement_entities',[])))
           assert s['closure_seed_count'] >= s['counts'].get('s_entities',0)
+          assert x['status']=='D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_COMPLETE',x['violations'][:10]
+          assert not x['violations'],x['violations'][:10]
+          assert sum(x.get('scripted_runtime_relation_counts',{}).values())==x['scripted_record_count'],x
           PY
 
       - name: Recursively close exact entity/control dependencies
