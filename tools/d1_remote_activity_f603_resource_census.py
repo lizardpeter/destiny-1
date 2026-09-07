@@ -8,6 +8,10 @@ Known roles such as normal SMap placement and scripted-entity-table ownership ar
 reported by the shared parser; unresolved pairs remain unresolved rather than being
 named from activity-specific developer strings.
 
+Printable UTF-8 runs are preserved as authored discovery evidence. They can expose
+retail identifiers such as obj_* labels without promoting an unresolved binary class
+to a semantic schema.
+
 This is the activity-generic successor to d1_remote_raid_f603_scripted_owner_census.py.
 """
 from __future__ import annotations
@@ -34,6 +38,26 @@ NULLS = {"00000000", "FFFFFFFF"}
 
 def u32(b: bytes, o: int) -> int:
     return struct.unpack_from("<I", b, o)[0]
+
+
+def printable_runs(b: bytes, min_len: int = 4, max_len: int = 256) -> list[dict]:
+    out = []
+    start = None
+    for i, x in enumerate(b + b"\0"):
+        if 0x20 <= x < 0x7F:
+            if start is None:
+                start = i
+        elif start is not None:
+            n = i - start
+            if min_len <= n <= max_len:
+                try:
+                    text = b[start:i].decode("utf-8")
+                except UnicodeDecodeError:
+                    text = None
+                if text is not None:
+                    out.append({"offset": start, "string": text})
+            start = None
+    return out
 
 
 def main() -> int:
@@ -71,6 +95,7 @@ def main() -> int:
     violations = []
     role_counts = collections.Counter()
     pair_counts = collections.Counter()
+    pair_string_counts: dict[tuple[str | None, str | None], collections.Counter] = collections.defaultdict(collections.Counter)
     table_counts = collections.Counter()
 
     for fh in f603s:
@@ -126,8 +151,14 @@ def main() -> int:
         row["semantic_role"] = role
         row["unk10_class"] = (parsed.get("unk10") or {}).get("class_hash")
         row["unk18_class"] = (parsed.get("unk18") or {}).get("class_hash")
+        pair_key = (row["unk10_class"], row["unk18_class"])
         role_counts[role] += 1
-        pair_counts[(row["unk10_class"], row["unk18_class"])] += 1
+        pair_counts[pair_key] += 1
+
+        strings = printable_runs(eb)
+        if strings:
+            row["printable_strings"] = strings
+            pair_string_counts[pair_key].update(x["string"] for x in strings)
 
         # Preserve parser-proven typed targets generically.
         for key in (
@@ -158,6 +189,14 @@ def main() -> int:
         rows.append(row)
         violations.extend(f"{fh}:{x}" for x in row["violations"])
 
+    pair_string_summary = {}
+    for pair, counts in pair_string_counts.items():
+        label = f"{pair[0] or 'NONE'}->{pair[1] or 'NONE'}"
+        pair_string_summary[label] = [
+            {"string": text, "resource_count": count}
+            for text, count in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+        ]
+
     report = {
         "schema": "d1_remote_activity_f603_resource_census/v1",
         "status": (
@@ -172,6 +211,7 @@ def main() -> int:
             f"{x or 'NONE'}->{y or 'NONE'}": n
             for (x, y), n in sorted(pair_counts.items(), key=lambda z: str(z[0]))
         },
+        "class_pair_printable_strings": pair_string_summary,
         "scripted_owner_count": sum(
             1 for r in rows if r.get("semantic_role") == "scripted_entity_table_owner"
         ),
@@ -182,8 +222,9 @@ def main() -> int:
         "policy": (
             "Every F603->EntityResource edge comes from source-pinned activity layout. "
             "EntityResource class pairs and parser-proven typed targets are retained exactly. "
-            "Unknown class pairs remain unknown; no activity-specific name, proximity or "
-            "appearance is promoted to semantic identity."
+            "Printable strings are serialized payload evidence only and do not by themselves "
+            "promote an unresolved class pair to a semantic role. Unknown class pairs remain "
+            "unknown; no activity-specific name, proximity or appearance is promoted to identity."
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
@@ -194,6 +235,7 @@ def main() -> int:
         "F603", len(f603s),
         "ROLES", dict(role_counts),
         "PAIRS", len(pair_counts),
+        "PAIRS_WITH_STRINGS", len(pair_string_summary),
         "SCRIPTED_OWNERS", report["scripted_owner_count"],
         "VIOLATIONS", len(violations),
     )
