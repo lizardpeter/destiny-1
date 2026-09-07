@@ -1,4 +1,5 @@
 name: D1 Crota exact rigged animated export v2
+# Registered workflow trigger; no evidence/export semantics changed.
 
 on:
   workflow_dispatch:
