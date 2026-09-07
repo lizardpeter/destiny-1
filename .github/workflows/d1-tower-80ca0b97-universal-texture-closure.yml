@@ -79,7 +79,7 @@ jobs:
           print('UNIVERSAL_CARD_DEPENDENCIES_CLOSED','materials',d['material_count'],'textures',d['textures'])
           PY
 
-      - name: Export both exact native textures and census alpha
+      - name: Export both exact native textures and census source scalar channel
         run: |
           set -euo pipefail
           python tools/d1_remote_activity_texture_export.py \
@@ -87,7 +87,8 @@ jobs:
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url "$BASE_URL" --part-count 10 --runtime runtime --out-dir exported
           python - <<'PY'
-          import json,glob,os
+          import json,os
+          import numpy as np
           from PIL import Image
           m=json.load(open('exported/texture_export_manifest.json'))
           assert m['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',m
@@ -95,18 +96,35 @@ jobs:
           rows=[]
           for r in m['rows']:
               p=next((x for x in r['files'] if x['kind']=='png'),None);assert p,r
-              path=os.path.join('exported',p['path']);im=Image.open(path).convert('RGBA');a=im.getchannel('A');hist=a.histogram();n=im.width*im.height
-              nonopaque=n-hist[255];zero=hist[0];partial=nonopaque-zero
-              rows.append({'texture':r['texture'],'width':im.width,'height':im.height,'format_name':r.get('format_name'),
-                           'backing_hash':r.get('backing_hash'),'png_path':p['path'],'png_sha256':p['sha256'],
-                           'alpha_min':a.getextrema()[0],'alpha_max':a.getextrema()[1],
-                           'alpha_zero_pixels':zero,'alpha_partial_pixels':partial,'alpha_nonopaque_pixels':nonopaque,
-                           'alpha_nonopaque_fraction':nonopaque/n})
-          out={'schema_version':1,'status':'D1_80CA0B97_EXACT_TEXTURE_ALPHA_CENSUS_COMPLETE','model':'80CA0B97',
+              path=os.path.join('exported',p['path']);im=np.asarray(Image.open(path).convert('RGBA'))
+              scalar=im[:,:,0]; alpha=im[:,:,3]; n=scalar.size
+              vals,counts=np.unique(scalar,return_counts=True)
+              assert r.get('format_name')=='BC4',r
+              rows.append({
+                  'texture':r['texture'],'width':int(im.shape[1]),'height':int(im.shape[0]),
+                  'format_name':r.get('format_name'),'source_channel':'BC4 scalar / decoded PNG R',
+                  'backing_hash':r.get('backing_hash'),'png_path':p['path'],'png_sha256':p['sha256'],
+                  'scalar_min':int(scalar.min()),'scalar_max':int(scalar.max()),
+                  'scalar_mean':float(scalar.mean()),'scalar_median':float(np.median(scalar)),
+                  'scalar_stddev':float(scalar.std()),'scalar_unique_value_count':int(len(vals)),
+                  'scalar_zero_pixels':int((scalar==0).sum()),'scalar_255_pixels':int((scalar==255).sum()),
+                  'scalar_intermediate_pixels':int(((scalar>0)&(scalar<255)).sum()),
+                  'scalar_zero_fraction':float((scalar==0).sum()/n),
+                  'scalar_255_fraction':float((scalar==255).sum()/n),
+                  'scalar_intermediate_fraction':float(((scalar>0)&(scalar<255)).sum()/n),
+                  'scalar_percentiles':{str(q):float(np.percentile(scalar,q)) for q in (1,5,10,25,50,75,90,95,99)},
+                  'decoded_png_alpha_min':int(alpha.min()),'decoded_png_alpha_max':int(alpha.max()),
+                  'decoded_png_alpha_is_synthetic_opaque':bool(np.all(alpha==255)),
+              })
+          out={'schema_version':2,'status':'D1_80CA0B97_EXACT_BC4_SCALAR_CENSUS_COMPLETE','model':'80CA0B97',
                'materials':['80B9E8C2','80B9E8C3'],'textures':rows,
-               'policy':'Alpha statistics are measured from exact universally resolved retail texture payloads. No blend/cutout mode is inferred from alpha alone.'}
-          json.dump(out,open('reports/80CA0B97_exact_texture_alpha_census.json','w'),indent=2)
+               'interpretation_boundary':'The native shaders sample dmask x from each material texture. These are BC4 scalar fields, so decoded PNG alpha=255 is not evidence of opaque rendering.',
+               'blend_mode_semantic':'WITHHELD',
+               'policy':'Scalar statistics are measured from exact universally resolved retail BC4 payloads. No game-facing texture name, blend mode, cutout threshold, or opacity semantic is inferred from value distribution alone.'}
+          json.dump(out,open('reports/80CA0B97_exact_bc4_scalar_census.json','w'),indent=2)
           print(json.dumps(out,indent=2))
+          assert all(x['scalar_unique_value_count']==256 for x in rows),rows
+          assert all(x['scalar_intermediate_pixels']>0 for x in rows),rows
           PY
           cp exported/texture_export_manifest.json reports/
           cp -r exported/textures reports/exact_textures
