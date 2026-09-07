@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-tower-xur-blender-basis-fix.yml'
       - 'tools/d1_gltf_fix_standalone_articulated_basis.py'
       - 'tools/d1_gltf_articulated_basis_alignment_probe.py'
+      - 'tools/d1_gltf_standalone_basis_preservation_probe.py'
       - 'tools/d1_gltf_skin_bind_identity_probe.py'
       - 'tools/d1_gltf_layer_merge.py'
 
@@ -35,11 +36,8 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check -q numpy scipy
           mkdir -p input out/reports
-          curl -fsSL --retry 4 \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${XUR_ARTIFACT_ID}/zip" \
-            -o input/xur.zip
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${XUR_ARTIFACT_ID}/zip" -o input/xur.zip
           echo "${XUR_ARTIFACT_ZIP_SHA256}  input/xur.zip" | sha256sum --check --strict
           unzip -q input/xur.zip -d input/artifact
           xur="$(find input/artifact -type f -name 'D1_TOWER_XUR_80C88CEF_EXACT_TEXTURED_ALL_ACTIONS.glb' -print -quit)"
@@ -47,152 +45,77 @@ jobs:
           echo "${XUR_INPUT_SHA256}  ${xur}" | sha256sum --check --strict
           cp "$xur" input/XUR_SOURCE.glb
 
-      - name: Prove the original Blender-visible basis mismatch
+      - name: Source-close original Blender-visible basis mismatch
         run: |
           set -euo pipefail
-          python tools/d1_gltf_articulated_basis_alignment_probe.py input/XUR_SOURCE.glb \
-            --model 80C88CEF --expect-mesh-axis Z --expect-joint-axis Y --allow-mismatch \
-            -o out/reports/XUR_BASIS_BEFORE.json
+          python tools/d1_gltf_articulated_basis_alignment_probe.py input/XUR_SOURCE.glb --model 80C88CEF \
+            --expect-mesh-axis Z --expect-joint-axis Y --allow-mismatch -o out/reports/XUR_BASIS_BEFORE.json
           python - <<'PY'
           import json
           d=json.load(open('out/reports/XUR_BASIS_BEFORE.json'))
-          assert d['status']=='D1_GLTF_ARTICULATED_BASIS_ALIGNMENT_COMPLETE',d
-          assert d['mesh_bounds']['dominant_axis']=='Z',d
-          assert d['joint_bounds']['dominant_axis']=='Y',d
-          assert d['dominant_axes_aligned'] is False,d
-          assert d['skinned_mesh_node_count']==119,d
-          assert d['joint_count']==70,d
+          assert d['status']=='D1_GLTF_ARTICULATED_BASIS_ALIGNMENT_COMPLETE' and not d['dominant_axes_aligned'],d
+          assert d['mesh_bounds']['dominant_axis']=='Z' and d['joint_bounds']['dominant_axis']=='Y',d
+          assert d['skinned_mesh_node_count']==119 and d['joint_count']==70,d
           print('XUR_PRE_FIX_MISMATCH_SOURCE_CLOSED',d['mesh_bounds']['span'],d['joint_bounds']['span'])
           PY
 
-      - name: Undo parser basis and apply one native D1 to glTF scene adapter
+      - name: Repair parser and glTF basis composition
         run: |
           set -euo pipefail
           python tools/d1_gltf_fix_standalone_articulated_basis.py input/XUR_SOURCE.glb \
             --model 80C88CEF --expect-skeleton 809D80C9 \
-            --out out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb \
-            --report out/reports/XUR_BASIS_FIX.json
+            --out out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb --report out/reports/XUR_BASIS_FIX.json
           python - <<'PY'
           import json
           d=json.load(open('out/reports/XUR_BASIS_FIX.json'))
           assert d['status']=='D1_STANDALONE_ARTICULATED_PARSER_AND_GLTF_BASIS_FIXED',d
-          assert d['joint_count']==70,d
-          assert d['skinned_mesh_node_count']==119,d
-          assert d['animation_count']==267,d
-          assert d['animation_channel_count']==56070,d
-          assert d['animation_output_accessor_count']==56070,d
+          assert (d['joint_count'],d['skinned_mesh_node_count'],d['animation_count'])==(70,119,267),d
+          assert d['animation_channel_count']==56070 and d['animation_output_accessor_count']==56070,d
           assert d['bin_byte_length_unchanged'] is True,d
-          print('XUR_BASIS_FIX_COUNTS_CLOSED')
+          print('XUR_BASIS_FIX_COUNTS_CLOSED',d['output_sha256'])
           PY
 
-      - name: Prove final mesh and armature share glTF Y-up
+      - name: Prove final mesh armature animation basis and bind pose
         run: |
           set -euo pipefail
-          python tools/d1_gltf_articulated_basis_alignment_probe.py \
-            out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb \
-            --model 80C88CEF --expect-mesh-axis Y --expect-joint-axis Y \
-            -o out/reports/XUR_BASIS_AFTER.json
+          fixed=out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb
+          python tools/d1_gltf_articulated_basis_alignment_probe.py "$fixed" --model 80C88CEF \
+            --expect-mesh-axis Y --expect-joint-axis Y -o out/reports/XUR_BASIS_AFTER.json
+          python tools/d1_gltf_skin_bind_identity_probe.py "$fixed" --max-error 0.00002 \
+            -o out/reports/XUR_BIND_IDENTITY_AFTER.json
           python - <<'PY'
           import json
-          d=json.load(open('out/reports/XUR_BASIS_AFTER.json'))
-          assert d['status']=='D1_GLTF_ARTICULATED_BASIS_ALIGNMENT_COMPLETE',d
-          assert d['dominant_axes_aligned'] is True,d
-          assert d['mesh_bounds']['dominant_axis']=='Y',d
-          assert d['joint_bounds']['dominant_axis']=='Y',d
-          print('XUR_POST_FIX_ALIGNMENT_CLOSED',d['mesh_bounds']['span'],d['joint_bounds']['span'])
+          a=json.load(open('out/reports/XUR_BASIS_AFTER.json')); b=json.load(open('out/reports/XUR_BIND_IDENTITY_AFTER.json'))
+          assert a['status']=='D1_GLTF_ARTICULATED_BASIS_ALIGNMENT_COMPLETE' and a['dominant_axes_aligned'],a
+          assert a['mesh_bounds']['dominant_axis']==a['joint_bounds']['dominant_axis']=='Y',a
+          assert b['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and b['tested_skinned_mesh_nodes']==119,b
+          assert b['skin_count']==1 and b['max_observed_error']<=2e-5 and not b['violations'],b
+          print('XUR_POST_FIX_ALIGNMENT_CLOSED',a['mesh_bounds']['span'],a['joint_bounds']['span'])
+          print('XUR_BIND_IDENTITY_CLOSED',b['max_observed_error'])
           PY
 
-      - name: Prove bind pose remains algebraically valid
+      - name: Prove visual resources and all protected binary domains are unchanged
         run: |
           set -euo pipefail
-          python tools/d1_gltf_skin_bind_identity_probe.py \
-            out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb \
-            --max-error 0.00002 -o out/reports/XUR_BIND_IDENTITY_AFTER.json
+          python tools/d1_gltf_standalone_basis_preservation_probe.py \
+            --source input/XUR_SOURCE.glb --fixed out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb \
+            --model 80C88CEF -o out/reports/XUR_BASIS_PRESERVATION.json
           python - <<'PY'
-          import json
-          d=json.load(open('out/reports/XUR_BIND_IDENTITY_AFTER.json'))
-          assert d['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE',d
-          assert d['tested_skinned_mesh_nodes']==119,d
-          assert d['skin_count']==1,d
-          assert d['max_observed_error']<=2e-5,d
-          assert not d['violations'],d
-          print('XUR_BIND_IDENTITY_CLOSED',d['max_observed_error'])
-          PY
-
-      - name: Prove visual resources and protected binary domains are unchanged
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib,json,sys
-          sys.path.insert(0,'tools')
-          from d1_gltf_layer_merge import read_glb
-          from d1_gltf_skin_bind_identity_probe import accessor
-
-          src='input/XUR_SOURCE.glb'; dst='out/D1_TOWER_XUR_80C88CEF_BLENDER_BASIS_FIXED.glb'
-          a,ab=read_glb(src); b,bb=read_glb(dst)
-          expected={'materials':54,'textures':135,'images':135,'meshes':119,'skins':1,'animations':267,'accessors':57124,'bufferViews':57259,'nodes':190}
-          for k,n in expected.items(): assert len(a.get(k,[]))==n,(k,len(a.get(k,[])),n)
-          for k in ('materials','textures','images','meshes','skins','accessors','bufferViews','samplers'):
-              assert a.get(k)==b.get(k),f'{k} JSON changed'
-          assert len(b['nodes'])==191,len(b['nodes'])
-          assert len(b['animations'])==267
-          assert len(ab)==len(bb),'BIN length changed'
-
-          # Mesh nodes must be byte-for-byte identical JSON.  Only joints are re-based.
-          mesh_nodes=[i for i,n in enumerate(a['nodes']) if n.get('mesh') is not None and n.get('skin') is not None]
-          assert len(mesh_nodes)==119
-          for i in mesh_nodes: assert a['nodes'][i]==b['nodes'][i],f'mesh node {i} JSON changed'
-
-          # Animation structure/identity is exact; only two explicit basis metadata keys
-          # are appended at animation top level and output values are re-based.
-          for i,(x,y) in enumerate(zip(a['animations'],b['animations'])):
-              xx={k:v for k,v in x.items() if k!='extras'}; yy={k:v for k,v in y.items() if k!='extras'}
-              assert xx==yy,f'animation structure {i} changed'
-              old=x.get('extras') or {}; new=y.get('extras') or {}
-              for k,v in old.items(): assert new.get(k)==v,(i,k)
-              assert new.get('d1BasisDomainModel')=='80C88CEF',i
-              assert new.get('d1ParserBasisUndone') is True,i
-
-          skin=a['skins'][0]; mutable={int(skin['inverseBindMatrices'])}
-          for anim in a['animations']:
-              for sam in anim['samplers']: mutable.add(int(sam['output']))
-          assert len(mutable)==56071,len(mutable)
-
-          # Every accessor outside IBM + animation outputs is exact logical data.
-          protected=0
-          for ai in range(len(a['accessors'])):
-              if ai in mutable: continue
-              xa=accessor(a,ab,ai); xb=accessor(b,bb,ai)
-              assert xa.dtype==xb.dtype and xa.shape==xb.shape and xa.tobytes()==xb.tobytes(),f'protected accessor {ai} changed'
-              protected+=1
-          assert protected==1053,protected
-
-          # Embedded exact/derived image payloads are untouched as well.
-          def bvbytes(doc,blob,bvi):
-              v=doc['bufferViews'][bvi]; o=int(v.get('byteOffset',0)); n=int(v['byteLength']); return blob[o:o+n]
-          for i,(x,y) in enumerate(zip(a['images'],b['images'])):
-              assert x==y
-              if 'bufferView' in x: assert bvbytes(a,ab,int(x['bufferView']))==bvbytes(b,bb,int(y['bufferView'])),f'image {i} bytes changed'
-
-          scene=b['scenes'][int(b.get('scene',0))]; assert len(scene['nodes'])==1,scene
-          root=b['nodes'][int(scene['nodes'][0])]; ex=root.get('extras') or {}
-          assert ex.get('d1BasisAdapter')=='native D1 Z-up -> glTF Y-up',root
-
-          manifest={
-            'schema':'d1_tower_xur_blender_basis_fix/v1',
-            'status':'D1_TOWER_XUR_BLENDER_BASIS_FIXED_AND_PROVEN',
-            'source_sha256':hashlib.sha256(open(src,'rb').read()).hexdigest(),
-            'output_sha256':hashlib.sha256(open(dst,'rb').read()).hexdigest(),
-            'output_bytes':__import__('os').path.getsize(dst),
-            'entity_model':'80C88CEF','skeleton':'809D80C9','skin_count':1,'joint_count':70,
-            'mesh_count':119,'material_count':54,'texture_count':135,'image_count':135,
-            'animation_count':267,'animation_channel_count':56070,
-            'protected_accessor_count':protected,'mutable_basis_accessor_count':len(mutable),
-            'visual_resource_json_unchanged':True,'embedded_image_bytes_unchanged':True,
-            'mesh_node_json_unchanged':True,'bin_byte_length_unchanged':True,
-            'fix':'undo parser [x,y,z]->[y,z,x] on articulated domain; wrap full actor native Z-up -> glTF Y-up',
-            'material_policy':'This checkpoint fixes physical mesh/armature/animation basis only. Existing portable PBR material choices are retained exactly and are not promoted as native D1 shading.'
-          }
+          import json,hashlib,os
+          p=json.load(open('out/reports/XUR_BASIS_PRESERVATION.json'))
+          assert p['status']=='D1_GLTF_STANDALONE_BASIS_PRESERVATION_COMPLETE',p
+          c=p['counts']; expected={'nodes':190,'meshes':119,'materials':54,'textures':135,'images':135,'skins':1,'animations':267,'accessors':57124,'bufferViews':57259}
+          assert c==expected,(c,expected)
+          assert p['fixed_node_count']==191 and p['mesh_node_count']==119,p
+          assert p['mutable_basis_accessor_count']==56071 and p['protected_accessor_count']==1053,p
+          assert p['visual_resource_json_unchanged'] and p['embedded_image_bytes_unchanged'] and p['mesh_node_json_unchanged'] and p['bin_byte_length_unchanged'],p
+          manifest={'schema':'d1_tower_xur_blender_basis_fix/v1','status':'D1_TOWER_XUR_BLENDER_BASIS_FIXED_AND_PROVEN',
+                    'source_sha256':p['source_sha256'],'output_sha256':p['fixed_sha256'],'output_bytes':p['fixed_bytes'],
+                    'entity_model':'80C88CEF','skeleton':'809D80C9','skin_count':1,'joint_count':70,'mesh_count':119,
+                    'material_count':54,'texture_count':135,'image_count':135,'animation_count':267,'animation_channel_count':56070,
+                    'protected_accessor_count':1053,'mutable_basis_accessor_count':56071,
+                    'fix':'undo parser [x,y,z]->[y,z,x] on articulated domain; wrap full actor native Z-up -> glTF Y-up',
+                    'material_policy':'Basis-only checkpoint: portable PBR material choices remain unchanged and are not promoted as native D1 shading.'}
           json.dump(manifest,open('out/reports/XUR_BLENDER_BASIS_MANIFEST.json','w'),indent=2)
           print('XUR_PROTECTED_DOMAINS_CLOSED',json.dumps(manifest,sort_keys=True))
           PY
