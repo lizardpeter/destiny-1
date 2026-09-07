@@ -1,0 +1,26 @@
+name: D1 animation selector v2 unit regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-animation-selector-v2-unit.yml'
+      - 'tools/d1_animation_control_state_map_v2.py'
+      - 'tests/test_animation_control_state_map_v2.py'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Run selector regressions
+        run: |
+          set -euo pipefail
+          python -m pip install -q pytest
+          python -m py_compile tools/d1_animation_control_state_map_v2.py
+          python -m pytest -q tests/test_animation_control_state_map_v2.py
