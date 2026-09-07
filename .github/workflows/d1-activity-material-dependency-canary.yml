@@ -32,14 +32,15 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Install Python image dependency
+      - name: Install pinned Python image dependencies
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python -m pip install --disable-pip-version-check 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
           python - <<'PY'
-          import PIL
+          import PIL, texture2ddecoder
           assert PIL.__version__ == '11.3.0', PIL.__version__
           print('PILLOW', PIL.__version__)
+          print('TEXTURE2DDECODER', getattr(texture2ddecoder, '__version__', '1.0.6-import-ok'))
           PY
 
       - name: Recover verified universal package catalog
