@@ -12,10 +12,18 @@ SD9128080 / 808012D9 -> scripted groups/records + S2B138080 locations.
 
 The SD912 `Locations` array is decoded literally from Charm's ROI schema as
 S2B138080, stride 0x30: Location Vector4 at +0x00 and Rotation Vector4 at +0x10.
-The remaining 0x10-byte tail of each record is preserved as raw hex.  This tool does
+The remaining 0x10-byte tail of each record is preserved as raw hex. This tool does
 not infer which location belongs to which scripted entity when a table contains more
-than one record/location.  A table with exactly one entity record and exactly one
+than one record/location. A table with exactly one entity record and exactly one
 location is reported as a singleton co-owned pair, not promoted to a hidden pointer.
+
+D912 SMapDataEntry records are scripted overlay records, not redundant copies of the
+runtime placement table. Retail King\'s Fall, Wrath, strike and Plaguelands evidence
+shows records with the same WorldID and exact transform as a runtime placement while
+serializing a different EntitySK. Such a record is preserved as
+WORLDID_TRANSFORM_MATCH_ENTITY_DIFFERS. It is not an ownership failure and the two
+EntitySK hashes are never aliased. A scripted EntityName may attach to a runtime
+placement only when WorldID and EntitySK both agree.
 
 No package-neighborhood or visual inference is used. A scripted table is admitted
 only when its SF603 is serialized beneath the selected activity and the shared
@@ -37,6 +45,7 @@ import d1_world_scripted_entity_identity_census as scripted
 from d1_entity_resource_probe import parse_resource,ENTITY_RESOURCE_CLASS
 
 F603='808003F6'; SENTITY='80800734'; NULLS={'00000000','FFFFFFFF'}
+FALSE_OWNER_EQUIVALENCE='named_script_record_entity_owner_mismatch'
 PINNED_SOURCE=(
  'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
  'Tiger/Schema/Activity/ActivityStructsROI.cs + Tiger/Schema/Static/StaticMapData.cs')
@@ -55,6 +64,45 @@ def runtime_placements(c,tables,f603s,viol):
  real=[x for x in rows if norm(x.get('entity_hash','FFFFFFFF')) not in NULLS]
  unique,_=place.runtime_placement_view(real,viol)
  return direct,collapsed,unique
+
+def normalize_scripted_overlay_semantics(t):
+ """Replace the old false EntitySK-equivalence assertion with explicit relations.
+
+ The local parser historically treated a named D912 record whose EntitySK differed
+ from the runtime placement at the same WorldID as malformed. Cross-activity retail
+ evidence proves that is a normal scripted-overlay shape. We retain every serialized
+ hash and match bit, remove only that obsolete assertion, and classify the relation.
+ """
+ t['violations']=[x for x in t.get('violations',[]) if FALSE_OWNER_EQUIVALENCE not in x]
+ for g in t.get('groups',[]):
+  g['violations']=[x for x in g.get('violations',[]) if FALSE_OWNER_EQUIVALENCE not in x]
+  for r in g.get('records',[]):
+   r['violations']=[x for x in r.get('violations',[]) if FALSE_OWNER_EQUIVALENCE not in x]
+   pm=r.get('placement_match')
+   if not isinstance(pm,dict):
+    r['scripted_runtime_relation']='NO_RUNTIME_PLACEMENT_EVIDENCE'
+    r['placement_identity_attachment_eligible']=False
+    continue
+   world=bool(pm.get('world_id_exists'))
+   entity=bool(pm.get('entity_matches'))
+   transform=bool(pm.get('transform_matches'))
+   if not world:
+    relation='WORLDID_NOT_IN_RUNTIME_PLACEMENTS'
+   elif entity and transform:
+    relation='WORLDID_ENTITY_TRANSFORM_MATCH'
+   elif entity:
+    relation='WORLDID_ENTITY_MATCH_TRANSFORM_DIFFERS'
+   elif transform:
+    relation='WORLDID_TRANSFORM_MATCH_ENTITY_DIFFERS'
+   else:
+    relation='WORLDID_MATCH_ENTITY_AND_TRANSFORM_DIFFER'
+   pm['relation']=relation
+   r['scripted_runtime_relation']=relation
+   # The source contract requires WorldID + EntitySK for identity attachment.
+   # Transform equality remains an independent validation signal.
+   r['placement_identity_attachment_eligible']=bool(world and entity)
+   r['placement_identity_transform_exact']=bool(world and entity and transform)
+ return t
 
 def attach_locations(c,t):
  """Decode SD912.Locations without assigning them to entity records."""
@@ -131,7 +179,7 @@ def main():
   owners.append(row)
   viol.extend(f'{fh}:{x}' for x in row['violations'])
  table_hashes=sorted(set(table_hashes))
- parsed=[scripted.parse_d912(c,h,pindex) for h in table_hashes]
+ parsed=[normalize_scripted_overlay_semantics(scripted.parse_d912(c,h,pindex)) for h in table_hashes]
  for t in parsed:attach_locations(c,t)
  for t in parsed:viol.extend(f"{t['scripted_entity_table']}:{x}" for x in t.get('violations',[]))
  records=[r for t in parsed for r in t.get('records',[])]
@@ -141,8 +189,11 @@ def main():
  types=collections.Counter(r.get('type_string_hash') for r in records if r.get('type_string_hash') not in (None,*NULLS))
  names=collections.Counter(r.get('entity_name_string_hash') for r in records if r.get('entity_name_string_hash') not in (None,*NULLS))
  entities=collections.Counter(r.get('entity_hash') for r in records if r.get('entity_hash') not in (None,*NULLS))
- matched=[r for r in records if (r.get('placement_match') or {}).get('world_id_exists') and (r.get('placement_match') or {}).get('entity_matches')]
- out={'schema':'d1_remote_activity_scripted_entity_census/v2',
+ relations=collections.Counter(r.get('scripted_runtime_relation','UNCLASSIFIED') for r in records)
+ matched=[r for r in records if r.get('placement_identity_attachment_eligible')]
+ named_records=[r for r in records if r.get('entity_name_string_hash') not in (None,*NULLS)]
+ named_unattached=[r for r in named_records if not r.get('placement_identity_attachment_eligible')]
+ out={'schema':'d1_remote_activity_scripted_entity_census/v3',
       'status':'D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_COMPLETE' if not viol else 'D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_WITH_VIOLATIONS',
       'pinned_source':PINNED_SOURCE,'activity':{'tag_hash':ah,'name':a.activity_name,'class_hash':norm(a.activity_class)},
       'unique_resource_parents':parents,'unique_s6e_resources':s6es,'unique_map_data_tables':tables,
@@ -153,13 +204,15 @@ def main():
       'scripted_record_count':len(records),'scripted_location_count':len(locations),
       'singleton_entity_location_pair_count':len(singleton_pairs),'singleton_entity_location_pairs':singleton_pairs,
       'placement_matched_scripted_record_count':len(matched),
+      'named_scripted_record_count':len(named_records),'named_scripted_record_unattached_count':len(named_unattached),
+      'scripted_runtime_relation_counts':dict(relations),
       'script_family_string_hash_counts':dict(families),'type_string_hash_counts':dict(types),
       'entity_name_string_hash_counts':dict(names),'scripted_entity_hash_counts':dict(entities),
       'owners':owners,'scripted_tables':parsed,'violations':viol,
-      'policy':'Only scripted tables beneath the supplied exact activity root are admitted. SF603 ownership, EntityResource role, SA705 +0x68 D912 edge, scripted records, and S2B138080 location arrays are serialized retail data. Locations are not assigned to entity records when multiplicity makes ownership ambiguous. Names remain StringHashes until exact preimages are recovered.'}
+      'policy':('Only scripted tables beneath the supplied exact activity root are admitted. SF603 ownership, EntityResource role, SA705 +0x68 D912 edge, scripted records, and S2B138080 location arrays are serialized retail data. D912 EntitySK may intentionally differ from the runtime placement EntitySK at the same WorldID/transform; both hashes are preserved and never aliased. Scripted names attach to runtime placement identity only when WorldID and EntitySK agree. Locations are not assigned to entity records when multiplicity makes ownership ambiguous. Names remain StringHashes until exact preimages are recovered.')}
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
  print('STATUS',out['status'],'ACTIVITY',ah,'F603',len(f603s),'SCRIPTED_OWNERS',out['scripted_owner_f603_count'],'TABLES',len(table_hashes),'RECORDS',len(records),'LOCATIONS',len(locations),'SINGLETON_PAIRS',len(singleton_pairs),'VIOLATIONS',len(viol))
- print('FAMILIES',dict(families));print('TYPES',dict(types));print('NAME_HASHES',dict(names));print('ENTITIES',dict(entities));print('D912',table_hashes)
+ print('RELATIONS',dict(relations));print('FAMILIES',dict(families));print('TYPES',dict(types));print('NAME_HASHES',dict(names));print('ENTITIES',dict(entities));print('D912',table_hashes)
  return 0 if not viol else 2
 
 if __name__=='__main__':raise SystemExit(main())
