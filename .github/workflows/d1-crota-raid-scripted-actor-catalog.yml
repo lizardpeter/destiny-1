@@ -1,0 +1,202 @@
+name: D1 Crota raid scripted actor catalog
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-raid-scripted-actor-catalog.yml'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  SCRIPTED_CENSUS_ARTIFACT_ID: '9997371058'
+  SCRIPTED_CENSUS_ZIP_SHA256: '756a6ead36218efe3208532ba5b6b94c2769ffa71c3857af43e2ca01c44e8202'
+  FAMILY_PREIMAGE_ARTIFACT_ID: '9998530596'
+  FAMILY_PREIMAGE_ZIP_SHA256: '6c4e8710f4748743a21392d5dfc5b6d4d6d71bbda30eaab65dea31f620409885'
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned evidence artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/census input/preimages runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SCRIPTED_CENSUS_ARTIFACT_ID}/zip" -o input/census.zip
+          echo "${SCRIPTED_CENSUS_ZIP_SHA256}  input/census.zip" | sha256sum --check --strict
+          unzip -q input/census.zip -d input/census
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FAMILY_PREIMAGE_ARTIFACT_ID}/zip" -o input/preimages.zip
+          echo "${FAMILY_PREIMAGE_ZIP_SHA256}  input/preimages.zip" | sha256sum --check --strict
+          unzip -q input/preimages.zip -d input/preimages
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Extract exact scripted entity family set
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('input/census/CROTA_RAID_SCRIPTED_ENTITY_CENSUS.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_SCRIPTED_ENTITY_CENSUS_COMPLETE',d['status']
+          assert not d['violations'],d['violations']
+          entities=sorted(d['scripted_entity_hash_counts'])
+          assert len(entities)==18,entities
+          open('out/entity_hashes.txt','w').write('\n'.join(entities)+'\n')
+          open('out/entity_args.txt','w').write(' '.join('--tag-hash 0x'+h for h in entities)+'\n')
+          print('ENTITY_FAMILIES',len(entities),entities)
+          PY
+
+      - name: Decode all 18 exact s_entity families
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(cat out/entity_args.txt)
+          python tools/d1_remote_exact_s_entity_probe.py $ARGS \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/CROTA_RAID_SCRIPTED_ACTOR_ENTITIES.json \
+            | tee out/entities_stdout.txt
+
+      - name: Resolve every source-mapped actor name
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RAID_SCRIPTED_ACTOR_ENTITIES.json'))
+          assert d['violation_count']==0,d['violations']
+          args=[];seen=set()
+          for e in d['entries']:
+              for h in e.get('specific_name_string_hashes',[]):
+                  k=('s',h)
+                  if k not in seen: seen.add(k);args += ['--string-hash','0x'+h]
+              for h in e.get('generic_name_tags',[]):
+                  k=('g',h)
+                  if k not in seen: seen.add(k);args += ['--generic-name-tag','0x'+h]
+          print(' '.join(args))
+          PY
+          )
+          echo "NAME_ARGS=$ARGS" | tee out/name_args.txt
+          if [[ -n "$ARGS" ]]; then
+            python tools/d1_remote_global_stringhash_resolve.py $ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+              --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+              --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+              --global-package-id 0x072B --global-package-id 0x072F --global-package-id 0x0735 \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime -o out/CROTA_RAID_SCRIPTED_ACTOR_NAMES.json \
+              | tee out/names_stdout.txt
+          else
+            printf '{"schema":"empty","resolved":{},"generic_name_tag_to_string_hash":{},"violation_count":0,"violations":[]}\n' > out/CROTA_RAID_SCRIPTED_ACTOR_NAMES.json
+          fi
+
+      - name: Join retail machine preimages and exact actor structure
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import collections,json
+          census=json.load(open('input/census/CROTA_RAID_SCRIPTED_ENTITY_CENSUS.json'))
+          preimages=json.load(open('input/preimages/CROTA_ALL_SCRIPT_FAMILY_STRINGHASH_PREIMAGES.json'))
+          entities=json.load(open('out/CROTA_RAID_SCRIPTED_ACTOR_ENTITIES.json'))
+          names=json.load(open('out/CROTA_RAID_SCRIPTED_ACTOR_NAMES.json'))
+          assert not census['violations'],census['violations']
+          assert not preimages['errors'],preimages['errors']
+          assert entities['violation_count']==0,entities['violations']
+          assert names.get('violation_count',0)==0,names.get('violations')
+
+          pre=collections.defaultdict(set)
+          for h in preimages['hits']:
+              pre[h['string_hash']].add(h['preimage'])
+          by_entity=collections.defaultdict(list)
+          for t in census['scripted_tables']:
+              fam=t.get('script_family_string_hash')
+              for r in t.get('records',[]):
+                  by_entity[r['entity_hash']].append((fam,r,t))
+
+          resolved=names.get('resolved',{});generic=names.get('generic_name_tag_to_string_hash',{})
+          string_map={h:sorted({r.get('string') for r in rows if r.get('string')}) for h,rows in resolved.items()}
+          em={e['tag_hash']:e for e in entities['entries']}
+          rows=[]
+          for h in sorted(census['scripted_entity_hash_counts']):
+              e=em[h];records=by_entity[h]
+              machines=sorted({s for fam,r,t in records for s in pre.get(fam,set())})
+              display=[]
+              for sh in e.get('specific_name_string_hashes',[]): display += string_map.get(sh,[])
+              for gh in e.get('generic_name_tags',[]):
+                  sh=generic.get(gh)
+                  if sh: display += string_map.get(sh,[])
+              row={
+                  'entity_hash':h,
+                  'scripted_record_count':len(records),
+                  'model_hashes':e.get('embedded_models',[]),
+                  'skeletons':[{'resource_hash':s['resource_hash'],'node_count':s['node_count']} for s in e.get('skeletons',[])],
+                  'source_resolved_names':sorted(set(display)),
+                  'specific_name_string_hashes':e.get('specific_name_string_hashes',[]),
+                  'generic_name_tags':e.get('generic_name_tags',[]),
+                  'machine_names':machines,
+                  'script_family_hashes':sorted({fam for fam,r,t in records if fam}),
+                  'type_string_hashes':sorted({r.get('type_string_hash') for fam,r,t in records if r.get('type_string_hash')}),
+                  'entity_name_string_hashes':sorted({r.get('entity_name_string_hash') for fam,r,t in records if r.get('entity_name_string_hash')}),
+              }
+              rows.append(row)
+              print('ACTOR',h,'RECORDS',row['scripted_record_count'],'MODELS',row['model_hashes'],
+                    'SKELETONS',row['skeletons'],'NAMES',row['source_resolved_names'],'MACHINES',machines)
+
+          out={
+              'schema':'d1_crota_raid_scripted_actor_catalog/v1',
+              'status':'D1_CROTA_RAID_SCRIPTED_ACTOR_CATALOG_EXACT',
+              'activity_hash':'8108E004',
+              'scripted_entity_family_count':len(rows),
+              'scripted_record_count':sum(r['scripted_record_count'] for r in rows),
+              'actors':rows,
+              'evidence':{
+                  'scripted_census_artifact_id':9997371058,
+                  'script_family_preimage_artifact_id':9998530596,
+                  'entity_structure':'Exact s_entity Resource[] plus source-pinned EntityResource model/skeleton/name parsing',
+                  'machine_preimages':'Exact FNV1-32 equality over retail printable strings joined only through exact D912 script_family_string_hash'
+              },
+              'policy':'Machine names support scripted role/family classification but do not override exact s_entity display-name/model ownership. No actor is promoted to Crota solely from a generic boss/squad machine name.'
+          }
+          assert out['scripted_entity_family_count']==18
+          assert out['scripted_record_count']==243
+          open('out/CROTA_RAID_SCRIPTED_ACTOR_CATALOG.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-RAID-SCRIPTED-ACTOR-CATALOG
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
