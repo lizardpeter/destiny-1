@@ -1,0 +1,140 @@
+name: D1 Crota ultra-spawn visuals and sequence overrides v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-ultra-spawn-visual-and-sequence-overrides-v2.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install and recover corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p input/catalog runtime out/texture_export
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Close the three true 8108E679 Materials and textures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          cat > out/CROTA_ULTRA_SPAWN_TRUE_MATERIAL_PLAN.json <<'JSON'
+          {
+            "schema":"d1_activity_selected_material_plan/v1",
+            "status":"D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE",
+            "materials":["8108E72E","8108E72F","8108E730"],
+            "unique_material_count":3,
+            "unresolved_external_variant_models":[],
+            "policy":"Exact 80801AD7 Materials observed in structured records beneath source-owned Crota ultra-spawn composition resource 8108E679. These are composition visual dependencies only, not Crota body material ownership."
+          }
+          JSON
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_remote_activity_material_dependency_closure.py \
+            --selected-material-plan out/CROTA_ULTRA_SPAWN_TRUE_MATERIAL_PLAN.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/CROTA_ULTRA_SPAWN_TRUE_MATERIAL_DEPENDENCIES.json | tee out/materials.txt
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure out/CROTA_ULTRA_SPAWN_TRUE_MATERIAL_DEPENDENCIES.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --out-dir out/texture_export \
+            | tee out/textures.txt
+
+      - name: Classify custom visual records and their class targets
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 0x8108E733 --tag-hash 0x8108E735 --tag-hash 0x8108E736 --tag-hash 0x8108E737 \
+            --tag-hash 0x8108E738 --tag-hash 0x8108E739 --tag-hash 0x8108E73A --tag-hash 0x8108E73B \
+            --tag-hash 0x8108E7A0 --tag-hash 0x8108E7A2 --tag-hash 0x8108E7A3 --tag-hash 0x8108E7A4 \
+            --tag-hash 0x8108E7A5 --tag-hash 0x8108E7A6 --tag-hash 0x8108E7A7 --tag-hash 0x8108E7A8 \
+            --tag-hash 0x8108E73D --tag-hash 0x8108E73E \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --min-string 4 -o out/CROTA_ULTRA_SPAWN_CUSTOM_VISUAL_TAGS.json | tee out/custom_visuals.txt
+          python tools/d1_remote_entity_dependency_closure_universal.py \
+            --seed 0x8108E73D --seed 0x8108E73E \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 4 --max-nodes 250 \
+            -o out/CROTA_ULTRA_SPAWN_CUSTOM_ENTITY_CLOSURE.json | tee out/custom_entities.txt
+
+      - name: Source-classify raid-local sequence override resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_catalog_entity_resource_probe.py \
+            --tag-hash 0x8108F5BC --tag-hash 0x8108F5BD --tag-hash 0x8108F5BE --tag-hash 0x8108F5BF \
+            --tag-hash 0x8108F5C0 --tag-hash 0x8108F5C1 --tag-hash 0x8108F5C2 \
+            --tag-hash 0x81096A2F --tag-hash 0x81096A30 --tag-hash 0x81096A31 \
+            --tag-hash 0x816E3EB2 --tag-hash 0x816E3E93 --tag-hash 0x816E3E94 --tag-hash 0x816E3EB5 \
+            --tag-hash 0x80AAC2AA --tag-hash 0x80AAC2AB --tag-hash 0x80AAC2AC --tag-hash 0x80AAC2AD \
+            --tag-hash 0x80AAC2AE --tag-hash 0x80AAC2AF --tag-hash 0x80AAC2B0 --tag-hash 0x80AAC2B1 \
+            --tag-hash 0x80AAC2B2 --tag-hash 0x80AAC2BF --tag-hash 0x80AAC2C0 --tag-hash 0x80AAC2C1 \
+            --tag-hash 0x80AAC2C2 --tag-hash 0x80AAC2C3 --tag-hash 0x80AAC2C4 --tag-hash 0x80AAC2C5 \
+            --tag-hash 0x80AAC2C6 --tag-hash 0x80AAC2C7 --tag-hash 0x80AACE3B \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/CROTA_810978F5_RESOURCE_CLASS_PAIRS.json | tee out/resource_pairs.txt
+
+      - name: Validate and summarize
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import collections,json
+          m=json.load(open('out/CROTA_ULTRA_SPAWN_TRUE_MATERIAL_DEPENDENCIES.json'))
+          t=json.load(open('out/texture_export/texture_export_manifest.json'))
+          v=json.load(open('out/CROTA_ULTRA_SPAWN_CUSTOM_VISUAL_TAGS.json'))
+          e=json.load(open('out/CROTA_ULTRA_SPAWN_CUSTOM_ENTITY_CLOSURE.json'))
+          r=json.load(open('out/CROTA_810978F5_RESOURCE_CLASS_PAIRS.json'))
+          assert m['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',m['violations'][:20]
+          assert m['material_count']==3
+          assert t['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',t['violations'][:20]
+          assert v['violation_count']==0,v['violations']
+          assert e['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE' and not e['violations'] and not e['truncated']
+          assert not r['violations'],r['violations'][:20]
+          print('TRUE_COMPOSITION_MATERIALS','MATERIALS',m['material_count'],'TEXTURES',m['unique_texture_count'],'SHADERS',m['unique_shader_count'],'PNG',t['png_file_count'])
+          print('TEXTURE_TAGS',m['textures'])
+          print('CUSTOM_ENTITY_ARTICULATED',len(e['articulated_entities']))
+          for a in e['articulated_entities']:
+            print('CUSTOM_ARTICULATED',a['tag_hash'],a.get('embedded_models'),a.get('skeletons'))
+          pairs=collections.Counter(f"{x.get('unk10_class')}->{x.get('unk18_class')}" for x in r['rows'])
+          print('RESOURCE_CLASS_PAIRS',dict(pairs))
+          for x in r['rows']:
+            print('RESOURCE',x['tag_hash'],'PAIR',x.get('unk10_class'),x.get('unk18_class'),'ROLE',x.get('semantic_role'))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-ULTRA-SPAWN-VISUAL-AND-SEQUENCE-OVERRIDES-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
