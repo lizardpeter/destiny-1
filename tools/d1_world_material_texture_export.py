@@ -99,10 +99,18 @@ def resolve_chain(c, h:str, max_depth:int=4):
         seen.add(cur)
         meta=c.entry_meta(cur)
         payload,src=c.payload(cur)
-        out.append({'hash':cur,'meta':meta,'source':src,'payload':payload})
+        row={'hash':cur,'meta':meta,'source':src,'payload':payload}
+        out.append(row)
         if not meta: break
         nxt=norm(meta.get('reference','FFFFFFFF'))
-        if nxt=='FFFFFFFF' or c.entry_meta(nxt) is None: break
+        if nxt=='FFFFFFFF': break
+        if c.entry_meta(nxt) is None:
+            # Preserve the exact unresolved edge so dependency closure recovers
+            # the backing package rather than incorrectly blaming the texture
+            # header's own package namespace.
+            row['unresolved_reference']=nxt
+            row['unresolved_reference_package_id']=pkg_id_from_tag(nxt)
+            break
         cur=nxt
     return out
 
@@ -112,10 +120,28 @@ def export_texture(c, th:str, outdir:Path):
     outdir.mkdir(parents=True,exist_ok=True)
     chain=resolve_chain(c,th)
     row={'texture':th,'package_id':pkg_id_from_tag(th),
-         'chain':[{'hash':x['hash'],'meta':x['meta'],'source':x['source'],
-                   'payload_bytes':None if x['payload'] is None else len(x['payload'])} for x in chain]}
+         'chain':[{
+             'hash':x['hash'],'meta':x['meta'],'source':x['source'],
+             'payload_bytes':None if x['payload'] is None else len(x['payload']),
+             **({'unresolved_reference':x['unresolved_reference'],
+                 'unresolved_reference_package_id':x['unresolved_reference_package_id']}
+                if x.get('unresolved_reference') else {}),
+         } for x in chain]}
+    unresolved=[]
+    for x in chain:
+        if x.get('unresolved_reference'):
+            unresolved.append(x['unresolved_reference'])
+    if unresolved:
+        row['unresolved_chain_references']=unresolved
+        row['missing_dependency_package_ids']=sorted({
+            p for p in (pkg_id_from_tag(h) for h in unresolved) if p is not None
+        })
     if not chain or chain[0]['payload'] is None:
-        row['error']='texture header unavailable'; return row
+        row['error']='texture header unavailable'
+        if not row.get('missing_dependency_package_ids'):
+            p=pkg_id_from_tag(th)
+            if p is not None: row['missing_dependency_package_ids']=[p]
+        return row
     hb=chain[0]['payload']
     try:
         hdr=decode_header(hb)
@@ -132,6 +158,12 @@ def export_texture(c, th:str, outdir:Path):
             backing=x; break
     if backing is None:
         row['error']='full-resolution backing unavailable'
+        # If the chain ended at a serialized FileHash not present in the current
+        # corpus, that target package is the actionable dependency. Fall back to
+        # the texture header namespace only when no stronger source edge exists.
+        if not row.get('missing_dependency_package_ids'):
+            p=pkg_id_from_tag(th)
+            if p is not None: row['missing_dependency_package_ids']=[p]
         return row
     raw=backing['payload']
     if expected is not None: raw=raw[:expected]
@@ -254,17 +286,25 @@ def main()->int:
         print(f'TEXTURE {i}/{len(unique)} {th}',flush=True)
         textures[th]=export_texture(c,th,a.out/'textures')
     missing=[h for h,r in textures.items() if r.get('error')]
-    missing_pkg=Counter(pkg_id_from_tag(h) for h in missing)
+    missing_pkg=Counter()
+    for h in missing:
+        r=textures[h]
+        deps=r.get('missing_dependency_package_ids') or []
+        if deps:
+            for p in deps: missing_pkg[p]+=1
+        else:
+            p=pkg_id_from_tag(h)
+            if p is not None: missing_pkg[p]+=1
     report={
-        'schema_version':1,'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT',
+        'schema_version':2,'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT',
         'visible_material_count':len(visible),'material_decode_errors':len(errors),
         'unique_texture_tags':len(unique),'decoded_texture_tags':len(unique)-len(missing),
         'texture_errors':len(missing),
         'png_outputs':sum(1 for r in textures.values() if r.get('png'))+sum(len([f for f in r.get('faces',[]) if f.get('png')]) for r in textures.values()),
-        'missing_texture_package_ids':dict(sorted((k,v) for k,v in missing_pkg.items() if k is not None)),
+        'missing_texture_package_ids':dict(sorted(missing_pkg.items())),
         'pixel_shader_frequency':dict(shader_freq.most_common()),
         'materials':materials,'texture_references':dict(texture_refs),'textures':textures,
-        'policy':'Exact material/shader/register/texture relationships are preserved. Texture semantic roles are only named for independently instruction-proven shader families; all others remain t#.',
+        'policy':'Exact material/shader/register/texture relationships are preserved. Missing dependency package IDs follow the deepest serialized unresolved texture/backing FileHash edge when available, rather than assuming the header namespace. Texture semantic roles are only named for independently instruction-proven shader families; all others remain t#.',
     }
     (a.out/'material_texture_manifest.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({k:report[k] for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},indent=2))
