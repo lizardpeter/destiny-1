@@ -1,0 +1,83 @@
+name: D1 Crota ultra-spawn material FX closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-ultra-spawn-material-fx-closure.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install and recover corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'Pillow==11.3.0' 'texture2ddecoder==1.0.6'
+          mkdir -p input/catalog runtime out/texture_export
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Close exact observed material dependencies and textures
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          cat > out/CROTA_ULTRA_SPAWN_OBSERVED_MATERIAL_PLAN.json <<'JSON'
+          {
+            "schema":"d1_activity_selected_material_plan/v1",
+            "status":"D1_ACTIVITY_SELECTED_MATERIAL_PLAN_COMPLETE",
+            "materials":["8108E72E","8108E72F","8108E730","8108E733","8108E735","8108E736","8108E737","8108E738","8108E739","8108E73A","8108E73B","8108E73D","8108E73E"],
+            "unique_material_count":13,
+            "unresolved_external_variant_models":[],
+            "policy":"These are exact 80801AD7 material FileHashes observed in structured records under source-owned Crota ultra-spawn composition resource 8108E679. This plan closes their retail dependencies as composition visual FX only; it does not promote them as Crota body materials until the outer 80801C40/80801BD9/80801B7B layouts are source-semantic-closed."
+          }
+          JSON
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          B='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          python tools/d1_remote_activity_material_dependency_closure.py \
+            --selected-material-plan out/CROTA_ULTRA_SPAWN_OBSERVED_MATERIAL_PLAN.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime \
+            -o out/CROTA_ULTRA_SPAWN_MATERIAL_DEPENDENCIES.json | tee out/materials.txt
+          python tools/d1_remote_activity_texture_export.py \
+            --material-closure out/CROTA_ULTRA_SPAWN_MATERIAL_DEPENDENCIES.json \
+            --member-catalog "$C" --base-url "$B" --part-count 10 --runtime runtime --out-dir out/texture_export \
+            | tee out/textures.txt
+          python - <<'PY' | tee out/summary.txt
+          import json
+          m=json.load(open('out/CROTA_ULTRA_SPAWN_MATERIAL_DEPENDENCIES.json'))
+          t=json.load(open('out/texture_export/texture_export_manifest.json'))
+          assert m['status']=='D1_REMOTE_ACTIVITY_MATERIAL_DEPENDENCY_CLOSURE_COMPLETE',m['violations'][:20]
+          assert m['material_count']==13,m['material_count']
+          assert t['status']=='D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE',t['violations'][:20]
+          print('CROTA_ULTRA_SPAWN_VISUAL_FX_CLOSED','MATERIALS',m['material_count'],'TEXTURES',m['unique_texture_count'],'SHADERS',m['unique_shader_count'],'PNG',t['png_file_count'])
+          print('TEXTURE_TAGS',m['textures'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-ULTRA-SPAWN-MATERIAL-FX
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
