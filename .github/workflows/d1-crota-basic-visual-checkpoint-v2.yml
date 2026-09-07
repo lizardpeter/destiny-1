@@ -1,0 +1,140 @@
+name: D1 Crota's End basic visual checkpoint v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-basic-visual-checkpoint-v2.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  RAID_ACTOR_ASSET_ARTIFACT_ID: '10005225514'
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact six-family geometry corpus and proven actor assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh scipy
+          mkdir -p input/catalog input/actor_assets runtime out/models out/textures
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          src='input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'
+          dst='input/catalog/D1_CROTA_ACTOR_MODEL_MEMBER_CATALOG.json'
+          d=json.load(open(src))
+          keep=['00EC','00EE','00EF','0447','044B','0771']
+          missing=[k for k in keep if k not in d['families']]
+          assert not missing,missing
+          o=dict(d)
+          o['families']={k:d['families'][k] for k in keep}
+          o['package_family_count']=len(keep)
+          o['scope']='crota_end_actor_geometry_exact_package_subset'
+          o['policy']=d['policy']+' Filtered to the six package families proven by the 10-model visual closure to contain the models, buffer headers, and backing payloads.'
+          json.dump(o,open(dst,'w'),indent=2)
+          print('FILTERED_FAMILIES',keep)
+          PY
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAID_ACTOR_ASSET_ARTIFACT_ID}/zip" -o input/actor_assets.zip
+          unzip -q input/actor_assets.zip -d input/actor_assets
+          cp -a input/actor_assets/texture_export/textures/. out/textures/
+          cp input/actor_assets/crota_raid_actor_model_plan.json out/
+          cp input/actor_assets/crota_raid_actor_selected_material_plan.json out/
+          cp input/actor_assets/crota_raid_actor_animation_options_v3.json out/
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Export 10 exact source-proven raid models
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_model_export.py \
+            --model 809D9839 --model 809DEA3C --model 809DECFF --model 809DEE2F --model 8108E113 \
+            --model 8108E5B7 --model 8108EBBE --model 8108EBD5 --model 81096362 --model 81096670 \
+            --member-catalog input/catalog/D1_CROTA_ACTOR_MODEL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --out-dir out/models \
+            --combined-glb out/CROTAS_END_ACTORS_OVERLAID.glb \
+            -o out/model_export_report.json | tee out/model_export.txt
+
+      - name: Build Blender-readable spaced gallery
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import numpy as np
+          import trimesh
+          out=Path('out')
+          rep=json.load(open(out/'model_export_report.json'))
+          plan=json.load(open(out/'crota_raid_actor_model_plan.json'))
+          owners={m['model']:[o['entity_hash'] for o in m.get('articulated_owners',[])] for m in plan['models']}
+          scene=trimesh.Scene(); rows=[]; spacing=6.0; cols=5
+          for i,m in enumerate(rep['models']):
+              tag=m['tag_hash']; src=trimesh.load(m['glb'],force='scene',process=False)
+              b=src.bounds; center=(b[0]+b[1])*0.5 if b is not None else np.zeros(3)
+              x=(i%cols)*spacing; y=(i//cols)*spacing
+              T=trimesh.transformations.translation_matrix([x-center[0],y-center[1],-center[2]])
+              for gi,(name,g) in enumerate(src.geometry.items()):
+                  gg=g.copy(); gg.apply_transform(T)
+                  n=f'{tag}_{gi}_{name}'; scene.add_geometry(gg,geom_name=n,node_name=n)
+              rows.append({'model':tag,'owners':owners.get(tag,[]),'gallery_position':[x,y,0.0],'triangles':m['triangle_count'],'geometry_count':m['geometry_count']})
+          gallery=out/'CROTAS_END_ACTOR_GALLERY_BASIC.glb'; scene.export(gallery)
+          chk=trimesh.load(gallery,force='scene',process=False)
+          manifest={
+            'status':'D1_CROTAS_END_BASIC_VISUAL_CHECKPOINT_COMPLETE',
+            'model_count':len(rows),'geometry_count':len(chk.geometry),'triangle_count':sum(x['triangles'] for x in rows),
+            'bounds':chk.bounds.tolist() if chk.bounds is not None else None,'models':rows,
+            'gallery_glb':gallery.name,'individual_glb_directory':'models/','texture_directory':'textures/',
+            'proven_geometry_packages':['00EC','00EE','00EF','0447','044B','0771'],
+            'scope':'10 exact source-proven scripted raid actor/Oversoul model assets. Crota physical body intentionally absent pending exact HiveUltraKnightA spawn/archetype ownership closure.',
+            'texture_policy':'Exact retail textures are included separately. This basic checkpoint does not guess D1 shader t# roles into glTF PBR slots.',
+            'animation_policy':'Exact animation-option proof manifest is included; animations are not embedded in this basic geometry checkpoint.'
+          }
+          json.dump(manifest,open(out/'CHECKPOINT_MANIFEST.json','w'),indent=2)
+          print(json.dumps(manifest,indent=2))
+          PY
+          cat > out/README.txt <<'EOF'
+          CROTAS END BASIC VISUAL CHECKPOINT V2
+
+          OPEN FIRST IN BLENDER:
+            CROTAS_END_ACTOR_GALLERY_BASIC.glb
+
+          models/ contains the 10 individual exact geometry GLBs.
+          textures/ contains the exact retail DDS/PNG texture library already closed for the raid actors.
+          crota_raid_actor_animation_options_v3.json contains the exact retail animation option proof.
+
+          Crota is intentionally NOT substituted with a guessed Knight. His physical body remains absent until the exact HiveUltraKnightA/archetype ownership edge is proven.
+          Exact D1 texture-register roles are also not guessed into portable glTF PBR slots in this basic checkpoint.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTAS-END-BASIC-VISUAL-CHECKPOINT-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
