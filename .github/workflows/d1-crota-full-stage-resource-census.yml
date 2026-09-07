@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-crota-full-stage-resource-census.yml'
       - 'tools/d1_remote_s6e_stage_probe.py'
+      - 'tools/d1_activity_stage_resource_matrix.py'
 
 permissions:
   contents: read
@@ -63,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python -m py_compile tools/d1_remote_s6e_stage_probe.py
+          python -m py_compile tools/d1_remote_s6e_stage_probe.py tools/d1_activity_stage_resource_matrix.py
           python - <<'PY' > out/s6e_tags.txt
           import json
           d=json.load(open('input/placements/CROTA_END_RUNTIME_PLACEMENTS.json'))
@@ -81,67 +82,25 @@ jobs:
               > "out/stages/${H}.stdout.txt"
           done < out/s6e_tags.txt
 
-      - name: Build raid-wide stage schema matrix
+      - name: Build activity stage resource matrix
         run: |
           set -euo pipefail
-          python - <<'PY' | tee out/summary.txt
-          import collections,glob,json,os
-          placements=json.load(open('input/placements/CROTA_END_RUNTIME_PLACEMENTS.json'))
-          f603=json.load(open('input/f603/CROTA_RAID_F603_SCRIPTED_OWNERS.json'))
-          assert not placements['violations'],placements['violations']
-          assert not f603['violations'],f603['violations']
-          fby={r['f603']:r for r in f603['rows']}
-          expected=set(placements['unique_f603_entity_resources'])
-          seen=[];containers=[];pair_stage=collections.defaultdict(list);pair_container=collections.defaultdict(set)
-          pair_dev=collections.defaultdict(set);pair_f603=collections.defaultdict(list)
-          for path in sorted(glob.glob('out/stages/*.json')):
-            p=json.load(open(path)); assert not p['violations'],(path,p['violations'])
-            s6e=p['s6e']; stages=[]
-            for s in p['stages']:
-              pc=collections.Counter(); roles=collections.Counter(); devs=[]; rows=[]
-              for x in s['f603s']:
-                fh=x['f603']['hash']
-                if fh in ('00000000','FFFFFFFF'): continue
-                seen.append(fh); r=fby[fh]
-                pair=f"{r.get('unk10_class') or 'NONE'}->{r.get('unk18_class') or 'NONE'}"
-                role=r.get('semantic_role','unknown'); pc[pair]+=1;roles[role]+=1
-                cp=x.get('activity_collapse') or {}; dev=(cp.get('dev_name') or {}).get('value')
-                if dev: devs.append(dev); pair_dev[pair].add(dev)
-                pair_stage[pair].append((s6e,s['stage_index'],fh,r.get('entity_resource_hash'),dev))
-                pair_container[pair].add(s6e); pair_f603[pair].append(fh)
-                rows.append({'f603':fh,'entity_resource':r.get('entity_resource_hash'),'pair':pair,
-                             'semantic_role':role,'dev_name':dev,
-                             'scripted_entity_table':r.get('scripted_entity_table_hash')})
-              stage={'stage_index':s['stage_index'],'map_data_table':s['map_data_table']['hash'],
-                     'f603_count':len(rows),'pair_counts':dict(pc),'role_counts':dict(roles),
-                     'dev_names':devs,'resources':rows}
-              stages.append(stage)
-              print('STAGE',s6e,s['stage_index'],'MAP',stage['map_data_table'],'F603',stage['f603_count'],
-                    'PAIRS',dict(pc),'DEVS',devs)
-            containers.append({'s6e':s6e,'stage_count':len(stages),'stages':stages})
-          assert len(seen)==509,(len(seen),len(expected))
-          assert set(seen)==expected,(len(set(seen)^expected),sorted(set(seen)^expected)[:20])
-          assert len(set(seen))==509
-          pair_summary=[]
-          for pair,n in sorted(f603['class_pair_counts'].items(), key=lambda kv:(-kv[1],kv[0])):
-            locs=pair_stage[pair]
-            assert len(locs)==n,(pair,n,len(locs))
-            s6es=sorted(pair_container[pair]); unique_stage_keys=sorted({(x[0],x[1]) for x in locs})
-            row={'pair':pair,'count':n,'s6e_containers':s6es,'stage_keys':[{'s6e':a,'stage_index':b} for a,b in unique_stage_keys],
-                 'stage_count':len(unique_stage_keys),'dev_names':sorted(pair_dev[pair]),
-                 'f603_hashes':sorted(pair_f603[pair]),
-                 'finale_e17c_stage7_count':sum(a=='8108E17C' and b==7 for a,b,*_ in locs),
-                 'ultra_e17f_stage1_count':sum(a=='8108E17F' and b==1 for a,b,*_ in locs)}
-            pair_summary.append(row)
-            print('PAIR',pair,'COUNT',n,'CONTAINERS',s6es,'STAGES',unique_stage_keys,
-                  'E17C7',row['finale_e17c_stage7_count'],'E17F1',row['ultra_e17f_stage1_count'],
-                  'DEVS',row['dev_names'])
-          out={'schema':'d1_crota_full_stage_resource_census/v1',
-               'status':'D1_CROTA_FULL_STAGE_RESOURCE_CENSUS_EXACT',
-               'activity':placements['activity'],'s6e_count':len(containers),'f603_count':len(seen),
-               'containers':containers,'class_pair_summary':pair_summary,
-               'policy':'Every S6E/stage/F603 edge is source-layout-derived. EntityResource class pairs are parsed from the exact activity-owned F603 set. Dev names are emitted only where the source-validated Activity collapse path provides them. Pair concentration is structural evidence, not semantic identity by itself.'}
-          open('out/CROTA_FULL_STAGE_RESOURCE_CENSUS.json','w').write(json.dumps(out,indent=2)+'\n')
+          python tools/d1_activity_stage_resource_matrix.py \
+            --placements input/placements/CROTA_END_RUNTIME_PLACEMENTS.json \
+            --f603-census input/f603/CROTA_RAID_F603_SCRIPTED_OWNERS.json \
+            --stage-dir out/stages --label moon_raid_1 \
+            -o out/CROTA_ACTIVITY_STAGE_RESOURCE_MATRIX.json \
+            | tee out/summary.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ACTIVITY_STAGE_RESOURCE_MATRIX.json'))
+          assert d['status']=='D1_ACTIVITY_STAGE_RESOURCE_MATRIX_EXACT'
+          assert d['unique_f603_count']==509,d['unique_f603_count']
+          assert d['f603_occurrence_count']==547,d['f603_occurrence_count']
+          assert d['shared_f603_count']==19,d['shared_f603_count']
+          assert d['shared_occurrence_excess']==38,d['shared_occurrence_excess']
+          assert d['s6e_container_count']==10,d['s6e_container_count']
+          assert d['stage_count']==40,d['stage_count']
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
