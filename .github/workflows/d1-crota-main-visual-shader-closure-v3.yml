@@ -1,4 +1,4 @@
-name: D1 Crota main visual shader closure v3
+name: D1 Crota main visual shader closure v4
 
 on:
   workflow_dispatch:
@@ -51,22 +51,26 @@ jobs:
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --out-dir corpus --report out/CROTA_VISUAL_SHADER_CORPUS.json
 
-      - name: Extract exact six native programs
+      - name: Extract exact complete Crota highest-detail shader variants
         run: |
           set -euo pipefail
-          printf '%s\n' '{"pixel_shader_frequency":{"8108E7B7":2,"8108E953":1,"8108E955":2,"8108E956":2}}' > out/minimal_shader_manifest.json
+          printf '%s\n' '{"pixel_shader_frequency":{"8108E7B7":2,"8108E7B8":2,"8108E953":1,"80AAE1CD":1,"8108E955":2,"8108E958":2,"8108E956":2,"8108E959":2}}' > out/minimal_shader_manifest.json
           mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
           snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
           python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
             --manifest out/minimal_shader_manifest.json \
             --shader 0x809DE9AB --shader 0x809DF743 \
-            --shader 0x8108E7B7 --shader 0x8108E953 --shader 0x8108E955 --shader 0x8108E956 \
+            --shader 0x8108E7B7 --shader 0x8108E7B8 \
+            --shader 0x8108E953 --shader 0x80AAE1CD \
+            --shader 0x8108E955 --shader 0x8108E958 \
+            --shader 0x8108E956 --shader 0x8108E959 \
             --out-dir shader --report out/CROTA_VISUAL_SHADER_EXTRACT.json
           python - <<'PY'
           import json
           d=json.load(open('out/CROTA_VISUAL_SHADER_EXTRACT.json'))
           assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
-          assert {x['shader'] for x in d['shaders']}=={'809DE9AB','809DF743','8108E7B7','8108E953','8108E955','8108E956'}
+          wanted={'809DE9AB','809DF743','8108E7B7','8108E7B8','8108E953','80AAE1CD','8108E955','8108E958','8108E956','8108E959'}
+          assert {x['shader'] for x in d['shaders']}==wanted,(wanted-{x['shader'] for x in d['shaders']},d)
           for x in d['shaders']:
               print('EXACT',x['shader'],x['native_shader'],x['gcn_bytes'],x['gcn_sha256'])
           PY
@@ -87,7 +91,7 @@ jobs:
             grep -q 's_endpgm' "disasm/${b}.s"
             cp "disasm/${b}.s" "out/${b}_GFX700.s"
           done
-          test "$(find disasm -name '*.s' | wc -l)" -eq 6
+          test "$(find disasm -name '*.s' | wc -l)" -eq 10
 
       - name: Close exact image resource usage
         run: |
@@ -101,7 +105,7 @@ jobs:
           assert d['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT',d
           assert d['unmatched_image_instruction_count']==0,d
           by={x['shader']:x for x in d['shaders']}
-          for h in ('8108E7B7','8108E953','8108E955','8108E956'):
+          for h in ('8108E7B7','8108E7B8','8108E953','80AAE1CD','8108E955','8108E958','8108E956','8108E959'):
               r=by[h]
               print('PIXEL',h,'IMAGE_OPS',r['image_instruction_count'],'USED_T',r['used_texture_indices'],'OPS',r['image_opcodes'])
           PY
@@ -109,7 +113,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: D1-CROTA-MAIN-VISUAL-SHADER-CLOSURE-V3
+          name: D1-CROTA-MAIN-VISUAL-SHADER-CLOSURE-V4
           path: out/
           retention-days: 30
           if-no-files-found: error
