@@ -1,0 +1,102 @@
+name: D1 PS4 ROI blend state8 promotion
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-ps4-roi-blend-state8-promotion.yml'
+      - 'tools/d1_ps4_roi_blend_state_promotion.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STATE_ARTIFACT_ID: '10020034615'
+  STATE_ARTIFACT_ZIP_SHA256: '96738187a697b9fbbd1e695ce3da3e9e728eb3fb95caedc4b857e072523d52e1'
+  CARD_ARTIFACT_ID: '10005293226'
+  CARD_ARTIFACT_ZIP_SHA256: '861c241b03d4400a501023cdc6cf726759279eb7eb26e627128185eefa0734ee'
+  CIRCUIT_ARTIFACT_ID: '10020280794'
+  CIRCUIT_ARTIFACT_ZIP_SHA256: 'ae9297ad16c494a910176426d05aae0bde65ec8a600a0c179f21af44a2da55d2'
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover and pin the three exact proof artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p input/state input/card input/circuit out
+          for spec in \
+            "state:${STATE_ARTIFACT_ID}:${STATE_ARTIFACT_ZIP_SHA256}" \
+            "card:${CARD_ARTIFACT_ID}:${CARD_ARTIFACT_ZIP_SHA256}" \
+            "circuit:${CIRCUIT_ARTIFACT_ID}:${CIRCUIT_ARTIFACT_ZIP_SHA256}"; do
+            IFS=: read -r name aid sha <<< "$spec"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}/zip" -o "input/${name}.zip"
+            echo "${sha}  input/${name}.zip" | sha256sum --check --strict
+            unzip -q "input/${name}.zip" -d "input/${name}"
+          done
+          find input/state input/card input/circuit -maxdepth 3 -type f -print | sort
+
+      - name: Resolve exact artifact report paths
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,os,json
+          wants={
+            'state4':('input/state/**/material_state4.json',),
+            'correlation':('input/state/**/cross_source_correlation.json',),
+            'card_gcn':('input/card/**/80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY.json',),
+            'circuit_gcn':('input/circuit/**/816CE0A8_output_alpha_zero.json',),
+          }
+          out={}
+          for k,pats in wants.items():
+              hits=[]
+              for p in pats:hits+=glob.glob(p,recursive=True)
+              assert len(hits)==1,(k,hits)
+              out[k]=hits[0]
+          json.dump(out,open('out/input_paths.json','w'),indent=2)
+          print(out)
+          PY
+
+      - name: Promote only the source-closed 0x88 blend selector
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json,shlex
+          d=json.load(open('out/input_paths.json'))
+          for k,v in d.items(): print(f'{k.upper()}={shlex.quote(v)}')
+          PY
+          )"
+          python tools/d1_ps4_roi_blend_state_promotion.py \
+            --state4 "$STATE4" --correlation "$CORRELATION" \
+            --card-gcn "$CARD_GCN" --circuit-gcn "$CIRCUIT_GCN" \
+            -o out/D1_PS4_ROI_BLEND_STATE8_PROMOTION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_PS4_ROI_BLEND_STATE8_PROMOTION.json'))
+          assert d['status']=='D1_PS4_ROI_BLEND_SELECTOR_INDEX8_PROMOTED_CROSS_FIXTURE' and not d['violations'],d
+          assert d['promotion_scope']['tested_active_raw_value']=='0x88'
+          assert d['promotion_scope']['selected_blend_state_index']==8
+          assert d['blend_state_8']['portable_name']=='PREMULTIPLIED_ALPHA_COMPOSITION'
+          assert d['cross_fixture_predictions']['816CE240_816CE0A8']['state8_result']=='source_rgb + destination_rgb'
+          print('ROI_BLEND_STATE8_PROMOTED',d['promotion_scope'])
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PS4-ROI-BLEND-STATE8-PROMOTION
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
