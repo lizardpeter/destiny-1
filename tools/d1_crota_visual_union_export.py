@@ -25,9 +25,12 @@ For exact model 8108E5B7 the source-closed pairs are:
 Any other pair is fatal in this Crota-specific exporter.
 
 Unlike the generic forensic model exporter, this Blender-facing adapter explicitly
-preserves exact decoded UV0 as custom glTF attribute ``_D1_UV0``. Trimesh drops UVs
-when no portable texture is assigned at export time; a later loss-preserving adapter
-promotes this same accessor to TEXCOORD_0 only for the final portable Blender layer.
+preserves exact decoded UV0 as custom glTF attribute ``_D1_UV0``. Trimesh normally
+creates TEXCOORD_0 when TextureVisuals carries UVs even when no image is assigned;
+that creates a duplicate accessor alongside our protected source accessor.  Therefore
+the forensic geometry layer deliberately gives TextureVisuals no UV and carries the
+single authoritative source UV through ``_D1_UV0`` only. A later loss-preserving
+adapter aliases that same accessor to TEXCOORD_0 for Blender without changing bytes.
 
 No texture is assigned a PBR role here and no native shader is approximated here.
 """
@@ -61,7 +64,6 @@ from d1_remote_activity_placements import RemoteCorpus
 
 ENTITY_MODEL_CLASS = '80801AB5'
 CROTA_MODEL = '8108E5B7'
-# Exact retail stream pairs proved from the live model and pinned Charm ROI reader.
 CROTA_STRIDE_PAIRS = {
     0: (0x10, 0x14),
     1: (0x0C, 0x14),
@@ -127,12 +129,7 @@ def visual_union_ranges(model: dict, binding: dict):
 
 def decode_crota_mesh_pair(mesh_index: int, mesh: dict, d0: bytes, s0: int,
                            d1: bytes | None, s1: int | None):
-    """Decode one exact 8108E5B7 D1 ROI dynamic stream pair like Charm.
-
-    `decode_vb0_uv` implements the position-W sentinel distinction and `decode_vb1`
-    consumes the resulting primary-UV state just like VertexBuffer._uvExists.  UV
-    transform is performed by those helpers exactly once.
-    """
+    """Decode one exact 8108E5B7 D1 ROI dynamic stream pair like Charm."""
     expected = CROTA_STRIDE_PAIRS.get(mesh_index)
     pair = (s0, s1)
     if expected is None or pair != expected:
@@ -158,7 +155,6 @@ def decode_crota_mesh_pair(mesh_index: int, mesh: dict, d0: bytes, s0: int,
     if uv is None:
         raise ValueError(f'Crota mesh {mesh_index}: pinned D1 stride-pair decode produced no UV0')
 
-    # Lock the exact position-W interpretation that separates the two 0x0C forms.
     row_mode = None
     if s0 == 0x0C:
         raw16 = np.frombuffer(d0, dtype='<i2').reshape((-1, 6))
@@ -249,10 +245,11 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
             if not minfo.get('exists') or not minfo.get('class_matches'):
                 raise ValueError(f'{model_hash} mesh {mi}: active material {mh} unavailable')
             mat = trimesh.visual.material.PBRMaterial(name=f'D1_{mh}')
-            visual = trimesh.visual.TextureVisuals(uv=uu, material=mat)
+            # Do not pass UV to TextureVisuals yet: that would make Trimesh create a
+            # second TEXCOORD_0 accessor. _D1_UV0 below is the sole exact transport.
+            visual = trimesh.visual.TextureVisuals(material=mat)
             tm = trimesh.Trimesh(vertices=vv, faces=faces, vertex_normals=nn, visual=visual,
                                  process=False, validate=False)
-            # Preserve source attributes before any portable material role is chosen.
             tm.vertex_attributes['_D1_UV0'] = np.asarray(uu, dtype=np.float32)
             if cc is not None:
                 tm.vertex_attributes['_D1_COLOR0'] = np.asarray(cc, dtype=np.float32)
@@ -321,7 +318,7 @@ def export_visual_union(c: RemoteCorpus, model_hash: str, binding: dict, out_dir
             'All unique Charm IsHighestLevel D1 index ranges are retained. Repeated identical geometry ranges use the '
             'first source-ordered material candidate while every later render variant remains explicit in the report. '
             'Vertex attributes are decoded by the exact D1 ROI primary/secondary stride-pair and position-W sentinel rules; '
-            'UV0 is preserved as _D1_UV0 for the later Blender adapter.'
+            'UV0 is preserved as the sole protected _D1_UV0 accessor for the later Blender adapter.'
         ),
     }
     (out_dir / f'{model_hash}.json').write_text(json.dumps(rep, indent=2) + '\n')
