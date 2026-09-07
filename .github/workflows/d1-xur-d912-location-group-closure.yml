@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-xur-d912-location-group-closure.yml'
       - 'tools/d1_remote_xur_d912_location_group_closure.py'
+      - 'tools/d1_remote_xur_d912_location_group_closure_v2.py'
       - 'tools/d1_world_scripted_entity_identity_census.py'
       - 'tools/d1_remote_activity_scripted_entity_census.py'
 
@@ -45,8 +46,8 @@ jobs:
       - name: Close exact Xur D912 group to location assignments
         run: |
           set -euo pipefail
-          python -m py_compile tools/d1_remote_xur_d912_location_group_closure.py
-          python tools/d1_remote_xur_d912_location_group_closure.py \
+          python -m py_compile tools/d1_remote_xur_d912_location_group_closure.py tools/d1_remote_xur_d912_location_group_closure_v2.py
+          python tools/d1_remote_xur_d912_location_group_closure_v2.py \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime -o out/D1_XUR_D912_LOCATION_GROUP_CLOSURE.json | tee out/stdout.txt
@@ -56,6 +57,7 @@ jobs:
           assert d['status']=='D1_XUR_D912_LOCATION_GROUP_CLOSURE_COMPLETE',d['violations']
           assert d['target_d912_count']==d['decoded_d912_count']==10,d
           assert d['branch_count']==3,d
+          assert d['location_count']==d['exact_unique_xur_location_count']==20,d
           assert not d['violations'],d['violations']
           assert all(v is False for v in d['gates'].values()),d['gates']
           print('XUR_D912_LOCATION_GREEN','locations',d['location_count'],'exact_xur',d['exact_unique_xur_location_count'])
