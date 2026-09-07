@@ -62,7 +62,7 @@ jobs:
           set -e
           test "$rc" -eq 0 -o "$rc" -eq 2
 
-      - name: Summarize ambient actor population and broom-near records
+      - name: Summarize ambient actor population and exact locations near broom
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -72,23 +72,46 @@ jobs:
           broom=(127.7325210571289,93.54338836669922,-9.023451805114746)
           rows=[]
           for t in d['scripted_tables']:
+              ents=[]
               for r in t.get('records',[]):
-                  tr=r.get('translation')
-                  if not tr or len(tr)<3: continue
-                  dist=math.sqrt(sum((float(tr[i])-broom[i])**2 for i in range(3)))
-                  rows.append((dist,t['scripted_entity_table'],r.get('group_index'),r.get('record_index'),r.get('entity_hash'),r.get('world_id_hex'),r.get('type_string_hash'),r.get('entity_name_string_hash'),tr))
-          rows.sort()
+                  h=r.get('entity_hash')
+                  if h and h not in ('00000000','FFFFFFFF'): ents.append(h)
+              ents=sorted(set(ents))
+              types=sorted({r.get('type_string_hash') for r in t.get('records',[]) if r.get('type_string_hash')})
+              for loc in t.get('locations',[]):
+                  p=loc.get('location')
+                  if not p or len(p)<3: continue
+                  dist=math.sqrt(sum((float(p[i])-broom[i])**2 for i in range(3)))
+                  rows.append({
+                    'distance_to_broom':dist,
+                    'd912':t['scripted_entity_table'],
+                    'location_index':loc.get('index'),
+                    'location':p,
+                    'rotation':loc.get('rotation'),
+                    'entity_record_count':len(t.get('records',[])),
+                    'location_count':len(t.get('locations',[])),
+                    'entity_hashes':ents,
+                    'type_string_hashes':types,
+                    'singleton_entity_location_pair':t.get('singleton_entity_location_pair'),
+                  })
+          rows.sort(key=lambda x:x['distance_to_broom'])
           print('F603',d['f603_count'])
           print('SCRIPTED_OWNERS',d['scripted_owner_f603_count'])
           print('D912_COUNT',d['unique_scripted_table_count'])
           print('RECORDS',d['scripted_record_count'])
+          print('LOCATIONS',d['scripted_location_count'])
+          print('SINGLETON_PAIRS',d['singleton_entity_location_pair_count'])
           print('FAMILIES',d['script_family_string_hash_counts'])
           print('TYPES',d['type_string_hash_counts'])
           print('NAMES',d['entity_name_string_hash_counts'])
           print('ENTITIES',d['scripted_entity_hash_counts'])
-          print('NEAREST_TO_BROOM')
-          for x in rows[:30]: print(x)
-          json.dump([{'distance_to_broom':x[0],'d912':x[1],'group_index':x[2],'record_index':x[3],'entity_hash':x[4],'world_id_hex':x[5],'type_string_hash':x[6],'entity_name_string_hash':x[7],'translation':x[8]} for x in rows[:100]],open('out/TOWER_AMBIENT_NEAREST_BROOM.json','w'),indent=2)
+          print('NEAREST_LOCATIONS_TO_BROOM')
+          for x in rows[:40]: print(x)
+          json.dump(rows[:200],open('out/TOWER_AMBIENT_NEAREST_BROOM.json','w'),indent=2)
+          exact=[x for x in rows if x['distance_to_broom'] < 0.01]
+          near=[x for x in rows if x['distance_to_broom'] < 5.0]
+          json.dump({'broom':broom,'within_1cm':exact,'within_5m':near},open('out/TOWER_AMBIENT_BROOM_LOCATION_MATCHES.json','w'),indent=2)
+          print('WITHIN_1CM',len(exact));print('WITHIN_5M',len(near))
           PY
           sha256sum out/* > out/SHA256SUMS.txt
 
