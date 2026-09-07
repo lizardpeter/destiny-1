@@ -1,0 +1,243 @@
+name: D1 Crota exact crota-hash model owner closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-crotahash-model-owner-closure.yml'
+      - 'tools/d1_remote_multi_model_owner_trace.py'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact catalog and Oodle runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Reconfirm exact crota scalar context and model fields
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python - <<'PY' | tee out/context_stdout.txt
+          import hashlib,json,struct,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_entity_resource_probe import parse_resource
+          from d1_playable_guardian_entity_resource_resolve import load_catalogs
+          from d1_remote_investment_parent_probe import RemoteLogicalPackage
+          from d1_split_tar_extract import SplitHttpTar
+
+          catalogs=load_catalogs([Path('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json')])
+          arc=SplitHttpTar([f'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          specs=[
+            (0x0156,7486,'80AADD3E',0x1B04,'80AA83E6'),
+            (0x0158,622,'80AB026E',0x1B04,'80AA9B44'),
+            (0x0735,1000,'8166A3E8',0x0E24,'8166A3EC'),
+          ]
+          rows=[]
+          for pkg,index,tag,target_off,model in specs:
+              view=RemoteLogicalPackage(arc,catalogs[pkg],Path('runtime'))
+              e=view.entries[index]
+              assert e['tag_hash'].upper()==tag,(pkg,index,e['tag_hash'],tag)
+              assert e['reference'].upper()=='80800861',e
+              b=view.entry(index)
+              er=parse_resource(b,'PS4')
+              assert er['semantic_role']=='entity_model',er
+              assert er['embedded_model_tag_hash'].upper()==model,(tag,er.get('embedded_model_tag_hash'),model)
+              hits=[o for o in range(0,len(b)-3,4) if struct.unpack_from('<I',b,o)[0]==0xACC65F88]
+              assert target_off in hits,(tag,hits,target_off)
+              lo=max(0,target_off-96); hi=min(len(b),target_off+100)
+              words=[]
+              for o in range(lo-(lo%4),hi,4):
+                  words.append({'offset':o,'offset_hex':f'0x{o:X}','u32':f'{struct.unpack_from("<I",b,o)[0]:08X}'})
+              before=b[target_off-64:target_off]
+              after=b[target_off+4:target_off+68]
+              row={
+                'package_id':f'{pkg:04X}','entry_index':index,'tag_hash':tag,'payload_size':len(b),
+                'payload_sha256':hashlib.sha256(b).hexdigest(),'crota_offsets':hits,'target_crota_offset':target_off,
+                'semantic_role':er['semantic_role'],'embedded_model_tag_hash':model,
+                'model_parent_target_offset':(er.get('unk18') or {}).get('target_offset'),
+                'model_field_absolute_offset':(er.get('unk18') or {}).get('target_offset',0)+er.get('model_field_offset_in_parent',0),
+                'before64_sha256':hashlib.sha256(before).hexdigest(),'after64_sha256':hashlib.sha256(after).hexdigest(),
+                'words':words,
+              }
+              rows.append(row)
+              print('CROTA_MODEL_CONTEXT',tag,'PKG',f'{pkg:04X}','OFFSET',hex(target_off),'ALL_HITS',[hex(x) for x in hits],
+                    'MODEL',model,'MODEL_FIELD',hex(row['model_field_absolute_offset']))
+              print(' WORDS',[(x['offset_hex'],x['u32']) for x in words])
+          # Quantify local homology around the exact scalar without pretending that homology types the field.
+          pairs=[]
+          for i in range(len(rows)):
+              for j in range(i+1,len(rows)):
+                  a=specs[i]; c=specs[j]
+                  va=RemoteLogicalPackage(arc,catalogs[a[0]],Path('runtime')).entry(a[1])
+                  vb=RemoteLogicalPackage(arc,catalogs[c[0]],Path('runtime')).entry(c[1])
+                  ca=va[a[3]-64:a[3]+68]; cb=vb[c[3]-64:c[3]+68]
+                  n=min(len(ca),len(cb)); eq=sum(x==y for x,y in zip(ca[:n],cb[:n]))
+                  pairs.append({'a':a[2],'b':c[2],'compared_bytes':n,'equal_bytes':eq,'equal_fraction':eq/n if n else 0})
+                  print('CONTEXT_HOMOLOGY',a[2],c[2],eq,'/',n,eq/n if n else 0)
+          Path('out/CROTA_EXACT_CROTAHASH_MODEL_CONTEXT.json').write_text(json.dumps({'schema':'d1_crotahash_model_context/v1','rows':rows,'pairwise_context_homology':pairs,'policy':'ACC65F88 remains an untyped aligned scalar unless an enclosing source schema types this position. Context homology is discovery evidence only.'},indent=2)+'\n')
+          PY
+
+      - name: Trace all three exact models to EntityResources and s_entity owners
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_multi_model_owner_trace.py \
+            --model 0x80AA83E6 --model 0x80AA9B44 --model 0x8166A3EC \
+            --scan-package-id 0x0075 --scan-package-id 0x0077 --scan-package-id 0x075D \
+            --scan-package-id 0x0447 --scan-package-id 0x044B --scan-package-id 0x0458 \
+            --scan-package-id 0x0151 --scan-package-id 0x0154 --scan-package-id 0x0155 \
+            --scan-package-id 0x0156 --scan-package-id 0x0157 --scan-package-id 0x0158 \
+            --scan-package-id 0x0169 --scan-package-id 0x018D --scan-package-id 0x01E3 \
+            --scan-package-id 0x072B --scan-package-id 0x072F --scan-package-id 0x0735 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/CROTA_CROTAHASH_MODEL_OWNER_TRACE.json | tee out/model_owner_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_CROTAHASH_MODEL_OWNER_TRACE.json'))
+          assert d['resource_error_count']==0,d['resource_errors']
+          assert d['entity_error_count']==0,d['entity_errors']
+          for model in ('80AA83E6','80AA9B44','8166A3EC'):
+              x=d['by_model'][model]
+              print('MODEL_SUMMARY',model,'RESOURCES',[(r['package_id'],r['resource_hash']) for r in x['model_owner_resources']],
+                    'S_ENTITIES',[(e['package_id'],e['entity_hash']) for e in x['s_entity_owners']])
+          PY
+
+      - name: Probe every exact s_entity owner
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          OWNER_ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_CROTAHASH_MODEL_OWNER_TRACE.json'))
+          hs=[]
+          for e in d['s_entity_owners']:
+              h=e['entity_hash'].upper()
+              if h not in hs: hs.append(h)
+          print(' '.join('--tag-hash 0x'+h for h in hs))
+          PY
+          )
+          echo "OWNER_ARGS=$OWNER_ARGS" | tee out/owner_args.txt
+          if [[ -n "$OWNER_ARGS" ]]; then
+            python tools/d1_remote_exact_s_entity_probe.py $OWNER_ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+              -o out/CROTA_CROTAHASH_MODEL_OWNER_ENTITIES.json | tee out/owner_entities_stdout.txt
+          else
+            printf '{"schema":"d1_exact_s_entity_probe/v1","entries":[],"violation_count":0,"violations":[]}\n' > out/CROTA_CROTAHASH_MODEL_OWNER_ENTITIES.json
+            echo 'NO_S_ENTITY_OWNERS' | tee out/owner_entities_stdout.txt
+          fi
+
+      - name: Resolve every source-mapped owner name exactly
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          NAME_ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_CROTAHASH_MODEL_OWNER_ENTITIES.json'))
+          args=[]; seen=set()
+          for e in d.get('entries',[]):
+              for h in e.get('specific_name_string_hashes',[]):
+                  k=('s',h.upper())
+                  if k not in seen: seen.add(k); args += ['--string-hash','0x'+h.upper()]
+              for h in e.get('generic_name_tag_hashes',[]):
+                  k=('g',h.upper())
+                  if k not in seen: seen.add(k); args += ['--generic-name-tag','0x'+h.upper()]
+          print(' '.join(args))
+          PY
+          )
+          echo "NAME_ARGS=$NAME_ARGS" | tee out/name_args.txt
+          if [[ -n "$NAME_ARGS" ]]; then
+            python tools/d1_remote_global_stringhash_resolve.py $NAME_ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+              --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+              --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+              --global-package-id 0x072B --global-package-id 0x072F --global-package-id 0x0735 \
+              --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+              -o out/CROTA_CROTAHASH_MODEL_OWNER_NAMES.json | tee out/owner_names_stdout.txt
+          else
+            printf '{"schema":"no_source_mapped_names","generic_name_tag_to_string_hash":{},"resolved":{},"unresolved_target_hashes":[],"violation_count":0,"violations":[]}\n' > out/CROTA_CROTAHASH_MODEL_OWNER_NAMES.json
+            echo 'NO_SOURCE_MAPPED_OWNER_NAMES' | tee out/owner_names_stdout.txt
+          fi
+
+      - name: Validate and persist exact proof boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import json,pathlib
+          trace=json.load(open('out/CROTA_CROTAHASH_MODEL_OWNER_TRACE.json'))
+          ents=json.load(open('out/CROTA_CROTAHASH_MODEL_OWNER_ENTITIES.json'))
+          names=json.load(open('out/CROTA_CROTAHASH_MODEL_OWNER_NAMES.json'))
+          ctx=json.load(open('out/CROTA_EXACT_CROTAHASH_MODEL_CONTEXT.json'))
+          assert trace['resource_error_count']==0 and trace['entity_error_count']==0
+          assert ents.get('violation_count',0)==0,ents.get('violations')
+          assert names.get('violation_count',0)==0,names.get('violations')
+          gm=names.get('generic_name_tag_to_string_hash',{})
+          resolved=names.get('resolved',{})
+          name_rows=[]
+          for e in ents.get('entries',[]):
+              vals=[]
+              for tag in e.get('generic_name_tag_hashes',[]):
+                  sh=gm.get(tag.upper())
+                  if sh:
+                      vals += [r.get('string') for r in resolved.get(sh,[]) if r.get('string') is not None]
+              for sh in e.get('specific_name_string_hashes',[]):
+                  vals += [r.get('string') for r in resolved.get(sh.upper(),[]) if r.get('string') is not None]
+              vals=sorted(set(vals))
+              name_rows.append({'entity_hash':e['tag_hash'],'resolved_source_names':vals,'models':e.get('embedded_models',[])})
+              print('OWNER_NAME',e['tag_hash'],vals,'EMBEDDED_MODELS',e.get('embedded_models',[]),'SKELETONS',[(s['resource_hash'],s['node_count']) for s in e.get('skeletons',[])])
+          out={
+            'schema':'d1_crota_crotahash_model_owner_closure/v1',
+            'status':'D1_CROTA_CROTAHASH_MODEL_OWNER_CLOSURE_COMPLETE',
+            'crota_scalar':'ACC65F88',
+            'source_entity_model_resources':['80AADD3E','80AB026E','8166A3E8'],
+            'models':['80AA83E6','80AA9B44','8166A3EC'],
+            'context':ctx,
+            'owner_trace':trace,
+            'owner_name_rows':name_rows,
+            'policy':'ACC65F88 itself is not identity proof. Promotion requires the validated entity_model FileHash edge, exact s_entity Resource[] ownership, and a source-mapped owner name or an independently typed Crota semantic edge.'
+          }
+          pathlib.Path('out/CROTA_CROTAHASH_MODEL_OWNER_CLOSURE.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-CROTAHASH-MODEL-OWNER-CLOSURE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
