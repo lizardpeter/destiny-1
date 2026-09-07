@@ -15,6 +15,8 @@ on:
       - 'tools/d1_activity_asset_dependency_seeds.py'
       - 'tools/d1_remote_entity_dependency_closure.py'
       - 'tools/d1_remote_entity_dependency_closure_universal.py'
+      - 'tools/d1_activity_entity_model_plan.py'
+      - 'tools/d1_remote_activity_model_visual_dependency_closure.py'
       - 'tools/d1_filehash.py'
 
 permissions:
@@ -95,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_filehash.py
-          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py
+          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py tools/d1_activity_entity_model_plan.py tools/d1_remote_activity_model_visual_dependency_closure.py
 
       - name: Extract exact scenario activity graph and dependency seeds
         run: |
@@ -168,6 +170,58 @@ jobs:
           assert d['node_count']>=s['closure_seed_count'],d
           assert d['typed_edge_count']>=0 and d['untyped_literal_edge_count']>=0,d
           print('ENTITY_CLOSURE', '${{ matrix.id }}', d['node_count'], d['edge_count'], d['typed_edge_count'], len(d['articulated_entities']))
+          PY
+
+      - name: Close exact activity EntityModels and visual dependencies
+        if: ${{ matrix.deep_closure }}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_activity_entity_model_plan.py \
+            --entity-closure 'out/${{ matrix.id }}/entity_dependency_closure.json' \
+            -o 'out/${{ matrix.id }}/activity_entity_model_plan.json' \
+            | tee 'out/${{ matrix.id }}.model_plan.txt'
+          model_count="$(python - <<'PY'
+          import json
+          print(json.load(open('out/${{ matrix.id }}/activity_entity_model_plan.json'))['model_count'])
+          PY
+          )"
+          if [ "$model_count" -gt 0 ]; then
+            python tools/d1_remote_activity_model_visual_dependency_closure.py \
+              --model-plan 'out/${{ matrix.id }}/activity_entity_model_plan.json' \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+              --runtime runtime \
+              -o 'out/${{ matrix.id }}/activity_model_visual_dependency_closure.json' \
+              | tee 'out/${{ matrix.id }}.model_visual_closure.txt'
+          else
+            python - <<'PY'
+          import json
+          p=json.load(open('out/${{ matrix.id }}/activity_entity_model_plan.json'))
+          d={
+            'schema':'d1_remote_activity_model_visual_dependency_closure/v1',
+            'status':'D1_REMOTE_ACTIVITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',
+            'source_model_plan':'out/${{ matrix.id }}/activity_entity_model_plan.json',
+            'model_count':0,'models':[],'buffer_header_count':0,'buffer_headers':[],
+            'backing_payload_count':0,'backing_payload_hashes':[],
+            'inline_material_count':0,'inline_materials':[],
+            'external_variant_part_count':0,'external_variant_parts':[],
+            'rows':[],'typed_edges':[],'typed_edge_count':0,'violations':[],
+            'policy':'Exact empty visual closure: the source-typed activity entity closure contains no s_entity_model nodes.'
+          }
+          json.dump(d,open('out/${{ matrix.id }}/activity_model_visual_dependency_closure.json','w'),indent=2);open('out/${{ matrix.id }}/activity_model_visual_dependency_closure.json','a').write('\n')
+          print('STATUS',d['status'],'MODELS',0)
+          PY
+          fi
+          python - <<'PY'
+          import json
+          p=json.load(open('out/${{ matrix.id }}/activity_entity_model_plan.json'))
+          d=json.load(open('out/${{ matrix.id }}/activity_model_visual_dependency_closure.json'))
+          assert p['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE',p['violations']
+          assert d['status']=='D1_REMOTE_ACTIVITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',d['violations'][:10]
+          assert d['model_count']==p['model_count'],(d['model_count'],p['model_count'])
+          assert not d['violations'],d['violations']
+          print('MODEL_VISUAL', '${{ matrix.id }}', d['model_count'], d['buffer_header_count'], d['backing_payload_count'], d['inline_material_count'], d['external_variant_part_count'])
           PY
 
       - name: Hash outputs
