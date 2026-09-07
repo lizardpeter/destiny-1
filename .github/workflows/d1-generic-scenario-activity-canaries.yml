@@ -27,22 +27,22 @@ jobs:
       matrix:
         include:
           - id: vault_of_glass
-            hash: 80FE0103
+            hash: '80FE0103'
             name: 'venus_raid_1:scenario_client'
           - id: kings_fall
-            hash: 812700B9
+            hash: '812700B9'
             name: 'raid_epiphany:scenario_client'
           - id: cosmo_strike
-            hash: 80CB84FA
+            hash: '80CB84FA'
             name: 'strike_reliquary:scenario_client'
           - id: plaguelands_patrol
-            hash: 8179E047
+            hash: '8179E047'
             name: 'plaguelands_patrol:scenario_client'
           - id: reef_social
-            hash: 81194008
+            hash: '81194008'
             name: 'social_landing:scenario_client'
           - id: anomaly_pvp
-            hash: 80D8E003
+            hash: '80D8E003'
             name: 'pvp_anomaly:scenario_client'
     steps:
       - uses: actions/checkout@v4
