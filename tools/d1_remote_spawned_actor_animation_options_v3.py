@@ -2,7 +2,7 @@
 """Run the D1 spawned-actor animation engine with source-closed retail adapters.
 
 v3 deliberately wraps the historical v2 engine instead of editing it in place. It
-adds three independently proven semantics:
+adds four independently proven semantics:
 
 1. 80802C0E selectors may use the retail final-clip + implicit-null-tail form closed
    by the Wrath 45-control / 2,297-selector census.
@@ -11,6 +11,9 @@ adds three independently proven semantics:
    uncompressed spans.
 3. An exact control with zero states, zero bank clips and zero selected clips is a
    source-closed empty option set. No retarget executions are required for it.
+4. An exact activity animation seed with zero animation-capable entities is itself a
+   source-closed empty animation population. It is not an error and no actor/control
+   is fabricated merely to keep a pipeline non-empty.
 
 No non-empty failure, ownership mismatch, rig mismatch or unknown selector form is
 suppressed. The v2 JSON is normalized only after the wrapped engine has written it.
@@ -30,6 +33,7 @@ if str(HERE) not in sys.path:
 def _early_args():
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--parser-root", type=Path, required=True)
+    ap.add_argument("--seed", type=Path)
     ap.add_argument("-o", "--output", type=Path, required=True)
     return ap.parse_known_args()[0]
 
@@ -51,6 +55,68 @@ def _target_key(t: dict) -> tuple[str, str, str]:
         str(t.get("runtime_rig", "")).upper(),
         str(t.get("control", "")).upper(),
     )
+
+
+def _empty_from_seed(seed_path: Path, output: Path) -> dict | None:
+    if not seed_path.exists():
+        raise FileNotFoundError(seed_path)
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    if seed.get("schema") != "d1_activity_actor_animation_seed/v1":
+        raise ValueError(f"unexpected seed schema {seed.get('schema')!r}")
+    if seed.get("status") != "D1_ACTIVITY_ACTOR_ANIMATION_SEED_COMPLETE" or seed.get("violations"):
+        raise ValueError("animation seed is not source-closed")
+    if int(seed.get("animation_capable_entity_count", -1)) != 0:
+        return None
+    if seed.get("entity_hashes") or seed.get("candidates"):
+        raise ValueError("zero-capable seed still contains candidate entities")
+
+    d = {
+        "schema": "d1_remote_spawned_actor_animation_options/v3",
+        "status": "D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_COMPLETE",
+        "source_v2_status": None,
+        "source_seed": str(seed_path),
+        "source_closed_empty_population": True,
+        "entity_count": 0,
+        "source_closed_entity_count": 0,
+        "preserved_with_frontier_entity_count": 0,
+        "violation_entity_count": 0,
+        "entities": [],
+        "target_count": 0,
+        "closed_target_count": 0,
+        "exact_empty_control_target_count": 0,
+        "targets": [],
+        "controls": {},
+        "unique_control_count": 0,
+        "unique_control_hashes": [],
+        "unique_selector_selected_clip_count": 0,
+        "unique_selector_selected_clip_hashes": [],
+        "unique_animation_list_clip_count": 0,
+        "unique_animation_list_clip_hashes": [],
+        "retarget_pair_execution_count": 0,
+        "retarget_pair_success_count": 0,
+        "retarget_pair_failure_count": 0,
+        "implicit_null_selector_count": 0,
+        "implicit_null_selector_controls": [],
+        "violations": [],
+        "violation_count": 0,
+        "frontiers": [],
+        "frontier_count": 0,
+        "v3_policy": (
+            "The exact activity animation seed contains zero animation-capable entities, so the retail animation "
+            "population for this entity closure is source-closed empty. No actor, control, state, clip, rig or "
+            "animation is fabricated to keep the pipeline non-empty. Non-empty populations continue through the "
+            "historical v2 engine plus v3 selector/offset normalization."
+        ),
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
+    print(
+        "STATUS", d["status"], "ENTITIES", 0, "SOURCE_CLOSED", 0,
+        "CONTROLS", 0, "IMPLICIT_NULL_SELECTORS", 0, "EMPTY_TARGETS", 0,
+        "RETARGET_PAIRS", 0, "RETARGET_FAILURES", 0, "VIOLATIONS", 0,
+        "FRONTIERS", 0, "EMPTY_POPULATION", True,
+    )
+    return d
 
 
 def _normalize(output: Path) -> dict:
@@ -119,9 +185,7 @@ def _normalize(output: Path) -> dict:
 
     statuses = [x.get("status") for x in d.get("entities", [])]
     d["source_closed_entity_count"] = statuses.count("source_closed")
-    d["preserved_with_frontier_entity_count"] = statuses.count(
-        "preserved_with_frontier"
-    )
+    d["preserved_with_frontier_entity_count"] = statuses.count("preserved_with_frontier")
     d["violation_entity_count"] = statuses.count("violation")
     d["violations"] = violations
     d["violation_count"] = len(violations)
@@ -132,6 +196,7 @@ def _normalize(output: Path) -> dict:
         for t in d.get("targets", [])
     )
     d["exact_empty_control_target_count"] = len(empty_keys)
+    d["source_closed_empty_population"] = False
 
     implicit_null_count = 0
     implicit_null_controls = set()
@@ -158,13 +223,11 @@ def _normalize(output: Path) -> dict:
         else "D1_ACTIVITY_ACTOR_ANIMATION_OPTIONS_PARTIAL"
     )
     d["v3_policy"] = (
-        "v3 preserves v2 ownership and native retarget requirements. Selector "
-        "one-past ranges are accepted only for the source-proven final-clip plus "
-        "serialized-zero implicit-null form. The null is never promoted to a clip. "
-        "Tiger Tag_Array_NP offsets are converted to Python int before slice "
-        "arithmetic to prevent host int16 overflow; codec equations and bytes are "
-        "unchanged. Exact 0-state/0-bank/0-selected controls are source-closed empty "
-        "option sets. No non-empty failure is normalized away."
+        "v3 preserves v2 ownership and native retarget requirements. Selector one-past ranges are accepted only "
+        "for the source-proven final-clip plus serialized-zero implicit-null form. The null is never promoted to a "
+        "clip. Tiger Tag_Array_NP offsets are converted to Python int before slice arithmetic to prevent host int16 "
+        "overflow; codec equations and bytes are unchanged. Exact 0-state/0-bank/0-selected controls and exact "
+        "zero-animation-capable activity seeds are source-closed empty results. No non-empty failure is normalized away."
     )
     output.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
     return d
@@ -172,6 +235,11 @@ def _normalize(output: Path) -> dict:
 
 def main() -> int:
     a = _early_args()
+    if a.seed is not None:
+        empty = _empty_from_seed(a.seed, a.output)
+        if empty is not None:
+            return 0
+
     parser_root = a.parser_root.resolve()
     sys.path.insert(0, str(parser_root))
 
@@ -179,8 +247,6 @@ def main() -> int:
 
     install_safe_tag_array_offsets()
 
-    # Patch the module attribute before importing the historical engine because v2
-    # imports decode_control by value from this module.
     import d1_animation_control_state_map as selector_module
     from d1_animation_control_state_map_v2 import decode_control as decode_control_v2
 
@@ -191,7 +257,12 @@ def main() -> int:
     try:
         rc = engine.main()
     except SystemExit as ex:
-        rc = int(ex.code or 0)
+        if ex.code is None:
+            rc = 0
+        elif isinstance(ex.code, int):
+            rc = ex.code
+        else:
+            raise
     if rc not in (0, 2):
         return int(rc)
     if not a.output.exists():
