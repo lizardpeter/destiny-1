@@ -1,0 +1,72 @@
+name: D1 Wrath animation control boundary probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-wrath-animation-control-boundary-probe.yml'
+      - 'tools/d1_remote_animation_control_boundary_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover catalog and Oodle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Probe two boundary controls
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_animation_control_boundary_probe.py
+          python tools/d1_remote_animation_control_boundary_probe.py \
+            --control 817A55AD --control 817BD0EC \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/wrath_animation_control_boundary_probe.json \
+            | tee out/probe.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/wrath_animation_control_boundary_probe.json'))
+          assert d['status']=='COMPLETE' and not d['violations'],d
+          assert len(d['controls'])==2
+          for r in d['controls']:
+              assert len(r['crossing_selectors'])==1,r
+              print(r['control'],'ANIM_COUNT',r['animation_array']['count'],'STATE_COUNT',r['selector_array']['count'])
+              print('CROSS',r['crossing_selectors'][0])
+              print('CONTIGUOUS_MISSING',r['crossing_missing_logical_items_if_contiguous'])
+              print('BOUNDARY',[(x['relative_to_declared_end'],x['value'],x['reference']) for x in r['animation_boundary_words']])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-WRATH-ANIMATION-CONTROL-BOUNDARY-PROBE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
