@@ -1,0 +1,105 @@
+name: D1 Crota R10 Blender native material
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r10-blender-native.yml'
+      - 'tools/d1_blender_crota_r10_native_rebuild.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  R9_ARTIFACT_ID: '10034027803'
+  R9_ZIP_SHA256: 'a2c4c934f15aeca02a69d5695507f6fb61a23f1d198c58580ba51313e0b63a2f'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender
+          blender --version | tee blender-version.txt
+      - name: Recover exact R9 carrier files
+        run: |
+          set -euo pipefail
+          mkdir -p input/r9 out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${R9_ARTIFACT_ID}/zip" -o input/r9.zip
+          echo "${R9_ZIP_SHA256}  input/r9.zip" | sha256sum --check --strict
+          unzip -q input/r9.zip -d input/r9
+          test -f input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb
+          test -f input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb
+          test -f input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_FULL_82.glb
+      - name: Build Blender-native bind scene and render
+        run: |
+          set -euo pipefail
+          blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
+            --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb \
+            --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend \
+            --preview out/CROTA_R10_BIND_PREVIEW.png \
+            --mode bind | tee out/bind-build.txt
+      - name: Build Blender-native one-animation scene and render
+        run: |
+          set -euo pipefail
+          blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
+            --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb \
+            --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_ANIM_809D9D19.blend \
+            --preview out/CROTA_R10_ANIM_FRAME1_PREVIEW.png \
+            --mode anim | tee out/anim-build.txt
+      - name: Build full 82-action Blender scene
+        run: |
+          set -euo pipefail
+          blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
+            --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_FULL_82.glb \
+            --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_FULL_82.blend \
+            --preview out/CROTA_R10_FULL_FRAME1_PREVIEW.png \
+            --mode anim | tee out/full-build.txt
+      - name: Validate saved Blender scenes
+        run: |
+          set -euo pipefail
+          cat > /tmp/validate_crota_r10.py <<'PY'
+          import bpy, json, sys
+          active={'D1_8108E7A9','D1_8108E7AA','D1_8108E7B1','D1_8108E7B2','D1_8108E7B3'}
+          mats={m.name for m in bpy.data.materials}
+          assert active <= mats,(active-mats)
+          for name in active:
+              m=bpy.data.materials[name]
+              assert m.use_nodes
+              nn={n.name for n in m.node_tree.nodes}
+              for required in ('D1_NATIVE_OUTPUT','D1_DESTINATION_ATTENUATION','D1_ADDITIVE_COLOR','D1_NATIVE_SOURCE_PLUS_DESTINATION'):
+                  assert required in nn,(name,required,nn)
+              assert m.get('d1_r10_native_contract')=='Source + Destination*(1-SourceAlpha)'
+          arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
+          assert all(o.hide_get() and o.hide_render for o in arms),[(o.name,o.hide_get(),o.hide_render) for o in arms]
+          meshes=[o for o in bpy.context.scene.objects if o.type=='MESH' and not o.hide_get()]
+          assert len(meshes)==6,[o.name for o in meshes]
+          print(json.dumps({'status':'CROTA_R10_BLEND_VALID','materials':sorted(active),'visible_meshes':len(meshes),'armatures':len(arms),'animations':len(bpy.data.actions),'frame_range':[bpy.context.scene.frame_start,bpy.context.scene.frame_end]},indent=2))
+          PY
+          for f in \
+            out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend \
+            out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_ANIM_809D9D19.blend \
+            out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_FULL_82.blend; do
+            blender --background "$f" --python /tmp/validate_crota_r10.py
+          done | tee out/validation.txt
+          test -s out/CROTA_R10_BIND_PREVIEW.png
+          test -s out/CROTA_R10_ANIM_FRAME1_PREVIEW.png
+          test -s out/CROTA_R10_FULL_FRAME1_PREVIEW.png
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R10-BLENDER-NATIVE
+          path: |
+            out/
+            blender-version.txt
+          retention-days: 30
+          if-no-files-found: error
