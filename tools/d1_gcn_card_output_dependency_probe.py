@@ -28,11 +28,29 @@ def normalized_lines(path: Path) -> list[str]:
     return [re.sub(r'\s+', ' ', x.strip()) for x in path.read_text(errors='replace').splitlines() if x.strip()]
 
 
+def finds(lines: list[str], needle: str) -> list[int]:
+    return [i for i, x in enumerate(lines) if needle in x]
+
+
 def find(lines: list[str], needle: str) -> int:
-    hits = [i for i, x in enumerate(lines) if needle in x]
+    hits = finds(lines, needle)
     if len(hits) != 1:
         raise ValueError(f'{needle!r}: expected one exact instruction hit, got {len(hits)}')
     return hits[0]
+
+
+def find_first_after(lines: list[str], needle: str, after: int) -> int:
+    hits = [i for i in finds(lines, needle) if i > after]
+    if not hits:
+        raise ValueError(f'{needle!r}: no instruction after line-index {after}')
+    return hits[0]
+
+
+def find_last_after(lines: list[str], needle: str, after: int) -> int:
+    hits = [i for i in finds(lines, needle) if i > after]
+    if not hits:
+        raise ValueError(f'{needle!r}: no instruction after line-index {after}')
+    return hits[-1]
 
 
 def assert_order(indices: list[int], label: str) -> None:
@@ -77,24 +95,26 @@ def main() -> int:
             # Exact register destinations are source-proven by the image usage report.
             s0 = find(lines, 'image_sample v3, v[4:7], s[4:11], s[12:15]')
             s1 = find(lines, 'image_sample v4, v[7:10], s[44:51], s[32:35]')
-            mul_tex = find(lines, 'v_mul_f32 v3, v3, v4')
-            mul_alpha = find(lines, 'v_mul_f32 v0, v3, v0')
+            # 80B9E8CF reuses the same textual v3=v3*v4 form later for final B*alpha.
+            # The t0*t1 product is the first occurrence after both image samples.
+            mul_tex = find_first_after(lines, 'v_mul_f32 v3, v3, v4', max(s0, s1))
+            mul_alpha = find_first_after(lines, 'v_mul_f32 v0, v3, v0', mul_tex)
             if not (s0 < mul_tex and s1 < mul_tex < mul_alpha):
                 raise ValueError('t0/t1 product no longer feeds final scalar chain')
 
             if shader == '80B9E8CF':
                 # v0 is the final scalar after both post-texture clamp/mask stages and scalar cbuffer multipliers.
-                a0 = find(lines, 'v_mul_f32 v0, s0, v0')
-                a1 = find(lines, 'v_mul_f32 v0, s1, v0')
-                rgb_alpha0 = find(lines, 'v_mul_f32 v4, s5, v0')
-                rgb_alpha1 = find(lines, 'v_mul_f32 v4, s4, v4')
-                r = find(lines, 'v_mul_f32 v1, v1, v4')
-                g = find(lines, 'v_mul_f32 v2, v2, v4')
-                b = find(lines, 'v_mul_f32 v3, v3, v4')
-                pack_rg = find(lines, 'v_cvt_pkrtz_f16_f32 v1, v1, v2')
-                pack_ba = find(lines, 'v_cvt_pkrtz_f16_f32 v0, v3, v0')
-                exp = find(lines, 'exp mrt0, v1, v1, v0, v0 done compr vm')
-                assert_order([mul_alpha, a0, a1, rgb_alpha0, rgb_alpha1, r, g, b, pack_rg, pack_ba, exp], '80B9E8CF output chain')
+                a0 = find_first_after(lines, 'v_mul_f32 v0, s0, v0', mul_alpha)
+                a1 = find_first_after(lines, 'v_mul_f32 v0, s1, v0', a0)
+                rgb_alpha0 = find_first_after(lines, 'v_mul_f32 v4, s5, v0', a1)
+                rgb_alpha1 = find_first_after(lines, 'v_mul_f32 v4, s4, v4', rgb_alpha0)
+                r = find_first_after(lines, 'v_mul_f32 v1, v1, v4', rgb_alpha1)
+                g = find_first_after(lines, 'v_mul_f32 v2, v2, v4', r)
+                b = find_last_after(lines, 'v_mul_f32 v3, v3, v4', g)
+                pack_rg = find_first_after(lines, 'v_cvt_pkrtz_f16_f32 v1, v1, v2', b)
+                pack_ba = find_first_after(lines, 'v_cvt_pkrtz_f16_f32 v0, v3, v0', pack_rg)
+                exp = find_first_after(lines, 'exp mrt0, v1, v1, v0, v0 done compr vm', pack_ba)
+                assert_order([mul_tex, mul_alpha, a0, a1, rgb_alpha0, rgb_alpha1, r, g, b, pack_rg, pack_ba, exp], '80B9E8CF output chain')
                 structure = {
                     'mrt0_r': 'SOURCE_RGB_COEFFICIENT_R * FINAL_ALPHA_SCALAR',
                     'mrt0_g': 'SOURCE_RGB_COEFFICIENT_G * FINAL_ALPHA_SCALAR',
@@ -103,13 +123,13 @@ def main() -> int:
                     'rgb_structure': 'PREMULTIPLIED_BY_FINAL_ALPHA_SCALAR',
                 }
             else:
-                a0 = find(lines, 'v_mul_f32 v0, s0, v0')
-                a1 = find(lines, 'v_mul_f32 v0, s1, v0')
-                zero = find(lines, 'v_mov_b32 v1, 0')
-                pack_rg = find(lines, 'v_cvt_pkrtz_f16_f32 v2, v1, v1')
-                pack_ba = find(lines, 'v_cvt_pkrtz_f16_f32 v0, v1, v0')
-                exp = find(lines, 'exp mrt0, v2, v2, v0, v0 done compr vm')
-                assert_order([mul_alpha, a0, a1, zero, pack_rg, pack_ba, exp], '80B9E8D0 output chain')
+                a0 = find_first_after(lines, 'v_mul_f32 v0, s0, v0', mul_alpha)
+                a1 = find_first_after(lines, 'v_mul_f32 v0, s1, v0', a0)
+                zero = find_first_after(lines, 'v_mov_b32 v1, 0', a1)
+                pack_rg = find_first_after(lines, 'v_cvt_pkrtz_f16_f32 v2, v1, v1', zero)
+                pack_ba = find_first_after(lines, 'v_cvt_pkrtz_f16_f32 v0, v1, v0', pack_rg)
+                exp = find_first_after(lines, 'exp mrt0, v2, v2, v0, v0 done compr vm', pack_ba)
+                assert_order([mul_tex, mul_alpha, a0, a1, zero, pack_rg, pack_ba, exp], '80B9E8D0 output chain')
                 structure = {
                     'mrt0_r': '0', 'mrt0_g': '0', 'mrt0_b': '0',
                     'mrt0_a': 'FINAL_ALPHA_SCALAR',
