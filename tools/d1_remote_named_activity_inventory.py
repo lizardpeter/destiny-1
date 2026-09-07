@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Inventory current D1 named activity roots across a verified split-TAR corpus.
+
+This is the remote counterpart to d1_world_activity_map_root_census.py's named-tag
+selection. It reads only package metadata ranges: the current physical package header
+and its serialized 0x44-byte named/global tag table. No package payload decompression
+is needed.
+
+The inventory preserves aliases and distinguishes the two source-pinned D1 activity
+classes:
+  8080052E  SActivity_ROI      (map/bubble activity roots)
+  80800616  SUnkActivity_ROI   (scenario/entity activity roots)
+
+Package filenames and named aliases are provenance/discovery text only. They are not
+used to infer activity type, encounter identity, or asset ownership.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import io
+import json
+from collections import Counter, defaultdict
+from pathlib import Path
+
+from d1_pkg_probe import parse_header, parse_named
+from d1_split_tar_extract import SplitHttpTar
+from d1_world_activity_map_root_census import (
+    ACTIVITY_ROI,
+    UNK_ACTIVITY_ROI,
+    canonical_named_class,
+    charm_display,
+)
+
+NAMED_SLOT_STRIDE = 0x44
+NULL_SHA1 = "0" * 40
+
+
+def norm(v: object) -> str:
+    return str(v).upper().removeprefix("0X").zfill(8)
+
+
+def filehash_package_id(h: str) -> int | None:
+    v = int(norm(h), 16)
+    if v < 0x80800000:
+        return None
+    x = v - 0x80800000
+    return (x >> 13) & 0x7FF
+
+
+def load_catalogs(paths: list[Path]) -> dict[int, list[dict]]:
+    families: dict[int, list[dict]] = {}
+    for path in paths:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if doc.get("schema") != "d1_remote_package_member_catalog/v1":
+            raise ValueError(f"{path}: unexpected schema {doc.get('schema')!r}")
+        for raw_pkg, members in doc.get("families", {}).items():
+            pkg = int(raw_pkg, 16)
+            old = families.get(pkg)
+            if old is not None and old != members:
+                raise ValueError(f"conflicting catalog family {pkg:04X}")
+            families[pkg] = list(members)
+    if not families:
+        raise ValueError("catalog contains no package families")
+    return families
+
+
+def choose_current(members: list[dict]) -> dict:
+    return max(
+        members,
+        key=lambda x: (
+            int(x.get("header_patch_id", -1)),
+            int(x.get("filename_generation", -1)),
+            str(x.get("name", "")),
+        ),
+    )
+
+
+def merge_rows(rows: list[dict]) -> tuple[list[dict], list[str]]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        grouped[row["tag_hash"]].append(row)
+    merged = []
+    violations = []
+    for h in sorted(grouped):
+        xs = grouped[h]
+        classes = sorted({x["class_hash_canonical"] for x in xs})
+        packages = sorted({x["source_package_id"] for x in xs})
+        if len(classes) != 1:
+            violations.append(f"current_named_tag_class_conflict:{h}:{classes}")
+        if len(packages) != 1:
+            violations.append(f"current_named_tag_package_conflict:{h}:{packages}")
+        aliases = []
+        indices = []
+        for x in xs:
+            name = x.get("name")
+            if name not in aliases:
+                aliases.append(name)
+            indices.append(int(x["index"]))
+        display = max((x for x in aliases if x is not None), key=len, default=None)
+        base = dict(xs[0])
+        base["name"] = display
+        base["aliases"] = aliases
+        base["named_table_indices"] = indices
+        base["alias_count"] = len(xs)
+        merged.append(base)
+    return merged, violations
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--member-catalog", action="append", type=Path, required=True)
+    ap.add_argument("--base-url", required=True)
+    ap.add_argument("--part-count", type=int, default=10)
+    ap.add_argument("-o", "--output", type=Path, required=True)
+    args = ap.parse_args()
+
+    families = load_catalogs(args.member_catalog)
+    base = args.base_url.rstrip("/")
+    archive = SplitHttpTar(
+        [f"{base}/packages.tar.{i:03d}" for i in range(1, args.part_count + 1)],
+        retries=6,
+        timeout=90,
+    )
+
+    packages = []
+    all_rows = []
+    violations = []
+    for n, pkg in enumerate(sorted(families), 1):
+        member = choose_current(families[pkg])
+        head = archive.read_at(int(member["data_offset"]), 0x140)
+        h = parse_header(io.BytesIO(head))
+        if int(h["pkg_id"]) != pkg:
+            violations.append(
+                f"{member['name']}:header_pkg_id:{int(h['pkg_id']):04X}!={pkg:04X}"
+            )
+            continue
+        count = int(h["named_tag_table_count"])
+        off = int(h["named_tag_table_offset"])
+        expected_sha = str(h.get("named_tag_table_hash") or "").lower()
+        if count == 0:
+            raw = b""
+        else:
+            if off <= 0:
+                violations.append(f"{member['name']}:nonzero_named_count_with_bad_offset:{off}")
+                continue
+            size = count * NAMED_SLOT_STRIDE
+            if off + size > int(member["size"]):
+                violations.append(
+                    f"{member['name']}:named_table_oob:{off}+{size}>{member['size']}"
+                )
+                continue
+            raw = archive.read_at(int(member["data_offset"]) + off, size)
+        actual_sha = hashlib.sha1(raw).hexdigest()
+        absent_zero = count == 0 and off == 0 and expected_sha == NULL_SHA1
+        sha_matches = True if absent_zero else (
+            actual_sha == expected_sha if expected_sha else None
+        )
+        if sha_matches is False:
+            violations.append(f"{member['name']}:named_tag_table_sha1_mismatch")
+
+        parsed = parse_named(raw)
+        if len(parsed) != count:
+            violations.append(
+                f"{member['name']}:named_parse_count:{len(parsed)}!={count}"
+            )
+        pkg_rows = []
+        for e in parsed:
+            raw_cls = norm(e["class_hash"])
+            th = norm(e["tag_hash"])
+            encoded_pkg = filehash_package_id(th)
+            if encoded_pkg != pkg:
+                violations.append(
+                    f"{member['name']}:named_tag_pkg_mismatch:{th}:{encoded_pkg!r}!={pkg:04X}"
+                )
+            row = {
+                **e,
+                "tag_hash": th,
+                "class_hash_raw_uint": raw_cls,
+                "class_hash_charm_display": charm_display(raw_cls),
+                "class_hash_canonical": canonical_named_class(raw_cls),
+                "source_package_id": f"{pkg:04X}",
+                "source_member": member["name"],
+                "source_generation": int(member.get("filename_generation", -1)),
+                "source_patch_id": int(member.get("header_patch_id", -1)),
+            }
+            pkg_rows.append(row)
+            all_rows.append(row)
+        packages.append(
+            {
+                "package_id": f"{pkg:04X}",
+                "member": member["name"],
+                "member_size": int(member["size"]),
+                "filename_generation": int(member.get("filename_generation", -1)),
+                "header_patch_id": int(member.get("header_patch_id", -1)),
+                "named_tag_table_count": count,
+                "named_tag_table_offset": off,
+                "named_tag_table_sha1_expected": expected_sha,
+                "named_tag_table_sha1_actual": actual_sha,
+                "named_tag_table_sha1_matches": sha_matches,
+                "named_class_counts": dict(Counter(x["class_hash_canonical"] for x in pkg_rows)),
+            }
+        )
+        if n % 50 == 0:
+            print(f"SCANNED {n}/{len(families)} packages", flush=True)
+
+    merged, merge_violations = merge_rows(all_rows)
+    violations.extend(merge_violations)
+    map_roots = [x for x in merged if x["class_hash_canonical"] == ACTIVITY_ROI]
+    scenario_roots = [x for x in merged if x["class_hash_canonical"] == UNK_ACTIVITY_ROI]
+    activity_roots = sorted(
+        map_roots + scenario_roots,
+        key=lambda x: (x["source_package_id"], x["tag_hash"]),
+    )
+
+    report = {
+        "schema": "d1_remote_named_activity_inventory/v1",
+        "status": (
+            "D1_REMOTE_NAMED_ACTIVITY_INVENTORY_EXACT"
+            if not violations
+            else "D1_REMOTE_NAMED_ACTIVITY_INVENTORY_WITH_VIOLATIONS"
+        ),
+        "source_classes": {
+            "activity_roi": ACTIVITY_ROI,
+            "unk_activity_roi": UNK_ACTIVITY_ROI,
+        },
+        "package_family_count": len(families),
+        "package_scan_count": len(packages),
+        "current_named_row_count": len(all_rows),
+        "current_unique_named_tag_count": len(merged),
+        "current_alias_row_count": len(all_rows) - len(merged),
+        "current_unique_class_counts": dict(Counter(x["class_hash_canonical"] for x in merged)),
+        "map_activity_root_count": len(map_roots),
+        "scenario_activity_root_count": len(scenario_roots),
+        "activity_root_count": len(activity_roots),
+        "packages_with_activity_roots": len({x["source_package_id"] for x in activity_roots}),
+        "map_activity_roots": map_roots,
+        "scenario_activity_roots": scenario_roots,
+        "activity_roots": activity_roots,
+        "packages": packages,
+        "violations": violations,
+        "policy": (
+            "Current package selection is by highest header patch id then filename generation "
+            "within the checksum-pinned member catalog. Named rows and aliases are serialized "
+            "retail metadata. Only source-pinned named classes 8080052E and 80800616 are admitted "
+            "as activity roots. Package filenames and names are provenance/discovery text and do "
+            "not by themselves establish gameplay category or ownership."
+        ),
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(
+        "STATUS", report["status"],
+        "PACKAGES", report["package_scan_count"],
+        "NAMED_ROWS", report["current_named_row_count"],
+        "UNIQUE_NAMED", report["current_unique_named_tag_count"],
+        "MAP_ROOTS", report["map_activity_root_count"],
+        "SCENARIO_ROOTS", report["scenario_activity_root_count"],
+        "ALL_ACTIVITY_ROOTS", report["activity_root_count"],
+        "ACTIVITY_PACKAGES", report["packages_with_activity_roots"],
+        "VIOLATIONS", len(violations),
+    )
+    for r in activity_roots:
+        print(
+            "ACTIVITY", r["tag_hash"], r["class_hash_canonical"],
+            r["source_package_id"], r.get("name"), r.get("aliases"),
+            r["source_member"],
+        )
+    return 0 if not violations else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
