@@ -1,0 +1,107 @@
+name: D1 Tower current scenario assets v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-current-scenario-assets-v2.yml'
+      - 'tools/d1_fresh_tower_activity_asset_target_v2.py'
+
+permissions:
+  contents: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  PARSER_COMMIT: b9fdc3a43dd28118113275624fcc9054b75855f4
+
+jobs:
+  tower-dynamic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Build current sparse Activity/member index
+        run: |
+          set -euo pipefail
+          mkdir -p fresh runtime out
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o fresh/packages.txt
+          python tools/d1_remote_activity_index.py \
+            --package-list fresh/packages.txt \
+            --out fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+            --tsv fresh/D1_CURRENT_ACTIVITY_INDEX.tsv
+          python tools/d1_universal_member_catalog.py \
+            --activity-index fresh/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list fresh/packages.txt \
+            --out fresh/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('fresh/D1_CURRENT_ACTIVITY_INDEX.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d['violations'][:20]
+          rows=[]
+          for x in d['current_unknown_activities']:
+              names=[x.get('name')]+list(x.get('aliases') or [])
+              names=[str(n) for n in names if n]
+              if any((n.lower().startswith('city_tower_') or n.lower()=='ambient_city_tower:scenario_client') and n.lower().endswith(':scenario_client') for n in names):
+                  rows.append((x['tag_hash'],x.get('name'),x['class_hash_canonical']))
+          assert rows, 'no current Tower scenario roots'
+          assert all(r[2]=='80800616' for r in rows),rows
+          print('CURRENT_TOWER_SCENARIOS',len(rows))
+          for r in rows: print(*r)
+          print('PACKAGES_SHA256',hashlib.sha256(open('fresh/packages.txt','rb').read()).hexdigest())
+          print('ACTIVITY_INDEX_SHA256',hashlib.sha256(open('fresh/D1_CURRENT_ACTIVITY_INDEX.json','rb').read()).hexdigest())
+          PY
+
+      - name: Install verified runtime/parser
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --filter=blob:none https://github.com/v4nguard/Tiger.git parser
+          git -C parser checkout "$PARSER_COMMIT"
+          python -m pip install --disable-pip-version-check --quiet numpy trimesh pillow texture2ddecoder
+
+      - name: Run class-correct current Tower scenario asset closure
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+          D1_ACTIVITY_INDEX: fresh/D1_CURRENT_ACTIVITY_INDEX.json
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,os
+          def sha(p): return hashlib.sha256(open(p,'rb').read()).hexdigest()
+          out={
+            'status':'D1_FRESH_SOURCE_INDEX_COMPLETE',
+            'github_sha':os.environ['GITHUB_SHA'],
+            'packages_txt_sha256':sha('fresh/packages.txt'),
+            'activity_index_sha256':sha('fresh/D1_CURRENT_ACTIVITY_INDEX.json'),
+            'member_catalog_sha256':sha('fresh/D1_UNIVERSAL_MEMBER_CATALOG.json'),
+          }
+          json.dump(out,open('fresh/FRESH_SOURCE_MANIFEST.json','w'),indent=2)
+          PY
+          python tools/d1_fresh_tower_activity_asset_target_v2.py \
+            --target tower-activity \
+            --member-catalog fresh/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --fresh-source-manifest fresh/FRESH_SOURCE_MANIFEST.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --parser-root parser --out-dir out
+
+      - name: Checksum production output
+        if: always()
+        run: |
+          set -euo pipefail
+          if test -d out; then find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt; fi
+          cp fresh/FRESH_SOURCE_MANIFEST.json out/FRESH_SOURCE_MANIFEST.json 2>/dev/null || true
+          cp fresh/D1_CURRENT_ACTIVITY_INDEX.json out/D1_CURRENT_ACTIVITY_INDEX.json 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-CURRENT-SCENARIO-ASSETS-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
