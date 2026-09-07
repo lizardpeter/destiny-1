@@ -1,0 +1,184 @@
+name: D1 Crota R9 ethereal blend preview
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r9-ethereal-preview.yml'
+      - 'tools/d1_gltf_crota_r9_ethereal_preview.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  R8_ARTIFACT_ID: '10033385248'
+  R8_ZIP_SHA256: '57a1ed385753a121fb33335f090e9af19964d1ae2baa831432370d9ffb03812e'
+  ACTOR_ARTIFACT_ID: '10005225514'
+  ACTOR_ZIP_SHA256: '6687cb12dcc423152592bdaff9e7efd86c119fa5b4e5e11cd885cc05ee20491b'
+  SHADER_ARTIFACT_ID: '10030265852'
+  SHADER_ZIP_SHA256: '05bed80356309a0b03d86a9b0c12493e4faf9730d393171e0e189b0d4050f2f7'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact R8, actor material graph, and native GCN evidence
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy
+          mkdir -p input/r8 input/actor input/shader out
+          fetch_artifact() {
+            local id="$1" zip="$2" sha="$3" dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "$sha  $zip" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          fetch_artifact "$R8_ARTIFACT_ID" input/r8.zip "$R8_ZIP_SHA256" input/r8
+          fetch_artifact "$ACTOR_ARTIFACT_ID" input/actor.zip "$ACTOR_ZIP_SHA256" input/actor
+          fetch_artifact "$SHADER_ARTIFACT_ID" input/shader.zip "$SHADER_ZIP_SHA256" input/shader
+          test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb
+          test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb
+          test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb
+          test -f input/actor/crota_raid_actor_material_dependencies.json
+          for s in 80AAE1CD 8108E953 8108E955 8108E956 8108E958 8108E959; do test -f "input/shader/PS_${s}_GFX700.s"; done
+
+      - name: Fail closed on exact Crota paired material and blend-state identities
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('input/actor/crota_raid_actor_material_dependencies.json'))
+          rows={x['material']:x for x in d['rows']}
+          expected={
+            '8108E7A9':'8108E955','8108E7AA':'8108E956','8108E7B1':'8108E953','8108E7B2':'8108E955','8108E7B3':'8108E956',
+            '8108E7AB':'8108E958','8108E7AC':'8108E959','809DD1DC':'80AAE1CD','8108E7B4':'8108E958','8108E7B5':'8108E959',
+          }
+          for m,ps in expected.items():
+              r=rows[m]
+              assert r['material_fields']['unk20']==136,(m,r['material_fields'])
+              assert r['dependencies']['pixel']['shader']['tag_hash']==ps,(m,r['dependencies']['pixel']['shader'])
+          print('CROTA_R9_PAIRED_MATERIALS_GREEN',len(expected),'ALL_STATE_0x88')
+          PY
+
+      - name: Fail closed on native GCN color plus attenuation export contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          def t(h): return Path(f'input/shader/PS_{h}_GFX700.s').read_text()
+          # Compressed MRT0 writes use packed half2 values: first packed register = RG,
+          # second packed register = BA. These exact terminal sequences prove the
+          # color family writes A=0 while the paired family writes RGB=0 + alpha.
+          for h in ('8108E953','8108E955','8108E956'):
+              s=t(h)
+              assert 'v_mov_b32       v3, 0' in s,(h,'missing explicit zero alpha lane')
+              assert 'exp             mrt0' in s and 'compr vm' in s,h
+          s=t('80AAE1CD')
+          assert 'v_mov_b32       v0, 0' in s and 'v_mov_b32       v1, 1.0' in s,s
+          assert 'v_cvt_pkrtz_f16_f32 v2, v0, v0' in s and 'v_cvt_pkrtz_f16_f32 v0, v0, v1' in s,s
+          for h in ('8108E958','8108E959'):
+              s=t(h)
+              assert 'v_cvt_pkrtz_f16_f32 v2, v1, v1' in s,(h,'missing packed zero RG')
+              assert 'exp             mrt0' in s and 'compr vm' in s,h
+          print('CROTA_R9_NATIVE_GCN_TWO_PASS_GREEN')
+          PY
+
+      - name: Build armature-free static ethereal preview
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r9_ethereal_preview.py \
+            input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb \
+            --mode bind-no-armature \
+            --out out/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb \
+            --report out/CROTA_R9_BIND_REPORT.json
+
+      - name: Build clean one-animation ethereal preview
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r9_ethereal_preview.py \
+            input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb \
+            --mode animated \
+            --out out/CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb \
+            --report out/CROTA_R9_ANIM_REPORT.json
+
+      - name: Build full 82-action ethereal library
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r9_ethereal_preview.py \
+            input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb \
+            --mode animated \
+            --out out/CROTA_SON_OF_ORYX_R9_ETHEREAL_FULL_82.glb \
+            --report out/CROTA_R9_FULL_REPORT.json
+
+      - name: Write clean Blender animation import helper
+        run: |
+          set -euo pipefail
+          cat > out/CROTA_R9_IMPORT_ANIM_809D9D19_CLEAN.py <<'PY'
+          # Run inside Blender's Scripting workspace. This deletes old Crota imports,
+          # imports only R9, hides the armature object, and uses the exact clip range.
+          import bpy
+          from pathlib import Path
+          TARGET='CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb'
+          p=Path.home()/'Downloads'/TARGET
+          if not p.exists(): raise FileNotFoundError(f'Put {TARGET} in {p.parent}')
+          bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.import_scene.gltf(filepath=str(p))
+          for obj in bpy.context.scene.objects:
+              if obj.type=='ARMATURE':
+                  obj.data.display_type='STICK'; obj.show_in_front=False; obj.hide_set(True); obj.hide_render=True
+          bpy.context.scene.frame_start=1; bpy.context.scene.frame_end=61; bpy.context.scene.frame_set(1)
+          print('CROTA_R9_CLEAN_ANIM_IMPORTED',p,'FRAMES 1-61')
+          PY
+
+      - name: Final R9 validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          checks=[
+            ('CROTA_R9_BIND_REPORT.json',0,True),
+            ('CROTA_R9_ANIM_REPORT.json',1,False),
+            ('CROTA_R9_FULL_REPORT.json',82,False),
+          ]
+          for fn,anims,noarm in checks:
+              r=json.load(open('out/'+fn))
+              assert r['status']=='D1_CROTA_R9_ETHEREAL_PREVIEW_COMPLETE',r
+              assert r['source_bin_exact_prefix'],r
+              assert r['active_color_surface_count']==6,r
+              assert r['animation_count']==anims,(fn,r['animation_count'])
+              n=r['normal_repair']
+              assert n['before']['negative_fraction']>0.35,n
+              assert n['after']['negative_fraction']<0.01,n
+              assert n['after']['mean_dot']>0.80,n
+              if noarm:
+                  assert r['armature_static_view']['active_mesh_skin_links_removed']==6,r
+              else:
+                  assert r['armature_static_view'] is None,r
+          # Inspect static active scene: exactly six meshes and no active skeleton root.
+          p='out/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb'
+          b=open(p,'rb').read(); jl,jt=struct.unpack_from('<II',b,12); assert jt==0x4e4f534a
+          d=json.loads(b[20:20+jl].decode().rstrip(' \x00'))
+          root=d['scenes'][d.get('scene',0)]['nodes'][0]
+          ch=d['nodes'][root].get('children',[])
+          assert len([x for x in ch if d['nodes'][x].get('mesh') is not None])==6,ch
+          assert not any('SKELETON_ROOT' in str(d['nodes'][x].get('name','')).upper() for x in ch),ch
+          print('CROTA_R9_ALL_GREEN')
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R9-ETHEREAL-PREVIEW
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
