@@ -1,0 +1,83 @@
+name: D1 Tower entity location option catalog
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-entity-location-option-catalog.yml'
+      - 'tools/d1_tower_entity_location_option_catalog.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  D912_GROUP_ARTIFACT_ID: '10000520242'
+  D912_GROUP_ARTIFACT_ZIP_SHA256: '5f2c48519715beaa3f11c7bdbde1b89d26f2f2e639222a47ccf6fc41450d7098'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact D912 grouping proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${D912_GROUP_ARTIFACT_ID}/zip" -o input/d912.zip
+          echo "${D912_GROUP_ARTIFACT_ZIP_SHA256}  input/d912.zip" | sha256sum --check --strict
+          unzip -q input/d912.zip -d input/d912
+          python - <<'PY'
+          import json
+          p='input/d912/TOWER_D912_LOCATION_TAIL_GROUP_PROBE.json'
+          d=json.load(open(p))
+          assert d['status']=='D1_D912_LOCATION_TAIL_GROUPING_STRUCTURALLY_CLOSED',d['status']
+          assert not d['violations'],d['violations']
+          assert d['unique_exact_entity_location_count']==193,d
+          assert d['unique_ambiguous_entity_location_count']==61,d
+          print('SOURCE_PROOF_ACCEPTED',d['unique_exact_entity_location_count'],'exact',d['unique_ambiguous_entity_location_count'],'ambiguous')
+          PY
+      - name: Preserve every source location as an available alternative
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_tower_entity_location_option_catalog.py
+          python tools/d1_tower_entity_location_option_catalog.py \
+            input/d912/TOWER_D912_LOCATION_TAIL_GROUP_PROBE.json \
+            -o out/TOWER_ENTITY_LOCATION_OPTIONS.json | tee out/stdout.txt
+          python - <<'PY'
+          import csv,json
+          d=json.load(open('out/TOWER_ENTITY_LOCATION_OPTIONS.json'))
+          assert d['status']=='D1_TOWER_ENTITY_LOCATION_OPTIONS_COMPLETE'
+          assert d['selection_policy']['preserve_all_alternatives'] is True
+          assert d['selection_policy']['default_selection']=='unset'
+          assert d['selection_policy']['instantiate_all_simultaneously_by_default'] is False
+          rows=[]
+          for e,er in d['entities'].items():
+              for o in er['options']:
+                  rows.append({
+                      'entity_hash':e,
+                      'option_id':o['option_id'],
+                      'association_status':o['association_status'],
+                      'transform_cluster_id':o['transform_cluster_id'],
+                      'x':o['location'][0],'y':o['location'][1],'z':o['location'][2],
+                      'qw_or_rot0':o['rotation'][0],'rot1':o['rotation'][1],'rot2':o['rotation'][2],'rot3':o['rotation'][3],
+                      'source_scenarios':';'.join(o['source_scenarios']),
+                      'd912':o['d912'],'location_index':o['location_index'],
+                      'group_type_string_hash':o['group_type_string_hash'],
+                  })
+          with open('out/TOWER_ENTITY_LOCATION_OPTIONS.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+          print('CSV_ROWS',len(rows))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ENTITY-LOCATION-OPTIONS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
