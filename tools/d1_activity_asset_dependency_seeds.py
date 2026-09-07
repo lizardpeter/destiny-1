@@ -4,7 +4,8 @@
 This is intentionally activity-category agnostic. It consumes the exact component
 reports emitted by d1_remote_activity_graph_extract.py and separates:
 
-* scene/entity roots serialized by Activity map data and scripted-entity tables;
+* placement EntitySK roots serialized by Activity map data;
+* scripted EntitySK roots, including scripted-only entities with no runtime WorldID row;
 * EntityResource owners reached through exact F603 edges;
 * parser-proven typed targets such as embedded models, generic-name tags,
   scripted tables and dialogue entities;
@@ -88,7 +89,7 @@ def main() -> int:
     def add(group: str, value: object, source: str, predicate: str, subject: object | None = None, attrs: dict | None = None):
         h = good_hash(value)
         if h is None:
-            return
+            return None
         groups[group].add(h)
         row = {
             "source_component": source,
@@ -102,19 +103,27 @@ def main() -> int:
         if attrs:
             row["attrs"] = attrs
         evidence.append(row)
+        return h
 
     # Runtime placement roots. Sentinel WorldIDs remain individual placements in the
     # source report, but the entity identity itself is still an exact EntitySK FileHash.
     placement_entities = placements.get("unique_entity_hashes")
     if placement_entities is None:
         placement_entities = list((placements.get("runtime_entity_counts") or {}).keys())
-    for h in placement_entities:
-        add("s_entities", h, "activity_placements", "ACTIVITY_PLACES_ENTITY", base[0])
+    for value in placement_entities:
+        h = add("placement_entities", value, "activity_placements", "ACTIVITY_PLACES_ENTITY", base[0])
+        if h:
+            groups["s_entities"].add(h)
 
     # Scripted tables can contain entities not represented by an ordinary runtime
-    # WorldID placement, so they are unioned rather than treated as duplicates/errors.
-    for h, n in (scripted.get("scripted_entity_hash_counts") or {}).items():
-        add("s_entities", h, "activity_scripted_entities", "SCRIPTED_TABLE_REFERENCES_ENTITY", None, {"serialized_record_count": n})
+    # WorldID placement. Preserve the scripted population independently and then union it
+    # into s_entities for recursive dependency closure.
+    for value, n in (scripted.get("scripted_entity_hash_counts") or {}).items():
+        h = add("scripted_entities", value, "activity_scripted_entities", "SCRIPTED_TABLE_REFERENCES_ENTITY", None, {"serialized_record_count": n})
+        if h:
+            groups["s_entities"].add(h)
+    groups["scripted_only_entities"] = groups["scripted_entities"] - groups["placement_entities"]
+
     for h in scripted.get("unique_scripted_tables", []):
         add("scripted_tables", h, "activity_scripted_entities", "ACTIVITY_OWNS_SCRIPTED_TABLE", base[0])
 
@@ -176,9 +185,10 @@ def main() -> int:
         "violations": violations,
         "policy": (
             "Asset/dependency seeds are admitted only from exact activity placements, exact scripted records, "
-            "literal F603->EntityResource edges, or parser-proven typed EntityResource targets. Structural "
-            "activity carriers are preserved separately. No activity category, developer name, package filename, "
-            "proximity, model shape, or visual resemblance creates an ownership edge."
+            "literal F603->EntityResource edges, or parser-proven typed EntityResource targets. Placement entities "
+            "and scripted entities remain independently enumerable; their union is the s_entity closure population. "
+            "Structural activity carriers are preserved separately. No activity category, developer name, package "
+            "filename, proximity, model shape, or visual resemblance creates an ownership edge."
         ),
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
