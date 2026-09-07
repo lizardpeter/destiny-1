@@ -1,0 +1,166 @@
+name: D1 Tower Xur shader semantic wave 4
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-shader-semantic-wave4.yml'
+      - 'tools/d1_xur_ps_808768c0_semantic_proof.py'
+      - 'tools/d1_material_runtime_texture_gap_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHADER_CENSUS_ARTIFACT_ID: '10027557806'
+  SHADER_CENSUS_ZIP_SHA256: 'e26febd88c0fcc05d998ec7dab04efcf1582095ee594a459ec472c530c7a5086'
+  MATERIAL_STATE_ARTIFACT_ID: '10028092407'
+  MATERIAL_STATE_ZIP_SHA256: '83c5b4af4590d986fb917ddc9da4098e2d1272ad30025db8395f53cac61e4407'
+  WAVE3_ARTIFACT_ID: '10029537974'
+  WAVE3_ZIP_SHA256: 'a25bcc0eae93760161852c3263b1b3df28c14f1a00b03a2043876613f5ae5e33'
+
+jobs:
+  semantic-wave4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact upstream checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/shader input/state input/wave3 reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_CENSUS_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "${SHADER_CENSUS_ZIP_SHA256}  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          test -f input/shader/reports/xur_shader_disassembly_census.json
+          test -f input/shader/reports/xur_ps_image_usage.json
+          test -f input/shader/reports/xur_material_texture_manifest.json
+          test -f input/shader/disasm/PS_808768C0.s
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MATERIAL_STATE_ARTIFACT_ID}/zip" -o input/state.zip
+          echo "${MATERIAL_STATE_ZIP_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          test -f input/state/xur_material_stage_state.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WAVE3_ARTIFACT_ID}/zip" -o input/wave3.zip
+          echo "${WAVE3_ZIP_SHA256}  input/wave3.zip" | sha256sum --check --strict
+          unzip -q input/wave3.zip -d input/wave3
+          test -f input/wave3/XUR_SHADER_SEMANTIC_FRONTIER.json
+          test -f input/wave3/XUR_SHADER_SEMANTIC_PROGRESS_WAVE3.json
+
+      - name: Close PS 808768C0 reflected detail family
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_ps_808768c0_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --texture-manifest input/shader/reports/xur_material_texture_manifest.json \
+            --disassembly input/shader/disasm/PS_808768C0.s \
+            --out reports/XUR_PS_808768C0_SEMANTIC_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_PS_808768C0_SEMANTIC_PROOF.json'))
+          assert d['status']=='D1_XUR_PS_808768C0_DATAFLOW_SEMANTICS_EXACT',d
+          assert d['scope_material_count']==5,d
+          assert d['serialized_t2_bound_materials']==['808762D5','8087642D','808764CA'],d
+          assert d['serialized_t2_absent_materials']==['80876688','808768BB'],d
+          assert d['pixel_shader_dataflow_complete_for_scoped_binary'] is True,d
+          assert d['serialized_texture_binding_complete_for_all_scoped_materials'] is False,d
+          assert not d['violations'],d['violations']
+          PY
+
+      - name: Census native-used versus serialized texture slots generically
+        run: |
+          set -euo pipefail
+          python tools/d1_material_runtime_texture_gap_census.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --out reports/XUR_RUNTIME_TEXTURE_GAP_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_RUNTIME_TEXTURE_GAP_CENSUS.json'))
+          assert d['status']=='D1_MATERIAL_RUNTIME_TEXTURE_GAP_CENSUS_EXACT',d
+          assert d['material_count']==54 and d['shader_count']==25,d
+          assert d['materials_with_complete_serialized_native_used_bindings']==52,d
+          assert d['materials_with_runtime_binding_gaps']==2,d
+          assert d['missing_index_histogram']=={'2':2},d
+          assert list(d['gap_shaders'])==['808768C0'],d
+          assert [x['material'] for x in d['gap_shaders']['808768C0']]==['80876688','808768BB'],d
+          assert not d['serialized_but_not_native_used'],d
+          assert not d['violations'],d['violations']
+          PY
+
+      - name: Promote exact wave 4 semantic coverage
+        run: |
+          set -euo pipefail
+          cp input/wave3/XUR_SHADER_SEMANTIC_FRONTIER.json reports/XUR_SHADER_SEMANTIC_FRONTIER.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('reports/XUR_SHADER_SEMANTIC_FRONTIER.json');d=json.load(open(p))
+          old=json.load(open('input/wave3/XUR_SHADER_SEMANTIC_PROGRESS_WAVE3.json'))
+          pr=json.load(open('reports/XUR_PS_808768C0_SEMANTIC_PROOF.json'))
+          closed_ps=set(old['closed_pixel_gcn_sha256']);closed_ps.add(pr['gcn_sha256'])
+          closed_vs=set(old['closed_vertex_gcn_sha256']);closed=closed_ps|closed_vs
+          for r in d['native_gcn_lifting_queue']:r['semantic_lifting_complete']=r['gcn_sha256'] in closed
+          for r in d['stage_structural_lifting_queue']:r['semantic_lifting_complete']=r['gcn_sha256'] in closed
+          for r in d['material_structural_families']:r['semantic_lifting_complete']=r['vs_gcn_sha256'] in closed_vs and r['ps_gcn_sha256'] in closed_ps
+          both=sorted({m for r in d['material_structural_families'] if r['semantic_lifting_complete'] for m in r['materials']})
+          ps_mats=sorted({m for r in d['material_structural_families'] if r['ps_gcn_sha256'] in closed_ps for m in r['materials']})
+          vs_mats=sorted({m for r in d['material_structural_families'] if r['vs_gcn_sha256'] in closed_vs for m in r['materials']})
+          progress={
+            'status':'D1_XUR_NATIVE_GCN_DATAFLOW_WAVE4_EXACT',
+            'native_gcn_programs_complete':sum(r['semantic_lifting_complete'] for r in d['native_gcn_lifting_queue']),
+            'native_gcn_programs_total':d['native_gcn_program_count'],
+            'stage_structural_units_complete':sum(r['semantic_lifting_complete'] for r in d['stage_structural_lifting_queue']),
+            'stage_structural_units_total':d['stage_structural_unit_count'],
+            'material_structural_families_both_stages_complete':sum(r['semantic_lifting_complete'] for r in d['material_structural_families']),
+            'material_structural_families_total':d['material_structural_family_count'],
+            'materials_with_both_stage_native_dataflow_complete':len(both),'materials_total':d['material_count'],'materials':both,
+            'pixel_shader_material_coverage':len(ps_mats),'vertex_shader_material_coverage':len(vs_mats),
+            'closed_pixel_gcn_sha256':sorted(closed_ps),'closed_vertex_gcn_sha256':sorted(closed_vs),
+            'new_wave4_shader':'808768C0','new_wave4_materials':pr['scope_materials'],
+            'runtime_texture_gap_materials':pr['serialized_t2_absent_materials'],
+            'tfx_producer_semantics_complete':False,'render_state_semantics_complete':False,'permutation_selection_complete':False,'portable_recreation_complete':False,
+          }
+          assert progress['native_gcn_programs_complete']==9,progress
+          assert progress['stage_structural_units_complete']==14,progress
+          assert progress['material_structural_families_both_stages_complete']==9,progress
+          assert progress['materials_with_both_stage_native_dataflow_complete']==27,progress
+          assert progress['pixel_shader_material_coverage']==27,progress
+          assert progress['vertex_shader_material_coverage']==48,progress
+          d['native_dataflow_progress']=progress;p.write_text(json.dumps(d,indent=2)+'\n')
+          Path('reports/XUR_SHADER_SEMANTIC_PROGRESS_WAVE4.json').write_text(json.dumps(progress,indent=2)+'\n')
+          lines=['# Xur native shader semantic progress — wave 4','',f"Status: `{progress['status']}`",'',f"- Native GCN binaries with exact instruction-level dataflow: **{progress['native_gcn_programs_complete']} / {progress['native_gcn_programs_total']}**",f"- Stage structural units covered: **{progress['stage_structural_units_complete']} / {progress['stage_structural_units_total']}**",f"- Combined material structural families with both VS+PS dataflow closed: **{progress['material_structural_families_both_stages_complete']} / {progress['material_structural_families_total']}**",f"- Materials with both current VS+PS binaries dataflow-closed: **{progress['materials_with_both_stage_native_dataflow_complete']} / {progress['materials_total']}**",f"- Pixel-shader material coverage: **{progress['pixel_shader_material_coverage']} / {progress['materials_total']}**",f"- Vertex-shader material coverage: **{progress['vertex_shader_material_coverage']} / {progress['materials_total']}**",'', '`808768C0` now has exact native normal-combination, reflected-cube, Fresnel/detail and MRT arithmetic. Two of its five materials omit serialized texture index 2 even though the exact GCN samples it; the runtime descriptor identity remains deliberately unresolved.']
+          Path('reports/XUR_SHADER_SEMANTIC_PROGRESS_WAVE4.md').write_text('\n'.join(lines)+'\n')
+          print(json.dumps(progress,indent=2))
+          PY
+
+      - name: Persist provenance and hashes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          out={'status':'D1_XUR_NATIVE_GCN_DATAFLOW_WAVE4_EXACT','source_artifacts':{'native_shader_census':{'artifact_id':int(os.environ['SHADER_CENSUS_ARTIFACT_ID']),'zip_sha256':os.environ['SHADER_CENSUS_ZIP_SHA256']},'material_local_state':{'artifact_id':int(os.environ['MATERIAL_STATE_ARTIFACT_ID']),'zip_sha256':os.environ['MATERIAL_STATE_ZIP_SHA256']},'wave3':{'artifact_id':int(os.environ['WAVE3_ARTIFACT_ID']),'zip_sha256':os.environ['WAVE3_ZIP_SHA256']}},'workflow_commit':os.environ['GITHUB_SHA'],'new_exact_shader':'808768C0','runtime_texture_binding_frontier':{'shader':'808768C0','texture_index':2,'materials':['80876688','808768BB']},'semantic_recreation_complete':False,'permutation_selection_complete':False}
+          Path('reports/XUR_SHADER_SEMANTIC_WAVE4_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-XUR-SHADER-SEMANTIC-WAVE4
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
