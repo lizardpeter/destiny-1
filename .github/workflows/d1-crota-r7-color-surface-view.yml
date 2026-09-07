@@ -1,0 +1,121 @@
+name: D1 Crota R7 color-surface Blender views
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r7-color-surface-view.yml'
+      - 'tools/d1_gltf_crota_r7_color_surface_filter.py'
+
+env:
+  R6_ARTIFACT_ID: '10032559464'
+  R6_ZIP_SHA256: '97aec7eefa42ae70c2f7b9c4379c20bf110bfcb3ba953d2a02dae494cf2c6d74'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover green R6 source
+        run: |
+          set -euo pipefail
+          mkdir -p input/r6 out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${R6_ARTIFACT_ID}/zip" -o input/r6.zip
+          echo "$R6_ZIP_SHA256  input/r6.zip" | sha256sum --check --strict
+          unzip -q input/r6.zip -d input/r6
+          test -f input/r6/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_BIND_POSE.glb
+          test -f input/r6/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_FULL_82.glb
+          python - <<'PY'
+          import json
+          d=json.load(open('input/r6/CROTA_R6_CHECKPOINT.json'))
+          assert d['status']=='D1_CROTA_R6_BLENDER_TEXTURE_AND_ACTION_PREVIEW_COMPLETE',d
+          assert d['ranges']==9 and d['triangles']==56660 and d['source_selected_animation_count']==82,d
+          print('R6_SOURCE_GREEN')
+          PY
+      - name: Build six-range neutral bind-pose color view
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r7_color_surface_filter.py \
+            input/r6/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_BIND_POSE.glb \
+            --mode none \
+            --out out/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_BIND_POSE.glb \
+            --report out/CROTA_R7_BIND_REPORT.json
+      - name: Build six-range one-animation inspection view
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r7_color_surface_filter.py \
+            input/r6/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_FULL_82.glb \
+            --mode one \
+            --out out/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_ANIM_809D9D19.glb \
+            --report out/CROTA_R7_ONE_ANIM_REPORT.json
+      - name: Build six-range full animation library
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r7_color_surface_filter.py \
+            input/r6/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_FULL_82.glb \
+            --mode all-preview-first \
+            --out out/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_FULL_82.glb \
+            --report out/CROTA_R7_FULL_REPORT.json
+      - name: Persist duplicate-pass proof and final validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib
+          from pathlib import Path
+          def load(p):
+              b=Path(p).read_bytes(); jl,jt=struct.unpack_from('<II',b,12); assert jt==0x4e4f534a
+              d=json.loads(b[20:20+jl].decode().rstrip(' \x00')); return b,d
+          files={
+            'bind':('out/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_BIND_POSE.glb',0),
+            'one':('out/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_ANIM_809D9D19.glb',1),
+            'full':('out/CROTA_SON_OF_ORYX_R7_COLOR_SURFACES_FULL_82.glb',82),
+          }
+          rows={}
+          for key,(p,na) in files.items():
+              b,d=load(p); root=d['scenes'][d.get('scene',0)]['nodes'][0]
+              vis=[x for x in d['nodes'][root]['children'] if d['nodes'][x].get('mesh') is not None]
+              assert len(vis)==6,(key,vis)
+              assert len(d.get('animations',[]))==na,(key,len(d.get('animations',[])))
+              if na:
+                  assert d['animations'][0]['extras']['d1OwnerSelectedClip']=='809D9D19',d['animations'][0]['extras']
+              rows[key]={'path':p,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),'animations':na}
+          cp={
+            'schema':'d1_crota_r7_color_surface_checkpoint/v1',
+            'status':'D1_CROTA_R7_COLOR_SURFACE_PREVIEW_COMPLETE',
+            'entity':'8108E484','model':'8108E5B7',
+            'source_exact_range_count':9,'source_exact_triangle_count':56660,
+            'visible_color_range_count':6,'visible_color_triangle_count':33750,
+            'hidden_native_prepass_range_count':3,
+            'hidden_prepass_materials':['8108E667','8108E66B'],
+            'visible_materials':['8108E7A9','8108E7AA','8108E7B1','8108E7B2','8108E7B3'],
+            'duplicate_geometry_proof':{
+              'mesh0_prepass_8108E667_vs_color_8108E7A9':'same 7,905-position set and identical bounds; both 12,160 triangles',
+              'mesh2_prepass_8108E66B_vs_color_8108E7B2_large':'same 6,036-position set, identical triangle geometry, both 9,158 triangles',
+              'mesh2_prepass_8108E66B_vs_color_8108E7B2_small':'same 1,024-position set and identical bounds; both 1,592 triangles'
+            },
+            'animation_preview_clip':'809D9D19',
+            'animation_preview_policy':'exact source-selected clip chosen only for low local-TRS deviation from bind pose; no state/idle semantic claimed',
+            'outputs':rows,
+            'policy':'All nine source-valid ranges remain serialized in the GLB. Native prepass nodes are merely unreachable from the active scene so Blender does not z-fight overlapping native passes as PBR surfaces.'
+          }
+          Path('out/CROTA_R7_CHECKPOINT.json').write_text(json.dumps(cp,indent=2)+'\n')
+          print(json.dumps(cp,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R7-COLOR-SURFACE-VIEWS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
