@@ -1,0 +1,158 @@
+name: D1 Crota R6 Blender preview fixes
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-r6-blender-preview-fix.yml'
+      - 'tools/d1_gltf_crota_r6_preview_fix.py'
+
+env:
+  R5_ARTIFACT_ID: '10031719101'
+  R5_ZIP_SHA256: '4f297b322d240894b4032345d29e581778e612c89947dab2dde4647a69cfe233'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact green R5 checkpoint
+        run: |
+          set -euo pipefail
+          python -m pip install -q pillow
+          mkdir -p input/r5 out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${R5_ARTIFACT_ID}/zip" -o input/r5.zip
+          echo "$R5_ZIP_SHA256  input/r5.zip" | sha256sum --check --strict
+          unzip -q input/r5.zip -d input/r5
+          test -f input/r5/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_BIND_POSE.glb
+          test -f input/r5/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_FULL_82.glb
+          test -f input/r5/CROTA_R5_CHECKPOINT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/r5/CROTA_R5_CHECKPOINT.json'))
+          assert d['status']=='D1_CROTA_R5_BIND_POSE_AND_FULL_TEXTURED_COMPLETE',d
+          assert d['most_detailed_range_count']==9 and d['triangle_count']==56660,d
+          assert d['joint_count']==50 and d['full_animation_count']==82,d
+          print('R5_SOURCE_CLOSED',d['bind_pose_sha256'],d['full_sha256'])
+          PY
+
+      - name: Build corrected static Blender preview
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r6_preview_fix.py \
+            input/r5/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_BIND_POSE.glb \
+            --animation-mode none \
+            --out out/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_BIND_POSE.glb \
+            --report out/CROTA_R6_BIND_POSE_REPORT.json
+
+      - name: Build one exact low-motion animation preview
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r6_preview_fix.py \
+            input/r5/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_FULL_82.glb \
+            --animation-mode one-low-motion \
+            --out out/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_LOW_MOTION_809D9D3E.glb \
+            --report out/CROTA_R6_LOW_MOTION_REPORT.json
+
+      - name: Build full 82 exact animation library with stable first clip
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_crota_r6_preview_fix.py \
+            input/r5/final/CROTA_SON_OF_ORYX_R5_BLENDER_TEXTURED_FULL_82.glb \
+            --animation-mode all-low-motion-first \
+            --out out/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_FULL_82.glb \
+            --report out/CROTA_R6_FULL_82_REPORT.json
+
+      - name: Write Blender viewport helper
+        run: |
+          set -euo pipefail
+          cat > out/CROTA_R6_BLENDER_VIEWPORT_HELPER.py <<'PY'
+          # Run in Blender's Scripting workspace after importing a Crota R6 GLB.
+          # This changes only Blender viewport/action state; it does not edit mesh/skin data.
+          import bpy
+          for obj in bpy.context.scene.objects:
+              if obj.type == 'ARMATURE':
+                  obj.data.display_type = 'STICK'
+                  obj.show_in_front = False
+                  # Do not let an imported action obscure the neutral inspection pose.
+                  if obj.animation_data:
+                      obj.animation_data.action = None
+                      for tr in obj.animation_data.nla_tracks:
+                          tr.mute = True
+          bpy.context.scene.frame_set(1)
+          print('CROTA_R6_VIEWPORT_READY: armature=STICK, imported action cleared, frame=1')
+          PY
+
+      - name: Final R6 fail-closed validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct,hashlib
+          from pathlib import Path
+          files={
+            'bind':('out/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_BIND_POSE.glb',0),
+            'one':('out/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_LOW_MOTION_809D9D3E.glb',1),
+            'full':('out/CROTA_SON_OF_ORYX_R6_BLENDER_TEXTURED_FULL_82.glb',82),
+          }
+          def load(p):
+              raw=Path(p).read_bytes(); assert raw[:4]==b'glTF'
+              n,t=struct.unpack_from('<II',raw,12); assert t==0x4e4f534a
+              return raw,json.loads(raw[20:20+n].decode().rstrip(' \x00'))
+          rows={}
+          for key,(p,nanim) in files.items():
+              raw,d=load(p)
+              assert len(d.get('meshes',[]))==9,(key,'meshes')
+              assert len(d.get('materials',[]))==7,(key,'materials')
+              assert len(d.get('skins',[]))==1 and len(d['skins'][0]['joints'])==50,(key,'skin')
+              assert len(d.get('animations',[]))==nanim,(key,'animations')
+              assert len(d.get('images',[]))==6 and len(d.get('textures',[]))==6,(key,'images')
+              exact={x.get('extras',{}).get('d1_taghash') for x in d['images'] if x.get('extras',{}).get('d1_taghash')}
+              assert exact=={'8108E7B6','80AACF2A','80AAD0E1','8108E951','8108E952'},(key,exact)
+              derived=[x for x in d['images'] if x.get('extras',{}).get('d1_preview_only')]
+              assert len(derived)==1 and derived[0]['extras']['d1_derived_from_exact_texture']=='8108E7B6',(key,derived)
+              mats={m['extras']['d1_material_taghash']:m for m in d['materials']}
+              for mh in ('8108E667','8108E66B','8108E7A9','8108E7B2'):
+                  tx=mats[mh]['pbrMetallicRoughness']['baseColorTexture']['index']
+                  assert d['textures'][tx]['name']=='D1_PREVIEW_SCALAR_RGB_8108E7B6',(key,mh,tx)
+              for mh in ('8108E7AA','8108E7B3'):
+                  tx=mats[mh]['pbrMetallicRoughness']['baseColorTexture']['index']
+                  assert d['textures'][tx]['name']=='D1_TEXTURE_8108E951',(key,mh,tx)
+              clips=[a.get('extras',{}).get('d1OwnerSelectedClip') for a in d.get('animations',[])]
+              if key=='one': assert clips==['809D9D3E'],clips
+              if key=='full': assert clips[0]=='809D9D3E' and len(set(clips))==82,clips[:3]
+              rows[key]={'path':p,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'animations':nanim}
+          cp={
+            'schema':'d1_crota_r6_blender_preview_checkpoint/v1',
+            'status':'D1_CROTA_R6_BLENDER_TEXTURE_AND_ACTION_PREVIEW_COMPLETE',
+            'entity':'8108E484','entity_name':'Crota, Son of Oryx','model':'8108E5B7',
+            'ranges':9,'triangles':56660,'materials':7,'exact_retail_textures':5,'derived_preview_textures':1,
+            'joints':50,'runtime_rig_controls':44,'source_selected_animation_count':82,
+            'low_motion_exact_clip':'809D9D3E',
+            'outputs':rows,
+            'texture_fix':'BC4/R-only 8108E7B6 remains exact evidence; portable Base Color now consumes a derived RGB scalar copy instead of rendering the source red channel as RGB.',
+            'animation_fix':'One-clip exact low-motion preview prevents Blender action-selection ambiguity; full 82-clip library remains available with the same exact clip placed first only as packaging order.',
+            'armature_note':'The long central object visible in Blender is the armature root/pelvis bone display, not stretched mesh geometry. Helper switches armature display to STICK and clears active imported actions for neutral inspection.'
+          }
+          Path('out/CROTA_R6_CHECKPOINT.json').write_text(json.dumps(cp,indent=2)+'\n')
+          print(json.dumps(cp,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-R6-BLENDER-PREVIEWS
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
