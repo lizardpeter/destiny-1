@@ -1,0 +1,98 @@
+name: D1 Crota ultra-knight gameplay branch probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-ultra-knight-gameplay-branch-probe.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover corpus/runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact authored ultra-knight gameplay resources
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_exact_tag_probe.py \
+            --tag-hash 0x8108E2D6 --tag-hash 0x8108E2D8 --tag-hash 0x8108E2DF \
+            --tag-hash 0x8108E2E0 --tag-hash 0x8108E2E7 --tag-hash 0x8108E2ED \
+            --tag-hash 0x8108E361 --tag-hash 0x8108E421 --tag-hash 0x8108E52E \
+            --tag-hash 0x80AAC7B7 --tag-hash 0x80AAC395 \
+            --tag-hash 0x8108E5C3 --tag-hash 0x8108E671 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --min-string 4 \
+            -o out/CROTA_ULTRA_KNIGHT_GAMEPLAY_TAGS.json | tee out/tag_probe.txt
+
+      - name: Recursively source-close candidate physical entities
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_entity_dependency_closure_universal.py \
+            --seed 0x80AAC7B7 --seed 0x80AAC395 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 6 --max-nodes 250 \
+            -o out/CROTA_ULTRA_KNIGHT_CANDIDATE_ENTITIES.json | tee out/entity_closure.txt
+
+      - name: Summarize exact handoff evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import json,collections
+          p=json.load(open('out/CROTA_ULTRA_KNIGHT_GAMEPLAY_TAGS.json'))
+          c=json.load(open('out/CROTA_ULTRA_KNIGHT_CANDIDATE_ENTITIES.json'))
+          assert p['violation_count']==0,p['violations']
+          assert c['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE',c.get('status')
+          assert not c['violations'],c['violations'][:20]
+          interesting={'80800734':'s_entity','80800861':'EntityResource','80801AB5':'model','808006BD':'skeleton_resource','80802C0E':'animation_control','808005A1':'animation_clip','808008B2':'runtime_rig','80801AD7':'material'}
+          for e in p['entries']:
+            print('TAG',e['tag_hash'],'CLASS',e['entry']['reference'],'SIZE',e['payload_size'],'STRINGS',[x['string'] for x in e['printable_strings'][:12]])
+            for x in e['aligned_resolved_tags']:
+              ref=x['entry']['reference']
+              if ref in interesting:
+                print(' EDGE_CANDIDATE',hex(x['offset']),x['tag_hash'],ref,interesting[ref])
+          print('CANDIDATE_CLOSURE','NODES',c['node_count'],'TYPED_EDGES',c['typed_edge_count'],'ARTICULATED',len(c['articulated_entities']))
+          for a in c['articulated_entities']:
+            print('ARTICULATED',a['tag_hash'],'DEPTH',a['depth'],'PATH',a['path_class'],'MODELS',a.get('embedded_models'),'SKELETONS',a.get('skeletons'))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-ULTRA-KNIGHT-GAMEPLAY-BRANCH-PROBE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
