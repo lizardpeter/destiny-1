@@ -44,13 +44,20 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/D1_XUR_SCRIPTED_OWNER_SWITCH_PROBE.json'))
-          assert d['schema']=='d1_remote_xur_scripted_owner_switch_probe/v2'
-          assert d['status']=='D1_XUR_SCRIPTED_OWNER_SWITCH_FRONTIER'
+          assert d['schema']=='d1_remote_xur_scripted_owner_switch_probe/v3'
+          assert d['status']=='D1_XUR_PLACEMENT_CONFIGURATION_SOURCE_DECODED'
           assert not d['violations']
           assert sum(r.get('is_source_pinned_SD912_scripted_entity_table',False) for r in d['rows'])==10
-          assert sum(len(r.get('placement_contexts',[])) for r in d['rows'])==62
+          assert d['typed_xur_placement_count']==60,d['typed_xur_placement_count']
+          assert d['exact_expected_configuration_count']==60,d['exact_expected_configuration_count']
+          assert d['expected_xur_configuration_records']==[['EAFBB478','2CA33BDB'],['26170C92','4AC210DE']]
+          assert d['proof']=={
+            'placement_configuration_source_decoded':True,
+            'material_permutation_consumer_semantics_proven':False,
+            'descriptor_A_B_evaluation_semantics_proven':False,
+          },d['proof']
           assert all(v is False for v in d['gates'].values())
-          print('XUR_SCRIPTED_OWNER_SWITCH_PROBE_V2_ACCEPTED')
+          print('XUR_SCRIPTED_OWNER_SWITCH_PROBE_V3_ACCEPTED')
           PY
       - run: find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
