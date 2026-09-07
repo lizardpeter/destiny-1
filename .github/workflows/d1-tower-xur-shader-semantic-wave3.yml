@@ -1,0 +1,207 @@
+name: D1 Tower Xur shader semantic wave 3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-xur-shader-semantic-wave3.yml'
+      - 'tools/d1_xur_shader_semantic_frontier.py'
+      - 'tools/d1_xur_ps_80876edf_semantic_proof.py'
+      - 'tools/d1_xur_ps_808764aa_semantic_proof.py'
+      - 'tools/d1_xur_vs_8087695c_family_semantic_proof.py'
+      - 'tools/d1_xur_ps_direct_rgb_normal_families_proof.py'
+      - 'tools/d1_xur_vs_80876960_semantic_proof.py'
+      - 'tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHADER_CENSUS_ARTIFACT_ID: '10027557806'
+  SHADER_CENSUS_ZIP_SHA256: 'e26febd88c0fcc05d998ec7dab04efcf1582095ee594a459ec472c530c7a5086'
+  MATERIAL_STATE_ARTIFACT_ID: '10028092407'
+  MATERIAL_STATE_ZIP_SHA256: '83c5b4af4590d986fb917ddc9da4098e2d1272ad30025db8395f53cac61e4407'
+
+jobs:
+  semantic-wave3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact Xur shader and material-state checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/shader input/state reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_CENSUS_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "${SHADER_CENSUS_ZIP_SHA256}  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          test -f input/shader/reports/xur_shader_disassembly_census.json
+          test -f input/shader/reports/xur_ps_image_usage.json
+          test -f input/shader/reports/xur_material_texture_manifest.json
+          for f in PS_80876EDF.s PS_808764AA.s PS_8087695C.s PS_8087688C.s PS_80AADCB3.s PS_80AAE1C7.s PS_80876960.s PS_8087695B.s; do test -f "input/shader/disasm/$f"; done
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MATERIAL_STATE_ARTIFACT_ID}/zip" -o input/state.zip
+          echo "${MATERIAL_STATE_ZIP_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          test -f input/state/xur_material_stage_state.json
+
+      - name: Rebuild exact structural frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_shader_semantic_frontier.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --out reports/XUR_SHADER_SEMANTIC_FRONTIER.json
+
+      - name: Revalidate wave 2 exact native proofs
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_ps_80876edf_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --texture-manifest input/shader/reports/xur_material_texture_manifest.json \
+            --disassembly input/shader/disasm/PS_80876EDF.s \
+            --out reports/XUR_PS_80876EDF_SEMANTIC_PROOF.json
+          python tools/d1_xur_ps_808764aa_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --texture-manifest input/shader/reports/xur_material_texture_manifest.json \
+            --disassembly input/shader/disasm/PS_808764AA.s \
+            --out reports/XUR_PS_808764AA_SEMANTIC_PROOF.json
+          python tools/d1_xur_vs_8087695c_family_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --disassembly input/shader/disasm/PS_8087695C.s \
+            --out reports/XUR_VS_A5AD940F_SEMANTIC_PROOF.json
+
+      - name: Close three additional direct-RGB normal PS families
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_ps_direct_rgb_normal_families_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --image-usage input/shader/reports/xur_ps_image_usage.json \
+            --texture-manifest input/shader/reports/xur_material_texture_manifest.json \
+            --disasm-dir input/shader/disasm \
+            --out reports/XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_PROOF.json'))
+          assert d['status']=='D1_XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_EXACT',d
+          assert d['family_count']==3,d
+          assert d['material_coverage_count']==12,d
+          assert not d['violations'],d['violations']
+          PY
+
+      - name: Close two-influence dual-quaternion Xur VS
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_vs_80876960_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --disassembly input/shader/disasm/PS_80876960.s \
+            --out reports/XUR_VS_80876960_SEMANTIC_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_VS_80876960_SEMANTIC_PROOF.json'))
+          assert d['status']=='D1_XUR_VS_80876960_TWO_INFLUENCE_DQ_EXACT',d
+          assert d['scope_material_count']==3,d
+          assert d['dual_quaternion_skinning_dataflow_complete_for_scoped_binary'] is True,d
+          assert not d['violations'],d['violations']
+          PY
+
+      - name: Close four-influence dual-quaternion Xur VS family
+        run: |
+          set -euo pipefail
+          python tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py \
+            --material-state input/state/xur_material_stage_state.json \
+            --shader-census input/shader/reports/xur_shader_disassembly_census.json \
+            --disassembly input/shader/disasm/PS_8087695B.s \
+            --out reports/XUR_VS_24392DBD_SEMANTIC_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/XUR_VS_24392DBD_SEMANTIC_PROOF.json'))
+          assert d['status']=='D1_XUR_VS_24392DBD_FOUR_INFLUENCE_DQ_EXACT',d
+          assert d['scope_material_count']==14,d
+          assert d['header_material_counts']=={'8087695B':13,'809DE9AB':1},d
+          assert d['dual_quaternion_skinning_dataflow_complete_for_scoped_binary'] is True,d
+          assert d['fetch_shader_weight_encoding_complete'] is False,d
+          assert not d['violations'],d['violations']
+          PY
+
+      - name: Promote exact wave 3 semantic coverage
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('reports/XUR_SHADER_SEMANTIC_FRONTIER.json'); d=json.load(open(p))
+          p80876=json.load(open('reports/XUR_PS_80876EDF_SEMANTIC_PROOF.json'))
+          p764=json.load(open('reports/XUR_PS_808764AA_SEMANTIC_PROOF.json'))
+          ps3=json.load(open('reports/XUR_DIRECT_RGB_NORMAL_PS_FAMILIES_PROOF.json'))
+          vsa=json.load(open('reports/XUR_VS_A5AD940F_SEMANTIC_PROOF.json'))
+          vs2=json.load(open('reports/XUR_VS_80876960_SEMANTIC_PROOF.json'))
+          vs4=json.load(open('reports/XUR_VS_24392DBD_SEMANTIC_PROOF.json'))
+          closed_ps={p80876['gcn_sha256'],p764['gcn_sha256']}|set(ps3['gcn_sha256'])
+          closed_vs={vsa['gcn_sha256'],vs2['gcn_sha256'],vs4['gcn_sha256']}
+          closed=closed_ps|closed_vs
+          for r in d['native_gcn_lifting_queue']:r['semantic_lifting_complete']=r['gcn_sha256'] in closed
+          for r in d['stage_structural_lifting_queue']:r['semantic_lifting_complete']=r['gcn_sha256'] in closed
+          for r in d['material_structural_families']:r['semantic_lifting_complete']=r['vs_gcn_sha256'] in closed_vs and r['ps_gcn_sha256'] in closed_ps
+          both=sorted({m for r in d['material_structural_families'] if r['semantic_lifting_complete'] for m in r['materials']})
+          ps_mats=sorted({m for r in d['material_structural_families'] if r['ps_gcn_sha256'] in closed_ps for m in r['materials']})
+          vs_mats=sorted({m for r in d['material_structural_families'] if r['vs_gcn_sha256'] in closed_vs for m in r['materials']})
+          progress={
+            'status':'D1_XUR_NATIVE_GCN_DATAFLOW_WAVE3_EXACT',
+            'native_gcn_programs_complete':sum(r['semantic_lifting_complete'] for r in d['native_gcn_lifting_queue']),
+            'native_gcn_programs_total':d['native_gcn_program_count'],
+            'stage_structural_units_complete':sum(r['semantic_lifting_complete'] for r in d['stage_structural_lifting_queue']),
+            'stage_structural_units_total':d['stage_structural_unit_count'],
+            'material_structural_families_both_stages_complete':sum(r['semantic_lifting_complete'] for r in d['material_structural_families']),
+            'material_structural_families_total':d['material_structural_family_count'],
+            'materials_with_both_stage_native_dataflow_complete':len(both),'materials_total':d['material_count'],'materials':both,
+            'pixel_shader_material_coverage':len(ps_mats),'vertex_shader_material_coverage':len(vs_mats),
+            'closed_pixel_gcn_sha256':sorted(closed_ps),'closed_vertex_gcn_sha256':sorted(closed_vs),
+            'tfx_producer_semantics_complete':False,'render_state_semantics_complete':False,'permutation_selection_complete':False,'portable_recreation_complete':False,
+          }
+          assert progress['native_gcn_programs_complete']==8,progress
+          assert progress['stage_structural_units_complete']==12,progress
+          assert progress['material_structural_families_both_stages_complete']==7,progress
+          assert progress['materials_with_both_stage_native_dataflow_complete']==22,progress
+          assert progress['pixel_shader_material_coverage']==22,progress
+          assert progress['vertex_shader_material_coverage']==48,progress
+          d['native_dataflow_progress']=progress;p.write_text(json.dumps(d,indent=2)+'\n')
+          Path('reports/XUR_SHADER_SEMANTIC_PROGRESS_WAVE3.json').write_text(json.dumps(progress,indent=2)+'\n')
+          lines=['# Xur native shader semantic progress — wave 3','',f"Status: `{progress['status']}`",'',f"- Native GCN binaries with exact instruction-level dataflow: **{progress['native_gcn_programs_complete']} / {progress['native_gcn_programs_total']}**",f"- Stage structural units covered: **{progress['stage_structural_units_complete']} / {progress['stage_structural_units_total']}**",f"- Combined material structural families with both VS+PS dataflow closed: **{progress['material_structural_families_both_stages_complete']} / {progress['material_structural_families_total']}**",f"- Materials with both current VS+PS binaries dataflow-closed: **{progress['materials_with_both_stage_native_dataflow_complete']} / {progress['materials_total']}**",f"- Pixel-shader material coverage: **{progress['pixel_shader_material_coverage']} / {progress['materials_total']}**",f"- Vertex-shader material coverage: **{progress['vertex_shader_material_coverage']} / {progress['materials_total']}**",'', 'The shared Xur vertex path now has exact native post-fetch dual-quaternion equations for the one-palette, two-influence and four-influence families. Fetch-shader byte layouts, TFX producer semantics, render state, live material permutation selection and full portable recreation remain separate gates.']
+          Path('reports/XUR_SHADER_SEMANTIC_PROGRESS_WAVE3.md').write_text('\n'.join(lines)+'\n');print(json.dumps(progress,indent=2))
+          PY
+
+      - name: Persist provenance and hashes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          out={'status':'D1_XUR_NATIVE_GCN_DATAFLOW_WAVE3_EXACT','source_artifacts':{'native_shader_census':{'artifact_id':int(os.environ['SHADER_CENSUS_ARTIFACT_ID']),'zip_sha256':os.environ['SHADER_CENSUS_ZIP_SHA256']},'material_local_state':{'artifact_id':int(os.environ['MATERIAL_STATE_ARTIFACT_ID']),'zip_sha256':os.environ['MATERIAL_STATE_ZIP_SHA256']}},'workflow_commit':os.environ['GITHUB_SHA'],'semantic_recreation_complete':False,'permutation_selection_complete':False}
+          Path('reports/XUR_SHADER_SEMANTIC_WAVE3_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-XUR-SHADER-SEMANTIC-WAVE3
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
