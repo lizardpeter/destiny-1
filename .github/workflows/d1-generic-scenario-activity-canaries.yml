@@ -13,6 +13,9 @@ on:
       - 'tools/d1_remote_s6e_stage_probe.py'
       - 'tools/d1_activity_stage_resource_matrix.py'
       - 'tools/d1_activity_asset_dependency_seeds.py'
+      - 'tools/d1_remote_entity_dependency_closure.py'
+      - 'tools/d1_remote_entity_dependency_closure_universal.py'
+      - 'tools/d1_filehash.py'
 
 permissions:
   contents: read
@@ -26,7 +29,7 @@ env:
 jobs:
   scenario-canary:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -34,21 +37,35 @@ jobs:
           - id: vault_of_glass
             hash: '80FE0103'
             name: 'venus_raid_1:scenario_client'
+            deep_closure: false
+          - id: crotas_end
+            hash: '8108E004'
+            name: 'moon_raid_1:scenario_client'
+            deep_closure: false
           - id: kings_fall
             hash: '812700B9'
             name: 'raid_epiphany:scenario_client'
+            deep_closure: false
+          - id: wrath
+            hash: '8179E00B'
+            name: 'raid_promise:scenario_client'
+            deep_closure: true
           - id: cosmo_strike
             hash: '80CB84FA'
             name: 'strike_reliquary:scenario_client'
+            deep_closure: false
           - id: plaguelands_patrol
             hash: '8179E047'
             name: 'plaguelands_patrol:scenario_client'
+            deep_closure: false
           - id: reef_social
             hash: '81194008'
             name: 'social_landing:scenario_client'
+            deep_closure: true
           - id: anomaly_pvp
             hash: '80D8E003'
             name: 'pvp_anomaly:scenario_client'
+            deep_closure: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -74,7 +91,13 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Extract exact scenario activity graph
+      - name: Validate universal FileHash decoder
+        run: |
+          set -euo pipefail
+          python tools/d1_filehash.py
+          python -m py_compile tools/d1_remote_entity_dependency_closure_universal.py
+
+      - name: Extract exact scenario activity graph and dependency seeds
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
@@ -111,6 +134,45 @@ jobs:
           assert s['counts'].get('scripted_only_entities',0) == len(set(s['seed_groups'].get('scripted_entities',[]))-set(s['seed_groups'].get('placement_entities',[])))
           assert s['closure_seed_count'] >= s['counts'].get('s_entities',0)
           PY
+
+      - name: Recursively close exact entity/control dependencies
+        if: ${{ matrix.deep_closure }}
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          seed_file='out/${{ matrix.id }}/activity_asset_dependency_seeds.json'
+          python - "$seed_file" > 'out/${{ matrix.id }}/closure_seeds.txt' <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1]))
+          for h in d['closure_seed_hashes']:
+              print(h)
+          PY
+          mapfile -t seeds < 'out/${{ matrix.id }}/closure_seeds.txt'
+          test "${#seeds[@]}" -gt 0
+          args=(); for h in "${seeds[@]}"; do args+=(--seed "$h"); done
+          max_nodes=$(( ${#seeds[@]} * 6 + 750 ))
+          python tools/d1_remote_entity_dependency_closure_universal.py \
+            "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 7 --max-nodes "$max_nodes" \
+            -o 'out/${{ matrix.id }}/entity_dependency_closure.json' \
+            | tee 'out/${{ matrix.id }}.entity_closure.txt'
+          python - <<'PY'
+          import json
+          s=json.load(open('out/${{ matrix.id }}/activity_asset_dependency_seeds.json'))
+          d=json.load(open('out/${{ matrix.id }}/entity_dependency_closure.json'))
+          assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE',d['violations'][:10]
+          assert not d['truncated'],d
+          assert set(d['seeds'])==set(s['closure_seed_hashes']),(len(d['seeds']),s['closure_seed_count'])
+          assert d['node_count']>=s['closure_seed_count'],d
+          assert d['typed_edge_count']>=0 and d['untyped_literal_edge_count']>=0,d
+          print('ENTITY_CLOSURE', '${{ matrix.id }}', d['node_count'], d['edge_count'], d['typed_edge_count'], len(d['articulated_entities']))
+          PY
+
+      - name: Hash outputs
+        if: always()
+        run: |
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
