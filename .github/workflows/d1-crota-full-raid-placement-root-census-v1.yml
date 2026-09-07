@@ -1,0 +1,162 @@
+name: D1 Crota full raid placement-root census v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-full-raid-placement-root-census-v1.yml'
+      - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+  PLACEMENT_ARTIFACT_ID: '9995963526'
+  PLACEMENT_ZIP_SHA256: '69d03bac70adbc70a4950d0874f8245e825363e7578cd6d73a68c8a2dfc9b117'
+  PLACEMENT_JSON_SHA256: 'a460f9e2500460897d4d34aebf0def24982bc6b80af54166b97839abf3c02ec0'
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact runtime placements and catalog
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input/placements input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PLACEMENT_ARTIFACT_ID}/zip" -o input/placements.zip
+          echo "${PLACEMENT_ZIP_SHA256}  input/placements.zip" | sha256sum --check --strict
+          unzip -q input/placements.zip -d input/placements
+          echo "${PLACEMENT_JSON_SHA256}  input/placements/CROTA_END_RUNTIME_PLACEMENTS.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('input/placements/CROTA_END_RUNTIME_PLACEMENTS.json'))
+          assert d['status']=='D1_REMOTE_ACTIVITY_PLACEMENTS_COMPLETE'
+          assert d['runtime_placement_count']==282
+          assert d['unique_entity_count']==34
+          assert d['violations']==[]
+          print('PLACEMENTS',d['runtime_placement_count'],'UNIQUE_ROOTS',d['unique_entity_count'])
+          PY
+
+      - name: Install verified Oodle runtime
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl -fsSL --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe all 34 exact placement-root entities
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          ROOT_ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('input/placements/CROTA_END_RUNTIME_PLACEMENTS.json'))
+          hs=sorted(d['runtime_entity_counts'])
+          assert len(hs)==34
+          print(' '.join('--tag-hash 0x'+h for h in hs))
+          PY
+          )
+          python tools/d1_remote_exact_s_entity_probe.py $ROOT_ARGS \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/CROTA_END_PLACEMENT_ROOT_ENTITY_CENSUS.json | tee out/entity_census_stdout.txt
+
+      - name: Resolve source-mapped names for root entities
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          NAME_ARGS=$(python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_END_PLACEMENT_ROOT_ENTITY_CENSUS.json'))
+          args=[]; seen=set()
+          for e in d['entries']:
+              for h in e.get('specific_name_string_hashes',[]):
+                  k=('s',h)
+                  if k not in seen: seen.add(k); args += ['--string-hash','0x'+h]
+              for h in e.get('generic_name_tags',[]):
+                  k=('g',h)
+                  if k not in seen: seen.add(k); args += ['--generic-name-tag','0x'+h]
+          print(' '.join(args))
+          PY
+          )
+          echo "NAME_ARGS=$NAME_ARGS"
+          if [[ -n "$NAME_ARGS" ]]; then
+            python tools/d1_remote_global_stringhash_resolve.py $NAME_ARGS \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+              --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+              --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+              --global-package-id 0x072B --global-package-id 0x072F --global-package-id 0x0735 \
+              --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+              -o out/CROTA_END_PLACEMENT_ROOT_NAMES.json | tee out/names_stdout.txt
+          else
+            printf '{"resolved":{},"generic_name_tag_to_string_hash":{},"unresolved_target_hashes":[],"violation_count":0,"violations":[]}\n' > out/CROTA_END_PLACEMENT_ROOT_NAMES.json
+          fi
+
+      - name: Summarize raid placement-root asset coverage
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee out/summary.txt
+          import collections,json,pathlib
+          p=json.load(open('input/placements/CROTA_END_RUNTIME_PLACEMENTS.json'))
+          e=json.load(open('out/CROTA_END_PLACEMENT_ROOT_ENTITY_CENSUS.json'))
+          n=json.load(open('out/CROTA_END_PLACEMENT_ROOT_NAMES.json'))
+          assert e['violation_count']==0,e['violations']
+          assert n.get('violation_count',0)==0,n.get('violations')
+          entries=e['entries']
+          models=sorted({m for x in entries for m in x.get('embedded_models',[])})
+          skels=[s for x in entries for s in x.get('skeletons',[])]
+          child_hashes=sorted({c['entity_hash'].upper() for x in entries for c in x.get('child_entities',[])})
+          roles=collections.Counter()
+          for x in entries:
+              for r in x.get('resources',[]):
+                  role=(r.get('entity_resource') or {}).get('semantic_role')
+                  if role: roles[role]+=1
+          out={
+            'schema':'d1_crota_end_placement_root_asset_census/v1',
+            'status':'D1_CROTA_END_PLACEMENT_ROOT_ASSET_CENSUS_COMPLETE',
+            'runtime_placement_count':p['runtime_placement_count'],
+            'unique_root_entity_count':p['unique_entity_count'],
+            'probed_root_entity_count':len(entries),
+            'unique_direct_model_count':len(models),
+            'direct_models':models,
+            'skeleton_resource_count':len(skels),
+            'articulated_root_entity_count':sum(bool(x.get('skeletons')) for x in entries),
+            'unique_direct_child_entity_count':len(child_hashes),
+            'direct_child_entities':child_hashes,
+            'entity_resource_role_counts':dict(roles),
+            'name_resolution':n,
+            'policy':'Only exact scenario-selected runtime placement roots and their source-parsed s_entity Resource[] edges are counted.'
+          }
+          pathlib.Path('out/CROTA_END_PLACEMENT_ROOT_ASSET_SUMMARY.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('ROOTS',out['probed_root_entity_count'],'MODELS',out['unique_direct_model_count'],'ARTICULATED_ROOTS',out['articulated_root_entity_count'],'CHILD_ENTITIES',out['unique_direct_child_entity_count'])
+          print('RESOURCE_ROLES',out['entity_resource_role_counts'])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-END-PLACEMENT-ROOT-ASSET-CENSUS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
