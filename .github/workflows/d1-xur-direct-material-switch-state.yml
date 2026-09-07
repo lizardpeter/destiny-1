@@ -1,0 +1,81 @@
+name: D1 Xur direct material switch state
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-direct-material-switch-state.yml'
+      - 'tools/d1_remote_xur_material_switch_state_scan.py'
+      - 'notes/D1_XUR_PERMUTATION_STATIC_GRAPH_EXACT_2026-09-07.md'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact universal catalog and Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Scan exact Xur SEntities and direct resources
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_xur_material_switch_state_scan.py
+          set +e
+          python tools/d1_remote_xur_material_switch_state_scan.py \
+            --entity 80C7ACC8 --entity 80C885AA \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o reports/D1_XUR_DIRECT_MATERIAL_SWITCH_STATE_SCAN.json | tee reports/stdout.txt
+          rc=${PIPESTATUS[0]}; set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_XUR_DIRECT_MATERIAL_SWITCH_STATE_SCAN.json'))
+          assert d['status'] in {'D1_XUR_DIRECT_MATERIAL_SWITCH_PAIR_EVIDENCE','D1_XUR_DIRECT_MATERIAL_SWITCH_STATE_FRONTIER'},d
+          assert d['entities']==['80C7ACC8','80C885AA'],d
+          assert d['static_switch_keys']==['51E7A18D','4C58EF8F','26170C92','6EECD523'],d
+          assert not d['violations'],d['violations']
+          assert len(d['rows'])==2,d
+          assert all(r['direct_resource_count']==41 for r in d['rows']),[(r['entity'],r.get('direct_resource_count')) for r in d['rows']]
+          assert d['live_configuration_state_complete'] is False,d
+          print('DIRECT_SWITCH_SCAN_ACCEPTED',d['status'],'pairs',d['adjacent_pair_hit_count'],'keys',d['key_hit_count'],'values',d['value_hit_count'])
+          PY
+
+      - name: Persist hashes
+        run: |
+          set -euo pipefail
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-DIRECT-MATERIAL-SWITCH-STATE
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
