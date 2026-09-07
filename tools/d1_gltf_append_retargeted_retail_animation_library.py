@@ -29,7 +29,7 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 
 from d1_gltf_append_retail_animation_library import (
-    norm, append_accessor, read_animation_filebacked, selected_by_control, node_extra_int,
+    norm, append_accessor, read_animation_filebacked, selected_by_control,
 )
 from d1_animation_control_state_map import decode_control
 from d1_animation_retarget_probe import component_rows, common_component_prefix
@@ -38,6 +38,29 @@ from d1_entity_resource_probe import parse_resource
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_model_tgxm_signature_match import LazyExactHashResolver
 from d1_split_tar_extract import SplitHttpTar
+
+
+def node_extra_int(extras:dict|None,*keys:str)->int|None:
+    """Read integer GLB provenance markers without losing their exact encoding.
+
+    Older player checkpoints used numeric JSON values while the spawned-actor skin
+    binder deliberately stores 32-bit bone hashes as zero-padded hexadecimal strings
+    such as ``E5685C1A``. Both encodings are exact; accept either and fail closed on
+    anything else.
+    """
+    if not isinstance(extras,dict):return None
+    for k in keys:
+        if k not in extras:continue
+        v=extras[k]
+        try:
+            if isinstance(v,str):
+                s=v.strip()
+                try:return int(s,0)
+                except ValueError:return int(s,16)
+            return int(v)
+        except Exception:
+            return None
+    return None
 
 
 def main() -> int:
