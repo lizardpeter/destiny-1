@@ -30,10 +30,17 @@ Source chain:
     +0x00 ResourcePointer -> S152B8080 / 80802B15
     +0x20 StringHash EntityName
 
-This tool attaches the scripted EntityName StringHash to a runtime placement only
-when BOTH WorldID and EntitySK agree with the independently materialized Activity
-placement census.  Transform agreement is also reported.  A script record is never
-used to rename an SEntity family globally: identity is instance-owned evidence.
+D912 SMapDataEntry records are scripted overlays, not redundant copies of the
+runtime placement table. Retail King's Fall, Wrath, strike and Plaguelands data
+proves that a scripted record may have the same WorldID and exact transform as a
+runtime placement while serializing a different EntitySK. Both hashes are preserved
+and are never aliased.
+
+A scripted EntityName StringHash is eligible to attach to runtime placement identity
+only when BOTH WorldID and EntitySK agree with the independently materialized
+Activity placement census. Transform agreement is reported independently. A script
+record is never used to rename an SEntity family globally: identity is instance-owned
+evidence.
 """
 from __future__ import annotations
 
@@ -162,6 +169,18 @@ def close_vec(a, b, eps=1e-5):
     return all(math.isfinite(float(x)) and math.isfinite(float(y)) and abs(float(x) - float(y)) <= eps for x, y in zip(a, b))
 
 
+def classify_runtime_relation(world_exists, entity_match, transform_match):
+    if not world_exists:
+        return 'WORLDID_NOT_IN_RUNTIME_PLACEMENTS'
+    if entity_match and transform_match:
+        return 'WORLDID_ENTITY_TRANSFORM_MATCH'
+    if entity_match:
+        return 'WORLDID_ENTITY_MATCH_TRANSFORM_DIFFERS'
+    if transform_match:
+        return 'WORLDID_TRANSFORM_MATCH_ENTITY_DIFFERS'
+    return 'WORLDID_MATCH_ENTITY_AND_TRANSFORM_DIFFER'
+
+
 def parse_scripted_map_entry(host, base, source):
     out = {
         'map_entry_absolute': base,
@@ -265,20 +284,27 @@ def parse_d912(c, h, placements):
                     row['violations'].extend(parsed.get('violations', []))
                     wid = row.get('world_id_hex')
                     live = placements.get(wid)
-                    row['placement_match'] = None
                     if live is None:
-                        row['placement_match'] = {'world_id_exists': False, 'entity_matches': False, 'transform_matches': False}
+                        world_exists = False
+                        entity_match = False
+                        transform_match = False
+                        placement_entity_hash = None
                     else:
+                        world_exists = True
                         entity_match = norm(live.get('entity_hash', 'FFFFFFFF')) == norm(row.get('entity_hash', 'FFFFFFFF'))
                         transform_match = close_vec(live.get('rotation'), row.get('rotation')) and close_vec(live.get('translation'), row.get('translation'))
-                        row['placement_match'] = {
-                            'world_id_exists': True,
-                            'entity_matches': entity_match,
-                            'transform_matches': transform_match,
-                            'placement_entity_hash': norm(live.get('entity_hash', 'FFFFFFFF')),
-                        }
-                        if row.get('entity_name_string_hash') and not entity_match:
-                            row['violations'].append('named_script_record_entity_owner_mismatch')
+                        placement_entity_hash = norm(live.get('entity_hash', 'FFFFFFFF'))
+                    relation = classify_runtime_relation(world_exists, entity_match, transform_match)
+                    row['placement_match'] = {
+                        'world_id_exists': world_exists,
+                        'entity_matches': entity_match,
+                        'transform_matches': transform_match,
+                        'placement_entity_hash': placement_entity_hash,
+                        'relation': relation,
+                    }
+                    row['scripted_runtime_relation'] = relation
+                    row['placement_identity_attachment_eligible'] = bool(world_exists and entity_match)
+                    row['placement_identity_transform_exact'] = bool(world_exists and entity_match and transform_match)
                 if row['violations']:
                     group['violations'].extend(f'record[{ri}]:{x}' for x in row['violations'])
                 group['records'].append(row)
@@ -330,15 +356,17 @@ def main():
 
     records = [r for t in tables for r in t.get('records', [])]
     named = [r for r in records if r.get('entity_name_string_hash') not in (None, '00000000', 'FFFFFFFF')]
-    matched_named = [r for r in named if (r.get('placement_match') or {}).get('world_id_exists') and (r.get('placement_match') or {}).get('entity_matches')]
-    fully_matched_named = [r for r in matched_named if (r.get('placement_match') or {}).get('transform_matches')]
+    matched_named = [r for r in named if r.get('placement_identity_attachment_eligible')]
+    fully_matched_named = [r for r in named if r.get('placement_identity_transform_exact')]
+    named_unattached = [r for r in named if not r.get('placement_identity_attachment_eligible')]
+    relations = Counter(r.get('scripted_runtime_relation', 'NO_RUNTIME_PLACEMENT_EVIDENCE') for r in records)
     name_hashes = Counter(r['entity_name_string_hash'] for r in named)
     type_hashes = Counter(r['type_string_hash'] for r in records if r.get('type_string_hash') not in NULLS)
     family_hashes = Counter(t['script_family_string_hash'] for t in tables if t.get('script_family_string_hash') not in NULLS)
     named_worldids = Counter(r['world_id_hex'] for r in named if r.get('world_id_hex'))
     named_entities = Counter(r['entity_hash'] for r in named if r.get('entity_hash') not in NULLS)
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_WORLD_SCRIPTED_ENTITY_IDENTITY_CENSUS_COMPLETE' if not violations else 'D1_WORLD_SCRIPTED_ENTITY_IDENTITY_CENSUS_PARTIAL',
         'pinned_source': PINNED_SOURCE,
         'runtime_placement_world_id_count': len(placements),
@@ -350,6 +378,8 @@ def main():
         'named_scripted_record_count': len(named),
         'named_record_world_id_entity_match_count': len(matched_named),
         'named_record_full_transform_match_count': len(fully_matched_named),
+        'named_record_unattached_count': len(named_unattached),
+        'scripted_runtime_relation_counts': dict(relations),
         'unique_entity_name_string_hash_count': len(name_hashes),
         'entity_name_string_hash_reference_counts': dict(name_hashes),
         'unique_type_string_hash_count': len(type_hashes),
@@ -361,7 +391,7 @@ def main():
         'scripted_tables': tables,
         'violations': violations,
         'policy': (
-            'Scripted identity is attached only at the instance level. EntityName StringHash becomes placement evidence only when the scripted SMapDataEntry WorldID exists in the independently materialized Activity placement census and its EntitySK owner matches. No SEntity family is globally renamed by this layer.'
+            'D912 records are scripted overlays, not redundant placement copies. Scripted identity is attached only at the instance level. EntityName StringHash becomes placement evidence only when WorldID exists in the independently materialized Activity placement census and EntitySK matches. A matching WorldID/transform with a different EntitySK is preserved as WORLDID_TRANSFORM_MATCH_ENTITY_DIFFERS and is not a violation or alias. No SEntity family is globally renamed by this layer.'
         ),
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
@@ -370,7 +400,8 @@ def main():
         'status', 'runtime_placement_world_id_count', 'current_a705_count', 'current_d912_count',
         'reachable_d912_from_a705_count', 'scripted_table_count', 'scripted_record_count',
         'named_scripted_record_count', 'named_record_world_id_entity_match_count',
-        'named_record_full_transform_match_count', 'unique_entity_name_string_hash_count',
+        'named_record_full_transform_match_count', 'named_record_unattached_count',
+        'scripted_runtime_relation_counts', 'unique_entity_name_string_hash_count',
         'entity_name_string_hash_reference_counts', 'unique_type_string_hash_count', 'violations')}, indent=2))
     return 0 if not violations else 2
 
