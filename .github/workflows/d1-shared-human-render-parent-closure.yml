@@ -43,7 +43,7 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-      - name: Decode exact shared model parent and complete external material banks
+      - name: Decode exact shared model parent and material permutation tables
         run: |
           set -euo pipefail
           python tools/d1_remote_render_parent_context_probe.py \
@@ -66,59 +66,62 @@ jobs:
           p=d['rows'][0]['render_parent']
           assert p['embedded_model_tag_hash']=='80C88CEF',p
           mats=p['external_material_tag_hashes']; mp=p['external_materials_map_entries']
-          sel=p['external_material_selector_table_entries']
+          desc=p['external_material_permutation_descriptors']
+          aux=p['external_material_aux_index_values']
           model=parse_model(Path('out/payloads/80C88CEF.bin').read_bytes(),'PS4')
           print('MODEL',p['embedded_model_tag_hash'],'MESHES',model['mesh_count'])
           print('TEXTURE_PLATES',p['texture_plates_roi_entries'])
-          print('EXTERNAL_MAP_COUNT',len(mp),'SELECTOR_TABLE_COUNT',len(sel),'EXTERNAL_MATERIAL_COUNT',len(mats))
-          print('SELECTOR_TABLE_HEADER',p['external_material_selector_table'])
-          for r in sel:
-              print('SELECTOR',r['index'],r['unk00'],r['unk02'],r['unk04'],r['unk06'])
-          multi=[]
-          for r in mp:
-              c=r['material_count'];s=r['material_start_index']
-              bank=mats[s:s+c] if c>0 and 0<=s<=len(mats) else []
-              u=r['unk08']; sr=sel[u] if 0<=u<len(sel) else None
-              print('VARIANT',r['variant_shader_index'],'COUNT',c,'START',s,'UNK08',u,'SELECTOR_AT_UNK08',sr,'BANK',bank)
-              if c>1: multi.append({'variant_shader_index':r['variant_shader_index'],'materials':bank})
-          print('UNK08_COUNTS',dict(sorted(collections.Counter(r['unk08'] for r in mp).items())))
-          print('UNK08_SELECTOR_ROWS',{u:(sel[u] if 0<=u<len(sel) else None) for u in sorted({r['unk08'] for r in mp})})
-          print('MULTI_MATERIAL_VARIANTS',multi)
-          xur={'80C885E6','80C885E7','80C885E8','80C885E9','80C885EA'}
-          print('XUR_BANK_POSITIONS',{h:[i for i,x in enumerate(mats) if x==h] for h in sorted(xur)})
+          print('EXTERNAL_MAP_COUNT',len(mp),'AUX_INDEX_COUNT',len(aux),'DESCRIPTOR_COUNT',len(desc),'EXTERNAL_MATERIAL_COUNT',len(mats))
+          print('AUX_INDEX_HEADER',p['external_material_aux_index_table'])
+          print('AUX_INDEX_VALUES',aux)
+          for r in desc:
+              print('PERM_DESC',r['index'],'PAIR0',(r['pair0_count'],r['pair0_start'],r['pair0_aux_indices']),'PAIR1',(r['pair1_count'],r['pair1_start'],r['pair1_aux_indices']))
 
-          # Correlate every serialized model part with its map/selector span.  No
-          # semantics are assigned: this reports exact equality relationships
-          # among ExternalIdentifier, dye/control bytes and the four FE1A8080
-          # ushort lanes so the runtime selector can be derived rather than guessed.
+          # Exact structural invariant: every map row's Unk08 is the start of a
+          # descriptor span whose length is exactly MaterialCount, so descriptor
+          # member j is parallel to material-bank member j.
+          for r in mp:
+              c=int(r['material_count']); u=int(r['unk08']); s=int(r['material_start_index'])
+              assert c>0 and 0<=u and u+c<=len(desc),(r,len(desc))
+              assert 0<=s and s+c<=len(mats),(r,len(mats))
+          print('PARALLEL_DESCRIPTOR_MATERIAL_SPANS',len(mp),'OK')
+
+          xur={'80C885E6','80C885E7','80C885E8','80C885E9','80C885EA'}
+          xur_rows=[]
+          for r in mp:
+              c=int(r['material_count']); u=int(r['unk08']); s=int(r['material_start_index'])
+              for j in range(c):
+                  material=mats[s+j]
+                  if material in xur:
+                      dr=desc[u+j]
+                      xur_rows.append({'variant':r['variant_shader_index'],'member':j,'material':material,'descriptor_index':u+j,
+                                       'pair0_count':dr['pair0_count'],'pair0_start':dr['pair0_start'],'pair0_aux_indices':dr['pair0_aux_indices'],
+                                       'pair1_count':dr['pair1_count'],'pair1_start':dr['pair1_start'],'pair1_aux_indices':dr['pair1_aux_indices']})
+          print('XUR_MATERIAL_DESCRIPTOR_ROWS',xur_rows)
+          Path('out/XUR_MATERIAL_DESCRIPTOR_ROWS.json').write_text(json.dumps(xur_rows,indent=2)+'\n')
+
+          # Preserve model-part correlations too.  ExternalIdentifier is tested
+          # only as a possible independent control; no selector semantics are
+          # inferred from an equality coincidence.
           corr=[]
           for mi,mesh in enumerate(model['meshes']):
               for pi,part in enumerate(mesh['parts']):
                   v=int(part['variant_shader_index'])
                   if v < 0 or v >= len(mp):
                       continue
-                  mr=mp[v]; u=mr['unk08']; c=mr['material_count']; span=sel[u:u+c]
-                  ext=int(part['external_identifier']) & 0xffff
-                  dye=int(part['gear_dye_change_color_index'])
-                  controls=[int(part['unk1a']),int(part['unk1b']),int(part['flags_d1']) & 0xffff,int(part['unk20']),int(part['lod_run'])]
-                  matches={lane:[r['index']-u for r in span if r[lane]==ext] for lane in ('unk00','unk02','unk04','unk06')}
-                  local=[{
-                      'member':j,'material':mats[mr['material_start_index']+j],
-                      'selector':{k:span[j][k] for k in ('unk00','unk02','unk04','unk06')}
-                  } for j in range(len(span))]
+                  mr=mp[v]; u=int(mr['unk08']); c=int(mr['material_count']); span=desc[u:u+c]
                   row={'mesh':mi,'part':pi,'variant':v,'external_identifier':int(part['external_identifier']),
-                       'external_identifier_u16':ext,'dye':dye,'controls':controls,'lod':part['lod'],
-                       'selector_start':u,'material_count':c,'external_id_lane_matches':matches}
+                       'dye':int(part['gear_dye_change_color_index']),'lod':part['lod'],
+                       'unk1a':int(part['unk1a']),'unk1b':int(part['unk1b']),'flags_d1':int(part['flags_d1']),
+                       'unk20':int(part['unk20']),'lod_run':int(part['lod_run']),
+                       'descriptor_start':u,'material_count':c}
                   corr.append(row)
-                  if v in {5,23,38,39,42,43,44,75,76,77,78,79,80}:
-                      print('TARGET_PART',row,'MEMBERS',local)
-          Path('out/PART_SELECTOR_CORRELATION.json').write_text(json.dumps({'rows':corr},indent=2)+'\n')
+          Path('out/PART_PERMUTATION_CORRELATION.json').write_text(json.dumps({'rows':corr},indent=2)+'\n')
           print('PART_COUNT_WITH_EXTERNAL_VARIANT',len(corr))
           print('EXTERNAL_IDENTIFIER_COUNTS',dict(sorted(collections.Counter(r['external_identifier'] for r in corr).items())))
           print('DYE_COUNTS',dict(sorted(collections.Counter(r['dye'] for r in corr).items())))
-          print('EXTERNAL_ID_MATCH_PATTERNS',dict(collections.Counter(tuple((k,tuple(v)) for k,v in sorted(r['external_id_lane_matches'].items())) for r in corr)))
           PY
-          sha256sum out/* out/payloads/* > out/SHA256SUMS.txt
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: D1-SHARED-HUMAN-RENDER-PARENT-CLOSURE
