@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_MAP_DECALS_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "workflow": {
+    "run_id": 34181042558,
+    "job_id": 101920051099,
+    "head_sha": "fb993fd305dd7155017c4422fb19085c7d713f62",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 10038932898,
+    "name": "D1-CROTA-MAP-DECALS-V1",
+    "zip_bytes": 1130642,
+    "zip_sha256": "88d3a3dc15b825a531e21e4dce113c1688627f9857fe176d1eb28858e494d721"
+  },
+  "source_scope": {
+    "map_data_table_count": 255,
+    "map_data_entry_count": 1535,
+    "decal_resource_occurrences": 13,
+    "nonnull_decal_collection_occurrences": 12,
+    "explicit_null_decal_collection_occurrences": 1,
+    "unique_decal_collection_count": 12
+  },
+  "closed_counts": {
+    "decal_resource_record_count": 77,
+    "decal_location_count": 1089,
+    "projected_decal_application_count": 1092,
+    "unique_material_count": 47
+  },
+  "owner_package_ids": ["02ba", "02bb", "0458"],
+  "recovered_dependency_package_ids": ["02b7"],
+  "source_semantics": {
+    "carrier_class": "80801A70",
+    "collection_class": "80801B40",
+    "material_record_class": "80801A83",
+    "location_record_class": "80801A53",
+    "occlusion_bounds_class": "80800583",
+    "location": "Vector4 xyz = origin, w = uniform scale",
+    "projection_bounds": "matching SOcclusionBounds.InstanceBounds Corner1/Corner2 and +0x24 box hash",
+    "material_mapping": "DecalResource StartIndex/Count maps transparent material onto source locations"
+  },
+  "integrity": {
+    "dependency_closure_status": "D1_WORLD_MAP_DECAL_DEPENDENCY_CLOSURE_COMPLETE",
+    "census_status": "D1_WORLD_MAP_DECAL_CENSUS_COMPLETE",
+    "missing_dependency_package_ids": {},
+    "violations": []
+  },
+  "pinned_source": "MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af Tiger/Schema/Static/StaticMapData.cs + Tiger/Exporters/MetadataExporter.cs",
+  "policy": "The decal checkpoint preserves exact retail materials, StartIndex/Count ranges, location origins/scales and projection bounds. It does not fabricate decal plane geometry or infer decal orientation/shader semantics not established by pinned source. The projected application count may exceed the unique location count because source material ranges may legitimately reuse locations."
+}
