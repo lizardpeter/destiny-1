@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_WORLD_SKY_TERRAIN_RELEASE_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "workflow": {
+    "name": "D1 Crota terrain textures and world merge v1",
+    "run_id": 34230534585,
+    "job_id": 102075234291,
+    "head_sha": "8e2a8efc6f92a6e39f4dbba0a5434ed17ea1d018",
+    "conclusion": "success"
+  },
+  "reports_artifact": {
+    "id": 10058162652,
+    "name": "D1-CROTA-TERRAIN-TEXTURES-MERGE-V1-REPORTS",
+    "zip_bytes": 1001771,
+    "zip_sha256": "bff6f90008f214ec025eca49a520558f27eaa22456d8154e474d7f14a5b0ee92"
+  },
+  "release": {
+    "tag": "d1-activity-810b0002-static-common-map-visual-entities-sky-terrain-r1",
+    "title": "D1 Crota Activity world + exact terrain r1",
+    "glb": "D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_TERRAIN.glb",
+    "bytes": 1106281292,
+    "sha256": "b68ab2692f8af6bd6a31a3305c34ef206e602f313ac4c067135f26b92af5fc02",
+    "github_asset_digest_verified": true,
+    "final_report": "FINAL_CROTA_WORLD_SKY_TERRAIN.json"
+  },
+  "terrain": {
+    "terrain_count": 49,
+    "selected_main_geom0_part_count": 1582,
+    "triangles": 1067552,
+    "materials": 108,
+    "native_material_texture_resources": 32,
+    "derived_portable_normals": 2,
+    "effective_dyemaps": 465,
+    "terrain_exact_resource_layer_bytes": 186989612,
+    "terrain_exact_resource_layer_sha256": "b7141e55fefb64090e333cff6a6cf8a69a71f841d1d1ee7f66e0631bbd3d2ac5"
+  },
+  "final_counts": {
+    "accessors": 14266,
+    "bufferViews": 15346,
+    "images": 1094,
+    "textures": 1094,
+    "materials": 973,
+    "meshes": 3448,
+    "nodes": 18275,
+    "skins": 0,
+    "animations": 0,
+    "lights": 0,
+    "scenes": 1
+  },
+  "proof_boundary": "Terrain geometry reproduces the pinned D1 MainGeom0 TriangleStrip and source vertex/UV transforms. Every selected-material native shader texture resource and all 465 effective STerrain dyemaps are embedded exactly. The native terrain dyemap blend equation remains a separate shader-semantics adapter and is not approximated into generic PBR.",
+  "violations": []
+}
