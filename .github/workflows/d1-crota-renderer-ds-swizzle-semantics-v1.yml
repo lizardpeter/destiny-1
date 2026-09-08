@@ -1,0 +1,74 @@
+name: D1 Crota renderer DS swizzle semantics 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-crota-renderer-ds-swizzle-semantics-v1.yml'
+      - 'tools/d1_gcn_renderer_program_add_ds_swizzle_semantics.py'
+
+env:
+  RENDERER_ARTIFACT_ID: '10081270617'
+  RENDERER_ARTIFACT_ZIP_SHA256: '15159d383f011a1e38aa93f1ed2f6e4d00adb3b383dcd9afa79a5bd21bb3fc01'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  LLVM_REV: '1462d6f99a0cdf8c99108cb32eb020efe6ba5f89'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover immutable 446 of 456 checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input/renderer input/source out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RENDERER_ARTIFACT_ID}/zip" -o input/renderer.zip
+          echo "${RENDERER_ARTIFACT_ZIP_SHA256}  input/renderer.zip" | sha256sum --check --strict
+          unzip -q input/renderer.zip -d input/renderer
+      - name: Fetch pinned DS swizzle semantics
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/ds.cc" -o input/source/gem5_ds.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/lib/Target/AMDGPU/SIDefines.h" -o input/source/llvm_sidefines.h
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/lib/Target/AMDGPU/MCTargetDesc/AMDGPUInstPrinter.cpp" -o input/source/llvm_printer.cpp
+      - name: Close all eight quad permutes
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_add_ds_swizzle_semantics.py \
+            --program input/renderer/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --ir input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json \
+            --gem5-ds input/source/gem5_ds.cc --llvm-sidefines input/source/llvm_sidefines.h --llvm-printer input/source/llvm_printer.cpp \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'));p=d['program'];c=p['coverage']
+          expected={'CONTROL_EXACT':47,'EXPRESSION_EXACT':301,'INPUT_PROVENANCE_EXACT':70,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':2}
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          assert c['primary_resolution_counts']==expected,c
+          assert c['exact_nonstructural_instruction_count']==454 and c['ds_swizzle_semantics_promoted_instruction_count']==8
+          rem=[x['instruction'] for x in p['instruction_resolution'] if x['primary_resolution']=='STRUCTURAL_ONLY'];assert rem==[212,213],rem
+          assert len(p['ds_swizzle_quad_perm_contracts'])==8
+          print('CROTA_DS_SWIZZLE_CLOSED',expected,'exact_nonstructural',454,'remaining',rem)
+          PY
+          cp input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json out/
+          cp input/renderer/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json out/
+          cp input/renderer/GFX7_DESCRIPTOR_SEMANTICS.json out/
+          cp input/renderer/D1_GCN_REMAINING_CORE_SOURCE_SEMANTICS.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-808EE505-RENDERER-DS-SWIZZLE-SEMANTICS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
