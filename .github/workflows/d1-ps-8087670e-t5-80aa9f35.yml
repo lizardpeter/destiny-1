@@ -25,6 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p runtime recovered reports/raw textures
+          python -m pip install --disable-pip-version-check pillow
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -64,14 +65,56 @@ jobs:
                   rec['same_package_entry']={k:e.get(k) for k in ('tag_hash','index','type','subtype','reference','file_size')}
                   rec['same_package_tag_matches_value']=str(e.get('tag_hash','')).upper()==f'{v:08X}'
               rows.append(rec)
+          matches=[x for x in rows if x.get('same_package_tag_matches_value')]
+          assert matches==[{'offset':128,'value':'80AA9F36','decoded_package_id':'0154','decoded_entry_index':7990,
+                            'same_package_entry':{'tag_hash':'80AA9F36','index':7990,'type':32,'subtype':1,'reference':'80AA9F37','file_size':60},
+                            'same_package_tag_matches_value':True}],matches
           out={'schema_version':1,'tag_hash':'80AA9F35','payload_bytes':len(raw),'payload_hex':raw.hex(),
-               'u32_aligned_words':rows,'policy':'Discovery census only. A word is not promoted as a FileHash edge merely because its bit pattern decodes to a plausible package/index.'}
+               'u32_aligned_words':rows,'typed_texture_header_edge':matches[0],
+               'policy':'The 0x80 edge is promoted because its exact value is an existing same-package TagHash whose entry is a Texture2DHeader. Other words remain discovery-only.'}
           pathlib.Path('reports/80AA9F35_aligned_words.json').write_text(json.dumps(out,indent=2)+'\n')
-          print('RAW_HEX',raw.hex())
-          print('SAME_PACKAGE_MATCHES',json.dumps([x for x in rows if x.get('same_package_tag_matches_value')],indent=2))
+          print('TYPED_T5_EDGE_GREEN',json.dumps(matches[0],indent=2))
           PY
           cat reports/80AA9F35_entry.json
           cat textures/80AA9F35/texture_manifest.json
+      - name: Close 80AA9F36 to 80AA9F37 texture chain
+        run: |
+          set -euo pipefail
+          python tools/d1_entry_extract.py recovered/ps4_globals_0154_5.pkg --runtime runtime --tag-hash 80AA9F36 \
+            --dump-dir reports/raw -o reports/80AA9F36_entry.json
+          python tools/d1_entry_extract.py recovered/ps4_globals_0154_5.pkg --runtime runtime --tag-hash 80AA9F37 \
+            --dump-dir reports/raw -o reports/80AA9F37_entry.json
+          python tools/d1_texture_export.py recovered/ps4_globals_0154_5.pkg --runtime runtime \
+            --tag-hash 80AA9F36 --out textures/80AA9F36
+          python - <<'PY'
+          import json,pathlib
+          from PIL import Image,ImageStat
+          h=json.load(open('reports/80AA9F36_entry.json'))
+          assert h['missing_tag_hashes']==[] and h['errors']==[] and len(h['entries'])==1,h
+          e=h['entries'][0]
+          assert e['tag_hash']=='80AA9F36' and e['type']==32 and e['subtype']==1 and e['reference']=='80AA9F37' and e['size']==60,e
+          backing=json.load(open('reports/80AA9F37_entry.json'))
+          manifest=json.load(open('textures/80AA9F36/texture_manifest.json'))
+          assert manifest.get('missing_requested')==[],manifest
+          rows=manifest.get('textures') or []
+          assert len(rows)==1,manifest
+          row=rows[0]
+          files=sorted(str(p) for p in pathlib.Path('textures/80AA9F36').rglob('*') if p.is_file())
+          pngs=[pathlib.Path(p) for p in files if p.lower().endswith('.png')]
+          stats=[]
+          for p in pngs:
+              im=Image.open(p).convert('RGBA')
+              st=ImageStat.Stat(im)
+              stats.append({'file':str(p),'size':list(im.size),'mode':im.mode,'extrema':[list(x) for x in im.getextrema()],
+                            'mean':[float(x) for x in st.mean],'rms':[float(x) for x in st.rms]})
+          out={'schema_version':1,'status':'D1_PS_8087670E_T5_80AA9F35_TYPED_TEXTURE_CHAIN_EXACT',
+               'wrapper':{'tag_hash':'80AA9F35','class':'80802070','payload_bytes':132,'texture_header_offset':128},
+               'texture_header':e,'reference_entry_probe':backing,'texture_manifest_row':row,
+               'png_statistics':stats,'files':files,'violations':[],
+               'policy':'Semantic role is promoted only from exact header/backing/format and decoded pixel evidence; this report does not infer t4 or API15 state.'}
+          pathlib.Path('reports/80AA9F35_T5_CHAIN_EXACT.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
       - name: Persist hashes
         if: always()
         run: |
