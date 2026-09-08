@@ -1,0 +1,125 @@
+name: D1 GCN live descriptor provenance 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-descriptor-live-provenance-808ee505-v1.yml'
+      - 'tools/d1_gcn_descriptor_semantics_proof.py'
+      - 'tools/d1_gcn_descriptor_live_provenance.py'
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  LLVM_REV: '66462afa7e4a33f0d720877f2228589d5b43de81'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable 808EE505 source checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/llvm out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_shader_extract.json target_gcn_image_usage.json; do test -f "input/source/$f"; done
+
+      - name: Recover immutable LLVM GFX7 descriptor semantics sources
+        run: |
+          set -euo pipefail
+          base="https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/lib/Target/AMDGPU"
+          curl -fsSL --retry 4 "$base/Utils/AMDGPUBaseInfo.h" -o input/llvm/AMDGPUBaseInfo.h
+          curl -fsSL --retry 4 "$base/Utils/AMDGPUBaseInfo.cpp" -o input/llvm/AMDGPUBaseInfo.cpp
+          curl -fsSL --retry 4 "$base/SMInstructions.td" -o input/llvm/SMInstructions.td
+          curl -fsSL --retry 4 "$base/MIMGInstructions.td" -o input/llvm/MIMGInstructions.td
+          python tools/d1_gcn_descriptor_semantics_proof.py \
+            --base-info-h input/llvm/AMDGPUBaseInfo.h \
+            --base-info-cpp input/llvm/AMDGPUBaseInfo.cpp \
+            --sm-instructions input/llvm/SMInstructions.td \
+            --mimg-instructions input/llvm/MIMGInstructions.td \
+            --llvm-revision "$LLVM_REV" \
+            -o out/GFX7_DESCRIPTOR_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/GFX7_DESCRIPTOR_SEMANTICS.json'))
+          assert d['status']=='D1_GFX7_DESCRIPTOR_SEMANTICS_SOURCE_PROVEN' and not d['violations'],d
+          p=d['proof']
+          assert p['architecture']=='GFX7_GFX700'
+          assert p['smrd_immediate_offset_unit']=='DWORD' and p['smrd_immediate_byte_scale']==4
+          assert p['resident_user_sgpr_count']==16 and p['extended_user_data_logical_base_dword']==16
+          assert p['scalar_load_widths_dwords']=={'s_load_dwordx4':4,'s_load_dwordx8':8}
+          assert p['mimg_descriptor_widths_dwords']=={'resource':8,'sampler':4}
+          print('GFX7_DESCRIPTOR_SEMANTICS_CLOSED')
+          PY
+
+      - name: Rebuild structural IR and close live descriptor provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR.json
+          python tools/d1_gcn_descriptor_live_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --descriptor-semantics out/GFX7_DESCRIPTOR_SEMANTICS.json \
+            --shader 808EE505 \
+            -o out/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json'))
+          assert d['status']=='D1_GCN_DESCRIPTOR_LIVE_PROVENANCE_EXACT' and not d['violations'],d
+          p=d['proof']
+          expected=[4,8,132,133,196,197,198,266,329,330,373,374]
+          assert p['image_instruction_count']==14
+          assert p['descriptor_load_count']==12 and p['exact_descriptor_load_count']==12
+          assert p['exact_descriptor_load_instructions']==expected
+          assert p['sampler_origin_counts']=={'ENTRY_RESIDENT':9,'EXTENDED_USER_DATA_LOAD':5}
+          by={x['instruction']:x for x in p['image_live_bindings']}
+          assert set(by)=={158,212,213,268,269,272,273,274,275,276,277,332,387,399}
+          # t2: both descriptors are dynamically materialized immediately before use.
+          x=by[332]
+          assert x['texture_index']==2 and x['resource_descriptor']['producer_instruction']==329
+          assert x['resource_descriptor']['origin_kind']=='RESOURCE_TABLE_LOAD'
+          assert x['sampler_index']==3 and x['sampler_descriptor']['producer_instruction']==330
+          assert x['sampler_descriptor']['origin_kind']=='EXTENDED_USER_DATA_LOAD'
+          assert x['sampler_descriptor']['logical_start']==16
+          # t0/t1 keep resident sampler descriptors at these uses.
+          assert by[213]['texture_index']==0 and by[213]['sampler_index']==1
+          assert by[213]['sampler_descriptor']['origin_kind']=='ENTRY_RESIDENT'
+          for i in (268,269,272,273,274,275,276,277):
+            assert by[i]['texture_index']==1 and by[i]['sampler_index']==2
+            assert by[i]['sampler_descriptor']['origin_kind']=='ENTRY_RESIDENT'
+          # t5 reloads sampler 6 from spilled logical user-data dword 28.
+          for i in (387,399):
+            assert by[i]['texture_index']==5 and by[i]['resource_descriptor']['producer_instruction']==373
+            assert by[i]['sampler_index']==6 and by[i]['sampler_descriptor']['producer_instruction']==374
+            assert by[i]['sampler_descriptor']['logical_start']==28
+          loads={x['instruction']:x for x in p['descriptor_loads']}
+          assert loads[4]['resolved_kind']=='ImmConstBuffer' and loads[4]['api_slot']==12 and loads[4]['logical_start']==36
+          assert loads[8]['resolved_kind']=='ImmConstBuffer' and loads[8]['api_slot']==0 and loads[8]['logical_start']==32
+          print('LIVE_DESCRIPTOR_PROVENANCE_CLOSED images',p['image_instruction_count'],'loads',p['exact_descriptor_load_count'])
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-DESCRIPTOR-LIVE-PROVENANCE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
