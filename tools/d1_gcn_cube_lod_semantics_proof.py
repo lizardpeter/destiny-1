@@ -7,7 +7,7 @@ AMD/GPU ISA sources plus the exact source-owned D1 resource inventory. No visual
 for texture 5 is inferred.
 """
 from __future__ import annotations
-import argparse, hashlib, json
+import argparse, hashlib, json, traceback
 from pathlib import Path
 
 
@@ -165,7 +165,8 @@ def main() -> int:
             'portable_cubemap_shader_reconstruction':'WITHHELD'
           }
         }
-    except Exception as e:viol.append(repr(e))
+    except Exception:
+        viol.append(traceback.format_exc())
     out={'schema_version':1,'status':'D1_GCN_CUBE_LOD_SEMANTICS_SOURCE_PROVEN' if payload and not viol else 'D1_GCN_CUBE_LOD_SEMANTICS_PARTIAL','proof':payload,'violations':viol,'policy':'Only immutable ISA semantics, exact source-owned resource dimension, and exact target instruction bindings are promoted. Texture visual role and the extra native GET_LOD vaddr lane remain withheld.'}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps(out,indent=2));return 0 if not viol else 2
 if __name__=='__main__':raise SystemExit(main())
