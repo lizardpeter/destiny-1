@@ -1,0 +1,80 @@
+name: D1 Tower low-memory environment preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_glb_strip_textures_for_render_preview.py'
+      - 'tools/d1_blender_render_tower_environment_preview.py'
+      - '.github/workflows/d1-tower-low-memory-environment-preview.yml'
+
+permissions:
+  contents: read
+
+env:
+  ENVIRONMENT_GLBSHA256: '137455a40ada25d85cb98f79ca70a93d44153a424dfbb14d55939d10ba2183a7'
+  LIBGL_ALWAYS_SOFTWARE: '1'
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact card-corrected Tower environment
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          gh release download d1-tower-baked-common-textured-r7-card-composition -p D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb -D input --clobber
+          echo "$ENVIRONMENT_GLBSHA256  input/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb" | sha256sum --check --strict
+      - name: Build texture-free render proxy
+        run: |
+          python tools/d1_glb_strip_textures_for_render_preview.py input/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb input/D1_TOWER_RENDER_PROXY.glb | tee out/proxy_report.txt
+      - name: Install Blender 5.2.1 and software OpenGL
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee out/blender_version.txt; grep -q 'Blender 5.2.1' out/blender_version.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb xauth libegl1 libgl1 libgl1-mesa-dri libglu1-mesa mesa-utils
+          xvfb-run -a glxinfo -B | tee out/software_gl.txt
+      - name: Render four low-memory Tower previews
+        run: |
+          set -euo pipefail
+          xvfb-run -a "$BLENDER" --background --factory-startup --python tools/d1_blender_render_tower_environment_preview.py -- \
+            --glb input/D1_TOWER_RENDER_PROXY.glb --out-dir out --report out/D1_TOWER_LOW_MEMORY_PREVIEW.json --width 1280 --height 720 | tee out/blender_preview_stdout.txt
+          python - <<'PY'
+          import json,glob,os
+          d=json.load(open('out/D1_TOWER_LOW_MEMORY_PREVIEW.json'))
+          assert d['status']=='D1_TOWER_LOW_MEMORY_ENVIRONMENT_PREVIEW_COMPLETE',d
+          assert d['blender_version'].startswith('5.2.1'),d
+          assert d['image_count']==0,d
+          pngs=sorted(glob.glob('out/*.png')); assert len(pngs)==4,pngs
+          for p in pngs: assert os.path.getsize(p)>5000,(p,os.path.getsize(p))
+          print('LOW_MEMORY_TOWER_PREVIEW_GREEN',[(os.path.basename(p),os.path.getsize(p)) for p in pngs])
+          PY
+      - name: Build contact sheet
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow
+          python - <<'PY'
+          from PIL import Image,ImageOps,ImageDraw
+          from pathlib import Path
+          files=sorted(Path('out').glob('0[1-4]_tower_preview_*.png'))
+          ims=[Image.open(p).convert('RGB') for p in files]; w,h=640,360
+          cv=Image.new('RGB',(w*2,h*2),(18,18,18)); labels=['Wide','Opposite','High','Side']
+          for i,(im,label) in enumerate(zip(ims,labels)):
+              im=ImageOps.fit(im,(w,h),method=Image.Resampling.LANCZOS); x=(i%2)*w; y=(i//2)*h; cv.paste(im,(x,y)); d=ImageDraw.Draw(cv); d.rectangle((x+8,y+8,x+120,y+34),fill=(0,0,0)); d.text((x+14,y+13),label,fill=(255,255,255))
+          cv.save('out/00_tower_preview_contact_sheet.jpg',quality=92,optimize=True)
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-LOW-MEMORY-ENVIRONMENT-PREVIEWS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
