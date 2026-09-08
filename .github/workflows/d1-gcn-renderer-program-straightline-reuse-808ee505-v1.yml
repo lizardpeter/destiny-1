@@ -1,0 +1,106 @@
+name: D1 GCN renderer program straight-line reuse 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-program-straightline-reuse-808ee505-v1.yml'
+      - 'tools/d1_gcn_renderer_program_add_straightline.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_ARTIFACT_ID: '10068906793'
+  BASE_ARTIFACT_ZIP_SHA256: '76f91c22b8fa24228419e355101c8952be65947da663445f5201228b5c3826e9'
+  STRAIGHTLINE_ARTIFACT_ID: '10069338594'
+  STRAIGHTLINE_ARTIFACT_ZIP_SHA256: 'c3fa155849b2d3d1178fc1b74c22cd49dab009edf9d025c479ee4b26412e197d'
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable green checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/base input/straightline out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASE_ARTIFACT_ID}/zip" -o input/base.zip
+          echo "${BASE_ARTIFACT_ZIP_SHA256}  input/base.zip" | sha256sum --check --strict
+          unzip -q input/base.zip -d input/base
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRAIGHTLINE_ARTIFACT_ID}/zip" -o input/straightline.zip
+          echo "${STRAIGHTLINE_ARTIFACT_ZIP_SHA256}  input/straightline.zip" | sha256sum --check --strict
+          unzip -q input/straightline.zip -d input/straightline
+          test -f input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          test -f input/straightline/PS_808EE505_STRAIGHTLINE_404_435_EXPR.json
+
+      - name: Verify checkpoint boundaries before mutation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          b=json.load(open('input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          s=json.load(open('input/straightline/PS_808EE505_STRAIGHTLINE_404_435_EXPR.json'))
+          assert b['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not b['violations'],b
+          c=b['program']['coverage']
+          assert c['primary_resolution_counts']=={'CONTROL_EXACT':16,'EXPRESSION_EXACT':82,'INPUT_PROVENANCE_EXACT':19,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':303},c
+          assert c['exact_nonstructural_instruction_count']==153
+          assert s['status']=='D1_GCN_STRAIGHTLINE_404_435_EXPRESSION_EXACT' and not s['violations'],s
+          e=s['expression']
+          assert e['shader']=='808EE505' and e['material']=='80D777B6'
+          assert e['instruction_range']==[404,435] and e['node_count']==51
+          assert len(e['value_instruction_indices'])==30
+          assert e['value_instruction_indices']==[i for i in range(404,436) if i not in (416,418)]
+          assert len(e['input_roots'])==12
+          print('GREEN_CHECKPOINTS_PINNED',c['primary_resolution_counts'],e['node_count'])
+          PY
+
+      - name: Attach exact straight-line DAG and recompute ledger
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_add_straightline.py \
+            --program input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --straightline-expr input/straightline/PS_808EE505_STRAIGHTLINE_404_435_EXPR.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          assert d['schema_version']>=3
+          p=d['program'];c=p['coverage'];counts=c['primary_resolution_counts']
+          assert counts=={'CONTROL_EXACT':16,'EXPRESSION_EXACT':112,'INPUT_PROVENANCE_EXACT':19,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':273},counts
+          assert c['exact_nonstructural_instruction_count']==183
+          assert c['straightline_promoted_instruction_count']==30
+          assert c['straightline_promoted_instructions']==[i for i in range(404,436) if i not in (416,418)]
+          assert len(p['exact_straightline_expressions'])==1
+          e=p['exact_straightline_expressions'][0]
+          assert e['instruction_range']==[404,435] and e['node_count']==51 and len(e['input_roots'])==12
+          for i in c['straightline_promoted_instructions']:
+              q=p['instruction_resolution'][i]
+              assert q['primary_resolution']=='EXPRESSION_EXACT'
+              assert 'STRAIGHTLINE_404_435_EXPRESSION_DAG' in q['evidence_tags']
+          assert p['instruction_resolution'][416]['primary_resolution']=='STRUCTURAL_ONLY'
+          assert p['instruction_resolution'][418]['primary_resolution']=='STRUCTURAL_ONLY'
+          assert d['semantic_boundary']['exact_straightline_expression_blocks']=='EXACT_WHERE_ATTACHED'
+          assert d['semantic_boundary']['full_mrt_value_expression_tree']=='INCOMPLETE'
+          print('RENDERER_LEDGER_EXTENDED',counts,'exact_nonstructural',c['exact_nonstructural_instruction_count'],'structural_spans',len(c['structural_only_spans']))
+          print('STRUCTURAL_SPANS',[(x['start_instruction'],x['end_instruction']) for x in c['structural_only_spans']])
+          PY
+          cp input/straightline/PS_808EE505_STRAIGHTLINE_404_435_EXPR.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-RENDERER-PROGRAM-STRAIGHTLINE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
