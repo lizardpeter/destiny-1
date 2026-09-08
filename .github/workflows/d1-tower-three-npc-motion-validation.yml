@@ -1,0 +1,46 @@
+name: D1 Tower three-NPC assigned action motion validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_blender_validate_assigned_action_motion.py'
+      - '.github/workflows/d1-tower-three-npc-motion-validation.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEST_ARTIFACT_ID: '10064475475'
+  TEST_ARTIFACT_SHA256: '65ae5922e8913bc4fa217dd1a05de2d35411684a60fa4c3b08d27499bbc27a25'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover exact 23MB three-NPC test artifact
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TEST_ARTIFACT_ID}/zip" -o input/test.zip
+          echo "$TEST_ARTIFACT_SHA256  input/test.zip" | sha256sum --check --strict
+          unzip -q input/test.zip -d input/test
+          test -f input/test/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.blend
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"; "$BLENDER" --version | grep 'Blender 5.2.1'
+      - name: Prove assigned Actions visibly move pose bones
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background input/test/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.blend --python tools/d1_blender_validate_assigned_action_motion.py -- --report out/MOTION_VALIDATION.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/MOTION_VALIDATION.json'));assert not d['violations'],d
+          assert (d['armature_count'],d['moving_armature_count'])==(3,3),d
+          print('MOTION_GREEN',[(x['armature'],x['action'],x['pose_matrix_max_abs_delta']) for x in d['rows']])
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: D1-TOWER-3-NPC-V2-MOTION-VALIDATION, path: out/, retention-days: 90, if-no-files-found: error}
