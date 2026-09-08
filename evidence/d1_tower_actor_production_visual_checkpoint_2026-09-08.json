@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_ACTOR_PRODUCTION_VISUAL_CHECKPOINT_PINNED",
+  "material_signature_checkpoint": {
+    "run_id": 34171981779,
+    "artifact_id": 10035991740,
+    "artifact_name": "D1-TOWER-ACTOR-VISIBLE-MATERIAL-SIGNATURES-FINAL",
+    "artifact_zip_sha256": "4bb937be6206900ff241c93a40dd54e4e7b00387c30dfd28f991039fd5760c6f",
+    "actor_model_count": 13,
+    "total_visible_signature_count": 30,
+    "placement_variant_models": {
+      "809D8104": 5,
+      "80C885E3": 8,
+      "80C88CEF": 7
+    }
+  },
+  "native_skinned_variant_checkpoint": {
+    "run_id": 34172191236,
+    "artifact_id": 10036056185,
+    "artifact_name": "D1-TOWER-ACTOR-30-MATERIAL-SIGNATURE-SKINNED-VARIANTS",
+    "artifact_zip_sha256": "79b9f782663392d8cfababa247e89b7f33454f8b2f4505b8f631b258ab7e756a",
+    "variant_count": 30,
+    "actor_model_count": 13,
+    "non_json_glb_payload_preserved": true
+  },
+  "textured_variant_checkpoint": {
+    "run_id": 34172347436,
+    "artifact_id": 10036629355,
+    "artifact_name": "D1-TOWER-ACTOR-30-MATERIAL-VARIANTS-TEXTURED",
+    "artifact_zip_sha256": "d6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654",
+    "artifact_size_bytes": 2123715909,
+    "variant_count": 30,
+    "actor_model_count": 13,
+    "active_material_count": 320,
+    "global_unique_texture_count": 272,
+    "decoded_texture_count": 272,
+    "texture_decode_error_count": 0,
+    "material_decode_error_count": 0,
+    "missing_texture_package_count": 0,
+    "png_output_count": 307,
+    "embedded_native_texture_instance_count": 1311,
+    "exact_pixel_shader_binding_edge_instance_count": 3268,
+    "portable_base_bound_material_instance_count": 687,
+    "portable_normal_bound_material_instance_count": 550,
+    "required_material_package_ids": ["003b", "00ef", "0154", "0169", "0244", "024c", "0250"],
+    "recovered_texture_dependency_package_ids": ["0155", "0156", "0157", "0158"]
+  },
+  "transparency_checkpoint": {
+    "run_id": 34173459838,
+    "artifact_id": 10036495063,
+    "artifact_name": "D1-TOWER-ACTOR-320-MATERIAL-TRANSPARENCY-CENSUS",
+    "artifact_zip_sha256": "08f9a5d8c52541ff3f03febd7ab75d88adaf0555ae28b3c2b3797cee242f0bf3",
+    "material_count": 320,
+    "opaque_material_count": 320,
+    "transparent_material_count": 0,
+    "unk20_raw_counts": {"0x0000": 320}
+  },
+  "location_visual_join_checkpoint": {
+    "run_id": 34174054997,
+    "artifact_id": 10036642428,
+    "artifact_name": "D1-TOWER-ACTOR-LOCATION-VISUAL-SIGNATURE-JOIN-V2",
+    "artifact_zip_sha256": "1434b66b0c61ea0dc9045615014fa9085066d2f1e6b8ef5803fb36082e4943dc",
+    "scenario_count": 8,
+    "exact_location_alternative_count": 547,
+    "resolved_visual_location_alternative_count": 547,
+    "resolved_visual_model_count": 13,
+    "resolved_visual_variant_count": 29,
+    "exact_d912_signature_resolution_count": 464,
+    "single_signature_model_resolution_count": 83,
+    "unused_visible_signature": "809D8104:SIG04"
+  },
+  "gates": {
+    "runtime_active_scenario_selected": false,
+    "runtime_active_D912_group_selected": false,
+    "runtime_active_actor_location_selected": false,
+    "runtime_actor_animation_state_selected": false,
+    "D1_retail_descriptor_evaluator_source_closed": false,
+    "E6_80C885E6_live_selection_proven": false,
+    "E7_80C885E7_live_selection_proven": false,
+    "E8_80C885E8_live_selection_proven": false
+  },
+  "policy": "This record pins already-green visual/material/texture/location artifacts. It does not promote retail descriptor-evaluator semantics or runtime scenario/group/location/animation selection. The 30 textured GLBs are the corrected production visual assets; the 547-row location join is a set of source alternatives, not a simultaneous-spawn claim."
+}
