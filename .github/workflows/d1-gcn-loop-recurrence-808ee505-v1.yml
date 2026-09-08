@@ -1,0 +1,185 @@
+name: D1 GCN loop recurrence 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-loop-recurrence-808ee505-v1.yml'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+      - 'tools/d1_gcn_control_semantics_proof.py'
+      - 'tools/d1_gcn_mimg_address_provenance.py'
+      - 'tools/d1_gcn_loop_recurrence_ir.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  LLVM_REV: '14e941a0566ae06e982c5d8ddd085697c48fd413'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 evidence and immutable ISA sources
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_texture_roles.json target_shader_extract.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/lib/Target/AMDGPU/SOPInstructions.td" \
+            -o input/upstream/SOPInstructions.td
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/lib/Target/AMDGPU/MIMGInstructions.td" \
+            -o input/upstream/MIMGInstructions.td
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/include/llvm/IR/IntrinsicsAMDGPU.td" \
+            -o input/upstream/IntrinsicsAMDGPU.td
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" \
+            -o input/upstream/gem5_sop1.cc
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" \
+            -o input/upstream/gem5_sopp.cc
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" \
+            -o input/upstream/gem5_vop2.cc
+
+      - name: Rebuild exact structural and material provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+          python - <<'PY'
+          import json
+          ir=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
+          cb=json.load(open('out/PS_808EE505_CBUFFER_PROVENANCE.json'))
+          assert ir['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE'
+          assert ir['control_flow']['back_edges']==[{'from_block':5,'to_block':2}]
+          assert cb['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not cb['violations']
+          vals={r['instruction']:r['material_values'][0]['value'] for r in cb['loads'] if r.get('resolution')=='EXACT_MATERIAL_PS_B0' and len(r.get('material_values') or [])==1}
+          assert vals[105]==4.0 and vals[107]==30.0,vals
+          print('STRUCTURAL_AND_MATERIAL_PROVENANCE_CLOSED',ir['instruction_count'],ir['control_flow']['back_edges'],vals[105],vals[107])
+          PY
+
+      - name: Prove control and SCC semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_control_semantics_proof.py \
+            --llvm-sop input/upstream/SOPInstructions.td \
+            --gem5-sop1 input/upstream/gem5_sop1.cc \
+            --gem5-sopp input/upstream/gem5_sopp.cc \
+            --gem5-vop2 input/upstream/gem5_vop2.cc \
+            --llvm-revision "$LLVM_REV" --gem5-revision "$GEM5_REV" \
+            -o out/GCN_CONTROL_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/GCN_CONTROL_SEMANTICS.json'))
+          assert d['status']=='D1_GCN_CONTROL_SEMANTICS_SOURCE_PROVEN' and not d['violations'],d
+          s=d['semantics']
+          assert s['s_andn2_b64']['equation']=='D = S0 & ~S1'
+          assert s['s_and_saveexec_b64']['equation']=='D = EXEC_old; EXEC_new = S0 & EXEC_old'
+          assert s['s_cbranch_scc0']['equation']=='branch iff SCC == 0'
+          assert s['s_cbranch_execz']['equation']=='branch iff EXEC == 0'
+          assert s['v_subrev_f32']['equation']=='D = S1 - S0'
+          print('CONTROL_SEMANTICS_CLOSED')
+          PY
+
+      - name: Recover the full 2D sample_d address payload
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_mimg_address_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --texture-roles input/source/target_texture_roles.json \
+            --intrinsics-source input/upstream/IntrinsicsAMDGPU.td \
+            --mimg-source input/upstream/MIMGInstructions.td \
+            --intrinsics-revision "$LLVM_REV" --mimg-revision "$LLVM_REV" \
+            -o out/PS_808EE505_MIMG_ADDRESS_PROVENANCE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_MIMG_ADDRESS_PROVENANCE.json'))
+          assert d['status']=='D1_GCN_MIMG_ADDRESS_PROVENANCE_EXACT' and not d['violations'],d
+          r=[x for x in d['rows'] if x['instruction']==158]
+          assert len(r)==1,r
+          r=r[0]
+          assert r['texture_index']==3 and r['texture']=='808EE4FF' and r['sampler_index']==4,r
+          assert r['resource_class']=='SCALAR_BC4_2D' and r['effective_dimension']=='2D',r
+          assert r['effective_address_word_count']==6
+          assert r['effective_address_registers']==['v35','v36','v37','v38','v39','v40'],r
+          assert [x['component'] for x in r['effective_address_components']]==['ds_dh','dt_dh','ds_dv','dt_dv','s','t'],r
+          print('MIMG_2D_SAMPLE_D_ADDRESS_CLOSED',r['effective_address_registers'])
+          PY
+
+      - name: Recover exact loop-carried recurrence
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_loop_recurrence_ir.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --mimg out/PS_808EE505_MIMG_ADDRESS_PROVENANCE.json \
+            --control-semantics out/GCN_CONTROL_SEMANTICS.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            -o out/PS_808EE505_LOOP_RECURRENCE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_LOOP_RECURRENCE.json'))
+          assert d['status']=='D1_GCN_LOOP_RECURRENCE_EXACT' and not d['violations'],d
+          assert len(d['recurrences'])==1
+          r=d['recurrences'][0]
+          assert (r['loop_start_instruction'],r['loop_end_instruction'])==(149,173),r
+          assert r['classification']=='EXACT_ADAPTIVE_2D_SAMPLE_INTERSECTION_RECURRENCE'
+          assert r['semantic_role']=='WITHHELD_NO_SOURCE_NAME'
+          assert r['step_count_register']=='v25' and r['counter_register']=='v32'
+          cs=sorted(x['value'] for x in r['adaptive_step_count']['material_b0_constants'])
+          assert cs==[4.0,30.0],cs
+          assert r['adaptive_step_count']['step_size_expression']=='v22 = rcp(float(v25))'
+          assert r['mask_recurrence']['candidate_predicate']=='v25 > v32'
+          sm=r['per_iteration_recurrence']['sample']
+          assert sm['instruction']==158 and sm['texture_index']==3 and sm['texture']=='808EE4FF' and sm['sampler_index']==4
+          assert sm['address_registers']==['v35','v36','v37','v38','v39','v40']
+          assert r['per_iteration_recurrence']['hit_predicate']=='v34 > v29_next'
+          assert r['termination']['false_path_progresses_counter_by_one'] is True
+          assert r['termination']['hit_path_forces_counter_past_limit']=='v16 = v25 + 1'
+          assert r['post_loop_refinement']['instruction_range']==[174,189]
+          assert r['post_loop_refinement']['output_coordinates']=={'v16':'v17 - depth_fraction * v23','v15':'v19 - depth_fraction * v13'}
+          print('LOOP_RECURRENCE_CLOSED',r['adaptive_step_count']['expression'],r['post_loop_refinement']['output_coordinates'])
+          PY
+
+      - name: Freeze proof payload
+        run: |
+          set -euo pipefail
+          cp input/source/target_material_stage.json out/
+          cp input/source/target_texture_roles.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-LOOP-RECURRENCE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
