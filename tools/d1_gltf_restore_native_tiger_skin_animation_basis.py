@@ -113,7 +113,10 @@ def main() -> int:
             if previous is not None and previous != path:
                 raise ValueError(f'output accessor {output_ai} shared by incompatible paths {previous}/{path}')
             if previous is None:
-                vals = accessor(doc, bytes(blob), output_ai).astype(np.float64)
+                # accessor() consumes any Python buffer-protocol object. Passing the
+                # live bytearray avoids materializing a complete ~100 MB bytes copy
+                # for each of tens of thousands of animation output accessors.
+                vals = accessor(doc, blob, output_ai).astype(np.float64)
                 set_animation_accessor(doc, blob, output_ai, convert_values(path, vals))
                 converted_outputs[output_ai] = path
             joint_channel_count += 1
@@ -158,7 +161,7 @@ def main() -> int:
             raise ValueError(f'{key} count changed')
 
     report = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_GLTF_NATIVE_TIGER_SKIN_ANIMATION_BASIS_RESTORED',
         'input': str(a.input_glb), 'input_sha256': sha256_file(a.input_glb),
         'output': str(a.out), 'output_sha256': sha256_file(a.out),
@@ -169,13 +172,15 @@ def main() -> int:
         'joint_targeted_channel_count': len(channel_rows),
         'converted_animation_output_accessor_count': len(converted_outputs),
         'binary_byte_length_unchanged': len(out_binary) == len(binary),
+        'buffer_copy_policy': 'live bytearray buffer passed to accessor; no per-accessor full-buffer copy',
         'skins': skin_rows, 'animations': animation_rows,
         'parser_basis_unapplied': True,
         'restored_basis': 'native D1/Tiger [x,y,z]',
         'policy': (
             'Exact inverse of the pinned parser [x,y,z]->[y,z,x] basis is applied only '
             'to skin bind transforms and joint-targeted animation outputs. Source mesh, '
-            'JOINTS/WEIGHTS, action selection, timing, interpolation and materials are unchanged.'
+            'JOINTS/WEIGHTS, action selection, timing, interpolation and materials are unchanged. '
+            'Animation output reads use the live buffer directly; this changes performance only.'
         ),
     }
     a.report.parent.mkdir(parents=True, exist_ok=True)
@@ -183,7 +188,8 @@ def main() -> int:
     print(json.dumps({k: report[k] for k in (
         'status','output_bytes','output_sha256','skin_count','joint_node_count',
         'animation_count','joint_targeted_channel_count',
-        'converted_animation_output_accessor_count','binary_byte_length_unchanged'
+        'converted_animation_output_accessor_count','binary_byte_length_unchanged',
+        'buffer_copy_policy'
     )}, indent=2))
     return 0
 
