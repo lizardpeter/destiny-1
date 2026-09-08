@@ -3,11 +3,11 @@
 
 Each cell is rendered in a fresh Blender process with transparent background so
 all ten cells can later be composited without ever loading the full Tower scene
-into Blender at once.  This is a diagnostic view path, not retail lighting.
+into Blender at once. This is a diagnostic view path, not retail lighting.
 """
 from __future__ import annotations
 
-import argparse, json, math, sys
+import argparse, json, sys
 from pathlib import Path
 
 import bpy
@@ -95,8 +95,6 @@ def main():
         cd.type = 'PERSP'
         cd.lens = float(view.get('lens_mm', 50.0))
 
-    # Cell center is used only to record a deterministic far-to-near layer sort
-    # key for the diagnostic compositor.
     cell_num = None
     stem = a.glb.stem
     if stem.startswith('TOWER_CELL_'):
@@ -105,10 +103,12 @@ def main():
         except Exception:
             pass
     center = None
+    layer_class = 'core'
     if cell_num is not None:
         for row in plan.get('cell_bounds', []):
             if int(row.get('cell', -1)) == cell_num:
                 center = Vector(row['center'])
+                layer_class = str(row.get('layer_class', 'core'))
                 break
     forward = (Vector(view['target']) - Vector(view['camera'])).normalized()
     sort_depth = None
@@ -123,6 +123,7 @@ def main():
     rep = {
         'status': 'D1_TOWER_SHARED_LAYER_RENDER_COMPLETE',
         'cell': cell_num,
+        'layer_class': layer_class,
         'source_glb': a.glb.name,
         'view': a.view,
         'output': a.out.name,
@@ -137,7 +138,7 @@ def main():
         'target': [float(x) for x in view['target']],
         'camera_type': cd.type,
         'sort_depth': sort_depth,
-        'policy': 'Transparent per-cell diagnostic render from a shared world-space camera. Retail lighting/camera are not claimed.'
+        'policy': 'Transparent per-cell diagnostic render from a shared Blender-space camera. Retail lighting/camera are not claimed.'
     }
     a.report.write_text(json.dumps(rep, indent=2) + '\n')
     print(json.dumps(rep, indent=2))
