@@ -1,0 +1,107 @@
+name: D1 Tower actor 320 material transparency census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-actor-material-transparency-census.yml'
+      - 'tools/d1_tower_actor_material_transparency_census.py'
+      - 'tools/d1_tower_actor_variant_material_universe.py'
+      - 'tools/d1_gltf_prune_unreferenced_materials.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  VARIANT_ARTIFACT_ID: '10036056185'
+  VARIANT_ARTIFACT_SHA256: '79b9f782663392d8cfababa247e89b7f33454f8b2f4505b8f631b258ab7e756a'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: '${{ github.token }}'
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact variants, catalog, runtime, package list
+        run: |
+          set -euo pipefail
+          mkdir -p input/variants input/catalog runtime pruned prune_reports corpus reports out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VARIANT_ARTIFACT_ID}/zip" -o input/variants.zip
+          echo "${VARIANT_ARTIFACT_SHA256}  input/variants.zip" | sha256sum --check --strict
+          unzip -q input/variants.zip -d input/variants
+          test "$(find input/variants -maxdepth 1 -name '*_SIG*_SKINNED_NATIVE_D1.glb' -type f | wc -l)" = 30
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Reconstruct exact 320 active material selector
+        run: |
+          set -euo pipefail
+          for p in input/variants/*_SIG*_SKINNED_NATIVE_D1.glb; do
+            b="$(basename "$p")"
+            python tools/d1_gltf_prune_unreferenced_materials.py "$p" --out "pruned/$b" --report "prune_reports/${b%.glb}.json"
+          done
+          python tools/d1_tower_actor_variant_material_universe.py \
+            --input-dir pruned --signatures input/variants/D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_FINAL.json \
+            --selector-output reports/tower_actor_30_variant_material_selector.json \
+            --report reports/TOWER_ACTOR_30_VARIANT_MATERIAL_UNIVERSE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_ACTOR_30_VARIANT_MATERIAL_UNIVERSE.json'))
+          assert d['status']=='D1_TOWER_ACTOR_VARIANT_ACTIVE_MATERIAL_UNIVERSE_COMPLETE' and d['active_material_count']==320,d
+          open('reports/required_material_package_ids.txt','w').write('\n'.join(d['required_material_package_ids'])+'\n')
+          print('MATERIAL_UNIVERSE_GREEN',d['active_material_count'])
+          PY
+
+      - name: Recover exact material package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/required_material_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/tower_actor_material_state_corpus.json
+
+      - name: Census source transparency and known blend state
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python -m py_compile tools/d1_tower_actor_material_transparency_census.py
+          python tools/d1_tower_actor_material_transparency_census.py "${args[@]}" \
+            --runtime runtime --visual-json reports/tower_actor_30_variant_material_selector.json \
+            -o out/TOWER_ACTOR_320_MATERIAL_TRANSPARENCY_CENSUS.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/TOWER_ACTOR_320_MATERIAL_TRANSPARENCY_CENSUS.json'))
+          assert d['status']=='D1_TOWER_ACTOR_MATERIAL_TRANSPARENCY_CENSUS_COMPLETE',d['violations']
+          assert d['material_count']==320 and d['resolved_material_count']==320,d
+          assert d['proof']['D1_Unk20_nonzero_transparent_population_source_closed'] is True,d
+          assert d['proof']['other_nonzero_blend_equations_source_closed'] is False,d
+          print('TRANSPARENCY_CENSUS_GREEN','transparent',d['transparent_material_count'],'opaque',d['opaque_material_count'],'known_0x88',d['known_0x88_blend_material_count'])
+          PY
+          cp reports/TOWER_ACTOR_30_VARIANT_MATERIAL_UNIVERSE.json out/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ACTOR-320-MATERIAL-TRANSPARENCY-CENSUS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
