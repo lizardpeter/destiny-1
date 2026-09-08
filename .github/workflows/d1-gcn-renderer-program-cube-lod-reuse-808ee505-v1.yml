@@ -1,0 +1,137 @@
+name: D1 GCN renderer program cube LOD reuse 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-program-cube-lod-reuse-808ee505-v1.yml'
+      - 'tools/d1_gcn_renderer_program_add_straightline.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_ARTIFACT_ID: '10069456334'
+  BASE_ARTIFACT_ZIP_SHA256: '5c4f54e5cd971bbdd2d92f020663e483b955ffd1acbe9c2695b26da6b7c68f55'
+  CUBE_LOD_ARTIFACT_ID: '10070479625'
+  CUBE_LOD_ARTIFACT_ZIP_SHA256: '508b626d95fa2e189e88c21cbfb13a719e01cdafb5ad6d134dc38d5e67e525cd'
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable green checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/base input/cube_lod out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASE_ARTIFACT_ID}/zip" -o input/base.zip
+          echo "${BASE_ARTIFACT_ZIP_SHA256}  input/base.zip" | sha256sum --check --strict
+          unzip -q input/base.zip -d input/base
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CUBE_LOD_ARTIFACT_ID}/zip" -o input/cube_lod.zip
+          echo "${CUBE_LOD_ARTIFACT_ZIP_SHA256}  input/cube_lod.zip" | sha256sum --check --strict
+          unzip -q input/cube_lod.zip -d input/cube_lod
+          test -f input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          test -f input/cube_lod/PS_808EE505_STRAIGHTLINE_342_399_EXPR.json
+          test -f input/cube_lod/PS_808EE505_CUBE_LOD_SEMANTICS.json
+
+      - name: Verify checkpoint boundaries before mutation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          b=json.load(open('input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          s=json.load(open('input/cube_lod/PS_808EE505_STRAIGHTLINE_342_399_EXPR.json'))
+          c=json.load(open('input/cube_lod/PS_808EE505_CUBE_LOD_SEMANTICS.json'))
+          assert b['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not b['violations'],b
+          p=b['program'];cov=p['coverage']
+          assert p['material']=='80D777B6' and p['pixel_shader']=='808EE505'
+          assert p['instruction_count']==456
+          assert cov['primary_resolution_counts']=={
+            'CONTROL_EXACT':16,'EXPRESSION_EXACT':112,'INPUT_PROVENANCE_EXACT':19,
+            'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':273},cov
+          assert cov['exact_nonstructural_instruction_count']==183
+          assert len(p.get('exact_straightline_expressions') or [])==1
+          old=p['exact_straightline_expressions'][0]
+          assert old['instruction_range']==[404,435] and len(old['value_instruction_indices'])==30
+          assert s['status']=='D1_GCN_STRAIGHTLINE_342_399_EXPRESSION_EXACT' and not s['violations'],s
+          e=s['expression']
+          assert e['shader']=='808EE505' and e['material']=='80D777B6'
+          assert e['instruction_range']==[342,399] and e['node_count']==88
+          ids=list(range(343,373))+list(range(375,386))+[387]+list(range(392,397))+[398,399]
+          assert e['value_instruction_indices']==ids and len(ids)==49
+          assert len(e['input_roots'])==19
+          assert e['semantic_boundary']['cubemap_visual_role']=='WITHHELD'
+          assert e['semantic_boundary']['image_get_lod_fourth_native_lane']=='PRESERVED_WITH_MEANING_WITHHELD'
+          assert c['status']=='D1_GCN_CUBE_LOD_SEMANTICS_SOURCE_PROVEN' and not c['violations'],c
+          cp=c['proof']
+          assert cp['texture5']=={'texture':'80AAFB08','resource_class':'CUBEMAP','shape':[256,256,6],'format_name':'BC1'}
+          assert cp['cube_address_profile']['image_sample_l_399']['source_closed_logical_args']=={
+            's':'v16','t':'v17','face':'v18','lod':'v19'}
+          assert cp['cube_address_profile']['image_get_lod_387']['v19_meaning']=='WITHHELD_NATIVE_EXTRA_LANE'
+          # Every value instruction to be promoted is structural-only in the immutable base.
+          rows=p['instruction_resolution']
+          assert all(rows[i]['primary_resolution']=='STRUCTURAL_ONLY' for i in ids)
+          print('GREEN_CHECKPOINTS_PINNED',cov['primary_resolution_counts'],'cube_nodes',e['node_count'],'cube_values',len(ids))
+          PY
+
+      - name: Attach exact cube LOD DAG and recompute renderer ledger
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_add_straightline.py \
+            --program input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --straightline-expr input/cube_lod/PS_808EE505_STRAIGHTLINE_342_399_EXPR.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program'];c=p['coverage'];counts=c['primary_resolution_counts']
+          expected={'CONTROL_EXACT':16,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':19,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':224}
+          assert counts==expected,(counts,expected)
+          assert c['exact_nonstructural_instruction_count']==232
+          assert c['structural_only_instruction_count']==224
+          ids=list(range(343,373))+list(range(375,386))+[387]+list(range(392,397))+[398,399]
+          assert c['straightline_promoted_instruction_count']==49
+          assert c['straightline_promoted_instructions']==ids
+          assert len(p['exact_straightline_expressions'])==2
+          ranges=sorted(tuple(x['instruction_range']) for x in p['exact_straightline_expressions'])
+          assert ranges==[(342,399),(404,435)],ranges
+          for i in ids:
+            q=p['instruction_resolution'][i]
+            assert q['primary_resolution']=='EXPRESSION_EXACT'
+            assert 'STRAIGHTLINE_342_399_EXPRESSION_DAG' in q['evidence_tags']
+          # Existing exact material loads and non-value anchors must not be retyped.
+          for i in (388,389,390):
+            assert p['instruction_resolution'][i]['primary_resolution']=='INPUT_PROVENANCE_EXACT',(i,p['instruction_resolution'][i])
+          for i in (342,373,374,386,391,397):
+            assert p['instruction_resolution'][i]['primary_resolution']=='STRUCTURAL_ONLY',(i,p['instruction_resolution'][i])
+          spans=[(x['start_instruction'],x['end_instruction']) for x in c['structural_only_spans']]
+          expected_spans=[
+            (0,0),(2,5),(7,20),(23,32),(35,57),(60,104),(106,106),(108,148),
+            (191,193),(195,198),(201,205),(208,228),(230,263),(329,331),(334,335),(338,338),
+            (342,342),(373,374),(386,386),(391,391),(397,397),(401,401),(416,416),(418,418),
+            (444,444),(450,450),(455,455)]
+          assert spans==expected_spans,(spans,expected_spans)
+          print('RENDERER_CUBE_LOD_JOIN_CLOSED',counts,'exact_nonstructural',c['exact_nonstructural_instruction_count'])
+          print('STRUCTURAL_SPANS',spans)
+          PY
+          cp input/cube_lod/PS_808EE505_STRAIGHTLINE_342_399_EXPR.json out/
+          cp input/cube_lod/PS_808EE505_CUBE_LOD_SEMANTICS.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-RENDERER-PROGRAM-CUBE-LOD-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
