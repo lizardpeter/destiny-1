@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_WHOLE_MAP_SENTITY_CLOSURE_AUTHORITATIVE",
+  "activity": "810B0002",
+  "source_run": 34178302924,
+  "source_job": 101912003875,
+  "artifact": {
+    "id": 10038165648,
+    "name": "D1-CROTA-WHOLE-MAP-SENTITY-CLOSURE-V1",
+    "zip_bytes": 314858,
+    "zip_sha256": "fadc4b38dbca89a98c378bbde4703cc4c377b373d5b677e92c8fe4c342340be7"
+  },
+  "map_entity_ownership": {
+    "serialized_placements": 1535,
+    "runtime_placements": 1535,
+    "real_world_id_placements": 799,
+    "sentinel_world_id_placements": 736,
+    "duplicate_serialized_placement_references": 0,
+    "unique_entities": 81,
+    "entity_reference_class": "80800734",
+    "entity_reference_class_placement_count": 1535,
+    "entity_owner_package_families": [
+      "0075", "0077", "0154", "0156", "0157",
+      "01cf", "02b7", "02ba", "02bb", "0458"
+    ]
+  },
+  "recursive_dependency_closure": {
+    "status": "D1_WORLD_ENTITY_DEPENDENCY_CENSUS_COMPLETE",
+    "initial_package_family_count": 10,
+    "final_package_family_count": 15,
+    "recovered_package_ids": ["0158", "0169", "01d1", "01db", "075d"],
+    "pass_count": 2,
+    "stop_reason": "closed_zero_unresolved_entity_dependencies",
+    "parsed_entity_count": 81,
+    "entity_resource_reference_count": 314,
+    "unique_entity_resource_hash_count": 237,
+    "unresolved_dependency_hash_count": 0,
+    "unique_embedded_model_count": 21,
+    "unique_embedded_physics_model_count": 0,
+    "unique_entity_name_hash_count": 0,
+    "entity_composition_class_counts": {
+      "rigged_articulated_entity_candidate": 12,
+      "model_without_skeleton": 12,
+      "nonvisual_or_unresolved_entity": 57
+    }
+  },
+  "articulated_subset": {
+    "candidate_count": 12,
+    "rig_export_candidate_count": 12,
+    "family_count": 11,
+    "runtime_placement_count": 72,
+    "serialized_placement_reference_count": 72,
+    "unique_model_count": 10,
+    "unique_skeleton_resource_count": 11,
+    "unique_runtime_rig_resource_count": 11,
+    "missing_placement_entities": []
+  },
+  "all_visual_projection": {
+    "visual_entity_count": 24,
+    "nonvisual_entity_count": 57,
+    "visual_runtime_placement_count": 149,
+    "rigged_visual_runtime_placement_count": 72,
+    "model_without_skeleton_runtime_placement_count": 77,
+    "visual_model_instance_count": 149,
+    "unique_model_parent_pair_count": 21,
+    "unique_model_count": 21,
+    "unique_model_parent_resource_count": 21,
+    "visual_sentinel_world_id_placement_count": 0,
+    "note": "The all-visual projection is a deterministic derivation from the SHA-pinned closure artifact. The dedicated d1_world_visual_entity_plan.py workflow gate independently asserts these same counts before visual export."
+  },
+  "proof_boundary": {
+    "entity_seed_rule": "Every entity originates as the exact non-null SMapDataEntry Entity TagHash from all MapDataTables reachable from Activity 810B0002.",
+    "package_rule": "Owner and dependency package families are derived only from serialized FileHashes with the source-validated universal D1 Tiger decoder and materialized through the archive-wide package index.",
+    "visual_rule": "A map SEntity is visual only when a parsed exact EntityResource has semantic_role entity_model and its embedded EntityModel target is exact class 80801AB5.",
+    "not_claimed": [
+      "NPC/vendor semantic identity from visual appearance",
+      "animation playback completeness",
+      "non-entity DataResource layer completeness",
+      "native shader emulation completeness"
+    ]
+  }
+}
