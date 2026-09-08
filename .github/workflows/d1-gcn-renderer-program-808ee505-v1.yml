@@ -56,6 +56,7 @@ jobs:
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/upstream/gem5_sop1.cc
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" -o input/upstream/gem5_sopp.cc
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop3.cc" -o input/upstream/gem5_vop3.cc
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
 
@@ -111,6 +112,7 @@ jobs:
             --instr-info input/upstream/AMDGPUInstrInfo.td \
             --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
             --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            --vop3-source input/upstream/gem5_vop3.cc --vop3-revision "$GEM5_REV" \
             -o out/GCN_VOP_SEMANTICS.json
           for rid in 2 3; do
             python tools/d1_gcn_simple_region_expr.py \
@@ -129,6 +131,7 @@ jobs:
           r2=json.load(open('out/PS_808EE505_REGION2_EXPR_DAG.json'))['expression']
           r3=json.load(open('out/PS_808EE505_REGION3_EXPR_DAG.json'))['expression']
           assert r2['predicate']['expression']=='0 != v18' and set(r2['lane_merge_roots'])=={'v15'}
+          assert any(n['op']=='MAD' for n in r2['nodes']) and any(n['op']=='RCP' for n in r2['nodes'])
           assert r3['predicate']['expression']=='0 < v7' and r3['sample_count']==8
           assert set(r3['lane_merge_roots'])=={'v13','v15','v20','v26'}
           print('SIMPLE_REGION_DAGS_CLOSED',r2['node_count'],r3['node_count'])
