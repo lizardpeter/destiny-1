@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'tools/d1_three_npc_ps_wave6_tail_semantic_proof.py'
+      - 'tools/d1_three_npc_ps_tail_wave6_semantic_proof.py'
       - '.github/workflows/d1-tower-three-npc-ps-semantics-wave6.yml'
 
 permissions: {contents: read, actions: read}
