@@ -1,0 +1,246 @@
+name: D1 Crota target static material shader closure v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-target-static-material-shader-v1.yml'
+      - 'tools/d1_static_node_resolve.py'
+      - 'tools/d1_corpus_material_stage_probe.py'
+      - 'tools/d1_shader_dependency_closure_indexed.py'
+      - 'tools/d1_material_render_state.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CHECKPOINT_RUN: '34173809601'
+  TARGET_NODE: '810B197B_info129_xform114'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  close-target:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install exact decoder runtime and recover source checkpoint
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh
+          mkdir -p checkpoint reports runtime packages texture_expanded texture_work texture_out shader shader_work disasm
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          gh run download "$CHECKPOINT_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name d1-export-activity-world-reports --dir checkpoint
+          if [ -f checkpoint/baked_validation.json ]; then
+            cp checkpoint/baked_validation.json reports/baked_validation.json
+          elif [ -f checkpoint/reports/baked_validation.json ]; then
+            cp checkpoint/reports/baked_validation.json reports/baked_validation.json
+          else
+            echo 'authoritative checkpoint missing baked_validation.json' >&2
+            exit 2
+          fi
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d
+          assert actual==(d.get('source') or {}).get('package_list_sha256'),(actual,(d.get('source') or {}).get('package_list_sha256'))
+          print('ARCHIVE_INDEX_ACCEPTED',actual)
+          PY
+
+      - name: Resolve screenshot node to exact source material and geometry
+        run: |
+          set -euo pipefail
+          python tools/d1_static_node_resolve.py \
+            --validation-json reports/baked_validation.json \
+            --node "$TARGET_NODE" -o reports/target_static_node.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/target_static_node.json'))
+          assert d['status']=='D1_STATIC_NODE_SOURCE_RESOLVED',d
+          json.dump({'schema_version':1,'status':'D1_TARGET_MATERIAL_SELECTOR','materials':{d['material_hash']:{'visual':True}}},open('reports/target_material_selector.json','w'),indent=2)
+          print('TARGET',d['requested_node'],'MATERIAL',d['material_hash'],'CELL',d['d1_static_map_data'],'MESH',d['mesh_resources'])
+          PY
+
+      - name: Recover exact material owner family and decode complete stage state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from tools.d1_filehash import package_hex
+          d=json.load(open('reports/target_static_node.json'))
+          pid=package_hex(d['material_hash']).lower()
+          open('reports/target_material_package_id.txt','w').write(pid+'\n')
+          print('TARGET_MATERIAL_PACKAGE_ID',pid)
+          PY
+          pid="$(cat reports/target_material_package_id.txt)"
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id "$pid" --out-dir packages --report reports/target_material_package_recovery.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          snap=(); for f in "${files[@]}"; do snap+=(--snapshot "$f"); done
+          mat="$(python -c "import json;print(json.load(open('reports/target_static_node.json'))['material_hash'])")"
+          python tools/d1_corpus_material_stage_probe.py \
+            "${snap[@]}" --runtime runtime --material "$mat" \
+            -o reports/target_material_stage.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/target_material_stage.json'))
+          assert d['status']=='D1_CORPUS_MATERIAL_STAGE_EXACT',d['violations']
+          r=d['materials'][0];s=r['stage']
+          print('MATERIAL_STAGE_EXACT',r['material'],'VS',s['vertex_shader'],'PS',s['pixel_shader'],'STATE',s['material_state4_hex'],'PS_TEXTURES',[(x['texture_index'],x['texture']) for x in s['ps_textures']['items']])
+          json.dump({'pixel_shader_frequency':{s['pixel_shader']:1}},open('reports/target_shader_manifest.json','w'),indent=2)
+          open('reports/target_vs.txt','w').write(s['vertex_shader']+'\n')
+          open('reports/target_ps.txt','w').write(s['pixel_shader']+'\n')
+          PY
+
+      - name: Close exact shader header and native payload package edges
+        run: |
+          set -euo pipefail
+          vs="$(cat reports/target_vs.txt)"; ps="$(cat reports/target_ps.txt)"
+          python tools/d1_shader_dependency_closure_indexed.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --runtime runtime --package-dir packages \
+            --shader "$vs" --shader "$ps" \
+            --work-dir shader_work --report reports/target_shader_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/target_shader_dependency_closure.json'))
+          assert d['status']=='D1_INDEXED_SHADER_DEPENDENCY_CLOSURE_COMPLETE',d['violations']
+          print('SHADER_DEPENDENCIES_CLOSED',[(x['shader'],x['native_payload_hash'],x['native_payload_package_id']) for x in d['shaders']])
+          PY
+
+      - name: Close all exact target material texture resources
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/target_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir texture_expanded --work-dir texture_work \
+            --out texture_out --report reports/target_texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py \
+            texture_out/material_texture_manifest.json -o reports/target_texture_roles.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/target_texture_dependency_closure.json'))
+          r=json.load(open('reports/target_texture_roles.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          print('TEXTURE_CLOSURE',c['final_manifest_summary'])
+          print('ROLE_INVENTORY_STATUS',r.get('status'),'MATERIALS',len(r.get('materials') or {}))
+          PY
+
+      - name: Extract exact bounded native GCN for target VS and PS
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages texture_expanded -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          snap=(); for f in "${files[@]}"; do snap+=(--snapshot "$f"); done
+          vs="$(cat reports/target_vs.txt)"; ps="$(cat reports/target_ps.txt)"
+          python tools/d1_world_shader_extract.py \
+            "${snap[@]}" --runtime runtime --manifest reports/target_shader_manifest.json \
+            --shader "$vs" --shader "$ps" \
+            --out-dir shader --report reports/target_shader_extract.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/target_shader_extract.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
+          print('GCN_EXACT',[(x['shader'],x['native_shader'],x['gcn_bytes'],x['gcn_sha256']) for x in d['shaders']])
+          PY
+
+      - name: Disassemble pinned GFX700 target shaders and map image usage
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          for f in shader/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"
+            test ! -s "disasm/${b}.stderr"
+            grep -q 's_endpgm' "disasm/${b}.s"
+          done
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report reports/target_shader_extract.json \
+            --disasm-dir disasm --out reports/target_gcn_image_usage.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/target_gcn_image_usage.json'))
+          assert d['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT',d
+          print('IMAGE_USAGE_EXACT',[(x['shader'],x['image_instruction_count'],x['used_texture_indices'],x['image_opcodes']) for x in d['shaders']])
+          PY
+
+      - name: Emit exact target material decoder frontier
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,glob
+          node=json.load(open('reports/target_static_node.json'))
+          stage=json.load(open('reports/target_material_stage.json'))['materials'][0]
+          tex=json.load(open('reports/target_texture_dependency_closure.json'))
+          roles=json.load(open('reports/target_texture_roles.json'))
+          sh=json.load(open('reports/target_shader_extract.json'))
+          usage=json.load(open('reports/target_gcn_image_usage.json'))
+          s=stage['stage']
+          out={
+            'schema_version':1,
+            'status':'D1_CROTA_TARGET_STATIC_MATERIAL_DECODER_FRONTIER_EXACT',
+            'node':node,
+            'material':stage['material'],
+            'material_payload_sha256':stage['payload_sha256'],
+            'material_state4_hex':s['material_state4_hex'],
+            'vertex_shader':s['vertex_shader'],
+            'pixel_shader':s['pixel_shader'],
+            'vs_texture_bindings':s['vs_textures']['items'],
+            'ps_texture_bindings':s['ps_textures']['items'],
+            'vs_tfx_bytecode':s['vs_tfx_bytecode'],
+            'ps_tfx_bytecode':s['ps_tfx_bytecode'],
+            'vs_constants':s['vs_tfx_bytecode_constants'],
+            'ps_constants':s['ps_tfx_bytecode_constants'],
+            'vs_samplers':s['vs_samplers'],
+            'ps_samplers':s['ps_samplers'],
+            'vs_cbuffers':s['vs_cbuffers'],
+            'ps_cbuffers':s['ps_cbuffers'],
+            'texture_closure':tex['final_manifest_summary'],
+            'texture_roles_status':roles.get('status'),
+            'native_shaders':[{'shader':x['shader'],'native_shader':x['native_shader'],'gcn_bytes':x['gcn_bytes'],'gcn_sha256':x['gcn_sha256']} for x in sh['shaders']],
+            'image_usage':[{'shader':x['shader'],'image_instruction_count':x['image_instruction_count'],'used_texture_indices':x['used_texture_indices'],'image_opcodes':x['image_opcodes']} for x in usage['shaders']],
+            'disassembly_files':sorted(glob.glob('disasm/*.s')),
+            'proof_boundary':'Exact source node/material/mesh identity, complete material stage arrays, texture dependency closure, native bounded GCN and image resource usage. Full instruction dataflow lifting into a portable/Rust shader remains the next semantic step; no appearance heuristic is asserted here.'
+          }
+          json.dump(out,open('reports/TARGET_DECODER_FRONTIER.json','w'),indent=2)
+          print(json.dumps({k:out[k] for k in ('status','material','material_state4_hex','vertex_shader','pixel_shader','ps_texture_bindings','image_usage','proof_boundary')},indent=2))
+          PY
+          cp disasm/*.s reports/
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-TARGET-STATIC-MATERIAL-SHADER-V1
+          path: reports/
+          retention-days: 30
+          compression-level: 6
