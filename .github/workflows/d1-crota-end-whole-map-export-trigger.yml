@@ -19,7 +19,7 @@ jobs:
       - name: Dispatch generic whole-Activity world exporter for Crota's End
         run: |
           set -euo pipefail
-          # Redispatch after switching the exporter to the universal Activity closure.
+          # Redispatch after adding the exact baked-static triangle aggregation field.
           gh workflow run d1-export-activity-world.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
