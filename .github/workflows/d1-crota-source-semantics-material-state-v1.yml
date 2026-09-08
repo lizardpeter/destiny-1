@@ -1,0 +1,176 @@
+name: D1 Crota source semantics and material state v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-source-semantics-material-state-v1.yml'
+      - 'tools/d1_material_render_state.py'
+      - 'tools/d1_material_render_state_census.py'
+      - 'tools/d1_glb_material_selector.py'
+      - 'tools/d1_gltf_source_semantics_adapter.py'
+      - 'notes/D1_SOURCE_SEMANTICS_RENDERER_CONTRACT.md'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  BASE_RELEASE_TAG: 'd1-activity-810b0002-static-common-map-visual-entities-sky-terrain-r1'
+  BASE_GLB: 'D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_TERRAIN.glb'
+  BASE_BYTES: '1106281292'
+  BASE_SHA256: 'b68ab2692f8af6bd6a31a3305c34ef206e602f313ac4c067135f26b92af5fc02'
+
+jobs:
+  source-semantics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install decoder dependencies and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh
+          mkdir -p base runtime packages reports final
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover and verify latest Crota terrain world
+        run: |
+          set -euo pipefail
+          gh release download "$BASE_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$BASE_GLB" --dir base
+          python - <<'PY'
+          import hashlib, os
+          p='base/'+os.environ['BASE_GLB']
+          b=os.path.getsize(p)
+          h=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert b==int(os.environ['BASE_BYTES']),(b,os.environ['BASE_BYTES'])
+          assert h==os.environ['BASE_SHA256'],(h,os.environ['BASE_SHA256'])
+          print('BASE_CROTA_WORLD_VERIFIED',b,h)
+          PY
+
+      - name: Extract exact D1 material population
+        run: |
+          set -euo pipefail
+          python tools/d1_glb_material_selector.py \
+            --input-glb "base/$BASE_GLB" \
+            -o reports/material_selector.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/material_selector.json'))
+          assert d['status']=='D1_GLB_MATERIAL_SELECTOR_COMPLETE',d
+          assert d['d1_material_count']>0,d
+          print('D1_MATERIAL_SELECTOR',d['d1_material_count'],'unique hashes from',d['gltf_material_count'],'glTF materials')
+          PY
+
+      - name: Recover current indexed retail package families for selected materials
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d.get('status')
+          assert actual==(d.get('source') or {}).get('package_list_sha256'),(actual,(d.get('source') or {}).get('package_list_sha256'))
+          print('ARCHIVE_INDEX_ACCEPTED',actual)
+          PY
+          python - <<'PY'
+          import json
+          from tools.d1_filehash import package_hex
+          d=json.load(open('reports/material_selector.json'))
+          ids=sorted({package_hex(h).lower() for h in d['materials']})
+          assert ids
+          open('reports/material_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          print('MATERIAL_OWNER_PACKAGE_IDS',len(ids))
+          PY
+          args=(); while read -r p; do args+=(--package-id "$p"); done < reports/material_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            "${args[@]}" --out-dir packages \
+            --report reports/material_package_recovery.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/material_package_recovery.json'))
+          assert d['status']=='D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE',d
+          print('MATERIAL_PACKAGES_RECOVERED',d['family_count'],d['member_count'])
+          PY
+
+      - name: Decode exact destination-neutral material render state
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          test "${#files[@]}" -gt 0
+          snap=(); for f in "${files[@]}"; do snap+=(--snapshot "$f"); done
+          python tools/d1_material_render_state_census.py \
+            "${snap[@]}" --runtime runtime \
+            --visual-json reports/material_selector.json \
+            -o reports/material_render_state_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/material_render_state_census.json'))
+          assert d['status']=='D1_MATERIAL_RENDER_STATE_CENSUS_COMPLETE',d['violations']
+          assert d['selected_material_count']==d['resolved_material_count'],d
+          print('MATERIAL_RENDER_STATE_CLOSED',d['resolved_material_count'],'materials',d['opaque_material_count'],'opaque',d['transparent_material_count'],'transparent',d['known_0x88_blend_material_count'],'known-state8')
+          PY
+
+      - name: Apply loss-preserving source semantics to Blender interchange
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_source_semantics_adapter.py \
+            --input-glb "base/$BASE_GLB" \
+            --render-state reports/material_render_state_census.json \
+            --out final/D1_ACTIVITY_810B0002_WORLD_TERRAIN_SOURCE_SEMANTICS.glb \
+            --report reports/source_semantics_adapter.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/source_semantics_adapter.json'))
+          assert d['status']=='D1_GLTF_SOURCE_SEMANTICS_ADAPTER_COMPLETE',d
+          assert d['bin_byte_identical'] is True,d
+          assert d['remaining_color0_primitive_count']==0,d
+          assert d['d1_material_count']>0,d
+          print('SOURCE_SEMANTICS_ADAPTED',d['demoted_color0_primitive_count'],'COLOR_0 primitives -> _D1_COLOR;',d['blend_material_count'],'BLEND materials')
+          PY
+
+      - name: Publish durable source-semantics checkpoint
+        run: |
+          set -euo pipefail
+          tag='d1-activity-810b0002-world-terrain-source-semantics-r1'
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title 'D1 Crota world terrain source-semantics r1' \
+              --notes 'Loss-preserving Crota Blender/Rust interchange checkpoint. D1 serialized RGBA shader inputs are demoted from generic glTF COLOR_0 to _D1_COLOR, preserving accessors and BIN bytes exactly. Material +0x20 render state is decoded from retail payloads and exposed as portable OPAQUE/BLEND classification while unknown native blend equations and shader alpha composition remain explicit proof fronts.'
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" \
+            final/D1_ACTIVITY_810B0002_WORLD_TERRAIN_SOURCE_SEMANTICS.glb \
+            reports/source_semantics_adapter.json \
+            reports/material_render_state_census.json \
+            reports/material_selector.json \
+            reports/material_package_recovery.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-SOURCE-SEMANTICS-MATERIAL-STATE-V1-REPORTS
+          path: reports/
+          retention-days: 30
+          compression-level: 6
