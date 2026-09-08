@@ -21,5 +21,7 @@ jobs:
         run: |
           set -euo pipefail
           gh run view "$TARGET_RUN" --repo "$GITHUB_REPOSITORY" --log > run.log
-          echo '=== MAP LAYER / RESOURCE CLASS CENSUS ==='
-          grep -n -E 'resource_class|resource class|class_counts|MAP_DATA_LAYER|STATIC_TARGET_PLAN|activity_tables|activity_rows|static_tables|static_rows|nonmatching|entry_count|map_data_table_count' run.log | head -n 500 || true
+          echo '=== EXACT ACTIVITY RESOURCE CLASS COUNT BLOCK ==='
+          sed -n '1118,1162p' run.log
+          echo '=== STATIC SUBSET COUNT BLOCK ==='
+          sed -n '1338,1358p' run.log
