@@ -1,0 +1,98 @@
+name: D1 GCN frontier 342-399 diagnostic v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-frontier-342-399-diagnostic-v1.yml'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact source checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input/source out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_shader_extract.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+
+      - name: Rebuild exact IR and provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+
+      - name: Emit exact frontier slice
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          ir=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
+          cb=json.load(open('out/PS_808EE505_CBUFFER_PROVENANCE.json'))
+          assert ir['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE' and ir['instruction_count']==456
+          assert cb['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not cb['violations']
+          rows=[]
+          for x in ir['instructions'][330:404]:
+              rows.append({
+                  'index':x['index'],'address_hex':x['address_hex'],'opcode':x['opcode'],
+                  'operands':x['operands'],'defs':x.get('defs',[]),'uses':x.get('uses',[]),
+                  'image':x.get('image')
+              })
+          by={int(x['instruction']):x for x in cb['loads'] if 330<=int(x['instruction'])<=403}
+          payload={
+              'shader':'808EE505','instruction_range':[330,403],
+              'rows':rows,'cbuffer_loads':by,
+              'image_rows':[x for x in rows if x.get('image') is not None],
+          }
+          open('out/PS_808EE505_FRONTIER_330_403.json','w').write(json.dumps(payload,indent=2)+'\n')
+          print('FRONTIER_ROWS_BEGIN')
+          for x in rows:
+              print(f"{x['index']:03d} {x['opcode']:<24} {', '.join(x['operands'])}")
+              if x.get('image') is not None:
+                  print('    IMAGE',json.dumps(x['image'],sort_keys=True))
+              if x['index'] in by:
+                  q=by[x['index']]
+                  print('    CBUFFER',q['resolution'],q.get('material_values'))
+          print('FRONTIER_ROWS_END')
+          print('IMAGE_INDICES',[x['index'] for x in rows if x.get('image') is not None])
+          print('CBUFFER_INDICES',sorted(by))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-FRONTIER-342-399-DIAGNOSTIC-V1
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
