@@ -1,0 +1,27 @@
+name: D1 Crota's End whole map export trigger
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-end-whole-map-export-trigger.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch generic whole-Activity world exporter for Crota's End
+        run: |
+          set -euo pipefail
+          gh workflow run d1-export-activity-world.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f activity=810B0002 \
+            -f publish=false
+          echo 'DISPATCHED_ACTIVITY=810B0002'
