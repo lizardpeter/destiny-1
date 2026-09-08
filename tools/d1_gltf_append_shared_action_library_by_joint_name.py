@@ -118,13 +118,18 @@ def main() -> int:
     before_acc=copy.deepcopy(tgt.get('accessors',[])); before_bv=copy.deepcopy(tgt.get('bufferViews',[])); before_anim=copy.deepcopy(tgt.get('animations',[]))
     before_bin_sha=hbytes(tbin); before_len=len(tbin)
 
-    doc=copy.deepcopy(tgt); bin_data=tbin
+    doc=copy.deepcopy(tgt)
+    # Action libraries contain tens of thousands of tiny bufferViews. Building the
+    # BIN with immutable ``bytes +=`` makes assembly quadratic because the entire
+    # growing buffer is recopied for every view. A bytearray preserves byte-for-byte
+    # output while making each append amortized O(1).
+    bin_data=bytearray(tbin)
     bv_map={}; copied_bv_bytes=0
     for old in used_bv:
         bv=copy.deepcopy(src_bv[old]); off=int(bv.get('byteOffset',0)); ln=int(bv['byteLength'])
         aligned=(len(bin_data)+3)&~3
-        if aligned!=len(bin_data): bin_data+=b'\x00'*(aligned-len(bin_data))
-        new_off=len(bin_data); payload=sbin[off:off+ln]; bin_data+=payload; copied_bv_bytes+=len(payload)
+        if aligned!=len(bin_data): bin_data.extend(b'\x00'*(aligned-len(bin_data)))
+        new_off=len(bin_data); payload=sbin[off:off+ln]; bin_data.extend(payload); copied_bv_bytes+=len(payload)
         bv['buffer']=0; bv['byteOffset']=new_off
         new_i=len(doc.setdefault('bufferViews',[])); doc['bufferViews'].append(bv); bv_map[old]=new_i
 
@@ -152,7 +157,7 @@ def main() -> int:
         doc.setdefault('animations',[]).append(anim)
         appended.append(str(anim.get('name') or f'animation_{ai}'))
 
-    write_glb(a.out,doc,bin_data)
+    write_glb(a.out,doc,bytes(bin_data))
     chk,cbin=read_glb(a.out)
     post_viol=[]
     if cbin[:before_len]!=tbin: post_viol.append('target_bin_not_exact_prefix')
