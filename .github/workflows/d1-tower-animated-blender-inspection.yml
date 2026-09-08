@@ -1,0 +1,183 @@
+name: D1 Tower animated Blender inspection
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 Tower actor shared action family compatibility']
+    types: [completed]
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+  LOCATION_VISUAL_ARTIFACT_ID: '10036642428'
+  LOCATION_VISUAL_ARTIFACT_SHA256: '1434b66b0c61ea0dc9045615014fa9085066d2f1e6b8ef5803fb36082e4943dc'
+  REQUIRED_ACTION_WORKFLOW_HEAD_SHA: 'a9b9554a1f9b2da9a8c714df2fa7d350ba2c0809'
+
+jobs:
+  actor_inspection:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact visual, placement and action-family artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p input/textured input/location input/actions out reports
+          pull() {
+            id="$1"; sha="$2"; zip="$3"; dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "${sha}  ${zip}" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          pull "$TEXTURED_ARTIFACT_ID" "$TEXTURED_ARTIFACT_SHA256" input/textured.zip input/textured
+          pull "$LOCATION_VISUAL_ARTIFACT_ID" "$LOCATION_VISUAL_ARTIFACT_SHA256" input/location.zip input/location
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            action_run='${{ github.event.workflow_run.id }}'; action_sha='${{ github.event.workflow_run.head_sha }}'
+          else
+            action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+            action_sha="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json headSha --jq '.[0].headSha')"
+          fi
+          test -n "$action_run" && test "$action_sha" = "$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"
+          gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
+          test "$(find input/textured/models -maxdepth 1 -name '*_TEXTURED.glb' -type f | wc -l)" = 30
+          test "$(find input/actions/models -maxdepth 1 -name '*_ALL_ACTIONS_NATIVE_D1.glb' -type f | wc -l)" = 6
+      - name: Build exact assembly manifest
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_actor_production_assembly_manifest.py \
+            --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json \
+            --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json \
+            --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json \
+            -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json'))
+          assert d['status']=='D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST_COMPLETE' and not d['violations'],d
+          assert (d['used_visual_variant_count'],d['shared_action_library_count'],d['placement_alternative_count'])==(29,6,547),d
+          PY
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"
+          echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
+      - name: Build actor-only animated inspection blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background --factory-startup \
+            --python tools/d1_blender_build_tower_animated_inspection_v2.py -- \
+            --assembly-manifest reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json \
+            --textured-dir input/textured/models --action-dir input/actions/models \
+            --out-blend out/D1_TOWER_ANIMATED_ACTORS_INSPECTION.blend \
+            --report reports/D1_TOWER_ANIMATED_ACTORS_INSPECTION.json \
+            | tee reports/blender_actor_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_ANIMATED_ACTORS_INSPECTION.json'))
+          assert d['status']=='D1_TOWER_ANIMATED_BLENDER_INSPECTION_V2_COMPLETE',d
+          assert d['environment'] is None and d['actor_asset_variant_count']==29,d
+          assert d['actor_model_count']==13 and d['shared_action_family_count']==6,d
+          assert d['scenario_collection_count']==8 and d['placement_alternative_instance_count']==547,d
+          assert d['runtime_active_scenario_selected'] is False and d['runtime_actor_animation_state_selected'] is False,d
+          print('ACTOR_BLEND_GREEN',d['blend_bytes'],d['blend_sha256'])
+          PY
+          cp reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json out/
+          cp reports/D1_TOWER_ANIMATED_ACTORS_INSPECTION.json out/
+          cp reports/blender_version.txt out/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ANIMATED-ACTORS-BLENDER-INSPECTION
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0
+
+  full_tower_inspection:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact visual, placement and action-family artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p input/textured input/location input/actions environment out reports
+          pull() {
+            id="$1"; sha="$2"; zip="$3"; dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "${sha}  ${zip}" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          pull "$TEXTURED_ARTIFACT_ID" "$TEXTURED_ARTIFACT_SHA256" input/textured.zip input/textured
+          pull "$LOCATION_VISUAL_ARTIFACT_ID" "$LOCATION_VISUAL_ARTIFACT_SHA256" input/location.zip input/location
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            action_run='${{ github.event.workflow_run.id }}'; action_sha='${{ github.event.workflow_run.head_sha }}'
+          else
+            action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+            action_sha="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json headSha --jq '.[0].headSha')"
+          fi
+          test -n "$action_run" && test "$action_sha" = "$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"
+          gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
+          gh release download d1-tower-baked-common-textured-r7-card-composition \
+            -p D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb -D environment --clobber
+          echo 'b131e10ef705e40c3e079b756354d1d2477ebdb2ab0b6a75e67ce75fdb060b57  environment/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb' | sha256sum --check --strict
+      - name: Build exact assembly manifest
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_actor_production_assembly_manifest.py \
+            --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json \
+            --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json \
+            --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json \
+            -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"
+          echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
+      - name: Build full card-corrected Tower plus animated actor inspection blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background --factory-startup \
+            --python tools/d1_blender_build_tower_animated_inspection_v2.py -- \
+            --assembly-manifest reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json \
+            --textured-dir input/textured/models --action-dir input/actions/models \
+            --environment-glb environment/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb \
+            --out-blend out/D1_TOWER_FULL_ANIMATED_INSPECTION.blend \
+            --report reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json \
+            | tee reports/blender_full_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json'))
+          assert d['status']=='D1_TOWER_ANIMATED_BLENDER_INSPECTION_V2_COMPLETE',d
+          assert d['environment'] and d['environment']['sha256']=='b131e10ef705e40c3e079b756354d1d2477ebdb2ab0b6a75e67ce75fdb060b57',d
+          assert d['actor_asset_variant_count']==29 and d['shared_action_family_count']==6,d
+          assert d['scenario_collection_count']==8 and d['placement_alternative_instance_count']==547,d
+          print('FULL_TOWER_BLEND_GREEN',d['blend_bytes'],d['blend_sha256'])
+          PY
+          cp reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json out/
+          cp reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json out/
+          cp reports/blender_version.txt out/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-FULL-ANIMATED-BLENDER-INSPECTION
+          path: out/
+          retention-days: 90
+          if-no-files-found: warn
+          compression-level: 0
