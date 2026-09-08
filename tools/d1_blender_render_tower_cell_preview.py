@@ -39,7 +39,9 @@ def main():
     x0,x1=pct(xs,.015),pct(xs,.985); y0,y1=pct(ys,.015),pct(ys,.985); z0,z1=pct(zs,.03),pct(zs,.97)
     center=Vector(((x0+x1)/2,(y0+y1)/2,pct(zs,.45))); span=max(x1-x0,y1-y0,8.0); zspan=max(z1-z0,3.0)
     s=bpy.context.scene; s.render.engine='BLENDER_WORKBENCH'; s.render.resolution_x=a.width; s.render.resolution_y=a.height; s.render.resolution_percentage=100; s.render.image_settings.file_format='PNG'; s.render.film_transparent=False
-    sh=s.display.shading; sh.light='STUDIO'; sh.show_shadows=True; sh.show_cavity=True; sh.cavity_type='BOTH'; sh.show_specular_highlight=True; sh.background_type='WORLD'; sh.show_outline=False
+    sh=s.display.shading; sh.light='STUDIO'; sh.show_shadows=True; sh.show_cavity=True; sh.cavity_type='BOTH'; sh.show_specular_highlight=True; sh.background_type='WORLD'
+    try: sh.show_outline=False
+    except Exception: pass
     try: sh.color_type='TEXTURE'
     except Exception: sh.color_type='MATERIAL'
     try: sh.studiolight_rotate_z=.55
@@ -52,5 +54,3 @@ def main():
     rep={'status':'D1_TOWER_CELL_RENDER_PREVIEW_COMPLETE','label':a.label,'source_glb':a.glb.name,'blender_version':bpy.app.version_string,'render_engine':s.render.engine,'workbench_color_type':s.display.shading.color_type,'mesh_object_count':len(meshes),'material_count':len(bpy.data.materials),'image_count':len(bpy.data.images),'center':[float(x) for x in center],'span':float(span),'zspan':float(zspan),'bounds_robust':{'x015':x0,'x985':x1,'y015':y0,'y985':y1,'z03':z0,'z97':z1},'shots':shots,'policy':'Fast Blender Workbench inspection view of one exact compact Tower baked-static cell. Camera/studio lighting are diagnostic, not retail.'}
     rp=a.out_dir/f'{a.label}_report.json'; rp.write_text(json.dumps(rep,indent=2)+'\n'); print(json.dumps(rep,indent=2))
 if __name__=='__main__': main()
-
-# Workflow trigger touch: cell renderer is now the preferred hosted-runner preview path.
