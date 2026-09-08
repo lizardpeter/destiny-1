@@ -4,8 +4,8 @@
 Scope is intentionally bounded: one saveexec/complement/restore region already marked
 EXACT_SIMPLE_LANE_MERGE by d1_gcn_exec_region_ir. The two arms are evaluated from the
 same incoming register state and joined with explicit SELECT nodes. Supported float
-arithmetic, exact image samples, source-proven material cbuffer scalars, EXP2 and
-floating clamp are lifted. Unknown incoming values remain named INPUT nodes.
+arithmetic, exact image samples, source-proven material cbuffer scalars, and pinned
+VOP semantics are lifted. Unknown incoming values remain named INPUT nodes.
 
 Loops, nested EXEC regions, unsupported instructions and guessed material meanings are
 rejected rather than silently approximated.
@@ -45,6 +45,7 @@ def main():
         assert cb['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not cb['violations'] and cb['shader']==ir['shader']
         assert vs['status']=='D1_GCN_VOP_SEMANTICS_SOURCE_PROVEN' and not vs['violations']
         assert vs['semantics']['v_exp_f32']['operation']=='EXP2' and vs['semantics']['float_clamp']['operation']=='CLAMP_0_1'
+        assert vs['semantics']['v_rcp_f32']['operation']=='RCP'
         region=next((r for r in er['regions'] if int(r['region_id'])==a.region_id),None);assert region is not None
         assert region['promotion']=='EXACT_SIMPLE_LANE_MERGE' and not region['nested_saveexec_instructions'] and not region['loop_intersections']
         assert region['then_range'] and region['else_range'],'IF_THEN_ELSE region required'
@@ -63,6 +64,8 @@ def main():
                 except:n=dag.inp(base)
             if neg:n=dag.node('NEG',[n])
             return n,cl
+        def maybe_clamp(n,flags):
+            return dag.node('CLAMP_0_1',[n],source_semantic='FLOAT_CLAMP') if any(flags) else n
         def coord_nodes(st,t):return [get(st,r) for r in expand_range(t)]
         def eval_arm(lo,hi):
             st=dict(entry)
@@ -70,7 +73,7 @@ def main():
                 op=x['opcode'];o=x['operands'];idx=x['index']
                 if idx in cbi:
                     r=cbi[idx];vals=r['material_values'];dregs=r['destination_sgprs'];assert len(vals)==len(dregs)
-                    for dr,mv in zip(dregs,vals):st[dr]=dag.const(mv['value'],source='MATERIAL_PS_B0',scalar_index=r['offset_dwords']+dregs.index(dr),vec4_index=mv['vec4_index'],component=mv['component'],raw_hex=mv['raw_hex'])
+                    for di,(dr,mv) in enumerate(zip(dregs,vals)):st[dr]=dag.const(mv['value'],source='MATERIAL_PS_B0',scalar_index=r['offset_dwords']+di,vec4_index=mv['vec4_index'],component=mv['component'],raw_hex=mv['raw_hex'])
                     continue
                 if 'image' in x:
                     z=x['image'];chs=str(z.get('dmask_channels') or '')
@@ -92,13 +95,15 @@ def main():
                 elif op=='v_subrev_f32':st[dst]=dag.node('SUB',[source(st,o[2])[0],source(st,o[1])[0]])
                 elif op=='v_max_f32':st[dst]=dag.node('MAX',[source(st,o[1])[0],source(st,o[2])[0]])
                 elif op=='v_mac_f32':st[dst]=dag.node('ADD',[get(st,dst),dag.node('MUL',[source(st,o[1])[0],source(st,o[2])[0]])])
+                elif op=='v_mad_f32':
+                    if vs['semantics'].get('v_mad_f32',{}).get('operation')!='MAD':raise ValueError(f'{idx}: v_mad_f32 source semantics not pinned')
+                    a0,c0=source(st,o[1]);a1,c1=source(st,o[2]);a2,c2=source(st,o[3]);n=dag.node('MAD',[a0,a1,a2],source_semantic='V_MAD_F32');st[dst]=maybe_clamp(n,[c0,c1,c2])
+                elif op=='v_rcp_f32':
+                    src,cl=source(st,o[1]);n=dag.node('RCP',[src],source_semantic='V_RCP_F32');st[dst]=maybe_clamp(n,[cl])
                 elif op=='v_exp_f32':
-                    src,cl=source(st,o[1]);n=dag.node('EXP2',[src],source_semantic='V_EXP_F32')
-                    if cl:n=dag.node('CLAMP_0_1',[n],source_semantic='FLOAT_CLAMP')
-                    st[dst]=n
+                    src,cl=source(st,o[1]);n=dag.node('EXP2',[src],source_semantic='V_EXP_F32');st[dst]=maybe_clamp(n,[cl])
                 else:unsupported.append({'instruction':idx,'opcode':op,'operands':o})
             return st
-        # Seed only when used; both arms then see the same INPUT node ids through DAG caching.
         then=eval_arm(*region['then_range']);els=eval_arm(*region['else_range'])
         if unsupported:raise ValueError(f'unsupported instructions in simple region: {unsupported}')
         pred=region['predicate'];lhs=source(entry,pred['lhs'])[0];rhs=source(entry,pred['rhs'])[0]
@@ -109,12 +114,8 @@ def main():
         pats=region.get('promoted_patterns') or [];factor_roots=[]
         for p in pats:
             if p['kind']=='CONDITIONAL_MULTIPLY_OR_PASSTHROUGH':factor_roots.append({'register':p['factor_register'],'node':get(then,p['factor_register'])})
-        payload={'shader':ir['shader'],'region_id':region['region_id'],'predicate_node':pnode,'predicate':pred,'node_count':len(dag.nodes),'nodes':dag.nodes,
-                 'sample_node_ids':sorted(set(sample_nodes)),'sample_count':len(sample_nodes),'lane_merge_roots':merges,'promoted_factor_roots':factor_roots,
-                 'then_range':region['then_range'],'else_range':region['else_range'],'source_semantics':vs['semantics'],
-                 'semantic_boundary':{'incoming_registers':'EXPLICIT_INPUT_NODES','simple_region_arithmetic':'EXACT','image_coordinates':'EXACT_REGISTER_EXPRESSION_OR_INPUT','loop_values':'OUT_OF_SCOPE','nested_exec':'OUT_OF_SCOPE','material_roles':'UNASSIGNED'}}
+        payload={'shader':ir['shader'],'region_id':region['region_id'],'predicate_node':pnode,'predicate':pred,'node_count':len(dag.nodes),'nodes':dag.nodes,'sample_node_ids':sorted(set(sample_nodes)),'sample_count':len(sample_nodes),'lane_merge_roots':merges,'promoted_factor_roots':factor_roots,'then_range':region['then_range'],'else_range':region['else_range'],'source_semantics':vs['semantics'],'semantic_boundary':{'incoming_registers':'EXPLICIT_INPUT_NODES','simple_region_arithmetic':'EXACT','image_coordinates':'EXACT_REGISTER_EXPRESSION_OR_INPUT','loop_values':'OUT_OF_SCOPE','nested_exec':'OUT_OF_SCOPE','material_roles':'UNASSIGNED'}}
     except Exception as e:viol.append(repr(e))
-    out={'schema_version':1,'status':'D1_GCN_SIMPLE_REGION_EXPRESSION_DAG_EXACT' if payload and not viol else 'D1_GCN_SIMPLE_REGION_EXPRESSION_DAG_PARTIAL','expression':payload,'violations':viol,
-         'policy':'Only an EXEC region already proven simple is lifted. Unsupported instructions, loops and nested EXEC fail closed. Samples keep native t#/sampler provenance; incoming values stay symbolic. EXP2/clamp semantics must come from the pinned ISA source proof.'}
+    out={'schema_version':2,'status':'D1_GCN_SIMPLE_REGION_EXPRESSION_DAG_EXACT' if payload and not viol else 'D1_GCN_SIMPLE_REGION_EXPRESSION_DAG_PARTIAL','expression':payload,'violations':viol,'policy':'Only an EXEC region already proven simple is lifted. Unsupported instructions, loops and nested EXEC fail closed. Samples keep native t#/sampler provenance; incoming values stay symbolic. Arithmetic semantics that are not elementary are required from pinned ISA source proof.'}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({'status':out['status'],'shader':payload.get('shader') if payload else None,'region_id':payload.get('region_id') if payload else None,'node_count':payload.get('node_count') if payload else None,'sample_count':payload.get('sample_count') if payload else None,'lane_merge_roots':payload.get('lane_merge_roots') if payload else None,'promoted_factor_roots':payload.get('promoted_factor_roots') if payload else None,'violations':viol},indent=2));return 0 if not viol else 2
 if __name__=='__main__':raise SystemExit(main())
