@@ -1,0 +1,100 @@
+name: D1 Tower actor shared action family compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-actor-shared-action-family-compatibility.yml'
+      - 'tools/d1_tower_actor_action_family_compatibility.py'
+      - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
+      - 'tools/d1_gltf_skin_bind_identity_probe.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  ACTION_ARTIFACT_ID: '10003117487'
+  ACTION_ARTIFACT_SHA256: '7b2a66cc3da6461ebede90187c79d431d0bb9dc9c92513f44ea49d89289f99e1'
+  SKINNED_ARTIFACT_ID: '10001481050'
+  SKINNED_ARTIFACT_SHA256: '6390225a8c0f5ef9c092692ec7b9cf2fff6e5dcb8c3cbb32fb3859564b27a43d'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: '${{ github.token }}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python -m pip install -q numpy scipy
+
+      - name: Recover exact family-action and 13-model skin checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/actions input/skinned out/models out/reports/bind out/reports/basis
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ACTION_ARTIFACT_ID}/zip" -o input/actions.zip
+          echo "${ACTION_ARTIFACT_SHA256}  input/actions.zip" | sha256sum --check --strict
+          unzip -q input/actions.zip -d input/actions
+          test "$(find input/actions/models -maxdepth 1 -name '*_ALL_ACTIONS.glb' -type f | wc -l)" = 6
+          test -f input/actions/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SKINNED_ARTIFACT_ID}/zip" -o input/skinned.zip
+          echo "${SKINNED_ARTIFACT_SHA256}  input/skinned.zip" | sha256sum --check --strict
+          unzip -q input/skinned.zip -d input/skinned
+          test "$(find input/skinned -maxdepth 1 -name '*_SKINNED.glb' -type f | wc -l)" = 13
+
+      - name: Prove exact family compatibility for all 13 models
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_tower_actor_action_family_compatibility.py
+          python tools/d1_tower_actor_action_family_compatibility.py \
+            --family-summary input/actions/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json \
+            --skinned-dir input/skinned --action-dir input/actions/models \
+            -o out/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json | tee out/reports/compatibility_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json'))
+          assert d['status']=='D1_TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY_CLOSED',d['violations']
+          assert d['actor_model_count']==13 and d['action_family_count']==6,d
+          assert all(x['shared_action_library_assignable_by_joint_name'] for x in d['models']),d
+          assert d['gates']['runtime_actor_animation_state_selected'] is False,d
+          print('ACTION_FAMILY_COMPATIBILITY_GREEN',d['actor_model_count'],d['action_family_count'])
+          PY
+
+      - name: Restore the six shared action libraries to native D1 basis
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_restore_native_tiger_skin_animation_basis.py tools/d1_gltf_skin_bind_identity_probe.py
+          for src in input/actions/models/*_ALL_ACTIONS.glb; do
+            stem="$(basename "$src" _ALL_ACTIONS.glb)"
+            python tools/d1_gltf_restore_native_tiger_skin_animation_basis.py "$src" \
+              --out "out/models/${stem}_ALL_ACTIONS_NATIVE_D1.glb" \
+              --report "out/reports/basis/${stem}.json"
+            python tools/d1_gltf_skin_bind_identity_probe.py "out/models/${stem}_ALL_ACTIONS_NATIVE_D1.glb" \
+              --max-error 2e-5 -o "out/reports/bind/${stem}.json"
+          done
+          python - <<'PY'
+          import glob,json
+          fs=sorted(glob.glob('out/models/*_ALL_ACTIONS_NATIVE_D1.glb')); assert len(fs)==6,fs
+          bs=sorted(glob.glob('out/reports/bind/*.json')); assert len(bs)==6,bs
+          for p in bs:
+              d=json.load(open(p)); assert d['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and d['max_observed_error']<=2e-5,d
+          print('NATIVE_SHARED_ACTION_LIBRARIES_GREEN',len(fs),'bind_error_max',max(json.load(open(p))['max_observed_error'] for p in bs))
+          PY
+
+      - name: Preserve source family evidence and hashes
+        run: |
+          set -euo pipefail
+          cp input/actions/reports/TOWER_SPAWNED_ACTOR_FAMILY_ANIMATION_LIBRARIES.json out/reports/
+          cp input/actions/reports/TOWER_SPAWNED_ACTOR_ANIMATION_OPTIONS_V2.json out/reports/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
