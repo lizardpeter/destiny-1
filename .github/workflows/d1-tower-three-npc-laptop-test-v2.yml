@@ -1,0 +1,128 @@
+name: D1 Tower three-NPC laptop Blender test v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_gltf_actor_conservative_preview_adapter.py'
+      - 'tools/d1_blender_build_tower_three_npc_test_v2.py'
+      - 'tools/d1_blender_validate_tower_three_npc_test_v2.py'
+      - '.github/workflows/d1-tower-three-npc-laptop-test-v2.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+  LOCATION_VISUAL_ARTIFACT_ID: '10036642428'
+  LOCATION_VISUAL_ARTIFACT_SHA256: '1434b66b0c61ea0dc9045615014fa9085066d2f1e6b8ef5803fb36082e4943dc'
+  REQUIRED_ACTION_WORKFLOW_HEAD_SHA: '6fb31ef9b01d9a77d3e8dc072517f48a41647d20'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact corrected actor inputs
+        run: |
+          set -euo pipefail
+          mkdir -p input/textured input/location input/actions input/preview reports/preview out reports
+          pull(){ id="$1"; sha="$2"; zip="$3"; dst="$4"; curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"; echo "${sha}  ${zip}" | sha256sum --check --strict; unzip -q "$zip" -d "$dst"; }
+          pull "$TEXTURED_ARTIFACT_ID" "$TEXTURED_ARTIFACT_SHA256" input/textured.zip input/textured
+          pull "$LOCATION_VISUAL_ARTIFACT_ID" "$LOCATION_VISUAL_ARTIFACT_SHA256" input/location.zip input/location
+          action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          action_sha="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json headSha --jq '.[0].headSha')"
+          test -n "$action_run" && test "$action_sha" = "$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"
+          gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
+
+      - name: Build conservative portable previews for exactly three NPC GLBs
+        run: |
+          set -euo pipefail
+          for base in \
+            80C88CEF_SIG03_SKINNED_NATIVE_D1_TEXTURED \
+            809D8104_SIG00_SKINNED_NATIVE_D1_TEXTURED \
+            80C88434_SIG00_SKINNED_NATIVE_D1_TEXTURED; do
+            python tools/d1_gltf_actor_conservative_preview_adapter.py \
+              --input-glb "input/textured/models/${base}.glb" \
+              --out "input/preview/${base}.glb" \
+              --report "reports/preview/${base}.json"
+          done
+          python - <<'PY'
+          import glob,json
+          rows=[json.load(open(p)) for p in glob.glob('reports/preview/*.json')]
+          assert len(rows)==3 and all(x['status']=='D1_ACTOR_CONSERVATIVE_PORTABLE_PREVIEW_COMPLETE' and x['bin_byte_identical'] for x in rows),rows
+          assert sum(x['renamed_COLOR_0_primitive_count'] for x in rows)>0,rows
+          print('CONSERVATIVE_PREVIEW_GREEN',[(x['renamed_COLOR_0_primitive_count'],x['proven_base_material_count'],x['neutralized_material_count']) for x in rows])
+          PY
+
+      - name: Build pinned assembly manifest for exact family compatibility
+        run: |
+          python tools/d1_tower_actor_production_assembly_manifest_v2.py \
+            --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json \
+            --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json \
+            --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json \
+            -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
+
+      - name: Build corrected upright animated three-NPC test
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background --factory-startup --python tools/d1_blender_build_tower_three_npc_test_v2.py -- \
+            --assembly-manifest reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json \
+            --preview-dir input/preview --action-dir input/actions/models --actions-per-family 4 \
+            --out-blend out/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.blend \
+            --report reports/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.json | tee reports/build_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.json'))
+          assert d['status']=='D1_TOWER_THREE_NPC_LAPTOP_TEST_V2_COMPLETE',d
+          assert (d['actor_count'],d['model_count'],d['action_family_count'],d['retained_action_count'],d['assigned_preview_action_count'])==(3,3,2,8,3),d
+          assert d['scene_frame_end']>d['scene_frame_start'],d
+          print('BUILD_GREEN',d['blend_bytes'],d['blend_sha256'],d['assigned_preview_actions'])
+          PY
+
+      - name: Reopen and validate corrected lightweight blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.blend --python tools/d1_blender_validate_tower_three_npc_test_v2.py -- --report reports/D1_TOWER_3_NPC_LAPTOP_TEST_V2_REOPEN.json | tee reports/reopen_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_3_NPC_LAPTOP_TEST_V2_REOPEN.json'));assert not d['violations'],d
+          PY
+          cp reports/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.json out/
+          cp reports/D1_TOWER_3_NPC_LAPTOP_TEST_V2_REOPEN.json out/
+          cp reports/blender_version.txt out/
+          cp -r reports/preview out/preview_reports
+          cat > out/README.txt <<'EOF'
+          Destiny 1 Tower three-NPC laptop test V2.
+
+          Fixes applied specifically for Blender inspection:
+          - actor root rotated -90 degrees around X after glTF import to undo the extra glTF Y-up conversion on native-D1 Z-up payloads;
+          - decoded D1 RGBA vertex fields preserved as custom _D1_COLOR instead of standard glTF COLOR_0, preventing generic PBR from multiplying base color by an unproven shader-control field;
+          - only PROVEN portable base/normal texture roles remain visible; weaker preview candidates are neutral gray while exact native resources stay embedded;
+          - one D1_TEST_* sample Action is already assigned to every armature. Press Space/Play immediately. Four sample Actions per required family are retained.
+
+          This preview Action is diagnostic only and does not claim the retail runtime-active animation state.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+          ls -lh out/D1_TOWER_3_NPC_LAPTOP_TEST_V2_UPRIGHT.blend
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-LAPTOP-TEST-V2-UPRIGHT
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0
