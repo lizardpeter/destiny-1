@@ -1,0 +1,161 @@
+name: D1 Tower three-NPC exact texture corpus
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-tower-three-npc-exact-texture-corpus.yml'
+      - 'tools/d1_world_material_texture_export.py'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_dds_to_png.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  STATE_ARTIFACT_ID: '10069795151'
+  STATE_ARTIFACT_SHA256: '5dd54066b4460a49b7bb9106b870f4a1523e2ecd7d83e0932a59fcebbda70830'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  textures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact state, catalog, runtime and package index
+        run: |
+          set -euo pipefail
+          mkdir -p input/state input/catalog runtime reports corpus_initial corpus_extra export
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STATE_ARTIFACT_ID}/zip" -o input/state.zip
+          echo "${STATE_ARTIFACT_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          test -f input/state/THREE_NPC_MATERIAL_STAGE_STATE.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Build exact 85-material visual selector and dependency seed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('input/state/THREE_NPC_MATERIAL_STAGE_STATE.json'))
+          assert d['status']=='D1_MATERIAL_STAGE_STATE_EXACT' and d['resolved_material_count']==85 and not d['violations'],d
+          mats=sorted(d['materials'])
+          tex=set()
+          for m in d['materials'].values():
+              for stage in ('vs','ps'):
+                  for r in m[stage]['textures']['items']:
+                      tex.add(r['texture'].upper())
+          def pid(h):
+              v=int(h,16); assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          ids=sorted({pid(h) for h in mats}|{pid(h) for h in tex})
+          visual={'schema_version':1,'materials':{h:{'visual':True} for h in mats}}
+          Path('reports/three_npc_visual_materials.json').write_text(json.dumps(visual,indent=2)+'\n')
+          Path('reports/initial_package_ids.txt').write_text('\n'.join(ids)+'\n')
+          Path('reports/texture_seed.json').write_text(json.dumps({'material_count':len(mats),'unique_stage_texture_tags':len(tex),'materials':mats,'texture_tags':sorted(tex),'package_ids':ids},indent=2)+'\n')
+          print('TEXTURE_SEED','materials',len(mats),'textures',len(tex),'package_ids',ids)
+          PY
+
+      - name: Recover initial exact package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/initial_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus_initial --report reports/initial_texture_corpus.json
+
+      - name: First exact material texture export and dependency closure
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial -maxdepth 1 -name '*.pkg' -type f | sort)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_world_material_texture_export.py "${snaps[@]}" --runtime runtime \
+            --visual-json reports/three_npc_visual_materials.json --out export
+          rc=$?
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('export/material_texture_manifest.json'))
+          assert d['visible_material_count']==85,d
+          ids=sorted((d.get('missing_texture_package_ids') or {}).keys())
+          Path('reports/extra_package_ids.txt').write_text('\n'.join(ids)+('\n' if ids else ''))
+          print('FIRST_TEXTURE_PASS','unique',d['unique_texture_tags'],'decoded',d['decoded_texture_tags'],'errors',d['texture_errors'],'extra',ids)
+          PY
+
+      - name: Recover exact backing dependency families
+        if: ${{ hashFiles('reports/extra_package_ids.txt') != '' }}
+        run: |
+          set -euo pipefail
+          if [ -s reports/extra_package_ids.txt ]; then
+            args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/extra_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py \
+              --package-list reports/packages.txt "${args[@]}" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --out-dir corpus_extra --report reports/extra_texture_corpus.json
+          else
+            printf '%s\n' '{"status":"NO_EXTRA_TEXTURE_DEPENDENCIES"}' > reports/extra_texture_corpus.json
+          fi
+
+      - name: Final exact texture export
+        run: |
+          set -euo pipefail
+          rm -rf export && mkdir export
+          mapfile -t files < <(find corpus_initial corpus_extra -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          python tools/d1_world_material_texture_export.py "${snaps[@]}" --runtime runtime \
+            --visual-json reports/three_npc_visual_materials.json --out export
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('export/material_texture_manifest.json'))
+          assert d['visible_material_count']==85,d
+          assert d['material_decode_errors']==0,d
+          assert d['texture_errors']==0,d
+          assert d['decoded_texture_tags']==d['unique_texture_tags'],d
+          assert not d.get('missing_texture_package_ids'),d
+          # Do not assert a historical texture count here: this is regenerated directly
+          # from the exact 85 current material records and is authoritative on its own.
+          rows={}
+          for h,r in d['textures'].items():
+              hi=r.get('header_info') or {}
+              rows[h]={'format':r.get('format_name'),'colorspace':r.get('native_colorspace_hint'),
+                       'width':hi.get('width'),'height':hi.get('height'),'array_size':hi.get('array_size'),
+                       'png':r.get('png'),'faces':r.get('faces',[])}
+          Path('export/THREE_NPC_TEXTURE_HEADER_INDEX.json').write_text(json.dumps({'status':'D1_TOWER_THREE_NPC_TEXTURE_CORPUS_EXACT','material_count':85,'texture_count':len(rows),'textures':rows},indent=2)+'\n')
+          print('THREE_NPC_TEXTURES_GREEN','textures',len(rows),'png_outputs',d['png_outputs'])
+          PY
+          find export -type f -print0 | sort -z | xargs -0 sha256sum > export/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-EXACT-TEXTURE-CORPUS
+          path: export/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
