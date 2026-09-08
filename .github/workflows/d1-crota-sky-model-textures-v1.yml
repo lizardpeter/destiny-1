@@ -52,9 +52,9 @@ jobs:
           assert d['source_map_data_table_count']==255 and d['source_entry_count']==1535,d
           assert d['light_record_count']==435 and d['decoded_light_buffer_count']==301,d
           assert d['sky_record_count']==77,d
-          assert d['decoded_sky_model_resource_count']==77,d
+          assert d['sky_model_resource_hash_count']==49 and d['decoded_sky_model_resource_count']==49,d
           models=sorted(set(d['sky_entity_models']))
-          assert len(models)==49,models
+          assert d['sky_entity_model_hash_count']==49 and len(models)==49,models
           plan={'schema_version':1,'status':'D1_WORLD_COMMON_MODEL_PLAN_COMPLETE',
                 'source':'Activity 810B0002 SMapSkyEntResource -> SMapSkyEntities -> SkyRecord -> SkyModelResource -> EntityModel',
                 'source_record_count':77,'model_count':49,
