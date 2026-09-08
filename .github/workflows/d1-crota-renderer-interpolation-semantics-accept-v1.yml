@@ -1,0 +1,71 @@
+name: D1 Crota renderer interpolation semantics acceptance 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - '.github/workflows/d1-crota-renderer-interpolation-semantics-accept-v1.yml'
+
+env:
+  ARTIFACT_ID: '10080897663'
+  ARTIFACT_ZIP_SHA256: 'ba979f80e14a536f4943a703ed06df4b2a92da75bf994918c56cd144fe41b0ce'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  accept:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover and verify immutable interpolation checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" -o input/checkpoint.zip
+          echo "${ARTIFACT_ZIP_SHA256}  input/checkpoint.zip" | sha256sum --check --strict
+          unzip -q input/checkpoint.zip -d input/checkpoint
+          python - <<'PY'
+          import json, hashlib, pathlib
+          root=pathlib.Path('input/checkpoint')
+          d=json.load(open(root/'D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          ir=json.load(open(root/'PS_808EE505_STRUCTURAL_IR_V3.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']
+          expected={'CONTROL_EXACT':18,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':70,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':171}
+          assert c['primary_resolution_counts']==expected,c
+          assert c['exact_nonstructural_instruction_count']==285
+          assert c['interpolation_semantics_promoted_instruction_count']==40
+          assert c['interpolation_semantics_corroborated_existing_instructions']==[443,446]
+          assert len(p['interpolation_bindings'])==21
+          assert ir['instruction_count']==456 and ir['shader']=='808EE505'
+          for b in p['interpolation_bindings']:
+              assert b['p1_equation']=='D = P10(attribute) * IJ + P0(attribute)'
+              assert b['p2_equation']=='D_new = P20(attribute) * IJ + D_old'
+              assert b['ij_inputs']=={'p1':'v0','p2':'v1'}
+              assert b['source_revision']=='f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+              assert b['source_file_sha256']=='ce2b71f73f6883478c0d05335b57275153999cef76b7b549a2d15eb76bee472e'
+          assert all(x['primary_resolution']!='STRUCTURAL_ONLY' for x in p['instruction_resolution'] if x['opcode'].startswith('v_interp_'))
+          summary={'status':'D1_CROTA_808EE505_INTERPOLATION_SEMANTICS_ACCEPTED',
+                   'artifact_id':10080897663,'artifact_zip_sha256':'ba979f80e14a536f4943a703ed06df4b2a92da75bf994918c56cd144fe41b0ce',
+                   'coverage':expected,'exact_nonstructural_instruction_count':285,
+                   'interpolation_pair_count':21,'promoted_instruction_count':40,
+                   'corroborated_existing_instructions':[443,446],
+                   'live_raster_coefficients':'RUNTIME_INPUT_NOT_NUMERICALLY_CAPTURED'}
+          pathlib.Path('out/D1_CROTA_808EE505_INTERPOLATION_ACCEPTANCE.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-808EE505-INTERPOLATION-ACCEPTANCE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
