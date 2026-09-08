@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'tools/d1_three_npc_ps_809d8363_semantic_proof.py'
+      - 'tools/d1_three_npc_ps_shared_8087630d_809d8370_semantic_proof.py'
       - '.github/workflows/d1-tower-three-npc-ps-semantics-wave2.yml'
 
 permissions: {contents: read, actions: read}
@@ -36,6 +37,8 @@ jobs:
           test -f input/frontier/all_visible_ps_extract.json
           test -f input/frontier/THREE_NPC_PS_IMAGE_USAGE.json
           test -f input/frontier/disasm/PS_809D8363.s
+          test -f input/frontier/disasm/PS_8087630D.s
+          test -f input/frontier/disasm/PS_809D8370.s
           test -f input/state/THREE_NPC_MATERIAL_STAGE_STATE.json
 
       - name: Prove 809D8363 exact current-state RGB
@@ -55,7 +58,37 @@ jobs:
           assert d['gates']['current_material_native_color_dataflow_closed'] is True,d
           print('PS_809D8363_CURRENT_STATE_RGB_EXACT',d['visible_primitive_count'])
           PY
-          cp reports/PS_809D8363_SEMANTICS.json reports/WAVE2_CHECKPOINT.json
+
+      - name: Prove shared 8087630D 809D8370 exact current-state RGB
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_shared_8087630d_809d8370_semantic_proof.py \
+            --extract-report input/frontier/all_visible_ps_extract.json \
+            --image-usage input/frontier/THREE_NPC_PS_IMAGE_USAGE.json \
+            --material-state input/state/THREE_NPC_MATERIAL_STAGE_STATE.json \
+            --disasm-8087630d input/frontier/disasm/PS_8087630D.s \
+            --disasm-809d8370 input/frontier/disasm/PS_809D8370.s \
+            --out reports/PS_SHARED_8087630D_809D8370_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_SHARED_8087630D_809D8370_SEMANTICS.json'))
+          assert d['status']=='D1_TOWER_PS_SHARED_8087630D_809D8370_CURRENT_STATE_RGB_EXACT' and not d['violations'],d
+          assert d['visible_primitive_count']==15,d
+          assert d['gates']['current_material_native_color_dataflow_closed'] is True,d
+          print('PS_SHARED_CURRENT_STATE_RGB_EXACT',d['visible_primitive_count'])
+          PY
+
+      - name: Summarize wave 2
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.load(open('reports/PS_809D8363_SEMANTICS.json')),json.load(open('reports/PS_SHARED_8087630D_809D8370_SEMANTICS.json'))]
+          out={'schema_version':1,'status':'D1_TOWER_THREE_NPC_PS_SEMANTICS_WAVE2_EXACT','program_count':2,'serialized_shader_count':3,'visible_primitive_count':sum(x['visible_primitive_count'] for x in rows),'current_material_native_color_dataflow_closed':True,'portable_blender_recreation_complete':False,'policy':'Current exact serialized material state only; runtime TFX and alpha-threshold gates remain explicit where applicable.'}
+          Path('reports/WAVE2_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
           find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
