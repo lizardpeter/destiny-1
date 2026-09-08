@@ -1,0 +1,75 @@
+name: D1 ROI TFX resource assignment prefix proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_roi_tfx_resource_assignment_prefix_proof.py'
+      - '.github/workflows/d1-roi-tfx-resource-assignment-prefix.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  XUR_STATE_ARTIFACT_ID: '10028092407'
+  XUR_STATE_ARTIFACT_SHA256: '83c5b4af4590d986fb917ddc9da4098e2d1272ad30025db8395f53cac61e4407'
+  THREE_NPC_STATE_ARTIFACT_ID: '10069795151'
+  THREE_NPC_STATE_ARTIFACT_SHA256: '5dd54066b4460a49b7bb9106b870f4a1523e2ecd7d83e0932a59fcebbda70830'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned exact material states
+        run: |
+          set -euo pipefail
+          mkdir -p input/xur input/three_npc reports
+          for spec in \
+            "xur:${XUR_STATE_ARTIFACT_ID}:${XUR_STATE_ARTIFACT_SHA256}" \
+            "three_npc:${THREE_NPC_STATE_ARTIFACT_ID}:${THREE_NPC_STATE_ARTIFACT_SHA256}"; do
+            IFS=: read -r name aid sha <<< "$spec"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}/zip" -o "input/${name}.zip"
+            echo "${sha}  input/${name}.zip" | sha256sum --check --strict
+            unzip -q "input/${name}.zip" -d "input/${name}"
+          done
+          test -f input/xur/xur_material_stage_state.json
+          test -f input/three_npc/THREE_NPC_MATERIAL_STAGE_STATE.json
+
+      - name: Prove D1 resource assignment prefix and isolate all holes
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_roi_tfx_resource_assignment_prefix_proof.py
+          python tools/d1_roi_tfx_resource_assignment_prefix_proof.py \
+            --state xur=input/xur/xur_material_stage_state.json \
+            --state three_npc=input/three_npc/THREE_NPC_MATERIAL_STAGE_STATE.json \
+            --out reports/D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX.json | tee reports/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX.json'))
+          assert d['status']=='D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX_EXACT',d['violations']
+          assert d['all_serialized_ps_texture_entries_covered'] is True,d
+          assert d['runtime_default_hole_count']==6,d
+          assert d['gates']['runtime_default_resource_values_closed'] is False,d
+          print('D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX_GREEN',d['material_count'],d['material_ps_streams_with_assignment_prefix'],d['assignment_pair_count'])
+          print('HOLES',d['runtime_default_holes'])
+          PY
+
+      - name: Persist hashes
+        run: find reports -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-ROI-TFX-RESOURCE-ASSIGNMENT-PREFIX
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
