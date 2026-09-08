@@ -1,0 +1,110 @@
+name: D1 Crota exact terrain scene v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-terrain-scene-v1.yml'
+      - 'tools/d1_world_terrain_scene_export.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  TERRAIN_VS_ARTIFACT_ID: '10056995787'
+  TERRAIN_VS_ARTIFACT_SHA256: 'ff8bcc748c82103ccb936e4ef96be86e476f9721f46000ccfb5fc734422cf593'
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative terrain geometry and VS checkpoints
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy trimesh
+          mkdir -p input runtime packages out scene
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TERRAIN_VS_ARTIFACT_ID}/zip" -o input/terrain_vs.zip
+          echo "${TERRAIN_VS_ARTIFACT_SHA256}  input/terrain_vs.zip" | sha256sum --check --strict
+          unzip -q input/terrain_vs.zip -d input/terrain_vs
+          for n in terrain_census_final.json terrain_buffer_layout.json terrain_vs_signatures_final.json; do
+            p="$(find input/terrain_vs -name "$n" -type f -print -quit)"; test -n "$p"; cp "$p" "out/$n"
+          done
+          python - <<'PY'
+          import json
+          c=json.load(open('out/terrain_census_final.json'));b=json.load(open('out/terrain_buffer_layout.json'));v=json.load(open('out/terrain_vs_signatures_final.json'))
+          assert c['status']=='D1_WORLD_TERRAIN_CENSUS_COMPLETE' and not c['violations'] and not c['missing_dependency_package_ids'],c
+          assert c['unique_terrain_count']==49 and c['selected_main_geom0_part_count']==1582 and c['unique_selected_material_count']==108,c
+          assert b['status']=='D1_WORLD_TERRAIN_BUFFER_LAYOUT_COMPLETE' and not b['violations'],b
+          assert b['triangle_count']==1067552 and b['stride_pair_histogram']=={'0x8/0xc':49} and b['index_format_histogram']=={'u16':49},b
+          assert v['status']=='D1_WORLD_TERRAIN_VS_SIGNATURE_CENSUS_COMPLETE' and not v['violations'] and not v['missing_dependency_package_ids'],v
+          assert v['selected_material_count']==108 and v['resolved_selected_material_count']==108,v
+          assert v['unique_vertex_shader_count']==2 and v['resolved_vertex_shader_count']==2,v
+          assert v['signature_component_width_histogram']=={'4/3/2/1':2},v
+          print('TERRAIN_PROOF_CHAIN_ACCEPTED',49,1582,1067552,108,2)
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o out/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('out/D1_CURRENT_ACTIVITY_INDEX.json'));h=hashlib.sha256(open('out/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE' and h==(d.get('source') or {}).get('package_list_sha256'),(h,d.get('source'))
+          print('ARCHIVE_INDEX_ACCEPTED',h)
+          PY
+
+      - name: Recover exact terrain buffer/material package corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_indexed_package_families.py \
+            --index out/D1_CURRENT_ACTIVITY_INDEX.json --package-list out/packages.txt \
+            --package-id 02b7 --package-id 02ba --package-id 02bb \
+            --package-id 0430 --package-id 0431 --package-id 0458 \
+            --out-dir packages --report out/package_recovery.json
+
+      - name: Export every selected MainGeom0 terrain part
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_terrain_scene_export.py "${args[@]}" --runtime runtime \
+            --terrain-census out/terrain_census_final.json \
+            --buffer-layout out/terrain_buffer_layout.json \
+            --out scene/CROTA_TERRAIN_MAIN_GEOM0_EXACT.glb \
+            --report out/crota_terrain_scene.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/crota_terrain_scene.json'))
+          assert d['status']=='D1_WORLD_TERRAIN_SCENE_COMPLETE',d
+          assert d['terrain_count']==49 and d['selected_main_geom0_part_count']==1582,d
+          assert d['triangle_count']==1067552 and d['geometry_count']==1582 and d['scene_node_count']==1582,d
+          assert d['material_count']==108,d
+          assert d['glb_bytes']>0 and len(d['glb_sha256'])==64,d
+          print('CROTA_TERRAIN_SCENE_CLOSED',json.dumps({k:d[k] for k in ('terrain_count','selected_main_geom0_part_count','triangle_count','summed_part_unique_vertex_count','material_count','source_nonnull_dyemap_count','null_source_dyemap_group_count','effective_selected_dyemap_count','geometry_count','bounds','glb_bytes','glb_sha256')},sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-TERRAIN-SCENE-V1
+          path: |
+            scene/CROTA_TERRAIN_MAIN_GEOM0_EXACT.glb
+            out/crota_terrain_scene.json
+            out/terrain_census_final.json
+            out/terrain_buffer_layout.json
+            out/terrain_vs_signatures_final.json
+            out/package_recovery.json
+          retention-days: 30
+          compression-level: 6
