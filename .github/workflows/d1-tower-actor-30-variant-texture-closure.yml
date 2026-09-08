@@ -1,0 +1,194 @@
+name: D1 Tower actor 30 variant texture closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-actor-30-variant-texture-closure.yml'
+      - 'tools/d1_tower_actor_variant_material_universe.py'
+      - 'tools/d1_gltf_prune_unreferenced_materials.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
+      - 'tools/d1_close_world_texture_dependencies.py'
+      - 'tools/d1_world_texture_role_inventory.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  VARIANT_ARTIFACT_ID: '10036056185'
+  VARIANT_ARTIFACT_SHA256: '79b9f782663392d8cfababa247e89b7f33454f8b2f4505b8f631b258ab7e756a'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: '${{ github.token }}'
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact 30 variants, catalog, runtime, and package list
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder
+          mkdir -p input/variants input/catalog runtime pruned prune_reports corpus texture_expanded texture_work textures roles reports out/models out/reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VARIANT_ARTIFACT_ID}/zip" -o input/variants.zip
+          echo "${VARIANT_ARTIFACT_SHA256}  input/variants.zip" | sha256sum --check --strict
+          unzip -q input/variants.zip -d input/variants
+          test "$(find input/variants -maxdepth 1 -name '*_SIG*_SKINNED_NATIVE_D1.glb' -type f | wc -l)" = 30
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Remove only unused legacy material records from each variant
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_prune_unreferenced_materials.py
+          for p in input/variants/*_SIG*_SKINNED_NATIVE_D1.glb; do
+            b="$(basename "$p")"
+            python tools/d1_gltf_prune_unreferenced_materials.py "$p" --out "pruned/$b" --report "prune_reports/${b%.glb}.json"
+          done
+          python - <<'PY'
+          import glob,json
+          fs=glob.glob('pruned/*.glb');rs=glob.glob('prune_reports/*.json')
+          assert len(fs)==30 and len(rs)==30,(len(fs),len(rs))
+          for p in rs:
+              d=json.load(open(p)); assert d['status']=='D1_GLTF_UNREFERENCED_MATERIALS_PRUNED',d
+              assert d['non_json_chunks_sha256_before']==d['non_json_chunks_sha256_after'],d
+          print('PRUNED_VARIANTS_GREEN',len(fs),'removed_total',sum(json.load(open(p))['removed_material_count'] for p in rs))
+          PY
+
+      - name: Derive exact active material universe from primitive references
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_tower_actor_variant_material_universe.py
+          python tools/d1_tower_actor_variant_material_universe.py \
+            --input-dir pruned \
+            --signatures input/variants/D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_FINAL.json \
+            --selector-output reports/tower_actor_30_variant_material_selector.json \
+            --report reports/TOWER_ACTOR_30_VARIANT_MATERIAL_UNIVERSE.json | tee reports/material_universe_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_ACTOR_30_VARIANT_MATERIAL_UNIVERSE.json'))
+          assert d['status']=='D1_TOWER_ACTOR_VARIANT_ACTIVE_MATERIAL_UNIVERSE_COMPLETE',d['violations']
+          assert d['variant_count']==30 and d['actor_model_count']==13,d
+          assert d['active_material_count']==320,d['active_material_count']
+          open('reports/required_material_package_ids.txt','w').write('\n'.join(d['required_material_package_ids'])+'\n')
+          print('ACTIVE_MATERIAL_UNIVERSE_GREEN',d['active_material_count'],d['required_material_package_ids'])
+          PY
+
+      - name: Recover exact material package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/required_material_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/tower_actor_30_variant_material_corpus.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_actor_30_variant_material_corpus.json'))
+          assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED',d
+          print('MATERIAL_CORPUS_GREEN',d['required_family_count'],d['member_count'])
+          PY
+
+      - name: Recursively close all 320 active material texture dependencies
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_close_world_texture_dependencies.py "${args[@]}" \
+            --runtime runtime \
+            --visual-json reports/tower_actor_30_variant_material_selector.json \
+            --package-list reports/packages.txt \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --expansion-dir texture_expanded \
+            --work-dir texture_work \
+            --out textures \
+            --report reports/TOWER_ACTOR_30_VARIANT_TEXTURE_DEPENDENCY_CLOSURE.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/TOWER_ACTOR_30_VARIANT_TEXTURE_DEPENDENCY_CLOSURE.json'))
+          m=json.load(open('textures/material_texture_manifest.json'))
+          assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert c['stop_reason']=='closed_zero_missing_texture_packages',c
+          assert m['visible_material_count']==320,m['visible_material_count']
+          assert m['material_decode_errors']==0 and m['texture_errors']==0,m
+          assert m['decoded_texture_tags']==m['unique_texture_tags'],m
+          assert not m['missing_texture_package_ids'],m
+          print('TEXTURE_DEPENDENCIES_GREEN','materials',m['visible_material_count'],'textures',m['unique_texture_tags'],'png',m['png_outputs'],'expanded',c['recovered_package_ids'])
+          PY
+
+      - name: Build exact shader texture role inventory
+        run: |
+          set -euo pipefail
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o roles/TOWER_ACTOR_30_VARIANT_TEXTURE_ROLES.json
+          python - <<'PY'
+          import json
+          d=json.load(open('roles/TOWER_ACTOR_30_VARIANT_TEXTURE_ROLES.json'))
+          assert d['status']=='D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED' and d['material_count']==320,d
+          print('ROLE_INVENTORY_GREEN','materials',d['material_count'],'pixel_shaders',d['pixel_shader_count'],'base',d['preview_base_coverage'],'normal',d['preview_normal_coverage'])
+          PY
+
+      - name: Bind exact native shader textures to all 30 variants
+        run: |
+          set -euo pipefail
+          for p in pruned/*_SIG*_SKINNED_NATIVE_D1.glb; do
+            b="$(basename "$p" .glb)"
+            python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+              --input-glb "$p" \
+              --manifest textures/material_texture_manifest.json \
+              --roles roles/TOWER_ACTOR_30_VARIANT_TEXTURE_ROLES.json \
+              --texture-dir textures/textures \
+              --include-medium-base --bind-normal-candidates \
+              --out "out/models/${b}_TEXTURED.glb" \
+              --report "out/reports/${b}_TEXTURE_BIND.json"
+          done
+          python - <<'PY'
+          import glob,json,os
+          fs=sorted(glob.glob('out/models/*_TEXTURED.glb'));rs=sorted(glob.glob('out/reports/*_TEXTURE_BIND.json'))
+          assert len(fs)==30 and len(rs)==30,(len(fs),len(rs))
+          tex=vs=ps=base=normal=0
+          for p in rs:
+              d=json.load(open(p)); assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+              assert d['base_counts']['meshes']==d['final_counts']['meshes'] and d['base_counts']['nodes']==d['final_counts']['nodes'] and d['base_counts']['accessors']==d['final_counts']['accessors'],d
+              tex+=d['exact_source_texture_count'];vs+=d['exact_vs_binding_edge_count'];ps+=d['exact_ps_binding_edge_count'];base+=d['portable_base_bound_material_count'];normal+=d['portable_normal_bound_material_count']
+          summary={'schema_version':1,'status':'D1_TOWER_ACTOR_30_VARIANT_TEXTURED_CHECKPOINT_COMPLETE','variant_count':30,'actor_model_count':13,'active_material_count':320,'global_unique_texture_count':json.load(open('textures/material_texture_manifest.json'))['unique_texture_tags'],'embedded_native_texture_instances':tex,'exact_vs_binding_edge_instances':vs,'exact_ps_binding_edge_instances':ps,'portable_base_bound_material_instances':base,'portable_normal_bound_material_instances':normal,'runtime_active_variant_selected':False,'runtime_actor_animation_state_selected':False}
+          json.dump(summary,open('out/reports/TOWER_ACTOR_30_VARIANT_TEXTURED_CHECKPOINT.json','w'),indent=2)
+          print(json.dumps(summary,indent=2))
+          PY
+
+      - name: Publish texture evidence and hashes
+        run: |
+          set -euo pipefail
+          cp reports/TOWER_ACTOR_30_VARIANT_MATERIAL_UNIVERSE.json out/reports/
+          cp reports/TOWER_ACTOR_30_VARIANT_TEXTURE_DEPENDENCY_CLOSURE.json out/reports/
+          cp reports/tower_actor_30_variant_material_selector.json out/reports/
+          cp roles/TOWER_ACTOR_30_VARIANT_TEXTURE_ROLES.json out/reports/
+          cp textures/material_texture_manifest.json out/reports/
+          cp input/variants/D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_FINAL.json out/reports/
+          cp input/variants/D1_TOWER_ACTOR_MATERIAL_SIGNATURE_GLB_VARIANTS.json out/reports/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ACTOR-30-MATERIAL-VARIANTS-TEXTURED
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
