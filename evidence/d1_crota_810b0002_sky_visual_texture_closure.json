@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_SKY_VISUAL_TEXTURE_CLOSURE_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "workflow": {
+    "name": "D1 Crota sky models exact textures v1",
+    "run_id": 34185903395,
+    "job_id": 101934049387,
+    "head_sha": "0823a1fe1165e53dfd30918eeff4abbfc815fba8",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 10040593597,
+    "name": "D1-CROTA-ALL-SKY-MODELS-EXACT-TEXTURES-V1",
+    "zip_bytes": 53279300,
+    "zip_sha256": "ad532179440a2382dffc88d8fbbe436c5b6aad498d18307c0ea53cdcc98f8322"
+  },
+  "source_scope": {
+    "sky_record_count": 77,
+    "sky_model_resource_count": 49,
+    "sky_entity_model_count": 49
+  },
+  "visual_closure": {
+    "status": "D1_CROTA_SKY_VISUAL_MODELS_SOURCE_CLOSED",
+    "requested_models": 49,
+    "exported_models": 49,
+    "failed_models": 0,
+    "geometry_count": 98,
+    "selected_part_count": 98,
+    "triangle_count": 105270,
+    "zero_selected_geometry_models": [],
+    "active_material_count": 84,
+    "highest_lod_external_variant_parts": [],
+    "rejection_reason_histogram": {"not_highest_lod": 4}
+  },
+  "model_dependency_closure": {
+    "status": "D1_WORLD_ENTITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE",
+    "package_ids": ["0075", "0077", "0157", "0169", "01cf", "01d1", "02b7", "02bb"],
+    "package_family_count": 8,
+    "stop_reason": "closed_all_entity_model_visual_dependencies"
+  },
+  "texture_closure": {
+    "status": "D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE",
+    "visible_material_count": 84,
+    "unique_texture_tags": 56,
+    "decoded_texture_tags": 56,
+    "material_decode_errors": 0,
+    "texture_errors": 0,
+    "png_outputs": 56,
+    "missing_texture_package_ids": {},
+    "additional_recovered_package_ids": ["0154"]
+  },
+  "binding": {
+    "status": "D1_CROTA_SKY_TEXTURED_MODEL_SET_COMPLETE",
+    "textured_model_count": 49,
+    "unique_material_count": 84,
+    "unique_texture_count": 56,
+    "policy": "Native shader resource bindings are authoritative. Portable PBR slots are preview-only and are not promoted to retail shader semantics."
+  },
+  "integrity": {
+    "source_light_sky_artifact_id": 10039016393,
+    "source_light_sky_zip_sha256": "8189c6a87da7f374c8a79beac411abb1a3797e777bef314d49d13dde6ce3d5b5",
+    "source_light_sky_census_sha256": "8f3723cff06137f461de535f71a533ceef20d1a81697c89f61a66616af67c22c",
+    "violations": []
+  },
+  "policy": "Every model is reached through Activity 810B0002 SMapSkyEntResource -> sky record -> SkyModelResource -> EntityModel. Highest-detail geometry selection is source-bounded; no default sky/time-of-day record is invented. Every native texture is reached from exact decoded D1 material shader bindings and recursively closed through the current indexed package archive."
+}
