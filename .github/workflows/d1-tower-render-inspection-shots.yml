@@ -1,0 +1,123 @@
+name: D1 Tower render inspection shots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_blender_render_tower_inspection_shots.py'
+      - '.github/workflows/d1-tower-render-inspection-shots.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: '34178328322'
+  SOURCE_ARTIFACT_NAME: 'D1-TOWER-FULL-ANIMATED-BLENDER-INSPECTION-V3'
+
+jobs:
+  render_shots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: '${{ github.token }}'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact full Tower blend
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          gh run download "$SOURCE_RUN_ID" -n "$SOURCE_ARTIFACT_NAME" -D input/full
+          BLEND="$(find input/full -type f -name 'D1_TOWER_FULL_ANIMATED_INSPECTION.blend' -print -quit)"
+          REPORT="$(find input/full -type f -name 'D1_TOWER_FULL_ANIMATED_INSPECTION.json' -print -quit)"
+          test -n "$BLEND" && test -s "$BLEND" && test -n "$REPORT" && test -s "$REPORT"
+          EXPECTED="$(python - <<'PY'
+          import json,glob
+          p=glob.glob('input/full/**/D1_TOWER_FULL_ANIMATED_INSPECTION.json',recursive=True)[0]
+          d=json.load(open(p)); assert d['status']=='D1_TOWER_ANIMATED_BLENDER_INSPECTION_V2_COMPLETE',d
+          print(d['blend_sha256'])
+          PY
+          )"
+          ACTUAL="$(sha256sum "$BLEND" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "TOWER_BLEND=$BLEND" >> "$GITHUB_ENV"
+          echo "SOURCE_BLEND_SHA256=$ACTUAL" >> "$GITHUB_ENV"
+          ls -lh "$BLEND"
+          echo "SOURCE_FULL_TOWER_BLEND_GREEN $ACTUAL"
+
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"
+          echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee out/blender_version.txt
+          grep -q 'Blender 5.2.1' out/blender_version.txt
+
+      - name: Render four Tower inspection shots
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background "$TOWER_BLEND" \
+            --python tools/d1_blender_render_tower_inspection_shots.py -- \
+            --out-dir out \
+            --report out/D1_TOWER_INSPECTION_SHOTS.json \
+            --width 1280 --height 720 \
+            | tee out/blender_render_stdout.txt
+
+          python - <<'PY'
+          import json,glob,os
+          p='out/D1_TOWER_INSPECTION_SHOTS.json'
+          d=json.load(open(p))
+          assert d['status']=='D1_TOWER_RENDERED_INSPECTION_SHOTS_COMPLETE',d
+          assert d['blender_version'].startswith('5.2.1'),d
+          assert d['scenario_collection_count']==8,d
+          assert len(d['shots'])==4,d
+          assert d['runtime_active_scenario_selected'] is False,d
+          assert d['runtime_actor_animation_state_selected'] is False,d
+          pngs=sorted(glob.glob('out/*.png'))
+          assert len(pngs)==4,pngs
+          for q in pngs:
+              assert os.path.getsize(q)>10_000,(q,os.path.getsize(q))
+          print('TOWER_INSPECTION_RENDERS_GREEN',[(os.path.basename(q),os.path.getsize(q)) for q in pngs])
+          PY
+
+      - name: Build contact sheet
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow
+          python - <<'PY'
+          from PIL import Image,ImageOps,ImageDraw
+          from pathlib import Path
+          files=[
+            Path('out/01_tower_wide_environment.png'),
+            Path('out/02_tower_opposite_environment.png'),
+            Path('out/03_tower_wide_with_source_actors.png'),
+            Path('out/04_tower_actor_cluster.png'),
+          ]
+          ims=[Image.open(p).convert('RGB') for p in files]
+          w,h=640,360
+          canvas=Image.new('RGB',(w*2,h*2),(20,20,20))
+          labels=['Wide environment','Opposite environment','Wide + source actors','Actor cluster']
+          for i,(im,label) in enumerate(zip(ims,labels)):
+              im=ImageOps.fit(im,(w,h),method=Image.Resampling.LANCZOS)
+              x=(i%2)*w; y=(i//2)*h
+              canvas.paste(im,(x,y))
+              d=ImageDraw.Draw(canvas)
+              d.rectangle((x+8,y+8,x+230,y+34),fill=(0,0,0))
+              d.text((x+14,y+13),label,fill=(255,255,255))
+          canvas.save('out/00_tower_contact_sheet.jpg',quality=90,optimize=True)
+          PY
+          echo "$SOURCE_BLEND_SHA256  D1_TOWER_FULL_ANIMATED_INSPECTION.blend" > out/SOURCE_BLEND_SHA256.txt
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-RENDERED-INSPECTION-SHOTS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
