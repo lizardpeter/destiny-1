@@ -1,0 +1,73 @@
+name: D1 Crota 80D777B6 rasterizer state v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-80d777b6-rasterizer-state-v1.yml'
+      - 'tools/d1_roi_rasterizer_state_source_decode.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  ALKAHest_COMMIT: 'c632a562e88b5b805098152658b915d1c59f0f9a'
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 target material stage
+        run: |
+          set -euo pipefail
+          mkdir -p input source out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/target_material_stage.json
+
+      - name: Pin independent Tiger PipelineState and rasterizer table source
+        run: |
+          set -euo pipefail
+          base="https://raw.githubusercontent.com/cohaereo/alkahest/${ALKAHest_COMMIT}"
+          curl -fsSL --retry 4 "$base/crates/data/tfx/technique.rs" -o source/technique.rs
+          curl -fsSL --retry 4 "$base/crates/render/src/gpu/global_state.rs" -o source/global_state.rs
+          curl -fsSL --retry 4 "$base/crates/render/builtin/gpu/rasterizer_states.bin" -o source/rasterizer_states.bin
+          test "$(wc -c < source/rasterizer_states.bin)" -eq 396
+
+      - name: Decode lane2 without promoting beyond evidence
+        run: |
+          set -euo pipefail
+          python tools/d1_roi_rasterizer_state_source_decode.py \
+            --material-stage input/source/target_material_stage.json \
+            --technique-source source/technique.rs --global-state-source source/global_state.rs \
+            --rasterizer-table source/rasterizer_states.bin \
+            -o out/D1_80D777B6_RASTERIZER_STATE_SOURCE_CORRELATION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_RASTERIZER_STATE_SOURCE_CORRELATION.json'))
+          assert d['status']=='D1_ROI_RASTERIZER_STATE_SOURCE_CORRELATED' and not d['violations'],d
+          assert d['material']=='80D777B6' and d['material_state4_hex']=='00008100'
+          assert d['rasterizer_lane_raw']=='0x81' and d['selected_rasterizer_index']==1
+          assert d['promotion']=='SOURCE_CORRELATED_ONLY'
+          print('RASTERIZER_SOURCE_CORRELATED',json.dumps(d['selected_table_descriptor'],sort_keys=True))
+          PY
+          sha256sum out/*.json source/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-80D777B6-RASTERIZER-STATE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
