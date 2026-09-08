@@ -28,7 +28,13 @@ TARGET_RANGES={
 def git_blob_sha(b:bytes)->str:
     return hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
 
-def norm(x): return str(x).upper().removeprefix('0X').zfill(8)
+def norm(x):
+    if isinstance(x,int):
+        return f'{x & 0xffffffff:08X}'
+    s=str(x).upper().removeprefix('0X')
+    if s.isdigit() and len(s)>8:
+        return f'{int(s,10) & 0xffffffff:08X}'
+    return s.zfill(8)
 
 def main()->int:
     ap=argparse.ArgumentParser()
@@ -88,7 +94,7 @@ def main()->int:
             parts=r.get('parts') or []
             if len(parts)!=1: violations.append(f"{r.get('name')}: expected one part"); continue
             p=parts[0]; mi=r.get('material_info') or {}
-            vs=norm(mi.get('vertex_shader','FFFFFFFF')) if isinstance(mi.get('vertex_shader'),str) else f"{int(mi.get('vertex_shader',0))&0xffffffff:08X}"
+            vs=norm(mi.get('vertex_shader','FFFFFFFF'))
             got[r['name']] = (norm(r.get('material')),int(r.get('mesh_index')),
                               int(p.get('part_index')),int(p.get('lod')),vs,bool(r.get('has_uv')))
         for name,expect in TARGET_RANGES.items():
