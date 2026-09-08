@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse, copy, hashlib, json
 from pathlib import Path
 
-from d1_gltf_layer_merge import read_glb, write_glb, json_digest
+from d1_gltf_layer_merge import read_glb, write_glb
 
 
 def hbytes(b: bytes) -> str:
@@ -71,6 +71,10 @@ def main() -> int:
     a=ap.parse_args()
 
     tgt,tbin=read_glb(a.target); src,sbin=read_glb(a.action_library)
+    # These files can be hundreds of megabytes. Hash each input exactly once and
+    # reuse the digest for per-animation provenance instead of rereading the same
+    # action-library file once for every animation.
+    target_sha=hfile(a.target); action_library_sha=hfile(a.action_library)
     violations=[]
     tdom=joint_domain(tgt); sdom=joint_domain(src)
     tnames=[n for _,n in tdom]; snames=[n for _,n in sdom]
@@ -143,7 +147,7 @@ def main() -> int:
         for ch in anim.get('channels') or []:
             t=ch['target']; old_node=int(t['node']); name=source_joint_nodes[old_node]; t['node']=target_by_name[name]
         ex=anim.setdefault('extras',{})
-        ex['d1_shared_action_library_source_sha256']=hfile(a.action_library)
+        ex['d1_shared_action_library_source_sha256']=action_library_sha
         ex['d1_shared_action_library_source_animation_index']=ai
         doc.setdefault('animations',[]).append(anim)
         appended.append(str(anim.get('name') or f'animation_{ai}'))
@@ -163,8 +167,8 @@ def main() -> int:
     rep={
         'schema_version':1,
         'status':'D1_GLTF_SHARED_ACTION_LIBRARY_APPENDED_BY_JOINT_NAME',
-        'target':str(a.target),'target_sha256':hfile(a.target),
-        'action_library':str(a.action_library),'action_library_sha256':hfile(a.action_library),
+        'target':str(a.target),'target_sha256':target_sha,
+        'action_library':str(a.action_library),'action_library_sha256':action_library_sha,
         'output':str(a.out),'output_sha256':hfile(a.out),'output_bytes':a.out.stat().st_size,
         'joint_count':len(tdom),'ordered_skin_joint_names_identical':tnames==snames,
         'animation_target_joint_count':len(target_names),'animation_target_paths':sorted(target_paths),
