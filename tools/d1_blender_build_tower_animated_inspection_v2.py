@@ -56,8 +56,9 @@ def remove_import_objects(objs):
 
 
 def purge_orphans():
-    # Recursive orphan purge keeps datablocks used by the retained visual asset
-    # collections and fake-user Action libraries.
+    # Called only after the 29 visual source collections are referenced by their
+    # 547 placement instances. Before that point those intentionally unlinked
+    # source collections have zero users and recursive purge could delete them.
     for _ in range(4):
         try:
             r=bpy.ops.outliner.orphans_purge(do_local_ids=True,do_linked_ids=True,do_recursive=True)
@@ -99,7 +100,8 @@ def import_visual_asset(path:Path,key:str,model:str,sig:int):
         if len(c.objects)==0 and len(c.children)==0:
             try: bpy.data.collections.remove(c)
             except Exception: pass
-    # Asset collection exists only as an instance source, not at origin.
+    # Asset collection exists only as an instance source, not at origin. Do not
+    # orphan-purge until placement instances have been created below.
     bpy.context.scene.collection.children.unlink(asset)
     return asset,arms,len(new_obj)
 
@@ -113,18 +115,20 @@ def import_action_family(path:Path,representative:str,expected:int):
     if len(actions)!=expected:
         raise RuntimeError(f'{representative}: imported {len(actions)} actions, expected {expected}')
     rows=[]
-    for i,act in enumerate(actions):
+    for act in actions:
         old=act.name; act.name=f'D1_{representative}__{old}'; act.use_fake_user=True
         act['d1ActionFamilyRepresentative']=representative
         act['d1ActionFamilySourceGLB']=path.name
         act['d1ActionFamilySourceGLBSha256']=sha256(path)
         rows.append(act.name)
+    # Remove only objects created by this action-library import. The six Actions
+    # remain through fake users. Do not recursively purge yet because the 29
+    # visual source collections are intentionally unlinked until instanced.
     remove_import_objects(new_obj)
     for c in new_col:
         if len(c.objects)==0 and len(c.children)==0:
             try: bpy.data.collections.remove(c)
             except Exception: pass
-    purge_orphans()
     return rows
 
 
@@ -193,6 +197,13 @@ def main():
         }.items(): e[k]=v
         c.objects.link(e); n+=1
     if n!=547: raise RuntimeError(f'placement instance count {n} != 547')
+
+    # Now every visual source collection has at least one collection-instance
+    # user, so temporary zero-user datablocks from the six action imports can be
+    # removed safely without deleting the actor asset library.
+    purge_orphans()
+    if len([c for c in bpy.data.collections if c.name.startswith('D1_ASSET_')])!=29:
+        raise RuntimeError('visual asset collections changed during deferred orphan purge')
 
     readme=bpy.data.texts.new('D1_TOWER_INSPECTION_README')
     readme.write('Destiny 1 Tower animated inspection scene.\n')
