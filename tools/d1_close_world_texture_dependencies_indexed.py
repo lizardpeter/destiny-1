@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Close D1 material texture dependencies using the archive-wide package index.
 
-This is the map-generic counterpart to the earlier Tower texture closure.  Given an
+This is the map-generic counterpart to the earlier Tower texture closure. Given an
 already recovered world/geometry package corpus and one or more visual-material
 selectors, it repeatedly runs the exact material/texture exporter. Any
 ``missing_texture_package_ids`` are direct consequences of serialized texture
@@ -9,8 +9,10 @@ FileHashes. Those families are recovered by exact byte ranges from the global
 Activity/package index, then extraction repeats until every referenced texture is
 reconstructed.
 
-There is no split-TAR header scan, map-specific catalog, filename semantic guess,
-or hard-coded texture package family.
+Portable texture wrapping uses the source-proven v2 world adapter, which adds only
+PS4 GCN Format8 / R8_UNORM support over the historical generic exporter. There is
+no split-TAR header scan, map-specific catalog, filename semantic guess, or
+hard-coded texture package family.
 """
 from __future__ import annotations
 
@@ -32,7 +34,7 @@ def snaps(roots:list[Path])->list[Path]:
 def run_export(roots,runtime,selectors,outdir,stdout):
     if outdir.exists():shutil.rmtree(outdir)
     outdir.mkdir(parents=True,exist_ok=True)
-    cmd=[sys.executable,str(HERE/'d1_world_material_texture_export.py')]
+    cmd=[sys.executable,str(HERE/'d1_world_material_texture_export_v2.py')]
     for p in snaps(roots):cmd+=['--snapshot',str(p)]
     cmd+=['--runtime',str(runtime)]
     for p in selectors:cmd+=['--visual-json',str(p)]
@@ -77,6 +79,6 @@ def main()->int:
     if a.out.exists():shutil.rmtree(a.out)
     shutil.copytree(last,a.out)
     closed=not (final.get('missing_texture_package_ids') or {}) and int(final.get('texture_errors') or 0)==0 and int(final.get('material_decode_errors') or 0)==0
-    report={'schema_version':1,'status':'D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE' if closed else 'D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_PARTIAL','stop_reason':stop,'recovered_package_ids':sorted(recovered_ids),'recovered_package_family_count':len(recovered_ids),'passes':passes,'final_manifest_summary':{k:final.get(k) for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},'policy':'All recovered texture package IDs are emitted by exact serialized material texture FileHashes. Physical family ranges come from the exact archive-wide package index; no map-specific catalogs or TAR discovery scans are used.'}
+    report={'schema_version':1,'status':'D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE' if closed else 'D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_PARTIAL','stop_reason':stop,'recovered_package_ids':sorted(recovered_ids),'recovered_package_family_count':len(recovered_ids),'passes':passes,'final_manifest_summary':{k:final.get(k) for k in ('visible_material_count','material_decode_errors','unique_texture_tags','decoded_texture_tags','texture_errors','png_outputs','missing_texture_package_ids')},'policy':'All recovered texture package IDs are emitted by exact serialized material texture FileHashes. Physical family ranges come from the exact archive-wide package index; no map-specific catalogs or TAR discovery scans are used. Portable wrapping uses the source-proven generic-world R8 adapter for GCN Format8/0x01 and otherwise delegates to the historical exporter.'}
     a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({k:report[k] for k in ('status','stop_reason','recovered_package_ids','final_manifest_summary')},indent=2));return 0 if closed else 2
 if __name__=='__main__':raise SystemExit(main())
