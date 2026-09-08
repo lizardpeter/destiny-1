@@ -1,0 +1,72 @@
+name: D1 Crota terrain T14 external-resource frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-terrain-t14-frontier-v1.yml'
+      - 'tools/d1_world_terrain_t14_frontier.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHADER_ARTIFACT_ID: '10058234988'
+  SHADER_ARTIFACT_SHA256: '458dd3a2a3496760c78b2feaa72be29767c6fb6ec514afb0ec9c67623047d91f'
+  TERRAIN_SCENE_ARTIFACT_ID: '10057367301'
+  TERRAIN_SCENE_ARTIFACT_SHA256: '7cb34b3b051d186b3c21266dcf54a231f863f1ef38b6d04804f16c3e8ff81b3e'
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover exact native PS and terrain scene evidence
+        run: |
+          set -euo pipefail
+          mkdir -p input/shader input/terrain out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "${SHADER_ARTIFACT_SHA256}  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TERRAIN_SCENE_ARTIFACT_ID}/zip" -o input/terrain.zip
+          echo "${TERRAIN_SCENE_ARTIFACT_SHA256}  input/terrain.zip" | sha256sum --check --strict
+          unzip -q input/terrain.zip -d input/terrain
+          ps="$(find input/shader -name terrain_ps_resources_final.json -type f -print -quit)"
+          usage="$(find input/shader -name TERRAIN_GCN_IMAGE_USAGE.json -type f -print -quit)"
+          scene="$(find input/terrain -name crota_terrain_scene.json -type f -print -quit)"
+          test -n "$ps" -a -n "$usage" -a -n "$scene"
+          cp "$ps" out/terrain_ps_resources_final.json
+          cp "$usage" out/TERRAIN_GCN_IMAGE_USAGE.json
+          cp "$scene" out/crota_terrain_scene.json
+
+      - name: Prove T14 is external to serialized terrain materials
+        run: |
+          set -euo pipefail
+          python tools/d1_world_terrain_t14_frontier.py \
+            --ps-resources out/terrain_ps_resources_final.json \
+            --image-usage out/TERRAIN_GCN_IMAGE_USAGE.json \
+            --terrain-scene out/crota_terrain_scene.json \
+            --out out/FINAL_CROTA_TERRAIN_T14_FRONTIER.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/FINAL_CROTA_TERRAIN_T14_FRONTIER.json'))
+          assert d['status']=='D1_WORLD_TERRAIN_T14_EXTERNAL_RESOURCE_FRONTIER_COMPLETE',d
+          assert d['shader_count']==95 and d['t14_shader_count']==91 and d['non_t14_shader_count']==4,d
+          assert d['material_count']==108 and d['serialized_material_t14_count']==0,d
+          assert d['selected_part_count']==1582 and not d['t14_parts_missing_effective_dyemap'],d
+          print('T14_FRONTIER_CLOSED','shaders',d['t14_shader_count'],'materials',d['t14_material_count'],'parts',d['t14_part_count'],'unique_effective_dyemaps',d['t14_part_unique_effective_dyemap_count'])
+          PY
+          sha256sum out/FINAL_CROTA_TERRAIN_T14_FRONTIER.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-TERRAIN-T14-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
