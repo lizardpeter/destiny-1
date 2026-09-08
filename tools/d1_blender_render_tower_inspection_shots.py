@@ -174,7 +174,7 @@ def ensure_lights(center, span):
 
 def configure_render(a):
     s = bpy.context.scene
-    s.render.engine = "BLENDER_EEVEE_NEXT"
+    s.render.engine = "BLENDER_EEVEE"
     s.render.resolution_x = a.width
     s.render.resolution_y = a.height
     s.render.resolution_percentage = 100
