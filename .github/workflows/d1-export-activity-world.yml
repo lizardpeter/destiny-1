@@ -92,7 +92,7 @@ jobs:
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
-          python tools/d1_world_activity_root_dependency_closure.py \
+          python tools/d1_world_activity_root_dependency_closure_universal.py \
             --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
             --package-list reports/packages.txt \
             --activity "$ACTIVITY" \
