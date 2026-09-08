@@ -1,0 +1,25 @@
+name: D1 Crota whole-Activity layer census diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-layer-census-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_RUN: '34175421771'
+    steps:
+      - name: Extract map-data resource-class census from successful Crota export
+        run: |
+          set -euo pipefail
+          gh run view "$TARGET_RUN" --repo "$GITHUB_REPOSITORY" --log > run.log
+          echo '=== MAP LAYER / RESOURCE CLASS CENSUS ==='
+          grep -n -E 'resource_class|resource class|class_counts|MAP_DATA_LAYER|STATIC_TARGET_PLAN|activity_tables|activity_rows|static_tables|static_rows|nonmatching|entry_count|map_data_table_count' run.log | head -n 500 || true
