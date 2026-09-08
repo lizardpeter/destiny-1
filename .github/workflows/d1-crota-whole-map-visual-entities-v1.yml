@@ -1,0 +1,326 @@
+name: D1 Crota whole-map visual SEntities v1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-whole-map-visual-entities-v1.yml'
+      - 'tools/d1_world_visual_entity_plan.py'
+      - 'tools/d1_world_visual_model_dependency_closure.py'
+      - 'tools/d1_expand_world_material_dependencies_indexed.py'
+      - 'tools/d1_world_visual_model_export.py'
+      - 'tools/d1_world_visual_entity_scene.py'
+      - 'tools/d1_world_articulated_scene_v2.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  SOURCE_CLOSURE_ARTIFACT_ID: '10038165648'
+  SOURCE_CLOSURE_ZIP_SHA256: 'fadc4b38dbca89a98c378bbde4703cc4c377b373d5b677e92c8fe4c342340be7'
+  STATIC_COMMON_SHA256: '6026ea73dd0a351bc48df3b3e14a9d3589722eaf13e18fe5e0028bfe5736e84f'
+  STATIC_COMMON_BYTES: '770921260'
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 480
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact SEntity closure checkpoint and archive identity
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p input runtime packages material_expanded texture_expanded reports models scene final base
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_CLOSURE_ARTIFACT_ID}/zip" \
+            -o input/source.zip
+          echo "${SOURCE_CLOSURE_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          python - <<'PY'
+          import json
+          d=json.load(open('input/source/out/map_entity_dependency_census.json'))
+          p=json.load(open('input/source/out/map_entity_runtime_placements.json'))
+          assert d['status']=='D1_WORLD_ENTITY_DEPENDENCY_CENSUS_COMPLETE',d
+          assert d['placed_unique_entity_count']==81 and d['parsed_entity_count']==81,d
+          assert not d['unresolved_dependency_hashes'],d['unresolved_dependency_hashes']
+          assert d['entity_composition_class_counts']=={
+            'model_without_skeleton':12,
+            'nonvisual_or_unresolved_entity':57,
+            'rigged_articulated_entity_candidate':12,
+          },d['entity_composition_class_counts']
+          assert d['unique_embedded_model_count']==21,d
+          assert p['status']=='D1_WORLD_MAP_ENTITY_RUNTIME_PLACEMENTS_COMPLETE',p
+          assert p['unique_runtime_world_placement_count']==1535,p
+          assert p['sentinel_world_id_runtime_placement_count']==736,p
+          print('SENTITY_CHECKPOINT_ACCEPTED',d['placed_unique_entity_count'],d['unique_embedded_model_count'],p['unique_runtime_world_placement_count'])
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d.get('status')
+          assert actual==(d.get('source') or {}).get('package_list_sha256'),(actual,(d.get('source') or {}).get('package_list_sha256'))
+          print('ARCHIVE_INDEX_ACCEPTED',actual)
+          PY
+
+      - name: Derive complete visual SEntity population
+        run: |
+          set -euo pipefail
+          python tools/d1_world_visual_entity_plan.py \
+            --placements input/source/out/map_entity_runtime_placements.json \
+            --entity-dependencies input/source/out/map_entity_dependency_census.json \
+            --out reports/map_visual_entity_plan.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/map_visual_entity_plan.json'))
+          assert d['status']=='D1_WORLD_VISUAL_ENTITY_PLAN_COMPLETE',d['violations']
+          assert d['visual_candidate_count']==24,d
+          assert d['nonvisual_entity_count']==57,d
+          assert d['visual_runtime_placement_count']==149,d
+          assert d['visual_model_instance_count']==149,d
+          assert d['unique_model_parent_pair_count']==21,d
+          assert d['unique_model_count']==21,d
+          assert d['unique_model_parent_resource_count']==21,d
+          assert all(x['model_parent_pair_count']==1 for x in d['candidates']),d
+          assert all(str(p.get('world_id_hex')).upper()!='FFFFFFFFFFFFFFFF' for x in d['candidates'] for p in x['placements']),d
+          print('VISUAL_ENTITY_PLAN_CLOSED',d['visual_candidate_count'],d['visual_runtime_placement_count'],d['unique_model_parent_pair_count'])
+          PY
+
+      - name: Recover exact model and parent owner package families
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from tools.d1_filehash import package_hex
+          d=json.load(open('reports/map_visual_entity_plan.json'))
+          tags=set(d['unique_models'])|set(d['unique_model_parent_resources'])
+          ids=sorted({package_hex(h).lower() for h in tags})
+          assert ids
+          open('reports/visual_base_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          print('VISUAL_BASE_PACKAGE_IDS',len(ids),ids)
+          PY
+          args=(); while read -r p; do args+=(--package-id "$p"); done < reports/visual_base_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            "${args[@]}" --out-dir packages --report reports/visual_base_package_recovery.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/visual_base_package_recovery.json'))
+          assert d['status']=='D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE',d
+          print('VISUAL_BASE_PACKAGES_RECOVERED',d['family_count'],d['member_count'])
+          PY
+
+      - name: Close every EntityModel stream and backing dependency
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_visual_model_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --visual-plan reports/map_visual_entity_plan.json \
+            --runtime runtime --package-dir packages \
+            --work-dir reports/visual_model_dependency_work \
+            --report reports/visual_model_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/visual_model_dependency_closure.json'))
+          assert d['status']=='D1_WORLD_VISUAL_MODEL_DEPENDENCY_CLOSURE_COMPLETE',d
+          assert d['model_count']==21,d
+          print('VISUAL_MODEL_DEPS_CLOSED',d['model_count'],len(d['final_package_ids']))
+          PY
+
+      - name: Close exact owning-parent Material dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_expand_world_material_dependencies_indexed.py \
+            --snapshot-dir packages \
+            --runtime runtime \
+            --articulated-plan reports/map_visual_entity_plan.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --expansion-dir material_expanded \
+            --work-dir reports/visual_material_dependency_work \
+            --out reports/visual_material_bindings.json \
+            --report reports/visual_material_dependency_expansion.json
+          python - <<'PY'
+          import json
+          b=json.load(open('reports/visual_material_bindings.json'))
+          x=json.load(open('reports/visual_material_dependency_expansion.json'))
+          assert b['status']=='D1_WORLD_ENTITY_MODEL_MATERIAL_BINDINGS_COMPLETE',b.get('violations')
+          assert x['status']=='D1_INDEXED_WORLD_MATERIAL_DEPENDENCY_EXPANSION_CLOSED',x
+          assert b['model_parent_pair_count']==21,b
+          assert b['validated_pair_count']==21,b
+          print('VISUAL_MATERIALS_CLOSED',b['model_parent_pair_count'],b['unique_selected_material_count'],x['recovered_package_ids'])
+          PY
+
+      - name: Export all 21 exact model-parent pairs and instantiate 149 placements
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages material_expanded -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          snap=(); for f in "${files[@]}"; do snap+=(--snapshot "$f"); done
+          python tools/d1_world_visual_model_export.py \
+            "${snap[@]}" --runtime runtime \
+            --visual-plan reports/map_visual_entity_plan.json \
+            --material-bindings reports/visual_material_bindings.json \
+            --out-dir models --summary reports/visual_model_export_summary.json
+          python tools/d1_world_visual_entity_scene.py \
+            --visual-plan reports/map_visual_entity_plan.json \
+            --model-dir models \
+            --out scene/VISUAL_ENTITIES_UNTEXTURED.glb \
+            --report reports/visual_entity_scene.json
+          python - <<'PY'
+          import json
+          m=json.load(open('reports/visual_model_export_summary.json'))
+          s=json.load(open('reports/visual_entity_scene.json'))
+          assert m['status']=='D1_WORLD_VISUAL_MODEL_PAIR_SET_COMPLETE',m['errors']
+          assert m['requested_pair_count']==21 and m['exported_pair_count']==21,m
+          assert s['status']=='D1_WORLD_VISUAL_ENTITY_SCENE_COMPLETE',s
+          assert s['runtime_placement_count']==149,s
+          assert s['model_parent_pair_count']==21,s
+          assert s['model_pair_instance_count']==149,s
+          assert s['sentinel_world_id_placement_count']==0,s
+          mats={h:{'visual':True} for h in m['active_materials']}
+          json.dump({'status':'D1_WORLD_VISUAL_ENTITY_MATERIAL_SELECTOR','material_count':len(mats),'materials':mats},open('reports/visual_entity_material_selector.json','w'),indent=2)
+          print('VISUAL_GEOMETRY_EXPORTED',m['geometry_count'],m['triangle_count'],m['active_material_count'],'SCENE_NODES',s['scene_geometry_nodes'])
+          PY
+
+      - name: Close exact visual-entity textures and bind portable preview resources
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --snapshot-dir material_expanded \
+            --runtime runtime \
+            --visual-json reports/visual_entity_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir texture_expanded \
+            --work-dir reports/visual_texture_dependency_work \
+            --out scene/textures --report reports/visual_texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py \
+            scene/textures/material_texture_manifest.json \
+            -o reports/visual_texture_roles.json
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb scene/VISUAL_ENTITIES_UNTEXTURED.glb \
+            --manifest scene/textures/material_texture_manifest.json \
+            --roles reports/visual_texture_roles.json \
+            --texture-dir scene/textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --out scene/VISUAL_ENTITIES_EXACT_TEXTURES.glb \
+            --report reports/visual_exact_texture_resources.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/visual_texture_dependency_closure.json'))
+          r=json.load(open('reports/visual_exact_texture_resources.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert r['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',r
+          print('VISUAL_TEXTURES_CLOSED',r['exact_source_texture_count'],'native',r['derived_portable_normal_count'],'derived')
+          PY
+
+      - name: Merge exact visual SEntities onto durable static/common Crota world
+        run: |
+          set -euo pipefail
+          gh release download d1-activity-810b0002-static-common-r1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'D1_ACTIVITY_810B0002_STATIC_COMMON_EXACT_RESOURCES.glb' \
+            --dir base
+          python - <<'PY'
+          import hashlib,os
+          p='base/D1_ACTIVITY_810B0002_STATIC_COMMON_EXACT_RESOURCES.glb'
+          b=os.path.getsize(p);h=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert b==int(os.environ['STATIC_COMMON_BYTES']),(b,os.environ['STATIC_COMMON_BYTES'])
+          assert h==os.environ['STATIC_COMMON_SHA256'],(h,os.environ['STATIC_COMMON_SHA256'])
+          print('STATIC_COMMON_BASE_VERIFIED',b,h)
+          PY
+          python tools/d1_gltf_layer_merge.py \
+            --base base/D1_ACTIVITY_810B0002_STATIC_COMMON_EXACT_RESOURCES.glb \
+            --layer map_visual_entities=scene/VISUAL_ENTITIES_EXACT_TEXTURES.glb \
+            --out final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES.glb \
+            --report reports/static_common_visual_entity_merge.json
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          p=Path('final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES.glb')
+          plan=json.load(open('reports/map_visual_entity_plan.json'))
+          mod=json.load(open('reports/visual_model_export_summary.json'))
+          scene=json.load(open('reports/visual_entity_scene.json'))
+          tex=json.load(open('reports/visual_exact_texture_resources.json'))
+          merge=json.load(open('reports/static_common_visual_entity_merge.json'))
+          out={
+            'schema_version':1,
+            'status':'D1_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_COMPLETE',
+            'activity':'810B0002',
+            'base_static_common':{'bytes':int(os.environ['STATIC_COMMON_BYTES']),'sha256':os.environ['STATIC_COMMON_SHA256']},
+            'map_entities':{
+              'source_sentity_count':plan['placed_unique_entity_count'],
+              'visual_entity_count':plan['visual_candidate_count'],
+              'nonvisual_entity_count':plan['nonvisual_entity_count'],
+              'visual_runtime_placement_count':plan['visual_runtime_placement_count'],
+              'model_parent_pair_count':plan['unique_model_parent_pair_count'],
+              'unique_model_count':plan['unique_model_count'],
+              'geometry_variants':mod['geometry_count'],
+              'triangles':mod['triangle_count'],
+              'active_material_count':mod['active_material_count'],
+              'scene_geometry_nodes':scene['scene_geometry_nodes'],
+              'native_texture_resources':tex['exact_source_texture_count'],
+              'derived_portable_normals':tex['derived_portable_normal_count'],
+            },
+            'final_counts':merge['final_counts'],
+            'bytes':p.stat().st_size,
+            'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'scope':'Previously closed Activity-owned baked-static + table-scoped/common geometry, plus every map-entry SEntity with source-proven EntityModel visual ownership, exact owning-parent material selection, exact native texture resources, and source world transforms. Rig/animation playback and non-entity DataResource layers such as sky/lights/decals/terrain remain separate adapters.',
+            'provenance':'No destination-specific entity/model/material/texture package list is an input. The 81 map SEntities originate from all 1,535 Activity-owned SMapDataEntry rows; visual ownership is parsed from exact SEntity EntityResources and all cross-package dependencies are recovered from serialized FileHashes through the archive-wide package index.'
+          }
+          json.dump(out,open('reports/FINAL_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish durable Crota static/common plus map visual entity checkpoint
+        run: |
+          set -euo pipefail
+          tag='d1-activity-810b0002-static-common-map-visual-entities-r1'
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title 'D1 Crota Activity static/common + map visual SEntities r1' \
+              --notes 'Activity-driven Crota world checkpoint. Extends the exact static/common export with every map-entry SEntity that owns source-proven EntityModel geometry. Preserves exact parent-aware material selection, exact native texture resources and serialized world transforms. Does not yet claim rig/animation playback or non-entity DataResource layers such as sky/lights/decals/terrain.'
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" \
+            final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES.glb \
+            reports/FINAL_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES.json \
+            reports/map_visual_entity_plan.json \
+            reports/visual_model_dependency_closure.json \
+            reports/visual_material_dependency_expansion.json \
+            reports/visual_texture_dependency_closure.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-WHOLE-MAP-VISUAL-ENTITIES-V1-REPORTS
+          path: reports/
+          retention-days: 30
+          compression-level: 6
