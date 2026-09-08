@@ -31,6 +31,8 @@ P = np.array([
     [0.0, 0.0, 0.0, 1.0],
 ], dtype=np.float64)
 PI = P.T
+P3 = P[:3, :3]
+PI3 = P3.T
 FLOAT = 5126
 
 
@@ -75,12 +77,17 @@ def convert_values(path: str, values: np.ndarray) -> np.ndarray:
     if path == 'rotation':
         if v.ndim != 2 or v.shape[1] != 4:
             raise ValueError(f'rotation: expected Nx4, got {v.shape}')
-        out = []
-        for q in v:
-            m = np.eye(4, dtype=np.float64)
-            m[:3, :3] = Rotation.from_quat(q).as_matrix()
-            out.append(Rotation.from_matrix(basis_matrix(m)[:3, :3]).as_quat())
-        return np.asarray(out, dtype=np.float64)
+        # This is exactly the previous per-key implementation, evaluated in a
+        # vectorized batch.  For each quaternion q the old path was:
+        #   Rq = Rotation.from_quat(q).as_matrix()
+        #   Rn = PI3 @ Rq @ P3
+        #   qn = Rotation.from_matrix(Rn).as_quat()
+        # SciPy's Rotation APIs accept N-quaternion/N-matrix batches, and einsum
+        # applies the identical fixed conjugation to every matrix.  This removes
+        # tens of thousands of Python/SciPy calls without changing semantics.
+        mats = Rotation.from_quat(v).as_matrix()
+        converted = np.einsum('ij,njk,kl->nil', PI3, mats, P3, optimize=True)
+        return Rotation.from_matrix(converted).as_quat()
     raise ValueError(f'unsupported animation target path {path}')
 
 
@@ -152,6 +159,7 @@ def main() -> int:
         'animationCount': len(animations),
         'jointTargetedChannelCount': len(channel_rows),
         'convertedOutputAccessorCount': len(converted),
+        'rotationConversionImplementation': 'vectorized SciPy fixed-basis conjugation; mathematically identical to prior per-key implementation',
         'animationTimesChanged': False,
         'channelTargetsChanged': False,
         'skinChanged': False,
@@ -169,7 +177,7 @@ def main() -> int:
         raise ValueError('skin count changed')
 
     report = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_GLTF_NATIVE_TIGER_ANIMATION_BASIS_RESTORED',
         'input': str(a.input_glb),
         'input_sha256': sha256_file(a.input_glb),
@@ -182,6 +190,7 @@ def main() -> int:
         'joint_targeted_channel_count': len(channel_rows),
         'converted_output_accessor_count': len(converted),
         'binary_byte_length_unchanged': len(out_binary) == len(binary),
+        'rotation_conversion_implementation': 'vectorized_fixed_basis_conjugation_equivalent_to_v1_per_key_scipy',
         'converted_accessors': [{'accessor': ai, 'path': path} for ai, path in sorted(converted.items())],
         'animations': animation_rows,
         'parser_basis_unapplied': True,
@@ -189,14 +198,16 @@ def main() -> int:
         'policy': (
             'Only joint-targeted animation output values are basis-converted. Exact animation '
             'time accessors, interpolation, channel targets, selector/action provenance, skin, '
-            'mesh, weights and materials are preserved.'
+            'mesh, weights and materials are preserved. Rotation conversion is the exact prior '
+            'fixed-basis matrix conjugation, evaluated in vectorized batches.'
         ),
     }
     a.report.parent.mkdir(parents=True, exist_ok=True)
     a.report.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps({k: report[k] for k in (
         'status','animation_count','joint_node_count','joint_targeted_channel_count',
-        'converted_output_accessor_count','binary_byte_length_unchanged','restored_basis'
+        'converted_output_accessor_count','binary_byte_length_unchanged','restored_basis',
+        'rotation_conversion_implementation'
     )}, indent=2))
     return 0
 
