@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_TERRAIN_T14_EXTERNAL_RESOURCE_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "native_ps_workflow": {
+    "run_id": 34231902540,
+    "job_id": 102079871834,
+    "head_sha": "2b95a2f6141f9175be13f27ea31b6a2c04b5aaea",
+    "conclusion": "success",
+    "artifact_id": 10058234988,
+    "artifact_zip_sha256": "458dd3a2a3496760c78b2feaa72be29767c6fb6ec514afb0ec9c67623047d91f"
+  },
+  "t14_frontier_workflow": {
+    "run_id": 34232931427,
+    "job_id": 102083316683,
+    "head_sha": "d59e8a7447549b21e18eb7f4618f39eb3c5bead1",
+    "conclusion": "success",
+    "artifact_id": 10058559848,
+    "artifact_zip_sha256": "b93c9edb5246219775310156b7fa599059c88d8a5eb8441abf52bcfc1f47a1cf"
+  },
+  "native_shader_closure": {
+    "selected_materials": 108,
+    "unique_pixel_shaders": 95,
+    "pixel_shaders_closed": 95,
+    "total_gcn_bytes": 119236,
+    "image_instruction_count": 1394,
+    "unmatched_image_instruction_count": 0,
+    "t14_shader_count": 91,
+    "non_t14_shader_count": 4,
+    "native_texture_api_slot_histogram": {
+      "resource_table_no_immediate_texture_slots": 91,
+      "immediate_t0_t1_only": 4
+    }
+  },
+  "external_resource_frontier": {
+    "t14_material_count": 104,
+    "non_t14_material_count": 4,
+    "serialized_material_t14_count": 0,
+    "selected_part_count": 1582,
+    "t14_part_count": 1567,
+    "non_t14_part_count": 15,
+    "t14_part_unique_effective_dyemap_count": 465,
+    "every_t14_part_has_exact_effective_dyemap": true,
+    "dyemap_control_histogram": {
+      "red": 418,
+      "green": 392,
+      "blue": 383,
+      "white": 374
+    }
+  },
+  "conclusion": "Native GCN proves T14 consumption in 91 terrain shader families. T14 is absent from every selected SMaterial_ROI serialized PS texture array, so it is definitively external to the material. All 1567 selected parts whose shaders consume T14 simultaneously carry an exact effective STerrain dyemap, and those parts cover all 465 dyemaps. This closes T14 as an external terrain-provided resource but intentionally does not yet rename T14 as the dyemap binding until the runtime producer or instruction-level producer edge is independently closed.",
+  "violations": []
+}
