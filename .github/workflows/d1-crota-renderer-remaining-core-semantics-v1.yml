@@ -1,0 +1,88 @@
+name: D1 Crota renderer remaining core semantics 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-crota-renderer-remaining-core-semantics-v1.yml'
+      - 'tools/d1_gcn_remaining_core_source_semantics_proof.py'
+      - 'tools/d1_gcn_renderer_program_add_remaining_core_semantics.py'
+
+env:
+  RENDERER_ARTIFACT_ID: '10080962046'
+  RENDERER_ARTIFACT_ZIP_SHA256: '90c92ad8fb8de2254b70f5dcf46d412d91ac822c319313d4ad6bcfbb98871a0c'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  PYRAMID_REV: '3971186651618d966ebfee161a044d7817462c79'
+  FPPS4_REV: '04cefd43e6fddd1ab033e7980cd356d14c964905'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover immutable 378 of 456 checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input/renderer input/source out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RENDERER_ARTIFACT_ID}/zip" -o input/renderer.zip
+          echo "${RENDERER_ARTIFACT_ZIP_SHA256}  input/renderer.zip" | sha256sum --check --strict
+          unzip -q input/renderer.zip -d input/renderer
+          test -f input/renderer/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          test -f input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json
+      - name: Fetch immutable upstream opcode semantics
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop1.cc" -o input/source/gem5_vop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/source/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/source/gem5_sop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" -o input/source/gem5_sopp.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/jbarczak/Pyramid/${PYRAMID_REV}/src/Wrapper/GCN3Decoder.cpp" -o input/source/pyramid_gcn3.cpp
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/red-prig/fpPS4/${FPPS4_REV}/spirv/emit_vopc.pas" -o input/source/fpps4_vopc.pas
+      - name: Prove source semantics and promote exact core
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_remaining_core_source_semantics_proof.py \
+            --gem5-vop1 input/source/gem5_vop1.cc --gem5-vop2 input/source/gem5_vop2.cc \
+            --gem5-sop1 input/source/gem5_sop1.cc --gem5-sopp input/source/gem5_sopp.cc \
+            --pyramid-gcn3 input/source/pyramid_gcn3.cpp --fpps4-vopc input/source/fpps4_vopc.pas \
+            -o out/D1_GCN_REMAINING_CORE_SOURCE_SEMANTICS.json
+          python tools/d1_gcn_renderer_program_add_remaining_core_semantics.py \
+            --program input/renderer/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --ir input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json \
+            --source-proof out/D1_GCN_REMAINING_CORE_SOURCE_SEMANTICS.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json,collections
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program'];c=p['coverage'];expected={'CONTROL_EXACT':47,'EXPRESSION_EXACT':293,'INPUT_PROVENANCE_EXACT':70,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':10}
+          assert c['primary_resolution_counts']==expected,c
+          assert c['exact_nonstructural_instruction_count']==446
+          assert c['remaining_core_source_semantics_promoted_instruction_count']==68
+          rem=[x['instruction'] for x in p['instruction_resolution'] if x['primary_resolution']=='STRUCTURAL_ONLY']
+          assert rem==[63,64,65,66,74,75,76,77,212,213],rem
+          assert collections.Counter(p['instruction_resolution'][i]['opcode'] for i in rem)=={'ds_swizzle_b32':8,'image_sample':2}
+          assert d['semantic_boundary']['remaining_structural_frontier']=='8_DS_SWIZZLE_PLUS_2_IMAGE_SAMPLE'
+          print('CROTA_REMAINING_CORE_CLOSED',expected,'exact_nonstructural',446,'remaining',rem)
+          PY
+          cp input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json out/
+          cp input/renderer/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json out/
+          cp input/renderer/GFX7_DESCRIPTOR_SEMANTICS.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-808EE505-RENDERER-REMAINING-CORE-SEMANTICS-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
