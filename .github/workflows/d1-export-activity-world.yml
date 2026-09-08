@@ -310,7 +310,8 @@ jobs:
           e=json.load(open('reports/common_model_export.json'))
           s=json.load(open('reports/common_scene.json'))
           assert e['failed_models']==0,e
-          assert s['status']=='D1_WORLD_COMMON_LAYER_SCENE_COMPLETE',s
+          assert s['status']=='D1_WORLD_COMMON_LAYER_SCENE_COMPLETE_SOURCE_COVERAGE',s
+          assert s['source_resolved_records']==s['source_record_count'] and s['unresolved_records']==0,s
           mats={}
           for model in e['models']:
             for mesh in model.get('meshes',[]):
