@@ -3,9 +3,9 @@
 
 This is deliberately not a decompiler-completion claim. Every native instruction is
 assigned a resolution tier and may carry multiple evidence tags. Exact expression
-DAGs, exact loop recurrences, exact EXEC/kill control, exact input provenance, and
-exact exports are preserved separately. The complement is emitted as contiguous
-STRUCTURAL_ONLY spans so Blender and Rust/WGSL consumers cannot silently treat an
+DAGs, exact loop recurrences, exact terminal packed-MRT roots, exact EXEC/kill control,
+exact input provenance, and exact exports are preserved separately. The complement is
+emitted as contiguous STRUCTURAL_ONLY spans so consumers cannot silently treat an
 unlifted value path as solved.
 """
 from __future__ import annotations
@@ -61,6 +61,7 @@ def main():
     ap.add_argument("--mimg", type=Path, required=True)
     ap.add_argument("--loop-recurrence", type=Path, required=True)
     ap.add_argument("--region-expr", type=Path, action="append", default=[])
+    ap.add_argument("--terminal-mrt-expr", type=Path)
     ap.add_argument("-o", "--output", type=Path, required=True)
     a = ap.parse_args()
 
@@ -71,6 +72,7 @@ def main():
     cb = json.load(open(a.cbuffer_provenance))
     mi = json.load(open(a.mimg))
     lr = json.load(open(a.loop_recurrence))
+    terminal = json.load(open(a.terminal_mrt_expr)) if a.terminal_mrt_expr else None
     violations = []
     program = {}
 
@@ -92,6 +94,13 @@ def main():
         assert material == norm(km["material"]) == norm(cb["material"])
         for d in exprs.values():
             assert norm(d["expression"]["shader"]) == shader
+        terminal_payload = None
+        if terminal is not None:
+            assert terminal.get("status") == "D1_GCN_TERMINAL_MRT_PACKED_EXPRESSION_EXACT" and not terminal.get("violations")
+            terminal_payload = terminal["expression"]
+            assert norm(terminal_payload["shader"]) == shader
+            assert norm(terminal_payload["material"]) == material
+            assert terminal_payload["semantic_boundary"]["compressed_export_rgba_channel_unpacking"] == "WITHHELD_NOT_SOURCE_CLOSED"
 
         ins = ir["instructions"]
         n = int(ir["instruction_count"])
@@ -220,6 +229,18 @@ def main():
             export_exact.add(i)
             evidence[i].add("NATIVE_MRT_EXPORT")
 
+        # Exact terminal packed-MRT value path. Only explicitly listed value/export
+        # instructions are promoted; waits and EXEC restore remain in their proper
+        # structural/control tiers. This proof may overlap native export/control tags.
+        if terminal_payload is not None:
+            tids = {int(i) for i in terminal_payload["value_instruction_indices"]}
+            assert tids == {437,438,439,440,441,442,443,445,446,447,448,449,452,453,454}
+            assert all(0 <= i < n for i in tids)
+            expression_exact |= tids
+            for i in tids:
+                evidence[i].add("TERMINAL_MRT_PACKED_EXPRESSION_DAG")
+            assert {int(x["instruction"]) for x in terminal_payload["exports"]} == {449,454}
+
         # Primary resolution is intentionally conservative. Higher-level exact
         # evidence overrides lower tiers only for reporting; all tags are retained.
         primary = {}
@@ -305,6 +326,7 @@ def main():
             "structured_exec_regions": structured_regions,
             "exact_loop_recurrences": recurrence_payloads,
             "exact_simple_region_expressions": expr_payloads,
+            "terminal_mrt_expression": terminal_payload,
             "persistent_export_kills": kills,
             "native_exports": exports,
             "multi_destination_overrides": ir.get("multi_destination_overrides", []),
@@ -337,7 +359,7 @@ def main():
         violations.append(repr(exc))
 
     out = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": (
             "D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL"
             if program and not violations
@@ -350,14 +372,16 @@ def main():
             "material_and_resource_provenance": "EXACT_WHERE_LISTED",
             "promoted_simple_region_expressions": "EXACT",
             "promoted_loop_recurrence": "EXACT",
+            "terminal_packed_mrt_expressions": "EXACT" if terminal_payload is not None else "NOT_ATTACHED",
+            "compressed_export_rgba_channel_unpacking": "WITHHELD_NOT_SOURCE_CLOSED" if terminal_payload is not None else "NOT_ATTACHED",
             "persistent_export_kill": "EXACT",
             "mrt_export_sites": "EXACT",
             "full_mrt_value_expression_tree": "INCOMPLETE",
             "remaining_straight_line_value_dataflow": "NEXT_GATE",
             "visual_texture_role_names": "WITHHELD_UNLESS_SEPARATELY_SOURCE_PROVEN",
             "consumer_policy": (
-                "Blender and Rust/WGSL consumers must preserve resolution tiers. "
-                "STRUCTURAL_ONLY spans cannot be silently replaced by guessed native semantics."
+                "Blender and Rust/WGSL consumers must preserve resolution tiers and native packed export roots. "
+                "STRUCTURAL_ONLY spans and compressed channel ordering cannot be silently replaced by guessed semantics."
             ),
         },
         "policy": (
@@ -373,6 +397,7 @@ def main():
         "material": program.get("material") if program else None,
         "coverage": program.get("coverage", {}).get("primary_resolution_counts") if program else None,
         "structural_only_spans": len(program.get("coverage", {}).get("structural_only_spans", [])) if program else None,
+        "terminal_mrt_attached": terminal_payload is not None,
         "violations": violations,
     }
     print(json.dumps(summary, indent=2))
