@@ -85,7 +85,7 @@ def main() -> int:
         assert '!listconcat(!if(IsSample, dim.CoordSliceArgs, dim.CoordSliceIntArgs),' in intr
         assert '[AMDGPUArg<LLVMMatchType<0>, LodClampMip>]' in intr
         assert 'defm int_amdgcn_image_getlod' in intr
-        assert 'AMDGPUSampleDims<"GET_LOD", AMDGPUSample, 1>' in intr
+        assert 'AMDGPUImageDimSampleDims<"GET_LOD", AMDGPUSample, 1>' in intr
 
         ins=ir['instructions']
         expected={
