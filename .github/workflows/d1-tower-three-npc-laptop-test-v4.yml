@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'tools/d1_gltf_actor_visual_preview_adapter_v2.py'
+      - 'tools/d1_gltf_append_shared_action_library_by_joint_name.py'
       - 'tools/d1_blender_build_tower_three_npc_test_v4.py'
       - 'tools/d1_blender_validate_tower_three_npc_test_v4.py'
       - 'tools/d1_blender_render_tower_three_npc_test_v4.py'
