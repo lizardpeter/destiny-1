@@ -1,0 +1,235 @@
+name: D1 Tower three-NPC native PS registry match
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-tower-three-npc-ps-registry-match.yml'
+      - 'evidence/d1_native_shader_semantic_registry_v1.json'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_tower_recover_articulated_visual_corpus.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  AUDIT_ARTIFACT_ID: '10068794522'
+  AUDIT_ARTIFACT_SHA256: '90812780872801f05055650a3a070a786c2a67e9489f38ee8fb3849cd6d6ce8b'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  match:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned audit, universal catalog, runtime and package index
+        run: |
+          set -euo pipefail
+          mkdir -p input/audit input/catalog runtime reports corpus_initial corpus_native shader/first shader/all out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUDIT_ARTIFACT_ID}/zip" -o input/audit.zip
+          echo "${AUDIT_ARTIFACT_SHA256}  input/audit.zip" | sha256sum --check --strict
+          unzip -q input/audit.zip -d input/audit
+          test -f input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Build exact visible PS set and initial package plan
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          d=json.load(open('input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json'))
+          assert d['status']=='D1_TOWER_THREE_NPC_MATERIAL_CORRECTNESS_AUDIT_COMPLETE' and not d['violations'],d
+          freq=collections.Counter(); material_rows=[]
+          for a in d['actors']:
+              for m in a['materials']:
+                  sh=m['pixel_shader'].upper(); freq[sh]+=int(m['primitive_count'])
+                  material_rows.append({'actor':a['key'],'label':a['label'],'material':m['material'],'primitive_count':m['primitive_count'],'pixel_shader':sh})
+          shaders=sorted(freq)
+          assert shaders and all(len(x)==8 for x in shaders),shaders
+          def pid(h):
+              v=int(h,16); assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          ids=sorted({pid(h) for h in shaders})
+          Path('reports/visible_ps_tags.txt').write_text('\n'.join(shaders)+'\n')
+          Path('reports/initial_package_ids.txt').write_text('\n'.join(ids)+'\n')
+          Path('reports/visible_ps_manifest.json').write_text(json.dumps({
+              'status':'D1_THREE_NPC_VISIBLE_PS_SET_EXACT_FROM_MATERIAL_AUDIT',
+              'pixel_shader_frequency':dict(sorted(freq.items())),
+              'material_rows':material_rows,
+          },indent=2)+'\n')
+          print('VISIBLE_PS_SET','headers',len(shaders),'package_ids',ids)
+          PY
+
+      - name: Recover shader-header package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/initial_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus_initial --report reports/initial_shader_corpus.json
+
+      - name: Resolve native shader references from every visible PS header
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial -maxdepth 1 -type f -name '*.pkg' | sort)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t shaders < reports/visible_ps_tags.txt
+          sargs=(); for s in "${shaders[@]}"; do sargs+=(--shader "$s"); done
+          set +e
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
+            --manifest reports/visible_ps_manifest.json "${sargs[@]}" \
+            --out-dir shader/first --report reports/first_pass.json
+          rc=$?
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/first_pass.json'))
+          expected={x.strip() for x in open('reports/visible_ps_tags.txt') if x.strip()}
+          rows={r['shader']:r for r in d['shaders']}
+          assert set(rows)==expected,(set(rows)^expected)
+          unresolved=[h for h,r in rows.items() if not r.get('header_meta') or not r.get('native_shader')]
+          assert not unresolved,unresolved
+          def pid(h): return f'{((int(h,16)-0x80800000)>>13)&0x7ff:04x}'
+          initial={x.strip() for x in open('reports/initial_package_ids.txt') if x.strip()}
+          native=sorted({r['native_shader'] for r in rows.values() if r.get('native_shader') not in (None,'00000000','FFFFFFFF')})
+          ids=sorted({pid(h) for h in native}-initial)
+          Path('reports/native_package_ids.txt').write_text('\n'.join(ids)+('\n' if ids else ''))
+          print('NATIVE_REFS','native_tags',len(native),'additional_package_ids',ids)
+          PY
+
+      - name: Recover additional native-program package families
+        run: |
+          set -euo pipefail
+          if [ -s reports/native_package_ids.txt ]; then
+            args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/native_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py \
+              --package-list reports/packages.txt "${args[@]}" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --out-dir corpus_native --report reports/native_shader_corpus.json
+          else
+            printf '%s\n' '{"status":"D1_THREE_NPC_NATIVE_SHADER_CORPUS_NO_ADDITIONAL_FAMILIES"}' > reports/native_shader_corpus.json
+          fi
+
+      - name: Extract all visible bounded native GCN programs
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial corpus_native -maxdepth 1 -type f -name '*.pkg' | sort -u)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t shaders < reports/visible_ps_tags.txt
+          sargs=(); for s in "${shaders[@]}"; do sargs+=(--shader "$s"); done
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
+            --manifest reports/visible_ps_manifest.json "${sargs[@]}" \
+            --out-dir shader/all --report reports/all_visible_ps_extract.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/all_visible_ps_extract.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
+          expected=sum(1 for x in open('reports/visible_ps_tags.txt') if x.strip())
+          assert d['selected_count']==expected,(d['selected_count'],expected)
+          print('VISIBLE_NATIVE_GCN_EXACT','headers',expected,'bytes',sum(x['gcn_bytes'] for x in d['shaders']))
+          PY
+
+      - name: Match exact GCN SHAs to reusable semantic registry
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          ext=json.load(open('reports/all_visible_ps_extract.json'))
+          audit=json.load(open('input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json'))
+          reg=json.load(open('evidence/d1_native_shader_semantic_registry_v1.json'))
+          bysha={e['gcn_sha256']:e for e in reg['entries'] if e['stage']=='ps'}
+          byheader={r['shader']:r for r in ext['shaders']}
+          programs={}
+          for h,r in sorted(byheader.items()):
+              sha=r['gcn_sha256']; e=bysha.get(sha)
+              programs[h]={
+                  'serialized_ps':h,'native_shader':r['native_shader'],'native_sha256':r['native_sha256'],
+                  'gcn_bytes':r['gcn_bytes'],'gcn_sha256':sha,
+                  'registry_match':None if e is None else {
+                      'semantic_class':e['semantic_class'],'handler':e['handler'],
+                      'source_proof_status':e['source_proof_status'],'registry_shader_headers':e.get('shader_headers',[]),
+                      'frontier':e.get('frontier'),
+                  },
+              }
+          actors=[]; weighted=collections.Counter(); unique_programs=set(); known_programs=set()
+          for a in audit['actors']:
+              mats=[]
+              for m in a['materials']:
+                  p=programs[m['pixel_shader']]; known=p['registry_match'] is not None
+                  weighted['known' if known else 'new']+=int(m['primitive_count'])
+                  unique_programs.add(p['gcn_sha256'])
+                  if known: known_programs.add(p['gcn_sha256'])
+                  mats.append({
+                      'material':m['material'],'primitive_count':m['primitive_count'],'pixel_shader':m['pixel_shader'],
+                      'gcn_sha256':p['gcn_sha256'],'semantic_registry_match':p['registry_match'],
+                      'safe_reuse_boundary':(
+                          'Instruction equation reusable by exact GCN SHA; this actor own literal textures/constants/TFX/samplers/runtime state still require validation'
+                          if known else 'New bounded GCN program; semantic lifting required before retail-correct portable rendering'
+                      ),
+                  })
+              c=collections.Counter('known' if x['semantic_registry_match'] else 'new' for x in mats)
+              pc=collections.Counter()
+              for x in mats: pc['known' if x['semantic_registry_match'] else 'new']+=x['primitive_count']
+              actors.append({'key':a['key'],'label':a['label'],'material_program_counts':dict(c),'primitive_program_counts':dict(pc),'materials':mats})
+          out={
+              'schema_version':1,'status':'D1_TOWER_THREE_NPC_NATIVE_PS_REGISTRY_MATCH_EXACT',
+              'serialized_ps_header_count':len(programs),'unique_bounded_gcn_program_count':len(unique_programs),
+              'registry_matched_unique_gcn_program_count':len(known_programs),
+              'registry_unmatched_unique_gcn_program_count':len(unique_programs-known_programs),
+              'primitive_weighted_registry_coverage':dict(weighted),
+              'programs':programs,'actors':actors,'violations':[],
+              'policy':'Only exact bounded native GCN SHA equality counts as semantic-registry reuse. Header equality is not required and header-only similarity is not used.',
+          }
+          Path('out/THREE_NPC_NATIVE_PS_REGISTRY_MATCH.json').write_text(json.dumps(out,indent=2)+'\n')
+          lines=['# Three-NPC native pixel-shader registry match','',
+                 f"Serialized PS headers: **{out['serialized_ps_header_count']}**",
+                 f"Unique bounded GCN programs: **{out['unique_bounded_gcn_program_count']}**",
+                 f"Already-closed GCN programs: **{out['registry_matched_unique_gcn_program_count']}**",
+                 f"New GCN programs requiring semantic lift: **{out['registry_unmatched_unique_gcn_program_count']}**",'']
+          for a in actors:
+              lines += [f"## {a['label']} — `{a['key']}`",'',f"Materials by program status: `{a['material_program_counts']}`; primitives: `{a['primitive_program_counts']}`",'',
+                        '| material | primitives | PS | GCN SHA | registry semantic |','|---|---:|---|---|---|']
+              for m in a['materials']:
+                  sem=(m['semantic_registry_match'] or {}).get('semantic_class','NEW_PROGRAM')
+                  lines.append(f"| `{m['material']}` | {m['primitive_count']} | `{m['pixel_shader']}` | `{m['gcn_sha256'][:12]}…` | {sem} |")
+              lines.append('')
+          Path('out/THREE_NPC_NATIVE_PS_REGISTRY_MATCH.md').write_text('\n'.join(lines)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','serialized_ps_header_count','unique_bounded_gcn_program_count','registry_matched_unique_gcn_program_count','registry_unmatched_unique_gcn_program_count','primitive_weighted_registry_coverage')},indent=2))
+          print([(a['key'],a['material_program_counts'],a['primitive_program_counts']) for a in actors])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+          cat out/THREE_NPC_NATIVE_PS_REGISTRY_MATCH.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-NATIVE-PS-REGISTRY-MATCH
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 9
