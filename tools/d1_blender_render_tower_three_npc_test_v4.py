@@ -33,6 +33,8 @@ def setup_scene():
     s=bpy.context.scene
     s.render.engine=choose_eevee_engine();s.render.resolution_x=1280;s.render.resolution_y=720;s.render.resolution_percentage=100
     s.render.image_settings.file_format='PNG';s.render.film_transparent=False
+    if s.world is None:
+        s.world=bpy.data.worlds.new('V4_CANARY_WORLD')
     s.world.color=(0.035,0.035,0.035)
     camd=bpy.data.cameras.new('V4_CANARY_CAMERA');cam=bpy.data.objects.new('V4_CANARY_CAMERA',camd);s.collection.objects.link(cam);s.camera=cam
     cam.location=(7.5,-11.5,4.8);camd.lens=52;look_at(cam,(0,0,1.25))
