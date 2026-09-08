@@ -1,0 +1,98 @@
+name: D1 Crota terrain buffer layout v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-terrain-buffer-layout-v1.yml'
+      - 'tools/d1_world_terrain_buffer_layout_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  TERRAIN_ARTIFACT_ID: '10041544308'
+  TERRAIN_ARTIFACT_SHA256: 'c0b4710f45c6d29c99a98d0783339b670548dad31863822de5e9227a58cf9c93'
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover terrain census runtime and exact package corpus
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy
+          mkdir -p input runtime packages out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TERRAIN_ARTIFACT_ID}/zip" -o input/terrain.zip
+          echo "${TERRAIN_ARTIFACT_SHA256}  input/terrain.zip" | sha256sum --check --strict
+          unzip -q input/terrain.zip -d input/terrain
+          census="$(find input/terrain -name terrain_census_final.json -type f -print -quit)"
+          test -n "$census"
+          cp "$census" out/terrain_census_final.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/terrain_census_final.json'))
+          assert d['status']=='D1_WORLD_TERRAIN_CENSUS_COMPLETE',d
+          assert d['terrain_resource_occurrence_count']==49 and d['unique_terrain_count']==49,d
+          assert d['selected_main_geom0_part_count']==1582,d
+          assert not d['missing_dependency_package_ids'] and not d['violations'],d
+          print('TERRAIN_CENSUS_ACCEPTED',d['unique_terrain_count'],d['selected_main_geom0_part_count'])
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o out/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('out/D1_CURRENT_ACTIVITY_INDEX.json'));h=hashlib.sha256(open('out/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE' and h==(d.get('source') or {}).get('package_list_sha256'),(h,d.get('source'))
+          print('ARCHIVE_INDEX_ACCEPTED',h)
+          PY
+          # The green terrain census proved that these Activity-root families plus
+          # 0458 contain every one of its 1,022 typed dependencies. Recover exactly
+          # that proven corpus; the buffer probe will fail closed if a reference-file
+          # backing hash escapes it.
+          python tools/d1_recover_indexed_package_families.py \
+            --index out/D1_CURRENT_ACTIVITY_INDEX.json --package-list out/packages.txt \
+            --package-id 02b7 --package-id 02ba --package-id 02bb \
+            --package-id 0430 --package-id 0431 --package-id 0458 \
+            --out-dir packages --report out/package_recovery.json
+
+      - name: Validate all terrain reference buffers and selected strips
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_terrain_buffer_layout_probe.py "${args[@]}" --runtime runtime \
+            --terrain-census out/terrain_census_final.json --out out/terrain_buffer_layout.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/terrain_buffer_layout.json'))
+          assert d['status']=='D1_WORLD_TERRAIN_BUFFER_LAYOUT_COMPLETE',d
+          assert d['terrain_count']==49 and d['selected_main_geom0_part_count']==1582,d
+          assert not d['violations'],d
+          print('CROTA_TERRAIN_BUFFER_LAYOUT_CLOSED',json.dumps({k:d[k] for k in ('terrain_count','selected_main_geom0_part_count','triangle_count','stride_pair_histogram','index_format_histogram','unique_reference_header_count')},sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-TERRAIN-BUFFER-LAYOUT-V1
+          path: |
+            out/terrain_buffer_layout.json
+            out/terrain_census_final.json
+            out/package_recovery.json
+          retention-days: 30
+          compression-level: 6
