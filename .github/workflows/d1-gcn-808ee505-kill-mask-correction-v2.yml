@@ -1,0 +1,151 @@
+name: D1 GCN 808EE505 kill-mask correction v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-808ee505-kill-mask-correction-v2.yml'
+      - 'tools/d1_gcn_vopc_semantics_proof.py'
+      - 'tools/d1_gcn_808ee505_kill_chain_v2.py'
+      - 'tools/d1_gcn_renderer_program_apply_kill_v2.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  RENDERER_ARTIFACT_ID: '10070568410'
+  RENDERER_ARTIFACT_ZIP_SHA256: '48ad6e237467d89c2a91d5eb01bd549d95105eaa451c9171f74f996656e00056'
+  LLVM_REV: '14e941a0566ae06e982c5d8ddd085697c48fd413'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+
+jobs:
+  prove-and-correct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable D1 and renderer checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/base input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RENDERER_ARTIFACT_ID}/zip" -o input/base.zip
+          echo "${RENDERER_ARTIFACT_ZIP_SHA256}  input/base.zip" | sha256sum --check --strict
+          unzip -q input/base.zip -d input/base
+          test -f input/source/PS_808EE505.s
+          test -f input/source/target_gcn_image_usage.json
+          test -f input/source/target_shader_extract.json
+          test -f input/source/target_material_stage.json
+          test -f input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+
+      - name: Recover same immutable ISA revisions
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_REV}/llvm/lib/Target/AMDGPU/SOPInstructions.td" \
+            -o input/upstream/SOPInstructions.td
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" \
+            -o input/upstream/gem5_sop1.cc
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" \
+            -o input/upstream/gem5_sopp.cc
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" \
+            -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vopc.cc" \
+            -o input/upstream/gem5_vopc.cc
+
+      - name: Rebuild exact structural, cbuffer, and control evidence
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+          python tools/d1_gcn_control_semantics_proof.py \
+            --llvm-sop input/upstream/SOPInstructions.td \
+            --gem5-sop1 input/upstream/gem5_sop1.cc \
+            --gem5-sopp input/upstream/gem5_sopp.cc \
+            --gem5-vop2 input/upstream/gem5_vop2.cc \
+            --llvm-revision "$LLVM_REV" --gem5-revision "$GEM5_REV" \
+            -o out/GCN_CONTROL_SEMANTICS.json
+          python tools/d1_gcn_vopc_semantics_proof.py \
+            --gem5-vopc input/upstream/gem5_vopc.cc --gem5-revision "$GEM5_REV" \
+            -o out/GCN_VOPC_SEMANTICS.json
+
+      - name: Prove corrected kill chain from exact operands
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_808ee505_kill_chain_v2.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --cbuffer out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --control-semantics out/GCN_CONTROL_SEMANTICS.json \
+            --vopc-semantics out/GCN_VOPC_SEMANTICS.json \
+            -o out/PS_808EE505_EXPORT_KILL_MASK_V2.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_EXPORT_KILL_MASK_V2.json'))
+          assert d['status']=='D1_GCN_808EE505_EXPORT_KILL_MASK_V2_EXACT' and not d['violations'],d
+          c=d['contract']
+          assert c['subtract_equation']=='delta = sample - threshold'
+          assert c['compare_equation']=='predicate = (0 > delta)'
+          assert c['predicate_equivalent']=='sample < threshold'
+          assert c['mask_update_equation']=='persistent_export_mask &= ~predicate'
+          assert c['discard_when']=='sample < threshold'
+          assert c['survive_when']=='sample >= threshold'
+          assert c['branch_target_instruction']==443
+          assert c['v1_correction']['old_discard_rule']=='sample > threshold'
+          print('KILL_MASK_V2_CLOSED',c['exact_threshold_rule'])
+          PY
+
+      - name: Correct renderer contract and promote missing exact control rows
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_apply_kill_v2.py \
+            --program input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --kill-v2 out/PS_808EE505_EXPORT_KILL_MASK_V2.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']
+          expected={'CONTROL_EXACT':18,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':19,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':222}
+          assert c['primary_resolution_counts']==expected,c
+          assert c['exact_nonstructural_instruction_count']==234
+          assert c['structural_only_instruction_count']==222
+          assert c['persistent_export_kill_v2_promoted_instructions']==[335,338]
+          assert p['persistent_export_kills'][0]['discard_when']=='sample < threshold'
+          assert p['instruction_resolution'][335]['primary_resolution']=='CONTROL_EXACT'
+          assert p['instruction_resolution'][338]['primary_resolution']=='CONTROL_EXACT'
+          assert any(x['kind']=='PERSISTENT_EXPORT_KILL_INEQUALITY_CORRECTION' for x in d['corrections'])
+          print('RENDERER_KILL_V2_CORRECTED',c['primary_resolution_counts'])
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-KILL-MASK-CORRECTION-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
