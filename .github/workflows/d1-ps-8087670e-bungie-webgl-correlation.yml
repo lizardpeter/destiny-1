@@ -1,0 +1,93 @@
+name: D1 PS 8087670E Bungie WebGL semantic correlation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_three_npc_ps_8087670e_bungie_webgl_correlation.py'
+      - '.github/workflows/d1-ps-8087670e-bungie-webgl-correlation.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  FINAL_BLOCKER_ARTIFACT_ID: '10076330783'
+  FINAL_BLOCKER_ZIP_SHA256: '5c570481c45ff03c679b021b18a01ebfc3ff59d97a5cef876b6a53321b1aaca3'
+  VISUAL_ARTIFACT_ID: '10001232930'
+  VISUAL_ZIP_SHA256: 'a662155f8a6259def83474f08b7508c6f1f5f1f87b1d368b924b2648e6737113'
+  BUNGIE_COMMIT: 'a96f233d133d7d61c0c7a8d80fbb054b33a2343e'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned native evidence
+        run: |
+          set -euo pipefail
+          mkdir -p input/final input/visual input/bungie out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FINAL_BLOCKER_ARTIFACT_ID}/zip" -o input/final.zip
+          echo "${FINAL_BLOCKER_ZIP_SHA256}  input/final.zip" | sha256sum --check --strict
+          unzip -q input/final.zip -d input/final
+          test -f input/final/PS_8087670E_BLEND_FACTOR.json
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VISUAL_ARTIFACT_ID}/zip" -o input/visual.zip
+          echo "${VISUAL_ZIP_SHA256}  input/visual.zip" | sha256sum --check --strict
+          unzip -q input/visual.zip -d input/visual
+          test -f input/visual/tower_spawned_actor_model_export.json
+      - name: Recover exact Bungie.net source blobs
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/DestinyDevs/BungieNetPlatform/${BUNGIE_COMMIT}/three-tgx-loader/bnet-src/spasm/spasm_webgl_gear_shader.js" \
+            -o input/bungie/spasm_webgl_gear_shader.js
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/DestinyDevs/BungieNetPlatform/${BUNGIE_COMMIT}/three-tgx-loader/bnet-src/spasm/spasm_webgl_renderable.js" \
+            -o input/bungie/spasm_webgl_renderable.js
+          python - <<'PY'
+          import hashlib,pathlib
+          expected={
+            'input/bungie/spasm_webgl_gear_shader.js':'ec1e0e395795959723067f60c6456bed6966b7a3',
+            'input/bungie/spasm_webgl_renderable.js':'363d935a7a4a7812a9a580f88b01377185b6cb79',
+          }
+          for p,e in expected.items():
+              b=pathlib.Path(p).read_bytes(); got=hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
+              assert got==e,(p,got,e)
+              print('GIT_BLOB_OK',p,got)
+          PY
+      - name: Prove bounded semantic correlation
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_three_npc_ps_8087670e_bungie_webgl_correlation.py
+          python tools/d1_three_npc_ps_8087670e_bungie_webgl_correlation.py \
+            --blend-proof input/final/PS_8087670E_BLEND_FACTOR.json \
+            --model-report input/visual/tower_spawned_actor_model_export.json \
+            --bungie-gear-shader input/bungie/spasm_webgl_gear_shader.js \
+            --bungie-renderable input/bungie/spasm_webgl_renderable.js \
+            -o out/PS_8087670E_BUNGIE_WEBGL_CORRELATION.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_8087670E_BUNGIE_WEBGL_CORRELATION.json'))
+          assert d['status']=='D1_PS_8087670E_BUNGIE_WEBGL_CORRELATION_EXACT' and not d['violations'],d
+          assert d['gates']['t0_base_diffuse_semantic_correlated'] is True,d
+          assert d['gates']['t3_r_change_color_mask_semantic_correlated'] is True,d
+          assert d['gates']['runtime_t4_binding_closed'] is False,d
+          assert d['gates']['api15_c0_w_runtime_value_closed'] is False,d
+          print('8087670E_BUNGIE_CORRELATION_GREEN')
+          PY
+      - name: Persist hashes
+        if: always()
+        run: find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PS-8087670E-BUNGIE-WEBGL-CORRELATION
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
