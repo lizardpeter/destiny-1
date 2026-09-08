@@ -95,7 +95,7 @@ jobs:
           done
           test "$(wc -l < reports/render_status.tsv)" -eq 20
 
-      - name: Composite all ten world-space cell layers
+      - name: Build core, outer and all-ten layer comparisons
         run: |
           set -euo pipefail
           python tools/d1_tower_composite_cell_layers.py \
@@ -106,14 +106,21 @@ jobs:
           import json
           from pathlib import Path
           d=json.load(open('reports/all10_composite_report.json'))
-          assert d['status']=='D1_TOWER_ALL10_SHARED_CAMERA_COMPOSITES',d
+          assert d['status']=='D1_TOWER_LAYER_COMPARISON_COMPOSITES',d
           assert len(d['views'])==2,d
           assert len(list(Path('layers').glob('cell??_*.png')))==20
           for row in d['views']:
-              p=Path('out')/row['file']; assert p.stat().st_size>10000,(p,p.stat().st_size)
-              assert row['layer_classes'][0]=='far_background' and row['layer_classes'][1]=='outer',row
+              vs={x['variant']:x for x in row['variants']}
+              assert set(vs)=={'core_only','core_outer','all10'},vs
+              assert len(vs['core_only']['cells'])==8,vs['core_only']
+              assert len(vs['core_outer']['cells'])==9,vs['core_outer']
+              assert len(vs['all10']['cells'])==10,vs['all10']
+              assert vs['all10']['layer_classes'][0]=='far_background',vs['all10']
+              assert vs['all10']['layer_classes'][1]=='outer',vs['all10']
+              for v in vs.values():
+                  p=Path('out')/v['file']; assert p.stat().st_size>10000,(p,p.stat().st_size)
           p=Path('out')/d['contact_sheet']['file']; assert p.stat().st_size>10000,p
-          print('ALL10_COMPOSITE_GREEN',[(x['view'],x['bytes']) for x in d['views']])
+          print('LAYER_COMPARISON_GREEN',[(x['view'],[(v['variant'],v['bytes']) for v in x['variants']]) for x in d['views']])
           PY
           find out reports -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
 
@@ -124,6 +131,8 @@ jobs:
           path: |
             out/
             reports/
+            layers/*.png
+            layers/*.json
           retention-days: 90
           if-no-files-found: error
           compression-level: 6
