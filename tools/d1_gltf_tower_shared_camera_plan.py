@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build shared world-space diagnostic camera views for the ten-cell Tower GLB.
+"""Build shared Blender-space diagnostic camera views for the ten-cell Tower.
 
-The merged Tower scene stores baked-static placements as root nodes named
-`cellNN_*`.  This planner reads only the GLB JSON chunk, transforms accessor
-POSITION bounds through each placement node, derives robust per-cell bounds,
-and then derives shared cameras that can be reused while rendering each cell in
-an independent Blender process.  No geometry or texture bytes are modified.
+The exact merged glTF keeps every baked-static placement in world space under a
+`cellNN_*` root name.  Two of the ten source cells are intentionally much larger
+than the compact social-space core: cell 07 is an outer/environment layer and
+cell 08 is a far-background layer whose transforms and scenery span thousands
+to tens of thousands of units.  They must remain renderable, but they must not
+determine the camera used to inspect the local Tower core.
 """
 from __future__ import annotations
 
@@ -14,6 +15,9 @@ from pathlib import Path
 
 GLB_MAGIC = 0x46546C67
 JSON_CHUNK = 0x4E4F534A
+CELL_CLASS = {7: 'outer', 8: 'far_background'}
+CORE_FRAME_CELLS = (0, 1, 2, 3, 4, 5, 6, 9)
+OUTER_FRAME_CELLS = (0, 1, 2, 3, 4, 5, 6, 7, 9)
 
 
 def cli():
@@ -28,9 +32,7 @@ def pct(xs, p):
     if not xs:
         raise ValueError('empty percentile input')
     q = (len(xs) - 1) * p
-    i = int(math.floor(q))
-    j = min(i + 1, len(xs) - 1)
-    t = q - i
+    i = int(math.floor(q)); j = min(i + 1, len(xs) - 1); t = q - i
     return xs[i] * (1 - t) + xs[j] * t
 
 
@@ -56,7 +58,6 @@ def node_matrix(n):
         m = list(map(float, n['matrix']))
         if len(m) != 16:
             raise ValueError('node matrix must have 16 values')
-        # glTF stores matrices column-major.
         return [
             [m[0], m[4], m[8],  m[12]],
             [m[1], m[5], m[9],  m[13]],
@@ -74,7 +75,7 @@ def node_matrix(n):
     ]
 
 
-def transform(m, p):
+def transform_gl(m, p):
     x, y, z = map(float, p)
     return (
         m[0][0]*x + m[0][1]*y + m[0][2]*z + m[0][3],
@@ -83,8 +84,47 @@ def transform(m, p):
     )
 
 
+def gltf_to_blender(p):
+    # Blender's glTF importer converts glTF Y-up to Blender Z-up as X, -Z, Y.
+    x, y, z = p
+    return (x, -z, y)
+
+
 def finite3(p):
     return all(math.isfinite(float(x)) for x in p)
+
+
+def union_bounds(cells, ids):
+    chosen = [x for x in cells if x['cell'] in ids]
+    return {
+        'xmin': min(x['robust']['xmin'] for x in chosen),
+        'xmax': max(x['robust']['xmax'] for x in chosen),
+        'ymin': min(x['robust']['ymin'] for x in chosen),
+        'ymax': max(x['robust']['ymax'] for x in chosen),
+        'zmin': min(x['robust']['zmin'] for x in chosen),
+        'zmax': max(x['robust']['zmax'] for x in chosen),
+    }
+
+
+def camera_views(prefix, b):
+    cx, cy, cz = (b['xmin']+b['xmax'])/2, (b['ymin']+b['ymax'])/2, (b['zmin']+b['zmax'])/2
+    sx, sy, sz = b['xmax']-b['xmin'], b['ymax']-b['ymin'], b['zmax']-b['zmin']
+    span = max(sx, sy, 10.0)
+    h = max(span*.36, sz*1.55, 18.0)
+    return [
+        {
+            'name': f'{prefix}_oblique', 'type': 'PERSP', 'lens_mm': 45.0,
+            'camera': [cx + span*.72, cy - span*.98, cz + h],
+            'target': [cx, cy, cz + max(1.0, sz*.04)],
+            'frame_bounds': b,
+        },
+        {
+            'name': f'{prefix}_top', 'type': 'ORTHO', 'ortho_scale': span*1.10,
+            'camera': [cx, cy, cz + max(span*1.35, sz*4.0, 50.0)],
+            'target': [cx, cy, cz],
+            'frame_bounds': b,
+        },
+    ]
 
 
 def main():
@@ -103,7 +143,7 @@ def main():
     per = {i: {'x': [], 'y': [], 'z': [], 'nodes': 0, 'primitive_bounds': 0} for i in range(10)}
     for n in doc.get('nodes', []):
         name = str(n.get('name', ''))
-        if not name.startswith('cell') or len(name) < 7 or not name[4:6].isdigit() or 'mesh' not in n:
+        if not name.startswith('cell') or len(name) < 6 or not name[4:6].isdigit() or 'mesh' not in n:
             continue
         ci = int(name[4:6])
         if ci not in per:
@@ -125,7 +165,7 @@ def main():
             for x in (lo[0], hi[0]):
                 for y in (lo[1], hi[1]):
                     for z in (lo[2], hi[2]):
-                        p = transform(m, (x, y, z))
+                        p = gltf_to_blender(transform_gl(m, (x, y, z)))
                         if finite3(p):
                             pts.append(p)
             if len(pts) != 8:
@@ -139,57 +179,35 @@ def main():
         d = per[ci]
         if len(d['x']) < 8:
             raise SystemExit(f'cell {ci:02d}: insufficient accessor bounds')
-        row = {
+        b = {
+            'xmin': pct(d['x'], .015), 'xmax': pct(d['x'], .985),
+            'ymin': pct(d['y'], .015), 'ymax': pct(d['y'], .985),
+            'zmin': pct(d['z'], .03),  'zmax': pct(d['z'], .97),
+        }
+        cells.append({
             'cell': ci,
+            'layer_class': CELL_CLASS.get(ci, 'core'),
             'nodes': d['nodes'],
             'primitive_bounds': d['primitive_bounds'],
-            'robust': {
-                'xmin': pct(d['x'], .015), 'xmax': pct(d['x'], .985),
-                'ymin': pct(d['y'], .015), 'ymax': pct(d['y'], .985),
-                'zmin': pct(d['z'], .03),  'zmax': pct(d['z'], .97),
-            }
-        }
-        b = row['robust']
-        row['center'] = [(b['xmin']+b['xmax'])/2, (b['ymin']+b['ymax'])/2, (b['zmin']+b['zmax'])/2]
-        cells.append(row)
+            'robust': b,
+            'center': [(b['xmin']+b['xmax'])/2, (b['ymin']+b['ymax'])/2, (b['zmin']+b['zmax'])/2],
+        })
 
-    # Union the independently trimmed cell bounds.  This avoids allowing a huge
-    # serialized outlier in one cell to dominate the camera for every cell.
-    xmin = min(x['robust']['xmin'] for x in cells); xmax = max(x['robust']['xmax'] for x in cells)
-    ymin = min(x['robust']['ymin'] for x in cells); ymax = max(x['robust']['ymax'] for x in cells)
-    zmin = min(x['robust']['zmin'] for x in cells); zmax = max(x['robust']['zmax'] for x in cells)
-    cx, cy, cz = (xmin+xmax)/2, (ymin+ymax)/2, (zmin+zmax)/2
-    sx, sy, sz = xmax-xmin, ymax-ymin, zmax-zmin
-    span = max(sx, sy, 10.0)
-    height = max(span * .42, sz * 1.75, 20.0)
-
-    views = [
-        {
-            'name': 'oblique_a', 'type': 'PERSP', 'lens_mm': 48.0,
-            'camera': [cx + span*.78, cy - span*1.08, cz + height],
-            'target': [cx, cy, cz + max(1.0, sz*.03)],
-        },
-        {
-            'name': 'oblique_b', 'type': 'PERSP', 'lens_mm': 50.0,
-            'camera': [cx - span*.90, cy + span*.86, cz + height*1.08],
-            'target': [cx, cy, cz + max(1.0, sz*.03)],
-        },
-        {
-            'name': 'top', 'type': 'ORTHO', 'ortho_scale': span*1.12,
-            'camera': [cx, cy, cz + max(span*1.35, sz*4.0, 50.0)],
-            'target': [cx, cy, cz],
-        },
-    ]
-
+    core = union_bounds(cells, CORE_FRAME_CELLS)
+    outer = union_bounds(cells, OUTER_FRAME_CELLS)
+    views = camera_views('core', core) + camera_views('outer', outer)
     out = {
         'status': 'D1_TOWER_SHARED_CAMERA_PLAN',
         'source': a.src.name,
+        'coordinate_space': 'Blender Z-up after glTF import (X,-Z,Y)',
         'cell_count': 10,
+        'core_frame_cells': list(CORE_FRAME_CELLS),
+        'outer_frame_cells': list(OUTER_FRAME_CELLS),
         'cell_bounds': cells,
-        'union_robust_bounds': {'xmin': xmin, 'xmax': xmax, 'ymin': ymin, 'ymax': ymax, 'zmin': zmin, 'zmax': zmax},
-        'center': [cx, cy, cz], 'span_xy': span, 'zspan': sz,
+        'core_bounds': core,
+        'outer_bounds': outer,
         'views': views,
-        'policy': 'Shared world-space diagnostic cameras derived from per-cell robust accessor bounds. Serialized extreme outliers are excluded independently per cell; source geometry is unchanged.'
+        'policy': 'All ten exact cell layers remain renderable. Cameras are framed independently from the compact core or the core+outer layer so cell08 far-background scale does not collapse the social-space view.'
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=2) + '\n')
@@ -198,5 +216,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-# Trigger touch: all-ten composite workflow is now wired to this planner.
