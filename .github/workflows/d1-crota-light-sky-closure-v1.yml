@@ -1,0 +1,168 @@
+name: D1 Crota map light and sky closure v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-light-sky-closure-v1.yml'
+      - 'tools/d1_world_map_lighting_census.py'
+      - 'tools/d1_world_map_lighting_census_v2.py'
+      - 'tools/d1_close_map_lighting_dependencies.py'
+      - 'tools/d1_recover_indexed_package_families.py'
+      - 'tools/d1_filehash.py'
+      - 'tools/d1_world_map_data_layer_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_MAP_CENSUS_ARTIFACT_ID: '10037939515'
+      SOURCE_MAP_CENSUS_ZIP_SHA256: '7b84d4ef6ed9c88c5a3970e6d95a22d9bcee8ac8c9d64db5f9ec2b3c31e50383'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact Crota map-layer census and archive identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy
+          mkdir -p input runtime packages reports out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_MAP_CENSUS_ARTIFACT_ID}/zip" \
+            -o input/source.zip
+          echo "${SOURCE_MAP_CENSUS_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/map_data_layer_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/source/map_data_layer_census.json'))
+          assert d['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS_COMPLETE',d.get('status')
+          assert d['map_data_table_count']==255,d
+          assert d['entry_count']==1535,d
+          assert d['resource_class_counts'].get('80801BEA')==11,d['resource_class_counts']
+          assert d['resource_class_counts'].get('80801BDA')==5,d['resource_class_counts']
+          print('SOURCE_MAP_LAYER_ACCEPTED',d['map_data_table_count'],d['entry_count'])
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d.get('status')
+          assert actual==(d.get('source') or {}).get('package_list_sha256'),(actual,(d.get('source') or {}).get('package_list_sha256'))
+          print('ARCHIVE_INDEX_ACCEPTED',actual)
+          PY
+
+      - name: Recover exact light and sky collection owner families
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from tools.d1_filehash import package_hex
+          d=json.load(open('input/source/map_data_layer_census.json'))
+          wanted={'80801BEA':11,'80801BDA':5}
+          rows=[]
+          for t in d['tables']:
+              for e in t.get('entries',[]):
+                  cls=e.get('resource_class')
+                  if cls not in wanted:
+                      continue
+                  target=(e.get('resource_target') or {}).get('hash')
+                  if not target or target.upper() in {'00000000','FFFFFFFF'}:
+                      raise SystemExit(f'{cls}: null resource target in source row')
+                  rows.append({'class':cls,'target':target.upper(),'package_id':package_hex(target).lower(),
+                               'map_data_table':t.get('map_data_table'),'entry_index':e.get('entry_index')})
+          from collections import Counter
+          c=Counter(x['class'] for x in rows)
+          assert dict(c)==wanted,(c,wanted)
+          ids=sorted({x['package_id'] for x in rows})
+          json.dump({'status':'D1_CROTA_LIGHT_SKY_OWNER_PLAN_EXACT','row_count':len(rows),
+                     'class_counts':dict(c),'package_ids':ids,'rows':rows},
+                    open('reports/light_sky_owner_plan.json','w'),indent=2)
+          open('reports/light_sky_owner_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          print('LIGHT_SKY_OWNER_PLAN',len(rows),ids)
+          PY
+          args=(); while read -r p; do args+=(--package-id "$p"); done < reports/light_sky_owner_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            "${args[@]}" --out-dir packages --report reports/light_sky_owner_recovery.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/light_sky_owner_recovery.json'))
+          assert d['status']=='D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE',d
+          print('LIGHT_SKY_OWNER_PACKAGES_RECOVERED',d['family_count'],d['member_count'])
+          PY
+
+      - name: Recursively close source-pinned map lighting and sky dependencies
+        shell: bash
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_close_map_lighting_dependencies.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --layer-census input/source/map_data_layer_census.json \
+            --runtime runtime --package-dir packages \
+            --work-dir reports/light_sky_dependency_work \
+            --out reports/crota_map_lighting_census.json \
+            --report reports/crota_map_lighting_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/crota_map_lighting_census.json'))
+          x=json.load(open('reports/crota_map_lighting_dependency_closure.json'))
+          assert x['status']=='D1_WORLD_MAP_LIGHTING_DEPENDENCY_CLOSURE_COMPLETE',x
+          assert c['status']=='D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE',c
+          assert c['source_map_data_table_count']==255,c
+          assert c['source_entry_count']==1535,c
+          assert c['light_resource_occurrences']==11,c
+          assert c['sky_resource_occurrences']==5,c
+          assert not c['missing_dependency_package_ids'],c['missing_dependency_package_ids']
+          assert not c['violations'],c['violations']
+          print('CROTA_LIGHT_SKY_CLOSED',json.dumps({k:c.get(k) for k in (
+            'light_resource_occurrences','sky_resource_occurrences','unique_light_collection_count',
+            'unique_sky_collection_count','light_record_count','transform_record_count','sky_record_count',
+            'light_buffer_hash_count','decoded_light_buffer_count','sky_model_resource_hash_count',
+            'decoded_sky_model_resource_count','sky_entity_model_hash_count','sky_entity_models')},sort_keys=True))
+          print('CROTA_LIGHT_SKY_EXPANSION',x['recovered_package_ids'])
+          PY
+          cp reports/light_sky_owner_plan.json out/
+          cp reports/light_sky_owner_recovery.json out/
+          cp reports/crota_map_lighting_census.json out/
+          cp reports/crota_map_lighting_dependency_closure.json out/
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-LIGHT-SKY-CLOSURE-V1
+          path: |
+            out/
+            reports/light_sky_dependency_work/
+          retention-days: 30
