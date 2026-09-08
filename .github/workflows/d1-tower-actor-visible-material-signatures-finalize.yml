@@ -1,0 +1,78 @@
+name: D1 Tower actor visible material signatures finalize
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-actor-visible-material-signatures-finalize.yml'
+      - 'tools/d1_tower_actor_visible_material_signature_finalize.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  SIG_ARTIFACT_ID: '10035777868'
+  SIG_ARTIFACT_SHA256: '55275e18985b7dda11906a39e88b13c1b7fab7c59fc162be561061b8e1adf5e0'
+  VISUAL_ARTIFACT_ID: '10001232930'
+  VISUAL_ARTIFACT_SHA256: 'a662155f8a6259def83474f08b7508c6f1f5f1f87b1d368b924b2648e6737113'
+  SMAP_ARTIFACT_ID: '10035898672'
+  SMAP_ARTIFACT_SHA256: '15da8f2a852f145ade77a0e399f0cca757d30b3d4cfbcabc20eb9f766441aa77'
+  SELECTOR_ARTIFACT_ID: '10035928833'
+  SELECTOR_ARTIFACT_SHA256: '9bd43bcd78f4cd0687dc96aef79b59952eef4e22e6b6d9d02abca618111c2afc'
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact green/frontier artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p input/signatures input/visual input/smap input/selector out
+          pull_artifact() {
+            id="$1"; sha="$2"; zip="$3"; dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "${sha}  ${zip}" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          pull_artifact "$SIG_ARTIFACT_ID" "$SIG_ARTIFACT_SHA256" input/signatures.zip input/signatures
+          pull_artifact "$VISUAL_ARTIFACT_ID" "$VISUAL_ARTIFACT_SHA256" input/visual.zip input/visual
+          pull_artifact "$SMAP_ARTIFACT_ID" "$SMAP_ARTIFACT_SHA256" input/smap.zip input/smap
+          pull_artifact "$SELECTOR_ARTIFACT_ID" "$SELECTOR_ARTIFACT_SHA256" input/selector.zip input/selector
+
+      - name: Finalize production-visible actor material signatures
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_tower_actor_visible_material_signature_finalize.py
+          python tools/d1_tower_actor_visible_material_signature_finalize.py \
+            --signature-frontier input/signatures/D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES.json \
+            --model-export input/visual/tower_spawned_actor_model_export.json \
+            --smap-frontier input/smap/D1_TOWER_80C88434_SMAP_FRONTIER_V2.json \
+            --entity-selector-probe input/selector/D1_TOWER_80C88434_ENTITY_SELECTOR_PROBE.json \
+            -o out/D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_FINAL.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_FINAL.json'))
+          assert d['status']=='D1_TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_COMPLETE',d['violations']
+          assert d['actor_model_count']==13 and d['production_closed_model_count']==13,d
+          assert set(d['placement_variant_models'])=={'809D8104','80C885E3','80C88CEF'},d
+          assert d['proof']['80C88434_empty_config_unique_fallback_material']=='808765F3',d['proof']
+          assert d['proof']['D1_retail_descriptor_evaluator_source_closed'] is False,d['proof']
+          assert all(v is False for k,v in d['gates'].items() if k != 'unused'),d['gates']
+          print('TOWER_ACTOR_VISIBLE_MATERIAL_SIGNATURES_FINAL_GREEN',d['total_unique_visible_external_signature_count'])
+          PY
+
+      - name: Persist hashes
+        run: find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-ACTOR-VISIBLE-MATERIAL-SIGNATURES-FINAL
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
