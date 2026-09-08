@@ -1,0 +1,164 @@
+name: D1 Crota 808EE505 cutout proxy v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-808ee505-cutout-proxy-v1.yml'
+      - 'tools/d1_gltf_apply_808ee505_cutout_proxy.py'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  BASE_RELEASE_TAG: 'd1-activity-810b0002-world-terrain-source-semantics-r1'
+  BASE_GLB: 'D1_ACTIVITY_810B0002_WORLD_TERRAIN_SOURCE_SEMANTICS.glb'
+  BASE_BYTES: '1106707616'
+  BASE_SHA256: 'bba9a514113550d209067d288b4a58824048a5c3a5519fd07e2c9800070a7ca2'
+  CONTRACT_ARTIFACT_ID: '10064514639'
+  CONTRACT_ARTIFACT_ZIP_SHA256: 'e22c6fb443eb3cf344d6629517f48205748a8986c345acc62c8d352a0c68a219'
+
+jobs:
+  build-proxy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install decoder dependencies and exact runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh
+          mkdir -p base contract runtime reports packages texture_expanded texture_work texture_out bound final
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover verified source-semantics world and exact shader contract
+        run: |
+          set -euo pipefail
+          gh release download "$BASE_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$BASE_GLB" --dir base
+          python - <<'PY'
+          import hashlib,os
+          p='base/'+os.environ['BASE_GLB']; b=os.path.getsize(p); h=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert b==int(os.environ['BASE_BYTES']),(b,os.environ['BASE_BYTES'])
+          assert h==os.environ['BASE_SHA256'],(h,os.environ['BASE_SHA256'])
+          print('BASE_VERIFIED',b,h)
+          PY
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CONTRACT_ARTIFACT_ID}/zip" -o contract/contract.zip
+          echo "${CONTRACT_ARTIFACT_ZIP_SHA256}  contract/contract.zip" | sha256sum --check --strict
+          unzip -q contract/contract.zip -d contract/out
+          test -f contract/out/D1_808EE505_SEMANTIC_CONTRACT.json
+
+      - name: Recover current archive index and exact material owner family
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          from tools.d1_filehash import package_hex
+          idx=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert idx['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE'
+          assert actual==(idx.get('source') or {}).get('package_list_sha256')
+          c=json.load(open('contract/out/D1_808EE505_SEMANTIC_CONTRACT.json'))
+          assert c['status']=='D1_808EE505_SEMANTIC_CONTRACT_EXACT' and not c['violations']
+          mh=c['contract']['material']; pid=package_hex(mh).lower()
+          open('reports/material_pid.txt','w').write(pid+'\n')
+          json.dump({'schema_version':1,'status':'D1_TARGET_MATERIAL_SELECTOR','materials':{mh:{'visual':True}}},open('reports/target_material_selector.json','w'),indent=2)
+          print('INDEX_ACCEPTED',actual,'MATERIAL',mh,'PACKAGE',pid)
+          PY
+          pid="$(cat reports/material_pid.txt)"
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id "$pid" --out-dir packages --report reports/material_package_recovery.json
+
+      - name: Close all exact target texture dependencies
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/target_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir texture_expanded --work-dir texture_work \
+            --out texture_out --report reports/target_texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py \
+            texture_out/material_texture_manifest.json -o reports/target_texture_roles.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/target_texture_dependency_closure.json'))
+          m=json.load(open('texture_out/material_texture_manifest.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert m['texture_errors']==0 and m['material_decode_errors']==0 and m['unique_texture_tags']==5,m
+          assert set(m['textures'])=={'808EE4FE','808EE4FF','808EE4FD','808EE500','80AAFB08'},m['textures'].keys()
+          print('TARGET_TEXTURES_CLOSED',m['unique_texture_tags'],m['png_outputs'])
+          PY
+
+      - name: Bind exact native texture corpus and portable t4 normal
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_bind_exact_shader_textures_v2.py \
+            --input-glb "base/$BASE_GLB" \
+            --manifest texture_out/material_texture_manifest.json \
+            --roles reports/target_texture_roles.json --texture-dir texture_out/textures \
+            --bind-normal-candidates --expect-exact-textures 5 --expect-derived-normals 1 \
+            --out bound/D1_ACTIVITY_810B0002_808EE505_NATIVE_RESOURCES.glb \
+            --report reports/native_resource_binding.json
+
+      - name: Apply instruction-proven t2 discard polarity to Blender proxy
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_apply_808ee505_cutout_proxy.py \
+            --input-glb bound/D1_ACTIVITY_810B0002_808EE505_NATIVE_RESOURCES.glb \
+            --manifest texture_out/material_texture_manifest.json --texture-dir texture_out/textures \
+            --contract contract/out/D1_808EE505_SEMANTIC_CONTRACT.json \
+            --out final/D1_ACTIVITY_810B0002_WORLD_TERRAIN_808EE505_CUTOUT_PROXY.glb \
+            --report reports/808EE505_cutout_proxy.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/808EE505_cutout_proxy.json'))
+          assert d['status']=='D1_808EE505_PORTABLE_CUTOUT_PROXY_APPLIED',d
+          assert d['mask_stats']['native_discard_when']=='t2.x > 0.5'
+          assert d['mask_stats']['decoded_u8_keep_rule']=='t2_red <= 127'
+          assert d['patched_material_indices'],d
+          print('CUTOUT_PROXY_APPLIED','materials',len(d['patched_material_indices']),'keep_fraction',d['mask_stats']['keep_fraction'],'sha',d['output_sha256'])
+          PY
+          cp contract/out/D1_808EE505_SEMANTIC_CONTRACT.json reports/
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - name: Publish corrected inspection checkpoint
+        run: |
+          set -euo pipefail
+          tag='d1-activity-810b0002-world-terrain-808ee505-cutout-proxy-r1'
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title 'D1 Crota world terrain 808EE505 cutout proxy r1' \
+              --notes 'Inspection checkpoint driven by exact native PS 808EE505 semantics. Material 80D777B6 now carries all exact t0..t5 resources, a derived t4 normal, and the instruction-proven t2 hard-discard polarity (discard t2.x > 0.5). Core glTF still omits native parallax, eight-tap attenuation and cubemap composition; the exact renderer contract is embedded in material extras for Blender/Rust decoder work.'
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" \
+            final/D1_ACTIVITY_810B0002_WORLD_TERRAIN_808EE505_CUTOUT_PROXY.glb \
+            reports/808EE505_cutout_proxy.json \
+            reports/D1_808EE505_SEMANTIC_CONTRACT.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-808EE505-CUTOUT-PROXY-V1-REPORTS
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
