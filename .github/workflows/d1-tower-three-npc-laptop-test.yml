@@ -121,3 +121,5 @@ jobs:
           retention-days: 90
           if-no-files-found: error
           compression-level: 0
+
+# Trigger touch: build the three-NPC laptop subset now.
