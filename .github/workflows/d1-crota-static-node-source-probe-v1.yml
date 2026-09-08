@@ -1,0 +1,65 @@
+name: D1 Crota static node source probe v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-static-node-source-probe-v1.yml'
+      - 'tools/d1_static_node_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CHECKPOINT_RUN: '34173809601'
+  TARGET_NODE: '810B197B_info129_xform114'
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover authoritative Crota baked-validation checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoint reports
+          gh run download "$CHECKPOINT_RUN" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name d1-export-activity-world-reports \
+            --dir checkpoint
+          if [ -f checkpoint/baked_validation.json ]; then
+            cp checkpoint/baked_validation.json reports/baked_validation.json
+          elif [ -f checkpoint/reports/baked_validation.json ]; then
+            cp checkpoint/reports/baked_validation.json reports/baked_validation.json
+          else
+            echo 'baked_validation.json absent from authoritative checkpoint' >&2
+            find checkpoint -maxdepth 3 -type f | sort >&2
+            exit 2
+          fi
+
+      - name: Resolve Blender node to exact retail StaticTable source
+        run: |
+          set -euo pipefail
+          python tools/d1_static_node_resolve.py \
+            --validation-json reports/baked_validation.json \
+            --node "$TARGET_NODE" \
+            -o reports/target_static_node.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('reports/target_static_node.json'))
+          assert d['status']=='D1_STATIC_NODE_SOURCE_RESOLVED',d
+          assert d['requested_node']==os.environ['TARGET_NODE'],d
+          print('TARGET_SOURCE_RESOLVED',d['requested_node'],'material',d['material_hash'],'cell',d['d1_static_map_data'],'detail',d['detail_level'])
+          print('MESH_RESOURCES',json.dumps(d['mesh_resources'],sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-STATIC-NODE-SOURCE-PROBE-V1
+          path: reports/target_static_node.json
+          retention-days: 30
