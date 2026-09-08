@@ -181,7 +181,8 @@ def main()->int:
       'status':'D1_RETAIL_VISIBLE_BAKED_STATIC_WORLD_EXPORT_WITH_UV',
       'static_map_data':norm(a.static_map_data),'d1_static_map_data':norm(d1['hash']),
       'basis':a.basis,'serialized_placements':theoretical,'retail_visible_placements':len(node_reports),
-      'rejected':rejected,'geometry_variants':len(geom_reports),'decode_error_count':len(decode_errors),
+      'rejected':rejected,'geometry_variants':len(geom_reports),'triangle_count':sum(g['triangles'] for g in geom_reports),
+      'decode_error_count':len(decode_errors),
       'decode_errors':decode_errors,'instance_transform_hash':th,'instance_transform_source':tsrc,
       'materials':material_cache,'geometry':geom_reports,'nodes':node_reports,
       'attribute_coverage':{
@@ -193,7 +194,7 @@ def main()->int:
       'adapter_policy':'D1 source affine/UV/vertex attributes canonical; glTF UV transform baked per geometry+UV variant; COLOR_0 retained; exact D1 tangent retained as _D1_TANGENT pending portable handedness closure; arbitrary t# roles not guessed.'
     }
     jp=a.json or a.out.with_suffix('.json');jp.write_text(json.dumps(rep,indent=2)+'\n')
-    print(json.dumps({k:rep[k] for k in ('static_map_data','d1_static_map_data','serialized_placements','retail_visible_placements','rejected','geometry_variants','decode_error_count','attribute_coverage','bounds','glb_bytes')},indent=2))
+    print(json.dumps({k:rep[k] for k in ('static_map_data','d1_static_map_data','serialized_placements','retail_visible_placements','rejected','geometry_variants','triangle_count','decode_error_count','attribute_coverage','bounds','glb_bytes')},indent=2))
     return 0 if not decode_errors else 2
 
 if __name__=='__main__':raise SystemExit(main())
