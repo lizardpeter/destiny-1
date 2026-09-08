@@ -1,0 +1,72 @@
+name: D1 PS 8087670E peer material census
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_ps_8087670e_peer_material_census.py'
+      - '.github/workflows/d1-ps-8087670e-peer-material-census.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover universal catalog, runtime, and current package list
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime corpus reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Recover exact current 003B package family
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt \
+            --required-package-id 003b \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus \
+            --report reports/003B_RECOVERY.json
+          test -n "$(find corpus -maxdepth 1 -name '*.pkg' -type f -print -quit)"
+      - name: Census every resident material using PS 8087670E
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_ps_8087670e_peer_material_census.py "${args[@]}" --runtime runtime --out reports/PS_8087670E_PEER_MATERIAL_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_8087670E_PEER_MATERIAL_CENSUS.json'))
+          assert d['status']=='D1_PS_8087670E_PEER_MATERIAL_CENSUS_EXACT',d
+          assert d['physical_occurrence_count']>0 and d['unique_material_count']>0,d
+          print('PS_8087670E_PEER_CENSUS_GREEN',d['physical_occurrence_count'],d['unique_material_count'],'t4_serialized',d['t4_serialized_occurrence_count'])
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-PS-8087670E-PEER-MATERIAL-CENSUS
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
