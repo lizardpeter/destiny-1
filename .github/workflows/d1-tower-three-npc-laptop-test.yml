@@ -1,0 +1,123 @@
+name: D1 Tower three-NPC laptop Blender test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_blender_build_tower_three_npc_test.py'
+      - 'tools/d1_blender_validate_tower_three_npc_test.py'
+      - '.github/workflows/d1-tower-three-npc-laptop-test.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+  LOCATION_VISUAL_ARTIFACT_ID: '10036642428'
+  LOCATION_VISUAL_ARTIFACT_SHA256: '1434b66b0c61ea0dc9045615014fa9085066d2f1e6b8ef5803fb36082e4943dc'
+  REQUIRED_ACTION_WORKFLOW_HEAD_SHA: '6fb31ef9b01d9a77d3e8dc072517f48a41647d20'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact corrected actor inputs
+        run: |
+          set -euo pipefail
+          mkdir -p input/textured input/location input/actions out reports
+          pull(){ id="$1"; sha="$2"; zip="$3"; dst="$4"; curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"; echo "${sha}  ${zip}" | sha256sum --check --strict; unzip -q "$zip" -d "$dst"; }
+          pull "$TEXTURED_ARTIFACT_ID" "$TEXTURED_ARTIFACT_SHA256" input/textured.zip input/textured
+          pull "$LOCATION_VISUAL_ARTIFACT_ID" "$LOCATION_VISUAL_ARTIFACT_SHA256" input/location.zip input/location
+          action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          action_sha="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json headSha --jq '.[0].headSha')"
+          test -n "$action_run" && test "$action_sha" = "$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"
+          gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
+          test -f input/textured/models/80C88CEF_SIG03_SKINNED_NATIVE_D1_TEXTURED.glb
+          test -f input/textured/models/809D8104_SIG00_SKINNED_NATIVE_D1_TEXTURED.glb
+          test -f input/textured/models/80C88434_SIG00_SKINNED_NATIVE_D1_TEXTURED.glb
+          test "$(find input/actions/models -maxdepth 1 -name '*_ALL_ACTIONS_NATIVE_D1.glb' -type f | wc -l)" = 6
+
+      - name: Build pinned production assembly manifest for compatibility mapping
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_actor_production_assembly_manifest_v2.py \
+            --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json \
+            --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json \
+            --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json \
+            -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json'))
+          assert d['status']=='D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST_COMPLETE' and not d['violations'],d
+          keys={x['visual_variant_key'] for x in d['variant_assets']}
+          assert {'80C88CEF:SIG03','809D8104:SIG00','80C88434:SIG00'} <= keys,keys
+          PY
+
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
+
+      - name: Build three-NPC laptop test blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background --factory-startup --python tools/d1_blender_build_tower_three_npc_test.py -- \
+            --assembly-manifest reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json \
+            --textured-dir input/textured/models --action-dir input/actions/models \
+            --actions-per-family 4 \
+            --out-blend out/D1_TOWER_3_NPC_LAPTOP_TEST.blend \
+            --report reports/D1_TOWER_3_NPC_LAPTOP_TEST.json | tee reports/build_stdout.txt
+          python - <<'PY'
+          import json,os
+          d=json.load(open('reports/D1_TOWER_3_NPC_LAPTOP_TEST.json'))
+          assert d['status']=='D1_TOWER_THREE_NPC_LAPTOP_TEST_COMPLETE',d
+          assert (d['actor_count'],d['model_count'],d['action_family_count'],d['retained_action_count'])==(3,3,2,8),d
+          assert d['environment_present'] is False and d['scenario_alternatives_present'] is False,d
+          print('THREE_NPC_TEST_BUILD_GREEN',d['blend_bytes'],d['blend_sha256'])
+          PY
+
+      - name: Reopen and validate lightweight blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_3_NPC_LAPTOP_TEST.blend --python tools/d1_blender_validate_tower_three_npc_test.py -- --report reports/D1_TOWER_3_NPC_LAPTOP_TEST_REOPEN.json | tee reports/reopen_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_3_NPC_LAPTOP_TEST_REOPEN.json'))
+          assert not d['violations'],d
+          assert (d['actor_root_count'],d['model_count'],d['action_family_count'],d['retained_action_count'])==(3,3,2,8),d
+          PY
+          cp reports/D1_TOWER_3_NPC_LAPTOP_TEST.json out/
+          cp reports/D1_TOWER_3_NPC_LAPTOP_TEST_REOPEN.json out/
+          cp reports/blender_version.txt out/
+          cat > out/README.txt <<'EOF'
+          Lightweight Destiny 1 Tower NPC Blender test.
+
+          Contains exactly three corrected textured/skinned NPC assets:
+          - Xur 80C88CEF:SIG03
+          - 809D8104:SIG00
+          - 80C88434:SIG00
+
+          No Tower environment and no 547 scenario-placement alternatives are included.
+          Only four deterministic sample Actions from each of the two required native-D1 action families are retained (8 Actions total).
+
+          In Blender: select an armature, open Dope Sheet -> Action Editor, and choose a D1_TEST_* Action.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+          ls -lh out/D1_TOWER_3_NPC_LAPTOP_TEST.blend
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-LAPTOP-TEST
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0
