@@ -1,0 +1,77 @@
+name: D1 GCN structural IR 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-structural-ir-808ee505-v1.yml'
+      - 'tools/d1_gcn_cfg_ir.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+
+jobs:
+  lift:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned Crota VS/PS disassembly and exact resource provenance
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/PS_808EE505.s
+          test -f input/source/PS_80D77543.s
+          test -f input/source/target_gcn_image_usage.json
+
+      - name: Lift both stages to structural decoder IR
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR.json
+          python tools/d1_gcn_cfg_ir.py \
+            --disasm input/source/PS_80D77543.s --shader 80D77543 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/VS_80D77543_STRUCTURAL_IR.json
+          python - <<'PY'
+          import json
+          ps=json.load(open('out/PS_808EE505_STRUCTURAL_IR.json'))
+          vs=json.load(open('out/VS_80D77543_STRUCTURAL_IR.json'))
+          assert ps['status']==vs['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE'
+          assert (ps['instruction_count'],ps['basic_block_count'],ps['cfg_edge_count'])==(456,14,19),ps
+          assert ps['image_usage_summary']['image_instruction_count']==14
+          assert ps['image_usage_summary']['used_texture_indices']==[0,1,2,3,4,5]
+          assert ps['control_flow']['divergent_exec_present'] is True
+          assert len(ps['control_flow']['back_edges'])==1
+          assert {x['target'] for x in ps['exports']}=={'mrt0','mrt1'}
+          assert (vs['instruction_count'],vs['basic_block_count'],vs['cfg_edge_count'])==(98,1,0),vs
+          assert vs['parameter_exports']==['param0','param1','param2','param3','param4']
+          assert vs['image_usage_summary']['image_instruction_count']==0
+          assert vs['control_flow']['divergent_exec_present'] is False
+          assert ps['semantic_boundary']['output_expression_lifting']=='WITHHELD_UNTIL_EXEC_MASK_DATAFLOW'
+          print('STRUCTURAL_IR_CLOSED','PS blocks',ps['basic_block_count'],'edges',ps['cfg_edge_count'],'VS params',vs['parameter_exports'])
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-STRUCTURAL-IR-808EE505-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
