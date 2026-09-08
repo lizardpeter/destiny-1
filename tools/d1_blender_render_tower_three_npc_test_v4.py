@@ -17,9 +17,21 @@ def look_at(obj,target):
     obj.rotation_euler=direction.to_track_quat('-Z','Y').to_euler()
 
 
+def choose_eevee_engine():
+    # Blender's public enum changed across releases: 4.x commonly exposed
+    # BLENDER_EEVEE_NEXT, while pinned Blender 5.2.1 exposes BLENDER_EEVEE.
+    # Query the running build instead of assuming either spelling.
+    items=bpy.types.RenderSettings.bl_rna.properties['engine'].enum_items
+    available={item.identifier for item in items}
+    for candidate in ('BLENDER_EEVEE','BLENDER_EEVEE_NEXT'):
+        if candidate in available:
+            return candidate
+    raise RuntimeError(f'no Eevee render engine in running Blender; available={sorted(available)}')
+
+
 def setup_scene():
     s=bpy.context.scene
-    s.render.engine='BLENDER_EEVEE_NEXT';s.render.resolution_x=1280;s.render.resolution_y=720;s.render.resolution_percentage=100
+    s.render.engine=choose_eevee_engine();s.render.resolution_x=1280;s.render.resolution_y=720;s.render.resolution_percentage=100
     s.render.image_settings.file_format='PNG';s.render.film_transparent=False
     s.world.color=(0.035,0.035,0.035)
     camd=bpy.data.cameras.new('V4_CANARY_CAMERA');cam=bpy.data.objects.new('V4_CANARY_CAMERA',camd);s.collection.objects.link(cam);s.camera=cam
@@ -40,5 +52,5 @@ def main():
     s.frame_set(s.frame_start);bpy.context.view_layer.update();render(a.out_dir/'V4_REST.png')
     for arm in arms:arm.data.pose_position='POSE'
     mid=int(round((s.frame_start+s.frame_end)/2));s.frame_set(mid);bpy.context.view_layer.update();render(a.out_dir/'V4_SELECTED_MID.png')
-    print('V4_RENDER_CANARIES',a.out_dir/'V4_REST.png',a.out_dir/'V4_SELECTED_MID.png','mid',mid)
+    print('V4_RENDER_CANARIES','engine',s.render.engine,a.out_dir/'V4_REST.png',a.out_dir/'V4_SELECTED_MID.png','mid',mid)
 if __name__=='__main__':main()
