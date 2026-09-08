@@ -1,0 +1,159 @@
+name: D1 Crota map decals v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-map-decals-v1.yml'
+      - 'tools/d1_world_map_decal_census.py'
+      - 'tools/d1_close_map_decal_dependencies.py'
+      - 'tools/d1_recover_indexed_package_families.py'
+      - 'tools/d1_filehash.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_MAP_CENSUS_ARTIFACT_ID: '10037939515'
+      SOURCE_MAP_CENSUS_ZIP_SHA256: '7b84d4ef6ed9c88c5a3970e6d95a22d9bcee8ac8c9d64db5f9ec2b3c31e50383'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Recover exact Crota map-layer census and archive identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy
+          mkdir -p input runtime packages reports out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_MAP_CENSUS_ARTIFACT_ID}/zip" \
+            -o input/source.zip
+          echo "${SOURCE_MAP_CENSUS_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          python - <<'PY'
+          import json
+          d=json.load(open('input/source/map_data_layer_census.json'))
+          assert d['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS',d.get('status')
+          assert d['map_data_table_count']==255 and d['entry_count']==1535,d
+          assert d['resource_class_counts'].get('80801A70')==13,d['resource_class_counts']
+          print('SOURCE_MAP_LAYER_ACCEPTED',d['map_data_table_count'],d['entry_count'])
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 8 --retry-delay 3 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d.get('status')
+          assert actual==(d.get('source') or {}).get('package_list_sha256')
+          print('ARCHIVE_INDEX_ACCEPTED',actual)
+          PY
+
+      - name: Recover exact non-null SMapDecals owner families
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from tools.d1_filehash import package_hex
+          d=json.load(open('input/source/map_data_layer_census.json'))
+          rows=[]
+          for t in d['tables']:
+              for e in t.get('entries',[]):
+                  if e.get('resource_class')!='80801A70':
+                      continue
+                  target=(e.get('resource_target') or {}).get('hash','FFFFFFFF').upper()
+                  meta=(e.get('resource_target') or {}).get('meta') or {}
+                  row={'map_data_table':t['map_data_table'],'entry_index':e.get('index'),
+                       'target':target,'explicit_null_collection':target in {'00000000','FFFFFFFF'}}
+                  if not row['explicit_null_collection']:
+                      assert meta.get('reference','').upper()=='80801B40',(target,meta)
+                      row['package_id']=package_hex(target).lower()
+                  rows.append(row)
+          assert len(rows)==13,len(rows)
+          assert sum(x['explicit_null_collection'] for x in rows)==1,rows
+          ids=sorted({x['package_id'] for x in rows if x.get('package_id')})
+          assert ids==['02ba','02bb','0458'],ids
+          out={'status':'D1_CROTA_MAP_DECAL_OWNER_PLAN_EXACT','carrier_count':13,
+               'nonnull_collection_count':12,'explicit_null_collection_count':1,
+               'package_ids':ids,'rows':rows}
+          json.dump(out,open('reports/decal_owner_plan.json','w'),indent=2)
+          open('reports/decal_owner_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          print('DECAL_OWNER_PLAN',json.dumps({k:out[k] for k in ('carrier_count','nonnull_collection_count','explicit_null_collection_count','package_ids')}))
+          PY
+          args=(); while read -r p; do args+=(--package-id "$p"); done < reports/decal_owner_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            "${args[@]}" --out-dir packages --report reports/decal_owner_recovery.json
+
+      - name: Recursively close source-pinned decal materials and projection bounds
+        shell: bash
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python tools/d1_close_map_decal_dependencies.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --layer-census input/source/map_data_layer_census.json \
+            --runtime runtime --package-dir packages \
+            --work-dir reports/decal_dependency_work \
+            --out reports/crota_map_decal_census.json \
+            --report reports/crota_map_decal_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/crota_map_decal_census.json'))
+          x=json.load(open('reports/crota_map_decal_dependency_closure.json'))
+          assert x['status']=='D1_WORLD_MAP_DECAL_DEPENDENCY_CLOSURE_COMPLETE',x
+          assert c['status']=='D1_WORLD_MAP_DECAL_CENSUS_COMPLETE',c
+          assert c['source_map_data_table_count']==255 and c['source_entry_count']==1535,c
+          assert c['decal_resource_occurrences']==13,c
+          assert c['nonnull_decal_collection_occurrences']==12,c
+          assert c['explicit_null_decal_collection_occurrences']==1,c
+          assert not c['missing_dependency_package_ids'] and not c['violations'],c
+          print('CROTA_DECALS_CLOSED',json.dumps({k:c.get(k) for k in (
+            'decal_resource_occurrences','nonnull_decal_collection_occurrences',
+            'explicit_null_decal_collection_occurrences','unique_decal_collection_count',
+            'decal_resource_record_count','decal_location_count','projected_decal_count',
+            'unique_material_count')},sort_keys=True))
+          print('CROTA_DECAL_EXPANSION',x['recovered_package_ids'])
+          PY
+          cp reports/decal_owner_plan.json out/
+          cp reports/decal_owner_recovery.json out/
+          cp reports/crota_map_decal_census.json out/
+          cp reports/crota_map_decal_dependency_closure.json out/
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-MAP-DECALS-V1
+          path: |
+            out/
+            reports/decal_dependency_work/
+          retention-days: 30
