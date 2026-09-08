@@ -78,7 +78,7 @@ def main():
           413:('v_mov_b32',['v8','0x3ec00000']),
           414:('s_mov_b32',['s0','0x3e000000']),
           415:('v_rsq_clamp_f32',['v10','v10']),
-          416:('s_waitcnt',['lgkmcnt(0)']),
+          416:('s_waitcnt',['vmcnt(0)']),
           417:('v_mul_f32',['v6','v6','v12']),
           418:('s_waitcnt',['lgkmcnt(0)']),
           419:('v_mul_f32',['v3','s3','v3']),
@@ -103,8 +103,7 @@ def main():
             x=ins[i];assert x['opcode']==op and x['operands']==o,(i,x['opcode'],x['operands'])
 
         byload={int(q['instruction']):q for q in cb['loads']}
-        for i in (400,402,403):
-            assert i in byload and byload[i]['resolution']=='EXACT_MATERIAL_PS_B0',byload.get(i)
+        for i in (400,402,403):assert i in byload and byload[i]['resolution']=='EXACT_MATERIAL_PS_B0',byload.get(i)
         q400,q402,q403=byload[400],byload[402],byload[403]
         assert q400['destination_sgprs']==['s0','s1','s2','s3']
         assert [x['raw_hex'] for x in q400['material_values']]==['0000403f','0000803e','00004040','00000000']
@@ -120,7 +119,6 @@ def main():
         for reg,mv in zip(q400['destination_sgprs'],q400['material_values']):setr(reg,cbuf(reg,mv,400))
         setr('s3',cbuf('s3',q402['material_values'][0],402))
         for reg,mv in zip(q403['destination_sgprs'],q403['material_values']):setr(reg,cbuf(reg,mv,403))
-
         one=dag.const(1.0,source='INLINE_LITERAL',instruction=404)
         negv8=dag.node('NEG',[get('v8')],instruction=404)
         setr('v8',dag.node('CLAMP_0_1',[dag.node('ADD',[negv8,one],instruction=404)],instruction=404))
@@ -136,52 +134,21 @@ def main():
         setr('s0',dag.const(f32hex('0x3e000000'),source='INLINE_LITERAL',raw_hex='0x3e000000',instruction=414))
         setr('v10',dag.node('RSQ_CLAMP_MAXFLOAT',[get('v10')],instruction=415))
         setr('v6',dag.node('MUL',[get('v6'),get('v12')],instruction=417))
-        setr('v3',dag.node('MUL',[get('s3'),get('v3')],instruction=419))
-        setr('v4',dag.node('MUL',[get('s3'),get('v4')],instruction=420))
-        setr('v5',dag.node('MUL',[get('s3'),get('v5')],instruction=421))
+        setr('v3',dag.node('MUL',[get('s3'),get('v3')],instruction=419));setr('v4',dag.node('MUL',[get('s3'),get('v4')],instruction=420));setr('v5',dag.node('MUL',[get('s3'),get('v5')],instruction=421))
         setr('v12',get('s5'))
         setr('v8',dag.node('MAC',[get('s0'),get('v20'),get('v8')],instruction=423))
         setr('v2',dag.node('LEGACY_MUL_DX9',[get('v2'),get('v10')],instruction=424,zero_rule='0.0*x = 0.0'))
         setr('v11',dag.node('LEGACY_MUL_DX9',[get('v11'),get('v10')],instruction=425,zero_rule='0.0*x = 0.0'))
         setr('v9',dag.node('LEGACY_MUL_DX9',[get('v9'),get('v10')],instruction=426,zero_rule='0.0*x = 0.0'))
-        setr('v10',dag.node('MAD',[get('v26'),get('s4'),get('v12')],instruction=427))
-        setr('v14',dag.node('MAD',[get('v13'),get('s4'),get('v12')],instruction=428))
-        setr('v12',dag.node('MAC',[get('s4'),get('v15'),get('v12')],instruction=429))
-        setr('v3',dag.node('MUL',[get('v6'),get('v3')],instruction=430))
-        setr('v4',dag.node('MUL',[get('v6'),get('v4')],instruction=431))
-        setr('v5',dag.node('MUL',[get('v6'),get('v5')],instruction=432))
+        setr('v10',dag.node('MAD',[get('v26'),get('s4'),get('v12')],instruction=427));setr('v14',dag.node('MAD',[get('v13'),get('s4'),get('v12')],instruction=428));setr('v12',dag.node('MAC',[get('s4'),get('v15'),get('v12')],instruction=429))
+        setr('v3',dag.node('MUL',[get('v6'),get('v3')],instruction=430));setr('v4',dag.node('MUL',[get('v6'),get('v4')],instruction=431));setr('v5',dag.node('MUL',[get('v6'),get('v5')],instruction=432))
         half=dag.const(f32hex('0x3f000000'),source='INLINE_LITERAL',raw_hex='0x3f000000',instruction=433)
-        setr('v2',dag.node('MADAK',[get('v8'),get('v2'),half],instruction=433,constant_raw_hex='0x3f000000'))
-        setr('v6',dag.node('MADAK',[get('v8'),get('v11'),half],instruction=434,constant_raw_hex='0x3f000000'))
-        setr('v8',dag.node('MADAK',[get('v8'),get('v9'),half],instruction=435,constant_raw_hex='0x3f000000'))
-
+        setr('v2',dag.node('MADAK',[get('v8'),get('v2'),half],instruction=433,constant_raw_hex='0x3f000000'));setr('v6',dag.node('MADAK',[get('v8'),get('v11'),half],instruction=434,constant_raw_hex='0x3f000000'));setr('v8',dag.node('MADAK',[get('v8'),get('v9'),half],instruction=435,constant_raw_hex='0x3f000000'))
         value_indices=[i for i in range(404,436) if i not in (416,418)]
         roots={r:st[r] for r in sorted(st) if r.startswith('v')}
-        payload={
-          'shader':'808EE505','material':'80D777B6','instruction_range':[404,435],
-          'prerequisite_material_load_instructions':[400,402,403],
-          'value_instruction_indices':value_indices,
-          'non_value_anchors':[{'instruction':416,'kind':'WAIT','opcode':'s_waitcnt'},{'instruction':418,'kind':'WAIT','opcode':'s_waitcnt'}],
-          'material_constants':{
-            '400':{r:mv for r,mv in zip(q400['destination_sgprs'],q400['material_values'])},
-            '402':{'s3':q402['material_values'][0]},
-            '403':{r:mv for r,mv in zip(q403['destination_sgprs'],q403['material_values'])},
-          },
-          'node_count':len(dag.nodes),'nodes':dag.nodes,'input_roots':dict(sorted(dag.inputs.items())),
-          'output_register_roots':roots,
-          'source_semantics':{k:s[k] for k in required},
-          'semantic_boundary':{
-            'instructions_404_435_value_arithmetic':'EXACT_SOURCE_SEMANTICS',
-            'material_scalars_400_403':'EXACT_MATERIAL_PS_B0',
-            'legacy_multiply_and_mac':'EXACT_DISTINCT_DX9_OPERATORS',
-            'waits_416_418':'NON_VALUE_ANCHORS',
-            'pre_404_vgpr_values':'EXPLICIT_SYMBOLIC_INPUTS',
-            'destiny_visual_roles':'WITHHELD'
-          }
-        }
+        payload={'shader':'808EE505','material':'80D777B6','instruction_range':[404,435],'prerequisite_material_load_instructions':[400,402,403],'value_instruction_indices':value_indices,'non_value_anchors':[{'instruction':416,'kind':'WAIT','opcode':'s_waitcnt','operands':['vmcnt(0)']},{'instruction':418,'kind':'WAIT','opcode':'s_waitcnt','operands':['lgkmcnt(0)']}],'material_constants':{'400':{r:mv for r,mv in zip(q400['destination_sgprs'],q400['material_values'])},'402':{'s3':q402['material_values'][0]},'403':{r:mv for r,mv in zip(q403['destination_sgprs'],q403['material_values'])}},'node_count':len(dag.nodes),'nodes':dag.nodes,'input_roots':dict(sorted(dag.inputs.items())),'output_register_roots':roots,'source_semantics':{k:s[k] for k in required},'semantic_boundary':{'instructions_404_435_value_arithmetic':'EXACT_SOURCE_SEMANTICS','material_scalars_400_403':'EXACT_MATERIAL_PS_B0','legacy_multiply_and_mac':'EXACT_DISTINCT_DX9_OPERATORS','waits_416_418':'NON_VALUE_ANCHORS','pre_404_vgpr_values':'EXPLICIT_SYMBOLIC_INPUTS','destiny_visual_roles':'WITHHELD'}}
         assert len(value_indices)==30
     except Exception as e:viol.append(repr(e))
     out={'schema_version':1,'status':'D1_GCN_STRAIGHTLINE_404_435_EXPRESSION_EXACT' if payload and not viol else 'D1_GCN_STRAIGHTLINE_404_435_EXPRESSION_PARTIAL','expression':payload,'violations':viol,'policy':'Only the exact acyclic 404..435 target block is promoted. Source-proven legacy semantics remain distinct; incoming values are symbolic and no visual/material role is guessed.'}
-    a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
-    print(json.dumps({'status':out['status'],'node_count':payload.get('node_count') if payload else None,'value_instruction_count':len(payload.get('value_instruction_indices',[])) if payload else None,'input_count':len(payload.get('input_roots',{})) if payload else None,'violations':viol},indent=2));return 0 if not viol else 2
+    a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({'status':out['status'],'node_count':payload.get('node_count') if payload else None,'value_instruction_count':len(payload.get('value_instruction_indices',[])) if payload else None,'input_count':len(payload.get('input_roots',{})) if payload else None,'violations':viol},indent=2));return 0 if not viol else 2
 if __name__=='__main__':raise SystemExit(main())
