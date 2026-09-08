@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_MAP_VISUAL_ENTITIES_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "workflow": {
+    "run_id": 34181153096,
+    "job_id": 101920364024,
+    "head_sha": "5935b2ee28150a9c8e9552972c7dae0bea5390f1",
+    "conclusion": "success"
+  },
+  "source_population": {
+    "placed_sentity_count": 81,
+    "visual_entity_count": 24,
+    "nonvisual_entity_count": 57,
+    "visual_runtime_placement_count": 149,
+    "model_parent_pair_count": 21,
+    "unique_model_count": 21
+  },
+  "visual_export": {
+    "geometry_variants": 69,
+    "triangles": 46131,
+    "active_material_count": 58,
+    "duplicate_render_variant_count_preserved_in_evidence": 98,
+    "scene_geometry_nodes": 313,
+    "untextured_scene_bytes": 2625528,
+    "untextured_scene_sha256": "e6872721e516744e87568db73bb58712596df1dbd8486e43d54d1eb54d77b719"
+  },
+  "texture_closure": {
+    "native_texture_resources": 103,
+    "decoded_texture_tags": 103,
+    "texture_errors": 0,
+    "png_outputs": 118,
+    "derived_portable_normals": 15,
+    "recovered_package_ids": ["0097", "0155", "0158"],
+    "textured_entity_layer_bytes": 141614816,
+    "textured_entity_layer_sha256": "e391af5c56ad743f3b1750799b5ae382365a6ffe9b42e01063527d695cfa8209"
+  },
+  "merged_world": {
+    "release_tag": "d1-activity-810b0002-static-common-map-visual-entities-r1",
+    "asset": "D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES.glb",
+    "asset_id": 549761407,
+    "bytes": 912538704,
+    "sha256": "7b5514459ebdcf1d9c04a302ae3f2d65fd53319730eff16536326ed597ab6dd9",
+    "meshes": 1768,
+    "nodes": 16537,
+    "materials": 781,
+    "textures": 565,
+    "images": 565,
+    "animations": 0,
+    "skins": 0
+  },
+  "reports_artifact": {
+    "id": 10039113344,
+    "zip_bytes": 364723997,
+    "zip_sha256": "66e99dfb75987b447723bd5dd17f0cae98e19bd031f5750779138d5654e5b740"
+  },
+  "selection_proof": {
+    "pinned_source": "MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af Tiger/Schema/Entity/EntityModel.cs",
+    "most_detailed_lod_categories": [0, 1, 2, 3, 10],
+    "group_index_rule": "GetPartsOfDetailLevel densely renumbers selected MostDetailed parts, then GenerateParts looks up StagePartOffsets GroupIndex by selected ordinal",
+    "portable_union_rule": "identical geometry ranges are emitted once by first selected ordinal while all duplicate material/group variants remain preserved in reports"
+  },
+  "integrity": {
+    "model_pair_export_status": "D1_WORLD_VISUAL_MODEL_PAIR_SET_COMPLETE",
+    "texture_dependency_status": "D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE",
+    "texture_binding_status": "D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND",
+    "merge_status": "D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION",
+    "release_asset_digest_verified": true
+  },
+  "policy": "Every visual map entity originates in the exact 1,535-row Activity map census, then source-owned SEntity EntityResources. Model, owning parent, material, stream, texture and world-transform dependencies are recovered only from serialized FileHashes. Specialized animated/rigged playback remains a separate layer and is not claimed by this checkpoint."
+}
