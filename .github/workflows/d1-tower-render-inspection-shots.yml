@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 240
     env:
       GH_TOKEN: '${{ github.token }}'
+      LIBGL_ALWAYS_SOFTWARE: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -59,10 +60,19 @@ jobs:
           "$BLENDER" --version | tee out/blender_version.txt
           grep -q 'Blender 5.2.1' out/blender_version.txt
 
+      - name: Install software OpenGL runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth libegl1 libgl1 libgl1-mesa-dri libglu1-mesa mesa-utils
+          ldconfig -p | grep -E 'libEGL\.so\.1|libGL\.so\.1'
+          xvfb-run -a glxinfo -B | tee out/software_gl.txt
+
       - name: Render four Tower inspection shots
         run: |
           set -euo pipefail
-          "$BLENDER" --background "$TOWER_BLEND" \
+          xvfb-run -a "$BLENDER" --background "$TOWER_BLEND" \
             --python tools/d1_blender_render_tower_inspection_shots.py -- \
             --out-dir out \
             --report out/D1_TOWER_INSPECTION_SHOTS.json \
