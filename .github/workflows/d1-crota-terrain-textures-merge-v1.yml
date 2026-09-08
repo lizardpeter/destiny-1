@@ -1,0 +1,226 @@
+name: D1 Crota terrain textures and world merge v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-terrain-textures-merge-v1.yml'
+      - 'tools/d1_close_texture_tags_indexed.py'
+      - 'tools/d1_gltf_embed_terrain_dyemaps.py'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  TERRAIN_SCENE_ARTIFACT_ID: '10057367301'
+  TERRAIN_SCENE_ARTIFACT_SHA256: '7cb34b3b051d186b3c21266dcf54a231f863f1ef38b6d04804f16c3e8ff81b3e'
+  TERRAIN_SCENE_GLB_SHA256: '97992802ce6c9f015aecc68b454aa17a9d86b979fabbf8c29bc9503763fe3ea5'
+  TERRAIN_SCENE_GLB_BYTES: '37163504'
+  BASE_RELEASE_TAG: 'd1-activity-810b0002-static-common-map-visual-entities-sky-r1'
+  BASE_GLB: 'D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.glb'
+  BASE_BYTES: '919265640'
+  BASE_SHA256: '837e73bfc8971ba2b70067428b120dcbba3129e6ed3b430f1ec52aa83cbada28'
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  terrain-textures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative terrain scene and archive identity
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh
+          mkdir -p input runtime packages material_expanded dyemap_expanded material_work dyemap_work material_textures dyemap_textures roles scene base final reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TERRAIN_SCENE_ARTIFACT_ID}/zip" -o input/terrain_scene.zip
+          echo "${TERRAIN_SCENE_ARTIFACT_SHA256}  input/terrain_scene.zip" | sha256sum --check --strict
+          unzip -q input/terrain_scene.zip -d input/terrain_scene
+          glb="$(find input/terrain_scene -name 'CROTA_TERRAIN_MAIN_GEOM0_EXACT.glb' -type f -print -quit)"
+          rep="$(find input/terrain_scene -name 'crota_terrain_scene.json' -type f -print -quit)"
+          census="$(find input/terrain_scene -name 'terrain_census_final.json' -type f -print -quit)"
+          test -n "$glb" -a -n "$rep" -a -n "$census"
+          cp "$glb" scene/CROTA_TERRAIN_MAIN_GEOM0_EXACT.glb
+          cp "$rep" reports/crota_terrain_scene.json
+          cp "$census" reports/terrain_census_final.json
+          python - <<'PY'
+          import hashlib,json,os
+          p='scene/CROTA_TERRAIN_MAIN_GEOM0_EXACT.glb';d=json.load(open('reports/crota_terrain_scene.json'))
+          b=os.path.getsize(p);h=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert b==int(os.environ['TERRAIN_SCENE_GLB_BYTES']) and h==os.environ['TERRAIN_SCENE_GLB_SHA256'],(b,h)
+          assert d['status']=='D1_WORLD_TERRAIN_SCENE_COMPLETE' and d['terrain_count']==49,d
+          assert d['selected_main_geom0_part_count']==1582 and d['triangle_count']==1067552,d
+          assert d['material_count']==108 and d['effective_selected_dyemap_count']==465,d
+          assert len(d['effective_selected_dyemaps'])==465 and len(set(d['effective_selected_dyemaps']))==465,d
+          mats={h:{'visual':True} for h in d['materials']}
+          json.dump({'status':'D1_WORLD_TERRAIN_MATERIAL_SELECTOR','material_count':len(mats),'materials':mats},open('reports/terrain_material_selector.json','w'),indent=2)
+          print('TERRAIN_SCENE_ACCEPTED',b,h,'materials',len(mats),'dyemaps',d['effective_selected_dyemap_count'])
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'));h=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE' and h==(d.get('source') or {}).get('package_list_sha256'),(h,d.get('source'))
+          print('ARCHIVE_INDEX_ACCEPTED',h)
+          PY
+
+      - name: Recover exact terrain/material base package corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --package-id 02b7 --package-id 02ba --package-id 02bb \
+            --package-id 0430 --package-id 0431 --package-id 0458 \
+            --out-dir packages --report reports/base_package_recovery.json
+
+      - name: Recursively close all 108 selected material shader textures
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/terrain_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir material_expanded --work-dir material_work \
+            --out material_textures --report reports/terrain_material_texture_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/terrain_material_texture_closure.json'));m=json.load(open('material_textures/material_texture_manifest.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert m['visible_material_count']==108 and m['material_decode_errors']==0,m
+          assert m['texture_errors']==0 and m['decoded_texture_tags']==m['unique_texture_tags'],m
+          assert not m['missing_texture_package_ids'],m
+          print('TERRAIN_MATERIAL_TEXTURES_CLOSED','textures',m['unique_texture_tags'],'png',m['png_outputs'],'extra_packages',c['recovered_package_ids'])
+          PY
+          python tools/d1_world_texture_role_inventory.py material_textures/material_texture_manifest.json -o roles/terrain_texture_roles.json
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb scene/CROTA_TERRAIN_MAIN_GEOM0_EXACT.glb \
+            --manifest material_textures/material_texture_manifest.json \
+            --roles roles/terrain_texture_roles.json \
+            --texture-dir material_textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --out scene/CROTA_TERRAIN_MATERIAL_TEXTURES.glb \
+            --report reports/terrain_material_texture_bind.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/terrain_material_texture_bind.json'))
+          assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',d
+          assert d['base_counts']['meshes']==1582 and d['final_counts']['meshes']==1582,d
+          assert d['base_counts']['nodes']==1582 and d['final_counts']['nodes']==1582,d
+          assert d['base_counts']['accessors']==d['final_counts']['accessors'],d
+          print('TERRAIN_NATIVE_MATERIAL_RESOURCES_BOUND',d['exact_source_texture_count'],'native',d['derived_portable_normal_count'],'derived')
+          PY
+
+      - name: Recursively close all direct STerrain dyemap texture resources
+        run: |
+          set -euo pipefail
+          python tools/d1_close_texture_tags_indexed.py \
+            --snapshot-dir packages --snapshot-dir material_expanded \
+            --runtime runtime \
+            --texture-list-json reports/crota_terrain_scene.json \
+            --texture-list-key effective_selected_dyemaps \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir dyemap_expanded --work-dir dyemap_work \
+            --out dyemap_textures --report reports/terrain_dyemap_texture_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/terrain_dyemap_texture_closure.json'));d=json.load(open('dyemap_textures/texture_tag_export.json'))
+          assert c['status']=='D1_INDEXED_DIRECT_TEXTURE_TAG_CLOSURE_COMPLETE',c
+          assert c['requested_texture_count']==465 and c['final_resolved']==465 and c['final_failed']==0,c
+          assert d['status']=='D1_TEXTURE_TAG_EXPORT_COMPLETE' and d['requested']==465 and d['resolved']==465 and d['failed']==0,d
+          print('TERRAIN_DYEMAPS_CLOSED',d['resolved'],'extra_packages',c['recovered_package_ids'])
+          PY
+
+      - name: Embed exact dyemap corpus and per-part bindings
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_embed_terrain_dyemaps.py \
+            --input-glb scene/CROTA_TERRAIN_MATERIAL_TEXTURES.glb \
+            --terrain-scene reports/crota_terrain_scene.json \
+            --dyemap-export-dir dyemap_textures \
+            --out scene/CROTA_TERRAIN_EXACT_RESOURCES.glb \
+            --report reports/terrain_exact_resource_bind.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/terrain_exact_resource_bind.json'))
+          assert d['status']=='D1_GLTF_TERRAIN_DYEMAPS_EMBEDDED',d
+          assert d['exact_dyemap_count']==465 and d['bound_terrain_part_node_count']==1582 and d['terrain_material_count']==108,d
+          assert d['final_counts']['meshes']==1582,d
+          print('TERRAIN_EXACT_RESOURCES_COMPLETE',d['output_bytes'],d['output_sha256'])
+          PY
+
+      - name: Verify durable sky base and merge exact terrain
+        run: |
+          set -euo pipefail
+          gh release download "$BASE_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$BASE_GLB" --dir base
+          python - <<'PY'
+          import hashlib,os
+          p='base/'+os.environ['BASE_GLB'];b=os.path.getsize(p);h=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert b==int(os.environ['BASE_BYTES']) and h==os.environ['BASE_SHA256'],(b,h)
+          print('SKY_BASE_VERIFIED',b,h)
+          PY
+          python tools/d1_gltf_layer_merge.py \
+            --base "base/$BASE_GLB" \
+            --layer terrain=scene/CROTA_TERRAIN_EXACT_RESOURCES.glb \
+            --out final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_TERRAIN.glb \
+            --report reports/world_terrain_merge.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_TERRAIN.glb')
+          s=json.load(open('reports/crota_terrain_scene.json'));mt=json.load(open('reports/terrain_material_texture_closure.json'));mb=json.load(open('reports/terrain_material_texture_bind.json'));dt=json.load(open('reports/terrain_dyemap_texture_closure.json'));db=json.load(open('reports/terrain_exact_resource_bind.json'));m=json.load(open('reports/world_terrain_merge.json'))
+          assert m['status']=='D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION' and m['base_bin_exact_prefix'] is True,m
+          out={
+            'schema_version':1,'status':'D1_CROTA_WORLD_SKY_TERRAIN_COMPLETE','activity':'810B0002',
+            'base':{'release_tag':'d1-activity-810b0002-static-common-map-visual-entities-sky-r1','bytes':919265640,'sha256':'837e73bfc8971ba2b70067428b120dcbba3129e6ed3b430f1ec52aa83cbada28'},
+            'terrain':{
+              'terrain_count':49,'selected_main_geom0_part_count':1582,'triangles':1067552,
+              'materials':108,'native_material_texture_resources':mb['exact_source_texture_count'],
+              'derived_portable_normals':mb['derived_portable_normal_count'],'effective_dyemaps':465,
+              'terrain_layer_bytes':db['output_bytes'],'terrain_layer_sha256':db['output_sha256'],
+              'bounds':s['bounds']
+            },
+            'material_texture_recovered_package_ids':mt['recovered_package_ids'],
+            'dyemap_recovered_package_ids':dt['recovered_package_ids'],
+            'final_counts':m['final_counts'],'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'proof_boundary':'Terrain geometry reproduces the pinned D1 MainGeom0 TriangleStrip, 0x08/0x0C vertex readers and Charm terrain position/UV transforms. All native selected-material texture resources and all effective STerrain dyemaps are embedded exactly. GroupIndex%4 dyemap control is preserved as D1 metadata rather than COLOR_0. A portable recreation of the native terrain dye blending equation remains a separate shader adapter.'
+          }
+          json.dump(out,open('reports/FINAL_CROTA_WORLD_SKY_TERRAIN.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish durable terrain-inclusive Crota checkpoint
+        run: |
+          set -euo pipefail
+          tag='d1-activity-810b0002-static-common-map-visual-entities-sky-terrain-r1'
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title 'D1 Crota Activity world + exact terrain r1' \
+              --notes 'Extends the durable Activity 810B0002 static/common + visual SEntity + sky checkpoint with all 49 source-owned STerrain resources, 1,582 MainGeom0 parts, 1,067,552 terrain triangles, 108 exact selected materials, every native material shader texture resource, and all 465 effective STerrain dyemap resources. Terrain dyemap control is preserved losslessly as D1 metadata; the native dye blending equation is not approximated into generic PBR.'
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" \
+            final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_TERRAIN.glb \
+            reports/FINAL_CROTA_WORLD_SKY_TERRAIN.json \
+            reports/crota_terrain_scene.json \
+            reports/terrain_material_texture_closure.json \
+            reports/terrain_dyemap_texture_closure.json \
+            reports/terrain_exact_resource_bind.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-TERRAIN-TEXTURES-MERGE-V1-REPORTS
+          path: reports/
+          retention-days: 30
+          compression-level: 6
