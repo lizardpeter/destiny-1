@@ -142,27 +142,8 @@ def ensure_camera():
 
 
 def ensure_lights(center, span):
-    for name in ("D1_INSPECTION_SUN", "D1_INSPECTION_FILL"):
-        o = bpy.data.objects.get(name)
-        if o is not None:
-            bpy.data.objects.remove(o, do_unlink=True)
-
-    sun_data = bpy.data.lights.new("D1_INSPECTION_SUN", type="SUN")
-    sun_data.energy = 2.0
-    sun_data.angle = math.radians(18.0)
-    sun = bpy.data.objects.new("D1_INSPECTION_SUN", sun_data)
-    bpy.context.scene.collection.objects.link(sun)
-    sun.rotation_euler = (math.radians(34), math.radians(-18), math.radians(-32))
-
-    area_data = bpy.data.lights.new("D1_INSPECTION_FILL", type="AREA")
-    area_data.energy = max(2500.0, span * span * 5.0)
-    area_data.shape = "DISK"
-    area_data.size = max(span * 0.8, 20.0)
-    area = bpy.data.objects.new("D1_INSPECTION_FILL", area_data)
-    bpy.context.scene.collection.objects.link(area)
-    area.location = (center.x, center.y, center.z + max(span * 0.55, 20.0))
-    look_at(area, center)
-
+    # Workbench does not use scene lights, but retaining a neutral world keeps
+    # the same scene useful if a later diagnostic pass switches to Eevee.
     world = bpy.context.scene.world or bpy.data.worlds.new("D1_INSPECTION_WORLD")
     bpy.context.scene.world = world
     world.use_nodes = True
@@ -174,7 +155,7 @@ def ensure_lights(center, span):
 
 def configure_render(a):
     s = bpy.context.scene
-    s.render.engine = "BLENDER_EEVEE"
+    s.render.engine = "BLENDER_WORKBENCH"
     s.render.resolution_x = a.width
     s.render.resolution_y = a.height
     s.render.resolution_percentage = 100
@@ -185,10 +166,14 @@ def configure_render(a):
         s.render.image_settings.color_depth = "8"
     except Exception:
         pass
-    try:
-        s.view_settings.look = "AgX - Medium High Contrast"
-    except Exception:
-        pass
+    shading = s.display.shading
+    shading.light = "STUDIO"
+    shading.color_type = "TEXTURE"
+    shading.show_shadows = True
+    shading.show_cavity = True
+    shading.cavity_type = "WORLD"
+    shading.show_specular_highlight = True
+    shading.background_type = "WORLD"
 
 
 def render(path, camera, pos, target, lens):
@@ -272,7 +257,7 @@ def main():
         "densest_actor_cluster_center": [float(x) for x in dense],
         "densest_actor_cluster_count": int(dense_n),
         "densest_actor_cluster_radius": float(dense_radius),
-        "lighting_policy": "Neutral diagnostic sun/fill/world lighting; not retail Destiny 1 lighting.",
+        "lighting_policy": "Blender Workbench textured diagnostic shading; not retail Destiny 1 lighting.",
         "shots": shots,
     }
     a.report.write_text(json.dumps(rep, indent=2) + "\n")
