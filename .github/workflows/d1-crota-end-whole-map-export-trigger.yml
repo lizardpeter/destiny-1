@@ -19,10 +19,10 @@ jobs:
       - name: Dispatch generic whole-Activity world exporter for Crota's End
         run: |
           set -euo pipefail
-          # Redispatch after promoting source-proven GCN Format8/R8_UNORM support into the generic world texture closure.
+          # Publish the completed whole-Activity GLB durably once every fail-closed gate succeeds.
           gh workflow run d1-export-activity-world.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f activity=810B0002 \
-            -f publish=false
-          echo 'DISPATCHED_ACTIVITY=810B0002'
+            -f publish=true
+          echo 'DISPATCHED_ACTIVITY=810B0002_PUBLISH_TRUE'
