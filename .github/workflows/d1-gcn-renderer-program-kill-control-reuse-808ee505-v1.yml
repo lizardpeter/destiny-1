@@ -1,0 +1,170 @@
+name: D1 GCN renderer program kill control reuse 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-program-kill-control-reuse-808ee505-v1.yml'
+      - 'tools/d1_gcn_export_kill_control_extension.py'
+      - 'tools/d1_gcn_renderer_program_add_kill_control.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_ARTIFACT_ID: '10070568410'
+  BASE_ARTIFACT_ZIP_SHA256: '48ad6e237467d89c2a91d5eb01bd549d95105eaa451c9171f74f996656e00056'
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  LLVM_CONTROL_REV: '14e941a0566ae06e982c5d8ddd085697c48fd413'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+
+jobs:
+  prove-and-promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable renderer and source checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/base input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASE_ARTIFACT_ID}/zip" -o input/base.zip
+          echo "${BASE_ARTIFACT_ZIP_SHA256}  input/base.zip" | sha256sum --check --strict
+          unzip -q input/base.zip -d input/base
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          for f in PS_808EE505.s target_gcn_image_usage.json target_material_stage.json; do test -f "input/source/$f"; done
+
+      - name: Fetch immutable source semantics
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_CONTROL_REV}/llvm/lib/Target/AMDGPU/SOPInstructions.td" -o input/upstream/SOPInstructions.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/upstream/gem5_sop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" -o input/upstream/gem5_sopp.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+
+      - name: Verify frozen 232 checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']
+          assert p['material']=='80D777B6' and p['pixel_shader']=='808EE505' and p['instruction_count']==456
+          assert c['primary_resolution_counts']=={
+            'CONTROL_EXACT':16,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':19,
+            'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':224},c
+          assert c['exact_nonstructural_instruction_count']==232
+          assert p['instruction_resolution'][335]['primary_resolution']=='STRUCTURAL_ONLY'
+          assert p['instruction_resolution'][335]['opcode']=='v_subrev_f32'
+          assert p['instruction_resolution'][338]['primary_resolution']=='STRUCTURAL_ONLY'
+          assert p['instruction_resolution'][338]['opcode']=='s_cbranch_scc0'
+          print('FROZEN_232_CHECKPOINT_VERIFIED')
+          PY
+
+      - name: Rebuild structural and exact kill/control evidence
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_export_kill_mask.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_EXPORT_KILL_MASK.json
+          python tools/d1_gcn_control_semantics_proof.py \
+            --llvm-sop input/upstream/SOPInstructions.td \
+            --gem5-sop1 input/upstream/gem5_sop1.cc \
+            --gem5-sopp input/upstream/gem5_sopp.cc \
+            --gem5-vop2 input/upstream/gem5_vop2.cc \
+            --llvm-revision "$LLVM_CONTROL_REV" --gem5-revision "$GEM5_REV" \
+            -o out/GCN_CONTROL_SEMANTICS.json
+
+      - name: Prove omitted predicate value and SCC branch
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_export_kill_control_extension.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --kill-mask out/PS_808EE505_EXPORT_KILL_MASK.json \
+            --control-semantics out/GCN_CONTROL_SEMANTICS.json \
+            -o out/PS_808EE505_EXPORT_KILL_CONTROL_EXTENSION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_EXPORT_KILL_CONTROL_EXTENSION.json'))
+          assert d['status']=='D1_GCN_EXPORT_KILL_CONTROL_EXTENSION_EXACT' and not d['violations'],d
+          assert len(d['extensions'])==1,d
+          q=d['extensions'][0]; v=q['predicate_value']; b=q['scc_branch']
+          assert q['kill_instruction']==337
+          assert v['instruction']==335 and v['opcode']=='v_subrev_f32'
+          assert v['equation']=='threshold - sample' and v['sample_instruction']==332 and v['threshold_load_instruction']==333
+          assert v['threshold']==0.5
+          assert b['instruction']==338 and b['opcode']=='s_cbranch_scc0'
+          assert b['scc_writer_instruction']==337 and b['scc_writer_opcode']=='s_andn2_b64'
+          assert b['exact_condition']=='updated_persistent_export_mask == 0'
+          assert b['target_label']=='.L2140_0' and b['target_instruction']==443
+          assert b['target_address_hex']=='00000000085C'
+          assert b['fallthrough_instruction']==339
+          assert b['encoded_word_hex'].lower()=='bf840086'
+          assert b['encoded_simm16_raw']==0x86 and b['encoded_simm16_signed']==134
+          assert b['encoded_target_address_hex']=='00000000085C'
+          print('KILL_CONTROL_EXTENSION_CLOSED',v['instruction'],b['instruction'],b['target_instruction'])
+          PY
+
+      - name: Promote only the two newly exact renderer rows
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_add_kill_control.py \
+            --program input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --kill-control-extension out/PS_808EE505_EXPORT_KILL_CONTROL_EXTENSION.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']; counts=c['primary_resolution_counts']
+          expected={
+            'CONTROL_EXACT':17,'EXPRESSION_EXACT':162,'INPUT_PROVENANCE_EXACT':19,
+            'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':222}
+          assert counts==expected,(counts,expected)
+          assert c['exact_nonstructural_instruction_count']==234
+          assert c['structural_only_instruction_count']==222
+          assert c['kill_control_promoted_instruction_count']==2
+          assert c['kill_control_expression_instructions']==[335]
+          assert c['kill_control_branch_instructions']==[338]
+          assert p['instruction_resolution'][335]['primary_resolution']=='EXPRESSION_EXACT'
+          assert 'PERSISTENT_EXPORT_KILL_PREDICATE_VALUE_EXACT' in p['instruction_resolution'][335]['evidence_tags']
+          assert p['instruction_resolution'][338]['primary_resolution']=='CONTROL_EXACT'
+          assert 'PERSISTENT_EXPORT_KILL_SCC_BRANCH_EXACT' in p['instruction_resolution'][338]['evidence_tags']
+          spans=[(x['start_instruction'],x['end_instruction']) for x in c['structural_only_spans']]
+          expected_spans=[
+            (0,0),(2,5),(7,20),(23,32),(35,57),(60,104),(106,106),(108,148),
+            (191,193),(195,198),(201,205),(208,228),(230,263),(329,331),(334,334),
+            (342,342),(373,374),(386,386),(391,391),(397,397),(401,401),(416,416),
+            (418,418),(444,444),(450,450),(455,455)]
+          assert spans==expected_spans,(spans,expected_spans)
+          assert d['semantic_boundary']['persistent_export_kill_predicate_value']=='EXACT'
+          assert d['semantic_boundary']['persistent_export_kill_scc_branch']=='EXACT_CFG_REACHING_DEF_AND_SIMM16_TARGET'
+          print('RENDERER_234_CLOSED',counts,'exact_nonstructural',c['exact_nonstructural_instruction_count'])
+          PY
+          cp input/source/target_material_stage.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-RENDERER-PROGRAM-KILL-CONTROL-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
