@@ -1,0 +1,190 @@
+name: D1 Tower three-NPC PS semantic frontier
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-tower-three-npc-ps-semantic-frontier.yml'
+      - 'tools/d1_three_npc_ps_semantic_frontier.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  AUDIT_ARTIFACT_ID: '10068794522'
+  AUDIT_ARTIFACT_SHA256: '90812780872801f05055650a3a070a786c2a67e9489f38ee8fb3849cd6d6ce8b'
+  MATCH_ARTIFACT_ID: '10068963677'
+  MATCH_ARTIFACT_SHA256: '632289881cbadd9d2de08d0855b3084f2fcfff7b3899bb13063b8909a64f9e89'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned audit, registry match, catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/audit input/match input/catalog runtime reports corpus shader/all disasm out
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUDIT_ARTIFACT_ID}/zip" -o input/audit.zip
+          echo "${AUDIT_ARTIFACT_SHA256}  input/audit.zip" | sha256sum --check --strict
+          unzip -q input/audit.zip -d input/audit
+          test -f input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MATCH_ARTIFACT_ID}/zip" -o input/match.zip
+          echo "${MATCH_ARTIFACT_SHA256}  input/match.zip" | sha256sum --check --strict
+          unzip -q input/match.zip -d input/match
+          test -f input/match/THREE_NPC_NATIVE_PS_REGISTRY_MATCH.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Build exact shader/package plan from registry match
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          m=json.load(open('input/match/THREE_NPC_NATIVE_PS_REGISTRY_MATCH.json'))
+          a=json.load(open('input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json'))
+          assert m['status']=='D1_TOWER_THREE_NPC_NATIVE_PS_REGISTRY_MATCH_EXACT' and not m['violations'],m
+          assert a['status']=='D1_TOWER_THREE_NPC_MATERIAL_CORRECTNESS_AUDIT_COMPLETE' and not a['violations'],a
+          shaders=sorted(m['programs'])
+          assert len(shaders)==34,shaders
+          freq=collections.Counter()
+          for actor in a['actors']:
+              for mat in actor['materials']:
+                  freq[mat['pixel_shader']]+=int(mat['primitive_count'])
+          assert set(freq)==set(shaders),(set(freq)^set(shaders))
+          refs=shaders+[m['programs'][h]['native_shader'] for h in shaders]
+          def pid(h):
+              v=int(h,16);assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          ids=sorted({pid(h) for h in refs})
+          Path('reports/ps_tags.txt').write_text('\n'.join(shaders)+'\n')
+          Path('reports/package_ids.txt').write_text('\n'.join(ids)+'\n')
+          Path('reports/extract_manifest.json').write_text(json.dumps({
+              'status':'D1_THREE_NPC_PS_FRONTIER_EXTRACT_MANIFEST_EXACT',
+              'pixel_shader_frequency':dict(sorted(freq.items()))
+          },indent=2)+'\n')
+          print('FRONTIER_PLAN','headers',len(shaders),'package_ids',ids)
+          PY
+
+      - name: Recover exact shader package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/shader_corpus.json
+
+      - name: Extract all 34 visible bounded native GCN programs
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t shaders < reports/ps_tags.txt
+          sargs=(); for s in "${shaders[@]}"; do sargs+=(--shader "$s"); done
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
+            --manifest reports/extract_manifest.json "${sargs[@]}" \
+            --out-dir shader/all --report reports/all_visible_ps_extract.json
+          python - <<'PY'
+          import json,glob
+          d=json.load(open('reports/all_visible_ps_extract.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['selected_count']==34 and d['error_count']==0,d
+          assert len(glob.glob('shader/all/PS_*_gcn.bin'))==34
+          print('THREE_NPC_GCN_EXACT','bytes',sum(x['gcn_bytes'] for x in d['shaders']))
+          PY
+
+      - name: Build pinned CLRX disassembler
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          echo "CLRXDISASM=$exe" >> "$GITHUB_ENV"
+
+      - name: Disassemble every exact visible PS program
+        run: |
+          set -euo pipefail
+          count=0
+          for f in shader/all/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            "$CLRXDISASM" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"
+            test ! -s "disasm/${b}.stderr"
+            grep -q 's_endpgm' "disasm/${b}.s"
+            count=$((count+1))
+          done
+          test "$count" -eq 34
+          echo "DISASM_GREEN $count"
+
+      - name: Resolve exact image-resource usage
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report reports/all_visible_ps_extract.json \
+            --disasm-dir disasm \
+            --out reports/THREE_NPC_PS_IMAGE_USAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/THREE_NPC_PS_IMAGE_USAGE.json'))
+          assert d['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT' and d['shader_count']==34,d
+          assert d['unmatched_image_instruction_count']==0,d
+          print('IMAGE_USAGE_GREEN','image_instructions',d['image_instruction_count'])
+          PY
+
+      - name: Build ranked fail-closed semantic frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_semantic_frontier.py \
+            --audit input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json \
+            --registry-match input/match/THREE_NPC_NATIVE_PS_REGISTRY_MATCH.json \
+            --image-usage reports/THREE_NPC_PS_IMAGE_USAGE.json \
+            --disasm-dir disasm \
+            --out out/THREE_NPC_PS_SEMANTIC_FRONTIER.json \
+            --markdown out/THREE_NPC_PS_SEMANTIC_FRONTIER.md
+          cp reports/all_visible_ps_extract.json out/
+          cp reports/THREE_NPC_PS_IMAGE_USAGE.json out/
+          mkdir -p out/disasm out/gcn
+          cp disasm/PS_*.s out/disasm/
+          cp shader/all/PS_*_gcn.bin out/gcn/
+          cat out/THREE_NPC_PS_SEMANTIC_FRONTIER.md
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-PS-SEMANTIC-FRONTIER
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 9
