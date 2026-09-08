@@ -1,0 +1,149 @@
+name: D1 GCN terminal MRT 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-terminal-mrt-808ee505-v1.yml'
+      - 'tools/d1_gcn_terminal_mrt_expr.py'
+      - 'tools/d1_gcn_vop_semantics_proof.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+      - 'tools/d1_gcn_export_kill_mask.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  LLVM_VOP_REV: '16bcb2727f98f366ca9e28b98b83654cdb150b89'
+  LLVM_MOD_REV: '841d4ad6b315ab92c2a37e6484a3b7963b50060c'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 evidence and immutable ISA sources
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_shader_extract.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop3.cc" -o input/upstream/gem5_vop3.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vinterp.cc" -o input/upstream/gem5_vinterp.cc
+
+      - name: Rebuild exact structural, material and kill provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+          python tools/d1_gcn_export_kill_mask.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_EXPORT_KILL_MASK.json
+          python - <<'PY'
+          import json
+          ir=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
+          cb=json.load(open('out/PS_808EE505_CBUFFER_PROVENANCE.json'))
+          km=json.load(open('out/PS_808EE505_EXPORT_KILL_MASK.json'))
+          assert ir['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE' and ir['instruction_count']==456
+          assert cb['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not cb['violations']
+          q=next(x for x in cb['loads'] if x['instruction']==436)
+          assert q['destination_sgprs']==['s0'] and q['material_values'][0]['raw_hex']=='c4c3033f'
+          assert km['status']=='D1_GCN_EXPORT_KILL_MASK_CONTRACT_COMPLETE' and not km['violations']
+          assert {x['instruction'] for x in km['contracts'][0]['governed_exports']}=={449,454}
+          print('TAIL_PREREQUISITES_CLOSED',q['material_values'][0]['value'])
+          PY
+
+      - name: Source-prove terminal value and export semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vop_semantics_proof.py \
+            --instr-info input/upstream/AMDGPUInstrInfo.td \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            --vop2-source input/upstream/gem5_vop2.cc --vop2-revision "$GEM5_REV" \
+            --vop3-source input/upstream/gem5_vop3.cc --vop3-revision "$GEM5_REV" \
+            --vinterp-source input/upstream/gem5_vinterp.cc --vinterp-revision "$GEM5_REV" \
+            -o out/GCN_VOP_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/GCN_VOP_SEMANTICS.json'))
+          assert d['status']=='D1_GCN_VOP_SEMANTICS_SOURCE_PROVEN' and not d['violations'] and d['schema_version']>=3,d
+          s=d['semantics']
+          for k in ['v_mad_f32','v_mac_f32','v_max_f32','v_interp_p1_f32','v_interp_p2_f32','v_cvt_pkrtz_f16_f32','float_clamp','exp_compr','exp_done','exp_vm']:
+            assert k in s,k
+          assert s['v_cvt_pkrtz_f16_f32']['native_pair_order']==['S1','S0']
+          assert s['v_cvt_pkrtz_f16_f32']['rounding']=='TOWARD_ZERO'
+          assert s['exp_compr']['channel_mapping']=='WITHHELD_NOT_STATED_BY_THIS_SOURCE'
+          print('TERMINAL_SOURCE_SEMANTICS_CLOSED')
+          PY
+
+      - name: Lift exact packed terminal MRT expressions
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_mrt_expr.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --kill-mask out/PS_808EE505_EXPORT_KILL_MASK.json \
+            --vop-semantics out/GCN_VOP_SEMANTICS.json \
+            -o out/PS_808EE505_TERMINAL_MRT_EXPR.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_TERMINAL_MRT_EXPR.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT_PACKED_EXPRESSION_EXACT' and not d['violations'],d
+          e=d['expression']
+          assert e['shader']=='808EE505' and e['material']=='80D777B6'
+          assert e['instruction_slice']==[436,454]
+          assert e['value_instruction_indices']==[437,438,439,440,441,442,443,445,446,447,448,449,452,453,454]
+          assert e['material_constant_load']['value']['raw_hex']=='c4c3033f'
+          ex={x['target']:x for x in e['exports']}
+          assert set(ex)=={'mrt0','mrt1'}
+          assert ex['mrt1']['instruction']==449 and ex['mrt1']['compr'] and not ex['mrt1']['done'] and not ex['mrt1']['vm']
+          assert ex['mrt0']['instruction']==454 and ex['mrt0']['compr'] and ex['mrt0']['done'] and ex['mrt0']['vm']
+          assert all(x['portable_channel_mapping']=='WITHHELD_NOT_SOURCE_CLOSED' for x in ex.values())
+          packs=[n for n in e['nodes'] if n['op']=='PACK_F16_RTZ']
+          assert [n['instruction'] for n in packs]==[447,448,452,453]
+          assert all(n['native_pair_order']==['S1','S0'] and n['rounding']=='TOWARD_ZERO' for n in packs)
+          assert e['semantic_boundary']['compressed_export_rgba_channel_unpacking']=='WITHHELD_NOT_SOURCE_CLOSED'
+          print('TERMINAL_MRT_EXPRESSION_CLOSED','nodes',e['node_count'],'packs',len(packs))
+          PY
+
+      - name: Freeze proof payload
+        run: |
+          set -euo pipefail
+          cp input/source/target_material_stage.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-TERMINAL-MRT-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
