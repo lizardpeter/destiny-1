@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-tower-actor-shared-action-family-compatibility.yml'
       - 'tools/d1_tower_actor_action_family_compatibility.py'
       - 'tools/d1_gltf_restore_native_tiger_skin_animation_basis.py'
+      - 'tools/d1_gltf_restore_native_tiger_animation_basis.py'
       - 'tools/d1_gltf_skin_bind_identity_probe.py'
 
 permissions: {contents: read, actions: read}
@@ -66,7 +67,7 @@ jobs:
       - name: Restore the six shared action libraries to native D1 basis
         run: |
           set -euo pipefail
-          python -m py_compile tools/d1_gltf_restore_native_tiger_skin_animation_basis.py tools/d1_gltf_skin_bind_identity_probe.py
+          python -m py_compile tools/d1_gltf_restore_native_tiger_skin_animation_basis.py tools/d1_gltf_restore_native_tiger_animation_basis.py tools/d1_gltf_skin_bind_identity_probe.py
           for src in input/actions/models/*_ALL_ACTIONS.glb; do
             stem="$(basename "$src" _ALL_ACTIONS.glb)"
             python tools/d1_gltf_restore_native_tiger_skin_animation_basis.py "$src" \
@@ -79,8 +80,11 @@ jobs:
           import glob,json
           fs=sorted(glob.glob('out/models/*_ALL_ACTIONS_NATIVE_D1.glb')); assert len(fs)==6,fs
           bs=sorted(glob.glob('out/reports/bind/*.json')); assert len(bs)==6,bs
+          basis=sorted(glob.glob('out/reports/basis/*.json')); assert len(basis)==6,basis
           for p in bs:
               d=json.load(open(p)); assert d['status']=='D1_GLTF_SKIN_BIND_IDENTITY_COMPLETE' and d['max_observed_error']<=2e-5,d
+          for p in basis:
+              d=json.load(open(p)); assert d['status']=='D1_GLTF_NATIVE_TIGER_SKIN_ANIMATION_BASIS_RESTORED',d
           print('NATIVE_SHARED_ACTION_LIBRARIES_GREEN',len(fs),'bind_error_max',max(json.load(open(p))['max_observed_error'] for p in bs))
           PY
 
