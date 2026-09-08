@@ -1,0 +1,177 @@
+name: D1 Tower three-NPC target-native visual test v4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_gltf_actor_visual_preview_adapter_v2.py'
+      - 'tools/d1_blender_build_tower_three_npc_test_v4.py'
+      - 'tools/d1_blender_validate_tower_three_npc_test_v4.py'
+      - 'tools/d1_blender_render_tower_three_npc_test_v4.py'
+      - '.github/workflows/d1-tower-three-npc-laptop-test-v4.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+  REQUIRED_ACTION_WORKFLOW_HEAD_SHA: '6fb31ef9b01d9a77d3e8dc072517f48a41647d20'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact production textured actors and native action families
+        run: |
+          set -euo pipefail
+          mkdir -p input/textured input/actions input/visual input/animated reports/visual reports/append reports out/renders
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TEXTURED_ARTIFACT_ID}/zip" -o input/textured.zip
+          echo "${TEXTURED_ARTIFACT_SHA256}  input/textured.zip" | sha256sum --check --strict
+          unzip -q input/textured.zip -d input/textured
+          action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 10 --json databaseId,headSha --jq '.[] | select(.headSha=="'"$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"'") | .databaseId' | head -n1)"
+          test -n "$action_run"
+          gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
+          test -f input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json
+          for f in \
+            input/textured/models/80C88CEF_SIG03_SKINNED_NATIVE_D1_TEXTURED.glb \
+            input/textured/models/809D8104_SIG00_SKINNED_NATIVE_D1_TEXTURED.glb \
+            input/textured/models/80C88434_SIG00_SKINNED_NATIVE_D1_TEXTURED.glb; do test -f "$f"; done
+
+      - name: Preserve production texture previews and demote only unsafe COLOR_0
+        run: |
+          set -euo pipefail
+          for base in \
+            80C88CEF_SIG03_SKINNED_NATIVE_D1_TEXTURED \
+            809D8104_SIG00_SKINNED_NATIVE_D1_TEXTURED \
+            80C88434_SIG00_SKINNED_NATIVE_D1_TEXTURED; do
+            python tools/d1_gltf_actor_visual_preview_adapter_v2.py \
+              --input-glb "input/textured/models/${base}.glb" \
+              --out "input/visual/${base}.glb" \
+              --report "reports/visual/${base}.json"
+          done
+          python - <<'PY'
+          import glob,json
+          rows=[json.load(open(p)) for p in glob.glob('reports/visual/*.json')]
+          assert len(rows)==3 and all(x['status']=='D1_ACTOR_VISUAL_PREVIEW_V2_COMPLETE' and not x['violations'] and x['bin_byte_identical'] for x in rows),rows
+          bases=sum(x['preview_counts_after']['base_texture_count'] for x in rows)
+          normals=sum(x['preview_counts_after']['normal_texture_count'] for x in rows)
+          mats=sum(x['preview_counts_after']['material_count'] for x in rows)
+          assert bases>=50,(bases,normals,mats,rows)
+          assert sum(x['renamed_COLOR_0_primitive_count'] for x in rows)>0,rows
+          print('VISUAL_PREVIEW_GREEN','materials',mats,'base_textures',bases,'normals',normals,
+                [(x['preview_counts_after'],x['renamed_COLOR_0_primitive_count']) for x in rows])
+          PY
+
+      - name: Append each exact compatible family directly into its target visual GLB
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,subprocess
+          c=json.load(open('input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json'))
+          assert c['status']=='D1_TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY_CLOSED' and not c['violations'],c
+          by={x['model']:x for x in c['models']}
+          specs=[
+            ('80C88CEF','SIG03','XUR',-3.0),
+            ('809D8104','SIG00','MODEL_809D8104',0.0),
+            ('80C88434','SIG00','MODEL_80C88434',3.0),
+          ]
+          actors=[]
+          for model,sig,label,x in specs:
+              r=by[model]
+              base=f'{model}_{sig}_SKINNED_NATIVE_D1_TEXTURED'
+              target=pathlib.Path('input/visual')/f'{base}.glb'
+              src=r['representative_action_glb']; native=src[:-4]+'_NATIVE_D1.glb'
+              action=pathlib.Path('input/actions/models')/native
+              assert action.exists(),action
+              out=pathlib.Path('input/animated')/f'{base}_ALL_ACTIONS.glb'
+              rep=pathlib.Path('reports/append')/f'{model}_{sig}.json'
+              subprocess.run(['python','tools/d1_gltf_append_shared_action_library_by_joint_name.py',
+                              '--target',str(target),'--action-library',str(action),'--expected-action-count',str(r['action_count']),
+                              '--out',str(out),'--report',str(rep)],check=True)
+              d=json.load(open(rep));assert d['status']=='D1_GLTF_SHARED_ACTION_LIBRARY_APPENDED_BY_JOINT_NAME' and not d['violations'] and d['target_bin_exact_prefix'],d
+              actors.append({'key':f'{model}:{sig}','label':label,'x':x,'model':model,'signature':sig,'animated_glb':out.name,
+                             'action_count':r['action_count'],'representative_model':r['representative_model'],'skeleton':r['skeleton'],'runtime_rig':r['runtime_rig'],'control':r['control']})
+          json.dump({'schema_version':4,'status':'D1_TOWER_THREE_NPC_V4_TARGET_NATIVE_PLAN','actors':actors},open('reports/V4_PLAN.json','w'),indent=2)
+          print('TARGET_NATIVE_APPEND_GREEN',[(x['key'],x['action_count'],x['representative_model']) for x in actors])
+          PY
+
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
+
+      - name: Build V4 using target-native actions and deformation sanity selection
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background --factory-startup --python tools/d1_blender_build_tower_three_npc_test_v4.py -- \
+            --input-dir input/animated --plan reports/V4_PLAN.json --retain-actions-per-actor 4 --candidate-limit 16 \
+            --out-blend out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend \
+            --report reports/V4_BUILD.json | tee reports/v4_build_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/V4_BUILD.json'));assert d['status']=='D1_TOWER_THREE_NPC_VISUAL_TEST_V4_COMPLETE' and not d['violations'],d
+          assert d['actor_count']==3 and d['armature_count']==3,d
+          assert d['image_count']>=10 and d['packed_image_count']>=10,d
+          assert all(x['selected_mesh_gate']['deformed_mesh_sane'] for x in d['actors']),d
+          print('V4_BUILD_GREEN',d['blend_bytes'],d['image_count'],[(x['key'],x['selected_action'],x['selected_mesh_gate']['max_dimension_ratio']) for x in d['actors']])
+          PY
+
+      - name: Reopen saved blend and re-prove visible textures and sane deformation
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend \
+            --python tools/d1_blender_validate_tower_three_npc_test_v4.py -- --report reports/V4_REOPEN.json | tee reports/v4_reopen_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/V4_REOPEN.json'));assert not d['violations'],d
+          assert d['armature_count']==3 and len(d['rows'])==3,d
+          print('V4_REOPEN_GREEN','images',d['image_count'],'textured_materials',d['material_stats']['material_with_image_texture_count'])
+          PY
+
+      - name: Render rest and selected-animation visual canaries
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend \
+            --python tools/d1_blender_render_tower_three_npc_test_v4.py -- --out-dir out/renders | tee reports/v4_render_stdout.txt
+          test -s out/renders/V4_REST.png
+          test -s out/renders/V4_SELECTED_MID.png
+          cp reports/V4_BUILD.json out/
+          cp reports/V4_REOPEN.json out/
+          cp reports/V4_PLAN.json out/
+          cp reports/blender_version.txt out/
+          cp -r reports/visual out/visual_adapter_reports
+          cp -r reports/append out/target_native_append_reports
+          cat > out/README.txt <<'EOF'
+          Destiny 1 Tower three-NPC V4 visual checkpoint.
+
+          This supersedes the failed V3 visual handoff.
+          - Uses original production textured actor GLBs; STRONG_FORMAT_CANDIDATE portable previews remain visible and explicitly non-canonical.
+          - Only standard glTF COLOR_0 is demoted to _D1_COLOR so generic PBR cannot multiply the material by an unproven D1 RGBA field.
+          - Complete compatible animation libraries are appended directly into each exact target visual GLB by joint name before Blender import.
+          - No Action datablock from one actor is cross-assigned to another actor.
+          - A low-motion target-native selector-owned clip is preselected for each actor only after pose and evaluated mesh-bounds sanity checks. It is a diagnostic presentation choice, NOT a claim of retail idle/default state.
+          - CI reopens the saved blend and renders both REST and selected-animation canaries.
+
+          Press Play after opening. Additional retained D1_V4_* target-native Actions are available in the Action Editor.
+          EOF
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+          ls -lh out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend out/renders/*.png
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-3-NPC-V4-TEXTURED-TARGET-NATIVE
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0
