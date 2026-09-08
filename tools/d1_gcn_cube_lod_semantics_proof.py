@@ -68,6 +68,9 @@ def main() -> int:
 
         assert 'Computes the absolute value of its operand.' in mod
         assert 'abs(<operand>)                           Get the absolute value of a floating-point operand.' in mod
+        assert 'Computes the negative value of its operand.' in mod
+        assert 'neg(<operand>)     Get the negative value of a floating-point operand.' in mod
+        assert '-<operand>         The same as above (an SP3 syntax).' in mod
         assert 'mul:2                                    Multiply the result by 2.' in mod
         assert 'output modifiers are applied before' in mod
         assert 'clamping' in mod
@@ -86,6 +89,7 @@ def main() -> int:
 
         ins=ir['instructions']
         expected={
+          348:('v_add_f32',['v18','-v18','1.0 clamp']),
           350:('v_sqrt_f32',['v18','v18']),
           369:('v_max_f32',['v10','v8','v8 mul:2']),
           375:('v_mad_legacy_f32',['v12','-v5','v6','v12']),
@@ -120,11 +124,12 @@ def main() -> int:
           'v_cubesc_f32':{'operation':'CUBE_S','equation':'D = cubemap_S(S0,S1,S2)','source_literal':cubesc},
           'v_cubeid_f32':{'operation':'CUBE_FACE_ID','equation':'D = cubemap_face_id_0_to_5(S0,S1,S2)','source_literal':cubeid},
           'abs_modifier':{'operation':'ABS','equation':'S = abs(S)','application_order':'before neg if present'},
+          'neg_modifier':{'operation':'NEG','equation':'S = -S','application_order':'after abs if present'},
           'mul2_output_modifier':{'operation':'OUTPUT_MUL2','equation':'D = D * 2.0','application_order':'before clamp'},
         }
         for q in semantics.values():
-            q['gem5_revision']=a.gem5_revision if q['operation'] not in ('ABS','OUTPUT_MUL2') else None
-            q['modifier_revision']=a.modifier_revision if q['operation'] in ('ABS','OUTPUT_MUL2') else None
+            q['gem5_revision']=a.gem5_revision if q['operation'] not in ('ABS','NEG','OUTPUT_MUL2') else None
+            q['modifier_revision']=a.modifier_revision if q['operation'] in ('ABS','NEG','OUTPUT_MUL2') else None
 
         payload={
           'shader':'808EE505','material':'80D777B6',
