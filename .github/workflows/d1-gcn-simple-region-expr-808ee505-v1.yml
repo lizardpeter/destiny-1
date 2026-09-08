@@ -1,0 +1,136 @@
+name: D1 GCN simple region expression 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-simple-region-expr-808ee505-v1.yml'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_exec_region_ir.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+      - 'tools/d1_gcn_vop_semantics_proof.py'
+      - 'tools/d1_gcn_simple_region_expr.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  LLVM_INSTR_REV: '16bcb2727f98f366ca9e28b98b83654cdb150b89'
+  LLVM_MOD_REV: '841d4ad6b315ab92c2a37e6484a3b7963b50060c'
+
+jobs:
+  lift:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 evidence and immutable AMDGPU semantics sources
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_shader_extract.json target_material_stage.json; do test -f "input/source/$f"; done
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_INSTR_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" \
+            -o input/upstream/AMDGPUInstrInfo.td
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" \
+            -o input/upstream/AMDGPUModifierSyntax.rst
+
+      - name: Rebuild structural and EXEC-region IR
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_exec_region_ir.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            -o out/PS_808EE505_EXEC_REGIONS.json
+
+      - name: Resolve exact material constant-buffer loads
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_CBUFFER_PROVENANCE.json'))
+          assert d['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not d['violations'],d
+          mat={r['instruction']:r for r in d['loads'] if r['resolution']=='EXACT_MATERIAL_PS_B0'}
+          for i,scalar,val in [(291,20,3.0),(297,16,3.0),(333,28,0.5)]:
+              assert i in mat,(i,sorted(mat))
+              r=mat[i]; assert r['api_slot']==0 and r['offset_dwords']==scalar,r
+              assert r['material_values'][0]['value']==val,r
+          assert mat[291]['extended_user_data_logical_start']==32
+          assert mat[291]['orbshdr_start_register']==32
+          print('MATERIAL_B0_PROVENANCE_CLOSED',[(i,mat[i]['offset_dwords'],mat[i]['material_values'][0]['value']) for i in (291,297,333)])
+          PY
+
+      - name: Pin EXP2 and floating clamp ISA semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vop_semantics_proof.py \
+            --instr-info input/upstream/AMDGPUInstrInfo.td \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --instr-revision "$LLVM_INSTR_REV" --modifier-revision "$LLVM_MOD_REV" \
+            -o out/GCN_VOP_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/GCN_VOP_SEMANTICS.json'))
+          assert d['status']=='D1_GCN_VOP_SEMANTICS_SOURCE_PROVEN' and not d['violations']
+          assert d['semantics']['v_exp_f32']['operation']=='EXP2'
+          assert d['semantics']['float_clamp']['operation']=='CLAMP_0_1'
+          print('VOP_SEMANTICS_CLOSED',d['semantics'])
+          PY
+
+      - name: Lift the exact eight-sample conditional branch to expression DAG
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_simple_region_expr.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --exec-regions out/PS_808EE505_EXEC_REGIONS.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --vop-semantics out/GCN_VOP_SEMANTICS.json --region-id 3 \
+            -o out/PS_808EE505_REGION3_EXPR_DAG.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_REGION3_EXPR_DAG.json'))
+          assert d['status']=='D1_GCN_SIMPLE_REGION_EXPRESSION_DAG_EXACT' and not d['violations'],d
+          e=d['expression']; assert e['region_id']==3 and e['predicate']['expression']=='0 < v7'
+          assert e['sample_count']==8
+          samples=[e['nodes'][i] for i in e['sample_node_ids']]
+          assert all(n['op']=='SAMPLE' and n['texture_indices']==[1] and n['sampler_indices']==[2] and n['channel']=='x' for n in samples),samples
+          assert len(e['promoted_factor_roots'])==1 and e['promoted_factor_roots'][0]['register']=='v7'
+          factor=e['nodes'][e['promoted_factor_roots'][0]['node']]
+          assert factor['op']=='CLAMP_0_1',factor
+          exp=e['nodes'][factor['args'][0]]; assert exp['op']=='EXP2',exp
+          consts=[n for n in e['nodes'] if n['op']=='CONST' and n.get('source')=='MATERIAL_PS_B0']
+          assert sorted((n['scalar_index'],n['value']) for n in consts)==[(16,3.0),(20,3.0)],consts
+          assert set(e['lane_merge_roots'])=={'v13','v15','v20','v26'}
+          print('REGION3_EXPRESSION_DAG_CLOSED','nodes',e['node_count'],'samples',e['sample_count'],'factor_root',e['promoted_factor_roots'][0]['node'])
+          PY
+          cp input/source/target_material_stage.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-REGION3-EXPR-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
