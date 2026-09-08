@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_AUTHORITATIVE",
+  "activity": "810B0002",
+  "source_commit": "5935b2ee28150a9c8e9552972c7dae0bea5390f1",
+  "workflow_run_id": 34181153096,
+  "workflow_job_id": 101920364024,
+  "release": {
+    "tag": "d1-activity-810b0002-static-common-map-visual-entities-r1",
+    "release_id": 384417354,
+    "glb": {
+      "name": "D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES.glb",
+      "bytes": 912538704,
+      "sha256": "7b5514459ebdcf1d9c04a302ae3f2d65fd53319730eff16536326ed597ab6dd9"
+    },
+    "final_report": {
+      "name": "FINAL_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES.json",
+      "bytes": 1806,
+      "sha256": "09fc7e8a7f54b9edd75c2ae0503b511174d53abfbca86bf88210eab47f1fcecc"
+    }
+  },
+  "actions_report_artifact": {
+    "artifact_id": 10039113344,
+    "zip_bytes": 364723997,
+    "sha256": "66e99dfb75987b447723bd5dd17f0cae98e19bd031f5750779138d5654e5b740"
+  },
+  "map_entity_population": {
+    "source_sentity_count": 81,
+    "visual_entity_count": 24,
+    "nonvisual_entity_count": 57,
+    "visual_runtime_placement_count": 149,
+    "real_world_id_placement_count": 149,
+    "sentinel_world_id_placement_count": 0,
+    "model_parent_pair_count": 21,
+    "unique_model_count": 21
+  },
+  "visual_geometry": {
+    "geometry_variants": 69,
+    "triangles": 46131,
+    "scene_geometry_nodes": 313,
+    "duplicate_render_variants_preserved_in_evidence": 98,
+    "active_material_count": 58
+  },
+  "textures": {
+    "exact_native_texture_resources": 103,
+    "decoded_texture_tags": 103,
+    "texture_errors": 0,
+    "derived_portable_normals": 15,
+    "portable_image_count": 118,
+    "portable_texture_count": 118
+  },
+  "final_gltf_counts": {
+    "accessors": 7837,
+    "bufferViews": 8402,
+    "images": 565,
+    "materials": 781,
+    "meshes": 1768,
+    "nodes": 16537,
+    "textures": 565,
+    "scenes": 1,
+    "animations": 0,
+    "skins": 0,
+    "lights": 0
+  },
+  "selection_semantics": "Pinned Charm MostDetailed LOD selection is applied over the complete part array. Selected parts are densely renumbered before StagePartOffsets GroupIndex lookup. The fixed 30-short StagePartOffsets field is not clamped to serialized Parts.Count. Exact duplicate geometry ranges are emitted once using the first source-ordered candidate while later render/material/group variants remain preserved in evidence. Exact owning EntityResource identity remains part of each model-parent export key.",
+  "proof_boundary": "This checkpoint includes the previously authoritative Activity-owned baked-static/table-scoped common world plus every map-entry SEntity with source-proven EntityModel ownership, exact parent-aware materials, exact native texture resources, and serialized world transforms. It does not yet claim articulated rig/animation playback or final rendering/instantiation of separate non-entity map layers such as sky entities, lights, and projected decals. Unknown map resource classes remain unnamed until source/native consumer proof."
+}
