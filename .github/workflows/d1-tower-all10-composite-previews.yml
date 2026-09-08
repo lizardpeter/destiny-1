@@ -35,7 +35,7 @@ jobs:
           gh release download d1-tower-ten-cell-r1 -p D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb -D input --clobber
           echo "$SOURCE_SHA256  input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb" | sha256sum --check --strict
 
-      - name: Derive shared world-space camera plan from exact glTF bounds
+      - name: Derive shared Blender-space camera plan from exact glTF bounds
         run: |
           set -euo pipefail
           python tools/d1_gltf_tower_shared_camera_plan.py \
@@ -46,9 +46,13 @@ jobs:
           d=json.load(open('reports/shared_camera_plan.json'))
           assert d['status']=='D1_TOWER_SHARED_CAMERA_PLAN',d
           assert d['cell_count']==10 and len(d['cell_bounds'])==10,d
+          assert d['coordinate_space'].startswith('Blender Z-up'),d
+          assert d['core_frame_cells']==[0,1,2,3,4,5,6,9],d
+          classes={x['cell']:x['layer_class'] for x in d['cell_bounds']}
+          assert classes[7]=='outer' and classes[8]=='far_background',classes
           names={x['name'] for x in d['views']}
-          assert {'oblique_a','top'} <= names,names
-          print('SHARED_CAMERA_PLAN_GREEN',d['center'],d['span_xy'],d['zspan'])
+          assert {'core_oblique','core_top','outer_oblique','outer_top'} <= names,names
+          print('SHARED_CAMERA_PLAN_GREEN',d['core_bounds'],d['outer_bounds'])
           PY
 
       - name: Install Blender 5.2.1, Mesa and compositor dependency
@@ -73,7 +77,7 @@ jobs:
               input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
               --out-dir cells --cell "$ci" --report "reports/split_${c}.json"
             test -s "cells/TOWER_CELL_${c}.glb"
-            for v in oblique_a top; do
+            for v in core_oblique core_top; do
               echo "--- RENDER $c $v ---"
               timeout 25m xvfb-run -a "$BLENDER" --background --factory-startup \
                 --python tools/d1_blender_render_tower_shared_layer.py -- \
@@ -96,10 +100,10 @@ jobs:
           set -euo pipefail
           python tools/d1_tower_composite_cell_layers.py \
             --layer-dir layers --out-dir out \
-            --view oblique_a --view top \
+            --view core_oblique --view core_top \
             --report reports/all10_composite_report.json
           python - <<'PY'
-          import json,os
+          import json
           from pathlib import Path
           d=json.load(open('reports/all10_composite_report.json'))
           assert d['status']=='D1_TOWER_ALL10_SHARED_CAMERA_COMPOSITES',d
@@ -107,6 +111,7 @@ jobs:
           assert len(list(Path('layers').glob('cell??_*.png')))==20
           for row in d['views']:
               p=Path('out')/row['file']; assert p.stat().st_size>10000,(p,p.stat().st_size)
+              assert row['layer_classes'][0]=='far_background' and row['layer_classes'][1]=='outer',row
           p=Path('out')/d['contact_sheet']['file']; assert p.stat().st_size>10000,p
           print('ALL10_COMPOSITE_GREEN',[(x['view'],x['bytes']) for x in d['views']])
           PY
