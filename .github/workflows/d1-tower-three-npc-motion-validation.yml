@@ -1,4 +1,5 @@
 name: D1 Tower three-NPC assigned action motion validation
+# trigger: verify saved-file pose motion, not Action assignment metadata alone
 
 on:
   workflow_dispatch:
