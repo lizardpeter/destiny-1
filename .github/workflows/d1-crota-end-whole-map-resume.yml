@@ -1,0 +1,334 @@
+name: D1 Crota's End whole map resume from green closure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-end-whole-map-resume.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resume:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ACTIVITY: '810B0002'
+      CHECKPOINT_RUN: '34173809601'
+      PINNED_HEAD: 'b56ca4639851b1eb346bf3770c1f7000b07220e2'
+      CHECKPOINT_HEAD: '6d373a1d70ec744122f3652fa1f6f23dc6fd8a01'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b56ca4639851b1eb346bf3770c1f7000b07220e2
+
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Install exact export dependencies and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p checkpoint reports packages runtime baked_cells baked common models \
+            baked_texture_expanded common_texture_expanded final
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Import and verify green whole-Activity closure checkpoint
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PINNED_HEAD"
+          gh run download "$CHECKPOINT_RUN" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name d1-export-activity-world-reports \
+            --dir checkpoint
+          if [ -f checkpoint/baked_visual_dependency_closure.json ]; then
+            cp -a checkpoint/. reports/
+          elif [ -f checkpoint/reports/baked_visual_dependency_closure.json ]; then
+            cp -a checkpoint/reports/. reports/
+          else
+            echo 'checkpoint artifact missing baked_visual_dependency_closure.json' >&2
+            find checkpoint -maxdepth 3 -type f | sort >&2
+            exit 2
+          fi
+          git diff --quiet "$CHECKPOINT_HEAD" "$PINNED_HEAD" -- \
+            tools/d1_world_activity_root_dependency_closure.py \
+            tools/d1_world_activity_root_dependency_closure_universal.py \
+            tools/d1_world_map_data_layer_census.py \
+            tools/d1_world_map_resource_subset_plan.py \
+            tools/d1_world_static_map_resource_chain_census.py \
+            tools/d1_world_static_map_target_plan.py \
+            tools/d1_world_static_visual_dependency_closure.py
+          python - <<'PY'
+          import hashlib,json,os
+          a=os.environ['ACTIVITY']
+          selected=json.load(open('reports/SELECTED_ACTIVITY.json'))
+          root=json.load(open('reports/activity_map_roots.json'))
+          plan=json.load(open('reports/static_map_target_plan.json'))
+          close=json.load(open('reports/baked_visual_dependency_closure.json'))
+          assert selected['tag_hash']==a,selected
+          assert root['selected_activities']==[a],root.get('selected_activities')
+          assert root['reachable_map_data_table_count']==255,root
+          assert plan['status']=='D1_WORLD_STATIC_MAP_TARGET_PLAN_COMPLETE',plan
+          assert plan['baked_static_target_count']==44,plan
+          assert close['status']=='D1_WORLD_STATIC_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',close
+          assert close['baked_cell_count']==44,close
+          assert not close['validation_failures'],close['validation_failures']
+          assert len(close['final_package_ids'])==19,close['final_package_ids']
+          actual=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          idx=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          expected=(idx.get('source') or {}).get('package_list_sha256')
+          assert actual==expected,(actual,expected)
+          print('GREEN_CHECKPOINT_ACCEPTED',a,root['reachable_bubble_count'],root['reachable_map_container_count'],root['reachable_map_data_table_count'],close['baked_cell_count'],len(close['final_package_ids']))
+          PY
+
+      - name: Recover exact checkpoint package families
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/baked_visual_dependency_closure.json'))
+          open('reports/checkpoint_package_ids.txt','w').write('\n'.join(d['final_package_ids'])+'\n')
+          PY
+          args=()
+          while read -r p; do args+=(--package-id "$p"); done < reports/checkpoint_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --out-dir packages \
+            --report reports/checkpoint_package_recovery.json \
+            "${args[@]}"
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/checkpoint_package_recovery.json'))
+          assert d.get('status') in ('D1_INDEXED_PACKAGE_RECOVERY_COMPLETE','D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE'),d
+          print('CHECKPOINT_PACKAGES_RECOVERED',len(d.get('package_ids') or d.get('requested_package_ids') or []))
+          PY
+
+      - name: Export and merge all 44 baked cells
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/baked_visual_dependency_closure.json'))
+          cells=sorted(set(x['static_map_data'] for x in d['baked_cells']))
+          assert len(cells)==44,cells
+          open('reports/baked_cells.txt','w').write('\n'.join(cells)+'\n')
+          PY
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          snap=(); for f in "${files[@]}"; do snap+=(--snapshot "$f"); done
+          while read -r h; do
+            python tools/d1_world_static_visual_export.py "${snap[@]}" --runtime runtime \
+              --validation-json reports/baked_validation.json \
+              --static-map-data "$h" \
+              --out "baked_cells/${h}.glb" --json "baked_cells/${h}.json" \
+              --basis gltf-y-up
+          done < reports/baked_cells.txt
+          python - <<'PY'
+          import glob,json,os
+          rows=[json.load(open(p)) for p in sorted(glob.glob('baked_cells/*.json'))]
+          assert len(rows)==44,len(rows)
+          mats={}
+          for x in rows:
+            assert x['decode_error_count']==0,x
+            assert 'triangle_count' in x,x['static_map_data']
+            for h,m in x.get('materials',{}).items():
+              if m.get('visual'): mats[h.upper()]={'visual':True}
+          summary={
+            'schema_version':1,'status':'D1_ACTIVITY_BAKED_EXPORT_SET_COMPLETE','activity':os.environ['ACTIVITY'],
+            'cell_count':len(rows),'serialized_placements':sum(x['serialized_placements'] for x in rows),
+            'retail_visible_placements':sum(x['retail_visible_placements'] for x in rows),
+            'geometry_variants':sum(x['geometry_variants'] for x in rows),
+            'triangle_count':sum(x['triangle_count'] for x in rows),
+            'unique_visual_materials':len(mats)}
+          json.dump(summary,open('reports/baked_export_summary.json','w'),indent=2)
+          json.dump({'status':'D1_ACTIVITY_BAKED_MATERIAL_SELECTOR','activity':os.environ['ACTIVITY'],'materials':dict(sorted(mats.items()))},open('reports/baked_material_selector.json','w'),indent=2)
+          print(json.dumps(summary,indent=2))
+          PY
+          first="$(head -n1 reports/baked_cells.txt)"
+          layers=()
+          while read -r h; do
+            [ "$h" = "$first" ] && continue
+            layers+=(--layer "baked_${h}=baked_cells/${h}.glb")
+          done < reports/baked_cells.txt
+          python tools/d1_gltf_layer_merge.py \
+            --base "baked_cells/${first}.glb" "${layers[@]}" \
+            --out baked/BAKED_UNTEXTURED.glb \
+            --report reports/baked_merge.json
+
+      - name: Close and bind all baked native texture resources
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/baked_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir baked_texture_expanded \
+            --work-dir reports/baked_texture_dependency_closure \
+            --out baked/textures --report reports/baked_texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py \
+            baked/textures/material_texture_manifest.json \
+            -o reports/baked_texture_roles.json
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb baked/BAKED_UNTEXTURED.glb \
+            --manifest baked/textures/material_texture_manifest.json \
+            --roles reports/baked_texture_roles.json \
+            --texture-dir baked/textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --out baked/BAKED_EXACT_TEXTURES.glb \
+            --report reports/baked_exact_texture_resources.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/baked_texture_dependency_closure.json'))
+          r=json.load(open('reports/baked_exact_texture_resources.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert r['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',r
+          assert r['exact_source_texture_count']>0,r
+          print('BAKED_TEXTURES_CLOSED',r['exact_source_texture_count'],r['derived_portable_normal_count'])
+          PY
+
+      - name: Close table-scoped common identity and EntityModel dependencies
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_table_scoped_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --target-plan reports/static_map_target_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/common_identity_closure \
+            --out reports/common_source_census.json --report reports/common_identity_closure.json
+          python tools/d1_world_common_model_plan.py \
+            --census reports/common_source_census.json \
+            --out reports/common_model_plan.json --model-list reports/common_models.txt
+          python tools/d1_world_entity_model_visual_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --model-plan reports/common_model_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/common_model_dependency_closure \
+            --report reports/common_model_dependency_closure.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/common_source_census.json'))
+          p=json.load(open('reports/common_model_plan.json'))
+          d=json.load(open('reports/common_model_dependency_closure.json'))
+          assert c['status']=='D1_WORLD_TABLE_SCOPED_DECAL_CENSUS_COMPLETE',c.get('violations')
+          assert p['status']=='D1_WORLD_COMMON_MODEL_PLAN_COMPLETE',p.get('violations')
+          assert d['status']=='D1_WORLD_ENTITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',d
+          print('COMMON_MODEL_DEPS_CLOSED',p['source_record_count'],p['unique_model_count'],len(d['final_package_ids']))
+          PY
+
+      - name: Export, instantiate, and texture common layer
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t models < reports/common_models.txt
+          test "${#models[@]}" -gt 0
+          margs=(); for h in "${models[@]}"; do margs+=(--model "$h"); done
+          python tools/d1_entity_model_corpus_export.py "${args[@]}" --runtime runtime \
+            "${margs[@]}" --mode map-decal --out-dir models \
+            --summary reports/common_model_export.json
+          python tools/d1_world_common_layer_scene.py \
+            --census reports/common_source_census.json --model-dir models \
+            --out common/COMMON_UNTEXTURED.glb --report reports/common_scene.json
+          python - <<'PY'
+          import json,os
+          e=json.load(open('reports/common_model_export.json'))
+          s=json.load(open('reports/common_scene.json'))
+          assert e['failed_models']==0,e
+          assert s['status']=='D1_WORLD_COMMON_LAYER_SCENE_COMPLETE_SOURCE_COVERAGE',s
+          assert s['source_resolved_records']==s['source_record_count'] and s['unresolved_records']==0,s
+          mats={}
+          for model in e['models']:
+            for mesh in model.get('meshes',[]):
+              for p in mesh.get('parts',[]):
+                if not p.get('selected'): continue
+                h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                if h: mats[str(h).upper()]={'visual':True}
+          assert mats,mats
+          json.dump({'status':'D1_ACTIVITY_COMMON_MATERIAL_SELECTOR','activity':os.environ['ACTIVITY'],'materials':dict(sorted(mats.items()))},open('reports/common_material_selector.json','w'),indent=2)
+          print('COMMON_SCENE',s['source_record_count'],s['scene_geometry_nodes'],len(mats))
+          PY
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/common_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir common_texture_expanded \
+            --work-dir reports/common_texture_dependency_closure \
+            --out common/textures --report reports/common_texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py \
+            common/textures/material_texture_manifest.json \
+            -o reports/common_texture_roles.json
+          python tools/d1_gltf_bind_exact_shader_textures.py \
+            --input-glb common/COMMON_UNTEXTURED.glb \
+            --manifest common/textures/material_texture_manifest.json \
+            --roles reports/common_texture_roles.json \
+            --texture-dir common/textures/textures \
+            --include-medium-base --bind-normal-candidates \
+            --out common/COMMON_EXACT_TEXTURES.glb \
+            --report reports/common_exact_texture_resources.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/common_texture_dependency_closure.json'))
+          r=json.load(open('reports/common_exact_texture_resources.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert r['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND',r
+          print('COMMON_TEXTURES_CLOSED',r['exact_source_texture_count'],r['derived_portable_normal_count'])
+          PY
+
+      - name: Merge and certify final Crota world GLB
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_layer_merge.py \
+            --base baked/BAKED_EXACT_TEXTURES.glb \
+            --layer table_scoped_common=common/COMMON_EXACT_TEXTURES.glb \
+            --out final/D1_ACTIVITY_810B0002_STATIC_COMMON_EXACT_RESOURCES.glb \
+            --report reports/final_world_merge.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=json.load(open('reports/activity_map_roots.json'))
+          subset=json.load(open('reports/static_map_roots.json'))
+          baked=json.load(open('reports/baked_export_summary.json'))
+          bt=json.load(open('reports/baked_exact_texture_resources.json'))
+          common=json.load(open('reports/common_scene.json'))
+          ct=json.load(open('reports/common_exact_texture_resources.json'))
+          merge=json.load(open('reports/final_world_merge.json'))
+          p=Path('final/D1_ACTIVITY_810B0002_STATIC_COMMON_EXACT_RESOURCES.glb')
+          out={
+            'schema_version':2,'status':'D1_CROTA_END_STATIC_COMMON_EXPORT_COMPLETE_FROM_GREEN_WHOLE_ACTIVITY_CHECKPOINT',
+            'activity':'810B0002','checkpoint_run':34173809601,
+            'world_roots':{'bubbles':root['reachable_bubble_count'],'map_containers':root['reachable_map_container_count'],
+                           'map_data_tables':root['reachable_map_data_table_count'],'map_data_entries':root['total_reachable_map_entries']},
+            'static_resource_subset':{'resource_class':'80801AEA','tables':subset['map_data_table_count'],'rows':subset['entry_count']},
+            'baked':{**baked,'native_texture_resources':bt['exact_source_texture_count'],'derived_portable_normals':bt['derived_portable_normal_count']},
+            'common':{'source_records':common['source_record_count'],'unique_models':common['unique_model_count'],
+                      'geometry_variants':common['scene_geometry_variants'],'geometry_nodes':common['scene_geometry_nodes'],
+                      'native_texture_resources':ct['exact_source_texture_count'],'derived_portable_normals':ct['derived_portable_normal_count']},
+            'final_counts':merge['final_counts'],'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'checkpoint_contract':'Activity ownership/map/static target/baked dependency closure code byte-identical between checkpoint head and pinned resume head; only downstream adapter/report contracts changed.',
+            'scope':'Whole Activity-owned D1 baked-static plus table-scoped/common geometry reachable from 810B0002 within resource class 80801AEA, with exact native material texture resources and safe portable Blender preview bindings. Dynamic entities, terrain/natural layers outside 80801AEA, sky/lights/VFX, and native shader emulation remain separate adapters.'
+          }
+          json.dump(out,open('reports/FINAL_CROTA_WORLD_EXPORT.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-crota-end-whole-map-resume
+          path: |
+            reports/
+            final/
+          retention-days: 14
+          compression-level: 6
