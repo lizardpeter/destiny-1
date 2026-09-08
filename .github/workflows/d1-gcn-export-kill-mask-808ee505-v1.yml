@@ -1,0 +1,78 @@
+name: D1 GCN export kill mask 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-export-kill-mask-808ee505-v1.yml'
+      - 'tools/d1_gcn_export_kill_mask.py'
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  IR_ARTIFACT_ID: '10064967089'
+  IR_ARTIFACT_ZIP_SHA256: '1a431698f2a10981d6500d85e0020ac2967d7654bd1383b779e5f027d9b67c69'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact stage and structural shader IR
+        run: |
+          set -euo pipefail
+          mkdir -p input/stage input/ir out
+          for spec in \
+            "stage:${SOURCE_ARTIFACT_ID}:${SOURCE_ARTIFACT_ZIP_SHA256}" \
+            "ir:${IR_ARTIFACT_ID}:${IR_ARTIFACT_ZIP_SHA256}"; do
+            IFS=: read -r name aid sha <<< "$spec"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}/zip" -o "input/${name}.zip"
+            echo "${sha}  input/${name}.zip" | sha256sum --check --strict
+            unzip -q "input/${name}.zip" -d "input/${name}"
+          done
+          test -f input/stage/target_material_stage.json
+          test -f input/ir/PS_808EE505_STRUCTURAL_IR.json
+
+      - name: Promote only canonical persistent export kill semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_export_kill_mask.py \
+            --ir input/ir/PS_808EE505_STRUCTURAL_IR.json \
+            --stage input/stage/target_material_stage.json \
+            -o out/D1_808EE505_EXPORT_KILL_MASK.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_808EE505_EXPORT_KILL_MASK.json'))
+          assert d['status']=='D1_GCN_EXPORT_KILL_MASK_CONTRACT_COMPLETE' and not d['violations'],d
+          assert d['shader']=='808EE505' and d['material']=='80D777B6'
+          assert len(d['contracts'])==1
+          c=d['contracts'][0]
+          assert c['mask_register']=='s[48:49]'
+          assert c['predicate']['texture_indices']==[2]
+          assert c['predicate']['constant_scalar_index']==28
+          assert c['predicate']['threshold']==0.5
+          assert c['discard_when']=='sample > threshold' and c['survive_when']=='sample <= threshold'
+          by={x['target']:x for x in c['governed_exports']}
+          assert by['mrt1']['exec_relation']=='WQM_OF_MASKED_EXEC'
+          assert by['mrt0']['exec_relation']=='DIRECT_MOV'
+          print('EXPORT_KILL_MASK_PROMOTED',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-EXPORT-KILL-MASK-808EE505-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
