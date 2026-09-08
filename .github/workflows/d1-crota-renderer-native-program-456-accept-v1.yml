@@ -1,0 +1,54 @@
+name: D1 Crota renderer native program 456 acceptance v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-crota-renderer-native-program-456-accept-v1.yml'
+
+env:
+  ARTIFACT_ID: '10081667660'
+  ARTIFACT_ZIP_SHA256: 'c3e3fb0d78dc9b22d914e929231d023a645cdd45327304f8500d8951d96a7327'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  accept:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read back and accept immutable 456 of 456 checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" -o input/checkpoint.zip
+          echo "${ARTIFACT_ZIP_SHA256}  input/checkpoint.zip" | sha256sum --check --strict
+          unzip -q input/checkpoint.zip -d input/checkpoint
+          python - <<'PY'
+          import json,pathlib
+          d=json.load(open('input/checkpoint/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'));p=d['program'];c=p['coverage']
+          expected={'CONTROL_EXACT':47,'EXPRESSION_EXACT':303,'INPUT_PROVENANCE_EXACT':70,'RECURRENCE_EXACT':36}
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_NATIVE_SEMANTICS_EXACT' and not d['violations'],d
+          assert p['material']=='80D777B6' and p['pixel_shader']=='808EE505' and p['instruction_count']==456
+          assert c['primary_resolution_counts']==expected,c
+          assert c['exact_nonstructural_instruction_count']==456 and c['structural_only_instruction_count']==0 and not c['structural_only_spans']
+          assert c['final_native_image_sample_promoted_instructions']==[212,213]
+          assert all(x['primary_resolution']!='STRUCTURAL_ONLY' for x in p['instruction_resolution'])
+          assert d['semantic_boundary']['native_instruction_semantics']=='EXACT_456_OF_456'
+          s={'status':'D1_CROTA_808EE505_NATIVE_PROGRAM_456_ACCEPTED','artifact_id':10081667660,'artifact_zip_sha256':'c3e3fb0d78dc9b22d914e929231d023a645cdd45327304f8500d8951d96a7327','shader':'808EE505','material':'80D777B6','instruction_count':456,'exact_instruction_count':456,'coverage':expected,'portable_resource_dimension_frontier':['808EE4FE','808EE500']}
+          pathlib.Path('out/D1_CROTA_808EE505_NATIVE_PROGRAM_456_ACCEPTANCE.json').write_text(json.dumps(s,indent=2)+'\n');print(json.dumps(s,indent=2))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-808EE505-NATIVE-PROGRAM-456-ACCEPTANCE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
