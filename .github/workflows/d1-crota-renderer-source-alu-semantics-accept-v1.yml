@@ -1,0 +1,55 @@
+name: D1 Crota renderer source ALU semantics acceptance 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - '.github/workflows/d1-crota-renderer-source-alu-semantics-accept-v1.yml'
+
+env:
+  ARTIFACT_ID: '10080962046'
+  ARTIFACT_ZIP_SHA256: '90c92ad8fb8de2254b70f5dcf46d412d91ac822c319313d4ad6bcfbb98871a0c'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  accept:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Accept immutable source ALU checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" -o input/checkpoint.zip
+          echo "${ARTIFACT_ZIP_SHA256}  input/checkpoint.zip" | sha256sum --check --strict
+          unzip -q input/checkpoint.zip -d input/checkpoint
+          python - <<'PY'
+          import json,pathlib
+          d=json.load(open('input/checkpoint/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program'];c=p['coverage'];expected={'CONTROL_EXACT':18,'EXPRESSION_EXACT':254,'INPUT_PROVENANCE_EXACT':70,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':78}
+          assert c['primary_resolution_counts']==expected,c
+          assert c['exact_nonstructural_instruction_count']==378
+          assert c['source_alu_semantics_promoted_instruction_count']==93
+          assert len(p['source_alu_instruction_contracts'])==93
+          assert d['semantic_boundary']['live_input_values_for_source_alu']=='NOT_NUMERICALLY_CAPTURED'
+          summary={'status':'D1_CROTA_808EE505_SOURCE_ALU_SEMANTICS_ACCEPTED','artifact_id':10080962046,'artifact_zip_sha256':'90c92ad8fb8de2254b70f5dcf46d412d91ac822c319313d4ad6bcfbb98871a0c','coverage':expected,'exact_nonstructural_instruction_count':378,'promoted_instruction_count':93}
+          pathlib.Path('out/D1_CROTA_808EE505_SOURCE_ALU_ACCEPTANCE.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-808EE505-SOURCE-ALU-ACCEPTANCE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
