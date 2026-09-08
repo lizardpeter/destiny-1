@@ -1,0 +1,183 @@
+name: D1 GCN renderer program 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-program-808ee505-v1.yml'
+      - 'tools/d1_gcn_renderer_program_ir.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_exec_region_ir.py'
+      - 'tools/d1_gcn_export_kill_mask.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+      - 'tools/d1_gcn_control_semantics_proof.py'
+      - 'tools/d1_gcn_mimg_address_provenance.py'
+      - 'tools/d1_gcn_loop_recurrence_ir.py'
+      - 'tools/d1_gcn_vop_semantics_proof.py'
+      - 'tools/d1_gcn_simple_region_expr.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  LLVM_CONTROL_REV: '14e941a0566ae06e982c5d8ddd085697c48fd413'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  LLVM_VOP_REV: '16bcb2727f98f366ca9e28b98b83654cdb150b89'
+  LLVM_MOD_REV: '841d4ad6b315ab92c2a37e6484a3b7963b50060c'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 evidence and immutable ISA sources
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_texture_roles.json target_shader_extract.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_CONTROL_REV}/llvm/lib/Target/AMDGPU/SOPInstructions.td" -o input/upstream/SOPInstructions.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_CONTROL_REV}/llvm/lib/Target/AMDGPU/MIMGInstructions.td" -o input/upstream/MIMGInstructions.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_CONTROL_REV}/llvm/include/llvm/IR/IntrinsicsAMDGPU.td" -o input/upstream/IntrinsicsAMDGPU.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/upstream/gem5_sop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" -o input/upstream/gem5_sopp.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
+
+      - name: Rebuild structural, cbuffer, EXEC and kill proofs
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+          python tools/d1_gcn_exec_region_ir.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            -o out/PS_808EE505_EXEC_REGIONS.json
+          python tools/d1_gcn_export_kill_mask.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_EXPORT_KILL_MASK.json
+
+      - name: Rebuild exact loop recurrence
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_control_semantics_proof.py \
+            --llvm-sop input/upstream/SOPInstructions.td \
+            --gem5-sop1 input/upstream/gem5_sop1.cc \
+            --gem5-sopp input/upstream/gem5_sopp.cc \
+            --gem5-vop2 input/upstream/gem5_vop2.cc \
+            --llvm-revision "$LLVM_CONTROL_REV" --gem5-revision "$GEM5_REV" \
+            -o out/GCN_CONTROL_SEMANTICS.json
+          python tools/d1_gcn_mimg_address_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --texture-roles input/source/target_texture_roles.json \
+            --intrinsics-source input/upstream/IntrinsicsAMDGPU.td \
+            --mimg-source input/upstream/MIMGInstructions.td \
+            --intrinsics-revision "$LLVM_CONTROL_REV" --mimg-revision "$LLVM_CONTROL_REV" \
+            -o out/PS_808EE505_MIMG_ADDRESS_PROVENANCE.json
+          python tools/d1_gcn_loop_recurrence_ir.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --mimg out/PS_808EE505_MIMG_ADDRESS_PROVENANCE.json \
+            --control-semantics out/GCN_CONTROL_SEMANTICS.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            -o out/PS_808EE505_LOOP_RECURRENCE.json
+
+      - name: Lift both proven simple EXEC regions
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vop_semantics_proof.py \
+            --instr-info input/upstream/AMDGPUInstrInfo.td \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            -o out/GCN_VOP_SEMANTICS.json
+          for rid in 2 3; do
+            python tools/d1_gcn_simple_region_expr.py \
+              --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+              --exec-regions out/PS_808EE505_EXEC_REGIONS.json \
+              --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+              --vop-semantics out/GCN_VOP_SEMANTICS.json \
+              --region-id "$rid" \
+              -o "out/PS_808EE505_REGION${rid}_EXPR_DAG.json"
+          done
+          python - <<'PY'
+          import json
+          for rid in (2,3):
+              d=json.load(open(f'out/PS_808EE505_REGION{rid}_EXPR_DAG.json'))
+              assert d['status']=='D1_GCN_SIMPLE_REGION_EXPRESSION_DAG_EXACT' and not d['violations'],d
+          r2=json.load(open('out/PS_808EE505_REGION2_EXPR_DAG.json'))['expression']
+          r3=json.load(open('out/PS_808EE505_REGION3_EXPR_DAG.json'))['expression']
+          assert r2['predicate']['expression']=='0 != v18' and set(r2['lane_merge_roots'])=={'v15'}
+          assert r3['predicate']['expression']=='0 < v7' and r3['sample_count']==8
+          assert set(r3['lane_merge_roots'])=={'v13','v15','v20','v26'}
+          print('SIMPLE_REGION_DAGS_CLOSED',r2['node_count'],r3['node_count'])
+          PY
+
+      - name: Join one structured renderer-program IR
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_ir.py \
+            --stage input/source/target_material_stage.json \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --exec-regions out/PS_808EE505_EXEC_REGIONS.json \
+            --kill-mask out/PS_808EE505_EXPORT_KILL_MASK.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --mimg out/PS_808EE505_MIMG_ADDRESS_PROVENANCE.json \
+            --loop-recurrence out/PS_808EE505_LOOP_RECURRENCE.json \
+            --region-expr out/PS_808EE505_REGION2_EXPR_DAG.json \
+            --region-expr out/PS_808EE505_REGION3_EXPR_DAG.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']; counts=c['primary_resolution_counts']
+          assert p['material']=='80D777B6' and p['pixel_shader']=='808EE505'
+          assert p['instruction_count']==456 and len(p['instruction_resolution'])==456
+          assert [x['texture_index'] for x in p['texture_bindings']]==[0,1,2,3,4,5]
+          assert len(p['exact_loop_recurrences'])==1
+          assert [x['region_id'] for x in p['exact_simple_region_expressions']]==[2,3]
+          assert len(p['persistent_export_kills'])==1
+          assert {x['instruction'] for x in p['native_exports']}=={449,454}
+          assert counts['EXPRESSION_EXACT']>0 and counts['RECURRENCE_EXACT']>0
+          assert counts['CONTROL_EXACT']>0 and counts['INPUT_PROVENANCE_EXACT']>0
+          assert counts['STRUCTURAL_ONLY']>0
+          assert d['semantic_boundary']['full_mrt_value_expression_tree']=='INCOMPLETE'
+          assert d['semantic_boundary']['remaining_straight_line_value_dataflow']=='NEXT_GATE'
+          print('RENDERER_PROGRAM_JOIN_CLOSED',counts,'structural_spans',len(c['structural_only_spans']))
+          PY
+
+      - name: Freeze proof payload
+        run: |
+          set -euo pipefail
+          cp input/source/target_material_stage.json out/
+          cp input/source/target_texture_roles.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-RENDERER-PROGRAM-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
