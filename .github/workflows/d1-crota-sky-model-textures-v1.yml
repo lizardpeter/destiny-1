@@ -16,7 +16,8 @@ permissions:
 
 env:
   LIGHT_SKY_ARTIFACT_ID: '10039016393'
-  LIGHT_SKY_ARTIFACT_SHA256: '8189c6a8a493670506fa9ba4bb6d973ec08ceadad14a1120e458fa427ffed5b5'
+  LIGHT_SKY_ARTIFACT_SHA256: '8189c6a87da7f374c8a79beac411abb1a3797e777bef314d49d13dde6ce3d5b5'
+  LIGHT_SKY_CENSUS_SHA256: '8f3723cff06137f461de535f71a533ceef20d1a81697c89f61a66616af67c22c'
 
 jobs:
   export:
@@ -43,6 +44,7 @@ jobs:
           if [ -z "$src" ]; then src="$(find input/sky -name '*lighting*census*.json' -type f -print -quit)"; fi
           test -n "$src"
           cp "$src" reports/crota_map_lighting_census.json
+          echo "${LIGHT_SKY_CENSUS_SHA256}  reports/crota_map_lighting_census.json" | sha256sum --check --strict
           python - <<'PY'
           import json
           d=json.load(open('reports/crota_map_lighting_census.json'))
