@@ -1,0 +1,154 @@
+name: D1 GCN straight-line 342-399 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-straightline-342-399-808ee505-v1.yml'
+      - 'tools/d1_gcn_cube_lod_semantics_proof.py'
+      - 'tools/d1_gcn_straightline_342_399_expr.py'
+      - 'tools/d1_gcn_vop_semantics_proof.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  LLVM_VOP_REV: '16bcb2727f98f366ca9e28b98b83654cdb150b89'
+  LLVM_MOD_REV: '841d4ad6b315ab92c2a37e6484a3b7963b50060c'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 evidence and immutable ISA sources
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_texture_roles.json target_shader_extract.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/SIInstructions.td" -o input/upstream/SIInstructions.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/include/llvm/IR/IntrinsicsAMDGPU.td" -o input/upstream/IntrinsicsAMDGPU.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop1.cc" -o input/upstream/gem5_vop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop3.cc" -o input/upstream/gem5_vop3.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/upstream/gem5_sop1.cc
+
+      - name: Rebuild exact structural and material provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+
+      - name: Source-prove common arithmetic
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vop_semantics_proof.py \
+            --instr-info input/upstream/AMDGPUInstrInfo.td \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            --vop1-source input/upstream/gem5_vop1.cc --vop1-revision "$GEM5_REV" \
+            --vop2-source input/upstream/gem5_vop2.cc --vop2-revision "$GEM5_REV" \
+            --vop3-source input/upstream/gem5_vop3.cc --vop3-revision "$GEM5_REV" \
+            --sop1-source input/upstream/gem5_sop1.cc --sop1-revision "$GEM5_REV" \
+            --si-source input/upstream/SIInstructions.td --si-revision "$LLVM_VOP_REV" \
+            -o out/GCN_VOP_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/GCN_VOP_SEMANTICS.json'))
+          assert d['status']=='D1_GCN_VOP_SEMANTICS_SOURCE_PROVEN' and not d['violations'],d
+          for k in ['v_mov_b32','s_mov_b32','v_mad_f32','v_mac_f32','v_mul_f32','v_add_f32','float_clamp','v_mul_legacy_f32','v_mac_legacy_f32','v_rsq_clamp_f32','v_rcp_f32','v_max_f32']:
+              assert k in d['semantics'],k
+          print('COMMON_VOP_SEMANTICS_CLOSED')
+          PY
+
+      - name: Source-prove cube LOD semantics and address profile
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cube_lod_semantics_proof.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --texture-roles input/source/target_texture_roles.json \
+            --vop1-source input/upstream/gem5_vop1.cc \
+            --vop2-source input/upstream/gem5_vop2.cc \
+            --vop3-source input/upstream/gem5_vop3.cc \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --intrinsics-source input/upstream/IntrinsicsAMDGPU.td \
+            --gem5-revision "$GEM5_REV" --llvm-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            -o out/PS_808EE505_CUBE_LOD_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_CUBE_LOD_SEMANTICS.json'))
+          assert d['status']=='D1_GCN_CUBE_LOD_SEMANTICS_SOURCE_PROVEN' and not d['violations'],d
+          p=d['proof'];assert p['texture5']['resource_class']=='CUBEMAP' and p['texture5']['shape']==[256,256,6]
+          a=p['cube_address_profile'];assert a['logical_coordinate_order']==['s','t','face']
+          assert a['image_sample_l_399']['source_closed_logical_args']=={'s':'v16','t':'v17','face':'v18','lod':'v19'}
+          assert a['image_get_lod_387']['v19_meaning']=='WITHHELD_NATIVE_EXTRA_LANE'
+          print('CUBE_LOD_SEMANTICS_CLOSED',p['texture5'])
+          PY
+
+      - name: Lift exact acyclic cube LOD block
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_straightline_342_399_expr.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --vop-semantics out/GCN_VOP_SEMANTICS.json \
+            --cube-lod-semantics out/PS_808EE505_CUBE_LOD_SEMANTICS.json \
+            -o out/PS_808EE505_STRAIGHTLINE_342_399_EXPR.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_STRAIGHTLINE_342_399_EXPR.json'))
+          assert d['status']=='D1_GCN_STRAIGHTLINE_342_399_EXPRESSION_EXACT' and not d['violations'],d
+          e=d['expression']
+          assert e['instruction_range']==[342,399]
+          assert len(e['value_instruction_indices'])==49
+          assert e['value_instruction_indices']==list(range(343,373))+list(range(375,386))+[387]+list(range(392,397))+[398,399]
+          assert [x['instruction'] for x in e['non_value_anchors']]==[342,373,374,386,388,389,390,391,397]
+          assert e['cube_texture']=={'texture_index':5,'texture':'80AAFB08','resource_class':'CUBEMAP','shape':[256,256,6]}
+          ops={n['op'] for n in e['nodes']}
+          for op in ['SQRT','SUBREV','LEGACY_MAD_DX9','CUBE_MAJOR_AXIS_X2','CUBE_T','CUBE_S','CUBE_FACE_ID','ABS','NEG','OUTPUT_MUL2','IMAGE_GET_LOD_CUBE_Y','IMAGE_SAMPLE_L_CUBE_RGBA']:
+              assert op in ops,op
+          assert e['semantic_boundary']['cubemap_visual_role']=='WITHHELD'
+          print('STRAIGHTLINE_342_399_CLOSED','nodes',e['node_count'],'inputs',len(e['input_roots']),'values',len(e['value_instruction_indices']))
+          PY
+
+      - name: Freeze proof payload
+        run: |
+          set -euo pipefail
+          cp input/source/target_material_stage.json out/
+          cp input/source/target_texture_roles.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-STRAIGHTLINE-342-399-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
