@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_MAP_ENTITY_SEED_CENSUS_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "workflow": {
+    "name": "D1 Crota whole-Activity map entity census v1",
+    "run_id": 34177839272,
+    "job_id": 101910695713,
+    "head_sha": "fc2a3d48537ec9ec5af879fda4db810f47d2587a",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 10037939515,
+    "name": "d1-crota-whole-activity-map-entity-census-v1",
+    "zip_bytes": 508916,
+    "zip_sha256": "7b84d4ef6ed9c88c5a3970e6d95a22d9bcee8ac8c9d64db5f9ec2b3c31e50383"
+  },
+  "source_scope": {
+    "reachable_bubble_count": 15,
+    "reachable_map_container_count": 94,
+    "reachable_map_data_table_count": 255,
+    "map_entry_count": 1535,
+    "nonnull_entity_hash_count": 1535
+  },
+  "entity_seed_closure": {
+    "status": "D1_CROTA_WHOLE_ACTIVITY_MAP_ENTITY_SEEDS_EXACT",
+    "placement_count": 1535,
+    "unique_entity_count": 81,
+    "placement_entity_reference_class_counts": {"80800734": 1535},
+    "unique_entity_reference_class_counts": {"80800734": 81},
+    "missing_entity_owners": 0
+  },
+  "owner_package_closure": {
+    "status": "D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE",
+    "package_ids": ["0075", "0077", "0154", "0156", "0157", "01cf", "02b7", "02ba", "02bb", "0458"],
+    "package_family_count": 10,
+    "physical_package_member_count": 46,
+    "package_list_sha256": "9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5"
+  },
+  "integrity": {
+    "root_dependency_status": "D1_WORLD_ACTIVITY_ROOT_DEPENDENCY_CLOSURE_COMPLETE",
+    "map_layer_census_status": "D1_WORLD_MAP_DATA_LAYER_CENSUS",
+    "violations": []
+  },
+  "policy": "All 1,535 seeds are exact non-null SMapDataEntry Entity TagHashes from all MapDataTables reachable from Activity 810B0002. Package IDs are decoded only with the universal source-validated D1 FileHash mapping, and owner package families are recovered through the current indexed package archive before class metadata is accepted. Every resolved owner is reference class 80800734. Resource class, name, package proximity, and visual resemblance do not create entity seeds."
+}
