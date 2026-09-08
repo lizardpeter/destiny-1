@@ -36,7 +36,7 @@ def main():
     'ps_texture_count':int(m['ps_textures']['count']),
     'ps_textures':[{'texture_index':int(x['texture_index']),'texture':norm(x['texture'])} for x in m['ps_textures']['items']],
     'ps_sampler_count':int(m['ps_samplers']['count']),
-    'ps_sampler_first_dwords':[norm(x['first_dword']) for x in m['ps_samplers']['items']],
+    'ps_sampler_first_dwords':[norm(x['first_dword_hex']) for x in m['ps_samplers']['items']],
     'ps_tfx_bytes_hex':m['ps_tfx_bytecode']['bytes_hex'],
    })
  rows.sort(key=lambda x:(x['material'],x['snapshot']))
