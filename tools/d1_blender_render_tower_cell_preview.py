@@ -52,3 +52,5 @@ def main():
     rep={'status':'D1_TOWER_CELL_RENDER_PREVIEW_COMPLETE','label':a.label,'source_glb':a.glb.name,'blender_version':bpy.app.version_string,'render_engine':s.render.engine,'workbench_color_type':s.display.shading.color_type,'mesh_object_count':len(meshes),'material_count':len(bpy.data.materials),'image_count':len(bpy.data.images),'center':[float(x) for x in center],'span':float(span),'zspan':float(zspan),'bounds_robust':{'x015':x0,'x985':x1,'y015':y0,'y985':y1,'z03':z0,'z97':z1},'shots':shots,'policy':'Fast Blender Workbench inspection view of one exact compact Tower baked-static cell. Camera/studio lighting are diagnostic, not retail.'}
     rp=a.out_dir/f'{a.label}_report.json'; rp.write_text(json.dumps(rep,indent=2)+'\n'); print(json.dumps(rep,indent=2))
 if __name__=='__main__': main()
+
+# Workflow trigger touch: cell renderer is now the preferred hosted-runner preview path.
