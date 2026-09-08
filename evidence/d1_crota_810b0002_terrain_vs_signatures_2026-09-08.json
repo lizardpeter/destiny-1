@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_TERRAIN_NATIVE_VS_SIGNATURES_AUTHORITATIVE",
+  "activity": "810B0002",
+  "workflow": {
+    "name": "D1 Crota terrain native VS signatures v1",
+    "run_id": 34229006447,
+    "job_id": 102070115183,
+    "head_sha": "1bfaab2474d23c9687a96c255a550d5dfe7b0161",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 10056995787,
+    "name": "D1-CROTA-TERRAIN-VS-SIGNATURES-V1",
+    "zip_bytes": 875386,
+    "zip_sha256": "ff8bcc748c82103ccb936e4ef96be86e476f9721f46000ccfb5fc734422cf593"
+  },
+  "source_geometry_scope": {
+    "terrain_count": 49,
+    "selected_main_geom0_part_count": 1582,
+    "triangle_count": 1067552,
+    "stream_pair": "0x08/0x0C",
+    "index_format": "u16"
+  },
+  "selected_material_shader_closure": {
+    "selected_material_count": 108,
+    "resolved_selected_material_count": 108,
+    "unique_vertex_shader_count": 2,
+    "resolved_vertex_shader_count": 2,
+    "signature_component_width_histogram": {
+      "4/3/2/1": 2
+    },
+    "signature_total_component_histogram": {
+      "10": 2
+    },
+    "native_semantic_id_sequence_histogram": {
+      "0/1/2/3": 2
+    },
+    "missing_dependency_package_ids": {},
+    "violations": []
+  },
+  "dependency_result": {
+    "extra_recovered_shader_package_families": [],
+    "base_package_family_ids": ["02b7", "02ba", "02bb", "0430", "0431", "0458"]
+  },
+  "source_consumer_crosscheck": "Charm's D1 terrain vertex reader independently defines the actual 0x08/0x0C payload interpretation: Vertices1 is raw int16x4 terrain position; Vertices2 is padded int16x4 normal with XYZ normalized by 32767 followed by half2 UV. Charm's DXBC signature component-count helper explicitly treats XYZ as four stored components because it is padded to four. Therefore the native width sequence corroborates the exact source reader without assigning source-language names to PS4 native semantic link IDs.",
+  "proof_boundary": "Native PS4 semantic bytes remain numeric link IDs. This checkpoint proves the selected material -> ROI +0x28 vertex shader -> native Gnmx signature chain and its complete coverage; exact terrain attribute naming comes from the independent pinned D1 terrain consumer, not from guessed native semantic numbers."
+}
