@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_TERRAIN_BUFFER_LAYOUT_AUTHORITATIVE",
+  "activity": "810B0002",
+  "source_terrain_census": {
+    "artifact_id": 10041544308,
+    "artifact_zip_sha256": "c0b4710f45c6d29c99a98d0783339b670548dad31863822de5e9227a58cf9c93",
+    "terrain_count": 49,
+    "selected_main_geom0_part_count": 1582
+  },
+  "workflow": {
+    "name": "D1 Crota terrain buffer layout v1",
+    "run_id": 34228450545,
+    "job_id": 102068272671,
+    "head_sha": "7272ca9e6684cdde92fed4214fad07a03c9607ed",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 10056800992,
+    "name": "D1-CROTA-TERRAIN-BUFFER-LAYOUT-V1",
+    "zip_bytes": 858644,
+    "zip_sha256": "ce44de0c43089fb9ee94ea01b7474796b1eab6e050aafa43ab39f32a1eb061a0"
+  },
+  "geometry_layout": {
+    "terrain_count": 49,
+    "selected_main_geom0_part_count": 1582,
+    "triangle_count": 1067552,
+    "max_selected_vertex_index": 18548,
+    "stride_pair_histogram": {
+      "0x8/0xc": 49
+    },
+    "index_format_histogram": {
+      "u16": 49
+    },
+    "unique_reference_header_count": 147,
+    "violations": []
+  },
+  "package_corpus": {
+    "package_family_ids": ["02b7", "02ba", "02bb", "0430", "0431", "0458"],
+    "member_count": 30,
+    "package_list_sha256": "9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5"
+  },
+  "selection_semantics": "Every face is produced only from a source-selected STerrain SStaticPart with DetailLevel/MainGeom0 == 0, using its exact IndexOffset/IndexCount over the typed Indices1 TriangleStrip. Primitive restart uses the verified D1 u16 strip rule. All 49 terrains resolve typed Vertices1/Vertices2/Indices1 reference headers to exact backing files; paired vertex counts and every selected face range validate without violation.",
+  "proof_boundary": "This checkpoint closes terrain buffer identity, stream strides, index width, selected strip ranges, and exact triangle population. It does not yet name native vertex semantic IDs, decode final terrain vertex attributes, bind terrain shader textures/dyemaps, or claim a merged terrain GLB."
+}
