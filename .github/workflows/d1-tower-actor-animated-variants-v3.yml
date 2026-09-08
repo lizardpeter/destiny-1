@@ -1,0 +1,80 @@
+name: D1 Tower actor animated corrected variants v3
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 Tower actor shared action family compatibility']
+    types: [completed]
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+  LOCATION_VISUAL_ARTIFACT_ID: '10036642428'
+  LOCATION_VISUAL_ARTIFACT_SHA256: '1434b66b0c61ea0dc9045615014fa9085066d2f1e6b8ef5803fb36082e4943dc'
+  REQUIRED_ACTION_WORKFLOW_HEAD_SHA: '6fb31ef9b01d9a77d3e8dc072517f48a41647d20'
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_sha == '6fb31ef9b01d9a77d3e8dc072517f48a41647d20')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact corrected visual, location, and native action checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/textured input/location input/actions out/models out/reports/append
+          pull(){ id="$1"; sha="$2"; zip="$3"; dst="$4"; curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"; echo "${sha}  ${zip}" | sha256sum --check --strict; unzip -q "$zip" -d "$dst"; }
+          pull "$TEXTURED_ARTIFACT_ID" "$TEXTURED_ARTIFACT_SHA256" input/textured.zip input/textured
+          pull "$LOCATION_VISUAL_ARTIFACT_ID" "$LOCATION_VISUAL_ARTIFACT_SHA256" input/location.zip input/location
+          if [ "${{ github.event_name }}" = workflow_run ]; then action_run='${{ github.event.workflow_run.id }}'; action_sha='${{ github.event.workflow_run.head_sha }}'; else action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"; action_sha="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json headSha --jq '.[0].headSha')"; fi
+          test -n "$action_run" && test "$action_sha" = "$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"
+          gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
+          test "$(find input/textured/models -maxdepth 1 -name '*_TEXTURED.glb' -type f | wc -l)" = 30
+          test "$(find input/actions/models -maxdepth 1 -name '*_ALL_ACTIONS_NATIVE_D1.glb' -type f | wc -l)" = 6
+      - name: Build exact production actor assembly handoff
+        run: |
+          python tools/d1_tower_actor_production_assembly_manifest.py --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json -o out/reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json')); assert d['status']=='D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST_COMPLETE' and not d['violations'],d
+          assert (d['used_visual_variant_count'],d['shared_action_library_count'],d['placement_alternative_count'])==(29,6,547),d
+          assert all(v is False for v in d['gates'].values()),d['gates']
+          PY
+      - name: Append complete shared action family to all 29 used visual variants
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_layer_merge.py tools/d1_gltf_append_shared_action_library_by_joint_name.py
+          python - <<'PY'
+          import json,pathlib,subprocess
+          d=json.load(open('out/reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json')); rows=[]
+          for v in d['variant_assets']:
+              target=pathlib.Path('input/textured/models')/v['textured_glb_basename']; action=pathlib.Path('input/actions/models')/v['action_library_basename']
+              stem=v['textured_glb_basename'][:-4]; out=pathlib.Path('out/models')/f'{stem}_ALL_ACTIONS.glb'; report=pathlib.Path('out/reports/append')/f'{v["visual_variant_key"].replace(":","_")}.json'
+              subprocess.run(['python','tools/d1_gltf_append_shared_action_library_by_joint_name.py','--target',str(target),'--action-library',str(action),'--expected-action-count',str(v['action_count']),'--out',str(out),'--report',str(report)],check=True)
+              r=json.load(open(report)); assert r['status']=='D1_GLTF_SHARED_ACTION_LIBRARY_APPENDED_BY_JOINT_NAME' and not r['violations'] and r['target_bin_exact_prefix'],r
+              assert r['appended_animation_count']==v['action_count'],r
+              rows.append({'visual_variant_key':v['visual_variant_key'],'model':v['model'],'signature_index':v['signature_index'],'action_count':v['action_count'],'output':out.name,'output_sha256':r['output_sha256'],'output_bytes':r['output_bytes'],'joint_count':r['joint_count']})
+          assert len(rows)==29,len(rows)
+          s={'schema_version':3,'status':'D1_TOWER_ACTOR_29_USED_TEXTURED_ANIMATED_VARIANTS_COMPLETE','used_variant_count':29,'actor_model_count':13,'total_appended_action_instances':sum(x['action_count'] for x in rows),'variants':rows,'runtime_actor_animation_state_selected':False}
+          json.dump(s,open('out/reports/TOWER_ACTOR_29_ANIMATED_VARIANTS.json','w'),indent=2); print(json.dumps({k:s[k] for k in ('status','used_variant_count','actor_model_count','total_appended_action_instances','runtime_actor_animation_state_selected')},indent=2))
+          PY
+      - name: Validate and hash production animated set
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json
+          s=json.load(open('out/reports/TOWER_ACTOR_29_ANIMATED_VARIANTS.json')); assert s['used_variant_count']==29 and s['actor_model_count']==13 and s['runtime_actor_animation_state_selected'] is False,s
+          fs=glob.glob('out/models/*_ALL_ACTIONS.glb'); rs=glob.glob('out/reports/append/*.json'); assert len(fs)==29 and len(rs)==29,(len(fs),len(rs))
+          for p in rs:
+              d=json.load(open(p)); assert d['status']=='D1_GLTF_SHARED_ACTION_LIBRARY_APPENDED_BY_JOINT_NAME' and not d['violations'] and d['target_bin_exact_prefix'],d
+          print('ANIMATED_VARIANTS_GREEN',len(fs))
+          PY
+          cp input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json out/reports/; find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: D1-TOWER-29-CORRECTED-TEXTURED-ANIMATED-ACTOR-VARIANTS-V3, path: out/, retention-days: 90, if-no-files-found: error, compression-level: 0}
