@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_810B0002_DECAL_TEXTURE_CLOSURE_AUTHORITATIVE",
+  "activity_tag_hash": "810B0002",
+  "workflow": {
+    "name": "D1 Crota map decal textures v1",
+    "run_id": 34182537907,
+    "head_sha": "649478814a83b2e5d8e9f19d724abab34c92232e",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 10039636318,
+    "name": "D1-CROTA-MAP-DECAL-TEXTURES-V1",
+    "zip_bytes": 167798561,
+    "zip_sha256": "ca6952c9429eb142254a80c4637c1e38147fe5390f9872331423151a388971b7"
+  },
+  "source_scope": {
+    "map_data_table_count": 255,
+    "map_data_entry_count": 1535,
+    "decal_resource_occurrences": 13,
+    "nonnull_decal_collection_occurrences": 12,
+    "explicit_null_decal_collection_occurrences": 1,
+    "unique_decal_collection_count": 12,
+    "decal_resource_record_count": 77,
+    "decal_location_count": 1089,
+    "projected_decal_count": 1092
+  },
+  "closed_counts": {
+    "material_count": 47,
+    "native_texture_count": 80,
+    "decoded_texture_count": 80,
+    "material_decode_errors": 0,
+    "texture_errors": 0,
+    "png_outputs": 80
+  },
+  "material_owner_package_ids": ["02b7", "02ba", "02bb", "0458"],
+  "recovered_texture_dependency_package_ids": ["0064", "0075", "0077", "0097", "0155", "0157", "01c5", "01cf", "01d1", "01db", "0753"],
+  "texture_owner_package_histogram": {
+    "0064": 1,
+    "0075": 1,
+    "0077": 7,
+    "0097": 19,
+    "0155": 2,
+    "01c5": 5,
+    "01cf": 2,
+    "01d1": 3,
+    "01db": 17,
+    "02b7": 5,
+    "02ba": 1,
+    "02bb": 5,
+    "0458": 9,
+    "0753": 3
+  },
+  "format_histogram": {"BC1": 14, "BC3": 32, "BC4": 8, "BC5": 25, "RGBA8": 1},
+  "colorspace_histogram": {"linear": 34, "sRGB": 46},
+  "dimension_histogram": {
+    "64x64": 1,
+    "128x128": 2,
+    "132x512": 3,
+    "256x128": 1,
+    "256x256": 3,
+    "256x512": 3,
+    "512x128": 2,
+    "512x256": 4,
+    "512x512": 12,
+    "512x1024": 6,
+    "512x2048": 1,
+    "1024x256": 1,
+    "1024x512": 5,
+    "1024x1024": 12,
+    "1024x4096": 3,
+    "2048x2048": 21
+  },
+  "materials": ["80D6EB1C", "80D6EB1D", "80D6EB1E", "80D6ED1C", "80D6ED1D", "80D6ED1E", "80D6ED1F", "80D6ED20", "80D6ED21", "80D741E2", "80D741E3", "80D742F8", "80D742F9", "80D742FA", "80D742FB", "80D742FC", "80D742FD", "80D742FE", "80D742FF", "80D74300", "80D74301", "80D74302", "80D74307", "80D74C61", "80D74C91", "80D74FD9", "80D751D9", "80D751DA", "80D751DE", "80D751DF", "80D75D53", "80D76249", "80D76886", "80D76887", "80D76A13", "80D77284", "80D7729D", "80D77431", "80D776E3", "80D777C9", "80D777E8", "810B0C01", "810B0C02", "810B0C03", "810B0C04", "810B0C05", "810B0C06"],
+  "textures": ["808C8287", "808EBD21", "808EE040", "808EE06E", "808EE08C", "808EE3C7", "808EE3C9", "808EE52F", "808EE6F5", "8092E2BF", "8092E2C0", "8092E2C1", "8092E2C2", "8092E3E5", "8092E3F5", "8092E3F9", "8092E409", "8092E417", "8092E419", "8092E470", "8092E473", "8092E671", "8092E6A3", "8092E6A4", "8092E6B5", "8092E6CA", "8092E6CB", "8092E6CC", "80AAAB97", "80AAAB98", "80B8A1EA", "80B8A220", "80B8A222", "80B8A225", "80B8A367", "80B9FDE5", "80B9FE01", "80BA204A", "80BA24C5", "80BA2D67", "80BB614C", "80BB614D", "80BB6150", "80BB6151", "80BB6154", "80BB6155", "80BB6158", "80BB6159", "80BB615C", "80BB615D", "80BB617E", "80BB617F", "80BB6182", "80BB6183", "80BB6186", "80BB6187", "80BB618C", "80D6E9CB", "80D6E9CC", "80D6E9CD", "80D6E9CE", "80D6EC9A", "80D742B8", "80D7687A", "80D77280", "80D77281", "80D777E4", "80D777E5", "810B0ABE", "810B0ABF", "810B0AC0", "810B0AC1", "810B0AC2", "810B0AC3", "810B0AC4", "810B0AC5", "810B117B", "816A6066", "816A6067", "816A6069"],
+  "integrity": {
+    "dependency_closure_status": "D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE",
+    "manifest_status": "D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT",
+    "material_package_recovery_status": "D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE",
+    "missing_texture_package_ids": {}
+  },
+  "pinned_source": "MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af Tiger/Schema/Static/StaticMapData.cs + Tiger/Exporters/MetadataExporter.cs",
+  "policy": "All decal materials are serialized by source-owned Crota SMapDecalsResource collections. All native texture FileHashes are reached from exact decoded D1 material bindings and recursively recovered through the current global package index. No texture, material, resource class, or portable PBR role is inferred by filename or appearance."
+}
