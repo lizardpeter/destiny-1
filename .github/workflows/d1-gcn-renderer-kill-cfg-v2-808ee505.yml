@@ -1,0 +1,190 @@
+name: D1 GCN renderer kill CFG v2 808EE505
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-kill-cfg-v2-808ee505.yml'
+      - 'tools/d1_gcn_export_kill_cfg_semantics_proof.py'
+      - 'tools/d1_gcn_export_kill_cfg_v2.py'
+      - 'tools/d1_gcn_renderer_program_upgrade_kill_cfg_v2.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  BASE_RENDERER_ARTIFACT_ID: '10070568410'
+  BASE_RENDERER_ARTIFACT_ZIP_SHA256: '48ad6e237467d89c2a91d5eb01bd549d95105eaa451c9171f74f996656e00056'
+  LLVM_CONTROL_REV: '14e941a0566ae06e982c5d8ddd085697c48fd413'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable shader and renderer checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/base input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASE_RENDERER_ARTIFACT_ID}/zip" -o input/base.zip
+          echo "${BASE_RENDERER_ARTIFACT_ZIP_SHA256}  input/base.zip" | sha256sum --check --strict
+          unzip -q input/base.zip -d input/base
+          for f in PS_808EE505.s target_gcn_image_usage.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+          test -f input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+
+      - name: Recover immutable AMDGPU semantics sources
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_CONTROL_REV}/llvm/lib/Target/AMDGPU/SOPInstructions.td" -o input/upstream/SOPInstructions.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/upstream/gem5_sop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" -o input/upstream/gem5_sopp.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vopc.cc" -o input/upstream/gem5_vopc.cc
+
+      - name: Rebuild structural IR and source semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_control_semantics_proof.py \
+            --llvm-sop input/upstream/SOPInstructions.td \
+            --gem5-sop1 input/upstream/gem5_sop1.cc \
+            --gem5-sopp input/upstream/gem5_sopp.cc \
+            --gem5-vop2 input/upstream/gem5_vop2.cc \
+            --llvm-revision "$LLVM_CONTROL_REV" --gem5-revision "$GEM5_REV" \
+            -o out/GCN_CONTROL_SEMANTICS.json
+          python tools/d1_gcn_export_kill_cfg_semantics_proof.py \
+            --gem5-vopc input/upstream/gem5_vopc.cc \
+            --gem5-sop1 input/upstream/gem5_sop1.cc \
+            --gem5-revision "$GEM5_REV" \
+            -o out/GCN_EXPORT_KILL_CFG_SEMANTICS.json
+
+      - name: Build CFG-aware export kill contract v2
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_export_kill_cfg_v2.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --stage input/source/target_material_stage.json \
+            --control-semantics out/GCN_CONTROL_SEMANTICS.json \
+            --cfg-semantics out/GCN_EXPORT_KILL_CFG_SEMANTICS.json \
+            -o out/PS_808EE505_EXPORT_KILL_CFG_V2.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_EXPORT_KILL_CFG_V2.json'))
+          assert d['status']=='D1_GCN_EXPORT_KILL_CFG_CONTRACT_COMPLETE' and not d['violations'],d
+          assert d['shader']=='808EE505' and d['material']=='80D777B6'
+          assert len(d['contracts'])==1
+          q=d['contracts'][0]; p=q['predicate']; b=q['branch']
+          assert q['mask_register']=='s[48:49]' and q['mask_initialized_instruction']==1
+          assert p=={
+            'sample_instruction':332,'texture_indices':[2],'dmask_channels':'x',
+            'threshold_load_instruction':333,'constant_scalar_index':28,'threshold':0.5,
+            'difference_instruction':335,'compare_instruction':336,
+            'difference':'threshold - sample','compare':'0 > (threshold - sample)',
+            'equivalent':'sample > threshold'}
+          assert q['kill_instruction']==337
+          assert b['instruction']==338
+          assert b['condition']=='updated_persistent_export_mask == 0'
+          assert b['target_label']=='.L2140_0' and b['target_instruction']==443
+          assert b['fallthrough_instruction']==339 and b['bypassed_instruction_range']==[339,442]
+          assert b['prebranch_exec_writer_instruction']==328
+          f,z=q['mrt1_paths']
+          assert f=={
+            'path':'updated_mask_nonzero_fallthrough','mask_apply_instruction':339,
+            'wqm_instruction':340,'export_instruction':449,
+            'exec_relation':'WQM_OF_EXEC_INTERSECT_PERSISTENT_MASK'}
+          assert z['path']=='updated_mask_zero_branch' and z['branch_instruction']==338
+          assert z['export_instruction']==449 and z['exec_relation']=='PREBRANCH_EXEC_PRESERVED'
+          assert z['prebranch_exec_writer_instruction']==328 and z['visual_or_buffer_semantics']=='WITHHELD'
+          assert q['mrt0']=={
+            'export_instruction':454,'mask_restore_instruction':451,
+            'exec_relation':'DIRECT_PERSISTENT_MASK_ON_ALL_CFG_PATHS'}
+          assert q['semantic_boundary']['mrt1_zero_mask_export_meaning']=='WITHHELD'
+          print('KILL_CFG_V2_CLOSED',q)
+          PY
+
+      - name: Verify frozen 232 renderer before selective mutation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']
+          assert p['material']=='80D777B6' and p['pixel_shader']=='808EE505' and p['instruction_count']==456
+          assert c['primary_resolution_counts']=={
+            'CONTROL_EXACT':16,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':19,
+            'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':224},c
+          assert c['exact_nonstructural_instruction_count']==232
+          assert p['instruction_resolution'][335]['primary_resolution']=='STRUCTURAL_ONLY'
+          assert p['instruction_resolution'][338]['primary_resolution']=='STRUCTURAL_ONLY'
+          assert len(p['persistent_export_kills'])==1
+          old=p['persistent_export_kills'][0]
+          assert old['kill_instruction']==337 and old['first_exec_consume_instruction']==339
+          assert {x['instruction'] for x in old['governed_exports']}=={449,454}
+          print('FROZEN_RENDERER_232_PINNED')
+          PY
+
+      - name: Selectively upgrade renderer to kill CFG v2
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_upgrade_kill_cfg_v2.py \
+            --program input/base/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --kill-cfg-v2 out/PS_808EE505_EXPORT_KILL_CFG_V2.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program']; c=p['coverage']; rows=p['instruction_resolution']
+          assert p['persistent_export_kill_contract_version']==2
+          assert c['primary_resolution_counts']=={
+            'CONTROL_EXACT':18,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':19,
+            'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':222},c
+          assert c['exact_nonstructural_instruction_count']==234
+          assert c['kill_cfg_v2_newly_promoted_control_instructions']==[335,338]
+          for i in (335,338):
+            assert rows[i]['primary_resolution']=='CONTROL_EXACT'
+            assert 'PERSISTENT_EXPORT_KILL_CFG_V2' in rows[i]['evidence_tags']
+          assert rows[449]['primary_resolution']=='EXPRESSION_EXACT'
+          assert 'PERSISTENT_EXPORT_KILL_CFG_V2_MRT1_PATH_SENSITIVE' in rows[449]['evidence_tags']
+          assert 'PERSISTENT_EXPORT_KILL' not in rows[449]['evidence_tags']
+          assert 'PERSISTENT_EXPORT_KILL_CFG_V2_MRT0_ALWAYS_MASKED' in rows[454]['evidence_tags']
+          assert d['semantic_boundary']['persistent_export_kill_cfg']=='EXACT_PATH_AWARE_V2'
+          assert d['semantic_boundary']['mrt1_zero_mask_export_meaning']=='WITHHELD'
+          spans=[(x['start_instruction'],x['end_instruction']) for x in c['structural_only_spans']]
+          expected=[
+            (0,0),(2,5),(7,20),(23,32),(35,57),(60,104),(106,106),(108,148),
+            (191,193),(195,198),(201,205),(208,228),(230,263),(329,331),(334,334),
+            (342,342),(373,374),(386,386),(391,391),(397,397),(401,401),(416,416),
+            (418,418),(444,444),(450,450),(455,455)]
+          assert spans==expected,(spans,expected)
+          print('RENDERER_KILL_CFG_V2_UPGRADED',c['primary_resolution_counts'])
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-RENDERER-KILL-CFG-V2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
