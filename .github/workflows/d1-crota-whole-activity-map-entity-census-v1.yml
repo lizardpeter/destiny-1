@@ -13,7 +13,7 @@ permissions:
 jobs:
   census:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       GH_TOKEN: ${{ github.token }}
       ACTIVITY: '810B0002'
@@ -71,7 +71,62 @@ jobs:
           assert r['status']=='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE',r.get('violations')
           assert r['selected_activities']==['810B0002'],r
           assert r['reachable_map_data_table_count']==255,r
+          assert r['total_reachable_map_entries']==1535,r
           print('ROOTS',r['reachable_bubble_count'],r['reachable_map_container_count'],r['reachable_map_data_table_count'],r['total_reachable_map_entries'])
+          PY
+
+      - name: Derive and recover exact map-entity owner package families
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json out/activity_map_roots.json \
+            --out out/map_data_layer_census_root_corpus.json
+          python - <<'PY'
+          import json
+          from tools.d1_filehash import package_hex
+          d=json.load(open('out/map_data_layer_census_root_corpus.json'))
+          assert d['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS',d.get('violations')
+          hashes=[]
+          for table in d['tables']:
+            for r in table.get('entries',[]):
+              h=str(r.get('entity_hash') or '').upper()
+              if h not in ('','00000000','FFFFFFFF'): hashes.append(h)
+          assert len(hashes)==1535,len(hashes)
+          unique=sorted(set(hashes))
+          ids=sorted({package_hex(h).lower() for h in unique})
+          assert unique and ids
+          open('out/map_entity_hashes.txt','w').write('\n'.join(unique)+'\n')
+          open('out/map_entity_package_ids.txt','w').write('\n'.join(ids)+'\n')
+          json.dump({
+            'schema_version':1,
+            'status':'D1_CROTA_MAP_ENTITY_PACKAGE_PLAN_EXACT',
+            'placement_count':len(hashes),
+            'unique_entity_count':len(unique),
+            'package_family_count':len(ids),
+            'package_ids':ids,
+            'policy':'Package IDs are decoded only from exact SMapDataEntry Entity TagHashes using the source-validated universal D1 FileHash decoder.'
+          },open('out/map_entity_package_plan.json','w'),indent=2)
+          print('ENTITY_PACKAGE_PLAN','PLACEMENTS',len(hashes),'UNIQUE_ENTITIES',len(unique),'PACKAGE_FAMILIES',len(ids),ids)
+          PY
+          recovery=()
+          while read -r p; do recovery+=(--package-id "$p"); done < out/map_entity_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py \
+            --index out/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list out/packages.txt \
+            "${recovery[@]}" \
+            --out-dir packages \
+            --report out/map_entity_package_recovery.json
+          python - <<'PY'
+          import json
+          p=json.load(open('out/map_entity_package_plan.json'))
+          r=json.load(open('out/map_entity_package_recovery.json'))
+          assert r['status']=='D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE',r
+          assert r['requested_package_ids']==p['package_ids'],(r['requested_package_ids'],p['package_ids'])
+          assert r['family_count']==p['package_family_count'],r
+          print('ENTITY_PACKAGES_CLOSED',r['family_count'],r['member_count'])
           PY
 
       - name: Census every map entry and preserve exact entity seeds
@@ -108,29 +163,31 @@ jobs:
                 'resource_class_name':r.get('resource_class_name')
               })
           assert len(rows)==1535,len(rows)
-          assert all(x['entity_exists'] for x in rows),[x for x in rows if not x['entity_exists']][:10]
+          missing=[x for x in rows if not x['entity_exists']]
+          assert not missing,missing[:20]
           by=defaultdict(list)
           for r in rows: by[r['entity_hash']].append(r)
           class_counts=Counter(r['entity_reference_class'] or 'NULL' for r in rows)
           unique_class_counts=Counter()
           for h,rs in by.items(): unique_class_counts[rs[0]['entity_reference_class'] or 'NULL']+=1
           out={
-            'schema_version':1,
+            'schema_version':2,
             'status':'D1_CROTA_WHOLE_ACTIVITY_MAP_ENTITY_SEEDS_EXACT',
             'activity':'810B0002',
             'source_map_data_table_count':d['map_data_table_count'],
             'source_entry_count':d['entry_count'],
             'placement_count':len(rows),
             'unique_entity_count':len(by),
+            'entity_owner_package_family_count':json.load(open('out/map_entity_package_plan.json'))['package_family_count'],
             'placement_entity_reference_class_counts':dict(sorted(class_counts.items())),
             'unique_entity_reference_class_counts':dict(sorted(unique_class_counts.items())),
             'unique_entity_hashes':sorted(by),
             'placements':rows,
             'per_entity_placement_counts':{h:len(rs) for h,rs in sorted(by.items())},
-            'policy':'Every seed is the exact non-null SMapDataEntry entity TagHash from all MapDataTables reachable from Activity 810B0002. No resource class, name, package proximity, or model resemblance creates an entity seed.'
+            'policy':'Every seed is the exact non-null SMapDataEntry entity TagHash from all MapDataTables reachable from Activity 810B0002. Entity owner package families are recovered from those exact hashes via the universal D1 FileHash decoder and verified archive index before class metadata is accepted. No resource class, name, package proximity, or model resemblance creates an entity seed.'
           }
           json.dump(out,open('out/map_entity_seeds.json','w'),indent=2)
-          print('MAP_ENTITY_SEEDS',json.dumps({k:out[k] for k in ('placement_count','unique_entity_count','placement_entity_reference_class_counts','unique_entity_reference_class_counts')},sort_keys=True))
+          print('MAP_ENTITY_SEEDS',json.dumps({k:out[k] for k in ('placement_count','unique_entity_count','entity_owner_package_family_count','placement_entity_reference_class_counts','unique_entity_reference_class_counts')},sort_keys=True))
           PY
 
       - uses: actions/upload-artifact@v4
@@ -139,7 +196,12 @@ jobs:
           name: d1-crota-whole-activity-map-entity-census-v1
           path: |
             out/map_entity_seeds.json
+            out/map_entity_hashes.txt
+            out/map_entity_package_ids.txt
+            out/map_entity_package_plan.json
+            out/map_entity_package_recovery.json
             out/map_data_layer_census.json
+            out/map_data_layer_census_root_corpus.json
             out/activity_map_roots.json
             out/activity_root_dependency_closure.json
           retention-days: 14
