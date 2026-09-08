@@ -1,0 +1,168 @@
+name: D1 Crota whole-map sky scene v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-whole-map-sky-scene-v1.yml'
+      - 'tools/d1_world_sky_scene.py'
+      - 'tools/d1_gltf_layer_merge.py'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  SKY_ARTIFACT_ID: '10040593597'
+  SKY_ARTIFACT_SHA256: 'ad532179440a2382dffc88d8fbbe436c5b6aad498d18307c0ea53cdcc98f8322'
+  SKY_CENSUS_SHA256: '8f3723cff06137f461de535f71a533ceef20d1a81697c89f61a66616af67c22c'
+  BASE_RELEASE_TAG: 'd1-activity-810b0002-static-common-map-visual-entities-r1'
+  BASE_GLB: 'D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES.glb'
+  BASE_BYTES: '912538704'
+  BASE_SHA256: '7b5514459ebdcf1d9c04a302ae3f2d65fd53319730eff16536326ed597ab6dd9'
+
+jobs:
+  sky-scene:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative sky model set and census
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy trimesh pillow
+          mkdir -p input/sky base scene reports final
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SKY_ARTIFACT_ID}/zip" \
+            -o input/sky.zip
+          echo "${SKY_ARTIFACT_SHA256}  input/sky.zip" | sha256sum --check --strict
+          unzip -q input/sky.zip -d input/sky
+          census="$(find input/sky -name 'crota_map_lighting_census.json' -type f -print -quit)"
+          test -n "$census"
+          cp "$census" reports/crota_map_lighting_census.json
+          echo "${SKY_CENSUS_SHA256}  reports/crota_map_lighting_census.json" | sha256sum --check --strict
+          model_dir="$(find input/sky -type d -name models -print -quit)"
+          test -n "$model_dir"
+          test "$(find "$model_dir" -maxdepth 1 -name '*.glb' -type f | wc -l)" -eq 49
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/crota_map_lighting_census.json'))
+          assert d['status']=='D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE',d
+          assert not d['violations'] and not d['missing_dependency_package_ids'],d
+          assert d['source_map_data_table_count']==255 and d['source_entry_count']==1535,d
+          assert d['sky_resource_occurrences']==5,d
+          assert d['sky_record_count']==77,d
+          assert d['sky_model_resource_hash_count']==49,d
+          assert d['decoded_sky_model_resource_count']==49,d
+          assert d['sky_entity_model_hash_count']==49,d
+          print('SKY_SOURCE_ACCEPTED',d['sky_resource_occurrences'],'occurrences',d['unique_sky_collection_count'],'collections',d['sky_record_count'],'decoded_records',d['sky_entity_model_hash_count'],'models')
+          PY
+
+      - name: Instantiate every source-owned sky record occurrence
+        run: |
+          set -euo pipefail
+          model_dir="$(find input/sky -type d -name models -print -quit)"
+          python tools/d1_world_sky_scene.py \
+            --lighting-census reports/crota_map_lighting_census.json \
+            --model-dir "$model_dir" \
+            --out scene/CROTA_SKY_SOURCE_EXACT.glb \
+            --report reports/crota_sky_scene.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/crota_sky_scene.json'))
+          assert d['status']=='D1_WORLD_SKY_SCENE_COMPLETE',d
+          assert d['source_sky_resource_occurrence_count']==5,d
+          assert d['unique_decoded_sky_record_count']==77,d
+          assert d['unique_sky_model_resource_count']==49 and d['unique_entity_model_count']==49,d
+          assert d['replayed_sky_record_instance_count']>=77,d
+          assert d['scene_geometry_variants']>0 and d['scene_geometry_nodes']>0,d
+          print('CROTA_SKY_SCENE_CLOSED',d['replayed_sky_record_instance_count'],'instances',d['scene_geometry_variants'],'geometry',d['scene_geometry_nodes'],'nodes',d['glb_bytes'],d['glb_sha256'])
+          PY
+
+      - name: Verify durable static common visual-entity base
+        run: |
+          set -euo pipefail
+          gh release download "$BASE_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$BASE_GLB" --dir base
+          python - <<'PY'
+          import hashlib,os
+          p='base/'+os.environ['BASE_GLB']
+          b=os.path.getsize(p);h=hashlib.sha256(open(p,'rb').read()).hexdigest()
+          assert b==int(os.environ['BASE_BYTES']),(b,os.environ['BASE_BYTES'])
+          assert h==os.environ['BASE_SHA256'],(h,os.environ['BASE_SHA256'])
+          print('BASE_VERIFIED',b,h)
+          PY
+
+      - name: Merge exact sky onto Crota world checkpoint
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_layer_merge.py \
+            --base "base/$BASE_GLB" \
+            --layer sky=scene/CROTA_SKY_SOURCE_EXACT.glb \
+            --out final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.glb \
+            --report reports/static_common_visual_entities_sky_merge.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.glb')
+          sky=json.load(open('reports/crota_sky_scene.json'))
+          merge=json.load(open('reports/static_common_visual_entities_sky_merge.json'))
+          assert merge['status']=='D1_GLTF_LAYER_MERGE_EXACT_BASE_PRESERVATION',merge
+          assert merge['base_bin_exact_prefix'] is True,merge
+          out={
+            'schema_version':1,
+            'status':'D1_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_COMPLETE',
+            'activity':'810B0002',
+            'base':{'release_tag':'d1-activity-810b0002-static-common-map-visual-entities-r1','bytes':912538704,'sha256':'7b5514459ebdcf1d9c04a302ae3f2d65fd53319730eff16536326ed597ab6dd9'},
+            'sky':{
+              'source_resource_occurrences':sky['source_sky_resource_occurrence_count'],
+              'unique_sky_collections':sky['unique_sky_collection_count'],
+              'unique_decoded_sky_records':sky['unique_decoded_sky_record_count'],
+              'replayed_record_instances':sky['replayed_sky_record_instance_count'],
+              'unique_entity_models':sky['unique_entity_model_count'],
+              'geometry_variants':sky['scene_geometry_variants'],
+              'scene_geometry_nodes':sky['scene_geometry_nodes'],
+              'bounds':sky['bounds'],
+              'layer_bytes':sky['glb_bytes'],
+              'layer_sha256':sky['glb_sha256']
+            },
+            'final_counts':merge['final_counts'],
+            'bytes':p.stat().st_size,
+            'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'proof_boundary':'Sky records are instantiated by the exact Charm D1 SMapSkyEntResource consumer rule: every source occurrence and record is replayed, the four serialized vectors form the System.Numerics matrix, and no default/time-of-day record or outer map-entry transform is invented. Light photometric semantics and decal projection rendering remain outside this checkpoint.'
+          }
+          json.dump(out,open('reports/FINAL_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish durable Crota sky checkpoint
+        run: |
+          set -euo pipefail
+          tag='d1-activity-810b0002-static-common-map-visual-entities-sky-r1'
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title 'D1 Crota Activity static/common + map visual SEntities + sky r1' \
+              --notes 'Extends the durable Activity 810B0002 static/common + map visual SEntity checkpoint with every source-owned Crota sky record instantiated by the pinned Charm D1 Matrix4x4 consumer semantics. No default/time-of-day sky is selected. Light photometric semantics and decal projection rendering remain separate proof fronts.'
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" \
+            final/D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.glb \
+            reports/FINAL_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.json \
+            reports/crota_sky_scene.json \
+            reports/crota_map_lighting_census.json --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-WHOLE-MAP-SKY-SCENE-V1
+          path: |
+            reports/
+            scene/CROTA_SKY_SOURCE_EXACT.glb
+          retention-days: 30
+          compression-level: 6
