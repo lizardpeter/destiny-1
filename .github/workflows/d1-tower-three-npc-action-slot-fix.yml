@@ -1,4 +1,5 @@
 name: D1 Tower three-NPC Blender Action-slot fix
+# trigger: Blender 5.2 slotted Action verification
 
 on:
   workflow_dispatch:
