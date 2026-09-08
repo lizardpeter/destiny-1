@@ -1,0 +1,72 @@
+name: D1 Crota 808EE505 semantic contract v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-808ee505-semantic-contract-v1.yml'
+      - 'tools/d1_gcn_808ee505_semantic_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact target shader frontier
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/target_material_stage.json
+          test -f input/source/target_gcn_image_usage.json
+          test -f input/source/PS_808EE505.s
+          test -f input/source/PS_80D77543.s
+
+      - name: Promote exact native material semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_808ee505_semantic_probe.py \
+            --stage input/source/target_material_stage.json \
+            --usage input/source/target_gcn_image_usage.json \
+            --ps-disasm input/source/PS_808EE505.s \
+            --vs-disasm input/source/PS_80D77543.s \
+            -o out/D1_808EE505_SEMANTIC_CONTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_808EE505_SEMANTIC_CONTRACT.json'))
+          assert d['status']=='D1_808EE505_SEMANTIC_CONTRACT_EXACT' and not d['violations'],d
+          c=d['contract']
+          assert c['texture_semantics']['t2']['threshold']==0.5
+          assert c['texture_semantics']['t2']['discard_when']=='sample > threshold'
+          assert c['texture_semantics']['t4']['role']=='TANGENT_SPACE_NORMAL_XY'
+          assert c['texture_semantics']['t5']['role']=='REFLECTION_CUBEMAP'
+          assert c['main_color_equation']['mrt0_alpha']=='attr0.w'
+          assert c['portable_consequence']['ordinary_opaque_basecolor_is_invalid'] is True
+          print('SEMANTIC_CONTRACT_EXACT',json.dumps(c['texture_semantics'],sort_keys=True))
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-808EE505-SEMANTIC-CONTRACT-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
