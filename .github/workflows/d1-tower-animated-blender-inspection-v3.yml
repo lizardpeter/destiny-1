@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - 'tools/d1_tower_actor_production_assembly_manifest_v2.py'
+      - 'tools/d1_blender_build_tower_animated_inspection_v2.py'
+      - 'tools/d1_blender_validate_tower_animated_inspection.py'
       - '.github/workflows/d1-tower-animated-blender-inspection-v3.yml'
   workflow_run:
     workflows: ['D1 Tower actor shared action family compatibility']
@@ -63,7 +65,17 @@ jobs:
           assert d['runtime_active_scenario_selected'] is False and d['runtime_actor_animation_state_selected'] is False,d
           print('ACTOR_INSPECTION_BLEND_GREEN',d['blend_bytes'],d['blend_sha256'])
           PY
-          cp reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json out/; cp reports/D1_TOWER_ANIMATED_ACTORS_INSPECTION.json out/; cp reports/blender_version.txt out/; find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - name: Reopen and validate saved actor blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_ANIMATED_ACTORS_INSPECTION.blend --python tools/d1_blender_validate_tower_animated_inspection.py -- --report reports/D1_TOWER_ANIMATED_ACTORS_REOPEN_VALIDATION.json | tee reports/blender_actor_reopen_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_ANIMATED_ACTORS_REOPEN_VALIDATION.json')); assert d['status']=='D1_TOWER_ANIMATED_BLENDER_REOPEN_VALIDATION_COMPLETE' and not d['violations'],d
+          assert (d['scenario_collection_count'],d['placement_instance_count'],d['actor_asset_collection_count'],d['actor_model_count'],d['shared_action_family_count'],d['shared_action_count'])==(8,547,29,13,6,1365),d
+          assert d['environment_present'] is False,d
+          PY
+          cp reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json out/; cp reports/D1_TOWER_ANIMATED_ACTORS_INSPECTION.json out/; cp reports/D1_TOWER_ANIMATED_ACTORS_REOPEN_VALIDATION.json out/; cp reports/blender_version.txt out/; find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with: {name: D1-TOWER-ANIMATED-ACTORS-BLENDER-INSPECTION-V3, path: out/, retention-days: 90, if-no-files-found: error, compression-level: 0}
 
@@ -104,7 +116,17 @@ jobs:
           assert (d['actor_asset_variant_count'],d['shared_action_family_count'],d['scenario_collection_count'],d['placement_alternative_instance_count'])==(29,6,8,547),d
           print('FULL_TOWER_INSPECTION_BLEND_GREEN',d['blend_bytes'],d['blend_sha256'])
           PY
-          cp reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json out/; cp reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json out/; cp reports/blender_version.txt out/; find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - name: Reopen and validate saved full Tower blend
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_FULL_ANIMATED_INSPECTION.blend --python tools/d1_blender_validate_tower_animated_inspection.py -- --report reports/D1_TOWER_FULL_ANIMATED_REOPEN_VALIDATION.json --expect-environment | tee reports/blender_full_reopen_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_TOWER_FULL_ANIMATED_REOPEN_VALIDATION.json')); assert d['status']=='D1_TOWER_ANIMATED_BLENDER_REOPEN_VALIDATION_COMPLETE' and not d['violations'],d
+          assert (d['scenario_collection_count'],d['placement_instance_count'],d['actor_asset_collection_count'],d['actor_model_count'],d['shared_action_family_count'],d['shared_action_count'])==(8,547,29,13,6,1365),d
+          assert d['environment_present'] is True,d
+          PY
+          cp reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json out/; cp reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json out/; cp reports/D1_TOWER_FULL_ANIMATED_REOPEN_VALIDATION.json out/; cp reports/blender_version.txt out/; find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: D1-TOWER-FULL-ANIMATED-BLENDER-INSPECTION-V3, path: out/, retention-days: 90, if-no-files-found: warn, compression-level: 0}
