@@ -1,0 +1,130 @@
+name: D1 GCN straight-line 230-263 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-straightline-230-263-808ee505-v1.yml'
+      - 'tools/d1_gcn_vop_madmk_semantics_proof.py'
+      - 'tools/d1_gcn_straightline_230_263_expr.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  LLVM_VOP_REV: '16bcb2727f98f366ca9e28b98b83654cdb150b89'
+  LLVM_MOD_REV: '841d4ad6b315ab92c2a37e6484a3b7963b50060c'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable D1 shader source checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/PS_808EE505.s
+          test -f input/source/target_gcn_image_usage.json
+
+      - name: Recover immutable AMDGPU value semantics sources
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vinterp.cc" -o input/upstream/gem5_vinterp.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
+
+      - name: Rebuild structural IR
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
+          assert d['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE'
+          assert d['shader']=='808EE505' and d['instruction_count']==456
+          assert d['basic_block_count']==14 and d['cfg_edge_count']==19
+          print('STRUCTURAL_IR_PINNED')
+          PY
+
+      - name: Source-prove interpolation arithmetic and MADMK
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vop_semantics_proof.py \
+            --instr-info input/upstream/AMDGPUInstrInfo.td \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            --vop2-source input/upstream/gem5_vop2.cc --vop2-revision "$GEM5_REV" \
+            --vinterp-source input/upstream/gem5_vinterp.cc --vinterp-revision "$GEM5_REV" \
+            -o out/GCN_VOP_SEMANTICS.json
+          python tools/d1_gcn_vop_madmk_semantics_proof.py \
+            --vop2-source input/upstream/gem5_vop2.cc --vop2-revision "$GEM5_REV" \
+            -o out/GCN_V_MADMK_F32_SEMANTICS.json
+          python - <<'PY'
+          import json
+          v=json.load(open('out/GCN_VOP_SEMANTICS.json'))
+          m=json.load(open('out/GCN_V_MADMK_F32_SEMANTICS.json'))
+          assert v['status']=='D1_GCN_VOP_SEMANTICS_SOURCE_PROVEN' and not v['violations'],v
+          assert v['semantics']['v_interp_p1_f32']['operation']=='INTERP_P1'
+          assert v['semantics']['v_interp_p2_f32']['operation']=='INTERP_P2'
+          assert v['semantics']['v_mul_f32']['operation']=='MUL'
+          assert v['semantics']['v_mac_f32']['operation']=='MAC'
+          assert m['status']=='D1_GCN_V_MADMK_F32_SEMANTICS_SOURCE_PROVEN' and not m['violations'],m
+          assert m['semantics']['equation']=='D = S0 * K + S1'
+          assert m['semantics']['constant_kind']=='32_BIT_INLINE_CONSTANT'
+          assert m['semantics']['input_output_modifiers']=='NOT_SUPPORTED'
+          print('VALUE_SEMANTICS_PINNED')
+          PY
+
+      - name: Lift exact 230-263 expression DAG
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_straightline_230_263_expr.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --vop-semantics out/GCN_VOP_SEMANTICS.json \
+            --madmk-semantics out/GCN_V_MADMK_F32_SEMANTICS.json \
+            -o out/PS_808EE505_STRAIGHTLINE_230_263_EXPR.json
+          python - <<'PY'
+          import json,collections
+          d=json.load(open('out/PS_808EE505_STRAIGHTLINE_230_263_EXPR.json'))
+          assert d['status']=='D1_GCN_STRAIGHTLINE_230_263_EXPRESSION_EXACT' and not d['violations'],d
+          e=d['expression']
+          assert e['shader']=='808EE505' and e['material']=='80D777B6'
+          assert e['instruction_range']==[230,263]
+          assert e['value_instruction_indices']==list(range(230,264))
+          assert e['node_count']==86,e['node_count']
+          assert e['input_roots']['incoming_registers']==['s44','s45','s46','v0','v1','v13','v15','v7']
+          assert len(e['input_roots']['raster_interpolation_coefficients'])==18
+          ops=collections.Counter(n['op'] for n in e['nodes'])
+          assert ops['MADMK']==14 and ops['CONST']==14
+          assert ops['INPUT']==26
+          assert e['semantic_boundary']['raster_coefficients']=='EXPLICIT_SYMBOLIC_RENDERER_INPUTS'
+          assert e['semantic_boundary']['portable_barycentric_reconstruction']=='WITHHELD'
+          print('STRAIGHTLINE_230_263_CLOSED',e['node_count'],ops)
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-STRAIGHTLINE-230-263-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
