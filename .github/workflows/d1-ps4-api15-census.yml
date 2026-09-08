@@ -69,10 +69,12 @@ jobs:
           import json
           d=json.load(open('reports/PS4_API15_CROSS_CORPUS_CENSUS.json'))
           assert d['status']=='D1_PS4_API15_CENSUS_COMPLETE' and not d['violations'],d
-          assert '8087670E' in d['api15_shaders'],d
+          assert d['api15_shaders']==['8087670E'] and d['api15_shader_count']==1,d
           r=[x for x in d['rows'] if x['shader']=='8087670E' and x['corpus']=='three_npc_frontier']
-          assert len(r)==1 and r[0]['api15_load_count']==1,r
-          print('PS4_API15_CENSUS_GREEN','shaders',d['api15_shader_count'],'dynamic',d['api15_dynamic_load_count'])
+          assert len(r)==1 and r[0]['requires_spill_specific_mapping'] is True,r
+          assert r[0]['api15_direct_mapped_load_count']==0,r
+          assert d['api15_direct_mapped_load_count']==0,d
+          print('PS4_API15_CENSUS_GREEN','rows',d['scanned_shader_row_count'],'unique',d['unique_shader_count'],'only',d['api15_shaders'][0],'spilled_only',True)
           PY
           find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
