@@ -1,0 +1,123 @@
+name: D1 GCN renderer descriptor provenance reuse 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-descriptor-provenance-reuse-808ee505-v1.yml'
+      - 'tools/d1_gcn_renderer_program_add_descriptor_provenance.py'
+
+env:
+  RENDERER_ARTIFACT_ID: '10080206038'
+  RENDERER_ARTIFACT_ZIP_SHA256: '6d07039d826713e55a7734da0c54c65ea8f8b99eaf1a7dbbbdbf2e4d3ff20554'
+  DESCRIPTOR_ARTIFACT_ID: '10080578647'
+  DESCRIPTOR_ARTIFACT_ZIP_SHA256: '35e9071379606eea660290e735f19cbe83778a8952b893f795ff57396d234dc7'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover immutable green checkpoints
+        run: |
+          set -euo pipefail
+          mkdir -p input/renderer input/descriptor out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RENDERER_ARTIFACT_ID}/zip" -o input/renderer.zip
+          echo "${RENDERER_ARTIFACT_ZIP_SHA256}  input/renderer.zip" | sha256sum --check --strict
+          unzip -q input/renderer.zip -d input/renderer
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${DESCRIPTOR_ARTIFACT_ID}/zip" -o input/descriptor.zip
+          echo "${DESCRIPTOR_ARTIFACT_ZIP_SHA256}  input/descriptor.zip" | sha256sum --check --strict
+          unzip -q input/descriptor.zip -d input/descriptor
+          test -f input/renderer/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          test -f input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json
+          test -f input/descriptor/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json
+          test -f input/descriptor/GFX7_DESCRIPTOR_SEMANTICS.json
+
+      - name: Verify checkpoint boundaries before mutation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('input/renderer/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          d=json.load(open('input/descriptor/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json'))
+          s=json.load(open('input/descriptor/GFX7_DESCRIPTOR_SEMANTICS.json'))
+          assert r['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not r['violations'],r
+          p=r['program'];c=p['coverage']
+          assert c['primary_resolution_counts']=={
+            'CONTROL_EXACT':18,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':19,
+            'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':222},c
+          assert c['exact_nonstructural_instruction_count']==234
+          assert d['status']=='D1_GCN_DESCRIPTOR_LIVE_PROVENANCE_EXACT' and not d['violations'],d
+          q=d['proof'];expected=[4,8,132,133,196,197,198,266,329,330,373,374]
+          assert q['exact_descriptor_load_instructions']==expected and q['exact_descriptor_load_count']==12
+          assert q['image_instruction_count']==14
+          assert s['status']=='D1_GFX7_DESCRIPTOR_SEMANTICS_SOURCE_PROVEN' and not s['violations'],s
+          assert s['proof']['smrd_immediate_offset_unit']=='DWORD'
+          # Eleven are still structural; 266 is already expression-exact.
+          assert [i for i in expected if p['instruction_resolution'][i]['primary_resolution']=='STRUCTURAL_ONLY']==[4,8,132,133,196,197,198,329,330,373,374]
+          assert p['instruction_resolution'][266]['primary_resolution']=='EXPRESSION_EXACT'
+          print('GREEN_DESCRIPTOR_CHECKPOINTS_PINNED')
+          PY
+
+      - name: Attach descriptor provenance and recompute renderer ledger
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_program_add_descriptor_provenance.py \
+            --program input/renderer/D1_80D777B6_808EE505_RENDERER_PROGRAM.json \
+            --descriptor-provenance input/descriptor/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json \
+            --ir input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
+          assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          p=d['program'];c=p['coverage'];counts=c['primary_resolution_counts']
+          expected_counts={'CONTROL_EXACT':18,'EXPRESSION_EXACT':161,'INPUT_PROVENANCE_EXACT':30,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':211}
+          assert counts==expected_counts,(counts,expected_counts)
+          assert c['exact_nonstructural_instruction_count']==245
+          assert c['descriptor_provenance_promoted_instructions']==[4,8,132,133,196,197,198,329,330,373,374]
+          assert c['descriptor_provenance_corroborated_existing_instructions']==[266]
+          assert len(p['descriptor_live_provenance']['image_live_bindings'])==14
+          for i in c['descriptor_provenance_promoted_instructions']:
+            assert p['instruction_resolution'][i]['primary_resolution']=='INPUT_PROVENANCE_EXACT'
+            assert 'DESCRIPTOR_LIVE_PROVENANCE_EXACT' in p['instruction_resolution'][i]['evidence_tags']
+          assert p['instruction_resolution'][266]['primary_resolution']=='EXPRESSION_EXACT'
+          assert 'DESCRIPTOR_LIVE_PROVENANCE_EXACT' in p['instruction_resolution'][266]['evidence_tags']
+          spans=[(x['start_instruction'],x['end_instruction']) for x in c['structural_only_spans']]
+          expected_spans=[
+            (0,0),(2,3),(5,5),(7,7),(9,20),(23,32),(35,57),(60,104),(106,106),
+            (108,131),(134,148),(191,193),(195,195),(201,205),(208,228),(230,263),
+            (331,331),(334,334),(342,342),(386,386),(391,391),(397,397),(401,401),
+            (416,416),(418,418),(444,444),(450,450),(455,455)]
+          assert spans==expected_spans,(spans,expected_spans)
+          # Key runtime-facing live binding checks survive the renderer join.
+          by={x['instruction']:x for x in p['descriptor_live_provenance']['image_live_bindings']}
+          assert by[332]['resource_descriptor']['producer_instruction']==329
+          assert by[332]['sampler_descriptor']['producer_instruction']==330
+          assert by[332]['sampler_descriptor']['origin_kind']=='EXTENDED_USER_DATA_LOAD'
+          assert by[213]['sampler_descriptor']['origin_kind']=='ENTRY_RESIDENT'
+          print('RENDERER_DESCRIPTOR_JOIN_CLOSED',counts,'exact_nonstructural',c['exact_nonstructural_instruction_count'])
+          PY
+          cp input/descriptor/PS_808EE505_DESCRIPTOR_LIVE_PROVENANCE.json out/
+          cp input/descriptor/GFX7_DESCRIPTOR_SEMANTICS.json out/
+          cp input/renderer/PS_808EE505_STRUCTURAL_IR_V3.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-RENDERER-PROGRAM-DESCRIPTOR-PROVENANCE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
