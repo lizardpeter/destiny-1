@@ -104,9 +104,12 @@ jobs:
           print('TARGET_NATIVE_APPEND_GREEN',[(x['key'],x['action_count'],x['representative_model']) for x in actors])
           PY
 
-      - name: Install Blender 5.2.1 LTS
+      - name: Install Blender 5.2.1 LTS and headless Eevee runtime
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libegl1
+          ldconfig -p | grep -F 'libEGL.so.1'
           BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
           "$BLENDER" --version | tee reports/blender_version.txt
           grep -q 'Blender 5.2.1' reports/blender_version.txt
