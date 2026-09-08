@@ -1,0 +1,27 @@
+name: D1 Crota common canary failed-log diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-common-canary-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_RUN: '34174544768'
+    steps:
+      - name: Read only the failed Crota common-layer log
+        run: |
+          set -euo pipefail
+          gh run view "$TARGET_RUN" --repo "$GITHUB_REPOSITORY" --log-failed > failed.log
+          echo '=== CROTA COMMON FAILURE TRACE ==='
+          grep -n -E 'Traceback|AssertionError|FAILED|ERROR|Error|COMMON_SCENE|failed_models|source_record_count|source_resolved_records|unresolved_records|status' failed.log | tail -n 120 || true
+          echo '=== CROTA COMMON FAILURE TAIL ==='
+          tail -n 160 failed.log
