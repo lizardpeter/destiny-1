@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: b56ca4639851b1eb346bf3770c1f7000b07220e2
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
@@ -110,8 +111,9 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/checkpoint_package_recovery.json'))
-          assert d.get('status') in ('D1_INDEXED_PACKAGE_RECOVERY_COMPLETE','D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE'),d
-          print('CHECKPOINT_PACKAGES_RECOVERED',len(d.get('package_ids') or d.get('requested_package_ids') or []))
+          assert d.get('status')=='D1_INDEXED_PACKAGE_FAMILY_RECOVERY_COMPLETE',d
+          assert len(d.get('requested_package_ids') or [])==19,d
+          print('CHECKPOINT_PACKAGES_RECOVERED',d['family_count'],d['member_count'])
           PY
 
       - name: Export and merge all 44 baked cells
