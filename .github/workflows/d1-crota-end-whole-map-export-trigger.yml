@@ -19,7 +19,7 @@ jobs:
       - name: Dispatch generic whole-Activity world exporter for Crota's End
         run: |
           set -euo pipefail
-          # Redispatch after aligning the generic workflow with the source-complete common scene status.
+          # Redispatch after promoting source-proven GCN Format8/R8_UNORM support into the generic world texture closure.
           gh workflow run d1-export-activity-world.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
