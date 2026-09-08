@@ -1,0 +1,234 @@
+name: D1 Tower three-NPC material correctness audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-tower-three-npc-material-correctness-audit.yml'
+      - 'evidence/d1_native_shader_semantic_registry_v1.json'
+      - 'tools/d1_xur_ps_*_semantic_proof.py'
+      - 'tools/d1_xur_ps_*_families_proof.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover only the exact three actor variants and material evidence
+        run: |
+          set -euo pipefail
+          mkdir -p input reports out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TEXTURED_ARTIFACT_ID}/zip" -o input/textured.zip
+          echo "${TEXTURED_ARTIFACT_SHA256}  input/textured.zip" | sha256sum --check --strict
+          unzip -q input/textured.zip \
+            'models/80C88CEF_SIG03_SKINNED_NATIVE_D1_TEXTURED.glb' \
+            'models/809D8104_SIG00_SKINNED_NATIVE_D1_TEXTURED.glb' \
+            'models/80C88434_SIG00_SKINNED_NATIVE_D1_TEXTURED.glb' \
+            'reports/80C88CEF_SIG03_SKINNED_NATIVE_D1_TEXTURE_BIND.json' \
+            'reports/809D8104_SIG00_SKINNED_NATIVE_D1_TEXTURE_BIND.json' \
+            'reports/80C88434_SIG00_SKINNED_NATIVE_D1_TEXTURE_BIND.json' \
+            'reports/TOWER_ACTOR_30_VARIANT_TEXTURE_ROLES.json' \
+            'reports/material_texture_manifest.json' \
+            -d input
+          find input -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+
+      - name: Build fail-closed material correctness audit
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections, json, re, struct
+          from pathlib import Path
+
+          ROOT=Path('input')
+          TARGETS=[
+              ('80C88CEF','SIG03','XUR'),
+              ('809D8104','SIG00','MODEL_809D8104'),
+              ('80C88434','SIG00','MODEL_80C88434'),
+          ]
+          registry=json.load(open('evidence/d1_native_shader_semantic_registry_v1.json'))
+          assert registry['status']=='D1_NATIVE_SHADER_SEMANTIC_REGISTRY_V1_EXACT' and not registry.get('violations'),registry
+          reg_by_header={}
+          for e in registry['entries']:
+              if e['stage']!='ps': continue
+              for h in e.get('shader_headers',[]): reg_by_header.setdefault(h,[]).append(e)
+
+          # A handler is considered material-scoped here only when its source text
+          # literally contains both the material TagHash and serialized PS header.
+          # This is deliberately weaker than safe registry reuse, which still
+          # requires exact bounded GCN SHA equality for foreign assets.
+          proof_sources=[]
+          for p in sorted(Path('tools').glob('d1_xur_ps_*proof.py')):
+              proof_sources.append((p,p.read_text(errors='replace')))
+
+          def read_glb(path):
+              b=path.read_bytes(); assert b[:4]==b'glTF' and struct.unpack_from('<I',b,4)[0]==2,path
+              total=struct.unpack_from('<I',b,8)[0]; assert total==len(b),(path,total,len(b))
+              off=12; doc=None
+              while off<len(b):
+                  n,typ=struct.unpack_from('<II',b,off); off+=8; chunk=b[off:off+n]; off+=n
+                  if typ==0x4E4F534A: doc=json.loads(chunk.rstrip(b' \t\r\n\0'))
+              assert doc is not None,path
+              return doc
+
+          def material_tag(name):
+              m=re.search(r'(?i)(?:D1[_ -]?)?([0-9A-F]{8})',str(name or ''))
+              return m.group(1).upper() if m else None
+
+          manifest=json.load(open(ROOT/'reports/material_texture_manifest.json'))
+          roles=json.load(open(ROOT/'reports/TOWER_ACTOR_30_VARIANT_TEXTURE_ROLES.json'))
+          assert manifest['visible_material_count']==320 and not manifest.get('material_decode_errors') and not manifest.get('texture_errors'),manifest
+          assert roles['status']=='D1_WORLD_TEXTURE_ROLE_INVENTORY_EVIDENCE_SCOPED' and roles['material_count']==320,roles
+
+          actors=[]; global_counts=collections.Counter(); all_visible=set(); unsafe=[]
+          for model,sig,label in TARGETS:
+              stem=f'{model}_{sig}_SKINNED_NATIVE_D1'
+              glb=read_glb(ROOT/'models'/f'{stem}_TEXTURED.glb')
+              bind=json.load(open(ROOT/'reports'/f'{stem}_TEXTURE_BIND.json'))
+              assert bind['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',bind
+              bind_by={r['material']:r for r in bind['materials']}
+
+              prim_counts=collections.Counter()
+              mats=glb.get('materials') or []
+              mat_tags={i:material_tag(m.get('name')) for i,m in enumerate(mats)}
+              for mesh in glb.get('meshes') or []:
+                  for prim in mesh.get('primitives') or []:
+                      if prim.get('material') is not None:
+                          mi=int(prim['material']); tag=mat_tags.get(mi)
+                          if tag: prim_counts[tag]+=1
+              visible=sorted(prim_counts)
+              assert visible and set(visible)==set(bind_by), (model,len(visible),len(bind_by),sorted(set(visible)^set(bind_by)))
+
+              rows=[]
+              for mh in visible:
+                  br=bind_by[mh]; rr=(roles.get('materials') or {}).get(mh); mm=(manifest.get('materials') or {}).get(mh)
+                  assert rr and mm,(model,mh)
+                  ps=str(br.get('pixel_shader') or mm.get('pixel_shader') or '').upper()
+                  conf=str(br.get('base_confidence') or 'NONE')
+                  if conf=='PROVEN' and br.get('base_texture'):
+                      state='DIRECT_PORTABLE_PROVEN'
+                  elif conf in {'STRONG_FORMAT_CANDIDATE','MEDIUM_PREVIEW_CANDIDATE'} and br.get('base_texture'):
+                      state='HEURISTIC_BASECOLOR_FORBIDDEN'
+                  else:
+                      state='NO_PROVEN_PORTABLE_COLOR'
+                  global_counts[state]+=1; all_visible.add(mh)
+
+                  scoped=[]
+                  for p,text in proof_sources:
+                      up=text.upper()
+                      if mh in up and ps and ps in up:
+                          scoped.append(str(p))
+                  reg=[]
+                  for e in reg_by_header.get(ps,[]):
+                      reg.append({
+                          'gcn_sha256':e['gcn_sha256'],
+                          'semantic_class':e['semantic_class'],
+                          'handler':e['handler'],
+                          'source_proof_status':e['source_proof_status'],
+                          'frontier':e.get('frontier'),
+                          'match_status':'HEADER_ONLY_CANDIDATE_UNLESS_THIS_MATERIAL_IS_SOURCE_SCOPED',
+                      })
+                  bindings=[]
+                  for b in mm.get('bindings') or []:
+                      if str(b.get('stage') or '').lower()!='ps': continue
+                      bindings.append({
+                          't':int(b.get('texture_index',-1)),
+                          'texture':b.get('texture'),
+                          'semantic_role':b.get('semantic_role'),
+                          'semantic_status':b.get('semantic_status'),
+                      })
+                  row={
+                      'material':mh,'primitive_count':prim_counts[mh],'pixel_shader':ps,
+                      'portable_state':state,
+                      'preview_base_texture':br.get('base_texture'),'preview_base_confidence':conf,
+                      'preview_base_reason':rr.get('preview_base_reason'),
+                      'preview_normal_texture':br.get('normal_texture'),'preview_normal_confidence':br.get('normal_confidence'),
+                      'exact_ps_bindings':bindings,
+                      'source_scoped_xur_proof_handlers':scoped,
+                      'registry_header_candidates':reg,
+                  }
+                  if state=='HEURISTIC_BASECOLOR_FORBIDDEN': unsafe.append({'actor':f'{model}:{sig}','material':mh,'pixel_shader':ps,'confidence':conf,'reason':rr.get('preview_base_reason')})
+                  rows.append(row)
+              actors.append({
+                  'key':f'{model}:{sig}','label':label,'visible_material_count':len(rows),
+                  'visible_primitive_count':sum(prim_counts.values()),
+                  'state_counts':dict(collections.Counter(r['portable_state'] for r in rows)),
+                  'materials':rows,
+              })
+
+          out={
+              'schema_version':1,
+              'status':'D1_TOWER_THREE_NPC_MATERIAL_CORRECTNESS_AUDIT_COMPLETE',
+              'source_artifact_id':int(__import__('os').environ['TEXTURED_ARTIFACT_ID']),
+              'source_artifact_zip_sha256':__import__('os').environ['TEXTURED_ARTIFACT_SHA256'],
+              'actors':actors,
+              'unique_visible_material_count':len(all_visible),
+              'global_state_counts':dict(global_counts),
+              'forbidden_heuristic_bindings':unsafe,
+              'gates':{
+                  'heuristic_basecolor_allowed_in_correctness_export':False,
+                  'all_visible_material_color_equations_source_closed':False,
+                  'all_visible_materials_portably_recreated':False,
+                  'retail_material_permutation_selected':False,
+              },
+              'policy':(
+                  'STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE are forbidden from correctness renders. '
+                  'Exact native texture bindings remain evidence, but a visible material may render as retail-correct only through '
+                  'an instruction/source-closed color equation with its own exact asset constants/textures and, where required, retail material selection.'
+              ),
+              'violations':[],
+          }
+          assert unsafe, 'expected current V4 source to contain unsafe heuristic baseColor bindings; audit assumption changed'
+          Path('out/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json').write_text(json.dumps(out,indent=2)+'\n')
+
+          md=[]
+          md.append('# Tower three-NPC material correctness audit')
+          md.append('')
+          md.append('**Current V4 is rejected as a material-correctness export.**')
+          md.append('')
+          md.append(f"Unique visible materials: **{out['unique_visible_material_count']}**")
+          md.append(f"Forbidden heuristic baseColor materials: **{len(unsafe)}**")
+          md.append('')
+          for a in actors:
+              md.append(f"## {a['label']} — `{a['key']}`")
+              md.append('')
+              md.append(f"Visible materials: {a['visible_material_count']}; primitives: {a['visible_primitive_count']}; states: `{a['state_counts']}`")
+              md.append('')
+              md.append('| material | primitives | PS | portable state | preview confidence | scoped Xur proof |')
+              md.append('|---|---:|---|---|---|---|')
+              for r in a['materials']:
+                  md.append(f"| `{r['material']}` | {r['primitive_count']} | `{r['pixel_shader']}` | {r['portable_state']} | {r['preview_base_confidence']} | {'; '.join(Path(x).name for x in r['source_scoped_xur_proof_handlers']) or '—'} |")
+              md.append('')
+          Path('out/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.md').write_text('\n'.join(md)+'\n')
+          print(json.dumps({
+              'status':out['status'],'unique_visible_material_count':out['unique_visible_material_count'],
+              'global_state_counts':out['global_state_counts'],'forbidden_heuristic_binding_count':len(unsafe),
+              'actors':[(x['key'],x['state_counts']) for x in actors],
+          },indent=2))
+          PY
+
+      - name: Publish audit
+        run: |
+          set -euo pipefail
+          sha256sum out/* > out/SHA256SUMS.txt
+          cat out/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-MATERIAL-CORRECTNESS-AUDIT
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 9
