@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY_AUTHORITATIVE",
+  "activity": "810B0002",
+  "source_commit": "d6f67e4a1fd1ea4af9164dbe0c3b0baec9c14892",
+  "workflow_run_id": 34188555443,
+  "workflow_job_id": 101941713822,
+  "release": {
+    "tag": "d1-activity-810b0002-static-common-map-visual-entities-sky-r1",
+    "release_id": 384454640,
+    "glb": {
+      "name": "D1_ACTIVITY_810B0002_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.glb",
+      "bytes": 919265640,
+      "sha256": "837e73bfc8971ba2b70067428b120dcbba3129e6ed3b430f1ec52aa83cbada28"
+    },
+    "final_report": {
+      "name": "FINAL_CROTA_STATIC_COMMON_MAP_VISUAL_ENTITIES_SKY.json",
+      "bytes": 1681,
+      "sha256": "5b4e0574eddf0fff5137fbbeaebd1185b04749cc5c148161d8b3cf13f682d2c5"
+    },
+    "sky_scene_report": {
+      "name": "crota_sky_scene.json",
+      "bytes": 174385,
+      "sha256": "69101e65c1fa42c9b8f7f4ea4931386c501121214259b75b506ba620dfc112af"
+    }
+  },
+  "actions_artifact": {
+    "artifact_id": 10041382471,
+    "zip_bytes": 5980273,
+    "sha256": "7a3b1369bd565b62496fad1235f863d525ed33e223eda97b206982e7181e1a09"
+  },
+  "sky_source": {
+    "resource_occurrences": 5,
+    "unique_collections": 5,
+    "unique_decoded_records": 77,
+    "replayed_record_instances": 77,
+    "unique_sky_model_resources": 49,
+    "unique_entity_models": 49
+  },
+  "sky_scene": {
+    "geometry_variants": 98,
+    "geometry_nodes": 154,
+    "layer_bytes": 6724900,
+    "layer_sha256": "bc786e0d627254264202c9dfca7ba277e1ad342399212db803fe59d4ed8e9e5e",
+    "bounds": [
+      [-46389.85644489294, -34579.64935345176, -46264.9794910704],
+      [51122.10067396952, 52922.484374960215, 46274.7617198671]
+    ]
+  },
+  "final_gltf_counts": {
+    "accessors": 7939,
+    "bufferViews": 8520,
+    "images": 595,
+    "materials": 865,
+    "meshes": 1866,
+    "nodes": 16692,
+    "textures": 595,
+    "scenes": 1,
+    "animations": 0,
+    "skins": 0,
+    "lights": 0
+  },
+  "selection_semantics": "Pinned Charm D1 ActivityMapEntityView iterates every SMapSkyEntResource occurrence and every SkyRecord, constructs System.Numerics.Matrix4x4 directly from the four serialized Vector4 rows, decomposes that matrix and adds the referenced EntityModel. The outer SMapDataEntry transform is not applied. Crota has five carriers pointing to five distinct collections, therefore its 77 decoded SkyRecords are exactly 77 replayed sky instances.",
+  "proof_boundary": "Sky geometry, exact native sky material resources, exact native textures, and all source-owned SkyRecord transforms are represented. No default or time-of-day sky record is selected. Light photometric semantics and rendered decal projection remain outside this checkpoint; unknown map resource classes remain unnamed until source/native consumer proof."
+}
