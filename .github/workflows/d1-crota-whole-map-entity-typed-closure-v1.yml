@@ -1,0 +1,130 @@
+name: D1 Crota whole-map entity typed closure v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-whole-map-entity-typed-closure-v1.yml'
+      - 'tools/d1_remote_entity_dependency_closure.py'
+      - 'tools/d1_remote_entity_dependency_closure_universal.py'
+      - 'tools/d1_activity_entity_model_plan.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  MAP_ENTITY_ARTIFACT_ID: '10037939515'
+  MAP_ENTITY_ARTIFACT_SHA256: '7b84d4ef6ed9c88c5a3970e6d95a22d9bcee8ac8c9d64db5f9ec2b3c31e50383'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact 81-owner seed census and universal catalog
+        run: |
+          set -euo pipefail
+          mkdir -p input/map input/catalog runtime out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${MAP_ENTITY_ARTIFACT_ID}/zip" -o input/map.zip
+          echo "${MAP_ENTITY_ARTIFACT_SHA256}  input/map.zip" | sha256sum --check --strict
+          unzip -q input/map.zip -d input/map
+          test -f input/map/map_entity_seeds.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/map/map_entity_seeds.json'))
+          assert d['status']=='D1_CROTA_WHOLE_ACTIVITY_MAP_ENTITY_SEEDS_EXACT',d
+          assert d['activity']=='810B0002',d
+          assert d['placement_count']==1535 and d['unique_entity_count']==81,d
+          assert d['placement_entity_reference_class_counts']=={'80800734':1535},d
+          assert d['unique_entity_reference_class_counts']=={'80800734':81},d
+          assert len(d['unique_entity_hashes'])==81 and len(set(d['unique_entity_hashes']))==81,d
+          open('out/map_entity_hashes.txt','w').write('\n'.join(d['unique_entity_hashes'])+'\n')
+          print('MAP_ENTITY_SEEDS_ACCEPTED',d['placement_count'],'placements',d['unique_entity_count'],'unique owners')
+          PY
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recursively close all 81 map Entity owners on typed exact paths
+        run: |
+          set -euo pipefail
+          args=()
+          while read -r h; do args+=(--seed "0x${h}"); done < out/map_entity_hashes.txt
+          python tools/d1_remote_entity_dependency_closure_universal.py \
+            "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --max-depth 6 --max-nodes 50000 \
+            -o out/crota_map_entity_typed_closure.json | tee out/entity_closure.stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/crota_map_entity_typed_closure.json'))
+          assert d['status']=='D1_ENTITY_DEPENDENCY_CLOSURE_COMPLETE',d
+          assert len(d['seeds'])==81,d
+          assert not d['violations'],d['violations'][:20]
+          assert not d['truncated'],d
+          roots=[n for n in d['nodes'] if n.get('depth')==0]
+          assert len(roots)==81,len(roots)
+          assert all((n.get('entry') or {}).get('reference','').upper()=='80800734' for n in roots),[(n.get('tag_hash'),(n.get('entry') or {}).get('reference')) for n in roots]
+          print('MAP_ENTITY_TYPED_CLOSURE_COMPLETE','SEEDS',len(d['seeds']),'NODES',d['node_count'],'TYPED_EDGES',d['typed_edge_count'],'ARTICULATED',len(d['articulated_entities']))
+          PY
+
+      - name: Derive source-owned EntityModel plan
+        run: |
+          set -euo pipefail
+          python tools/d1_activity_entity_model_plan.py \
+            --entity-closure out/crota_map_entity_typed_closure.json \
+            -o out/crota_map_entity_model_plan.json
+          python - <<'PY'
+          import json
+          c=json.load(open('out/crota_map_entity_typed_closure.json'))
+          p=json.load(open('out/crota_map_entity_model_plan.json'))
+          assert p['status']=='D1_ACTIVITY_ENTITY_MODEL_PLAN_COMPLETE',p
+          assert not p['violations'],p
+          assert p['source_seed_count']==81,p
+          assert all(str(m['path_class']).startswith('TYPED_EXACT') for m in p['models']),p['models'][:10]
+          summary={
+            'schema_version':1,
+            'status':'D1_CROTA_WHOLE_MAP_ENTITY_TYPED_MODEL_CLOSURE_COMPLETE',
+            'activity':'810B0002',
+            'map_placement_count':1535,
+            'unique_map_entity_count':81,
+            'closure_node_count':c['node_count'],
+            'typed_edge_count':c['typed_edge_count'],
+            'untyped_edge_count':c.get('untyped_edge_count',0),
+            'articulated_entity_count':len(c['articulated_entities']),
+            'typed_entity_model_count':p['model_count'],
+            'articulated_model_count':p['articulated_model_count'],
+            'model_hashes':p['model_hashes'],
+            'policy':'Only exact map-entry Entity owners and TYPED_EXACT recursive edges can create model ownership. UNTYPED_LITERAL edges are retained only as discovery evidence and never promote EntityModels.'
+          }
+          json.dump(summary,open('out/CROTA_WHOLE_MAP_ENTITY_TYPED_MODEL_CLOSURE.json','w'),indent=2)
+          print(json.dumps({k:summary[k] for k in summary if k not in ('model_hashes','policy')},indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-WHOLE-MAP-ENTITY-TYPED-CLOSURE-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
