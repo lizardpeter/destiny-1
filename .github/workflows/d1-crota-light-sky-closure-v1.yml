@@ -47,7 +47,7 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('input/source/map_data_layer_census.json'))
-          assert d['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS_COMPLETE',d.get('status')
+          assert d['status']=='D1_WORLD_MAP_DATA_LAYER_CENSUS',d.get('status')
           assert d['map_data_table_count']==255,d
           assert d['entry_count']==1535,d
           assert d['resource_class_counts'].get('80801BEA')==11,d['resource_class_counts']
