@@ -1,0 +1,212 @@
+name: D1 Crota sky models exact textures v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-sky-model-textures-v1.yml'
+      - 'tools/d1_world_entity_model_visual_dependency_closure.py'
+      - 'tools/d1_entity_model_corpus_export.py'
+      - 'tools/d1_close_world_texture_dependencies_indexed.py'
+      - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LIGHT_SKY_ARTIFACT_ID: '10039016393'
+  LIGHT_SKY_ARTIFACT_SHA256: '8189c6a87da7f374c8a79beac411abb1a3797e777bef314d49d13dde6ce3d5b5'
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative Crota light sky census and current archive identity
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh pygltflib
+          mkdir -p input runtime packages texture_expanded texture_work textures roles reports models textured out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LIGHT_SKY_ARTIFACT_ID}/zip" -o input/sky.zip
+          echo "${LIGHT_SKY_ARTIFACT_SHA256}  input/sky.zip" | sha256sum --check --strict
+          unzip -q input/sky.zip -d input/sky
+          src="$(find input/sky -name crota_map_lighting_census.json -type f -print -quit)"
+          if [ -z "$src" ]; then src="$(find input/sky -name '*lighting*census*.json' -type f -print -quit)"; fi
+          test -n "$src"
+          cp "$src" reports/crota_map_lighting_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/crota_map_lighting_census.json'))
+          assert d['status']=='D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE',d
+          assert d['source_map_data_table_count']==255 and d['source_entry_count']==1535,d
+          assert d['light_record_count']==435 and d['decoded_light_buffer_count']==301,d
+          assert d['sky_record_count']==77,d
+          assert d['decoded_sky_model_resource_count']==77,d
+          models=sorted(set(d['sky_entity_models']))
+          assert len(models)==49,models
+          plan={'schema_version':1,'status':'D1_WORLD_COMMON_MODEL_PLAN_COMPLETE',
+                'source':'Activity 810B0002 SMapSkyEntResource -> SMapSkyEntities -> SkyRecord -> SkyModelResource -> EntityModel',
+                'source_record_count':77,'model_count':49,
+                'models':[{'model':h} for h in models],
+                'policy':'All models are reached from source-owned Crota sky records. No default sky/time-of-day record is selected.'}
+          json.dump(plan,open('reports/crota_sky_model_plan.json','w'),indent=2)
+          open('reports/crota_sky_models.txt','w').write('\n'.join(models)+'\n')
+          print('CROTA_SKY_PLAN_CLOSED',len(models),'models',d['sky_record_count'],'records')
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o reports/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          h=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d
+          assert h==(d.get('source') or {}).get('package_list_sha256'),(h,d.get('source'))
+          print('ARCHIVE_INDEX_ACCEPTED',h)
+          PY
+
+      - name: Recursively close all 49 sky EntityModel stream dependencies
+        run: |
+          set -euo pipefail
+          python tools/d1_world_entity_model_visual_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --model-plan reports/crota_sky_model_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/sky_model_dependency_work \
+            --report reports/crota_sky_model_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/crota_sky_model_dependency_closure.json'))
+          assert d['status']=='D1_WORLD_ENTITY_MODEL_VISUAL_DEPENDENCY_CLOSURE_COMPLETE',d
+          assert d['model_count']==49,d
+          print('CROTA_SKY_MODEL_DEPS_CLOSED',d['model_count'],'models',len(d['final_package_ids']),'families')
+          PY
+
+      - name: Export all source-owned highest-detail sky EntityModels
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t sky < reports/crota_sky_models.txt
+          margs=(); for h in "${sky[@]}"; do margs+=(--model "$h"); done
+          set +e
+          python tools/d1_entity_model_corpus_export.py "${args[@]}" --runtime runtime "${margs[@]}" \
+            --mode most-detailed --out-dir models --summary reports/crota_sky_model_export.json \
+            | tee reports/crota_sky_model_export.stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import collections,json
+          d=json.load(open('reports/crota_sky_model_export.json'))
+          assert d['requested_models']==49,d
+          assert d['failed_models']==0,d
+          rejected=collections.Counter(); external=[]; selected=0;mats=set();highest={0,1,2,3,10}
+          for r in d['models']:
+            assert r.get('ok'),r
+            for mesh in r.get('meshes',[]):
+              for p in mesh.get('parts',[]):
+                if p.get('selected'):
+                  selected+=1
+                  mi=p.get('material_info') or {}; h=str(mi.get('hash') or p.get('material') or '').upper()
+                  if h and h not in {'00000000','FFFFFFFF'}:mats.add(h)
+                for reason in p.get('rejection_reasons',[]):
+                  rejected[reason]+=1
+                  if reason=='external_variant_without_parent_resource' and int(p.get('lod',-1)) in highest:
+                    external.append({'model':r['model'],'mesh':mesh['mesh_index'],'part':p['part_index'],'lod':p['lod'],
+                                     'variant_shader_index':p.get('variant_shader_index'),'inline_material':p.get('material')})
+          out={'status':'D1_CROTA_SKY_VISUAL_MODELS_SOURCE_CLOSED' if not external else 'D1_CROTA_SKY_VISUAL_MODELS_EXTERNAL_VARIANT_FRONTIER',
+               'model_count':49,'selected_part_count':selected,'active_material_count':len(mats),
+               'active_materials':sorted(mats),'zero_geometry_models':d['zero_selected_geometry_models'],
+               'rejection_reason_histogram':dict(rejected),'highest_lod_external_variant_parts':external}
+          json.dump(out,open('reports/crota_sky_visual_closure.json','w'),indent=2)
+          json.dump({'status':'D1_CROTA_SKY_MATERIAL_SELECTOR_EXACT','material_count':len(mats),
+                     'materials':{h:{'visual':True} for h in sorted(mats)}},open('reports/crota_sky_material_selector.json','w'),indent=2)
+          print(json.dumps(out,indent=2))
+          if external: raise SystemExit('highest-detail external sky material variants require parent ownership closure')
+          if d['zero_selected_geometry_models']: raise SystemExit('sky model(s) emitted zero highest-detail geometry')
+          PY
+
+      - name: Close exact sky textures
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime --visual-json reports/crota_sky_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir texture_expanded --work-dir texture_work --out textures \
+            --report reports/crota_sky_texture_dependency_closure.json
+          python tools/d1_world_texture_role_inventory.py textures/material_texture_manifest.json -o roles/crota_sky_texture_roles.json
+          python - <<'PY'
+          import json
+          c=json.load(open('reports/crota_sky_texture_dependency_closure.json'));m=json.load(open('textures/material_texture_manifest.json'))
+          assert c['status']=='D1_INDEXED_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert m['material_decode_errors']==0 and m['texture_errors']==0,m
+          assert m['decoded_texture_tags']==m['unique_texture_tags'],m
+          print('CROTA_SKY_TEXTURES_CLOSED',m['visible_material_count'],'materials',m['unique_texture_tags'],'textures')
+          PY
+
+      - name: Bind exact shader resources to every sky model
+        run: |
+          set -euo pipefail
+          n=0
+          for p in models/*.glb; do
+            base="$(basename "$p" .glb)"
+            python tools/d1_gltf_bind_exact_shader_textures_v3.py \
+              --input-glb "$p" --manifest textures/material_texture_manifest.json \
+              --roles roles/crota_sky_texture_roles.json --texture-dir textures/textures \
+              --include-medium-base --bind-normal-candidates \
+              --out "textured/${base}_SKY_EXACT_TEXTURES.glb" \
+              --report "reports/${base}_sky_texture_bind.json"
+            n=$((n+1))
+          done
+          test "$n" -eq 49
+          python - <<'PY'
+          import glob,json,os
+          rows=[]
+          for p in sorted(glob.glob('reports/*_sky_texture_bind.json')):
+            d=json.load(open(p));assert d['status']=='D1_GLTF_EXACT_SHADER_TEXTURE_RESOURCES_BOUND_ALL_STAGES',d
+            rows.append({'file':os.path.basename(d['output_glb']),'sha256':d['output_sha256'],'bytes':d['output_bytes'],
+                         'materials':d['material_count'],'exact_source_textures':d['exact_source_texture_count']})
+          assert len(rows)==49,len(rows)
+          m=json.load(open('textures/material_texture_manifest.json'))
+          out={'status':'D1_CROTA_SKY_TEXTURED_MODEL_SET_COMPLETE','model_count':49,'sky_record_count':77,
+               'unique_material_count':m['visible_material_count'],'unique_texture_count':m['unique_texture_tags'],'models':rows,
+               'policy':'All models are reached through exact Crota sky resource chains. Highest-detail geometry only. Native shader resource bindings are authoritative; portable PBR slots are previews only.'}
+          json.dump(out,open('reports/CROTA_SKY_TEXTURED_MODEL_SET.json','w'),indent=2)
+          print('CROTA_SKY_MODEL_SET_COMPLETE',len(rows),'models',m['visible_material_count'],'materials',m['unique_texture_tags'],'textures')
+          PY
+
+      - name: Package sky model set
+        if: always()
+        run: |
+          mkdir -p out/models out/reports out/textures
+          cp textured/*.glb out/models/ 2>/dev/null || true
+          cp reports/crota_sky_model_plan.json out/reports/ 2>/dev/null || true
+          cp reports/crota_sky_model_dependency_closure.json out/reports/ 2>/dev/null || true
+          cp reports/crota_sky_model_export.json out/reports/ 2>/dev/null || true
+          cp reports/crota_sky_visual_closure.json out/reports/ 2>/dev/null || true
+          cp reports/crota_sky_texture_dependency_closure.json out/reports/ 2>/dev/null || true
+          cp reports/CROTA_SKY_TEXTURED_MODEL_SET.json out/reports/ 2>/dev/null || true
+          cp reports/crota_map_lighting_census.json out/reports/ 2>/dev/null || true
+          cp textures/material_texture_manifest.json out/reports/ 2>/dev/null || true
+          cp -a textures/textures/. out/textures/ 2>/dev/null || true
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-ALL-SKY-MODELS-EXACT-TEXTURES-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
