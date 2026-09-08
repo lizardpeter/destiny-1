@@ -1,0 +1,29 @@
+name: D1 Crota whole-map canary metrics diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-canary-metrics-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  metrics:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_RUN: '34174544768'
+    steps:
+      - name: Extract whole-map milestones and summaries
+        run: |
+          set -euo pipefail
+          gh run view "$TARGET_RUN" --repo "$GITHUB_REPOSITORY" --log > run.log
+          echo '=== WHOLE ACTIVITY MILESTONES ==='
+          grep -E 'ACTIVITY_ROOTS_CLOSED|STATIC_TARGET_PLAN|BAKED_VISUAL_DEPS_CLOSED|BAKED_TEXTURES_CLOSED|COMMON_MODEL_DEPS_CLOSED|COMMON_SCENE|COMMON_TEXTURES_CLOSED' run.log || true
+          echo '=== BAKED EXPORT SUMMARY BLOCK ==='
+          awk '/"status": "D1_ACTIVITY_BAKED_EXPORT_SET_COMPLETE"/{for(i=NR-2;i<=NR+12;i++) want[i]=1} {lines[NR]=$0} END{for(i=1;i<=NR;i++) if(want[i]) print lines[i]}' run.log || true
+          echo '=== BAKED MERGE FINAL COUNTS ==='
+          grep -E 'final_counts|geometry|nodes|materials|textures|images|animations' run.log | tail -n 120 || true
