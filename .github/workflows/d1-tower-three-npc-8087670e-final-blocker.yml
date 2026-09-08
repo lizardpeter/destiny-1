@@ -1,0 +1,153 @@
+name: D1 Tower three-NPC 8087670E final blocker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_three_npc_ps_8087670e_api15_binding_proof.py'
+      - 'tools/d1_three_npc_ps_8087670e_blend_factor_proof.py'
+      - '.github/workflows/d1-tower-three-npc-8087670e-final-blocker.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  FRONTIER_ARTIFACT_ID: '10069257974'
+  FRONTIER_ARTIFACT_SHA256: 'fe26726d4853c2ad2e2bc46c4a4ae51346e71583420f6e36cc573bb344799f27'
+  STATE_ARTIFACT_ID: '10069795151'
+  STATE_ARTIFACT_SHA256: '5dd54066b4460a49b7bb9106b870f4a1523e2ecd7d83e0932a59fcebbda70830'
+  WAVE7_ARTIFACT_ID: '10075560249'
+  WAVE7_ARTIFACT_SHA256: '99668aeb689f080679fc1477eda08535e192d36105b2603504ad35b5df19e22c'
+  PEER_ARTIFACT_ID: '10075914627'
+  PEER_ARTIFACT_SHA256: '21b878324d8c8821ce7bd329ef2e21143d0bdac6bf265dd100e398aba470a18d'
+  API15_CENSUS_ARTIFACT_ID: '10076185527'
+  API15_CENSUS_ARTIFACT_SHA256: 'fecdcdff9f00c33af44785036825743bdb0c6a0aae8f14f143c0a16515efbd49'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned evidence
+        run: |
+          set -euo pipefail
+          mkdir -p input/frontier input/state input/wave7 input/peer input/api15 reports
+          for spec in \
+            "frontier:${FRONTIER_ARTIFACT_ID}:${FRONTIER_ARTIFACT_SHA256}" \
+            "state:${STATE_ARTIFACT_ID}:${STATE_ARTIFACT_SHA256}" \
+            "wave7:${WAVE7_ARTIFACT_ID}:${WAVE7_ARTIFACT_SHA256}" \
+            "peer:${PEER_ARTIFACT_ID}:${PEER_ARTIFACT_SHA256}" \
+            "api15:${API15_CENSUS_ARTIFACT_ID}:${API15_CENSUS_ARTIFACT_SHA256}"; do
+            IFS=: read -r name aid sha <<< "$spec"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}/zip" -o "input/${name}.zip"
+            echo "${sha}  input/${name}.zip" | sha256sum --check --strict
+            unzip -q "input/${name}.zip" -d "input/${name}"
+          done
+          test -f input/frontier/all_visible_ps_extract.json
+          test -f input/frontier/disasm/PS_8087670E.s
+          test -f input/state/THREE_NPC_MATERIAL_STAGE_STATE.json
+          test -f input/wave7/CUMULATIVE_PS_SEMANTICS_213_OF_218.json
+          test -f input/peer/PS_8087670E_PEER_MATERIAL_CENSUS.json
+          test -f input/api15/PS4_API15_CROSS_CORPUS_CENSUS.json
+      - name: Re-prove exact spilled API15 descriptor and selected vector
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_8087670e_api15_binding_proof.py \
+            --extract-report input/frontier/all_visible_ps_extract.json \
+            --material-state input/state/THREE_NPC_MATERIAL_STAGE_STATE.json \
+            --disassembly input/frontier/disasm/PS_8087670E.s \
+            --out reports/PS_8087670E_API15_BINDING.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_8087670E_API15_BINDING.json'))
+          assert d['status']=='D1_TOWER_PS_8087670E_API15_BINDING_EXACT' and not d['violations'],d
+          assert d['api15_load']['current_api15_vec4_index']==0 and d['api15_load']['current_api15_byte_offset']==0,d
+          assert d['gates']['api15_c0_runtime_value_closed'] is False and d['gates']['runtime_t4_binding_closed'] is False,d
+          print('8087670E_API15_BINDING_EXACT')
+          PY
+      - name: Prove exact API15-W coupled blend-factor dataflow
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_8087670e_blend_factor_proof.py \
+            --material-state input/state/THREE_NPC_MATERIAL_STAGE_STATE.json \
+            --extract-report input/frontier/all_visible_ps_extract.json \
+            --disassembly input/frontier/disasm/PS_8087670E.s \
+            --out reports/PS_8087670E_BLEND_FACTOR.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_8087670E_BLEND_FACTOR.json'))
+          assert d['status']=='D1_TOWER_PS_8087670E_BLEND_FACTOR_EXACT' and not d['violations'],d
+          assert d['api15_reduction']['surviving_component']=='w',d
+          assert d['api15_reduction']['blend_factor']=='f = -API15.c0.w',d
+          assert d['gates']['api15_c0_w_runtime_value_closed'] is False,d
+          assert d['gates']['runtime_t4_binding_closed'] is False,d
+          print('8087670E_COUPLED_BLEND_FACTOR_EXACT')
+          PY
+      - name: Prove runtime-only t4 population and API15 uniqueness frontier
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          peer=json.load(open('input/peer/PS_8087670E_PEER_MATERIAL_CENSUS.json'))
+          api=json.load(open('input/api15/PS4_API15_CROSS_CORPUS_CENSUS.json'))
+          assert peer['status']=='D1_PS_8087670E_PEER_MATERIAL_CENSUS_EXACT',peer
+          assert peer['decode_error_count']==0,peer
+          assert peer['physical_occurrence_count']==70 and peer['unique_material_count']==10,peer
+          assert peer['t4_serialized_occurrence_count']==0 and peer['t4_absent_occurrence_count']==70,peer
+          assert api['status']=='D1_PS4_API15_CENSUS_COMPLETE' and not api['violations'],api
+          assert api['api15_shaders']==['8087670E'] and api['api15_shader_count']==1,api
+          print('8087670E_RUNTIME_ONLY_INPUT_FRONTIER_EXACT','t4_absent',70,'api15_only_shader',api['api15_shaders'][0])
+          PY
+      - name: Emit exact 213-of-218 final blocker checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          prev=json.load(open('input/wave7/CUMULATIVE_PS_SEMANTICS_213_OF_218.json'))
+          bind=json.load(open('reports/PS_8087670E_API15_BINDING.json'))
+          blend=json.load(open('reports/PS_8087670E_BLEND_FACTOR.json'))
+          assert prev['status']=='D1_TOWER_THREE_NPC_BLOCKED_PS_SEMANTICS_213_OF_218_EXACT',prev
+          assert prev['semantic_remaining_visible_primitive_count']==5,prev
+          out={
+            'schema_version':1,
+            'status':'D1_TOWER_THREE_NPC_8087670E_FINAL_RUNTIME_INPUT_BLOCKER_EXACT',
+            'original_blocked_visible_primitive_count':218,
+            'semantic_closed_visible_primitive_count':213,
+            'semantic_remaining_visible_primitive_count':5,
+            'remaining_shader':'8087670E',
+            'remaining_materials':['808766B2','808766B6'],
+            'closed_now':{
+              'api15_descriptor_and_selected_vector':True,
+              'api15_surviving_component':'c0.w',
+              'blend_factor_equation':'f = -API15.c0.w',
+              'same_f_controls_normal_and_surface_alternate_branches':True,
+              't4_is_systematically_not_material_serialized':True,
+              'same_shader_peer_occurrences_checked':70,
+              'same_shader_unique_materials_checked':10,
+              'tested_ps4_shader_corpora_api15_unique_to_8087670e':True,
+            },
+            'unresolved_runtime_inputs':[
+              {'name':'API15.c0.w','role':'native coupled branch blend scalar through f=-API15.c0.w'},
+              {'name':'runtime/default t4','role':'alternate surface RGBA sampled only through the f-enabled branch'},
+            ],
+            'portable_blender_recreation_complete':False,
+            'retail_visual_correctness_complete':False,
+            'policy':'The last five primitives remain fail-closed. No value is invented for API15.c0.w and no texture is substituted for runtime/default t4.'
+          }
+          Path('reports/FINAL_RUNTIME_INPUT_BLOCKER_213_OF_218.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-8087670E-FINAL-RUNTIME-BLOCKER
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
