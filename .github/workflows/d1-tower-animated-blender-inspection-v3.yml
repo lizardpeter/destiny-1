@@ -19,6 +19,7 @@ env:
   LOCATION_VISUAL_ARTIFACT_ID: '10036642428'
   LOCATION_VISUAL_ARTIFACT_SHA256: '1434b66b0c61ea0dc9045615014fa9085066d2f1e6b8ef5803fb36082e4943dc'
   REQUIRED_ACTION_WORKFLOW_HEAD_SHA: '6fb31ef9b01d9a77d3e8dc072517f48a41647d20'
+  ENVIRONMENT_GLBSHA256: '137455a40ada25d85cb98f79ca70a93d44153a424dfbb14d55939d10ba2183a7'
 
 jobs:
   actor_inspection:
@@ -85,7 +86,7 @@ jobs:
           if [ "${{ github.event_name }}" = workflow_run ]; then action_run='${{ github.event.workflow_run.id }}'; action_sha='${{ github.event.workflow_run.head_sha }}'; else action_run="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"; action_sha="$(gh run list --workflow d1-tower-actor-shared-action-family-compatibility.yml --status success --limit 1 --json headSha --jq '.[0].headSha')"; fi
           test -n "$action_run" && test "$action_sha" = "$REQUIRED_ACTION_WORKFLOW_HEAD_SHA"; gh run download "$action_run" -n D1-TOWER-ACTOR-SHARED-NATIVE-D1-ACTION-LIBRARIES -D input/actions
           gh release download d1-tower-baked-common-textured-r7-card-composition -p D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb -D environment --clobber
-          echo 'b131e10ef705e40c3e079b756354d1d2477ebdb2ab0b6a75e67ce75fdb060b57  environment/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb' | sha256sum --check --strict
+          echo "$ENVIRONMENT_GLBSHA256  environment/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb" | sha256sum --check --strict
       - name: Build exact assembly manifest
         run: |
           python tools/d1_tower_actor_production_assembly_manifest_v2.py --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
@@ -97,9 +98,9 @@ jobs:
           set -euo pipefail
           "$BLENDER" --background --factory-startup --python tools/d1_blender_build_tower_animated_inspection_v2.py -- --assembly-manifest reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json --textured-dir input/textured/models --action-dir input/actions/models --environment-glb environment/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb --out-blend out/D1_TOWER_FULL_ANIMATED_INSPECTION.blend --report reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json | tee reports/blender_full_stdout.txt
           python - <<'PY'
-          import json
+          import json, os
           d=json.load(open('reports/D1_TOWER_FULL_ANIMATED_INSPECTION.json')); assert d['status']=='D1_TOWER_ANIMATED_BLENDER_INSPECTION_V2_COMPLETE',d
-          assert d['environment']['sha256']=='b131e10ef705e40c3e079b756354d1d2477ebdb2ab0b6a75e67ce75fdb060b57',d
+          assert d['environment']['sha256']==os.environ['ENVIRONMENT_GLBSHA256'],d
           assert (d['actor_asset_variant_count'],d['shared_action_family_count'],d['scenario_collection_count'],d['placement_alternative_instance_count'])==(29,6,8,547),d
           print('FULL_TOWER_INSPECTION_BLEND_GREEN',d['blend_bytes'],d['blend_sha256'])
           PY
