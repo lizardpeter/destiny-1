@@ -1,0 +1,84 @@
+name: D1 PS4 API15 cross-corpus census
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_ps4_api15_census.py'
+      - 'tools/d1_gcn_constant_buffer_usage_analyze.py'
+      - '.github/workflows/d1-ps4-api15-census.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  FRONTIER_ARTIFACT_ID: '10069257974'
+  FRONTIER_ARTIFACT_SHA256: 'fe26726d4853c2ad2e2bc46c4a4ae51346e71583420f6e36cc573bb344799f27'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact shader corpora
+        run: |
+          set -euo pipefail
+          mkdir -p input/top input/common input/light input/frontier reports
+          top_run="$(gh run list --workflow d1-tower-top-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          common_run="$(gh run list --workflow d1-tower-common-layer-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          light_run="$(gh run list --workflow d1-tower-light-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$top_run" && test -n "$common_run" && test -n "$light_run"
+          gh run download "$top_run" -n d1-tower-top40-pixel-shader-disassembly -D input/top
+          gh run download "$common_run" -n d1-tower-common65-pixel-shader-disassembly -D input/common
+          gh run download "$light_run" -n d1-tower-light-shader-disassembly -D input/light
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FRONTIER_ARTIFACT_ID}/zip" -o input/frontier.zip
+          echo "${FRONTIER_ARTIFACT_SHA256}  input/frontier.zip" | sha256sum --check --strict
+          unzip -q input/frontier.zip -d input/frontier
+          test -f input/top/reports/top40_shader_extract.json && test -d input/top/disasm
+          test -f input/common/reports/common65_shader_extract.json && test -d input/common/disasm
+          test -f input/light/reports/tower_light_shader_report.json && test -d input/light/disasm
+          test -f input/frontier/all_visible_ps_extract.json && test -d input/frontier/disasm
+          printf 'top=%s\ncommon=%s\nlight=%s\nfrontier_artifact=%s\n' "$top_run" "$common_run" "$light_run" "$FRONTIER_ARTIFACT_ID" > reports/upstream.txt
+      - name: Map all native constant-buffer loads
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_constant_buffer_usage_analyze.py --extract-report input/top/reports/top40_shader_extract.json --disasm-dir input/top/disasm --out reports/top.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py --extract-report input/common/reports/common65_shader_extract.json --disasm-dir input/common/disasm --out reports/common.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py --extract-report input/light/reports/tower_light_shader_report.json --disasm-dir input/light/disasm --out reports/light.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py --extract-report input/frontier/all_visible_ps_extract.json --disasm-dir input/frontier/disasm --out reports/frontier.json
+          python - <<'PY'
+          import json
+          for p in ('reports/top.json','reports/common.json','reports/light.json','reports/frontier.json'):
+              d=json.load(open(p)); assert d['status']=='D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED', (p,d.get('violations'))
+          print('API15_INPUT_MAPPING_GREEN')
+          PY
+      - name: Build exact API15 census
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_api15_census.py \
+            --input top=reports/top.json --disasm top=input/top/disasm \
+            --input common=reports/common.json --disasm common=input/common/disasm \
+            --input light=reports/light.json --disasm light=input/light/disasm \
+            --input three_npc_frontier=reports/frontier.json --disasm three_npc_frontier=input/frontier/disasm \
+            --out reports/PS4_API15_CROSS_CORPUS_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS4_API15_CROSS_CORPUS_CENSUS.json'))
+          assert d['status']=='D1_PS4_API15_CENSUS_COMPLETE' and not d['violations'],d
+          assert '8087670E' in d['api15_shaders'],d
+          r=[x for x in d['rows'] if x['shader']=='8087670E' and x['corpus']=='three_npc_frontier']
+          assert len(r)==1 and r[0]['api15_load_count']==1,r
+          print('PS4_API15_CENSUS_GREEN','shaders',d['api15_shader_count'],'dynamic',d['api15_dynamic_load_count'])
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-PS4-API15-CROSS-CORPUS-CENSUS
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
