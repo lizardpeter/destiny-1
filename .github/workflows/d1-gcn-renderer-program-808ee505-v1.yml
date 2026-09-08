@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-gcn-renderer-program-808ee505-v1.yml'
       - 'tools/d1_gcn_renderer_program_ir.py'
+      - 'tools/d1_gcn_terminal_mrt_expr.py'
       - 'tools/d1_gcn_cfg_ir_v2.py'
       - 'tools/d1_gcn_exec_region_ir.py'
       - 'tools/d1_gcn_export_kill_mask.py'
@@ -57,6 +58,7 @@ jobs:
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sopp.cc" -o input/upstream/gem5_sopp.cc
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop3.cc" -o input/upstream/gem5_vop3.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vinterp.cc" -o input/upstream/gem5_vinterp.cc
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
           curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
 
@@ -105,14 +107,16 @@ jobs:
             --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
             -o out/PS_808EE505_LOOP_RECURRENCE.json
 
-      - name: Lift both proven simple EXEC regions
+      - name: Source-prove value semantics and lift simple regions
         run: |
           set -euo pipefail
           python tools/d1_gcn_vop_semantics_proof.py \
             --instr-info input/upstream/AMDGPUInstrInfo.td \
             --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
             --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            --vop2-source input/upstream/gem5_vop2.cc --vop2-revision "$GEM5_REV" \
             --vop3-source input/upstream/gem5_vop3.cc --vop3-revision "$GEM5_REV" \
+            --vinterp-source input/upstream/gem5_vinterp.cc --vinterp-revision "$GEM5_REV" \
             -o out/GCN_VOP_SEMANTICS.json
           for rid in 2 3; do
             python tools/d1_gcn_simple_region_expr.py \
@@ -137,6 +141,27 @@ jobs:
           print('SIMPLE_REGION_DAGS_CLOSED',r2['node_count'],r3['node_count'])
           PY
 
+      - name: Lift exact terminal packed MRT expressions
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_mrt_expr.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --kill-mask out/PS_808EE505_EXPORT_KILL_MASK.json \
+            --vop-semantics out/GCN_VOP_SEMANTICS.json \
+            -o out/PS_808EE505_TERMINAL_MRT_EXPR.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_TERMINAL_MRT_EXPR.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT_PACKED_EXPRESSION_EXACT' and not d['violations'],d
+          e=d['expression']
+          assert e['value_instruction_indices']==[437,438,439,440,441,442,443,445,446,447,448,449,452,453,454]
+          assert e['node_count']==30
+          assert {x['instruction'] for x in e['exports']}=={449,454}
+          assert e['semantic_boundary']['compressed_export_rgba_channel_unpacking']=='WITHHELD_NOT_SOURCE_CLOSED'
+          print('TERMINAL_MRT_DAG_CLOSED',e['node_count'])
+          PY
+
       - name: Join one structured renderer-program IR
         run: |
           set -euo pipefail
@@ -150,25 +175,33 @@ jobs:
             --loop-recurrence out/PS_808EE505_LOOP_RECURRENCE.json \
             --region-expr out/PS_808EE505_REGION2_EXPR_DAG.json \
             --region-expr out/PS_808EE505_REGION3_EXPR_DAG.json \
+            --terminal-mrt-expr out/PS_808EE505_TERMINAL_MRT_EXPR.json \
             -o out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json
           python - <<'PY'
           import json
           d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_PROGRAM.json'))
           assert d['status']=='D1_GCN_RENDERER_PROGRAM_IR_EXACT_PARTIAL' and not d['violations'],d
+          assert d['schema_version']>=2
           p=d['program']; c=p['coverage']; counts=c['primary_resolution_counts']
           assert p['material']=='80D777B6' and p['pixel_shader']=='808EE505'
           assert p['instruction_count']==456 and len(p['instruction_resolution'])==456
           assert [x['texture_index'] for x in p['texture_bindings']]==[0,1,2,3,4,5]
           assert len(p['exact_loop_recurrences'])==1
           assert [x['region_id'] for x in p['exact_simple_region_expressions']]==[2,3]
+          assert p['terminal_mrt_expression']['node_count']==30
           assert len(p['persistent_export_kills'])==1
           assert {x['instruction'] for x in p['native_exports']}=={449,454}
-          assert counts['EXPRESSION_EXACT']>0 and counts['RECURRENCE_EXACT']>0
-          assert counts['CONTROL_EXACT']>0 and counts['INPUT_PROVENANCE_EXACT']>0
-          assert counts['STRUCTURAL_ONLY']>0
+          assert counts=={'CONTROL_EXACT':16,'EXPRESSION_EXACT':82,'INPUT_PROVENANCE_EXACT':19,'RECURRENCE_EXACT':36,'STRUCTURAL_ONLY':303},counts
+          assert c['exact_nonstructural_instruction_count']==153
+          assert len(c['structural_only_spans'])==23
+          assert d['semantic_boundary']['terminal_packed_mrt_expressions']=='EXACT'
+          assert d['semantic_boundary']['compressed_export_rgba_channel_unpacking']=='WITHHELD_NOT_SOURCE_CLOSED'
           assert d['semantic_boundary']['full_mrt_value_expression_tree']=='INCOMPLETE'
           assert d['semantic_boundary']['remaining_straight_line_value_dataflow']=='NEXT_GATE'
-          print('RENDERER_PROGRAM_JOIN_CLOSED',counts,'structural_spans',len(c['structural_only_spans']))
+          for i in [437,438,439,440,441,442,443,445,446,447,448,449,452,453,454]:
+              q=p['instruction_resolution'][i]
+              assert q['primary_resolution']=='EXPRESSION_EXACT' and 'TERMINAL_MRT_PACKED_EXPRESSION_DAG' in q['evidence_tags'],q
+          print('RENDERER_PROGRAM_TERMINAL_JOIN_CLOSED',counts,'structural_spans',len(c['structural_only_spans']))
           PY
 
       - name: Freeze proof payload
