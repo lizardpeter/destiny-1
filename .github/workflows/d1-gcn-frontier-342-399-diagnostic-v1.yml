@@ -35,7 +35,7 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
           echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
           unzip -q input/source.zip -d input/source
-          for f in PS_808EE505.s target_gcn_image_usage.json target_shader_extract.json target_material_stage.json; do
+          for f in PS_808EE505.s target_gcn_image_usage.json target_texture_roles.json target_shader_extract.json target_material_stage.json; do
             test -f "input/source/$f"
           done
 
@@ -60,6 +60,7 @@ jobs:
           import json
           ir=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
           cb=json.load(open('out/PS_808EE505_CBUFFER_PROVENANCE.json'))
+          tr=json.load(open('input/source/target_texture_roles.json'))
           assert ir['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE' and ir['instruction_count']==456
           assert cb['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not cb['violations']
           rows=[]
@@ -74,6 +75,7 @@ jobs:
               'shader':'808EE505','instruction_range':[330,403],
               'rows':rows,'cbuffer_loads':by,
               'image_rows':[x for x in rows if x.get('image') is not None],
+              'texture_roles':tr,
           }
           open('out/PS_808EE505_FRONTIER_330_403.json','w').write(json.dumps(payload,indent=2)+'\n')
           print('FRONTIER_ROWS_BEGIN')
@@ -87,6 +89,9 @@ jobs:
           print('FRONTIER_ROWS_END')
           print('IMAGE_INDICES',[x['index'] for x in rows if x.get('image') is not None])
           print('CBUFFER_INDICES',sorted(by))
+          print('TEXTURE_ROLES_BEGIN')
+          print(json.dumps(tr,sort_keys=True))
+          print('TEXTURE_ROLES_END')
           PY
           sha256sum out/*.json > out/SHA256SUMS.txt
 
