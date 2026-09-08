@@ -1,0 +1,116 @@
+name: D1 Tower per-cell render previews
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_gltf_split_tower_cells.py'
+      - 'tools/d1_blender_render_tower_cell_preview.py'
+      - '.github/workflows/d1-tower-cell-render-previews.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa'
+  LIBGL_ALWAYS_SOFTWARE: '1'
+
+jobs:
+  render_cells:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact ten-cell Tower GLB
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input cells out
+          gh release download d1-tower-ten-cell-r1 -p D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb -D input --clobber
+          echo "$SOURCE_SHA256  input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb" | sha256sum --check --strict
+          ls -lh input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb
+
+      - name: Split four representative baked-static cells
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_split_tower_cells.py \
+            input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --out-dir cells --cell 0 --cell 2 --cell 3 --cell 4 \
+            --report out/cell_split_report.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('out/cell_split_report.json')); assert d['status']=='D1_TOWER_COMPACT_CELL_SPLIT_COMPLETE',d
+          assert [x['cell'] for x in d['cells']]==[0,2,3,4],d
+          for x in d['cells']:
+              p='cells/'+x['file']; assert os.path.getsize(p)==x['bytes'] and x['nodes']>0 and x['meshes']>0,x
+          print('CELL_SPLIT_GREEN',[(x['cell'],x['bytes'],x['nodes'],x['meshes']) for x in d['cells']])
+          PY
+
+      - name: Install Blender 5.2.1 and Mesa software OpenGL
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee out/blender_version.txt; grep -q 'Blender 5.2.1' out/blender_version.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb xauth libegl1 libgl1 libgl1-mesa-dri libglu1-mesa mesa-utils
+          xvfb-run -a glxinfo -B | tee out/software_gl.txt
+
+      - name: Render cells independently
+        run: |
+          set -u
+          success=0
+          : > out/render_status.tsv
+          for c in 00 02 03 04; do
+            echo "=== RENDER CELL $c ==="
+            if timeout 25m xvfb-run -a "$BLENDER" --background --factory-startup \
+              --python tools/d1_blender_render_tower_cell_preview.py -- \
+              --glb "cells/TOWER_CELL_${c}.glb" --out-dir out --label "cell${c}" --width 960 --height 540 \
+              > "out/cell${c}_stdout.txt" 2>&1; then
+              echo -e "cell${c}\tsuccess" >> out/render_status.tsv
+              success=$((success+1))
+            else
+              rc=$?
+              echo -e "cell${c}\tfailure\t${rc}" >> out/render_status.tsv
+              echo "cell${c} failed rc=$rc" >&2
+            fi
+            rm -f "cells/TOWER_CELL_${c}.glb"
+          done
+          echo "RENDER_SUCCESS_COUNT=$success" | tee out/render_summary.txt
+          test "$success" -ge 2
+
+      - name: Validate and build contact sheet
+        if: always()
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow
+          python - <<'PY'
+          import glob,json,os
+          from pathlib import Path
+          from PIL import Image,ImageOps,ImageDraw
+          pngs=sorted(Path('out').glob('cell*_*.png'))
+          print('PNG_COUNT',len(pngs),[(p.name,p.stat().st_size) for p in pngs])
+          for p in pngs:
+              if p.stat().st_size<=4000: raise SystemExit(f'preview too small: {p}')
+          if pngs:
+              w,h=480,270; cols=2; rows=(len(pngs)+1)//2
+              cv=Image.new('RGB',(w*cols,h*rows),(16,16,16)); d=ImageDraw.Draw(cv)
+              for i,p in enumerate(pngs):
+                  im=ImageOps.fit(Image.open(p).convert('RGB'),(w,h),method=Image.Resampling.LANCZOS); x=(i%2)*w; y=(i//2)*h; cv.paste(im,(x,y)); d.rectangle((x+8,y+8,x+190,y+34),fill=(0,0,0)); d.text((x+14,y+13),p.stem,fill=(255,255,255))
+              cv.save('out/00_tower_cells_contact_sheet.jpg',quality=92,optimize=True)
+          reports=sorted(Path('out').glob('cell*_report.json'))
+          index={'status':'D1_TOWER_PER_CELL_RENDER_PREVIEWS','successful_cell_reports':[json.load(open(p)) for p in reports],'png_count':len(pngs),'source_ten_cell_sha256':os.environ['SOURCE_SHA256'],'policy':'Per-cell diagnostic views from exact ten-cell textured regression GLB. Not retail camera or lighting.'}
+          Path('out/PREVIEW_INDEX.json').write_text(json.dumps(index,indent=2)+'\n')
+          PY
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-PER-CELL-RENDER-PREVIEWS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
