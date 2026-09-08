@@ -37,9 +37,12 @@ jobs:
           echo "${SOURCE_BLEND_SHA256}  ${blend}" | sha256sum --check --strict
           cp "$blend" out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend
 
-      - name: Install Blender 5.2.1 LTS
+      - name: Install Blender 5.2.1 LTS and headless Eevee runtime
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libegl1
+          ldconfig -p | grep -F 'libEGL.so.1'
           BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
           "$BLENDER" --version | tee reports/blender_version.txt
           grep -q 'Blender 5.2.1' reports/blender_version.txt
