@@ -1,0 +1,147 @@
+name: D1 GCN straight-line 404-435 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-straightline-404-435-808ee505-v1.yml'
+      - 'tools/d1_gcn_straightline_404_435_expr.py'
+      - 'tools/d1_gcn_vop_semantics_proof.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cbuffer_provenance.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+  GEM5_REV: 'f5c5a6e390f55dd5984977815bf9d0bd05da6945'
+  LLVM_VOP_REV: '16bcb2727f98f366ca9e28b98b83654cdb150b89'
+  LLVM_MOD_REV: '841d4ad6b315ab92c2a37e6484a3b7963b50060c'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact D1 evidence and immutable ISA sources
+        run: |
+          set -euo pipefail
+          mkdir -p input/source input/upstream out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for f in PS_808EE505.s target_gcn_image_usage.json target_shader_extract.json target_material_stage.json; do
+            test -f "input/source/$f"
+          done
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/AMDGPUInstrInfo.td" -o input/upstream/AMDGPUInstrInfo.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_VOP_REV}/llvm/lib/Target/AMDGPU/SIInstructions.td" -o input/upstream/SIInstructions.td
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/llvm/llvm-project/${LLVM_MOD_REV}/llvm/docs/AMDGPUModifierSyntax.rst" -o input/upstream/AMDGPUModifierSyntax.rst
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop1.cc" -o input/upstream/gem5_vop1.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop2.cc" -o input/upstream/gem5_vop2.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/vop3.cc" -o input/upstream/gem5_vop3.cc
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/gem5/gem5/${GEM5_REV}/src/arch/amdgpu/vega/insts/sop1.cc" -o input/upstream/gem5_sop1.cc
+
+      - name: Rebuild exact structural and material provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cbuffer_provenance.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --image-usage input/source/target_gcn_image_usage.json \
+            --shader-extract input/source/target_shader_extract.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_CBUFFER_PROVENANCE.json
+          python - <<'PY'
+          import json
+          ir=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
+          cb=json.load(open('out/PS_808EE505_CBUFFER_PROVENANCE.json'))
+          assert ir['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE' and ir['instruction_count']==456
+          assert cb['status']=='D1_GCN_CBUFFER_PROVENANCE_EXACT' and not cb['violations']
+          by={x['instruction']:x for x in cb['loads']}
+          assert [x['value'] for x in by[400]['material_values']]==[0.75,0.25,3.0,0.0]
+          assert [x['value'] for x in by[402]['material_values']]==[0.75]
+          assert [x['value'] for x in by[403]['material_values']]==[1.0,1.0]
+          print('STRAIGHTLINE_PREREQUISITES_CLOSED')
+          PY
+
+      - name: Source-prove all block operations
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vop_semantics_proof.py \
+            --instr-info input/upstream/AMDGPUInstrInfo.td \
+            --modifier-syntax input/upstream/AMDGPUModifierSyntax.rst \
+            --instr-revision "$LLVM_VOP_REV" --modifier-revision "$LLVM_MOD_REV" \
+            --vop1-source input/upstream/gem5_vop1.cc --vop1-revision "$GEM5_REV" \
+            --vop2-source input/upstream/gem5_vop2.cc --vop2-revision "$GEM5_REV" \
+            --vop3-source input/upstream/gem5_vop3.cc --vop3-revision "$GEM5_REV" \
+            --sop1-source input/upstream/gem5_sop1.cc --sop1-revision "$GEM5_REV" \
+            --si-source input/upstream/SIInstructions.td --si-revision "$LLVM_VOP_REV" \
+            -o out/GCN_VOP_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/GCN_VOP_SEMANTICS.json'))
+          assert d['status']=='D1_GCN_VOP_SEMANTICS_SOURCE_PROVEN' and not d['violations'] and d['schema_version']>=4,d
+          s=d['semantics']
+          expected={
+            'v_add_f32':'ADD','v_log_f32':'LOG2','v_mul_legacy_f32':'LEGACY_MUL_DX9',
+            'v_mul_f32':'MUL','v_mac_legacy_f32':'LEGACY_MAC_DX9','v_exp_f32':'EXP2',
+            'v_mov_b32':'BITWISE_MOV32','v_mac_f32':'MAC','s_mov_b32':'BITWISE_MOV32',
+            'v_rsq_clamp_f32':'RSQ_CLAMP_MAXFLOAT','v_mad_f32':'MAD','v_madak_f32':'MADAK'
+          }
+          for k,v in expected.items():assert s[k]['operation']==v,(k,s.get(k))
+          assert s['v_mul_legacy_f32']['zero_rule']=='0.0*x = 0.0'
+          assert s['v_mac_legacy_f32']['legacy_product']=='AMDGPUfmul_legacy'
+          print('STRAIGHTLINE_SOURCE_SEMANTICS_CLOSED',sorted(expected))
+          PY
+
+      - name: Lift exact acyclic block
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_straightline_404_435_expr.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --cbuffer-provenance out/PS_808EE505_CBUFFER_PROVENANCE.json \
+            --vop-semantics out/GCN_VOP_SEMANTICS.json \
+            -o out/PS_808EE505_STRAIGHTLINE_404_435_EXPR.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_STRAIGHTLINE_404_435_EXPR.json'))
+          assert d['status']=='D1_GCN_STRAIGHTLINE_404_435_EXPRESSION_EXACT' and not d['violations'],d
+          e=d['expression']
+          assert e['instruction_range']==[404,435]
+          assert len(e['value_instruction_indices'])==30
+          assert e['value_instruction_indices']==[i for i in range(404,436) if i not in (416,418)]
+          assert [x['instruction'] for x in e['non_value_anchors']]==[416,418]
+          assert len(e['nodes'])==e['node_count']
+          ops={n['op'] for n in e['nodes']}
+          for op in ['ADD','CLAMP_0_1','LOG2','LEGACY_MUL_DX9','LEGACY_MAC_DX9','EXP2','MAC','RSQ_CLAMP_MAXFLOAT','MAD','MADAK']:
+            assert op in ops,op
+          assert e['semantic_boundary']['legacy_multiply_and_mac']=='EXACT_DISTINCT_DX9_OPERATORS'
+          assert e['semantic_boundary']['pre_404_vgpr_values']=='EXPLICIT_SYMBOLIC_INPUTS'
+          print('STRAIGHTLINE_404_435_CLOSED','nodes',e['node_count'],'inputs',len(e['input_roots']))
+          PY
+
+      - name: Freeze proof payload
+        run: |
+          set -euo pipefail
+          cp input/source/target_material_stage.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-808EE505-STRAIGHTLINE-404-435-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
