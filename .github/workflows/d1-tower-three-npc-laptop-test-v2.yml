@@ -1,4 +1,5 @@
 name: D1 Tower three-NPC laptop Blender test v2
+# trigger: upright-axis + conservative-material + assigned-animation verification
 
 on:
   workflow_dispatch:
