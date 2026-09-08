@@ -198,3 +198,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# Trigger touch: all-ten composite workflow is now wired to this planner.
