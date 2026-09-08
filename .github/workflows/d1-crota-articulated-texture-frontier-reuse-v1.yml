@@ -2,10 +2,6 @@ name: D1 Crota articulated texture frontier selective reuse v1
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/d1-crota-articulated-texture-frontier-reuse-v1.yml'
-      - 'tools/d1_checkpoint_manifest.py'
 
 permissions:
   contents: read
