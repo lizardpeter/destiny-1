@@ -2,6 +2,11 @@ name: D1 Tower animated Blender inspection v3
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_tower_actor_production_assembly_manifest_v2.py'
+      - '.github/workflows/d1-tower-animated-blender-inspection-v3.yml'
   workflow_run:
     workflows: ['D1 Tower actor shared action family compatibility']
     types: [completed]
@@ -17,7 +22,7 @@ env:
 
 jobs:
   actor_inspection:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_sha == '6fb31ef9b01d9a77d3e8dc072517f48a41647d20')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_sha == '6fb31ef9b01d9a77d3e8dc072517f48a41647d20')
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env: {GH_TOKEN: '${{ github.token }}'}
@@ -37,7 +42,7 @@ jobs:
           test "$(find input/textured/models -maxdepth 1 -name '*_TEXTURED.glb' -type f | wc -l)" = 30; test "$(find input/actions/models -maxdepth 1 -name '*_ALL_ACTIONS_NATIVE_D1.glb' -type f | wc -l)" = 6
       - name: Build exact assembly manifest
         run: |
-          python tools/d1_tower_actor_production_assembly_manifest.py --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+          python tools/d1_tower_actor_production_assembly_manifest_v2.py --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
           python - <<'PY'
           import json
           d=json.load(open('reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json')); assert d['status']=='D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST_COMPLETE' and not d['violations'],d
@@ -62,7 +67,7 @@ jobs:
         with: {name: D1-TOWER-ANIMATED-ACTORS-BLENDER-INSPECTION-V3, path: out/, retention-days: 90, if-no-files-found: error, compression-level: 0}
 
   full_tower_inspection:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_sha == '6fb31ef9b01d9a77d3e8dc072517f48a41647d20')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_sha == '6fb31ef9b01d9a77d3e8dc072517f48a41647d20')
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env: {GH_TOKEN: '${{ github.token }}'}
@@ -83,7 +88,7 @@ jobs:
           echo 'b131e10ef705e40c3e079b756354d1d2477ebdb2ab0b6a75e67ce75fdb060b57  environment/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_CARD_FIXED.glb' | sha256sum --check --strict
       - name: Build exact assembly manifest
         run: |
-          python tools/d1_tower_actor_production_assembly_manifest.py --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
+          python tools/d1_tower_actor_production_assembly_manifest_v2.py --location-visual-join input/location/D1_TOWER_ACTOR_LOCATION_VISUAL_SIGNATURE_JOIN_V2.json --action-compatibility input/actions/reports/TOWER_ACTOR_SHARED_ACTION_FAMILY_COMPATIBILITY.json --visual-checkpoint evidence/d1_tower_actor_production_visual_checkpoint_2026-09-08.json -o reports/D1_TOWER_ACTOR_PRODUCTION_ASSEMBLY_MANIFEST.json
       - name: Install Blender 5.2.1 LTS
         run: |
           BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"; "$BLENDER" --version | tee reports/blender_version.txt; grep -q 'Blender 5.2.1' reports/blender_version.txt
