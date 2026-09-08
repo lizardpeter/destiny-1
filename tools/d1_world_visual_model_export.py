@@ -4,22 +4,22 @@
 Geometry decoding is delegated to the established articulated-model decoder, but
 selection is deliberately different from the specialized articulated stage-0 path.
 Pinned Charm EntityModel.Load(MostDetailed) considers highest-detail LOD categories
-across the complete part array; StagePartOffsets only assign GroupIndex. For a
+across the complete part array. GetPartsOfDetailLevel renumbers those selected parts
+densely before GenerateParts uses StagePartOffsets to assign GroupIndex. For a
 portable Blender-facing world preview we therefore build the same source-complete
-highest-detail *visual union* already validated by the Crota-body adapter:
+highest-detail visual union already validated by the Crota-body adapter:
 
-* inspect every source part in every StagePartOffsets group;
-* retain only Charm highest-detail LOD categories {0,1,2,3,10};
+* inspect every source part and retain Charm highest-detail LODs {0,1,2,3,10};
+* assign GroupIndex from the selected-part ordinal exactly as Charm does;
 * resolve each Material through the exact owning EntityResource;
 * group exact duplicate geometry ranges by (mesh,index_offset,index_count,primitive);
 * emit the first source-ordered candidate once, while preserving every later render
-  variant, material, group and part index losslessly in the report.
+  variant, material, group and source part index losslessly in the report.
 
-This prevents duplicate render variants from being drawn on top of one another in a
-portable GLB without pretending the alternatives do not exist. It also avoids the
-incorrect old assumption that StagePartOffsets[0:1] is universally the visible group.
-Specialized Guardian/Crota articulated adapters may still impose independently proven
-stage selection; this generic map-entity exporter does not change them.
+StagePartOffsets is a fixed 30-short D1 field. Boundaries may extend beyond the count
+of selected or serialized parts; Charm populates a dictionary across those intervals
+and only queries the compact selected ordinals that actually exist. We preserve that
+behavior rather than clamping or rejecting unused high boundaries.
 
 Identity remains keyed by ``(EntityModel, owning EntityResource)`` so the same model
 may safely appear under distinct external material maps in another Activity.
@@ -77,18 +77,26 @@ def binding_pairs(doc: dict) -> dict[tuple[str, str], dict]:
     return out
 
 
-def _group_map(offsets: list[int], part_count: int) -> tuple[list[int], list[dict], dict[int, int]]:
-    """Reproduce pinned Charm EntityModel.GenerateParts GroupIndex construction."""
+def _group_map(offsets: list[int]) -> tuple[list[int], list[dict], dict[int, int]]:
+    """Reproduce pinned Charm GenerateParts StagePartOffsets dictionary exactly.
+
+    D1 StagePartOffsets is a fixed 30-short field. Charm sorts its unique values and
+    writes partGroups[j]=group for every integer in each half-open interval, with no
+    comparison to Parts.Count. GenerateParts later looks up only the dense selected
+    ordinals produced by GetPartsOfDetailLevel.
+    """
     bounds = sorted(set(int(x) for x in offsets))
+    if len(bounds) < 2:
+        raise ValueError("StagePartOffsets has fewer than two unique boundaries")
     intervals = []
     out: dict[int, int] = {}
-    for gi in range(max(0, len(bounds) - 1)):
+    for gi in range(len(bounds) - 1):
         start, end = bounds[gi], bounds[gi + 1]
-        if start < 0 or end < start or end > part_count:
-            raise ValueError(f"invalid StagePartOffsets interval [{start},{end})/{part_count}")
+        if end < start:
+            raise ValueError(f"non-monotonic StagePartOffsets interval [{start},{end})")
         intervals.append({"group_index": gi, "start": start, "end": end})
-        for pi in range(start, end):
-            out[pi] = gi
+        for selected_ordinal in range(start, end):
+            out[selected_ordinal] = gi
     return bounds, intervals, out
 
 
@@ -107,37 +115,47 @@ def visual_union_ranges(model: dict, binding: dict) -> tuple[list[dict], list[di
             raise ValueError(f"mesh {mi}: no material binding")
         bparts = {int(x["part_index"]): x for x in bm.get("parts", [])}
         offsets = [int(x) for x in (mesh.get("stage_part_offsets_source_derived") or [])]
-        if len(offsets) < 2:
-            raise ValueError(f"mesh {mi}: missing D1 StagePartOffsets boundaries")
-        bounds, intervals, group_for_part = _group_map(offsets, len(mesh["parts"]))
+        if len(offsets) != 30:
+            raise ValueError(f"mesh {mi}: D1 StagePartOffsets count {len(offsets)} != 30")
+        bounds, intervals, group_for_selected = _group_map(offsets)
 
         grouped: dict[tuple[int, int, int], list[dict]] = defaultdict(list)
         explicit_null_parts = []
         highest_parts = []
+        selected_ordinals = []
+        selected_ordinal = 0
         for pi, p in enumerate(mesh["parts"]):
             lod = int(p["lod"])
             if lod not in HIGHEST_LODS:
                 continue
+            ordinal = selected_ordinal
+            selected_ordinal += 1
             highest_parts.append(pi)
-            if pi not in group_for_part:
-                # Charm GenerateParts indexes partGroups[i] for every selected part;
-                # absence is therefore malformed rather than an invitation to guess.
-                raise ValueError(f"mesh {mi} part {pi}: highest-detail part has no StagePartOffsets GroupIndex")
+            selected_ordinals.append({'source_part_index': pi, 'selected_ordinal': ordinal})
+            if ordinal not in group_for_selected:
+                # This is the actual source-equivalent failure: Charm would throw a
+                # KeyNotFoundException at partGroups[i] for this selected ordinal.
+                raise ValueError(
+                    f"mesh {mi} source part {pi}: selected ordinal {ordinal} has no StagePartOffsets GroupIndex"
+                )
+            group_index = group_for_selected[ordinal]
             bp = bparts.get(pi)
             if bp is None:
                 raise ValueError(f"mesh {mi} part {pi}: missing exact material binding")
             sm = bp.get("selected_material") or {}
             mh = norm(sm.get("hash", "FFFFFFFF"))
             if mh in NULLS or bp.get("selection_status") == "EXPLICIT_NULL_MATERIAL":
-                # Pinned ROI EntityModel.GenerateParts skips a null Material.
-                explicit_null_parts.append(pi)
+                # Charm increments the dense selected ordinal before GenerateParts
+                # rejects null material, so null parts still consume an ordinal.
+                explicit_null_parts.append({'source_part_index': pi, 'selected_ordinal': ordinal, 'group_index': group_index})
                 continue
             if not sm.get("class_matches"):
                 raise ValueError(f"mesh {mi} part {pi}: selected non-null material unresolved {mh}")
             key = (int(p["index_offset"]), int(p["index_count"]), int(p["primitive_type"]))
             grouped[key].append({
                 "part_index": pi,
-                "group_index": group_for_part[pi],
+                "selected_ordinal": ordinal,
+                "group_index": group_index,
                 "lod": lod,
                 "material": mh,
                 "gear_dye_change_color_index": int(p["gear_dye_change_color_index"]),
@@ -148,9 +166,9 @@ def visual_union_ranges(model: dict, binding: dict) -> tuple[list[dict], list[di
 
         duplicate_variant_count = 0
         for (off, count, prim), rows in sorted(
-            grouped.items(), key=lambda kv: min(x["part_index"] for x in kv[1])
+            grouped.items(), key=lambda kv: min(x["selected_ordinal"] for x in kv[1])
         ):
-            rows = sorted(rows, key=lambda x: x["part_index"])
+            rows = sorted(rows, key=lambda x: x["selected_ordinal"])
             chosen = rows[0]
             duplicate_variant_count += max(0, len(rows) - 1)
             selected.append({
@@ -163,10 +181,12 @@ def visual_union_ranges(model: dict, binding: dict) -> tuple[list[dict], list[di
                 "lod_values": [chosen["lod"]],
                 "dye_indices": [chosen["gear_dye_change_color_index"]],
                 "parts": [chosen],
+                "selected_ordinal": chosen["selected_ordinal"],
                 "group_index": chosen["group_index"],
                 "visual_union_source_first_part": chosen["part_index"],
                 "duplicate_render_variants": rows[1:],
                 "all_candidate_part_indices": [x["part_index"] for x in rows],
+                "all_candidate_selected_ordinals": [x["selected_ordinal"] for x in rows],
                 "all_candidate_group_indices": [x["group_index"] for x in rows],
                 "all_candidate_materials": [x["material"] for x in rows],
                 "all_candidate_lods": [x["lod"] for x in rows],
@@ -174,16 +194,18 @@ def visual_union_ranges(model: dict, binding: dict) -> tuple[list[dict], list[di
 
         mesh_summaries.append({
             "mesh_index": mi,
-            "part_count": len(mesh["parts"]),
+            "serialized_part_count": len(mesh["parts"]),
             "stage_part_offsets": offsets,
             "stage_bounds_unique_sorted": bounds,
             "stage_intervals": intervals,
-            "highest_detail_part_count": len(highest_parts),
-            "highest_detail_part_indices": highest_parts,
-            "explicit_null_highest_part_indices": explicit_null_parts,
+            "highest_detail_selected_count": selected_ordinal,
+            "highest_detail_source_part_indices": highest_parts,
+            "selected_ordinal_map": selected_ordinals,
+            "explicit_null_highest_parts": explicit_null_parts,
             "unique_highest_detail_range_count": len(grouped),
             "duplicate_highest_detail_render_variant_count": duplicate_variant_count,
             "selected_range_count": len(grouped),
+            "group_index_semantics": "Charm dense GetPartsOfDetailLevel selected ordinal -> GenerateParts partGroups[selected_ordinal]",
         })
     return selected, mesh_summaries
 
@@ -215,9 +237,6 @@ def main() -> int:
         shutil.rmtree(work)
     work.mkdir(parents=True)
 
-    # export_one performs geometry decoding and reads selected_ranges as a module
-    # global at call time. Rebind it only inside this dedicated process so the
-    # specialized articulated CLI/default remains unchanged in every other workflow.
     original_selector = articulated.selected_ranges
     articulated.selected_ranges = visual_union_ranges
     rows = []
@@ -234,20 +253,21 @@ def main() -> int:
                 dst_json = a.out_dir / f"{pair_id}.json"
                 shutil.move(str(src_glb), str(dst_glb))
                 legacy_count = rep.pop("stage0_selected_range_count", rep.get("geometry_count", 0))
-                rep["schema_version"] = 3
+                rep["schema_version"] = 4
                 rep["status"] = "D1_WORLD_VISUAL_MODEL_PAIR_EXPORT_COMPLETE"
                 rep["parent_resource"] = parent
                 rep["pair_id"] = pair_id
                 rep["visual_union_range_count"] = legacy_count
-                rep["selection_mode"] = "CHARM_MOST_DETAILED_ALL_GROUPS_PORTABLE_VISUAL_UNION"
+                rep["selection_mode"] = "CHARM_MOST_DETAILED_DENSE_SELECTED_ORDINAL_GROUPS_PORTABLE_VISUAL_UNION"
                 rep["glb"] = str(dst_glb)
                 rep["glb_bytes"] = dst_glb.stat().st_size
                 rep["selection_policy"] = (
-                    "Pinned Charm D1 EntityModel.Load(MostDetailed) highest LOD categories are considered across every "
-                    "StagePartOffsets GroupIndex. Exact duplicate geometry ranges are emitted once using their first "
-                    "source-ordered candidate for the portable Blender visual union; all later material/group variants "
-                    "remain losslessly serialized in duplicate_render_variants. Owning EntityResource identity is part "
-                    "of the export key. No model, parent, LOD category, material or geometry range is inferred."
+                    "Pinned Charm D1 GetPartsOfDetailLevel(MostDetailed) selects LOD categories then densely renumbers "
+                    "the selected parts. GenerateParts assigns GroupIndex by looking up that compact ordinal in the "
+                    "dictionary generated from all fixed StagePartOffsets boundaries. Exact duplicate geometry ranges "
+                    "are emitted once using their first selected-ordinal candidate for the portable Blender visual union; "
+                    "all later material/group variants remain serialized in duplicate_render_variants. Owning "
+                    "EntityResource identity is part of the export key."
                 )
                 dst_json.write_text(json.dumps(rep, indent=2) + "\n", encoding="utf-8")
                 if src_json.exists():
@@ -262,7 +282,7 @@ def main() -> int:
         shutil.rmtree(work)
     active = sorted({h for row in rows for h in row.get("active_materials", [])})
     out = {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": (
             "D1_WORLD_VISUAL_MODEL_PAIR_SET_COMPLETE"
             if not errors and len(rows) == len(pairs)
@@ -286,10 +306,10 @@ def main() -> int:
         "unplaced_extra_binding_pairs": [list(x) for x in extra],
         "errors": errors,
         "policy": (
-            "Only exact model-parent pairs from the completed visual entity plan are exported. The portable visual set "
-            "uses the source-complete Charm-highest-detail union across every GroupIndex, while duplicate render variants "
-            "of an identical geometry range are preserved in reports instead of drawn simultaneously. Pair identity "
-            "prevents external material maps from being cross-wired when models are reused."
+            "Only exact model-parent pairs from the completed visual entity plan are exported. Charm's D1 "
+            "MostDetailed selected-part compaction and subsequent StagePartOffsets GroupIndex lookup are reproduced "
+            "exactly. Duplicate render variants of an identical geometry range remain in evidence rather than being "
+            "drawn simultaneously. Pair identity prevents external material maps from being cross-wired."
         ),
     }
     a.summary.parent.mkdir(parents=True, exist_ok=True)
