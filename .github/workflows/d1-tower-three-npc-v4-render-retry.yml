@@ -1,0 +1,108 @@
+name: D1 Tower three-NPC V4 render-only canary retry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_blender_render_tower_three_npc_test_v4.py'
+      - 'tools/d1_blender_validate_tower_three_npc_test_v4.py'
+      - '.github/workflows/d1-tower-three-npc-v4-render-retry.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  SOURCE_ARTIFACT_ID: '10067837630'
+  SOURCE_ARTIFACT_ZIP_SHA256: '46eee997a05f2d87858b1849b94fa52f109adc3cf82d6b53871c916696b6c0be'
+  SOURCE_BLEND_SHA256: 'd327ab1e954b0ad310b1a77be7c3b0c806aa1f800349b6f4d349bc7b816a2923'
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover already-proven V4 blend only
+        run: |
+          set -euo pipefail
+          mkdir -p input out/renders reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          blend="$(find input/source -type f -name 'D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend' -print -quit)"
+          test -n "$blend"
+          echo "${SOURCE_BLEND_SHA256}  ${blend}" | sha256sum --check --strict
+          cp "$blend" out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend
+
+      - name: Install Blender 5.2.1 LTS
+        run: |
+          set -euo pipefail
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt
+          grep -q 'Blender 5.2.1' reports/blender_version.txt
+
+      - name: Reopen and validate source blend again
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend \
+            --python tools/d1_blender_validate_tower_three_npc_test_v4.py -- --report reports/V4_REOPEN_RENDER_RETRY.json \
+            | tee reports/v4_reopen_render_retry_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/V4_REOPEN_RENDER_RETRY.json'))
+          assert not d['violations'],d
+          assert d['armature_count']==3 and len(d['rows'])==3,d
+          assert d['packed_image_count']==88,d
+          assert d['material_stats']['material_with_image_texture_count']==84,d
+          assert all(x['mesh_gate']['deformed_mesh_sane'] for x in d['rows']),d
+          print('V4_RENDER_RETRY_REOPEN_GREEN')
+          PY
+
+      - name: Render rest and selected-animation canaries
+        run: |
+          set -euo pipefail
+          "$BLENDER" --background out/D1_TOWER_3_NPC_LAPTOP_TEST_V4_TEXTURED_TARGET_NATIVE.blend \
+            --python tools/d1_blender_render_tower_three_npc_test_v4.py -- --out-dir out/renders \
+            | tee reports/v4_render_retry_stdout.txt
+          test -s out/renders/V4_REST.png
+          test -s out/renders/V4_SELECTED_MID.png
+          file out/renders/V4_REST.png out/renders/V4_SELECTED_MID.png
+          python - <<'PY'
+          import json,os,struct
+          from pathlib import Path
+          def png_dims(p):
+              b=Path(p).read_bytes()[:24]
+              assert b[:8]==b'\x89PNG\r\n\x1a\n' and b[12:16]==b'IHDR',p
+              return struct.unpack('>II',b[16:24])
+          rows=[]
+          for p in ('out/renders/V4_REST.png','out/renders/V4_SELECTED_MID.png'):
+              d=png_dims(p); assert d==(1280,720),(p,d)
+              rows.append({'path':p,'bytes':Path(p).stat().st_size,'dimensions':list(d)})
+          prov={
+              'schema_version':1,
+              'status':'D1_TOWER_THREE_NPC_V4_RENDER_CANARIES_COMPLETE',
+              'source_artifact_id':os.environ['SOURCE_ARTIFACT_ID'],
+              'source_artifact_zip_sha256':os.environ['SOURCE_ARTIFACT_ZIP_SHA256'],
+              'source_blend_sha256':os.environ['SOURCE_BLEND_SHA256'],
+              'workflow_head_sha':os.environ['GITHUB_SHA'],
+              'renders':rows,
+          }
+          Path('reports/V4_RENDER_RETRY.json').write_text(json.dumps(prov,indent=2)+'\n')
+          print(json.dumps(prov,indent=2))
+          PY
+          cp reports/V4_REOPEN_RENDER_RETRY.json out/
+          cp reports/V4_RENDER_RETRY.json out/
+          cp reports/blender_version.txt out/
+          cp reports/v4_render_retry_stdout.txt out/
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-V4-PROVEN-BLEND-AND-RENDER-CANARIES
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0
