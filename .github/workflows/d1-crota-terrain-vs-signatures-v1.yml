@@ -1,0 +1,125 @@
+name: D1 Crota terrain native VS signatures v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-terrain-vs-signatures-v1.yml'
+      - 'tools/d1_world_terrain_vs_signature_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  TERRAIN_LAYOUT_ARTIFACT_ID: '10056800992'
+  TERRAIN_LAYOUT_ARTIFACT_SHA256: 'ce44de0c43089fb9ee94ea01b7474796b1eab6e050aafa43ab39f32a1eb061a0'
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  signatures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover authoritative terrain layout checkpoint and archive index
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime packages shader_expanded out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TERRAIN_LAYOUT_ARTIFACT_ID}/zip" -o input/layout.zip
+          echo "${TERRAIN_LAYOUT_ARTIFACT_SHA256}  input/layout.zip" | sha256sum --check --strict
+          unzip -q input/layout.zip -d input/layout
+          census="$(find input/layout -name terrain_census_final.json -type f -print -quit)"
+          layout="$(find input/layout -name terrain_buffer_layout.json -type f -print -quit)"
+          test -n "$census" -a -n "$layout"
+          cp "$census" out/terrain_census_final.json
+          cp "$layout" out/terrain_buffer_layout.json
+          python - <<'PY'
+          import json
+          c=json.load(open('out/terrain_census_final.json'));b=json.load(open('out/terrain_buffer_layout.json'))
+          assert c['status']=='D1_WORLD_TERRAIN_CENSUS_COMPLETE' and not c['violations'] and not c['missing_dependency_package_ids'],c
+          assert c['unique_terrain_count']==49 and c['selected_main_geom0_part_count']==1582 and c['unique_selected_material_count']==108,c
+          assert b['status']=='D1_WORLD_TERRAIN_BUFFER_LAYOUT_COMPLETE' and not b['violations'],b
+          assert b['terrain_count']==49 and b['selected_main_geom0_part_count']==1582 and b['triangle_count']==1067552,b
+          assert b['stride_pair_histogram']=={'0x8/0xc':49} and b['index_format_histogram']=={'u16':49},b
+          print('TERRAIN_LAYOUT_ACCEPTED',c['unique_terrain_count'],c['unique_selected_material_count'],b['triangle_count'])
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o out/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('out/D1_CURRENT_ACTIVITY_INDEX.json'));h=hashlib.sha256(open('out/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE' and h==(d.get('source') or {}).get('package_list_sha256'),(h,d.get('source'))
+          print('ARCHIVE_INDEX_ACCEPTED',h)
+          PY
+
+      - name: Recover exact terrain/material base package families
+        run: |
+          set -euo pipefail
+          python tools/d1_recover_indexed_package_families.py \
+            --index out/D1_CURRENT_ACTIVITY_INDEX.json --package-list out/packages.txt \
+            --package-id 02b7 --package-id 02ba --package-id 02bb \
+            --package-id 0430 --package-id 0431 --package-id 0458 \
+            --out-dir packages --report out/base_package_recovery.json
+
+      - name: Recursively close selected-material vertex shader package dependencies
+        run: |
+          set -euo pipefail
+          for pass in 1 2 3 4; do
+            mapfile -t files < <(find packages shader_expanded -maxdepth 1 -name '*.pkg' -type f | sort -u)
+            args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+            set +e
+            python tools/d1_world_terrain_vs_signature_census.py "${args[@]}" --runtime runtime \
+              --terrain-census out/terrain_census_final.json --out "out/terrain_vs_signatures_pass${pass}.json"
+            rc=$?
+            set -e
+            test "$rc" -eq 0 -o "$rc" -eq 2
+            cp "out/terrain_vs_signatures_pass${pass}.json" out/terrain_vs_signatures_final.json
+            python - "$pass" <<'PY'
+          import json,sys
+          p=sys.argv[1];d=json.load(open(f'out/terrain_vs_signatures_pass{p}.json'))
+          ids=sorted((d.get('missing_dependency_package_ids') or {}).keys())
+          open('out/missing_shader_package_ids.txt','w').write(''.join(x+'\n' for x in ids))
+          print('TERRAIN_VS_PASS',p,d['status'],'materials',d['resolved_selected_material_count'],'/',d['selected_material_count'],'shaders',d['resolved_vertex_shader_count'],'/',d['unique_vertex_shader_count'],'missing',ids)
+          PY
+            if [ ! -s out/missing_shader_package_ids.txt ]; then
+              break
+            fi
+            rargs=(); while read -r p; do rargs+=(--package-id "$p"); done < out/missing_shader_package_ids.txt
+            python tools/d1_recover_indexed_package_families.py \
+              --index out/D1_CURRENT_ACTIVITY_INDEX.json --package-list out/packages.txt \
+              "${rargs[@]}" --out-dir shader_expanded --report "out/shader_package_recovery_pass${pass}.json"
+          done
+          python - <<'PY'
+          import json
+          d=json.load(open('out/terrain_vs_signatures_final.json'))
+          assert d['status']=='D1_WORLD_TERRAIN_VS_SIGNATURE_CENSUS_COMPLETE',d
+          assert d['terrain_count']==49 and d['selected_main_geom0_part_count']==1582,d
+          assert d['selected_material_count']==108 and d['resolved_selected_material_count']==108,d
+          assert d['unique_vertex_shader_count']==d['resolved_vertex_shader_count'] and d['unique_vertex_shader_count']>0,d
+          assert not d['missing_dependency_package_ids'] and not d['violations'],d
+          print('CROTA_TERRAIN_VS_SIGNATURES_CLOSED',json.dumps({k:d[k] for k in ('selected_material_count','unique_vertex_shader_count','signature_component_width_histogram','signature_total_component_histogram','native_semantic_id_sequence_histogram')},sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CROTA-TERRAIN-VS-SIGNATURES-V1
+          path: |
+            out/terrain_vs_signatures_final.json
+            out/terrain_vs_signatures_pass*.json
+            out/*package_recovery*.json
+            out/terrain_buffer_layout.json
+            out/terrain_census_final.json
+          retention-days: 30
+          compression-level: 6
