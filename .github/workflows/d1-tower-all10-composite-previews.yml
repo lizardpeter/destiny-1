@@ -1,0 +1,124 @@
+name: D1 Tower all-ten composite previews
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_gltf_tower_shared_camera_plan.py'
+      - 'tools/d1_blender_render_tower_shared_layer.py'
+      - 'tools/d1_tower_composite_cell_layers.py'
+      - 'tools/d1_gltf_split_tower_cells.py'
+      - '.github/workflows/d1-tower-all10-composite-previews.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa'
+  LIBGL_ALWAYS_SOFTWARE: '1'
+
+jobs:
+  render_all10:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact ten-cell Tower GLB
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p input cells layers out reports
+          gh release download d1-tower-ten-cell-r1 -p D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb -D input --clobber
+          echo "$SOURCE_SHA256  input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb" | sha256sum --check --strict
+
+      - name: Derive shared world-space camera plan from exact glTF bounds
+        run: |
+          set -euo pipefail
+          python tools/d1_gltf_tower_shared_camera_plan.py \
+            input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+            --out reports/shared_camera_plan.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/shared_camera_plan.json'))
+          assert d['status']=='D1_TOWER_SHARED_CAMERA_PLAN',d
+          assert d['cell_count']==10 and len(d['cell_bounds'])==10,d
+          names={x['name'] for x in d['views']}
+          assert {'oblique_a','top'} <= names,names
+          print('SHARED_CAMERA_PLAN_GREEN',d['center'],d['span_xy'],d['zspan'])
+          PY
+
+      - name: Install Blender 5.2.1, Mesa and compositor dependency
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet pillow
+          BLENDER="$(bash tools/install_blender_lts.sh .blender)"; echo "BLENDER=$BLENDER" >> "$GITHUB_ENV"
+          "$BLENDER" --version | tee reports/blender_version.txt; grep -q 'Blender 5.2.1' reports/blender_version.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb xauth libegl1 libgl1 libgl1-mesa-dri libglu1-mesa mesa-utils
+          xvfb-run -a glxinfo -B | tee reports/software_gl.txt
+
+      - name: Split, render and discard each Tower cell independently
+        run: |
+          set -euo pipefail
+          : > reports/render_status.tsv
+          for ci in $(seq 0 9); do
+            c=$(printf '%02d' "$ci")
+            echo "=== CELL $c ==="
+            rm -rf cells/*
+            python tools/d1_gltf_split_tower_cells.py \
+              input/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
+              --out-dir cells --cell "$ci" --report "reports/split_${c}.json"
+            test -s "cells/TOWER_CELL_${c}.glb"
+            for v in oblique_a top; do
+              echo "--- RENDER $c $v ---"
+              timeout 25m xvfb-run -a "$BLENDER" --background --factory-startup \
+                --python tools/d1_blender_render_tower_shared_layer.py -- \
+                --glb "cells/TOWER_CELL_${c}.glb" \
+                --camera-plan reports/shared_camera_plan.json --view "$v" \
+                --out "layers/cell${c}_${v}.png" \
+                --report "layers/cell${c}_${v}.json" \
+                --width 960 --height 540 \
+                > "reports/cell${c}_${v}_stdout.txt" 2>&1
+              test -s "layers/cell${c}_${v}.png"
+              test -s "layers/cell${c}_${v}.json"
+              echo -e "cell${c}\t${v}\tsuccess" >> reports/render_status.tsv
+            done
+            rm -f "cells/TOWER_CELL_${c}.glb"
+          done
+          test "$(wc -l < reports/render_status.tsv)" -eq 20
+
+      - name: Composite all ten world-space cell layers
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_composite_cell_layers.py \
+            --layer-dir layers --out-dir out \
+            --view oblique_a --view top \
+            --report reports/all10_composite_report.json
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.load(open('reports/all10_composite_report.json'))
+          assert d['status']=='D1_TOWER_ALL10_SHARED_CAMERA_COMPOSITES',d
+          assert len(d['views'])==2,d
+          assert len(list(Path('layers').glob('cell??_*.png')))==20
+          for row in d['views']:
+              p=Path('out')/row['file']; assert p.stat().st_size>10000,(p,p.stat().st_size)
+          p=Path('out')/d['contact_sheet']['file']; assert p.stat().st_size>10000,p
+          print('ALL10_COMPOSITE_GREEN',[(x['view'],x['bytes']) for x in d['views']])
+          PY
+          find out reports -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-ALL10-COMPOSITE-PREVIEWS
+          path: |
+            out/
+            reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
