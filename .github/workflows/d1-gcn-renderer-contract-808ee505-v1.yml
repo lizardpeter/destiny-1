@@ -1,0 +1,152 @@
+name: D1 GCN renderer contract 808EE505 v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-renderer-contract-808ee505-v1.yml'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_exec_region_ir.py'
+      - 'tools/d1_gcn_export_kill_mask.py'
+      - 'tools/d1_gcn_renderer_contract.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10063870487'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'aaffc5c8f7c2270505face5c1d78de211e6bcb4612546207b0930cf16f04bb63'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Crota material and native shader evidence
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" -o input/source.zip
+          echo "${SOURCE_ARTIFACT_ZIP_SHA256}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          test -f input/source/PS_808EE505.s
+          test -f input/source/PS_80D77543.s
+          test -f input/source/target_gcn_image_usage.json
+          test -f input/source/target_material_stage.json
+
+      - name: Lift corrected structural IR v2
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_808EE505.s --shader 808EE505 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/PS_808EE505_STRUCTURAL_IR_V2.json
+          python tools/d1_gcn_cfg_ir_v2.py \
+            --disasm input/source/PS_80D77543.s --shader 80D77543 \
+            --image-usage input/source/target_gcn_image_usage.json \
+            -o out/VS_80D77543_STRUCTURAL_IR_V2.json
+          python - <<'PY'
+          import json
+          ps=json.load(open('out/PS_808EE505_STRUCTURAL_IR_V2.json'))
+          vs=json.load(open('out/VS_80D77543_STRUCTURAL_IR_V2.json'))
+          assert ps['schema_version']==vs['schema_version']==2
+          assert ps['status']==vs['status']=='D1_GCN_STRUCTURAL_IR_COMPLETE'
+          assert (ps['instruction_count'],ps['basic_block_count'],ps['cfg_edge_count'])==(456,14,19)
+          assert (vs['instruction_count'],vs['basic_block_count'],vs['cfg_edge_count'])==(98,1,0)
+          by={x['instruction']:x for x in ps['multi_destination_overrides']}
+          assert sorted(by)==[137,170],by
+          assert by[137]['defs']==['v16','vcc'] and by[137]['uses']==['v25'],by[137]
+          assert by[170]['defs']==['v32','vcc'] and by[170]['uses']==['v32'],by[170]
+          assert ps['image_usage_summary']['used_texture_indices']==[0,1,2,3,4,5]
+          print('STRUCTURAL_IR_V2_CLOSED',by)
+          PY
+
+      - name: Recover structured lane-selective EXEC regions
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_exec_region_ir.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            -o out/PS_808EE505_EXEC_REGIONS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_EXEC_REGIONS.json'))
+          assert d['status']=='D1_GCN_EXEC_REGION_IR_COMPLETE' and not d['violations'],d
+          assert d['region_count']==4 and d['exact_simple_lane_merge_count']==2,d
+          assert d['promoted_pattern_count']==2,d
+          by={r['saveexec_instruction']:r for r in d['regions']}
+          assert sorted(by)==[59,162,179,264],by.keys()
+          assert by[59]['promotion']=='STRUCTURAL_ONLY' and by[59]['nested_saveexec_instructions']==[162,179]
+          assert by[162]['promotion']=='STRUCTURAL_ONLY' and by[162]['loop_intersections']
+          assert by[179]['promotion']=='EXACT_SIMPLE_LANE_MERGE' and by[179]['predicate']['expression']=='0 != v18'
+          r=by[264]
+          assert r['promotion']=='EXACT_SIMPLE_LANE_MERGE' and r['predicate']['expression']=='0 < v7'
+          assert len(r['then_image_ops'])==8
+          assert all(q['textures']==[1] and q['dmask_channels']=='x' for q in r['then_image_ops'])
+          pats=[p for p in r['promoted_patterns'] if p['kind']=='CONDITIONAL_MULTIPLY_OR_PASSTHROUGH']
+          assert len(pats)==1 and pats[0]['factor_register']=='v7',pats
+          assert {(x['output'],x['base']) for x in pats[0]['outputs']}=={('v26','v20'),('v13','v21'),('v15','v22'),('v20','v23')}
+          print('EXEC_REGIONS_CLOSED','regions',d['region_count'],'exact',d['exact_simple_lane_merge_count'])
+          PY
+
+      - name: Re-prove persistent export kill on corrected IR
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_export_kill_mask.py \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --stage input/source/target_material_stage.json \
+            -o out/PS_808EE505_EXPORT_KILL_MASK.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_808EE505_EXPORT_KILL_MASK.json'))
+          assert d['status']=='D1_GCN_EXPORT_KILL_MASK_CONTRACT_COMPLETE' and not d['violations']
+          c=d['contracts'][0]
+          assert c['predicate']['texture_indices']==[2] and c['predicate']['threshold']==0.5
+          assert c['discard_when']=='sample > threshold' and c['survive_when']=='sample <= threshold'
+          print('KILL_MASK_REPROVED',c['predicate'])
+          PY
+
+      - name: Join exact destination-neutral renderer contract
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_renderer_contract.py \
+            --stage input/source/target_material_stage.json \
+            --ir out/PS_808EE505_STRUCTURAL_IR_V2.json \
+            --exec-regions out/PS_808EE505_EXEC_REGIONS.json \
+            --kill-mask out/PS_808EE505_EXPORT_KILL_MASK.json \
+            -o out/D1_80D777B6_808EE505_RENDERER_CONTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_80D777B6_808EE505_RENDERER_CONTRACT.json'))
+          assert d['status']=='D1_GCN_RENDERER_CONTRACT_EXACT_SUBSET' and not d['violations'],d
+          c=d['contract']
+          assert c['material']=='80D777B6' and c['pixel_shader']=='808EE505' and c['vertex_shader']=='80D77543'
+          assert [(x['texture_index'],x['texture_taghash']) for x in c['ps_texture_bindings']]==[
+            (0,'808EE4FE'),(1,'808EE4FF'),(2,'808EE4FD'),(3,'808EE4FF'),(4,'808EE500'),(5,'80AAFB08')]
+          assert len(c['conditional_lane_operations'])==1
+          q=c['conditional_lane_operations'][0]
+          assert q['sample_texture_index']==1 and q['sample_texture_taghash']=='808EE4FF' and q['sample_count']==8
+          assert q['sample_dmask_channels']==['x'] and q['predicate']['expression']=='0 < v7'
+          assert len(c['persistent_export_kills'])==1
+          k=c['persistent_export_kills'][0]
+          assert k['texture_index']==2 and k['texture_taghash']=='808EE4FD' and k['threshold']==0.5
+          assert [x['region_id'] for x in c['unresolved_control_regions']]==[0,1]
+          assert d['semantic_boundary']['loop_carried_values']=='UNRESOLVED'
+          print('RENDERER_CONTRACT_EXACT_SUBSET',json.dumps({'conditional':q,'kill':k},sort_keys=True))
+          PY
+          cp input/source/target_material_stage.json out/
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GCN-RENDERER-CONTRACT-808EE505-V1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
