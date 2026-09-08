@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "status": "D1_CROTA_TERRAIN_CENSUS_AUTHORITATIVE",
+  "activity": "810B0002",
+  "source_commit": "ebf0c24c640e145a3f8f73d977ecbf380959d18e",
+  "workflow_run_id": 34188937342,
+  "workflow_job_id": 101942825377,
+  "artifact": {
+    "artifact_id": 10041544308,
+    "zip_bytes": 3225844,
+    "sha256": "c0b4710f45c6d29c99a98d0783339b670548dad31863822de5e9227a58cf9c93"
+  },
+  "source_schema": {
+    "repository": "MontagueM/Charm",
+    "commit": "e5c4c7b0affcc00a988441e8f913dad7d0aa9bb9",
+    "file": "Tiger/Schema/Static/Terrain.cs",
+    "resource_class": "80801C37",
+    "resource_name": "SMapTerrainResource",
+    "terrain_target_offset": "0x18",
+    "terrain_target_class": "80801B2E",
+    "terrain_target_name": "STerrain",
+    "static_part_class": "80801A48",
+    "mesh_group_class": "80801A7F"
+  },
+  "counts": {
+    "terrain_resource_occurrences": 49,
+    "unique_terrains": 49,
+    "terrain_owner_package_families": ["0458"],
+    "mesh_groups": 491,
+    "serialized_static_parts": 7395,
+    "selected_main_geom0_parts": 1582,
+    "unique_static_part_materials": 211,
+    "unique_selected_materials": 108,
+    "unique_dyemaps": 465,
+    "unique_typed_dependencies": 1022,
+    "missing_dependency_package_ids": 0,
+    "violations": 0
+  },
+  "selection_semantics": "Pinned Charm D1 terrain export iterates STerrain.StaticParts and renders only DetailLevel == ELodCategory.MainGeom0 (numeric 0). It uses Indices1 as TriangleStrip, Vertices1/Vertices2 through the D1 terrain vertex reader, applies STerrain.TransformPositions, per-mesh-group TransformTexcoords, and group-index dye control. Terrain is pre-transformed before scene insertion and is added as an identity static instance; the outer SMapDataEntry transform is not applied to terrain geometry.",
+  "proof_boundary": "This checkpoint source-identifies every Crota terrain carrier and closes its STerrain payload structure plus all typed top-level buffer/material/dyemap dependencies. Geometry buffer decoding, exact native terrain material texture closure, dyemap fallback replay, and final GLB terrain scene emission are the next gates and are not claimed by this evidence file."
+}
