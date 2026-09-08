@@ -24,6 +24,9 @@ LOAD_PREFIX='s_buffer_load_dword'
 
 
 def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
+def ir_address(x):
+    v=x.get('address')
+    return int(v) if isinstance(v,int) else int(str(v),16)
 
 def pair_tuple(s):
     m=PAIR.match(s)
@@ -74,7 +77,8 @@ def main():
             if not x['opcode'].startswith(LOAD_PREFIX) or len(x['operands'])<3:continue
             desc=pair_tuple(x['operands'][1])
             if desc is None:continue
-            candidates=[e for e in events if (e['start'],e['end'])==desc and e['address']<int(x['address'],16)]
+            xaddr=ir_address(x)
+            candidates=[e for e in events if (e['start'],e['end'])==desc and e['address']<xaddr]
             if not candidates:continue
             pe=max(candidates,key=lambda e:e['address']);slot=by_start.get(pe['logical_start'])
             if slot is None:continue
