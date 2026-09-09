@@ -1,0 +1,61 @@
+{
+  "schema": "d1_gcn_exec_symbolic_dataflow_checkpoint/v1",
+  "status": "D1_GCN_EXEC_SYMBOLIC_DATAFLOW_V1_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "workflow_commit": "9ba96c90f999942115c0e669110ea03fee547f87",
+    "workflow": ".github/workflows/d1-gcn-exec-symbolic-dataflow-v1.yml"
+  },
+  "workflow_run": {
+    "run_id": 34354339178,
+    "conclusion": "success",
+    "artifact_id": 10105101197,
+    "artifact_name": "D1-GCN-EXEC-SYMBOLIC-DATAFLOW-V1",
+    "artifact_digest_sha256": "cf2e1843755eceb7ebdfd1623ac5eba3f47d0d5d41b8188788f7fd0c0eae7792",
+    "machine_semantics_report_sha256": "25c9a632a0e0e6ec0a9baa3d91b68d4a0b95c07c78b46f214f038e265ac8fbaf",
+    "machine_frontier_report_sha256": "7b68e05b3c8bd6a3c7c953c5c14ff35021be979a4c6f26319c98ed9c1c79e925",
+    "symbolic_replay_report_sha256": "484e2fedbd28cff405a2edeb740fa0bb78ce337e1bb6a931b59fc701e316574f"
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"PS": 18375, "VS": 8069, "DS": 20},
+    "exact_instructions_replayed": 4896165,
+    "machine_exec_opcode_count": 9,
+    "machine_exec_instruction_count": 109690,
+    "explicit_structural_exec_instruction_count": 109678,
+    "implicit_cmpx_exec_instruction_count": 12,
+    "exec_touching_program_count": 18521,
+    "exec_touching_stage_program_counts": {"PS": 17807, "VS": 714},
+    "exec_transition_count": 73607,
+    "exec_branch_predicate_count": 14828,
+    "symbolic_node_count": 699037,
+    "cfg_phi_node_count": 218229,
+    "effect_aware_basic_block_count": 68622,
+    "concrete_cfg_edge_count": 51073,
+    "unresolved_control_entry_block_count": 8053,
+    "opaque_pair_write_count": 52245,
+    "opaque_vcc_write_count": 118229,
+    "opaque_scc_write_count": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "machine_exec_opcode_counts": {
+    "s_and_b64": 1922,
+    "s_and_saveexec_b64": 9305,
+    "s_andn2_b64": 12581,
+    "s_cbranch_execnz": 6,
+    "s_cbranch_execz": 14822,
+    "s_mov_b64": 51134,
+    "s_wqm_b64": 19908,
+    "v_cmpx_eq_i32": 6,
+    "v_cmpx_lt_u32": 6
+  },
+  "semantic_boundary": {
+    "exec_mask_machine_semantics": "SOURCE_CLOSED",
+    "exec_mask_symbolic_dataflow": "GLOBAL_EXACT",
+    "vcc_scc_symbolic_dataflow": "NEXT_GATE",
+    "lane_aware_vgpr_ssa": "WITHHELD",
+    "shader_expression_semantics": "UNPROVEN",
+    "shader_expression_semantic_promotions": 0
+  }
+}
