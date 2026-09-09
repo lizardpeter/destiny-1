@@ -97,11 +97,14 @@ jobs:
           cp source/raw/D1_SHADER_EXACT_BINARIES.tar out/D1_SHADER_EXACT_BINARIES.tar
           cp source/raw/D1_SHADER_CORPUS_PLAN.json out/D1_SHADER_CORPUS_ORIGINAL_PLAN.json
           printf '%s\n' "$SOURCE_ARTIFACT_ID" > out/SOURCE_ARTIFACT_ID.txt
-          sha256sum \
-            out/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
-            out/D1_SHADER_EXACT_BINARIES.tar \
-            out/D1_SHADER_CORPUS_ORIGINAL_PLAN.json \
-            > out/SHA256SUMS.txt
+          (
+            cd out
+            sha256sum \
+              D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+              D1_SHADER_EXACT_BINARIES.tar \
+              D1_SHADER_CORPUS_ORIGINAL_PLAN.json \
+              > SHA256SUMS.txt
+          )
 
       - uses: actions/upload-artifact@v4
         with:
