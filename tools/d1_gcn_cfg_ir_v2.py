@@ -11,6 +11,12 @@ whose CLRX syntax carries a VCC destination as operand 1 (for example
 ``v_add_i32 v16, vcc, 1, v25``). Misclassifying that VCC as a use can corrupt later
 predicate provenance, so these opcodes are handled as structural instruction facts
 rather than inferred by a generic first-operand rule.
+
+Structural parse accounting is fail-closed. Every address-bearing CLRX native line is
+independently inventoried before the strict instruction parser runs, then the source
+ledger is matched one-for-one against the emitted IR by source order, address,
+encoding words, and encoded byte size. An address-bearing line that is not accepted by
+the strict parser is therefore an error rather than an ignorable line.
 """
 from __future__ import annotations
 import argparse,json,re
@@ -18,6 +24,9 @@ from collections import Counter
 from pathlib import Path
 
 ADDR_RE=re.compile(r'^/\*([0-9A-Fa-f]+):\s+([0-9A-Fa-f ]+)\*/\s*(\S+)\s*(.*)$')
+ADDR_PREFIX_RE=re.compile(r'^/\*([0-9A-Fa-f]+):')
+ADDR_SHELL_RE=re.compile(r'^/\*([0-9A-Fa-f]+):\s*([^*]*?)\*/\s*(.*)$')
+ENCODING_WORD_RE=re.compile(r'^[0-9A-Fa-f]{8}$')
 LABEL_RE=re.compile(r'^(\.L\w+):$')
 REG_RE=re.compile(r'(?<![A-Za-z0-9_])(?:v\[(\d+):(\d+)\]|s\[(\d+):(\d+)\]|v(\d+)|s(\d+)|vcc(?:_lo|_hi)?|exec(?:_lo|_hi)?|m0|scc)(?![A-Za-z0-9_])')
 ATTR_RE=re.compile(r'\battr(\d+)(?:\.([xyzw]))?\b')
@@ -31,6 +40,7 @@ VCC_SECOND_DEST={
     'v_addc_u32','v_subb_u32','v_subbrev_u32',
 }
 VCC_CARRY_IN={'v_addc_u32','v_subb_u32','v_subbrev_u32'}
+PARSE_ACCOUNTING_STATUS='D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_EXACT'
 
 
 def regs(text):
@@ -68,20 +78,95 @@ def classify(op,a):
     return d,u
 
 
-def parse(p):
+def native_line_ledger(lines):
+    """Independently inventory every address-bearing CLRX native instruction line."""
+    ledger=[]
+    for line_no,raw in enumerate(lines,1):
+        t=raw.strip()
+        if not ADDR_PREFIX_RE.match(t):
+            continue
+        shell=ADDR_SHELL_RE.match(t)
+        if not shell:
+            raise ValueError(f'line {line_no}: malformed address-bearing CLRX line: {t!r}')
+        address=int(shell.group(1),16)
+        words=tuple(shell.group(2).split())
+        tail=shell.group(3).strip()
+        if not words:
+            raise ValueError(f'line {line_no}: address-bearing CLRX line has no encoding words: {t!r}')
+        if any(not ENCODING_WORD_RE.fullmatch(w) for w in words):
+            raise ValueError(f'line {line_no}: invalid CLRX encoding word(s) {words!r}: {t!r}')
+        if not tail:
+            raise ValueError(f'line {line_no}: address-bearing CLRX line has no instruction text: {t!r}')
+        ledger.append({
+            'source_ordinal':len(ledger),
+            'source_line':line_no,
+            'address':address,
+            'address_hex':f'{address:012X}',
+            'encoding_words':[w.lower() for w in words],
+            'encoding_hex':''.join(words).lower(),
+            'byte_size':4*len(words),
+            'assembly':t,
+        })
+    return ledger
+
+
+def assert_parse_accounting(source,ins):
+    if len(source)!=len(ins):
+        raise ValueError(f'structural parse accounting count mismatch: source={len(source)} ir={len(ins)}')
+    encoded_bytes=0
+    for ordinal,(s,x) in enumerate(zip(source,ins)):
+        checks=(
+            ('index',ordinal,x['index']),
+            ('address',s['address'],x['address']),
+            ('encoding_words',s['encoding_words'],x['encoding_words']),
+            ('encoding_hex',s['encoding_hex'],x['encoding_hex']),
+            ('byte_size',s['byte_size'],x['byte_size']),
+            ('source_line',s['source_line'],x['source_line']),
+        )
+        for name,expected,actual in checks:
+            if actual!=expected:
+                raise ValueError(
+                    f'structural parse accounting mismatch at native ordinal {ordinal} '
+                    f'(source line {s["source_line"]}) for {name}: expected={expected!r} actual={actual!r}'
+                )
+        encoded_bytes+=s['byte_size']
+    return {
+        'status':PARSE_ACCOUNTING_STATUS,
+        'native_instruction_line_count':len(source),
+        'ir_instruction_count':len(ins),
+        'encoded_byte_count':encoded_bytes,
+        'first_address':None if not source else source[0]['address_hex'],
+        'last_address':None if not source else source[-1]['address_hex'],
+        'checked_fields':['order','address','encoding_words','encoding_hex','byte_size','source_line'],
+        'unaccounted_native_instruction_line_count':0,
+        'duplicate_ir_instruction_count':0,
+    }
+
+
+def parse_accounted(p):
+    lines=p.read_text(errors='replace').splitlines()
+    source=native_line_ledger(lines)
     ins=[];labels=[]
-    for raw in p.read_text(errors='replace').splitlines():
+    for line_no,raw in enumerate(lines,1):
         t=raw.strip();lm=LABEL_RE.match(t)
         if lm:labels.append(lm.group(1));continue
         m=ADDR_RE.match(t)
-        if not m:continue
-        addr=int(m.group(1),16);rawhex=''.join(m.group(2).split()).lower();op=m.group(3);rest=m.group(4).strip();a=ops(rest);d,u=classify(op,a)
+        if not m:
+            if ADDR_PREFIX_RE.match(t):
+                raise ValueError(f'line {line_no}: address-bearing CLRX line rejected by strict instruction parser: {t!r}')
+            continue
+        addr=int(m.group(1),16);words=[w.lower() for w in m.group(2).split()];rawhex=''.join(words);op=m.group(3);rest=m.group(4).strip();a=ops(rest);d,u=classify(op,a)
         target=None
         if op in UNCOND or op.startswith(COND_PREFIX):
             q=re.search(r'(\.L\w+)',rest);target=q.group(1) if q else None
-        ins.append({'index':len(ins),'address':addr,'address_hex':f'{addr:012X}','encoding_hex':rawhex,'labels':labels,'opcode':op,'operands':a,'defs':d,'uses':u,'branch_target_label':target,'assembly':t})
+        ins.append({'index':len(ins),'address':addr,'address_hex':f'{addr:012X}','encoding_words':words,'encoding_hex':rawhex,'byte_size':len(rawhex)//2,'source_line':line_no,'labels':labels,'opcode':op,'operands':a,'defs':d,'uses':u,'branch_target_label':target,'assembly':t})
         labels=[]
-    return ins
+    accounting=assert_parse_accounting(source,ins)
+    return ins,accounting
+
+
+def parse(p):
+    return parse_accounted(p)[0]
 
 
 def blocks(ins):
@@ -131,7 +216,7 @@ def image_annotate(ins,report,shader):
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--disasm',type=Path,required=True);ap.add_argument('--shader',required=True);ap.add_argument('--image-usage',type=Path);ap.add_argument('-o','--output',type=Path,required=True);a=ap.parse_args()
-    shader=a.shader.upper().removeprefix('0X').zfill(8);ins=parse(a.disasm);bb,back=blocks(ins);usage=None
+    shader=a.shader.upper().removeprefix('0X').zfill(8);ins,accounting=parse_accounted(a.disasm);bb,back=blocks(ins);usage=None
     if a.image_usage:usage=image_annotate(ins,json.load(open(a.image_usage)),shader)
     attrs=sorted({f'attr{m.group(1)}'+(f'.{m.group(2)}' if m.group(2) else '') for x in ins for m in ATTR_RE.finditer(x['assembly'])})
     params=sorted({f'param{m.group(1)}' for x in ins for m in PARAM_RE.finditer(x['assembly'])})
@@ -139,6 +224,6 @@ def main():
     exec_sites=[{'instruction':x['index'],'address':x['address_hex'],'opcode':x['opcode'],'operands':x['operands']} for x in ins if 'exec' in x['defs'] or 'exec' in x['uses'] or any('exec' in y for y in x['operands'])]
     multi=[{'instruction':x['index'],'opcode':x['opcode'],'defs':x['defs'],'uses':x['uses']} for x in ins if x['opcode'] in VCC_SECOND_DEST]
     control={'conditional_branch_count':sum(x['opcode'].startswith(COND_PREFIX) for x in ins),'unconditional_branch_count':sum(x['opcode'] in UNCOND for x in ins),'back_edges':back,'exec_mutation_sites':exec_sites,'divergent_exec_present':bool(exec_sites)}
-    out={'schema_version':2,'status':'D1_GCN_STRUCTURAL_IR_COMPLETE','shader':shader,'instruction_count':len(ins),'basic_block_count':len(bb),'cfg_edge_count':sum(len(x['successors']) for x in bb),'opcode_counts':dict(sorted(Counter(x['opcode'] for x in ins).items())),'interpolator_inputs':attrs,'parameter_exports':params,'exports':exports,'control_flow':control,'multi_destination_overrides':multi,'image_usage_summary':None if usage is None else {'image_instruction_count':usage['image_instruction_count'],'used_texture_indices':usage['used_texture_indices'],'image_opcodes':usage['image_opcodes'],'unmatched_image_instruction_count':usage['unmatched_image_instruction_count']},'instructions':ins,'basic_blocks':bb,'semantic_boundary':{'register_def_use_classification':'STRUCTURAL_WITH_GCN_MULTI_DEST_OVERRIDES','divergent_vgpr_ssa':'NOT_YET_PROMOTED','exec_mask_symbolic_dataflow':'NEXT_GATE','output_expression_lifting':'WITHHELD_UNTIL_EXEC_MASK_DATAFLOW'},'policy':'Instruction encodings/text, CFG edges, operands, attrs/exports and exact Sony image-resource provenance are promoted. Known GCN multi-destination integer arithmetic explicitly records its VCC destination. Divergent EXEC still makes naive VGPR SSA unsound, so output-expression claims remain withheld until symbolic EXEC-mask dataflow is implemented.'}
-    a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({k:out[k] for k in ('status','shader','instruction_count','basic_block_count','cfg_edge_count','multi_destination_overrides','interpolator_inputs','parameter_exports','exports','control_flow','image_usage_summary','semantic_boundary')},indent=2));return 0
+    out={'schema_version':2,'status':'D1_GCN_STRUCTURAL_IR_COMPLETE','shader':shader,'parse_accounting':accounting,'instruction_count':len(ins),'basic_block_count':len(bb),'cfg_edge_count':sum(len(x['successors']) for x in bb),'opcode_counts':dict(sorted(Counter(x['opcode'] for x in ins).items())),'interpolator_inputs':attrs,'parameter_exports':params,'exports':exports,'control_flow':control,'multi_destination_overrides':multi,'image_usage_summary':None if usage is None else {'image_instruction_count':usage['image_instruction_count'],'used_texture_indices':usage['used_texture_indices'],'image_opcodes':usage['image_opcodes'],'unmatched_image_instruction_count':usage['unmatched_image_instruction_count']},'instructions':ins,'basic_blocks':bb,'semantic_boundary':{'register_def_use_classification':'STRUCTURAL_WITH_GCN_MULTI_DEST_OVERRIDES','native_instruction_parse_accounting':PARSE_ACCOUNTING_STATUS,'divergent_vgpr_ssa':'NOT_YET_PROMOTED','exec_mask_symbolic_dataflow':'NEXT_GATE','output_expression_lifting':'WITHHELD_UNTIL_EXEC_MASK_DATAFLOW'},'policy':'Instruction encodings/text, CFG edges, operands, attrs/exports and exact Sony image-resource provenance are promoted only after every address-bearing CLRX native line is accounted for exactly once by source order, address, encoding words and byte size. Known GCN multi-destination integer arithmetic explicitly records its VCC destination. Divergent EXEC still makes naive VGPR SSA unsound, so output-expression claims remain withheld until symbolic EXEC-mask dataflow is implemented.'}
+    a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps({k:out[k] for k in ('status','shader','parse_accounting','instruction_count','basic_block_count','cfg_edge_count','multi_destination_overrides','interpolator_inputs','parameter_exports','exports','control_flow','image_usage_summary','semantic_boundary')},indent=2));return 0
 if __name__=='__main__':raise SystemExit(main())
