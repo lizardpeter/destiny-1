@@ -22,8 +22,9 @@ env:
   SGPR_SSA_ARTIFACT_ZIP_SHA256: "243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5"
   SGPR_SSA_REPORT_SHA256: "fade0a42fb83fbc9b45b5c418925182d97e65870ebef9d33f2f18e31d31b4166"
   STRUCTURAL_CENSUS_TOOL_BLOB_SHA1: "88c2e88f80b39e501481e6ae494b6fec2e1cad32"
+  STRUCTURAL_CENSUS_V3_TOOL_BLOB_SHA1: "62d69b08d657d7be874e4da3d8c222465d798f5a"
   SCALAR_VALUE_SEMANTICS_BLOB_SHA1: "f349ce078dccf293bc9281501b39af0f78260e4f"
-  SCALAR_VALUE_FRONTIER_BLOB_SHA1: "e8783f4877f962de591d93126f10863f0bf2f92f"
+  SCALAR_VALUE_FRONTIER_BLOB_SHA1: "5b8fea2940c4fb564d575db281f5c64fb5f3887f"
 
 jobs:
   scalar-value-frontier:
@@ -41,8 +42,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object tools/d1_gcn_shader_corpus_structural_census.py)" = "$STRUCTURAL_CENSUS_TOOL_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_shader_corpus_structural_census_v3.py)" = "$STRUCTURAL_CENSUS_V3_TOOL_BLOB_SHA1"
           test "$(git hash-object tools/d1_gcn_scalar_value_semantics_v1.py)" = "$SCALAR_VALUE_SEMANTICS_BLOB_SHA1"
           test "$(git hash-object tools/d1_gcn_scalar_value_operand_frontier_v1.py)" = "$SCALAR_VALUE_FRONTIER_BLOB_SHA1"
+          python tools/d1_gcn_shader_corpus_structural_census_v3.py --self-test
           python tools/d1_gcn_scalar_value_semantics_v1.py > /tmp/scalar_value_semantics.json
           python - <<'PY'
           import json
