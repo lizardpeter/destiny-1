@@ -1,0 +1,187 @@
+name: D1 global PS VS native corpus v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-ps-vs-native-corpus-v2.yml'
+      - 'tools/d1_shader_corpus_plan.py'
+      - 'tools/d1_shader_corpus_metadata_accept.py'
+      - 'tools/d1_remote_ps4_shader_corpus_extract_v2.py'
+      - 'evidence/d1_ps4_shader_header_corpus_r1.json'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  PACKAGES_TXT_SHA256: '9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact current archive metadata and universal member catalog
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime index shader out
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o index/packages.txt
+          echo "$PACKAGES_TXT_SHA256  index/packages.txt" | sha256sum --check --strict
+          curl --fail --location --retry 4 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o index/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  index/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "$CATALOG_ZIP_SHA256  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Rebuild exact current entry index and shader plan
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_everything_index_fast.py \
+            --location-index index/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list index/packages.txt \
+            --registry evidence/d1_export_class_registry.json \
+            --sqlite index/D1_CURRENT_EVERYTHING.sqlite \
+            --summary out/D1_CURRENT_EVERYTHING.json \
+            --queue index/D1_CURRENT_EVERYTHING.tsv \
+            | tee out/everything_index_stdout.txt
+          python tools/d1_shader_corpus_plan.py index/D1_CURRENT_EVERYTHING.sqlite \
+            -o out/D1_SHADER_CORPUS_PLAN.json \
+            | tee out/shader_plan_stdout.txt
+
+      - name: Accept exact immutable metadata denominator
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_corpus_metadata_accept.py \
+            out/D1_SHADER_CORPUS_PLAN.json \
+            evidence/d1_ps4_shader_header_corpus_r1.json \
+            -o out/D1_SHADER_CORPUS_METADATA_ACCEPT.json \
+            | tee out/metadata_accept_stdout.txt
+          python - <<'PY'
+          import json
+          p=json.load(open('out/D1_SHADER_CORPUS_PLAN.json'))
+          a=json.load(open('out/D1_SHADER_CORPUS_METADATA_ACCEPT.json'))
+          assert p['status']=='D1_SHADER_CORPUS_PLAN_COMPLETE',p['violations'][:20]
+          assert not p['violations']
+          assert a['status']=='D1_SHADER_CORPUS_METADATA_ACCEPTED',a['violations'][:20]
+          assert not a['violations']
+          assert p['header_population']['total']==37892,p['header_population']
+          assert p['header_population']['stage_counts']=={'PS':25405,'VS':12487},p['header_population']
+          assert p['native_reference_population']['unique_native_program_reference_count']==37179,p['native_reference_population']
+          assert p['source']['packages_txt_sha256']=='9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5',p['source']
+          print('D1_SHADER_METADATA_DENOMINATOR_CLOSED',json.dumps({
+            'headers':p['header_population']['total'],
+            'stage_counts':p['header_population']['stage_counts'],
+            'native_refs':p['native_reference_population']['unique_native_program_reference_count'],
+          },sort_keys=True))
+          PY
+
+      - name: Recover pinned Oodle 3 runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover every exact current PS VS native program with package parallelism
+        id: extract
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_remote_ps4_shader_corpus_extract_v2.py \
+            --plan out/D1_SHADER_CORPUS_PLAN.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --runtime runtime --workers 6 \
+            --out-dir shader \
+            --report out/D1_SHADER_CORPUS_EXTRACT_V2.json \
+            | tee out/shader_extract_v2_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/shader_extract_v2_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_SHADER_CORPUS_EXTRACT_V2.json
+
+      - name: Validate raw corpus boundary and freeze exact byte denominator
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_SHADER_CORPUS_EXTRACT_V2.json'))
+          assert d['schema']=='d1_remote_ps4_shader_corpus_extract/v2',d.get('schema')
+          assert d['header_population']['total']==37892,d['header_population']
+          assert d['header_population']['stage_counts']=={'PS':25405,'VS':12487},d['header_population']
+          assert d['native_reference_population']['planned_unique']==37179,d['native_reference_population']
+          assert d['header_population']['payload_recovered_count']<=37892
+          assert d['native_reference_population']['payload_recovered_count']<=37179
+          assert d['native_reference_population']['gcn_code_recovered_count']<=37179
+          assert d['gcn_program_population']['unique_exact_code_sha256_count']<=d['native_reference_population']['gcn_code_recovered_count']
+          by={x['native_program_reference']:x for x in d['native_programs']}
+          r=by.get('808EE508')
+          assert r is not None,'808EE508 missing from exact native denominator'
+          if r.get('gcn_code'):
+              assert r['native_payload']=={'bytes':2276,'sha256':'51f48fa53191eb6b845463bc50fafe9fbd7f7a40c8c3900277b36f9859f776d5'},r
+              assert r['gcn_code']=={'bytes':2200,'sha256':'7cbed0ae8ff82a15a9945c136cb8e58188c78cc0fd7c45ee8d3778959cbca352'},r
+          print('D1_GLOBAL_PS_VS_NATIVE_CORPUS',json.dumps({
+            'status':d['status'],
+            'headers':d['header_population'],
+            'native_refs':d['native_reference_population'],
+            'gcn_programs':d['gcn_program_population'],
+            'violations':len(d['violations']),
+          },sort_keys=True))
+          for x in d['violations'][:200]: print('VIOLATION',x)
+          PY
+
+          # Preserve tens of thousands of exact small files as one deterministic
+          # checkpoint payload. Structural passes can unpack this without any new
+          # retail network recovery.
+          tar -cf out/D1_SHADER_EXACT_BINARIES.tar shader/headers shader/programs
+          sha256sum \
+            out/D1_CURRENT_EVERYTHING.json \
+            out/D1_SHADER_CORPUS_PLAN.json \
+            out/D1_SHADER_CORPUS_METADATA_ACCEPT.json \
+            out/D1_SHADER_CORPUS_EXTRACT_V2.json \
+            out/D1_SHADER_EXACT_BINARIES.tar \
+            > out/SHA256SUMS.txt
+
+          # Fail the workflow only after the complete diagnostic checkpoint exists.
+          test "$(cat out/shader_extract_v2_exit_code.txt)" -eq 0
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_SHADER_CORPUS_EXTRACT_V2.json'))
+          assert d['status']=='D1_REMOTE_PS4_SHADER_CORPUS_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert d['header_population']['payload_recovered_count']==37892,d['header_population']
+          assert d['native_reference_population']['payload_recovered_count']==37179,d['native_reference_population']
+          assert d['native_reference_population']['gcn_code_recovered_count']==37179,d['native_reference_population']
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-PS-VS-NATIVE-CORPUS-V2
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
