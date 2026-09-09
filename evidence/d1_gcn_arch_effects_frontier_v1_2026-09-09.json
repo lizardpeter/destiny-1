@@ -1,0 +1,66 @@
+{
+  "schema": "d1_gcn_arch_effects_frontier_checkpoint/v1",
+  "status": "D1_GCN_ARCH_EFFECTS_FRONTIER_V1_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "registry_commit": "4f9d755d4d1714dc3066cb730b8bda61c3cc0119",
+    "frontier_commit": "82d916c9aaf30fd629442247502cff3cbf4edf82",
+    "workflow_commit": "d3472dea2e18142fac8cc598b45ef315298cedcb",
+    "registry": "tools/d1_gcn_arch_effects_v1.py",
+    "frontier": "tools/d1_gcn_arch_effects_frontier_v1.py",
+    "workflow": ".github/workflows/d1-gcn-architectural-effects-frontier-v1.yml"
+  },
+  "workflow_run": {
+    "run_id": 34312833432,
+    "conclusion": "success",
+    "artifact_id": 10088977293,
+    "artifact_name": "D1-GCN-ARCHITECTURAL-EFFECTS-FRONTIER-V1",
+    "artifact_digest_sha256": "b2ac96e960bd659e9ba244e07302149aa7416693b29ca4c7a8f8219a3286cef1",
+    "frontier_report_sha256": "cadc124935437bfcec42f7dcab86cb5913425987f83e2355a6c14b817868b88c",
+    "registry_report_sha256": "e93986b7a301efc4ee82d4eb338607b35fba453afed7c7227320666672a9e604"
+  },
+  "source_evidence": {
+    "artifact_id": 10088200204,
+    "report_sha256": "0fc89bae78694917b431b2062bbce794d72e3ef770aa66603dd1bc6f560069cd",
+    "exact_novel_opcode_count": 67,
+    "exact_novel_opcode_instruction_occurrences": 261733
+  },
+  "architectural_source": {
+    "vendor": "Advanced Micro Devices, Inc.",
+    "title": "AMD Sea Islands Series Instruction Set Architecture",
+    "document_id": "70653",
+    "revision": "1.3",
+    "release_date": "2013-12-01",
+    "architecture": "GCN 2 / GFX7 / Sea Islands",
+    "official_url": "https://docs.amd.com/v/u/en-US/sea-islands-instruction-set-architecture_0"
+  },
+  "coverage": {
+    "source_closed_opcode_count": 27,
+    "source_closed_opcode_instruction_occurrences": 255449,
+    "source_closed_novel_occurrence_ratio": 0.9759907997845132,
+    "source_closed_unique_programs": 20137,
+    "source_closed_stage_programs": {
+      "PS": 12050,
+      "VS": 8068,
+      "DS": 19
+    },
+    "remaining_architecturally_unclosed_opcode_count": 40,
+    "remaining_architecturally_unclosed_occurrences": 6284,
+    "shader_expression_semantic_promotions": 0
+  },
+  "confirmed_structural_v2_effect_gaps": [
+    "source-closed vector instructions require explicit EXEC architectural-use annotation when EXEC-gated",
+    "V_WRITELANE_B32 is a one-lane partial VGPR write and therefore reads the old destination while ignoring EXEC predication",
+    "V_READFIRSTLANE_B32 reads EXEC to select the source lane while ignoring EXEC predication",
+    "S_OR_B64 writes SCC from result nonzero state",
+    "V_CMPX_EQ_I32 and V_CMPX_LT_U32 additionally update EXEC",
+    "S_SWAPPC_B64 reads and writes PC and is an indirect control transfer rather than ordinary fallthrough"
+  ],
+  "semantic_boundary": {
+    "architectural_effect_status": "SOURCE_CLOSED_FOR_27_EXACT_FRONTIER_OPCODES",
+    "shader_expression_status": "UNPROVEN",
+    "shader_expression_semantic_promotions": 0,
+    "next_gate": "effect-aware IR replay preserving exact v2 parse accounting while adding source-closed special-register, lane-write and indirect-control annotations"
+  }
+}
