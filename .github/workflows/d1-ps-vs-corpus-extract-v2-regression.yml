@@ -112,7 +112,7 @@ jobs:
             --runtime runtime --workers 6 \
             --out-dir parallel --report out/PARALLEL.json
 
-      - name: Require byte-identical serial parallel recovery and frozen 808EE505 code
+      - name: Require byte-identical serial parallel recovery and frozen 808EE505 raw code
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -132,8 +132,13 @@ jobs:
           assert native_map(a)==native_map(b)
           assert sorted((x['gcn_sha256'],x['gcn_bytes'],x['native_program_references'],x['headers']) for x in a['unique_gcn_programs']) == sorted((x['gcn_sha256'],x['gcn_bytes'],x['native_program_references'],x['headers']) for x in b['unique_gcn_programs'])
           n=native_map(a)['808EE508']
+          assert n[0]==2276,n
+          assert n[1]=='51f48fa53191eb6b845463bc50fafe9fbd7f7a40c8c3900277b36f9859f776d5',n
+          # This SHA is over the exact raw OrbShdr-bounded GCN bytes recovered from
+          # the retail native payload. CLRX encoding_hex is a textual instruction
+          # representation and must not be concatenated as a raw byte-stream oracle.
           assert n[2]==2200,n
-          assert n[3]=='28a54dd7f33bb4e7d24dbf953213001ed00204c77ae3707eb04299b83436e5c7',n
+          assert n[3]=='7cbed0ae8ff82a15a9945c136cb8e58188c78cc0fd7c45ee8d3778959cbca352',n
           # File outputs themselves must also match exactly.
           import hashlib,pathlib
           def files(root):
@@ -144,6 +149,7 @@ jobs:
           assert files('serial')==files('parallel')
           print('D1_SHADER_CORPUS_EXTRACT_V2_REGRESSION_CLOSED',json.dumps({
               'headers':11,'native_refs':11,'unique_gcn':a['gcn_program_population']['unique_exact_code_sha256_count'],
+              '808EE505_native_bytes':n[0],'808EE505_native_sha256':n[1],
               '808EE505_gcn_bytes':n[2],'808EE505_gcn_sha256':n[3]
           },sort_keys=True))
           PY
