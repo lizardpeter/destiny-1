@@ -1,0 +1,43 @@
+{
+  "schema": "d1_gcn_m0_implicit_frontier_checkpoint/v1",
+  "status": "D1_GCN_M0_IMPLICIT_FRONTIER_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow_run_id": 34364669326,
+  "workflow_source_commit": "2dc1a0c5badb8942ae3ebae570582b865b0551ce",
+  "artifact": {
+    "id": 10109357318,
+    "name": "D1-GCN-M0-IMPLICIT-FRONTIER-V1",
+    "zip_sha256": "9c97ef6cb026ff5481b96c53b59e9bf36a5c8be6315a9273ec33009fd4406fee"
+  },
+  "coverage": {
+    "exact_program_count": 26464,
+    "exact_instruction_count": 4896165,
+    "explicit_m0_def_instruction_count": 17894,
+    "structural_explicit_m0_use_instruction_count": 0,
+    "implicit_m0_value_use_instruction_count": 425866,
+    "implicit_m0_category_counts": {
+      "VINTRP_AUTOMATIC_M0": 425370,
+      "LDS_DS_M0_BOUNDS": 490,
+      "RELATIVE_GPR_INDEX_M0": 6,
+      "DS_NON_MEMORY_NO_M0_VALUE_DEPENDENCY": 9556
+    },
+    "implicit_m0_opcode_counts": {
+      "VINTRP_AUTOMATIC_M0": {"v_interp_mov_f32": 6, "v_interp_p1_f32": 212682, "v_interp_p2_f32": 212682},
+      "LDS_DS_M0_BOUNDS": {"ds_read2_b32": 401, "ds_read_b32": 89},
+      "RELATIVE_GPR_INDEX_M0": {"v_movrels_b32": 6},
+      "DS_NON_MEMORY_NO_M0_VALUE_DEPENDENCY": {"ds_swizzle_b32": 9556}
+    },
+    "unresolved_m0_sensitive_instruction_count": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "semantic_boundary": {
+    "m0_structural_def_surface": "GLOBAL_EXACT",
+    "m0_implicit_consumer_surface": "GLOBAL_EXACT",
+    "ordinary_sgpr_m0_value_ssa": "NEXT_GATE",
+    "opcode_result_value_semantics": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "policy": "All architectural M0 consumers present in the frozen Destiny shader corpus are source-closed. Structural def/use text omits these edges, so downstream scalar SSA must add them explicitly."
+}
