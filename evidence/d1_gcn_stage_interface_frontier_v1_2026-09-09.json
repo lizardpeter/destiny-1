@@ -1,0 +1,59 @@
+{
+  "schema": "d1_gcn_stage_interface_frontier_checkpoint/v1",
+  "status": "D1_GCN_STAGE_INTERFACE_FRONTIER_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34396490367,
+    "source_commit": "b0291108274e9722d47e7087ede0492ce964f5ee",
+    "artifact_id": 10121746470,
+    "artifact_name": "D1-GCN-STAGE-INTERFACE-FRONTIER-V1",
+    "artifact_digest_sha256": "b40cd40851d38cb737c8c889aeb2e1a260459d55d6ecc4d5ccf3d3a7ed2be600",
+    "report_sha256": "fcaa77768131606b87554b01d932f1f0149561fe4e6dd082402e6b2eb44f12ba"
+  },
+  "implementation": {
+    "frontier_commit": "f4ca71183351ec6b1a837a901e46045614d205c4",
+    "frontier_blob_sha": "af4a381a27c9fdb303945e105ed56e707640ba59",
+    "workflow_commit": "b0291108274e9722d47e7087ede0492ce964f5ee"
+  },
+  "inputs": {
+    "exact_shader_corpus_artifact_id": 10086896274,
+    "exact_shader_corpus_zip_sha256": "7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959",
+    "exact_shader_corpus_report_sha256": "01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412",
+    "structural_artifact_id": 10087524653,
+    "structural_zip_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+    "structural_census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  },
+  "coverage": {
+    "exact_program_count": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_header_count": 37892,
+    "header_stage_counts": {"DS": 79, "PS": 25405, "VS": 12408},
+    "exact_instruction_count": 4896165,
+    "pixel_programs_with_interpolation": 17868,
+    "pixel_programs_without_interpolation": 507,
+    "interpolation_instruction_count": 425370,
+    "unique_pixel_import_signatures": 465,
+    "parameter_export_instruction_counts": {"DS": 68, "VS": 37907},
+    "parameter_export_program_counts": {"DS": 20, "VS": 8069},
+    "parameter_export_enable_mask_counts": {"DS": {"15": 68}, "VS": {"15": 37907}},
+    "parameter_export_compressed_count": 0,
+    "parameter_export_done_count": 0,
+    "unique_parameter_export_signatures": {"DS": 2, "VS": 8},
+    "material_backed_shader_pair_promotions": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "exp_parameter_target_and_enable_identity": "GLOBAL_EXACT",
+    "vintrp_attribute_channel_identity": "GLOBAL_EXACT",
+    "anonymous_interface_shape_compatibility": "GLOBAL_EXACT_DIAGNOSTIC_ONLY",
+    "param_index_to_attr_index_provenance": "WITHHELD_UNTIL_RETAIL_PIPELINE_OWNER_JOIN",
+    "material_header_vs_ps_pair_relation": "AUTHORITATIVE_NEXT_JOIN_SOURCE",
+    "domain_shader_pipeline_ownership": "WITHHELD_SEPARATE_TESSELLATION_GATE",
+    "varying_semantic_names": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD",
+    "material_backed_shader_pair_promotions": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": []
+}
