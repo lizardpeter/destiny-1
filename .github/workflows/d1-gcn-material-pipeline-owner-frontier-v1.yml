@@ -1,0 +1,131 @@
+name: D1 GCN material pipeline owner frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-material-pipeline-owner-frontier-v1.yml'
+      - 'tools/d1_gcn_material_pipeline_owner_frontier_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  OWNER_ARTIFACT_ID: '10126529830'
+  OWNER_ZIP_SHA256: 'b526d8b22670eb2346c956ba4a6e339203e508e662c2601c42ebdb7763049a67'
+  OWNER_REPORT_SHA256: '1c9088280bfd691499c2d3a0681d76bfc76348f551262f8c54a6f11c4c66ac08'
+  SHADER_ARTIFACT_ID: '10086896274'
+  SHADER_ZIP_SHA256: '7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959'
+  SHADER_REPORT_SHA256: '01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412'
+  REFERENCE_ARTIFACT_ID: '10129121118'
+  REFERENCE_ZIP_SHA256: 'a293d78521b6ff5b8852bfaeeec694ded28f327a4ab03cb7d64036d44b52eb5f'
+  REFERENCE_REPORT_SHA256: 'd859a8f19e267ec3a0f36afbe949d4bf523811f7f9509f6af6d2696c0142284c'
+
+jobs:
+  pipeline-owner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin implementation source
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gcn_material_pipeline_owner_frontier_v1.py
+          git diff --exit-code
+          git status --short
+
+      - name: Recover frozen owner, shader corpus, and exact reference merge
+        run: |
+          set -euo pipefail
+          mkdir -p input/owner input/shader input/reference out
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${OWNER_ARTIFACT_ID}/zip" -o input/owner.zip
+          echo "$OWNER_ZIP_SHA256  input/owner.zip" | sha256sum --check --strict
+          unzip -q input/owner.zip -d input/owner
+          echo "$OWNER_REPORT_SHA256  input/owner/D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "$SHADER_ZIP_SHA256  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          shader_report="$(find input/shader -type f -name 'D1_SHADER_CORPUS_PS_VS_DS_V3.json' -print -quit)"
+          test -n "$shader_report"
+          echo "$SHADER_REPORT_SHA256  $shader_report" | sha256sum --check --strict
+          cp "$shader_report" input/D1_SHADER_CORPUS_PS_VS_DS_V3.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${REFERENCE_ARTIFACT_ID}/zip" -o input/reference.zip
+          echo "$REFERENCE_ZIP_SHA256  input/reference.zip" | sha256sum --check --strict
+          unzip -q input/reference.zip -d input/reference
+          echo "$REFERENCE_REPORT_SHA256  input/reference/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json" | sha256sum --check --strict
+
+      - name: Build exact structural material pipeline ownership
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_material_pipeline_owner_frontier_v1.py \
+            --owner input/owner/D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_V1.json \
+            --shader-corpus input/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            --reference-probe input/reference/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json \
+            -o out/D1_GCN_MATERIAL_PIPELINE_OWNER_FRONTIER_V1.json \
+            | tee out/material_pipeline_owner_stdout.txt
+
+      - name: Fail closed and freeze exact structural owner denominator
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p='out/D1_GCN_MATERIAL_PIPELINE_OWNER_FRONTIER_V1.json'
+          d=json.load(open(p)); c=d['coverage']
+          assert d['schema']=='d1_gcn_material_pipeline_owner_frontier/v1'
+          assert d['status']=='D1_GCN_MATERIAL_PIPELINE_OWNER_FRONTIER_EXACT_STRUCTURAL',d['violations'][:50]
+          assert not d['violations']
+          assert c['material_count']==230706,c
+          assert c['shader_corpus_header_count']==37892,c
+          assert c['slot_0x28_resolution_counts']=={'EXACT_LOCALSHADER_WRAPPER':3967,'EXACT_OPAQUE_SPECIAL_REFERENCE':8,'EXACT_SHADER_CORPUS_HEADER':226731},c
+          assert c['slot_0x2a8_resolution_counts']=={'EXACT_OPAQUE_SPECIAL_REFERENCE':12,'EXACT_SHADER_CORPUS_HEADER':227981,'NULL':2713},c
+          assert c['slot_0x28_orb_stage_counts']=={'LocalShader':3967,'VS':226731},c
+          assert c['slot_0x2a8_orb_stage_counts']=={'PS':227981},c
+          assert c['slot_resolution_pair_counts']=={
+            'EXACT_LOCALSHADER_WRAPPER+EXACT_SHADER_CORPUS_HEADER':3736,
+            'EXACT_LOCALSHADER_WRAPPER+NULL':231,
+            'EXACT_OPAQUE_SPECIAL_REFERENCE+EXACT_OPAQUE_SPECIAL_REFERENCE':7,
+            'EXACT_OPAQUE_SPECIAL_REFERENCE+EXACT_SHADER_CORPUS_HEADER':1,
+            'EXACT_SHADER_CORPUS_HEADER+EXACT_OPAQUE_SPECIAL_REFERENCE':5,
+            'EXACT_SHADER_CORPUS_HEADER+EXACT_SHADER_CORPUS_HEADER':224244,
+            'EXACT_SHADER_CORPUS_HEADER+NULL':2482,
+          },c
+          assert c['direct_vertex_plus_pixel_material_count']==224244,c
+          assert c['localshader_plus_pixel_material_count']==3736,c
+          assert c['unique_direct_vertex_pixel_header_pair_count']==41359,c
+          assert c['unique_localshader_pixel_header_pair_count']==422,c
+          assert c['unique_localshader_wrapper_count']==177,c
+          assert c['unique_localshader_gcn_program_count']==65,c
+          assert c['materials_with_opaque_special_reference']==13,c
+          assert c['opaque_special_reference_occurrence_count']==20,c
+          assert c['param_index_to_attr_index_promotions']==0,c
+          assert c['localshader_to_hullshader_promotions']==0,c
+          assert c['domainshader_to_pixel_directness_promotions']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['localshader_as_vertexshader']=='FORBIDDEN'
+          print('D1_MATERIAL_PIPELINE_OWNER_EXACT',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_MATERIAL_PIPELINE_OWNER_FRONTIER_V1.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-MATERIAL-PIPELINE-OWNER-FRONTIER-V1
+          path: |
+            out/D1_GCN_MATERIAL_PIPELINE_OWNER_FRONTIER_V1.json
+            out/SHA256SUMS.txt
+            out/material_pipeline_owner_stdout.txt
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
