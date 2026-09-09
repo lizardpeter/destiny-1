@@ -1,0 +1,284 @@
+name: D1 global PS VS structural census v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-ps-vs-structural-census-v2.yml'
+      - 'tools/d1_shader_corpus_plan.py'
+      - 'tools/d1_remote_ps4_shader_corpus_extract_v2.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cfg_ir_parse_accounting_selftest.py'
+      - 'tools/d1_gcn_shader_corpus_structural_census.py'
+      - 'tools/d1_gcn_shader_corpus_structural_census_v2.py'
+      - 'tools/d1_gcn_structural_parse_accounting_gate.py'
+      - 'tools/d1_gcn_shader_corpus_stage_frontier.py'
+      - 'tools/d1_gcn_shader_corpus_stage_frontier_v2.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+      - 'tools/d1_ps4_vertex_shader_header.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test universal structural accounting and stage normalization
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_parse_accounting_selftest.py
+          python tools/d1_gcn_shader_corpus_stage_frontier_v2.py --self-test
+
+      - name: Recover exact current archive metadata and universal member catalog
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime index shader out work
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o index/packages.txt
+          curl --fail --location --retry 4 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o index/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  index/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" \
+            -o input/catalog.zip
+          echo "$CATALOG_ZIP_SHA256  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Build exact current PS VS denominator
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_everything_index_fast.py \
+            --location-index index/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list index/packages.txt \
+            --registry evidence/d1_export_class_registry.json \
+            --sqlite index/D1_CURRENT_EVERYTHING.sqlite \
+            --summary out/D1_CURRENT_EVERYTHING.json \
+            --queue index/D1_CURRENT_EVERYTHING.tsv \
+            | tee out/everything_index_stdout.txt
+          python tools/d1_shader_corpus_plan.py index/D1_CURRENT_EVERYTHING.sqlite \
+            -o out/D1_SHADER_CORPUS_PLAN.json \
+            | tee out/shader_plan_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_SHADER_CORPUS_PLAN.json'))
+          assert d['status']=='D1_SHADER_CORPUS_PLAN_COMPLETE',d['violations'][:20]
+          assert not d['violations']
+          assert d['header_population']['stage_counts'].get('PS',0)>0,d['header_population']
+          assert d['header_population']['stage_counts'].get('VS',0)>0,d['header_population']
+          required={'808EE505','8087695B','808768B7'}
+          present={str(x['header']).upper() for x in d['headers']}
+          assert required <= present,sorted(required-present)
+          print('DENOMINATOR',json.dumps({
+            'headers':d['header_population'],
+            'native_references':d['native_reference_population'],
+            'required_reference_headers':sorted(required),
+          },sort_keys=True))
+          PY
+
+      - name: Recover pinned Oodle 3 runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact native programs with package parallelism
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_remote_ps4_shader_corpus_extract_v2.py \
+            --plan out/D1_SHADER_CORPUS_PLAN.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --runtime runtime \
+            --workers 6 \
+            --out-dir shader \
+            --report out/D1_SHADER_CORPUS_EXTRACT_V2.json \
+            | tee out/shader_extract_v2_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/shader_extract_v2_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_SHADER_CORPUS_EXTRACT_V2.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_SHADER_CORPUS_EXTRACT_V2.json'))
+          assert d['schema']=='d1_remote_ps4_shader_corpus_extract/v2',d.get('schema')
+          print('EXTRACT',d['status'],json.dumps({
+            'headers':d['header_population'],
+            'native_references':d['native_reference_population'],
+            'gcn_programs':d['gcn_program_population'],
+            'violations':len(d['violations']),
+          },sort_keys=True))
+          PY
+
+      - name: Build pinned CLRX GFX700 disassembler
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build \
+            -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          printf '%s\n' "$exe" > out/CLRXDISASM_PATH.txt
+
+      - name: Run every exact unique GCN program through corrected Structural IR census
+        run: |
+          set -euo pipefail
+          exe="$(cat out/CLRXDISASM_PATH.txt)"
+          set +e
+          python tools/d1_gcn_shader_corpus_structural_census_v2.py \
+            --extract-report out/D1_SHADER_CORPUS_EXTRACT_V2.json \
+            --program-dir shader/programs \
+            --clrx "$exe" \
+            --baseline-header 808EE505 \
+            --work-dir work \
+            -o out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
+            | tee out/structural_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/structural_census_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json
+
+      - name: Require exact native-line accounting and source-proven mixed stages
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_structural_parse_accounting_gate.py \
+            --census out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
+            --ir-dir work/ir \
+            --required-header 8087695B:VS \
+            --required-header 808768B7:PS \
+            --required-header 808EE505 \
+            -o out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json \
+            | tee out/parse_accounting_gate_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/parse_accounting_gate_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json
+
+      - name: Build corrected exact PS VS structural frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_shader_corpus_stage_frontier_v2.py \
+            --census out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
+            --ir-dir work/ir \
+            --accounting-gate out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json \
+            -o out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json \
+            | tee out/stage_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/stage_frontier_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json
+
+      - name: Materialize diagnostics and promote only exact corpus
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p=json.load(open('out/D1_SHADER_CORPUS_PLAN.json'))
+          e=json.load(open('out/D1_SHADER_CORPUS_EXTRACT_V2.json'))
+          c=json.load(open('out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json'))
+          g=json.load(open('out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json'))
+          f=json.load(open('out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json'))
+          assert c['schema']=='d1_gcn_shader_corpus_structural_census/v1',c.get('schema')
+          assert c.get('source_extract_schema')=='d1_remote_ps4_shader_corpus_extract/v2',c.get('source_extract_schema')
+          assert c.get('driver',{}).get('schema')=='d1_gcn_shader_corpus_structural_census_driver/v2',c.get('driver')
+          assert c.get('driver',{}).get('vcc_normalized_register_classification_fixed') is True,c.get('driver')
+          assert c.get('encoding_representation_boundary',{}).get('clrx_encoding_hex_concatenation_is_raw_byte_oracle') is False,c.get('encoding_representation_boundary')
+          assert c['coverage']['semantic_shader_solved_percentage'] is None,c['coverage']
+          assert c['baseline']['header']=='808EE505',c['baseline']
+          assert c['coverage']['header_population_total']==e['header_population']['total']==p['header_population']['total']
+          assert g['schema']=='d1_gcn_structural_parse_accounting_gate/v1',g.get('schema')
+          assert f['schema']=='d1_gcn_shader_corpus_stage_frontier/v1',f.get('schema')
+          assert f.get('driver',{}).get('status')=='D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_DRIVER_V2',f.get('driver')
+          assert f.get('driver',{}).get('vcc_precedence_over_generic_vgpr_prefix') is True,f.get('driver')
+          print('STRUCTURAL_STATUS',c['status'])
+          print('PARSE_ACCOUNTING_STATUS',g['status'])
+          print('STAGE_FRONTIER_STATUS',f['status'])
+          print('COVERAGE',json.dumps(c['coverage'],sort_keys=True))
+          print('PARSE_ACCOUNTING_COVERAGE',json.dumps(g['coverage'],sort_keys=True))
+          print('REQUIRED_MIXED_STAGE',json.dumps(g['required_mixed_stage_reference_headers'],sort_keys=True))
+          print('STAGE_COVERAGE',json.dumps(f['coverage'],sort_keys=True))
+          print('PS_ONLY_OPCODES',f['cross_stage']['ps_only_opcodes'])
+          print('VS_ONLY_OPCODES',f['cross_stage']['vs_only_opcodes'])
+          print('PROMOTION_QUEUE_TOP20',json.dumps(f['frontier_vs_808ee505_baseline']['opcode_promotion_queue'][:20],sort_keys=True))
+          print('VIOLATIONS',len(e['violations']),len(c['violations']),len(g['violations']),len(f['violations']))
+          for name,rows in [('EXTRACT',e['violations']),('CENSUS',c['violations']),('ACCOUNTING',g['violations']),('FRONTIER',f['violations'])]:
+              for x in rows[:100]: print(name+'_VIOLATION',x)
+          PY
+          find out work/ir work/disasm work/stderr shader/headers shader/programs \
+            -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+          test "$(cat out/shader_extract_v2_exit_code.txt)" -eq 0
+          test "$(cat out/structural_census_exit_code.txt)" -eq 0
+          test "$(cat out/parse_accounting_gate_exit_code.txt)" -eq 0
+          test "$(cat out/stage_frontier_exit_code.txt)" -eq 0
+          python - <<'PY'
+          import json
+          e=json.load(open('out/D1_SHADER_CORPUS_EXTRACT_V2.json'))
+          c=json.load(open('out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json'))
+          g=json.load(open('out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json'))
+          f=json.load(open('out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json'))
+          assert e['status']=='D1_REMOTE_PS4_SHADER_CORPUS_EXACT',e['violations'][:50]
+          assert not e['violations']
+          assert c['status']=='D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_COMPLETE',c['violations'][:50]
+          assert not c['violations']
+          assert g['status']=='D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_CORPUS_EXACT',g['violations'][:50]
+          assert not g['violations']
+          assert all(x['exact_structural_parse_accounting'] for x in g['required_mixed_stage_reference_headers'])
+          assert f['status']=='D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_EXACT',f['violations'][:50]
+          assert not f['violations']
+          assert f['coverage']['ps_unique_programs']>0,f['coverage']
+          assert f['coverage']['vs_unique_programs']>0,f['coverage']
+          print('D1_GLOBAL_PS_VS_STRUCTURAL_V2_EXACT')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-PS-VS-STRUCTURAL-CENSUS-V2
+          path: |
+            out/
+            work/ir/
+            work/disasm/
+            work/stderr/
+            shader/headers/
+            shader/programs/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
