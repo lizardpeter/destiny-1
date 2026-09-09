@@ -1,0 +1,145 @@
+name: D1 GCN lane-aware VGPR SSA v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - tools/d1_gcn_vgpr_lane_ssa_v1.py
+      - tools/d1_gcn_vgpr_lane_ssa_corpus_replay_v1.py
+      - .github/workflows/d1-gcn-vgpr-lane-ssa-v1.yml
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: "10087524653"
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb"
+  STRUCTURAL_CENSUS_SHA256: "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  VGPR_MACHINE_ARTIFACT_ID: "10108191155"
+  VGPR_MACHINE_ARTIFACT_ZIP_SHA256: "03655a8fe104b84558354b6e3193332b309e4ebb9ff7dd4b36b8e89d6b49475b"
+  VGPR_MACHINE_FRONTIER_SHA256: "928900f0afff752eb4674164594c8494ab157118529a85311678ca8c4bf60907"
+  EXEC_SEMANTICS_BLOB_SHA1: "3f100abaff594335fc2a709dbd4cd2d285d8fcae"
+  EXEC_SYMBOLIC_BLOB_SHA1: "17072972b387492346596b83754b758b49531fd5"
+  VGPR_MACHINE_SEMANTICS_BLOB_SHA1: "0818013dbd3f680fd27afb19133c3bffc8b5d952"
+  VGPR_LANE_SSA_BLOB_SHA1: "b9a86378d085265c8975c1fa422eb6321e21f2b9"
+  VGPR_LANE_REPLAY_BLOB_SHA1: "2577b348f5963f357995dcf5f4492fd53aefd63f"
+
+jobs:
+  vgpr-lane-ssa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Pin exact symbolic and VGPR implementations
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/d1_gcn_exec_mask_semantics_v1.py)" = "$EXEC_SEMANTICS_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_exec_symbolic_dataflow_v1.py)" = "$EXEC_SYMBOLIC_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_vgpr_machine_semantics_v1.py)" = "$VGPR_MACHINE_SEMANTICS_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_vgpr_lane_ssa_v1.py)" = "$VGPR_LANE_SSA_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_vgpr_lane_ssa_corpus_replay_v1.py)" = "$VGPR_LANE_REPLAY_BLOB_SHA1"
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/vgpr_machine
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify exact frozen VGPR machine frontier
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VGPR_MACHINE_ARTIFACT_ID}/zip" \
+            -o source/vgpr_machine.zip
+          echo "$VGPR_MACHINE_ARTIFACT_ZIP_SHA256  source/vgpr_machine.zip" | sha256sum --check --strict
+          unzip -q source/vgpr_machine.zip D1_GCN_VGPR_MACHINE_FRONTIER_V1.json -d source/vgpr_machine
+          echo "$VGPR_MACHINE_FRONTIER_SHA256  source/vgpr_machine/D1_GCN_VGPR_MACHINE_FRONTIER_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/vgpr_machine/D1_GCN_VGPR_MACHINE_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_VGPR_MACHINE_FRONTIER_EXACT',d.get('violations',[])[:20]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['vgpr_def_entry_count']==3864039,c
+          assert c['exec_masked_def_entry_count']==3854603,c
+          assert c['single_lane_unmasked_def_entry_count']==9436,c
+          assert c['dynamic_vgpr_source_instruction_count']==6,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Replay lane-aware physical VGPR SSA globally
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vgpr_lane_ssa_corpus_replay_v1.py \
+            --workers 4 \
+            --ir-dir source/structural/work/ir \
+            --structural-census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --vgpr-machine-frontier source/vgpr_machine/D1_GCN_VGPR_MACHINE_FRONTIER_V1.json \
+            -o out/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json \
+            | tee out/vgpr_lane_ssa_replay_stdout.txt
+
+      - name: Fail closed on exact global VGPR lane SSA boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['effect_aware_basic_block_count']==68622,c
+          assert c['concrete_cfg_edge_count']==51073,c
+          assert c['max_vgpr_index']==251,c
+          assert c['vgpr_def_instruction_count']==3690362,c
+          assert c['vgpr_def_entry_count']==3864039,c
+          assert c['vgpr_use_instruction_count']==3561612,c
+          assert c['vgpr_use_entry_count']==6469818,c
+          assert c['exec_gated_write_node_count']==3854603,c
+          assert c['single_lane_write_node_count']==9436,c
+          assert c['vgpr_result_component_node_count']==3864039,c
+          assert c['dynamic_vgpr_read_boundary_count']==6,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$VGPR_MACHINE_ARTIFACT_ID" > out/SOURCE_VGPR_MACHINE_ARTIFACT_ID.txt
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VGPR-LANE-SSA-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
