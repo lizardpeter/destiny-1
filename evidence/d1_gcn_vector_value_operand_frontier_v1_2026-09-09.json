@@ -1,0 +1,131 @@
+{
+  "schema": "d1_gcn_vector_value_operand_frontier_checkpoint/v1",
+  "status": "D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "registry_commit": "cd55bc8112039ec5818e95ead6bb946f74ed8ab6",
+    "registry": "tools/d1_gcn_vector_value_semantics_v1.py",
+    "frontier_commit": "32cd7f885c75a7a81de6863f78448f05bdf16844",
+    "frontier": "tools/d1_gcn_vector_value_operand_frontier_v1.py",
+    "workflow_commit": "82dd2909bc6206c9a740e62e3f2cd274514d3b58",
+    "workflow": ".github/workflows/d1-gcn-vector-value-operand-frontier-v1.yml"
+  },
+  "workflow_run": {
+    "run_id": 34376451447,
+    "conclusion": "success",
+    "artifact_id": 10114127724,
+    "artifact_name": "D1-GCN-VECTOR-VALUE-OPERAND-FRONTIER-V1",
+    "artifact_digest_sha256": "cde67778313311a2ef4c0693d338903a536538d589cc11cd86dca4300acd6190",
+    "registry_report_sha256": "0020ba6d263524f7dc4ad375d654ca19f78fe246003e94ff574b2a167d672177",
+    "frontier_report_sha256": "7faed68ab12c02a02224299504f1d7b42e5c4b8697557410bc385ab16b4791c6"
+  },
+  "prerequisites": {
+    "structural": {
+      "artifact_id": 10087524653,
+      "artifact_digest_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+      "census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+    },
+    "vgpr_lane_ssa": {
+      "artifact_id": 10108802450,
+      "artifact_digest_sha256": "9e1051c5dcc2688a8d457b3e0dee752cf2975a07b73b52254f82173b58a09517",
+      "report_sha256": "aa54c90ac66669066c83b2b92405464032bccaa1f41d713d8b26f466480f39f6"
+    },
+    "condition_symbolic": {
+      "artifact_id": 10107497534,
+      "artifact_digest_sha256": "ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5",
+      "report_sha256": "5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5"
+    }
+  },
+  "coverage": {
+    "exact_program_count": 26464,
+    "exact_instruction_count": 4896165,
+    "vgpr_def_instruction_count": 3690362,
+    "vgpr_def_entry_count": 3864039,
+    "vgpr_def_opcode_count": 74,
+    "operand_form_count": 408,
+    "use_kind_form_count": 136,
+    "def_width_form_count": 85,
+    "single_lane_write_instruction_count": 9436,
+    "dynamic_vgpr_source_instruction_count": 6,
+    "condition_carry_coupled_instruction_count": 11521,
+    "predicate_select_instruction_count": 114066,
+    "shader_expression_semantic_promotions": 0
+  },
+  "category_instruction_counts": {
+    "BUFFER_RESOURCE_VALUE_OPAQUE": 10129,
+    "DS_LDS_VALUE_OPAQUE": 10046,
+    "DYNAMIC_VGPR_SOURCE_IDENTITY": 6,
+    "IMAGE_RESOURCE_VALUE_OPAQUE": 115466,
+    "INTERPOLATION_VALUE_OPAQUE": 425370,
+    "PREDICATE_SELECT_VALUE": 114066,
+    "SINGLE_LANE_MUTATION_VALUE": 9436,
+    "VALU_CARRY_COUPLED_VALUE": 11521,
+    "VALU_FORMULA_PENDING": 2994322
+  },
+  "category_def_entry_counts": {
+    "BUFFER_RESOURCE_VALUE_OPAQUE": 40392,
+    "DS_LDS_VALUE_OPAQUE": 10447,
+    "DYNAMIC_VGPR_SOURCE_IDENTITY": 6,
+    "IMAGE_RESOURCE_VALUE_OPAQUE": 258432,
+    "INTERPOLATION_VALUE_OPAQUE": 425370,
+    "PREDICATE_SELECT_VALUE": 114066,
+    "SINGLE_LANE_MUTATION_VALUE": 9436,
+    "VALU_CARRY_COUPLED_VALUE": 11521,
+    "VALU_FORMULA_PENDING": 2994369
+  },
+  "write_behavior_instruction_counts": {
+    "EXEC_MASKED_WHOLE_LANE_DEST": 3680926,
+    "SINGLE_LANE_UNMASKED": 9436
+  },
+  "machine_role_instruction_counts": {
+    "CONDITION_CARRY_MASK_OUTPUT": 11521,
+    "CONDITION_MASK_INPUT": 114066,
+    "EXEC_BYPASS": 9436,
+    "INTERPOLATION_VALUE_BOUNDARY": 425370,
+    "LDS_DS_VALUE_BOUNDARY": 10046,
+    "M0_INDEXED_DYNAMIC_VGPR_SOURCE": 6,
+    "NO_ADDITIONAL_MACHINE_ROLE_PROMOTED": 2994322,
+    "RESOURCE_VALUE_BOUNDARY": 125595,
+    "SINGLE_LANE_DESTINATION_MUTATION": 9436
+  },
+  "selected_exact_result_widths": {
+    "image_sample": {
+      "1": 26977,
+      "2": 31724,
+      "3": 20363,
+      "4": 19722
+    },
+    "image_load_mip": {
+      "1": 6014,
+      "2": 2,
+      "4": 607
+    },
+    "image_sample_l": {
+      "1": 26,
+      "3": 466,
+      "4": 2461
+    },
+    "image_get_resinfo": {"2": 48},
+    "image_get_lod": {"1": 2953},
+    "ds_read2_b32": {"2": 401},
+    "tbuffer_load_format_xyz": {"3": 4},
+    "tbuffer_load_format_xyzw": {"4": 10085},
+    "v_lshl_b64": {"2": 47}
+  },
+  "violations": [],
+  "unresolved": [],
+  "semantic_boundary": {
+    "lane_aware_vgpr_ssa": "GLOBAL_EXACT_PREREQUISITE",
+    "actual_vector_operand_source_domains": "GLOBAL_EXACT",
+    "vgpr_result_component_shapes": "GLOBAL_EXACT",
+    "resource_lds_interpolation_values": "EXPLICIT_OPAQUE_BOUNDARIES",
+    "dynamic_and_single_lane_machine_roles": "SOURCE_CLOSED",
+    "predicate_and_carry_machine_roles": "SOURCE_CLOSED_REUSE_CONDITION_LAYER",
+    "per_opcode_valu_formula_semantics": "NEXT_GATE",
+    "floating_point_mode_semantics": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "policy": "This checkpoint freezes the exact full-corpus VGPR-result operand/result-shape frontier. Every one of the 3,690,362 VGPR-defining instructions belongs to one of 74 source-classified ISA-domain families; all 3,864,039 result components are accounted for. Resource, LDS and interpolation results remain opaque. The remaining VALU formula surface is not promoted until per-op arithmetic and floating-point MODE behavior are source-closed."
+}
