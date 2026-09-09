@@ -1,0 +1,189 @@
+name: D1 GCN condition symbolic dataflow v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-condition-symbolic-dataflow-v1.yml'
+      - 'tools/d1_condition_machine_semantics_v1.py'
+      - 'tools/d1_condition_machine_frontier_v1.py'
+      - 'tools/d1_condition_symbolic_dataflow_v1.py'
+      - 'tools/d1_condition_symbolic_corpus_replay_v1.py'
+      - 'tools/d1_gcn_exec_mask_semantics_v1.py'
+      - 'tools/d1_gcn_exec_symbolic_dataflow_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  EXEC_ARTIFACT_ID: '10105101197'
+  EXEC_ARTIFACT_ZIP_SHA256: 'cf2e1843755eceb7ebdfd1623ac5eba3f47d0d5d41b8188788f7fd0c0eae7792'
+  EXEC_SYMBOLIC_REPLAY_SHA256: '484e2fedbd28cff405a2edeb740fa0bb78ce337e1bb6a931b59fc701e316574f'
+  EXEC_SEMANTICS_SOURCE_SHA256: '707088e993c9df5f63b4db505515cfcef045adaf00174b75c339bbc042711e2f'
+  EXEC_SYMBOLIC_SOURCE_SHA256: '11a4f89a9937d988bff5c603da9f40addc69779e8d6813a10426a7e85e29da5a'
+
+jobs:
+  condition-symbolic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Pin exact green EXEC prerequisite implementation
+        run: |
+          set -euo pipefail
+          echo "$EXEC_SEMANTICS_SOURCE_SHA256  tools/d1_gcn_exec_mask_semantics_v1.py" | sha256sum --check --strict
+          echo "$EXEC_SYMBOLIC_SOURCE_SHA256  tools/d1_gcn_exec_symbolic_dataflow_v1.py" | sha256sum --check --strict
+
+      - name: Validate source-closed condition machine semantics
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/exec
+          python tools/d1_condition_machine_semantics_v1.py > out/D1_GCN_CONDITION_MACHINE_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_CONDITION_MACHINE_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_CONDITION_MACHINE_SEMANTICS_SOURCE_CLOSED',d
+          assert len(d['compare_opcodes'])==18,d
+          assert len(d['carry_mask_opcodes'])==2,d
+          assert len(d['scc_producers'])==10,d
+          assert d['semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify exact green EXEC global prerequisite artifact
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${EXEC_ARTIFACT_ID}/zip" \
+            -o source/exec.zip
+          echo "$EXEC_ARTIFACT_ZIP_SHA256  source/exec.zip" | sha256sum --check --strict
+          unzip -q source/exec.zip D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json -d source/exec
+          echo "$EXEC_SYMBOLIC_REPLAY_SHA256  source/exec/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/exec/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_EXACT',d['violations'][:20]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['unresolved_control_entry_block_count']==8053,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Prove exact condition machine frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_condition_machine_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            -o out/D1_GCN_CONDITION_MACHINE_FRONTIER_V1.json \
+            | tee out/condition_frontier_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_CONDITION_MACHINE_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_CONDITION_MACHINE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['compare_instruction_count']==115023,c
+          assert c['compare_vcc_destination_count']==101601,c
+          assert c['compare_sgpr_pair_destination_count']==13422,c
+          assert c['carry_instruction_count']==11521,c
+          assert c['cndmask_instruction_count']==114066,c
+          assert c['cndmask_vcc_predicate_count']==110902,c
+          assert c['cndmask_sgpr_pair_predicate_count']==3164,c
+          assert c['scc_producer_instruction_count']==55835,c
+          assert c['scc_branch_consumer_count']==1840,c
+          assert c['vcc_branch_consumer_count']==300,c
+          assert c['vcc_half_write_count']==26464,c
+          assert c['structural_explicit_scc_def_count']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Replay path-aware condition mask and SCC symbolic dataflow globally
+        run: |
+          set -euo pipefail
+          python tools/d1_condition_symbolic_corpus_replay_v1.py \
+            --workers 4 \
+            --ir-dir source/structural/work/ir \
+            --structural-census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --condition-frontier out/D1_GCN_CONDITION_MACHINE_FRONTIER_V1.json \
+            -o out/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json \
+            | tee out/condition_symbolic_replay_stdout.txt
+
+      - name: Fail closed on exact condition symbolic boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['effect_aware_basic_block_count']==68622,c
+          assert c['concrete_cfg_edge_count']==51073,c
+          assert c['condition_symbolic_node_count']==1224147,c
+          assert c['condition_cfg_phi_node_count']==172140,c
+          assert c['unresolved_control_entry_block_count']==8053,c
+          assert c['tracked_sgpr_pair_instances']==20746,c
+          assert c['compare_mask_definition_count']==115023,c
+          assert c['carry_mask_definition_count']==11521,c
+          assert c['scalar_mask_definition_count']==26582,c
+          assert c['mask_half_write_count']==32122,c
+          assert c['opaque_mask_half_write_count']==117821,c
+          assert c['opaque_whole_vcc_write_count']==0,c
+          assert c['cndmask_mask_use_count']==114066,c
+          assert c['vcc_branch_mask_use_count']==300,c
+          assert c['scc_definition_count']==55835,c
+          assert c['scc_branch_use_count']==1840,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_CONDITION_MACHINE_SEMANTICS_V1.json \
+            out/D1_GCN_CONDITION_MACHINE_FRONTIER_V1.json \
+            out/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json \
+            > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$EXEC_ARTIFACT_ID" > out/SOURCE_EXEC_ARTIFACT_ID.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-CONDITION-SYMBOLIC-DATAFLOW-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
