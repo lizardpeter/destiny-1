@@ -1,0 +1,108 @@
+name: D1 GCN architectural effects frontier v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-architectural-effects-frontier-v2.yml'
+      - 'tools/d1_gcn_arch_effects_v1.py'
+      - 'tools/d1_gcn_arch_effects_v2.py'
+      - 'tools/d1_gcn_arch_effects_frontier_v2.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EVIDENCE_ARTIFACT_ID: '10088200204'
+  EVIDENCE_REPORT_SHA256: '0fc89bae78694917b431b2062bbce794d72e3ef770aa66603dd1bc6f560069cd'
+
+jobs:
+  all-67-effects:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Validate complete architectural registry
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_arch_effects_v2.py > /tmp/D1_GCN_ARCH_EFFECT_REGISTRY_V2.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/D1_GCN_ARCH_EFFECT_REGISTRY_V2.json'))
+          assert d['status']=='D1_GCN_ARCH_EFFECT_REGISTRY_ALL_67_FRONTIER_OPCODES_SOURCE_CLOSED'
+          assert d['source_closed_opcode_count']==67
+          assert d['extension_opcode_count']==40
+          assert d['semantic_promotions']==0
+          assert all(x['architectural_status']=='SOURCE_CLOSED' for x in d['opcodes'].values())
+          assert all(x['shader_expression_status']=='UNPROVEN' for x in d['opcodes'].values())
+          print('D1_GCN_ARCH_EFFECT_REGISTRY_V2_ALL_67_OK')
+          PY
+
+      - name: Download exact global structural evidence
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${EVIDENCE_ARTIFACT_ID}/zip" \
+            -o source/evidence.zip
+          unzip -q source/evidence.zip D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json -d source
+          echo "$EVIDENCE_REPORT_SHA256  source/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json" | sha256sum --check --strict
+
+      - name: Prove all 67 exact frontier opcodes are architecturally source-closed
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_arch_effects_frontier_v2.py \
+            --evidence source/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json \
+            --expected-sha256 "$EVIDENCE_REPORT_SHA256" \
+            -o out/D1_GCN_ARCH_EFFECTS_FRONTIER_V2.json \
+            | tee out/stdout.txt
+
+      - name: Fail closed on complete machine-effect coverage
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_ARCH_EFFECTS_FRONTIER_V2.json'))
+          assert d['status']=='D1_GCN_ARCH_EFFECTS_ALL_67_FRONTIER_OPCODES_SOURCE_CLOSED_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_novel_opcode_count']==67,c
+          assert c['exact_novel_opcode_instruction_occurrences']==261733,c
+          assert c['source_closed_opcode_count']==67,c
+          assert c['source_closed_opcode_instruction_occurrences']==261733,c
+          assert c['source_closed_novel_occurrence_ratio']==1.0,c
+          assert c['source_closed_unique_programs']==20199,c
+          assert c['source_closed_stage_programs']=={'PS':12111,'VS':8068,'DS':20},c
+          assert c['remaining_architecturally_unclosed_opcode_count']==0,c
+          assert c['remaining_architecturally_unclosed_occurrences']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          s=d['structural_correction_summary']
+          assert s['ARCHITECTURAL_CONTROL_FLOW_EFFECT']==4,s
+          assert s['ARCHITECTURAL_DEFS_DIFFER']==12,s
+          assert s['ARCHITECTURAL_MEMORY_EFFECT']==12,s
+          assert s['ARCHITECTURAL_USES_DIFFER']==59,s
+          assert s['NONTRIVIAL_DESTINATION_WRITE_SCOPE']==22,s
+          assert s['READ_MODIFY_WRITE_DESTINATION']==2,s
+          print('D1_GCN_ARCH_EFFECTS_ALL_67_FRONTIER_OPCODES_SOURCE_CLOSED_EXACT')
+          PY
+          cp /tmp/D1_GCN_ARCH_EFFECT_REGISTRY_V2.json out/
+          sha256sum out/D1_GCN_ARCH_EFFECTS_FRONTIER_V2.json out/D1_GCN_ARCH_EFFECT_REGISTRY_V2.json > out/SHA256SUMS.txt
+          printf '%s\n' "$EVIDENCE_ARTIFACT_ID" > out/SOURCE_EVIDENCE_ARTIFACT_ID.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-ARCHITECTURAL-EFFECTS-FRONTIER-V2
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
