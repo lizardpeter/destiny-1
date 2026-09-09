@@ -1,0 +1,68 @@
+{
+  "schema": "d1_gcn_effect_ir_v3_global_replay_checkpoint/v1",
+  "status": "D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "effect_ir_commit": "6ff51a9ff4b1e48fd59c2d937cce46aad0332a04",
+    "replay_initial_commit": "a2d53b930187dcb30d8f11db8324563464d17a1e",
+    "full_census_join_fix_commit": "8c2bffef11d9bfa63c2f026a76be202dee09bf0f",
+    "workflow_replay_commit": "bbb9e7ec8c9efa03b9ab4b29cfd2ea405d0043ef",
+    "effect_ir": "tools/d1_gcn_effect_ir_v3.py",
+    "corpus_replay": "tools/d1_gcn_effect_ir_corpus_replay_v1.py",
+    "workflow": ".github/workflows/d1-gcn-effect-ir-v3-global-replay.yml"
+  },
+  "workflow_run": {
+    "run_id": 34313581108,
+    "conclusion": "success",
+    "artifact_id": 10089281757,
+    "artifact_name": "D1-GCN-EFFECT-IR-V3-GLOBAL-REPLAY",
+    "artifact_digest_sha256": "3a3856258a55221be895a7a24b178c448afc3a91449f78a2bebdccb9b633e2e4",
+    "report_sha256": "71b028ae76a887153e0d8d92482f0b7b6be4528c46e2a81d23ea588727819821"
+  },
+  "exact_inputs": {
+    "structural_artifact_id": 10087524653,
+    "structural_artifact_zip_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+    "structural_census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed",
+    "structural_evidence_artifact_id": 10088200204,
+    "structural_evidence_report_sha256": "0fc89bae78694917b431b2062bbce794d72e3ef770aa66603dd1bc6f560069cd"
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "exact_stage_program_counts": {"PS": 18375, "VS": 8069, "DS": 20},
+    "exact_instructions_replayed": 4896165,
+    "frontier_provenance_program_count": 26379,
+    "baseline_only_program_count": 85,
+    "baseline_only_stage_program_counts": {"PS": 85},
+    "source_closed_instruction_count": 255449,
+    "source_closed_program_count": 20137,
+    "source_closed_stage_program_counts": {"PS": 12050, "VS": 8068, "DS": 19},
+    "architectural_defs_differ_instruction_count": 13513,
+    "architectural_uses_differ_instruction_count": 233801,
+    "partial_destination_write_instruction_count": 103229,
+    "indirect_pc_swap_instruction_count": 8053,
+    "indirect_pc_swap_program_count": 8053,
+    "structural_v2_basic_block_count": 60569,
+    "effect_v3_basic_block_count": 68622,
+    "basic_block_delta": 8053,
+    "structural_v2_concrete_cfg_edge_count": 51073,
+    "effect_v3_concrete_cfg_edge_count": 51073,
+    "concrete_cfg_edge_delta": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "failure_history": {
+    "initial_run_id": 34313164162,
+    "initial_conclusion": "failure",
+    "cause": "The replay incorrectly treated the structural-frontier program_provenance map as a total all-program roster. That map intentionally contains only 26379 frontier-touching binaries, omitting 85 baseline-only PS binaries.",
+    "correction": "The complete structural census is now the authoritative all-26464 program/stage ledger. Frontier provenance is cross-checked only where it is intentionally present.",
+    "ir_correctness_failure": false
+  },
+  "semantic_boundary": {
+    "native_v2_parse_accounting": "PRESERVED_EXACTLY",
+    "architectural_effects": "SOURCE_CLOSED_TRANCHE_APPLIED",
+    "indirect_pc_targets_resolved": 0,
+    "shader_expression_semantics": "UNPROVEN",
+    "exec_mask_symbolic_dataflow": "NOT_YET_PROMOTED",
+    "shader_expression_semantic_promotions": 0
+  }
+}
