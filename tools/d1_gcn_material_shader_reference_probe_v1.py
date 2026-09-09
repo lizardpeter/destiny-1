@@ -112,6 +112,24 @@ def exact_entry(c: RemoteCorpus, tag: str) -> tuple[dict, bytes]:
     return meta, payload
 
 
+def reference_resolution(c: RemoteCorpus, reference: str) -> dict:
+    ref = norm(reference)
+    if ref in NULLS:
+        return {"reference": ref, "kind": "NULL_REFERENCE"}
+    pkg, idx = filehash_pkg_index(int(ref, 16))
+    rec = {
+        "reference": ref,
+        "encoded_package_id": f"{pkg:04X}",
+        "encoded_entry_index": idx,
+        "encoded_package_present": pkg in c.catalogs,
+    }
+    if pkg not in c.catalogs:
+        rec["kind"] = "NO_CURRENT_PACKAGE_TARGET"
+    else:
+        rec["kind"] = "CURRENT_FILEHASH_CANDIDATE"
+    return rec
+
+
 def _worker_init(catalog_paths: list[str], base_url: str, part_count: int, runtime: str) -> None:
     global _WORKER_CORPUS
     catalogs = load_catalogs([Path(x) for x in catalog_paths])
@@ -145,16 +163,18 @@ def _probe_target(job: tuple[str, dict]) -> dict:
         }
         row["target_orbshdr_shape"] = orbshdr_shape(payload)
 
-        ref = meta["reference"]
-        if ref not in NULLS:
+        rr = reference_resolution(c, meta["reference"])
+        row["reference_resolution"] = rr
+        if rr["kind"] == "CURRENT_FILEHASH_CANDIDATE":
             try:
-                rmeta, rpayload = exact_entry(c, ref)
+                rmeta, rpayload = exact_entry(c, meta["reference"])
                 row["reference_target_entry"] = rmeta
                 row["reference_target_payload"] = {
                     **digest(rpayload),
                     "prefix_hex_64": rpayload[:64].hex().upper(),
                 }
                 row["reference_target_orbshdr_shape"] = orbshdr_shape(rpayload)
+                row["reference_resolution"]["kind"] = "CURRENT_FILEHASH_TARGET_RESOLVED"
             except Exception as ex:
                 row["violations"].append("reference_target:" + repr(ex))
 
@@ -258,6 +278,7 @@ def main() -> int:
     hard_violations = list(malformed_owner_violations)
     entry_class_counts = collections.Counter()
     reference_entry_class_counts = collections.Counter()
+    reference_resolution_counts = collections.Counter()
     structural_shape_counts = collections.Counter()
     package_counts = collections.Counter()
     for row in rows:
@@ -268,6 +289,9 @@ def main() -> int:
         rmeta = row.get("reference_target_entry")
         if rmeta:
             reference_entry_class_counts[f"{rmeta['type']}:{rmeta['subtype']}"] += 1
+        rr = row.get("reference_resolution")
+        if rr:
+            reference_resolution_counts[rr["kind"]] += 1
         shape = row.get("structural_shape")
         if shape:
             structural_shape_counts[shape] += 1
@@ -286,6 +310,7 @@ def main() -> int:
         ),
         "target_entry_class_counts": dict(sorted(entry_class_counts.items())),
         "reference_target_entry_class_counts": dict(sorted(reference_entry_class_counts.items())),
+        "reference_resolution_counts": dict(sorted(reference_resolution_counts.items())),
         "structural_shape_counts": dict(sorted(structural_shape_counts.items())),
         "target_package_counts": dict(sorted(package_counts.items())),
         "serialized_stage_slot_occurrences": dict(
@@ -317,7 +342,9 @@ def main() -> int:
         "policy": (
             "This diagnostic classifies only exact nonzero material shader references rejected by the "
             "frozen shader-header denominator. Package type/subtype/reference and payload hashes are retail "
-            "facts. VS/PS labels are retained only as serialized material-slot provenance and are never "
+            "facts. A non-null FileEntry.Reference is followed as a FileHash only when its encoded package "
+            "exists in the frozen current package catalog; otherwise the non-target reference is retained "
+            "verbatim. VS/PS labels are retained only as serialized material-slot provenance and are never "
             "promoted into target shader stage. OrbShdr parsing is a structural payload-shape test only. "
             "No missing reference is admitted into the shader corpus by this probe."
         ),
@@ -333,6 +360,7 @@ def main() -> int:
         "OCCURRENCES", absent_occurrences,
         "UNIQUE_TARGETS", len(rows),
         "ENTRY_CLASSES", dict(entry_class_counts),
+        "REF_RESOLUTION", dict(reference_resolution_counts),
         "SHAPES", dict(structural_shape_counts),
         "VIOLATIONS", len(hard_violations),
     )
