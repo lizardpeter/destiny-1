@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-global-shader-corpus-ps-vs-ds-v3.yml'
       - 'tools/d1_shader_corpus_v2_format_reclassify.py'
+      - 'tools/d1_shader_corpus_v2_format_reclassify_selftest.py'
       - 'tools/d1_ps4_vs_ds_shader_header.py'
 
 permissions:
@@ -33,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_ps4_vs_ds_shader_header.py --self-test
-          python tools/d1_shader_corpus_v2_format_reclassify.py --self-test
+          python tools/d1_shader_corpus_v2_format_reclassify_selftest.py
 
       - name: Download exact completed diagnostic corpus artifact
         run: |
