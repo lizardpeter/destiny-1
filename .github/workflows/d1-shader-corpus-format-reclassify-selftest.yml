@@ -1,0 +1,26 @@
+name: D1 shader corpus format reclassifier self-test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_shader_corpus_v2_format_reclassify.py'
+      - 'tools/d1_ps4_vs_ds_shader_header.py'
+      - '.github/workflows/d1-shader-corpus-format-reclassify-selftest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Run strict format reclassifier self-tests
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_vs_ds_shader_header.py --self-test
+          python tools/d1_shader_corpus_v2_format_reclassify.py --self-test
