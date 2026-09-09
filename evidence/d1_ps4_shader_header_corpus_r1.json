@@ -1,0 +1,126 @@
+{
+  "schema": "d1_ps4_shader_header_corpus_evidence/v1",
+  "status": "D1_PS4_SHADER_HEADER_CORPUS_EXACT",
+  "source": {
+    "everything_index_workflow_run_id": 34052033201,
+    "everything_index_artifact_id": 9995061546,
+    "everything_index_artifact_name": "D1-GLOBAL-EVERYTHING-INDEX-FAST",
+    "everything_index_artifact_zip_sha256": "c589b6fa768c7e399c5b9bbd6dae7e78c5602aed7770bd9a5dba2e80cab122a8",
+    "everything_index_commit": "5a13460a9b4578cc71008c1fa7f054b0ab4d01b3",
+    "packages_txt_sha256": "9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5",
+    "physical_package_members": 1275,
+    "package_families": 337,
+    "sqlite_view": "current_entries"
+  },
+  "selection": {
+    "pixel_shader_header": {
+      "type": 32,
+      "subtype": 8
+    },
+    "vertex_shader_header": {
+      "type": 32,
+      "subtype": 9
+    },
+    "native_program_edge": "FileEntry.Reference",
+    "generation_policy": "current retail logical package view only"
+  },
+  "header_population": {
+    "total": 37892,
+    "distinct_header_tag_hashes": 37892,
+    "package_families_with_any_ps_or_vs_header": 246,
+    "pixel_shader": {
+      "header_count": 25405,
+      "distinct_header_tag_hashes": 25405,
+      "distinct_native_program_references": 24771,
+      "header_package_families": 245
+    },
+    "vertex_shader": {
+      "header_count": 12487,
+      "distinct_header_tag_hashes": 12487,
+      "distinct_native_program_references": 12408,
+      "header_package_families": 220
+    }
+  },
+  "native_reference_population": {
+    "distinct_native_program_references": 37179,
+    "resolved_current_entry_count": 37179,
+    "missing_current_entry_count": 0,
+    "nonunique_current_entry_count": 0,
+    "cross_stage_shared_reference_count": 0,
+    "references_used_by_multiple_logical_headers": 488,
+    "maximum_headers_per_native_reference": 39,
+    "pixel_shader": {
+      "distinct_native_program_references": 24771,
+      "references_used_by_multiple_logical_headers": 480,
+      "maximum_headers_per_native_reference": 9,
+      "native_target_type": 1,
+      "native_target_subtype": 8,
+      "native_target_edge_count": 25405,
+      "unexpected_native_target_edge_count": 0,
+      "native_target_package_families": 245,
+      "native_payload_file_size_bytes": {
+        "minimum": 60,
+        "median_across_distinct_references": 740,
+        "maximum": 21652
+      }
+    },
+    "vertex_shader": {
+      "distinct_native_program_references": 12408,
+      "references_used_by_multiple_logical_headers": 8,
+      "maximum_headers_per_native_reference": 39,
+      "native_target_type": 1,
+      "native_target_subtype": 9,
+      "native_target_edge_count": 12487,
+      "unexpected_native_target_edge_count": 0,
+      "native_target_package_families": 221,
+      "native_payload_file_size_bytes": {
+        "minimum": 80,
+        "median_across_distinct_references": 956,
+        "maximum": 5500
+      }
+    }
+  },
+  "highest_fanout_native_references": [
+    {
+      "native_program_reference": "80AE4416",
+      "logical_header_count": 39,
+      "type": 1,
+      "subtype": 9,
+      "file_size": 392
+    },
+    {
+      "native_program_reference": "80AE4415",
+      "logical_header_count": 20,
+      "type": 1,
+      "subtype": 9,
+      "file_size": 632
+    },
+    {
+      "native_program_reference": "80AADADE",
+      "logical_header_count": 9,
+      "type": 1,
+      "subtype": 8,
+      "file_size": 236
+    },
+    {
+      "native_program_reference": "809690BC",
+      "logical_header_count": 9,
+      "type": 1,
+      "subtype": 8,
+      "file_size": 708
+    }
+  ],
+  "proved_invariants": [
+    "Every current type 32/subtype 8 header has a non-null FileEntry.Reference that resolves to exactly one current type 1/subtype 8 entry.",
+    "Every current type 32/subtype 9 header has a non-null FileEntry.Reference that resolves to exactly one current type 1/subtype 9 entry.",
+    "No native FileEntry.Reference is shared between the current pixel-shader and vertex-shader header populations.",
+    "Logical shader-header count is not a native-program count: 37892 headers collapse to 37179 distinct native FileEntry.Reference values before any byte-level deduplication."
+  ],
+  "semantic_boundary": {
+    "unique_native_gcn_code_sha256_count": null,
+    "structurally_complete_unique_gcn_program_count": null,
+    "semantic_shader_solved_percentage": null,
+    "reason": "This evidence is derived only from exact Tiger metadata. Native payload framing, exact GCN byte deduplication, structural instruction coverage, and semantic promotion are separate later gates."
+  },
+  "policy": "This checkpoint records the exact current retail PS4 Tiger metadata denominator. It uses only type/subtype selection and FileEntry.Reference edges from the validated archive-wide current-entry index. It does not infer shader identity, sharing, stage, or semantics from names, package adjacency, materials, disassembly, or visual appearance."
+}
