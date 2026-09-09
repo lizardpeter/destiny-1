@@ -1,0 +1,222 @@
+name: D1 GCN vector formula lane binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - tools/d1_gcn_vector_bit_exact_eval_v1.py
+      - tools/d1_gcn_vector_formula_lane_binding_v1.py
+      - tools/d1_gcn_vector_formula_lane_binding_corpus_replay_v1.py
+      - .github/workflows/d1-gcn-vector-formula-lane-binding-v1.yml
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  LANE_SSA_ARTIFACT_ID: '10108802450'
+  LANE_SSA_ARTIFACT_ZIP_SHA256: '9e1051c5dcc2688a8d457b3e0dee752cf2975a07b73b52254f82173b58a09517'
+  LANE_SSA_REPORT_SHA256: 'aa54c90ac66669066c83b2b92405464032bccaa1f41d713d8b26f466480f39f6'
+  VECTOR_FRONTIER_ARTIFACT_ID: '10114127724'
+  VECTOR_FRONTIER_ARTIFACT_ZIP_SHA256: 'cde67778313311a2ef4c0693d338903a536538d589cc11cd86dca4300acd6190'
+  VECTOR_FRONTIER_REPORT_SHA256: '7faed68ab12c02a02224299504f1d7b42e5c4b8697557410bc385ab16b4791c6'
+  FORMULA_FRONTIER_ARTIFACT_ID: '10114709465'
+  FORMULA_FRONTIER_ARTIFACT_ZIP_SHA256: '2ff805d16f75fda05f6e4b3674a6f551391379018439d63a3bc21809ad06094f'
+  FORMULA_FRONTIER_REPORT_SHA256: 'cc809bbd728435f5d017b13abb3fe791ac334889e824c8ad3dda8e848ca8ceb0'
+  FORMULA_SEMANTICS_REPORT_SHA256: 'f84fa230efc7a33cccd0a80e8dc9c10045137117e4bf7c65433efdd964de3cce'
+
+jobs:
+  formula-lane-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Pin frozen prerequisite implementations and new binding layer
+        run: |
+          set -euo pipefail
+          check_blob() { test "$(git hash-object "$1")" = "$2" || { echo "blob drift: $1" >&2; exit 2; }; }
+          check_blob tools/d1_gcn_exec_mask_semantics_v1.py 3f100abaff594335fc2a709dbd4cd2d285d8fcae
+          check_blob tools/d1_gcn_exec_symbolic_dataflow_v1.py 17072972b387492346596b83754b758b49531fd5
+          check_blob tools/d1_gcn_vgpr_machine_semantics_v1.py 0818013dbd3f680fd27afb19133c3bffc8b5d952
+          check_blob tools/d1_gcn_vgpr_lane_ssa_v1.py b9a86378d085265c8975c1fa422eb6321e21f2b9
+          check_blob tools/d1_gcn_vector_formula_semantics_v1.py 331f08a4465f70e5c74304ff5a947c9439c0da30
+          check_blob tools/d1_gcn_vector_bit_exact_eval_v1.py e06cceacf3e33edba2390cf34c9a89462ea0d9a3
+          check_blob tools/d1_gcn_vector_formula_lane_binding_v1.py 2b34f7d5281ea175759ed88bbeb8d2272a466919
+          check_blob tools/d1_gcn_vector_formula_lane_binding_corpus_replay_v1.py ffd4df2fced3a60085389e61045cb5a89587b774
+          python -m py_compile \
+            tools/d1_gcn_vector_bit_exact_eval_v1.py \
+            tools/d1_gcn_vector_formula_lane_binding_v1.py \
+            tools/d1_gcn_vector_formula_lane_binding_corpus_replay_v1.py
+
+      - name: Validate executable bit-exact architectural subset
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/lane source/vector source/formula
+          python tools/d1_gcn_vector_bit_exact_eval_v1.py > out/D1_GCN_VECTOR_BIT_EXACT_EVAL_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_BIT_EXACT_EVAL_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_BIT_EXACT_EVALUATOR_SOURCE_CLOSED',d
+          assert not d['violations'],d
+          assert len(d['opcodes'])==12,d
+          PY
+
+      - name: Download and verify exact structural corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify frozen lane SSA checkpoint
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LANE_SSA_ARTIFACT_ID}/zip" \
+            -o source/lane.zip
+          echo "$LANE_SSA_ARTIFACT_ZIP_SHA256  source/lane.zip" | sha256sum --check --strict
+          unzip -q source/lane.zip D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json -d source/lane
+          echo "$LANE_SSA_REPORT_SHA256  source/lane/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/lane/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT',d.get('violations',[])[:20]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['vgpr_result_component_node_count']==3864039,c
+          assert c['exec_gated_write_node_count']==3854603,c
+          assert c['single_lane_write_node_count']==9436,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Verify frozen vector operand and formula frontiers
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VECTOR_FRONTIER_ARTIFACT_ID}/zip" \
+            -o source/vector.zip
+          echo "$VECTOR_FRONTIER_ARTIFACT_ZIP_SHA256  source/vector.zip" | sha256sum --check --strict
+          unzip -q source/vector.zip D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json -d source/vector
+          echo "$VECTOR_FRONTIER_REPORT_SHA256  source/vector/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FORMULA_FRONTIER_ARTIFACT_ID}/zip" \
+            -o source/formula.zip
+          echo "$FORMULA_FRONTIER_ARTIFACT_ZIP_SHA256  source/formula.zip" | sha256sum --check --strict
+          unzip -q source/formula.zip \
+            D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json \
+            D1_GCN_VECTOR_FORMULA_SEMANTICS_V1.json \
+            -d source/formula
+          echo "$FORMULA_FRONTIER_REPORT_SHA256  source/formula/D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json" | sha256sum --check --strict
+          echo "$FORMULA_SEMANTICS_REPORT_SHA256  source/formula/D1_GCN_VECTOR_FORMULA_SEMANTICS_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          v=json.load(open('source/vector/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json'))
+          f=json.load(open('source/formula/D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json'))
+          assert v['status']=='D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_EXACT',v.get('violations',[])[:20]
+          assert not v['violations'] and not v['unresolved']
+          assert f['status']=='D1_GCN_VECTOR_BASE_FORMULA_FRONTIER_EXACT',f.get('violations',[])[:20]
+          assert not f['violations'] and not f['unresolved']
+          assert f['coverage']['formula_instruction_count']==2994322,f['coverage']
+          assert f['coverage']['formula_result_component_count']==2994369,f['coverage']
+          assert f['coverage']['bit_exact_replay_ready_result_component_count']==389149,f['coverage']
+          PY
+
+      - name: Bind every formula result into existing lane SSA
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vector_formula_lane_binding_corpus_replay_v1.py \
+            --workers 4 \
+            --ir-dir source/structural/work/ir \
+            --structural-census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --vector-frontier source/vector/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json \
+            --formula-frontier source/formula/D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json \
+            -o out/D1_GCN_VECTOR_FORMULA_LANE_BINDING_CORPUS_V1.json \
+            | tee out/vector_formula_lane_binding_stdout.txt
+
+      - name: Fail closed on global formula to lane SSA integration
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_FORMULA_LANE_BINDING_CORPUS_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_FORMULA_LANE_BINDING_CORPUS_EXACT',d['violations'][:100]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['formula_instruction_count']==2994322,c
+          assert c['formula_result_component_binding_count']==2994369,c
+          assert c['physical_write_binding_count']==2994369,c
+          assert c['formula_raw_input_accounting_instruction_count']==2994322,c
+          assert c['bit_exact_instruction_count']==389102,c
+          assert c['bit_exact_result_component_count']==389149,c
+          assert c['symbolic_formula_instruction_count']==2605220,c
+          assert c['symbolic_formula_result_component_count']==2605220,c
+          assert c['opaque_nonformula_result_component_count']==869670,c
+          assert c['modifier_touched_instruction_count']==313444,c
+          assert c['abs_modifier_instruction_count']==47624,c
+          assert c['neg_modifier_instruction_count']==158330,c
+          assert c['omod_modifier_instruction_count']==28931,c
+          assert c['clamp_modifier_instruction_count']==129395,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          b=d['semantic_boundary']
+          assert b['formula_result_to_lane_candidate_binding']=='GLOBAL_EXACT',b
+          assert b['formula_result_to_physical_write_binding']=='GLOBAL_EXACT',b
+          assert b['bit_exact_integer_value_nodes']=='GLOBAL_EXECUTABLE_ARCHITECTURAL_NODES',b
+          assert b['mac_old_destination_role_separation']=='GLOBAL_EXACT',b
+          assert b['vop3_clamp_numeric_range']=='WITHHELD_AMD_REV1_3_INTERNAL_SOURCE_CONFLICT',b
+          assert b['resource_lds_interpolation_values']=='UNCHANGED_OPAQUE_BOUNDARIES',b
+          print('D1_GCN_VECTOR_FORMULA_LANE_BINDING_CORPUS_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_VECTOR_BIT_EXACT_EVAL_V1.json \
+            out/D1_GCN_VECTOR_FORMULA_LANE_BINDING_CORPUS_V1.json \
+            > out/SHA256SUMS.txt
+          cat > out/SOURCE_ARTIFACT_IDS.txt <<EOF
+          structural=${STRUCTURAL_ARTIFACT_ID}
+          lane_ssa=${LANE_SSA_ARTIFACT_ID}
+          vector_operand=${VECTOR_FRONTIER_ARTIFACT_ID}
+          vector_formula=${FORMULA_FRONTIER_ARTIFACT_ID}
+          EOF
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VECTOR-FORMULA-LANE-BINDING-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
