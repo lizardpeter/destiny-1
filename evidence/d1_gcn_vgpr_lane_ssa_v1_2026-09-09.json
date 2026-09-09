@@ -1,0 +1,54 @@
+{
+  "schema": "d1_gcn_vgpr_lane_ssa_checkpoint/v1",
+  "status": "D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow_run_id": 34363257843,
+  "workflow_source_commit": "29fafcdb7e9cc42c3066362d04ab92c92a3a41f3",
+  "artifact": {
+    "id": 10108802450,
+    "name": "D1-GCN-VGPR-LANE-SSA-V1",
+    "zip_sha256": "9e1051c5dcc2688a8d457b3e0dee752cf2975a07b73b52254f82173b58a09517"
+  },
+  "sources": {
+    "structural_artifact_id": 10087524653,
+    "vgpr_machine_artifact_id": 10108191155,
+    "vgpr_lane_ssa_producer_commit": "2361d20d54d2537b533dbf688ebd115ee81bfd25",
+    "vgpr_lane_corpus_replay_commit": "758fcb2aef21fa729527447f93237bb88c852241"
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_instructions_replayed": 4896165,
+    "effect_aware_basic_block_count": 68622,
+    "concrete_cfg_edge_count": 51073,
+    "tracked_vgpr_instances": 758612,
+    "max_vgpr_index": 251,
+    "program_entry_vgpr_node_count": 758612,
+    "vgpr_cfg_phi_node_count": 1425835,
+    "unresolved_control_entry_block_count": 8053,
+    "unresolved_control_entry_vgpr_node_count": 314638,
+    "non_vgpr_source_leaf_count": 2460647,
+    "vgpr_def_instruction_count": 3690362,
+    "vgpr_def_entry_count": 3864039,
+    "vgpr_use_instruction_count": 3561612,
+    "vgpr_use_entry_count": 6469818,
+    "exec_gated_write_node_count": 3854603,
+    "single_lane_write_node_count": 9436,
+    "vgpr_result_component_node_count": 3864039,
+    "dynamic_vgpr_read_boundary_count": 6,
+    "vgpr_ssa_node_count": 16368742,
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "semantic_boundary": {
+    "physical_vgpr_lane_ssa": "GLOBAL_EXACT",
+    "inactive_lane_preservation": "GLOBAL_EXACT",
+    "v_writelane_single_lane_mutation": "GLOBAL_EXACT",
+    "v_movrels_dynamic_source_identity": "GLOBAL_EXACT_OPAQUE_VALUE_BOUNDARY",
+    "ordinary_sgpr_value_ssa": "NEXT_GATE",
+    "opcode_result_value_semantics": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "policy": "This checkpoint freezes the first exact whole-corpus physical-VGPR lane SSA. It proves register/lane identity and preservation only. Arithmetic, image, interpolation, memory and material values remain unpromoted."
+}
