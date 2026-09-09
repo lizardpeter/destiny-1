@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Compatibility/hardening driver for the game-wide D1 GCN structural census.
+"""Hardening driver for the game-wide D1 GCN structural census.
 
 The structural algorithm remains ``d1_gcn_shader_corpus_structural_census.py``.
-This driver makes three deliberately narrow corrections for the v2 corpus pass:
+This driver makes four deliberately narrow corrections for the v2 corpus pass:
 
-1. accept the exact ``d1_remote_ps4_shader_corpus_extract/v2`` recovery report
-   without weakening any v1 structural acceptance rule;
+1. accept ``d1_remote_ps4_shader_corpus_extract/v2`` only after the exact V2->V1
+   structural projection proves every planned header/native reference and every
+   OrbShdr-bounded GCN program was recovered without violations;
 2. classify VCC before the generic ``v*`` register rule in normalized reporting;
-3. record that CLRX ``encoding_hex`` is a textual instruction representation used
+3. preserve the original V2 source identity while passing only the exact projected
+   contract to the established structural algorithm;
+4. record that CLRX ``encoding_hex`` is a textual instruction representation used
    for instruction width/address accounting and form census, not a byte-stream
    oracle that may be concatenated to reproduce the raw GCN SHA-256.
 
@@ -24,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import d1_gcn_shader_corpus_structural_census as core
+import d1_shader_corpus_extract_v2_structural_projection as projection
 
 V2_SCHEMA = "d1_remote_ps4_shader_corpus_extract/v2"
 V1_SCHEMA = "d1_remote_ps4_shader_corpus_extract/v1"
@@ -68,20 +72,38 @@ def main() -> int:
     if schema not in (V1_SCHEMA, V2_SCHEMA):
         raise SystemExit(f"unsupported extract report: {schema!r}")
 
-    # Keep the existing structural implementation unchanged. Its input schema
-    # check is adapted through a deterministic compatibility copy only.
     compat_path = extract_path
+    projection_report = None
+    projection_report_path = None
     remove_compat = False
     if schema == V2_SCHEMA:
-        compat_path = extract_path.with_name(extract_path.stem + ".STRUCTURAL_V1_COMPAT.json")
-        compat = dict(src)
-        compat["schema"] = V1_SCHEMA
-        compat["compatibility_source_schema"] = V2_SCHEMA
-        compat["compatibility_policy"] = (
-            "Schema adaptation changes only the top-level version marker; the fields "
-            "consumed by the structural census retain their exact v2 values."
+        projected, projection_report = projection.project(src)
+        projection_report_path = extract_path.with_name(
+            extract_path.stem + ".STRUCTURAL_PROJECTION_REPORT.json"
         )
-        compat_path.write_text(json.dumps(compat, indent=2) + "\n")
+        projection_report_path.write_text(json.dumps(projection_report, indent=2) + "\n")
+        print(
+            "STRUCTURAL_PROJECTION",
+            projection_report["status"],
+            "COVERAGE",
+            json.dumps(projection_report["coverage"], sort_keys=True),
+            "VIOLATIONS",
+            len(projection_report["violations"]),
+        )
+        for v in projection_report["violations"][:100]:
+            print("PROJECTION_VIOLATION", v)
+        if projection_report["status"] != projection.PROJECTION_STATUS:
+            # Do not form structural statistics from an incomplete retail corpus.
+            return 2
+        compat_path = extract_path.with_name(
+            extract_path.stem + ".STRUCTURAL_V1_PROJECTED.json"
+        )
+        projected["compatibility_source_schema"] = V2_SCHEMA
+        projected["compatibility_policy"] = (
+            "V2 entered the established V1 structural input contract only after the "
+            "exact fail-closed structural projection proved complete raw recovery."
+        )
+        compat_path.write_text(json.dumps(projected, indent=2) + "\n")
         sys.argv[extract_i] = str(compat_path)
         remove_compat = True
 
@@ -99,7 +121,18 @@ def main() -> int:
             "schema": "d1_gcn_shader_corpus_structural_census_driver/v2",
             "vcc_normalized_register_classification_fixed": True,
             "structural_algorithm": "d1_gcn_shader_corpus_structural_census.py",
+            "v2_exact_projection_required_before_structural_census": True,
         }
+        out["structural_projection"] = (
+            None
+            if projection_report is None
+            else {
+                "status": projection_report["status"],
+                "coverage": projection_report["coverage"],
+                "violation_count": len(projection_report["violations"]),
+                "report": str(projection_report_path),
+            }
+        )
         out["encoding_representation_boundary"] = {
             "raw_gcn_program_identity": "OrbShdr-bounded extractor .bin bytes and SHA-256",
             "clrx_encoding_hex_role": (
@@ -113,9 +146,12 @@ def main() -> int:
                 "naive concatenation of CLRX encoding_hex yields a different digest."
             ),
         }
-        out["policy"] = str(out.get("policy") or "") + (
-            " CLRX encoding_hex is not promoted as raw native byte order; exact raw "
-            "program identity always comes from the extractor's OrbShdr-bounded .bin."
+        out["policy"] = (
+            str(out.get("policy") or "")
+            + " V2 raw recovery must pass the exact structural projection before any "
+              "structural corpus statistics are formed. CLRX encoding_hex is not promoted "
+              "as raw native byte order; exact raw program identity always comes from the "
+              "extractor's OrbShdr-bounded .bin."
         )
         output_path.write_text(json.dumps(out, indent=2) + "\n")
 
