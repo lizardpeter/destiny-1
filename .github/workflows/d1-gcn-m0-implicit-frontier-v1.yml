@@ -1,0 +1,95 @@
+name: D1 GCN implicit M0 frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - tools/d1_gcn_m0_implicit_frontier_v1.py
+      - .github/workflows/d1-gcn-m0-implicit-frontier-v1.yml
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: "10087524653"
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb"
+  STRUCTURAL_CENSUS_SHA256: "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  M0_FRONTIER_BLOB_SHA1: "1fbd1757a56004c28d1e69adc98356c02a97dc80"
+
+jobs:
+  m0-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Pin exact M0 frontier implementation
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/d1_gcn_m0_implicit_frontier_v1.py)" = "$M0_FRONTIER_BLOB_SHA1"
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Census source-backed implicit M0 consumers
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_m0_implicit_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            -o out/D1_GCN_M0_IMPLICIT_FRONTIER_V1.json \
+            | tee out/m0_implicit_frontier_stdout.txt
+
+      - name: Fail closed on implicit M0 boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_M0_IMPLICIT_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_M0_IMPLICIT_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert not d['unresolved']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['explicit_m0_def_instruction_count']==17894,c
+          assert c['structural_explicit_m0_use_instruction_count']==0,c
+          assert c['implicit_m0_value_use_instruction_count']>0,c
+          assert c['unresolved_m0_sensitive_instruction_count']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_M0_IMPLICIT_FRONTIER_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_M0_IMPLICIT_FRONTIER_V1.json > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-M0-IMPLICIT-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
