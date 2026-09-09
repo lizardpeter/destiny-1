@@ -1,0 +1,58 @@
+{
+  "schema": "d1_gcn_sgpr_ssa_checkpoint/v1",
+  "status": "D1_GCN_SGPR_SSA_CORPUS_REPLAY_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow_run_id": 34366187773,
+  "workflow_source_commit": "7eb86e267be3f4e7cbea46bfedb51de806f2309b",
+  "artifact": {
+    "id": 10110002727,
+    "name": "D1-GCN-SGPR-SSA-V1",
+    "zip_sha256": "243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5"
+  },
+  "sources": {
+    "structural_artifact_id": 10087524653,
+    "sgpr_machine_frontier_artifact_id": 10108920407,
+    "m0_implicit_frontier_artifact_id": 10109357318,
+    "sgpr_ssa_producer_commit": "735852297e69e169c29e05c6084730fca217b62c",
+    "sgpr_ssa_corpus_replay_commit": "81fe3228fd50cf0f7c22e79923f74876c356e901"
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_instructions_replayed": 4896165,
+    "effect_aware_basic_block_count": 68622,
+    "concrete_cfg_edge_count": 51073,
+    "tracked_scalar_register_instances": 1187994,
+    "max_sgpr_index": 95,
+    "program_entry_scalar_node_count": 1187994,
+    "scalar_cfg_phi_node_count": 1783446,
+    "unresolved_control_entry_block_count": 8053,
+    "unresolved_control_entry_scalar_node_count": 291403,
+    "non_scalar_source_leaf_count": 72722,
+    "sgpr_def_instruction_count": 610052,
+    "sgpr_def_entry_count": 2056285,
+    "sgpr_use_instruction_count": 1666084,
+    "sgpr_use_entry_count": 4112684,
+    "m0_def_instruction_count": 17894,
+    "implicit_m0_use_instruction_count": 425866,
+    "whole_scalar_write_entry_count": 2029441,
+    "exec_gated_mask_half_write_entry_count": 26844,
+    "whole_scalar_rmw_write_entry_count": 98,
+    "implicit_rmw_use_entry_count": 98,
+    "scalar_result_component_node_count": 2056285,
+    "scalar_ssa_node_count": 7461557,
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "semantic_boundary": {
+    "physical_sgpr_m0_ssa": "GLOBAL_EXACT",
+    "cfg_scalar_phi_identity": "GLOBAL_EXACT",
+    "m0_implicit_value_dependencies": "GLOBAL_EXACT",
+    "status_mask_layers": "GLOBAL_EXACT_SEPARATE_LAYERS",
+    "opcode_result_value_semantics": "NEXT_GATE",
+    "shader_expression_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "policy": "This checkpoint freezes exact whole-corpus physical SGPR and M0 SSA after source-closing implicit M0 consumers. It proves scalar register identity, CFG merges, RMW preservation, mask-half write identity and M0 dependency provenance only. Opcode-result meaning, shader expressions and material semantics remain unpromoted."
+}
