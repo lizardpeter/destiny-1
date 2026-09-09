@@ -1,0 +1,79 @@
+name: D1 shader corpus structural census v1
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_manifest_artifact_id:
+        description: "Artifact ID containing a JSONL source manifest and referenced native binaries"
+        required: true
+        type: string
+      source_manifest_path:
+        description: "Manifest path inside recovered artifact"
+        required: false
+        default: "D1_SHADER_NATIVE_PROGRAM_SOURCES.jsonl"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: d1-crota-source-semantics-v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Recover exact source corpus artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.source_manifest_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p recovered
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > recovered/corpus.zip
+          unzip -q recovered/corpus.zip -d recovered/corpus
+          find recovered/corpus -type f -print | sort
+
+      - name: Run fail-closed structural census
+        env:
+          MANIFEST_REL: ${{ inputs.source_manifest_path }}
+        run: |
+          set -euo pipefail
+          MANIFEST="recovered/corpus/${MANIFEST_REL}"
+          test -f "$MANIFEST"
+          python tools/d1_shader_corpus_structural_census.py \
+            --sources "$MANIFEST" \
+            --parser tools/d1_gcn_cfg_ir_v2.py \
+            --out out/D1_SHADER_CORPUS_STRUCTURAL_CENSUS_V1.json
+
+      - name: Verify deterministic census status
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('out/D1_SHADER_CORPUS_STRUCTURAL_CENSUS_V1.json')
+          d = json.loads(p.read_text())
+          assert d['status'] == 'D1_SHADER_CORPUS_STRUCTURAL_CENSUS_COMPLETE'
+          assert d['source_reference_count'] > 0
+          assert 0 < d['unique_program_count'] <= d['source_reference_count']
+          assert len(d['unique_programs']) == d['unique_program_count']
+          assert sum(x['reference_count'] for x in d['unique_programs']) == d['source_reference_count']
+          print({k: d[k] for k in ('source_reference_count','unique_program_count','duplicate_reference_count','stage_reference_counts')})
+          PY
+
+      - name: Upload immutable census artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: D1-SHADER-CORPUS-STRUCTURAL-CENSUS-V1
+          path: out/D1_SHADER_CORPUS_STRUCTURAL_CENSUS_V1.json
+          if-no-files-found: error
+          retention-days: 90
