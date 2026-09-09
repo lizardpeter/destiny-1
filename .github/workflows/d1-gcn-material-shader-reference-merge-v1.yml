@@ -1,0 +1,112 @@
+name: D1 GCN material shader reference merge v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-material-shader-reference-merge-v1.yml'
+      - 'tools/d1_gcn_material_shader_reference_probe_merge_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PROBE1_ARTIFACT_ID: '10128183779'
+  PROBE1_ZIP_SHA256: 'd388903d3806a32af4a8c4d81bb74955fa6a3f964c8bc19b73a842ac6a53c9fd'
+  PROBE1_REPORT_SHA256: '1c9bb7a28b28559d40cde79399880f2b291d9ca5c45011cd4c861406ae9233ec'
+  PROBE2_ARTIFACT_ID: '10128953573'
+  PROBE2_ZIP_SHA256: 'e2ede19a1df88666c83a7c69ab6b305626da9d7b76a481cb34d409f126c90733'
+  PROBE2_REPORT_SHA256: '40f207544b6e0cd8f2cbf8975a7cc32bc1fde3d849adfca73a39f3aae9278624'
+
+jobs:
+  merge-reference-probes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin merge implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gcn_material_shader_reference_probe_merge_v1.py
+          git diff --exit-code
+          git status --short
+
+      - name: Recover complementary frozen probes
+        run: |
+          set -euo pipefail
+          mkdir -p input/probe1 input/probe2 out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PROBE1_ARTIFACT_ID}/zip" \
+            -o input/probe1.zip
+          echo "$PROBE1_ZIP_SHA256  input/probe1.zip" | sha256sum --check --strict
+          unzip -q input/probe1.zip -d input/probe1
+          echo "$PROBE1_REPORT_SHA256  input/probe1/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PROBE2_ARTIFACT_ID}/zip" \
+            -o input/probe2.zip
+          echo "$PROBE2_ZIP_SHA256  input/probe2.zip" | sha256sum --check --strict
+          unzip -q input/probe2.zip -d input/probe2
+          echo "$PROBE2_REPORT_SHA256  input/probe2/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_V1.json" | sha256sum --check --strict
+
+      - name: Merge exact complementary observations
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_material_shader_reference_probe_merge_v1.py \
+            input/probe1/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_V1.json \
+            input/probe2/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_V1.json \
+            -o out/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json \
+            | tee out/material_shader_reference_merge_stdout.txt
+
+      - name: Fail closed and freeze exact merged denominator
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p='out/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json'
+          d=json.load(open(p)); c=d['coverage']
+          assert d['schema']=='d1_gcn_material_shader_reference_probe_merged/v1'
+          assert d['status']=='D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['input_probe_count']==2,c
+          assert c['owner_violation_count']==3987,c
+          assert c['shader_header_absent_occurrence_count']==3987,c
+          assert c['unique_missing_reference_count']==196,c
+          assert c['target_resolved_count']==196,c
+          assert c['target_payload_recovered_count']==196,c
+          assert c['target_entry_class_counts']=={'128:0':1,'16:0':7,'1:4':5,'32:11':177,'32:4':4,'32:6':2},c
+          assert c['reference_target_entry_class_counts']=={'16:0':1,'1:11':177,'1:4':4,'1:6':2},c
+          assert c['reference_resolution_counts']=={'CURRENT_FILEHASH_TARGET_RESOLVED':184,'NO_CURRENT_PACKAGE_TARGET':7,'NULL_REFERENCE':5},c
+          assert c['serialized_stage_slot_occurrences']=={'PS':12,'VS':3975},c
+          assert c['referenced_orb_stage_target_counts']=={'LocalShader':177},c
+          assert c['referenced_orb_stage_occurrence_counts']=={'LocalShader':3967},c
+          assert c['type32_subtype11_localshader_target_count']==177,c
+          assert c['type32_subtype11_localshader_occurrence_count']==3967,c
+          assert c['shader_stage_promotions']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['localshader_as_vertexshader']=='FORBIDDEN'
+          print('D1_MATERIAL_SHADER_REFERENCE_MERGED_EXACT',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-MATERIAL-SHADER-REFERENCE-MERGED-V1
+          path: |
+            out/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json
+            out/SHA256SUMS.txt
+            out/material_shader_reference_merge_stdout.txt
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
