@@ -9,6 +9,7 @@ on:
       - 'tools/d1_remote_ps4_shader_corpus_extract.py'
       - 'tools/d1_gcn_shader_corpus_structural_census.py'
       - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_structural_parse_accounting_gate.py'
       - 'tools/d1_ps4_shader_binary_probe.py'
       - 'tools/d1_ps4_vertex_shader_header.py'
 
@@ -71,7 +72,9 @@ jobs:
           assert d['status']=='D1_SHADER_CORPUS_PLAN_COMPLETE',d['violations'][:20]
           assert d['header_population']['stage_counts']['PS']>0,d
           assert d['header_population']['stage_counts']['VS']>0,d
-          assert any(x['header']=='808EE505' for x in d['headers']),'808EE505 absent from exact current 32:8/32:9 population'
+          required={'808EE505','5A7F252A','8C1CE492'}
+          present={str(x['header']).upper() for x in d['headers']}
+          assert required <= present,sorted(required-present)
           print('PLAN',d['header_population'],d['native_reference_population'])
           PY
 
@@ -144,6 +147,24 @@ jobs:
           test "$rc" -eq 0 -o "$rc" -eq 2
           test -s out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json
 
+      - name: Require exact native-line parse accounting across PS VS corpus
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_structural_parse_accounting_gate.py \
+            --census out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
+            --ir-dir work/ir \
+            --required-header 5A7F252A:VS \
+            --required-header 8C1CE492:PS \
+            --required-header 808EE505 \
+            -o out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json \
+            | tee out/parse_accounting_gate_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/parse_accounting_gate_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json
+
       - name: Validate diagnostic boundary and summarize frontier
         run: |
           set -euo pipefail
@@ -152,18 +173,40 @@ jobs:
           p=json.load(open('out/D1_SHADER_CORPUS_PLAN.json'))
           e=json.load(open('out/D1_SHADER_CORPUS_EXTRACT.json'))
           c=json.load(open('out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json'))
+          g=json.load(open('out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json'))
           assert c['schema']=='d1_gcn_shader_corpus_structural_census/v1',c.get('schema')
+          assert g['schema']=='d1_gcn_structural_parse_accounting_gate/v1',g.get('schema')
           assert c['coverage']['semantic_shader_solved_percentage'] is None,c['coverage']
           assert c['baseline']['header']=='808EE505',c['baseline']
           assert c['coverage']['header_population_total']==e['header_population']['total']==p['header_population']['total']
           print('STRUCTURAL_STATUS',c['status'])
+          print('PARSE_ACCOUNTING_STATUS',g['status'])
           print('COVERAGE',json.dumps(c['coverage'],sort_keys=True))
+          print('PARSE_ACCOUNTING_COVERAGE',json.dumps(g['coverage'],sort_keys=True))
+          print('REQUIRED_MIXED_STAGE',json.dumps(g['required_mixed_stage_reference_headers'],sort_keys=True))
           print('CENSUS_COUNTS',json.dumps({k:c['census'][k] for k in ('opcode_count','instruction_count','exact_encoding_count','structural_form_count')},sort_keys=True))
           print('NOVEL_VS_808EE505',json.dumps(c['census']['novel_vs_baseline'],sort_keys=True))
-          print('VIOLATIONS',len(c['violations']))
-          for x in c['violations'][:100]: print('VIOLATION',x)
+          print('VIOLATIONS',len(c['violations']),len(g['violations']))
+          for x in c['violations'][:100]: print('CENSUS_VIOLATION',x)
+          for x in g['violations'][:100]: print('ACCOUNTING_VIOLATION',x)
           PY
-          find out work/ir work/disasm work/stderr shader/headers shader/programs -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+          find out work/ir work/disasm work/stderr shader/headers shader/programs \
+            -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+          # Promotion is fail-closed, but only after every diagnostic file and checksum
+          # has been materialized for the always-run artifact upload below.
+          test "$(cat out/structural_census_exit_code.txt)" -eq 0
+          test "$(cat out/parse_accounting_gate_exit_code.txt)" -eq 0
+          python - <<'PY'
+          import json
+          c=json.load(open('out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json'))
+          g=json.load(open('out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json'))
+          assert c['status']=='D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_COMPLETE',c['violations'][:50]
+          assert not c['violations']
+          assert g['status']=='D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_CORPUS_EXACT',g['violations'][:50]
+          assert not g['violations']
+          assert all(x['exact_structural_parse_accounting'] for x in g['required_mixed_stage_reference_headers'])
+          PY
 
       - uses: actions/upload-artifact@v4
         if: always()
