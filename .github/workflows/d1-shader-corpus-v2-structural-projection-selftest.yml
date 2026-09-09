@@ -1,0 +1,24 @@
+name: D1 shader corpus V2 structural projection self-test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_shader_corpus_extract_v2_structural_projection.py'
+      - '.github/workflows/d1-shader-corpus-v2-structural-projection-selftest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Run fail-closed V2 structural projection self-test
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_corpus_extract_v2_structural_projection.py --self-test
