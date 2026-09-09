@@ -1,0 +1,129 @@
+{
+  "schema": "d1_gcn_scalar_value_overlay_checkpoint/v1",
+  "status": "D1_GCN_SCALAR_VALUE_OVERLAY_CORPUS_REPLAY_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "producer_commit": "ec7fcf22e947ec43bbc0e2931d571ae8fe722932",
+    "producer": "tools/d1_gcn_scalar_value_overlay_v1.py",
+    "corpus_replay_commit": "7323d96dfb993d15b7f52ed7b4ea7995d4e996a4",
+    "corpus_replay": "tools/d1_gcn_scalar_value_overlay_corpus_v1.py",
+    "workflow_commit": "f52c5a235e2d89f4732e9fa4a707ad66e9332176",
+    "workflow": ".github/workflows/d1-gcn-scalar-value-overlay-v1.yml"
+  },
+  "workflow_run": {
+    "run_id": 34374742341,
+    "conclusion": "success",
+    "artifact_id": 10113503972,
+    "artifact_name": "D1-GCN-SCALAR-VALUE-OVERLAY-V1",
+    "artifact_digest_sha256": "4f0935d4a415ee51623790aee1477dbaeeecb6b425aaf1d6634d3c65841bcd36",
+    "scalar_value_semantics_report_sha256": "dc9917906559a65eed3920975315ccc0daea9fd605d5ddba7ae97b0277d52556",
+    "baseline_808ee505_overlay_report_sha256": "f99e6dc225914f0de51286bc372e85e6ae8359255ee0f39c7e4ff7cc5e3a8e73",
+    "corpus_replay_report_sha256": "280994b0a72e07b5bde21ccae1b8f3b44b40877f83495e48c7bd5a3d3913e80a"
+  },
+  "prerequisites": {
+    "structural": {
+      "artifact_id": 10087524653,
+      "artifact_digest_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+      "census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+    },
+    "exec_symbolic": {
+      "artifact_id": 10105101197,
+      "artifact_digest_sha256": "cf2e1843755eceb7ebdfd1623ac5eba3f47d0d5d41b8188788f7fd0c0eae7792",
+      "report_sha256": "484e2fedbd28cff405a2edeb740fa0bb78ce337e1bb6a931b59fc701e316574f"
+    },
+    "condition_symbolic": {
+      "artifact_id": 10107497534,
+      "artifact_digest_sha256": "ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5",
+      "report_sha256": "5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5"
+    },
+    "vgpr_lane_ssa": {
+      "artifact_id": 10108802450,
+      "artifact_digest_sha256": "9e1051c5dcc2688a8d457b3e0dee752cf2975a07b73b52254f82173b58a09517",
+      "report_sha256": "aa54c90ac66669066c83b2b92405464032bccaa1f41d713d8b26f466480f39f6"
+    },
+    "sgpr_m0_ssa": {
+      "artifact_id": 10110002727,
+      "artifact_digest_sha256": "243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5",
+      "report_sha256": "fade0a42fb83fbc9b45b5c418925182d97e65870ebef9d33f2f18e31d31b4166"
+    },
+    "scalar_value_operand_frontier": {
+      "artifact_id": 10110694265,
+      "artifact_digest_sha256": "ef8e08cb40c02ee33b6fb476e07b0fc2deab3e20cd7d728f9baee041706420c9",
+      "report_sha256": "0877607b6f0a918e7c72e52995ccb1bf75296c74a5f43911b2825102b905d5b6"
+    }
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_instructions_replayed": 4896165,
+    "scalar_def_instruction_count": 610052,
+    "scalar_result_component_count": 2056285,
+    "bound_instruction_count": 610052,
+    "bound_component_count": 2056285,
+    "architectural_nonmemory_instruction_count": 116129,
+    "architectural_nonmemory_component_count": 171588,
+    "opaque_memory_instruction_count": 493923,
+    "opaque_memory_component_count": 1884697,
+    "shader_expression_semantic_promotions": 0
+  },
+  "category_instruction_counts": {
+    "CONDITION_MASK_VALUE": 13422,
+    "CROSS_STATE_IDENTITY": 32167,
+    "PURE_SCALAR_TRANSFORM": 70540,
+    "SCALAR_MEMORY_RESULT": 493923
+  },
+  "category_component_counts": {
+    "CONDITION_MASK_VALUE": 26844,
+    "CROSS_STATE_IDENTITY": 49525,
+    "PURE_SCALAR_TRANSFORM": 95219,
+    "SCALAR_MEMORY_RESULT": 1884697
+  },
+  "value_kind_counts": {
+    "CONDITION_MASK_ALIAS": 22300,
+    "OLD_EXEC_ALIAS": 9305,
+    "OPAQUE_SCALAR_MEMORY_RESULT": 493923,
+    "PC_PLUS_4": 8053,
+    "SCALAR_ALU_OPERATION": 61662,
+    "VGPR_FIRST_ACTIVE_LANE_SELECT": 217,
+    "VGPR_LANE_SELECT": 14592
+  },
+  "cross_state_instruction_counts": {
+    "s_and_saveexec_b64": 9305,
+    "s_swappc_b64": 8053,
+    "v_readlane_b32": 14592,
+    "v_readfirstlane_b32": 217
+  },
+  "pure_scalar_partition": {
+    "condition_mask_alias_instruction_count": 8878,
+    "standalone_scalar_alu_instruction_count": 61662
+  },
+  "baseline_808ee505": {
+    "gcn_sha256": "7cbed0ae8ff82a15a9945c136cb8e58188c78cc0fd7c45ee8d3778959cbca352",
+    "instruction_count": 456,
+    "scalar_def_instruction_count": 47,
+    "scalar_result_component_count": 136,
+    "bound_instruction_count": 47,
+    "bound_component_count": 136,
+    "architectural_nonmemory_instruction_count": 13,
+    "architectural_nonmemory_component_count": 23,
+    "opaque_memory_instruction_count": 34,
+    "opaque_memory_component_count": 113,
+    "violations": []
+  },
+  "violations": [],
+  "semantic_boundary": {
+    "exec_value_identity": "GLOBAL_EXACT_PREREQUISITE",
+    "condition_mask_value_identity": "GLOBAL_EXACT_PREREQUISITE",
+    "vgpr_lane_state_identity": "GLOBAL_EXACT_PREREQUISITE",
+    "physical_sgpr_m0_ssa": "GLOBAL_EXACT_PREREQUISITE",
+    "scalar_result_architectural_value_binding": "GLOBAL_EXACT",
+    "scalar_result_expression_dag_binding": "GLOBAL_EXACT",
+    "scalar_memory_result_values": "OPAQUE_RESOURCE_ADDRESS_WITHHELD",
+    "vector_result_expression_dag_binding": "NEXT_GATE",
+    "shader_expression_semantics": "WITHHELD",
+    "material_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "policy": "This checkpoint freezes the first exact whole-corpus cross-domain architectural value binding for every physical scalar SSA result component. Existing EXEC, condition-mask/SCC and lane-aware VGPR graph identities are reused rather than duplicated. All 2,056,285 scalar result components bind exactly once. Non-memory results are source-backed architectural values; scalar-memory load results remain opaque until descriptor/address/resource semantics are proven. Shader expressions, material roles and game semantics are not inferred."
+}
