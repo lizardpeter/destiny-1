@@ -1,0 +1,281 @@
+name: D1 GCN scalar value overlay v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-scalar-value-overlay-v1.yml'
+      - 'tools/d1_gcn_scalar_value_overlay_v1.py'
+      - 'tools/d1_gcn_scalar_value_overlay_corpus_v1.py'
+      - 'tools/d1_gcn_scalar_value_semantics_v1.py'
+      - 'tools/d1_gcn_exec_mask_semantics_v1.py'
+      - 'tools/d1_gcn_exec_symbolic_dataflow_v1.py'
+      - 'tools/d1_condition_machine_semantics_v1.py'
+      - 'tools/d1_condition_symbolic_dataflow_v1.py'
+      - 'tools/d1_gcn_vgpr_machine_semantics_v1.py'
+      - 'tools/d1_gcn_vgpr_lane_ssa_v1.py'
+      - 'tools/d1_gcn_sgpr_machine_semantics_v1.py'
+      - 'tools/d1_gcn_sgpr_ssa_v1.py'
+      - 'tools/d1_gcn_m0_implicit_frontier_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+
+  EXEC_ARTIFACT_ID: '10105101197'
+  EXEC_ZIP_SHA256: 'cf2e1843755eceb7ebdfd1623ac5eba3f47d0d5d41b8188788f7fd0c0eae7792'
+  EXEC_REPORT_SHA256: '484e2fedbd28cff405a2edeb740fa0bb78ce337e1bb6a931b59fc701e316574f'
+
+  CONDITION_ARTIFACT_ID: '10107497534'
+  CONDITION_ZIP_SHA256: 'ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5'
+  CONDITION_REPORT_SHA256: '5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5'
+
+  VGPR_ARTIFACT_ID: '10108802450'
+  VGPR_ZIP_SHA256: '9e1051c5dcc2688a8d457b3e0dee752cf2975a07b73b52254f82173b58a09517'
+  VGPR_REPORT_SHA256: 'aa54c90ac66669066c83b2b92405464032bccaa1f41d713d8b26f466480f39f6'
+
+  SGPR_ARTIFACT_ID: '10110002727'
+  SGPR_ZIP_SHA256: '243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5'
+  SGPR_REPORT_SHA256: 'fade0a42fb83fbc9b45b5c418925182d97e65870ebef9d33f2f18e31d31b4166'
+
+  OPERAND_ARTIFACT_ID: '10110694265'
+  OPERAND_ZIP_SHA256: 'ef8e08cb40c02ee33b6fb476e07b0fc2deab3e20cd7d728f9baee041706420c9'
+  OPERAND_REPORT_SHA256: '0877607b6f0a918e7c72e52995ccb1bf75296c74a5f43911b2825102b905d5b6'
+
+  BASELINE_GCN_SHA256: '7cbed0ae8ff82a15a9945c136cb8e58188c78cc0fd7c45ee8d3778959cbca352'
+
+jobs:
+  scalar-value-overlay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Pin exact producer source graph
+        run: |
+          set -euo pipefail
+          check_blob() { test "$(git hash-object "$1")" = "$2" || { echo "blob drift: $1" >&2; exit 2; }; }
+          check_blob tools/d1_gcn_scalar_value_overlay_v1.py b33716acada601d9b0cc951347f1754e6898bc8d
+          check_blob tools/d1_gcn_scalar_value_overlay_corpus_v1.py a906bf17d9859f2bbf3c3b637e11ad5fe4fac08e
+          check_blob tools/d1_gcn_scalar_value_semantics_v1.py f349ce078dccf293bc9281501b39af0f78260e4f
+          check_blob tools/d1_gcn_exec_mask_semantics_v1.py 3f100abaff594335fc2a709dbd4cd2d285d8fcae
+          check_blob tools/d1_gcn_exec_symbolic_dataflow_v1.py 17072972b387492346596b83754b758b49531fd5
+          check_blob tools/d1_condition_machine_semantics_v1.py 263f6a0bcdd1a3c128883ca5dd78a727bab80d67
+          check_blob tools/d1_condition_symbolic_dataflow_v1.py 79d0d17c590bbea64609f2742a3138a02f5a6cc0
+          check_blob tools/d1_gcn_vgpr_machine_semantics_v1.py 0818013dbd3f680fd27afb19133c3bffc8b5d952
+          check_blob tools/d1_gcn_vgpr_lane_ssa_v1.py b9a86378d085265c8975c1fa422eb6321e21f2b9
+          check_blob tools/d1_gcn_sgpr_machine_semantics_v1.py b76b8594cb38fee94fed57b556ebc7f5291a1ddc
+          check_blob tools/d1_gcn_sgpr_ssa_v1.py 235584542a7bcaedc98137811e64c258fab016b3
+          check_blob tools/d1_gcn_m0_implicit_frontier_v1.py 1fbd1757a56004c28d1e69adc98356c02a97dc80
+          python -m py_compile \
+            tools/d1_gcn_scalar_value_overlay_v1.py \
+            tools/d1_gcn_scalar_value_overlay_corpus_v1.py \
+            tools/d1_gcn_scalar_value_semantics_v1.py
+
+      - name: Validate source-backed scalar value registry
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/prereq
+          python tools/d1_gcn_scalar_value_semantics_v1.py > out/D1_GCN_SCALAR_VALUE_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_SCALAR_VALUE_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_SCALAR_VALUE_SEMANTICS_SOURCE_CLOSED',d
+          assert len(d['observed_sgpr_def_opcodes'])==31,d
+          assert d['architectural_value_semantic_opcode_count']==26,d
+          assert d['opaque_memory_value_opcode_count']==5,d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify frozen graph prerequisite artifacts by inner report hash
+        run: |
+          set -euo pipefail
+          fetch_artifact() {
+            id="$1"; ziphash="$2"; outfile="$3"
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" \
+              -o "$outfile"
+            echo "$ziphash  $outfile" | sha256sum --check --strict
+          }
+          fetch_artifact "$EXEC_ARTIFACT_ID" "$EXEC_ZIP_SHA256" source/prereq/exec.zip
+          fetch_artifact "$CONDITION_ARTIFACT_ID" "$CONDITION_ZIP_SHA256" source/prereq/condition.zip
+          fetch_artifact "$VGPR_ARTIFACT_ID" "$VGPR_ZIP_SHA256" source/prereq/vgpr.zip
+          fetch_artifact "$SGPR_ARTIFACT_ID" "$SGPR_ZIP_SHA256" source/prereq/sgpr.zip
+          fetch_artifact "$OPERAND_ARTIFACT_ID" "$OPERAND_ZIP_SHA256" source/prereq/operand.zip
+
+          unzip -q source/prereq/exec.zip D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json -d source/prereq/exec
+          unzip -q source/prereq/condition.zip D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json -d source/prereq/condition
+          unzip -q source/prereq/vgpr.zip D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json -d source/prereq/vgpr
+          unzip -q source/prereq/sgpr.zip D1_GCN_SGPR_SSA_CORPUS_REPLAY_V1.json -d source/prereq/sgpr
+          unzip -q source/prereq/operand.zip D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_V1.json -d source/prereq/operand
+
+          echo "$EXEC_REPORT_SHA256  source/prereq/exec/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          echo "$CONDITION_REPORT_SHA256  source/prereq/condition/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          echo "$VGPR_REPORT_SHA256  source/prereq/vgpr/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          echo "$SGPR_REPORT_SHA256  source/prereq/sgpr/D1_GCN_SGPR_SSA_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          echo "$OPERAND_REPORT_SHA256  source/prereq/operand/D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_V1.json" | sha256sum --check --strict
+
+          python - <<'PY'
+          import json
+          paths={
+            'exec':'source/prereq/exec/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json',
+            'condition':'source/prereq/condition/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json',
+            'vgpr':'source/prereq/vgpr/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json',
+            'sgpr':'source/prereq/sgpr/D1_GCN_SGPR_SSA_CORPUS_REPLAY_V1.json',
+            'operand':'source/prereq/operand/D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_V1.json',
+          }
+          d={k:json.load(open(v)) for k,v in paths.items()}
+          assert d['exec']['status']=='D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_EXACT',d['exec'].get('violations',[])[:20]
+          assert d['condition']['status']=='D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_EXACT',d['condition'].get('violations',[])[:20]
+          assert d['vgpr']['status']=='D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT',d['vgpr'].get('violations',[])[:20]
+          assert d['sgpr']['status']=='D1_GCN_SGPR_SSA_CORPUS_REPLAY_EXACT',d['sgpr'].get('violations',[])[:20]
+          assert d['operand']['status']=='D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_EXACT',d['operand'].get('violations',[])[:20]
+          for k in ('exec','condition','vgpr','sgpr'):
+            assert not d[k].get('violations'),(k,d[k].get('violations'))
+            assert d[k]['coverage']['exact_programs_replayed']==26464,(k,d[k]['coverage'])
+            assert d[k]['coverage']['exact_instructions_replayed']==4896165,(k,d[k]['coverage'])
+          assert not d['operand'].get('violations')
+          assert not d['operand'].get('unresolved')
+          c=d['operand']['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['sgpr_def_instruction_count']==610052,c
+          assert c['sgpr_def_entry_count']==2056285,c
+          assert c['category_instruction_counts']=={
+            'CONDITION_MASK_VALUE':13422,
+            'CROSS_STATE_IDENTITY':32167,
+            'PURE_SCALAR_TRANSFORM':70540,
+            'SCALAR_MEMORY_RESULT':493923,
+          },c
+          assert c['category_def_entry_counts']=={
+            'CONDITION_MASK_VALUE':26844,
+            'CROSS_STATE_IDENTITY':49525,
+            'PURE_SCALAR_TRANSFORM':95219,
+            'SCALAR_MEMORY_RESULT':1884697,
+          },c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Build detailed baseline architectural value overlay
+        run: |
+          set -euo pipefail
+          test -f "source/structural/work/ir/${BASELINE_GCN_SHA256}.json"
+          python tools/d1_gcn_scalar_value_overlay_v1.py \
+            --structural-ir "source/structural/work/ir/${BASELINE_GCN_SHA256}.json" \
+            -o out/D1_GCN_SCALAR_VALUE_OVERLAY_808EE505_V1.json \
+            | tee out/baseline_overlay_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_SCALAR_VALUE_OVERLAY_808EE505_V1.json'))
+          assert d['status']=='D1_GCN_SCALAR_VALUE_OVERLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['bound_instruction_count']==c['scalar_def_instruction_count'],c
+          assert c['bound_component_count']==c['scalar_result_component_count'],c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Replay scalar architectural value overlay over all exact programs
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_scalar_value_overlay_corpus_v1.py \
+            --workers 4 \
+            --ir-dir source/structural/work/ir \
+            --census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            -o out/D1_GCN_SCALAR_VALUE_OVERLAY_CORPUS_REPLAY_V1.json \
+            | tee out/scalar_value_overlay_replay_stdout.txt
+
+      - name: Fail closed on exact whole-corpus binding boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_SCALAR_VALUE_OVERLAY_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_SCALAR_VALUE_OVERLAY_CORPUS_REPLAY_EXACT',d['violations'][:100]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['scalar_def_instruction_count']==610052,c
+          assert c['scalar_result_component_count']==2056285,c
+          assert c['bound_instruction_count']==610052,c
+          assert c['bound_component_count']==2056285,c
+          assert c['architectural_nonmemory_instruction_count']==116129,c
+          assert c['architectural_nonmemory_component_count']==171588,c
+          assert c['opaque_memory_instruction_count']==493923,c
+          assert c['opaque_memory_component_count']==1884697,c
+          assert c['category_instruction_counts']=={
+            'PURE_SCALAR_TRANSFORM':70540,
+            'CROSS_STATE_IDENTITY':32167,
+            'CONDITION_MASK_VALUE':13422,
+            'SCALAR_MEMORY_RESULT':493923,
+          },c
+          assert c['category_component_counts']=={
+            'PURE_SCALAR_TRANSFORM':95219,
+            'CROSS_STATE_IDENTITY':49525,
+            'CONDITION_MASK_VALUE':26844,
+            'SCALAR_MEMORY_RESULT':1884697,
+          },c
+          assert c['cross_state_instruction_counts']=={
+            's_and_saveexec_b64':9305,
+            's_swappc_b64':8053,
+            'v_readlane_b32':14592,
+            'v_readfirstlane_b32':217,
+          },c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['scalar_result_expression_dag_binding']=='GLOBAL_EXACT',d['semantic_boundary']
+          assert d['semantic_boundary']['scalar_memory_result_values']=='OPAQUE_RESOURCE_ADDRESS_WITHHELD',d['semantic_boundary']
+          print('D1_GCN_SCALAR_VALUE_OVERLAY_CORPUS_REPLAY_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_SCALAR_VALUE_SEMANTICS_V1.json \
+            out/D1_GCN_SCALAR_VALUE_OVERLAY_808EE505_V1.json \
+            out/D1_GCN_SCALAR_VALUE_OVERLAY_CORPUS_REPLAY_V1.json \
+            > out/SHA256SUMS.txt
+          cat > out/SOURCE_ARTIFACT_IDS.txt <<EOF
+          structural=${STRUCTURAL_ARTIFACT_ID}
+          exec=${EXEC_ARTIFACT_ID}
+          condition=${CONDITION_ARTIFACT_ID}
+          vgpr=${VGPR_ARTIFACT_ID}
+          sgpr=${SGPR_ARTIFACT_ID}
+          operand=${OPERAND_ARTIFACT_ID}
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-SCALAR-VALUE-OVERLAY-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
