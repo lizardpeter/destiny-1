@@ -1,0 +1,24 @@
+name: D1 PS4 VS DS shader header self-test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_ps4_vs_ds_shader_header.py'
+      - '.github/workflows/d1-ps4-vs-ds-shader-header-selftest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Run exact VS DS family header self-test
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_vs_ds_shader_header.py --self-test
