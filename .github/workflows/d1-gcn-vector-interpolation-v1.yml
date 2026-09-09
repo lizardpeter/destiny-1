@@ -1,0 +1,120 @@
+name: D1 GCN vector interpolation v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - 'tools/d1_gcn_vector_interpolation_semantics_v1.py'
+      - 'tools/d1_gcn_vector_interpolation_overlay_v1.py'
+      - 'tools/d1_gcn_vector_interpolation_corpus_replay_v1.py'
+      - '.github/workflows/d1-gcn-vector-interpolation-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+
+jobs:
+  interpolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Verify frozen prerequisites and interpolation registry
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_vector_interpolation_semantics_v1.py \
+            tools/d1_gcn_vector_interpolation_overlay_v1.py \
+            tools/d1_gcn_vector_interpolation_corpus_replay_v1.py
+          python tools/d1_gcn_vector_interpolation_semantics_v1.py > out_interp_semantics.json
+          python - <<'PY'
+          import json
+          s=json.load(open('out_interp_semantics.json'))
+          assert s['status']=='D1_GCN_VECTOR_INTERPOLATION_SEMANTICS_SOURCE_CLOSED',s
+          assert s['opcode_count']==3,s
+          l=json.load(open('evidence/d1_gcn_vgpr_lane_ssa_v1_2026-09-09.json'))
+          g=json.load(open('evidence/d1_gcn_sgpr_ssa_v1_2026-09-09.json'))
+          f=json.load(open('evidence/d1_gcn_vector_formula_source_binding_v1_2026-09-09.json'))
+          assert l['status']=='D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT',l
+          assert g['status']=='D1_GCN_SGPR_SSA_CORPUS_REPLAY_EXACT',g
+          assert f['status']=='D1_GCN_VECTOR_FORMULA_SOURCE_BINDING_CORPUS_EXACT',f
+          assert f['coverage']['exact_formula_source_binding_count']==5679580,f['coverage']
+          PY
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source/structural out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Replay source-closed interpolation globally
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vector_interpolation_corpus_replay_v1.py \
+            --workers 4 \
+            --ir-dir source/structural/work/ir \
+            --census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            -o out/D1_GCN_VECTOR_INTERPOLATION_CORPUS_V1.json \
+            | tee out/interpolation_stdout.txt
+
+      - name: Fail closed on interpolation boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_INTERPOLATION_CORPUS_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_INTERPOLATION_CORPUS_EXACT',d['violations'][:100]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['programs_with_interpolation']==17868,c
+          assert c['interpolation_instruction_count']==425370,c
+          assert c['interpolation_result_component_count']==425370,c
+          assert c['opcode_instruction_counts']=={'v_interp_mov_f32':6,'v_interp_p1_f32':212682,'v_interp_p2_f32':212682},c
+          assert c['parameter_value_identity_node_count']==638052,c
+          assert c['m0_state_reference_count']==425370,c
+          assert c['vgpr_source_state_reference_count']==425364,c
+          assert c['old_destination_arithmetic_input_count']==212682,c
+          assert c['parameter_move_instruction_count']==6,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_VECTOR_INTERPOLATION_CORPUS_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          cp out_interp_semantics.json out/D1_GCN_VECTOR_INTERPOLATION_SEMANTICS_V1.json
+          sha256sum out/D1_GCN_VECTOR_INTERPOLATION_CORPUS_V1.json out/D1_GCN_VECTOR_INTERPOLATION_SEMANTICS_V1.json > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VECTOR-INTERPOLATION-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
