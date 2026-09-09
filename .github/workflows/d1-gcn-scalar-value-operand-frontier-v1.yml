@@ -1,0 +1,156 @@
+name: D1 GCN scalar value operand frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - tools/d1_gcn_scalar_value_semantics_v1.py
+      - tools/d1_gcn_scalar_value_operand_frontier_v1.py
+      - .github/workflows/d1-gcn-scalar-value-operand-frontier-v1.yml
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: "10087524653"
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb"
+  STRUCTURAL_CENSUS_SHA256: "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  SGPR_SSA_ARTIFACT_ID: "10110002727"
+  SGPR_SSA_ARTIFACT_ZIP_SHA256: "243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5"
+  SGPR_SSA_REPORT_SHA256: "fade0a42fb83fbc9b45b5c418925182d97e65870ebef9d33f2f18e31d31b4166"
+  STRUCTURAL_CENSUS_TOOL_BLOB_SHA1: "88c2e88f80b39e501481e6ae494b6fec2e1cad32"
+  SCALAR_VALUE_SEMANTICS_BLOB_SHA1: "f349ce078dccf293bc9281501b39af0f78260e4f"
+  SCALAR_VALUE_FRONTIER_BLOB_SHA1: "e8783f4877f962de591d93126f10863f0bf2f92f"
+
+jobs:
+  scalar-value-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Pin exact value-frontier implementations
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/d1_gcn_shader_corpus_structural_census.py)" = "$STRUCTURAL_CENSUS_TOOL_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_scalar_value_semantics_v1.py)" = "$SCALAR_VALUE_SEMANTICS_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_scalar_value_operand_frontier_v1.py)" = "$SCALAR_VALUE_FRONTIER_BLOB_SHA1"
+          python tools/d1_gcn_scalar_value_semantics_v1.py > /tmp/scalar_value_semantics.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/scalar_value_semantics.json'))
+          assert d['status']=='D1_GCN_SCALAR_VALUE_SEMANTICS_SOURCE_CLOSED',d
+          assert len(d['observed_sgpr_def_opcodes'])==31,d
+          assert len(d['pure_scalar_transform_opcodes'])==10,d
+          assert len(d['cross_state_identity_opcodes'])==4,d
+          assert len(d['condition_mask_value_opcodes'])==12,d
+          assert len(d['scalar_memory_result_opcodes'])==5,d
+          assert d['architectural_value_semantic_opcode_count']==26,d
+          assert d['opaque_memory_value_opcode_count']==5,d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/sgpr_ssa
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify frozen SGPR and M0 SSA prerequisite
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SGPR_SSA_ARTIFACT_ID}/zip" \
+            -o source/sgpr_ssa.zip
+          echo "$SGPR_SSA_ARTIFACT_ZIP_SHA256  source/sgpr_ssa.zip" | sha256sum --check --strict
+          unzip -q source/sgpr_ssa.zip D1_GCN_SGPR_SSA_CORPUS_REPLAY_V1.json -d source/sgpr_ssa
+          echo "$SGPR_SSA_REPORT_SHA256  source/sgpr_ssa/D1_GCN_SGPR_SSA_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/sgpr_ssa/D1_GCN_SGPR_SSA_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_SGPR_SSA_CORPUS_REPLAY_EXACT',d.get('violations',[])[:20]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['sgpr_def_instruction_count']==610052,c
+          assert c['sgpr_def_entry_count']==2056285,c
+          assert c['scalar_ssa_node_count']==7461557,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Census actual scalar value operand domains
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_scalar_value_operand_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            -o out/D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_V1.json \
+            | tee out/scalar_value_operand_frontier_stdout.txt
+
+      - name: Fail closed on exact scalar value surface
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert not d['unresolved']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['sgpr_def_instruction_count']==610052,c
+          assert c['sgpr_def_entry_count']==2056285,c
+          assert c['sgpr_def_opcode_count']==31,c
+          assert c['category_instruction_counts']=={
+            'CONDITION_MASK_VALUE':13422,
+            'CROSS_STATE_IDENTITY':32167,
+            'PURE_SCALAR_TRANSFORM':70540,
+            'SCALAR_MEMORY_RESULT':493923,
+          },c
+          assert c['category_def_entry_counts']=={
+            'CONDITION_MASK_VALUE':26844,
+            'CROSS_STATE_IDENTITY':49525,
+            'PURE_SCALAR_TRANSFORM':95219,
+            'SCALAR_MEMORY_RESULT':1884697,
+          },c
+          assert c['architectural_value_semantic_opcode_count']==26,c
+          assert c['opaque_memory_value_opcode_count']==5,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_V1.json > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$SGPR_SSA_ARTIFACT_ID" > out/SOURCE_SGPR_SSA_ARTIFACT_ID.txt
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-SCALAR-VALUE-OPERAND-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
