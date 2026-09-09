@@ -1,0 +1,44 @@
+{
+  "schema": "d1_gcn_sgpr_machine_frontier_checkpoint/v1",
+  "status": "D1_GCN_SGPR_MACHINE_FRONTIER_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow_run_id": 34363503582,
+  "workflow_source_commit": "0798ab1c8894276ff6972a990d073e1e6cd33641",
+  "artifact": {
+    "id": 10108920407,
+    "name": "D1-GCN-SGPR-MACHINE-FRONTIER-V1",
+    "zip_sha256": "bdb949bfa55acb418ec1fd7d9b83b412cb25f5f77cd1b3303b935e22ccf008f9"
+  },
+  "sources": {
+    "structural_artifact_id": 10087524653,
+    "sgpr_frontier_commit": "a15a1fcf0784b61fd8e47b56f2089e52ef22d05d"
+  },
+  "coverage": {
+    "exact_program_count": 26464,
+    "exact_instruction_count": 4896165,
+    "sgpr_def_instruction_count": 610052,
+    "sgpr_def_entry_count": 2056285,
+    "sgpr_use_instruction_count": 1666084,
+    "sgpr_use_entry_count": 4112684,
+    "sgpr_def_opcode_count": 31,
+    "sgpr_use_opcode_count": 67,
+    "sgpr_def_width_histogram": {"1": 147271, "2": 131255, "4": 251426, "8": 80100},
+    "sgpr_use_width_histogram": {"1": 975947, "2": 260564, "4": 313834, "5": 273, "8": 6671, "12": 108795},
+    "m0_def_instruction_count": 17894,
+    "m0_def_opcode_counts": {"s_mov_b32": 17894},
+    "m0_structural_use_instruction_count": 0,
+    "max_sgpr_index": 95,
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "semantic_boundary": {
+    "exec_vcc_scc": "EXCLUDED_DEDICATED_GLOBAL_EXACT_LAYERS",
+    "ordinary_sgpr_m0_identity_surface": "GLOBAL_EXACT",
+    "m0_implicit_consumers": "NEXT_GATE",
+    "ordinary_sgpr_value_ssa": "WITHHELD_UNTIL_M0_IMPLICIT_FRONTIER",
+    "opcode_result_value_semantics": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "policy": "This checkpoint freezes normalized ordinary SGPR and M0 structural identity. M0 has no explicit structural uses in this corpus, so architectural implicit M0 consumers must be source-closed before scalar value SSA is promoted."
+}
