@@ -112,7 +112,8 @@ jobs:
           assert c['sgpr_use_instruction_count']==1666084,c
           assert c['sgpr_use_entry_count']==4112684,c
           assert c['m0_def_instruction_count']==17894,c
-          assert c['m0_use_instruction_count']==0,c
+          assert c.get('m0_use_instruction_count',0)==0,c
+          assert c['m0_use_opcode_counts']=={},c
           assert c['max_sgpr_index']==95,c
           assert c['shader_expression_semantic_promotions']==0,c
           PY
