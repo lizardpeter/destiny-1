@@ -1,0 +1,185 @@
+name: D1 global GCN EXEC mask frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-gcn-exec-mask-frontier-v1.yml'
+      - 'tools/d1_gcn_exec_mask_opcode_frontier.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: '34304853934'
+  SOURCE_RUN_HEAD_SHA: '5e1a76d54780e0ae52f9b0b31560e5e374195860'
+  SOURCE_ARTIFACT_NAME: 'D1-GLOBAL-PS-VS-STRUCTURAL-FROM-NATIVE-V2-V1'
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test exact EXEC frontier producer
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_exec_mask_opcode_frontier.py --self-test
+
+      - name: Wait for exact source structural corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          completed=''
+          for _ in $(seq 1 720); do
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" \
+              -o source/run.json
+            read -r status conclusion head_sha < <(python - <<'PY'
+          import json
+          d=json.load(open('source/run.json'))
+          print(d.get('status',''), d.get('conclusion') or '-', d.get('head_sha',''))
+          PY
+            )
+            echo "SOURCE_RUN status=$status conclusion=$conclusion head_sha=$head_sha"
+            test "$head_sha" = "$SOURCE_RUN_HEAD_SHA"
+            if test "$status" = completed; then
+              completed=1
+              break
+            fi
+            sleep 30
+          done
+          test "$completed" = 1
+          python - <<'PY'
+          import json,os
+          d=json.load(open('source/run.json'))
+          assert d['id']==int(os.environ['SOURCE_RUN_ID']),d.get('id')
+          assert d['head_sha']==os.environ['SOURCE_RUN_HEAD_SHA'],d['head_sha']
+          assert d.get('conclusion')=='success',(d.get('status'),d.get('conclusion'))
+          print('SOURCE_STRUCTURAL_RUN_EXACT',d['id'],d['head_sha'])
+          PY
+
+      - name: Download and checksum exact structural artifact
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+            -o source/artifacts.json
+          artifact_id=$(python - <<'PY'
+          import json,os
+          d=json.load(open('source/artifacts.json'))
+          want=os.environ['SOURCE_ARTIFACT_NAME']
+          rows=[x for x in d.get('artifacts',[]) if x.get('name')==want and not x.get('expired')]
+          assert len(rows)==1,(want,[(x.get('id'),x.get('name'),x.get('expired')) for x in d.get('artifacts',[])])
+          print(rows[0]['id'])
+          PY
+          )
+          echo "$artifact_id" | tee source/source_artifact_id.txt
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+            -o source/source_artifact.zip
+          sha256sum source/source_artifact.zip | tee source/source_artifact_zip.sha256
+          mkdir -p source/corpus
+          unzip -q source/source_artifact.zip -d source/corpus
+          test -s source/corpus/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json
+          test -s source/corpus/out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json
+          test -s source/corpus/out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json
+          test -d source/corpus/work/ir
+          (
+            cd source/corpus
+            sha256sum --check --strict out/SHA256SUMS.txt
+          )
+
+      - name: Revalidate structural and accounting promotion boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          c=json.load(open('source/corpus/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json'))
+          g=json.load(open('source/corpus/out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json'))
+          f=json.load(open('source/corpus/out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json'))
+          assert c['status']=='D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_COMPLETE',c['violations'][:50]
+          assert not c['violations']
+          assert c.get('driver',{}).get('v2_exact_projection_required_before_structural_census') is True,c.get('driver')
+          assert g['status']=='D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_CORPUS_EXACT',g['violations'][:50]
+          assert not g['violations']
+          assert all(x['exact_structural_parse_accounting'] for x in g['required_mixed_stage_reference_headers'])
+          assert f['status']=='D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_EXACT',f['violations'][:50]
+          assert not f['violations']
+          print('SOURCE_BOUNDARY_REVALIDATED',json.dumps({
+            'structural':c['status'],
+            'accounting':g['status'],
+            'stage_frontier':f['status'],
+            'programs':g['coverage']['exact_parse_accounted_unique_gcn_programs'],
+          },sort_keys=True))
+          PY
+
+      - name: Inventory exact game-wide EXEC mask opcode frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_exec_mask_opcode_frontier.py \
+            --census source/corpus/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
+            --ir-dir source/corpus/work/ir \
+            -o out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER.json \
+            | tee out/exec_mask_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/exec_mask_frontier_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER.json
+
+      - name: Freeze exact EXEC frontier and preserve semantic boundary
+        run: |
+          set -euo pipefail
+          cp source/run.json out/SOURCE_WORKFLOW_RUN.json
+          cp source/source_artifact_id.txt out/SOURCE_ARTIFACT_ID.txt
+          cp source/source_artifact_zip.sha256 out/SOURCE_ARTIFACT_ZIP_SHA256.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER.json'))
+          print('STATUS',d['status'])
+          print('COVERAGE',json.dumps(d['coverage'],sort_keys=True))
+          print('TOUCH_KINDS',json.dumps(d['touch_kinds'],sort_keys=True))
+          print('OPCODES',json.dumps(d['opcodes'],sort_keys=True))
+          print('UNKNOWN_EXEC_TOUCHING_OPCODES',d['unknown_exec_touching_opcodes'])
+          print('SEMANTIC_BOUNDARY',json.dumps(d['semantic_boundary'],sort_keys=True))
+          print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          PY
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+          test "$(cat out/exec_mask_frontier_exit_code.txt)" -eq 0
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER.json'))
+          assert d['status']=='D1_GCN_EXEC_MASK_OPCODE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert d['coverage']['exact_unique_gcn_programs']==d['coverage']['planned_unique_gcn_programs'],d['coverage']
+          assert d['semantic_boundary']['exec_opcode_frontier']=='EXACT',d['semantic_boundary']
+          assert d['semantic_boundary']['symbolic_exec_expression_dataflow']=='NOT_YET_PROMOTED',d['semantic_boundary']
+          assert d['semantic_boundary']['divergent_vgpr_ssa']=='NOT_YET_PROMOTED',d['semantic_boundary']
+          assert d['semantic_boundary']['output_expression_lifting']=='WITHHELD_UNTIL_EXEC_MASK_DATAFLOW',d['semantic_boundary']
+          print('D1_GLOBAL_GCN_EXEC_MASK_OPCODE_FRONTIER_EXACT')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-GCN-EXEC-MASK-OPCODE-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
