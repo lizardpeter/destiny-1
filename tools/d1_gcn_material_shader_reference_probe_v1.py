@@ -15,6 +15,7 @@ import argparse
 import collections
 import hashlib
 import json
+import multiprocessing as mp
 import re
 import sys
 from pathlib import Path
@@ -29,6 +30,7 @@ from d1_split_tar_extract import SplitHttpTar
 from d1_ps4_shader_binary_probe import find_footer, parse_binary_info, parse_usage
 
 NULLS = {"00000000", "FFFFFFFF"}
+_WORKER_CORPUS: RemoteCorpus | None = None
 ABSENT_RE = re.compile(
     r"^shader_header_absent:([0-9A-Fa-f]{8}):(VS|PS):([0-9A-Fa-f]{8})$"
 )
@@ -110,6 +112,72 @@ def exact_entry(c: RemoteCorpus, tag: str) -> tuple[dict, bytes]:
     return meta, payload
 
 
+
+def _worker_init(catalog_paths: list[str], base_url: str, part_count: int, runtime: str) -> None:
+    global _WORKER_CORPUS
+    catalogs = load_catalogs([Path(x) for x in catalog_paths])
+    base = base_url.rstrip("/")
+    arc = SplitHttpTar(
+        [f"{base}/packages.tar.{i:03d}" for i in range(1, part_count + 1)],
+        retries=6,
+        timeout=90,
+    )
+    _WORKER_CORPUS = RemoteCorpus(arc, catalogs, Path(runtime))
+
+
+def _probe_target(job: tuple[str, dict]) -> dict:
+    if _WORKER_CORPUS is None:
+        raise RuntimeError("worker corpus is not initialized")
+    c = _WORKER_CORPUS
+    target, src = job
+    row = {
+        "target": target,
+        "occurrence_count": src["occurrence_count"],
+        "material_reference_roles": dict(sorted(src["material_reference_roles"].items())),
+        "example_materials": src["example_materials"],
+        "violations": [],
+    }
+    try:
+        meta, payload = exact_entry(c, target)
+        row["target_entry"] = meta
+        row["target_payload"] = {
+            **digest(payload),
+            "prefix_hex_64": payload[:64].hex().upper(),
+        }
+        row["target_orbshdr_shape"] = orbshdr_shape(payload)
+
+        ref = meta["reference"]
+        if ref not in NULLS:
+            try:
+                rmeta, rpayload = exact_entry(c, ref)
+                row["reference_target_entry"] = rmeta
+                row["reference_target_payload"] = {
+                    **digest(rpayload),
+                    "prefix_hex_64": rpayload[:64].hex().upper(),
+                }
+                row["reference_target_orbshdr_shape"] = orbshdr_shape(rpayload)
+            except Exception as ex:
+                row["violations"].append("reference_target:" + repr(ex))
+
+        target_orb = row.get("target_orbshdr_shape", {})
+        ref_orb = row.get("reference_target_orbshdr_shape", {})
+        if (meta["type"], meta["subtype"]) == (32, 8):
+            if ref_orb.get("code_bounds_valid"):
+                shape = "TYPE32_SUBTYPE8_REFERENCES_VALID_ORBSHDR"
+            else:
+                shape = "TYPE32_SUBTYPE8_WITHOUT_VALID_REFERENCED_ORBSHDR"
+        elif target_orb.get("code_bounds_valid"):
+            shape = "NON_32_8_DIRECT_VALID_ORBSHDR"
+        elif ref_orb.get("code_bounds_valid"):
+            shape = "NON_32_8_REFERENCES_VALID_ORBSHDR"
+        else:
+            shape = "NON_32_8_NO_VALID_ORBSHDR_PROVEN"
+        row["structural_shape"] = shape
+    except Exception as ex:
+        row["violations"].append("target_entry:" + repr(ex))
+    return row
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("owner_report", type=Path)
@@ -117,6 +185,7 @@ def main() -> int:
     ap.add_argument("--base-url", required=True)
     ap.add_argument("--part-count", type=int, default=10)
     ap.add_argument("--runtime", type=Path, required=True)
+    ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("-o", "--output", type=Path, required=True)
     a = ap.parse_args()
 
@@ -156,84 +225,57 @@ def main() -> int:
             f"owner_report_contains_non_absent_violations:{len(non_absent_owner_violations)}"
         )
 
-    catalogs = load_catalogs(a.member_catalog)
-    base = a.base_url.rstrip("/")
-    arc = SplitHttpTar(
-        [f"{base}/packages.tar.{i:03d}" for i in range(1, a.part_count + 1)],
-        retries=6,
-        timeout=90,
+    jobs = [(target, references[target]) for target in sorted(references)]
+    workers = max(1, int(a.workers))
+    initargs = (
+        [str(x) for x in a.member_catalog],
+        a.base_url,
+        a.part_count,
+        str(a.runtime),
     )
-    c = RemoteCorpus(arc, catalogs, a.runtime)
-
-    hard_violations = list(malformed_owner_violations)
     rows = []
+    if workers == 1:
+        _worker_init(*initargs)
+        iterator = map(_probe_target, jobs)
+        pool = None
+    else:
+        pool = mp.Pool(
+            processes=workers,
+            initializer=_worker_init,
+            initargs=initargs,
+        )
+        iterator = pool.imap_unordered(_probe_target, jobs, chunksize=1)
+    try:
+        for n, row in enumerate(iterator, 1):
+            rows.append(row)
+            if n % 25 == 0 or n == len(jobs):
+                print(f"PROBED {n}/{len(jobs)}", flush=True)
+    finally:
+        if pool is not None:
+            pool.close()
+            pool.join()
+
+    rows.sort(key=lambda r: r["target"])
+    hard_violations = list(malformed_owner_violations)
     entry_class_counts = collections.Counter()
     reference_entry_class_counts = collections.Counter()
     structural_shape_counts = collections.Counter()
     package_counts = collections.Counter()
-
-    for n, target in enumerate(sorted(references), 1):
-        src = references[target]
-        row = {
-            "target": target,
-            "occurrence_count": src["occurrence_count"],
-            "material_reference_roles": dict(sorted(src["material_reference_roles"].items())),
-            "example_materials": src["example_materials"],
-            "violations": [],
-        }
-        try:
-            meta, payload = exact_entry(c, target)
-            row["target_entry"] = meta
-            row["target_payload"] = {
-                **digest(payload),
-                "prefix_hex_64": payload[:64].hex().upper(),
-            }
-            row["target_orbshdr_shape"] = orbshdr_shape(payload)
+    for row in rows:
+        meta = row.get("target_entry")
+        if meta:
             entry_class_counts[f"{meta['type']}:{meta['subtype']}"] += 1
             package_counts[meta["package_id"]] += 1
-
-            ref = meta["reference"]
-            if ref not in NULLS:
-                try:
-                    rmeta, rpayload = exact_entry(c, ref)
-                    row["reference_target_entry"] = rmeta
-                    row["reference_target_payload"] = {
-                        **digest(rpayload),
-                        "prefix_hex_64": rpayload[:64].hex().upper(),
-                    }
-                    row["reference_target_orbshdr_shape"] = orbshdr_shape(rpayload)
-                    reference_entry_class_counts[f"{rmeta['type']}:{rmeta['subtype']}"] += 1
-                except Exception as ex:
-                    row["violations"].append("reference_target:" + repr(ex))
-
-            target_orb = row.get("target_orbshdr_shape", {})
-            ref_orb = row.get("reference_target_orbshdr_shape", {})
-            if (meta["type"], meta["subtype"]) == (32, 8):
-                if ref_orb.get("code_bounds_valid"):
-                    shape = "TYPE32_SUBTYPE8_REFERENCES_VALID_ORBSHDR"
-                else:
-                    shape = "TYPE32_SUBTYPE8_WITHOUT_VALID_REFERENCED_ORBSHDR"
-            elif target_orb.get("code_bounds_valid"):
-                shape = "NON_32_8_DIRECT_VALID_ORBSHDR"
-            elif ref_orb.get("code_bounds_valid"):
-                shape = "NON_32_8_REFERENCES_VALID_ORBSHDR"
-            else:
-                shape = "NON_32_8_NO_VALID_ORBSHDR_PROVEN"
-            row["structural_shape"] = shape
+        rmeta = row.get("reference_target_entry")
+        if rmeta:
+            reference_entry_class_counts[f"{rmeta['type']}:{rmeta['subtype']}"] += 1
+        shape = row.get("structural_shape")
+        if shape:
             structural_shape_counts[shape] += 1
-        except Exception as ex:
-            row["violations"].append("target_entry:" + repr(ex))
-
         if row["violations"]:
-            hard_violations.extend(f"{target}:{x}" for x in row["violations"])
-        rows.append(row)
-        if n % 25 == 0 or n == len(references):
-            print(f"PROBED {n}/{len(references)}", flush=True)
-
-    stage_slot_counts = collections.Counter()
-    for r in rows:
-        for stage, count in r["material_reference_roles"].items():
-            stage_slot_counts[stage] += count
+            hard_violations.extend(
+                f"{row['target']}:{x}" for x in row["violations"]
+            )
 
     coverage = {
         "owner_violation_count": len(owner.get("violations", [])),
@@ -247,9 +289,19 @@ def main() -> int:
         "reference_target_entry_class_counts": dict(sorted(reference_entry_class_counts.items())),
         "structural_shape_counts": dict(sorted(structural_shape_counts.items())),
         "target_package_counts": dict(sorted(package_counts.items())),
-        "serialized_stage_slot_occurrences": dict(sorted(stage_slot_counts.items())),
+        "serialized_stage_slot_occurrences": dict(
+            sorted(
+                collections.Counter(
+                    stage
+                    for r in rows
+                    for stage, count in r["material_reference_roles"].items()
+                    for _ in range(count)
+                ).items()
+            )
+        ),
         "shader_stage_promotions": 0,
         "shader_expression_semantic_promotions": 0,
+        "worker_count": workers,
     }
 
     out = {
