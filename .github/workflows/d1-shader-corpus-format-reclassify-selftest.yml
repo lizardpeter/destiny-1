@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'tools/d1_shader_corpus_v2_format_reclassify.py'
+      - 'tools/d1_shader_corpus_v2_format_reclassify_selftest.py'
       - 'tools/d1_ps4_vs_ds_shader_header.py'
       - '.github/workflows/d1-shader-corpus-format-reclassify-selftest.yml'
 
@@ -23,4 +24,4 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_ps4_vs_ds_shader_header.py --self-test
-          python tools/d1_shader_corpus_v2_format_reclassify.py --self-test
+          python tools/d1_shader_corpus_v2_format_reclassify_selftest.py
