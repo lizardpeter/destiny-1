@@ -1,0 +1,111 @@
+name: D1 global shader corpus PS VS DS v3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-shader-corpus-ps-vs-ds-v3.yml'
+      - 'tools/d1_shader_corpus_v2_format_reclassify.py'
+      - 'tools/d1_ps4_vs_ds_shader_header.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10086369300'
+  SOURCE_REPORT_SHA256: 'af371f3c08754b4684fab4450788a107d064a05cb8fb94165cd08661797a8513'
+  SOURCE_BINARIES_TAR_SHA256: 'df0550a4f5e7d28f1c25248a1c1231bdc78a86c78ac3cb17f1fdf763fd95c121'
+  SOURCE_PLAN_SHA256: '6920dd6b838e1001d2b9a0878e170dd96115eb7c6040f3a569419919b11cef63'
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test corrected VS DS parser and strict reclassifier
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_vs_ds_shader_header.py --self-test
+          python tools/d1_shader_corpus_v2_format_reclassify.py --self-test
+
+      - name: Download exact completed diagnostic corpus artifact
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o source/raw.zip
+          sha256sum source/raw.zip | tee out/SOURCE_ARTIFACT_ZIP_SHA256.txt
+          unzip -q source/raw.zip -d source/raw
+          test -s source/raw/D1_SHADER_CORPUS_EXTRACT_V2.json
+          test -s source/raw/D1_SHADER_EXACT_BINARIES.tar
+          echo "$SOURCE_REPORT_SHA256  source/raw/D1_SHADER_CORPUS_EXTRACT_V2.json" | sha256sum --check --strict
+          echo "$SOURCE_BINARIES_TAR_SHA256  source/raw/D1_SHADER_EXACT_BINARIES.tar" | sha256sum --check --strict
+          echo "$SOURCE_PLAN_SHA256  source/raw/D1_SHADER_CORPUS_PLAN.json" | sha256sum --check --strict
+          mkdir -p source/exact
+          tar -xf source/raw/D1_SHADER_EXACT_BINARIES.tar -C source/exact
+          test -d source/exact/shader/headers
+          test -d source/exact/shader/programs
+
+      - name: Reclassify complete diagnostic bytes into exact PS VS DS corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_corpus_v2_format_reclassify.py \
+            source/raw/D1_SHADER_CORPUS_EXTRACT_V2.json \
+            --header-dir source/exact/shader/headers \
+            --program-dir source/exact/shader/programs \
+            -o out/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            | tee out/reclassify_stdout.txt
+
+      - name: Promote only exact zero-violation V3 census
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_SHADER_CORPUS_PS_VS_DS_V3.json'))
+          assert d['schema']=='d1_remote_ps4_shader_corpus_extract/v3',d.get('schema')
+          assert d['status']=='D1_REMOTE_PS4_SHADER_CORPUS_EXACT_PS_VS_DS',d['violations'][:50]
+          assert not d['violations']
+          assert d['header_population']['total']==37892,d['header_population']
+          assert d['header_population']['stage_counts']=={'DS':79,'PS':25405,'VS':12408},d['header_population']
+          assert d['native_reference_population']['planned_unique']==37179,d['native_reference_population']
+          assert d['native_reference_population']['stage_counts']=={'DS':79,'PS':24771,'VS':12329},d['native_reference_population']
+          assert d['gcn_program_population']['unique_exact_code_sha256_count']==26464,d['gcn_program_population']
+          assert d['gcn_program_population']['stage_unique_counts']=={'DS':20,'PS':18375,'VS':8069},d['gcn_program_population']
+          assert d['gcn_program_population']['shared_by_multiple_stages']==0,d['gcn_program_population']
+          assert d['reclassification']['legacy_v2_violation_count']==496,d['reclassification']
+          assert d['reclassification']['legacy_v2_violations_exactly_explained']==496,d['reclassification']
+          assert d['proof']['all_original_violations_accounted'] is True,d['proof']
+          assert d['proof']['header_and_program_artifact_hashes_rechecked'] is True,d['proof']
+          print('D1_SHADER_CORPUS_PS_VS_DS_V3_EXACT',json.dumps({
+            'headers':d['header_population'],
+            'native_references':d['native_reference_population'],
+            'gcn_programs':d['gcn_program_population'],
+            'reclassification':d['reclassification'],
+          },sort_keys=True))
+          PY
+          cp source/raw/D1_SHADER_EXACT_BINARIES.tar out/D1_SHADER_EXACT_BINARIES.tar
+          cp source/raw/D1_SHADER_CORPUS_PLAN.json out/D1_SHADER_CORPUS_ORIGINAL_PLAN.json
+          printf '%s\n' "$SOURCE_ARTIFACT_ID" > out/SOURCE_ARTIFACT_ID.txt
+          sha256sum \
+            out/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            out/D1_SHADER_EXACT_BINARIES.tar \
+            out/D1_SHADER_CORPUS_ORIGINAL_PLAN.json \
+            > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GLOBAL-SHADER-CORPUS-PS-VS-DS-V3
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
