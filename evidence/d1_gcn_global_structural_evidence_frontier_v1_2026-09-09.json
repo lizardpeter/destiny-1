@@ -1,0 +1,87 @@
+{
+  "schema": "d1_gcn_global_structural_evidence_frontier_checkpoint/v1",
+  "status": "D1_GCN_GLOBAL_STRUCTURAL_EVIDENCE_FRONTIER_V1_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "tool_commit": "6a8e58d57c3360998c3a52f56af7b6a171325676",
+    "workflow_commit": "98929e1e8e35736c4860f7b6fd5631eda2e53fea",
+    "tool": "tools/d1_gcn_opcode_structural_evidence_frontier_v1.py",
+    "workflow": ".github/workflows/d1-global-gcn-structural-evidence-frontier-v1.yml"
+  },
+  "workflow_run": {
+    "run_id": 34310397417,
+    "conclusion": "success",
+    "artifact_id": 10088200204,
+    "artifact_name": "D1-GLOBAL-GCN-STRUCTURAL-EVIDENCE-FRONTIER-V1",
+    "artifact_digest_sha256": "17ff1af187c6f2cec40439c83a9ea01080f9c615995df53c265b3f5afe0078c1",
+    "report_sha256": "0fc89bae78694917b431b2062bbce794d72e3ef770aa66603dd1bc6f560069cd"
+  },
+  "exact_inputs": {
+    "orbshdr_ps_vs_ds_artifact_id": 10086896274,
+    "orbshdr_ps_vs_ds_artifact_zip_sha256": "7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959",
+    "orbshdr_ps_vs_ds_report_sha256": "01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412",
+    "structural_artifact_id": 10087524653,
+    "structural_artifact_zip_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+    "structural_census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed",
+    "stage_frontier_artifact_id": 10087572145,
+    "stage_frontier_artifact_zip_sha256": "d5d979266d28dcf77f0a6601541c43388f37d44da11a369a2fbbc8dd76f1d288",
+    "stage_frontier_report_sha256": "e06266d6640684bfebe15a2598ac0fa30302fd60d5c0df2bd94b0dfaba3f09cf"
+  },
+  "baseline": {
+    "header": "808EE505",
+    "gcn_sha256": "7cbed0ae8ff82a15a9945c136cb8e58188c78cc0fd7c45ee8d3778959cbca352",
+    "native_instruction_count": 456,
+    "opcode_count": 57,
+    "structural_form_count": 106
+  },
+  "global_coverage": {
+    "exact_headers": 37892,
+    "exact_native_program_references": 37179,
+    "exact_unique_gcn_programs": 26464,
+    "stage_unique_gcn_programs": {
+      "PS": 18375,
+      "VS": 8069,
+      "DS": 20
+    },
+    "cross_stage_duplicate_code_sha256_count": 0,
+    "exact_native_instruction_count": 4896165,
+    "global_opcode_count": 124,
+    "global_structural_form_count": 638
+  },
+  "frontier_vs_808ee505": {
+    "novel_opcode_count": 67,
+    "novel_opcode_instruction_occurrences": 261733,
+    "novel_structural_form_count": 532,
+    "novel_structural_form_instruction_occurrences": 855635,
+    "frontier_touching_unique_gcn_programs": 26379,
+    "frontier_touching_stage_programs": {
+      "PS": 18290,
+      "VS": 8069,
+      "DS": 20
+    },
+    "programs_entirely_within_808ee505_structural_form_baseline": 85
+  },
+  "provenance_gate": {
+    "native_reference_rows_resolved": 37179,
+    "missing_native_references": 0,
+    "native_reference_to_code_sha256_mismatches": 0,
+    "native_reference_to_header_set_mismatches": 0,
+    "program_provenance_key": "exact GCN code SHA-256",
+    "retained_native_fields": [
+      "package_id",
+      "logical_view",
+      "native_program_reference",
+      "native_payload_sha256",
+      "orb_stage",
+      "header",
+      "stage"
+    ]
+  },
+  "semantic_boundary": {
+    "semantic_promotions": 0,
+    "novel_opcode_status": "UNPROVEN",
+    "novel_structural_form_status": "UNPROVEN",
+    "policy": "CLRX disassembly, structural frequency, cross-stage occurrence, exact provenance, and normalized structural-form identity are evidence only. No new opcode or shader-expression semantics are promoted without a separate source-backed semantic gate."
+  }
+}
