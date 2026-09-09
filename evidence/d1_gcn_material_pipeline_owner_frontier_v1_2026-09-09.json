@@ -1,0 +1,68 @@
+{
+  "schema": "d1_gcn_material_pipeline_owner_frontier_checkpoint/v1",
+  "status": "D1_GCN_MATERIAL_PIPELINE_OWNER_FRONTIER_EXACT_STRUCTURAL",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34416497773,
+    "source_commit": "a64ab73458c55963688535ac58c267449caef92b",
+    "artifact_id": 10129279530,
+    "artifact_name": "D1-GCN-MATERIAL-PIPELINE-OWNER-FRONTIER-V1",
+    "artifact_digest_sha256": "75cd6bbd96fa3dd5818fbaca189dda38ccf7ee20549a0178fd0f35c73efa04f7",
+    "report_sha256": "671003496b0b7c52e18ab59066838aae3e9101454031952b1e0811cf757eb6f1"
+  },
+  "implementation": {
+    "frontier_commit": "628eb1a85ac3942496abafd7af3b890a335616f6",
+    "frontier_blob_sha": "a3471b8605693fcfebbc5dd675d41501294fd653",
+    "workflow_commit": "a64ab73458c55963688535ac58c267449caef92b"
+  },
+  "inputs": {
+    "failed_owner_artifact_id": 10126529830,
+    "exact_shader_corpus_artifact_id": 10086896274,
+    "exact_shader_corpus_report_sha256": "01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412",
+    "exact_merged_reference_artifact_id": 10129121118,
+    "exact_merged_reference_report_sha256": "d859a8f19e267ec3a0f36afbe949d4bf523811f7f9509f6af6d2696c0142284c"
+  },
+  "coverage": {
+    "material_count": 230706,
+    "slot_0x28_resolution_counts": {
+      "EXACT_SHADER_CORPUS_HEADER": 226731,
+      "EXACT_LOCALSHADER_WRAPPER": 3967,
+      "EXACT_OPAQUE_SPECIAL_REFERENCE": 8
+    },
+    "slot_0x28_orb_stage_counts": {"VS": 226731, "LocalShader": 3967},
+    "slot_0x2a8_resolution_counts": {
+      "EXACT_SHADER_CORPUS_HEADER": 227981,
+      "NULL": 2713,
+      "EXACT_OPAQUE_SPECIAL_REFERENCE": 12
+    },
+    "slot_0x2a8_orb_stage_counts": {"PS": 227981},
+    "direct_vertex_plus_pixel_material_count": 224244,
+    "localshader_plus_pixel_material_count": 3736,
+    "localshader_plus_null_material_count": 231,
+    "direct_vertex_plus_null_material_count": 2482,
+    "unique_direct_vertex_pixel_header_pair_count": 41359,
+    "unique_localshader_pixel_header_pair_count": 422,
+    "unique_localshader_wrapper_count": 177,
+    "unique_localshader_gcn_program_count": 65,
+    "materials_with_opaque_special_reference": 13,
+    "opaque_special_reference_occurrence_count": 20,
+    "param_index_to_attr_index_promotions": 0,
+    "localshader_to_hullshader_promotions": 0,
+    "domainshader_to_pixel_directness_promotions": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "material_offset_0x28": "EXACT_SERIALIZED_PRE_RASTER_REFERENCE",
+    "material_offset_0x2a8": "EXACT_SERIALIZED_PIXEL_PIPELINE_REFERENCE",
+    "orbshdr_stage_identity": "AUTHORITATIVE_WHEN_SOURCE_CLOSED",
+    "localshader_as_vertexshader": "FORBIDDEN",
+    "opaque_special_reference_stage": "WITHHELD",
+    "local_hull_domain_pipeline_ownership": "NEXT_TESSELLATION_GATE",
+    "direct_vs_to_ps_owner_relation": "EXACT_MATERIAL_SCOPED_RELATION_NOT_YET_RASTER_DIRECTNESS",
+    "param_index_to_attr_index_provenance": "WITHHELD_UNTIL_RASTER_STAGE_DIRECTNESS",
+    "varying_semantic_names": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "violations": []
+}
