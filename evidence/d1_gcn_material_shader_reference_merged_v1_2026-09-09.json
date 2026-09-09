@@ -1,0 +1,66 @@
+{
+  "schema": "d1_gcn_material_shader_reference_probe_merged_checkpoint/v1",
+  "status": "D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34416111156,
+    "source_commit": "56bc31a766ae95ad551084bcac37e2ceac06f2d5",
+    "artifact_id": 10129121118,
+    "artifact_name": "D1-GCN-MATERIAL-SHADER-REFERENCE-MERGED-V1",
+    "artifact_digest_sha256": "a293d78521b6ff5b8852bfaeeec694ded28f327a4ab03cb7d64036d44b52eb5f",
+    "report_sha256": "d859a8f19e267ec3a0f36afbe949d4bf523811f7f9509f6af6d2696c0142284c"
+  },
+  "implementation": {
+    "merge_commit": "f81e91355faaf7e4d82780ac12225c786236c80c",
+    "merge_blob_sha": "33ddea63efce231d4be8a2fedae09832fdf019e9",
+    "workflow_commit": "56bc31a766ae95ad551084bcac37e2ceac06f2d5"
+  },
+  "inputs": {
+    "failed_owner_artifact_id": 10126529830,
+    "owner_absent_occurrence_count": 3987,
+    "owner_unique_absent_reference_count": 196,
+    "probe_1": {
+      "artifact_id": 10128183779,
+      "artifact_digest_sha256": "d388903d3806a32af4a8c4d81bb74955fa6a3f964c8bc19b73a842ac6a53c9fd",
+      "report_sha256": "1c9bb7a28b28559d40cde79399880f2b291d9ca5c45011cd4c861406ae9233ec"
+    },
+    "probe_2": {
+      "artifact_id": 10128953573,
+      "artifact_digest_sha256": "e2ede19a1df88666c83a7c69ab6b305626da9d7b76a481cb34d409f126c90733",
+      "report_sha256": "40f207544b6e0cd8f2cbf8975a7cc32bc1fde3d849adfca73a39f3aae9278624"
+    }
+  },
+  "coverage": {
+    "exact_missing_reference_target_count": 196,
+    "exact_missing_reference_occurrence_count": 3987,
+    "serialized_slot_occurrences": {"PS": 12, "VS": 3975},
+    "target_entry_class_counts": {"128:0": 1, "16:0": 7, "1:4": 5, "32:11": 177, "32:4": 4, "32:6": 2},
+    "reference_target_entry_class_counts": {"16:0": 1, "1:11": 177, "1:4": 4, "1:6": 2},
+    "reference_resolution_counts": {"CURRENT_FILEHASH_TARGET_RESOLVED": 184, "NO_CURRENT_PACKAGE_TARGET": 7, "NULL_REFERENCE": 5},
+    "type32_subtype11_localshader_wrapper_count": 177,
+    "type32_subtype11_localshader_material_occurrence_count": 3967,
+    "unique_localshader_gcn_program_count": 65,
+    "non_localshader_special_reference_occurrence_count": 20,
+    "shader_stage_promotions": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "architectural_finding": {
+    "type32_subtype11_wrapper_reference_type_subtype": "1:11",
+    "referenced_orb_stage": "LocalShader",
+    "referenced_orb_stage_value": 3,
+    "material_offset_0x28_historical_label": "vertex_shader",
+    "material_offset_0x28_correct_boundary": "pre-raster shader/pipeline reference until pipeline ownership is source-closed",
+    "localshader_as_vertexshader": "FORBIDDEN"
+  },
+  "semantic_boundary": {
+    "type32_subtype11_to_localshader": "GLOBAL_EXACT_FOR_THE_177_MATERIAL_REFERENCED_WRAPPERS",
+    "material_slot_label_to_shader_stage": "NOT_PROMOTED",
+    "direct_raster_stage_ownership": "WITHHELD",
+    "local_hull_domain_pipeline_ownership": "NEXT_TESSELLATION_GATE",
+    "param_index_to_attr_index_provenance": "WITHHELD",
+    "varying_semantic_names": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "violations": []
+}
