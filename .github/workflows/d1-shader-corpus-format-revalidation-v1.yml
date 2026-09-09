@@ -2,6 +2,12 @@ name: D1 shader corpus format revalidation v1
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - '.github/workflows/d1-shader-corpus-format-revalidation-v1.yml'
+      - 'tools/d1_shader_corpus_format_revalidate.py'
 
 permissions:
   contents: read
