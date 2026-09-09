@@ -1,0 +1,56 @@
+{
+  "schema": "d1_gcn_vector_formula_source_binding_checkpoint/v1",
+  "status": "D1_GCN_VECTOR_FORMULA_SOURCE_BINDING_CORPUS_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34385540086,
+    "source_commit": "be86ecd874de0276806cc9cfcb325eb5be325c30",
+    "artifact_id": 10117792268,
+    "artifact_name": "D1-GCN-VECTOR-FORMULA-SOURCE-BINDING-V1",
+    "artifact_digest_sha256": "44b3cb10e7767928f87cc8468449b4fe95c9f916ba96316818c8494567360afe",
+    "corpus_report_sha256": "c57916665e54378ec4227baea5f39f8706098e90c4ac032c8b4a97c6fd05b5f2"
+  },
+  "implementation": {
+    "source_binding_commit": "24220a741d558583a47d2eeb22a69e629bef9759",
+    "corpus_replay_commit": "b224d2d1168cbf741e0229a03ef4c0ffae4085bc",
+    "workflow_commit": "be86ecd874de0276806cc9cfcb325eb5be325c30"
+  },
+  "source_artifacts": {
+    "structural": 10087524653,
+    "formula_lane_binding": 10116533424,
+    "sgpr_ssa": 10110002727
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_instructions_replayed": 4896165,
+    "formula_instruction_count": 2994322,
+    "formula_source_slot_count": 5679580,
+    "exact_formula_source_binding_count": 5679580,
+    "vgpr_source_slot_count": 4288843,
+    "sgpr_source_slot_count": 935684,
+    "literal_source_slot_count": 455053,
+    "sgpr_placeholder_replacement_count": 935684,
+    "formula_source_placeholder_leak_count": 0,
+    "integrated_vector_node_count": 33132272,
+    "scalar_ssa_node_count": 7461557,
+    "scalar_state_kind_counts": {"CFG_PHI": 9833, "WHOLE_SCALAR_WRITE": 925851},
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "formula_result_to_lane_candidate_binding": "GLOBAL_EXACT_PREREQUISITE",
+    "formula_result_to_physical_write_binding": "GLOBAL_EXACT_PREREQUISITE",
+    "vgpr_formula_source_state_identity": "GLOBAL_EXACT",
+    "sgpr_formula_source_state_identity": "GLOBAL_EXACT_CROSS_GRAPH",
+    "literal_formula_source_identity": "GLOBAL_EXACT",
+    "instruction_local_sgpr_formula_source_placeholders": "ZERO_REMAINING",
+    "scalar_memory_values": "OPAQUE_RESOURCE_ADDRESS_WITHHELD",
+    "resource_lds_interpolation_values": "NEXT_ARCHITECTURAL_VALUE_FRONTIER",
+    "shader_expression_semantics": "WITHHELD",
+    "material_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "policy": "Every explicit source slot of every source-closed vector formula is reconciled to the exact existing architectural VGPR state, exact existing SGPR state, or exact encoded literal. Formula edges contain no instruction-local SGPR placeholder leaves. The vector and scalar register graphs remain separately owned and cross-referenced; no shader or material meaning is promoted."
+}
