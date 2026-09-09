@@ -1,0 +1,196 @@
+name: D1 global PS VS DS structural v3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-ps-vs-ds-structural-v3.yml'
+      - 'tools/d1_gcn_shader_corpus_structural_census_v3.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_structural_parse_accounting_gate.py'
+      - 'tools/d1_gcn_exec_mask_opcode_frontier.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '10086776295'
+  SOURCE_ARTIFACT_ZIP_SHA256: 'b03af8db1225806bdb9d4e5eed25e22205a654ac705027e655f4ecee52ea08ad'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  structural:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test exact three-stage structural admission
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_shader_corpus_structural_census_v3.py --self-test
+          python tools/d1_gcn_cfg_ir_parse_accounting_selftest.py
+          python tools/d1_gcn_exec_mask_opcode_frontier.py --self-test
+
+      - name: Download and verify exact PS VS DS V3 corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source out work
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o source/corpus.zip
+          echo "$SOURCE_ARTIFACT_ZIP_SHA256  source/corpus.zip" | sha256sum --check --strict
+          mkdir -p source/corpus
+          unzip -q source/corpus.zip -d source/corpus
+          (
+            cd source/corpus
+            sha256sum --check --strict SHA256SUMS.txt
+          )
+          test -s source/corpus/D1_SHADER_CORPUS_PS_VS_DS_V3.json
+          test -s source/corpus/D1_SHADER_EXACT_BINARIES.tar
+          mkdir -p source/exact
+          tar -xf source/corpus/D1_SHADER_EXACT_BINARIES.tar -C source/exact
+          test -d source/exact/shader/programs
+          python - <<'PY'
+          import json
+          d=json.load(open('source/corpus/D1_SHADER_CORPUS_PS_VS_DS_V3.json'))
+          assert d['status']=='D1_REMOTE_PS4_SHADER_CORPUS_EXACT_PS_VS_DS',d['violations'][:20]
+          assert d['header_population']['stage_counts']=={'DS':79,'PS':25405,'VS':12408}
+          assert d['gcn_program_population']['stage_unique_counts']=={'DS':20,'PS':18375,'VS':8069}
+          assert not d['violations']
+          PY
+
+      - name: Build pinned CLRX GFX700 disassembler
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build \
+            -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          printf '%s\n' "$exe" > out/CLRXDISASM_PATH.txt
+
+      - name: Run all 26464 exact GCN programs through generic Structural IR
+        run: |
+          set -euo pipefail
+          exe="$(cat out/CLRXDISASM_PATH.txt)"
+          set +e
+          python tools/d1_gcn_shader_corpus_structural_census_v3.py \
+            --extract-report source/corpus/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            --program-dir source/exact/shader/programs \
+            --clrx "$exe" \
+            --baseline-header 808EE505 \
+            --work-dir work \
+            -o out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            | tee out/structural_census_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > out/structural_census_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json
+
+      - name: Require exact parse accounting for PS VS and DS
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_structural_parse_accounting_gate.py \
+            --census out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --ir-dir work/ir \
+            --required-header 808768B7:PS \
+            --required-header 8087695B:VS \
+            --required-header 80994584 \
+            --required-header 808EE505:PS \
+            -o out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_PS_VS_DS.json \
+            | tee out/parse_accounting_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > out/parse_accounting_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_PS_VS_DS.json
+
+      - name: Inventory exact three-stage EXEC mask frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_exec_mask_opcode_frontier.py \
+            --census out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --ir-dir work/ir \
+            -o out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json \
+            | tee out/exec_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > out/exec_frontier_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json
+
+      - name: Freeze diagnostics and promote only exact three-stage structure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          c=json.load(open('out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json'))
+          g=json.load(open('out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_PS_VS_DS.json'))
+          e=json.load(open('out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json'))
+          print('STRUCTURAL_STATUS',c['status'])
+          print('ACCOUNTING_STATUS',g['status'])
+          print('EXEC_STATUS',e['status'])
+          print('STRUCTURAL_COVERAGE',json.dumps(c['coverage'],sort_keys=True))
+          print('ACCOUNTING_COVERAGE',json.dumps(g['coverage'],sort_keys=True))
+          print('EXEC_COVERAGE',json.dumps(e['coverage'],sort_keys=True))
+          print('EXEC_OPCODES',json.dumps(e['opcodes'],sort_keys=True))
+          print('UNKNOWN_EXEC_OPCODES',json.dumps(e['unknown_exec_touching_opcodes']))
+          for name,rows in [('CENSUS',c['violations']),('ACCOUNTING',g['violations']),('EXEC',e['violations'])]:
+              print(name+'_VIOLATIONS',len(rows))
+              for x in rows[:100]: print(name+'_VIOLATION',x)
+          PY
+          find out work/ir work/disasm work/stderr \
+            -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+          test "$(cat out/structural_census_exit_code.txt)" -eq 0
+          test "$(cat out/parse_accounting_exit_code.txt)" -eq 0
+          test "$(cat out/exec_frontier_exit_code.txt)" -eq 0
+          python - <<'PY'
+          import json
+          c=json.load(open('out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json'))
+          g=json.load(open('out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_PS_VS_DS.json'))
+          e=json.load(open('out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json'))
+          assert c['status']=='D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_COMPLETE',c['violations'][:50]
+          assert not c['violations']
+          assert c.get('driver',{}).get('required_stages')==['DS','PS','VS'],c.get('driver')
+          assert c.get('source_extract_schema')=='d1_remote_ps4_shader_corpus_extract/v3'
+          assert g['status']=='D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_CORPUS_EXACT',g['violations'][:50]
+          assert not g['violations']
+          want={'DS':20,'PS':18375,'VS':8069}
+          assert g['coverage']['stage_planned_unique_program_counts']==want,g['coverage']
+          assert g['coverage']['stage_exact_unique_program_counts']==want,g['coverage']
+          req={x['header']:x for x in g['required_mixed_stage_reference_headers']}
+          assert req['80994584']['observed_stages']==['DS'],req['80994584']
+          assert req['80994584']['exact_structural_parse_accounting'] is True
+          assert e['status']=='D1_GCN_EXEC_MASK_OPCODE_FRONTIER_EXACT',e['violations'][:50]
+          assert not e['violations']
+          assert e['coverage']['exact_unique_gcn_programs']==26464,e['coverage']
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-PS-VS-DS-STRUCTURAL-V3
+          path: |
+            out/
+            work/ir/
+            work/disasm/
+            work/stderr/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
