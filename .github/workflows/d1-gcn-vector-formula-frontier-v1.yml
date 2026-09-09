@@ -1,0 +1,149 @@
+name: D1 GCN vector formula frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-vector-formula-frontier-v1.yml'
+      - 'tools/d1_gcn_vector_formula_semantics_v1.py'
+      - 'tools/d1_gcn_vector_formula_frontier_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  VECTOR_FRONTIER_ARTIFACT_ID: '10114127724'
+  VECTOR_FRONTIER_ZIP_SHA256: 'cde67778313311a2ef4c0693d338903a536538d589cc11cd86dca4300acd6190'
+  VECTOR_FRONTIER_REPORT_SHA256: '7faed68ab12c02a02224299504f1d7b42e5c4b8697557410bc385ab16b4791c6'
+  VECTOR_VALUE_SEMANTICS_REPORT_SHA256: '0020ba6d263524f7dc4ad375d654ca19f78fe246003e94ff574b2a167d672177'
+
+jobs:
+  vector-formula-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Pin exact semantic implementation graph
+        run: |
+          set -euo pipefail
+          check_blob() { test "$(git hash-object "$1")" = "$2" || { echo "blob drift: $1" >&2; exit 2; }; }
+          check_blob tools/d1_gcn_vector_formula_semantics_v1.py 331f08a4465f70e5c74304ff5a947c9439c0da30
+          check_blob tools/d1_gcn_vector_formula_frontier_v1.py 7f092a1c9e044a26bf0593f99834ce6477ce17ec
+          check_blob tools/d1_gcn_vector_value_semantics_v1.py 138ead28aea10c476704d88d5718f742913ff73b
+          python -m py_compile tools/d1_gcn_vector_formula_semantics_v1.py tools/d1_gcn_vector_formula_frontier_v1.py
+
+      - name: Validate source-backed formula registry
+        run: |
+          set -euo pipefail
+          mkdir -p out source
+          python tools/d1_gcn_vector_formula_semantics_v1.py > out/D1_GCN_VECTOR_FORMULA_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_FORMULA_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_BASE_FORMULAS_SOURCE_CLOSED',d
+          assert d['base_formula_opcode_count']==50,d
+          assert len(d['bit_exact_replay_ready_opcodes'])==12,d
+          assert d['vop3_modifier_semantics']['input_abs_then_neg']['status']=='SOURCE_CLOSED',d
+          assert d['vop3_modifier_semantics']['output_modifier']['status']=='SOURCE_CLOSED',d
+          assert d['vop3_modifier_semantics']['clamp']['status']=='WITHHELD_AMD_REV1_3_INTERNAL_SOURCE_CONFLICT',d
+          assert d['fp_mode_state']['status']=='SOURCE_CLOSED_AS_ARCHITECTURAL_STATE',d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download and verify frozen vector operand frontier
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VECTOR_FRONTIER_ARTIFACT_ID}/zip" \
+            -o source/vector_frontier.zip
+          echo "$VECTOR_FRONTIER_ZIP_SHA256  source/vector_frontier.zip" | sha256sum --check --strict
+          unzip -q source/vector_frontier.zip \
+            D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json \
+            D1_GCN_VECTOR_VALUE_SEMANTICS_V1.json \
+            -d source/vector_frontier
+          echo "$VECTOR_FRONTIER_REPORT_SHA256  source/vector_frontier/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json" | sha256sum --check --strict
+          echo "$VECTOR_VALUE_SEMANTICS_REPORT_SHA256  source/vector_frontier/D1_GCN_VECTOR_VALUE_SEMANTICS_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          f=json.load(open('source/vector_frontier/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json'))
+          s=json.load(open('source/vector_frontier/D1_GCN_VECTOR_VALUE_SEMANTICS_V1.json'))
+          assert f['status']=='D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_EXACT',f.get('violations',[])[:20]
+          assert not f['violations'] and not f['unresolved']
+          assert s['status']=='D1_GCN_VECTOR_VALUE_SEMANTICS_FRONTIER_SOURCE_CLOSED',s
+          assert s['category_opcode_counts']['VALU_FORMULA_PENDING']==50,s
+          assert f['coverage']['vgpr_def_instruction_count']==3690362,f['coverage']
+          assert f['coverage']['vgpr_def_entry_count']==3864039,f['coverage']
+          assert f['coverage']['category_instruction_counts']['VALU_FORMULA_PENDING']==2994322,f['coverage']
+          assert f['coverage']['category_def_entry_counts']['VALU_FORMULA_PENDING']==2994369,f['coverage']
+          PY
+
+      - name: Bind source formulas to every exact retail form
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vector_formula_frontier_v1.py \
+            --vector-frontier source/vector_frontier/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json \
+            -o out/D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json \
+            | tee out/vector_formula_frontier_stdout.txt
+
+      - name: Fail closed on formula and modifier boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_BASE_FORMULA_FRONTIER_EXACT',d['violations'][:100]
+          assert not d['violations'] and not d['unresolved']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['formula_opcode_count']==50,c
+          assert c['formula_instruction_count']==2994322,c
+          assert c['formula_result_component_count']==2994369,c
+          assert c['source_documented_base_formula_opcode_count']==50,c
+          assert c['source_documented_base_formula_instruction_count']==2994322,c
+          assert c['bit_exact_replay_ready_opcode_count']==12,c
+          assert c['bit_exact_replay_ready_instruction_count']==389102,c
+          assert c['bit_exact_replay_ready_result_component_count']==389149,c
+          assert c['floating_or_special_symbolic_opcode_count']==38,c
+          assert c['floating_or_special_symbolic_instruction_count']==2605220,c
+          assert c['operand_form_count']==340,c
+          assert c['modifier_touched_instruction_count']==313444,c
+          assert c['neg_modifier_instruction_count']==158330,c
+          assert c['abs_modifier_instruction_count']==47624,c
+          assert c['omod_modifier_instruction_count']==28931,c
+          assert c['clamp_modifier_instruction_count']==129395,c
+          assert c['clamp_numeric_semantics_withheld_instruction_count']==129395,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          b=d['semantic_boundary']
+          assert b['all_50_base_opcode_formulas']=='SOURCE_CLOSED_SYMBOLIC',b
+          assert b['integer_bit_exact_subset']=='READY_FOR_LANE_SSA_VALUE_NODE_REPLAY',b
+          assert b['vop3_clamp_numeric_range']=='WITHHELD_AMD_REV1_3_INTERNAL_SOURCE_CONFLICT',b
+          assert b['resource_lds_interpolation_values']=='UNCHANGED_OPAQUE_BOUNDARIES',b
+          print('D1_GCN_VECTOR_BASE_FORMULA_FRONTIER_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_VECTOR_FORMULA_SEMANTICS_V1.json \
+            out/D1_GCN_VECTOR_FORMULA_FRONTIER_V1.json \
+            > out/SHA256SUMS.txt
+          cat > out/SOURCE_ARTIFACT_IDS.txt <<EOF
+          vector_operand_frontier=${VECTOR_FRONTIER_ARTIFACT_ID}
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VECTOR-FORMULA-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
