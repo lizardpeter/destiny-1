@@ -1,0 +1,152 @@
+name: D1 global PS VS stage frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-ps-vs-stage-frontier-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: '34304175048'
+  SOURCE_RUN_HEAD_SHA: '6aaa34c4e5efe5ea0f1fe998330d44ff0d5bb2d5'
+  SOURCE_ARTIFACT_NAME: 'D1-GLOBAL-PS-VS-STRUCTURAL-CENSUS-V1'
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test exact stage-frontier postprocessor
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_shader_corpus_stage_frontier.py --self-test
+
+      - name: Wait for exact source structural census run
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          completed=''
+          for _ in $(seq 1 720); do
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" \
+              -o source/run.json
+            read -r status conclusion head_sha < <(python - <<'PY'
+          import json
+          d=json.load(open('source/run.json'))
+          print(d.get('status',''), d.get('conclusion') or '-', d.get('head_sha',''))
+          PY
+            )
+            echo "SOURCE_RUN status=$status conclusion=$conclusion head_sha=$head_sha"
+            test "$head_sha" = "$SOURCE_RUN_HEAD_SHA"
+            if test "$status" = completed; then
+              completed=1
+              break
+            fi
+            sleep 30
+          done
+          test "$completed" = 1
+          python - <<'PY'
+          import json
+          d=json.load(open('source/run.json'))
+          assert d['id']==int('34304175048'),d.get('id')
+          assert d['head_sha']=='6aaa34c4e5efe5ea0f1fe998330d44ff0d5bb2d5',d['head_sha']
+          print('SOURCE_RUN_FINAL',d['status'],d.get('conclusion'))
+          PY
+
+      - name: Download exact structural-census artifact from source run
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+            -o source/artifacts.json
+          artifact_id=$(python - <<'PY'
+          import json,os
+          d=json.load(open('source/artifacts.json'))
+          want=os.environ['SOURCE_ARTIFACT_NAME']
+          rows=[x for x in d.get('artifacts',[]) if x.get('name')==want and not x.get('expired')]
+          assert len(rows)==1,(want,[(x.get('id'),x.get('name'),x.get('expired')) for x in d.get('artifacts',[])])
+          print(rows[0]['id'])
+          PY
+          )
+          echo "$artifact_id" | tee source/source_artifact_id.txt
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+            -o source/source_artifact.zip
+          sha256sum source/source_artifact.zip | tee source/source_artifact_zip.sha256
+          mkdir -p source/corpus
+          unzip -q source/source_artifact.zip -d source/corpus
+          test -s source/corpus/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json
+          test -s source/corpus/out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json
+          test -d source/corpus/work/ir
+
+      - name: Build exact PS VS stage frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_shader_corpus_stage_frontier.py \
+            --census source/corpus/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
+            --ir-dir source/corpus/work/ir \
+            --accounting-gate source/corpus/out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json \
+            -o out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json \
+            | tee out/stage_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" | tee out/stage_frontier_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json
+
+      - name: Materialize immutable frontier checkpoint and promote fail-closed
+        run: |
+          set -euo pipefail
+          cp source/run.json out/SOURCE_WORKFLOW_RUN.json
+          cp source/source_artifact_id.txt out/SOURCE_ARTIFACT_ID.txt
+          cp source/source_artifact_zip.sha256 out/SOURCE_ARTIFACT_ZIP_SHA256.txt
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json'))
+          print('STATUS',d['status'])
+          print('COVERAGE',json.dumps(d['coverage'],sort_keys=True))
+          print('PS_ONLY_OPCODES',d['cross_stage']['ps_only_opcodes'])
+          print('VS_ONLY_OPCODES',d['cross_stage']['vs_only_opcodes'])
+          print('COMMON_OPCODE_COUNT',len(d['cross_stage']['common_opcodes']))
+          print('NOVEL_OPCODE_COUNT',d['frontier_vs_808ee505_baseline']['novel_opcode_count'])
+          print('NOVEL_FORM_COUNT',d['frontier_vs_808ee505_baseline']['novel_structural_form_count'])
+          print('PROMOTION_QUEUE_TOP20',json.dumps(d['frontier_vs_808ee505_baseline']['opcode_promotion_queue'][:20],sort_keys=True))
+          print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          PY
+          test "$(cat out/stage_frontier_exit_code.txt)" -eq 0
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER.json'))
+          assert d['status']=='D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert d['coverage']['ps_unique_programs']>0,d['coverage']
+          assert d['coverage']['vs_unique_programs']>0,d['coverage']
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-PS-VS-STAGE-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
