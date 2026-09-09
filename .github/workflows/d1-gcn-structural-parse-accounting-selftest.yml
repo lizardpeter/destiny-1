@@ -1,0 +1,24 @@
+name: D1 GCN structural parse accounting self-test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-structural-parse-accounting-selftest.yml'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_cfg_ir_parse_accounting_selftest.py'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Prove exact and fail-closed native-line accounting
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cfg_ir_parse_accounting_selftest.py
