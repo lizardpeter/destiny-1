@@ -1,0 +1,146 @@
+name: D1 global GCN structural evidence frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-gcn-structural-evidence-frontier-v1.yml'
+      - 'tools/d1_gcn_opcode_structural_evidence_frontier_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXACT_ARTIFACT_ID: '10086896274'
+  EXACT_ARTIFACT_ZIP_SHA256: '7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959'
+  EXACT_REPORT_SHA256: '01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412'
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  FRONTIER_ARTIFACT_ID: '10087572145'
+  FRONTIER_ARTIFACT_ZIP_SHA256: 'd5d979266d28dcf77f0a6601541c43388f37d44da11a369a2fbbc8dd76f1d288'
+  FRONTIER_REPORT_SHA256: 'e06266d6640684bfebe15a2598ac0fa30302fd60d5c0df2bd94b0dfaba3f09cf'
+
+jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test structural evidence gate
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_opcode_structural_evidence_frontier_v1.py --self-test
+
+      - name: Download exact OrbShdr provenance corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source/exact source/structural source/frontier out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${EXACT_ARTIFACT_ID}/zip" \
+            -o source/exact.zip
+          echo "$EXACT_ARTIFACT_ZIP_SHA256  source/exact.zip" | sha256sum --check --strict
+          unzip -q source/exact.zip D1_SHADER_CORPUS_PS_VS_DS_V3.json -d source/exact
+          echo "$EXACT_REPORT_SHA256  source/exact/D1_SHADER_CORPUS_PS_VS_DS_V3.json" | sha256sum --check --strict
+
+      - name: Download exact parse-accounted Structural IR corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Download exact PS VS DS stage frontier
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FRONTIER_ARTIFACT_ID}/zip" \
+            -o source/frontier.zip
+          echo "$FRONTIER_ARTIFACT_ZIP_SHA256  source/frontier.zip" | sha256sum --check --strict
+          unzip -q source/frontier.zip D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_PS_VS_DS.json -d source/frontier
+          echo "$FRONTIER_REPORT_SHA256  source/frontier/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_PS_VS_DS.json" | sha256sum --check --strict
+
+      - name: Build exact opcode and structural-form evidence frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_opcode_structural_evidence_frontier_v1.py \
+            --exact-corpus source/exact/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            --census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --frontier source/frontier/D1_GCN_SHADER_CORPUS_STAGE_FRONTIER_PS_VS_DS.json \
+            --ir-dir source/structural/work/ir \
+            --expected-exact-sha256 "$EXACT_REPORT_SHA256" \
+            --expected-census-sha256 "$STRUCTURAL_CENSUS_SHA256" \
+            --expected-frontier-sha256 "$FRONTIER_REPORT_SHA256" \
+            -o out/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json \
+            | tee out/evidence_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > out/evidence_frontier_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json
+
+      - name: Promote only zero-violation structural provenance evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json'))
+          print('STATUS',d['status'])
+          print('COVERAGE',json.dumps(d['coverage'],sort_keys=True))
+          print('TOP20_NOVEL_OPCODES',json.dumps([
+              {k:x[k] for k in ('opcode','instruction_count','program_count','stages','stage_program_counts')}
+              for x in d['novel_opcodes'][:20]
+          ],sort_keys=True))
+          print('VIOLATION_COUNT',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_unique_gcn_programs']==26464,c
+          assert c['stage_unique_program_counts']=={'PS':18375,'VS':8069,'DS':20},c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['global_opcode_count']==124,c
+          assert c['global_structural_form_count']==638,c
+          assert c['novel_opcode_count']==67,c
+          assert c['novel_structural_form_count']==532,c
+          assert c['novel_opcode_instruction_occurrences']==261733,c
+          assert c['novel_form_instruction_occurrences']==855635,c
+          assert c['exact_native_program_reference_count']==37179,c
+          assert c['semantic_promotions']==0,c
+          assert all(x['semantic_status']=='UNPROVEN' for x in d['novel_opcodes'])
+          assert all(x['semantic_status']=='UNPROVEN' for x in d['novel_structural_forms'])
+          PY
+          test "$(cat out/evidence_frontier_exit_code.txt)" -eq 0
+          sha256sum out/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json > out/SHA256SUMS.txt
+          printf '%s\n' "$EXACT_ARTIFACT_ID" > out/EXACT_SOURCE_ARTIFACT_ID.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/STRUCTURAL_SOURCE_ARTIFACT_ID.txt
+          printf '%s\n' "$FRONTIER_ARTIFACT_ID" > out/FRONTIER_SOURCE_ARTIFACT_ID.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-GCN-STRUCTURAL-EVIDENCE-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
