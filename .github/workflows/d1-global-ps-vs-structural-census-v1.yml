@@ -72,7 +72,7 @@ jobs:
           assert d['status']=='D1_SHADER_CORPUS_PLAN_COMPLETE',d['violations'][:20]
           assert d['header_population']['stage_counts']['PS']>0,d
           assert d['header_population']['stage_counts']['VS']>0,d
-          required={'808EE505','5A7F252A','8C1CE492'}
+          required={'808EE505','8087695B','808768B7'}
           present={str(x['header']).upper() for x in d['headers']}
           assert required <= present,sorted(required-present)
           print('PLAN',d['header_population'],d['native_reference_population'])
@@ -154,8 +154,8 @@ jobs:
           python tools/d1_gcn_structural_parse_accounting_gate.py \
             --census out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS.json \
             --ir-dir work/ir \
-            --required-header 5A7F252A:VS \
-            --required-header 8C1CE492:PS \
+            --required-header 8087695B:VS \
+            --required-header 808768B7:PS \
             --required-header 808EE505 \
             -o out/D1_GCN_STRUCTURAL_PARSE_ACCOUNTING_GATE.json \
             | tee out/parse_accounting_gate_stdout.txt
