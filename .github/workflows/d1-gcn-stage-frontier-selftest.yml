@@ -1,0 +1,24 @@
+name: D1 GCN stage frontier self-test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_gcn_shader_corpus_stage_frontier.py'
+      - '.github/workflows/d1-gcn-stage-frontier-selftest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Run exact PS VS stage-frontier self-test
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_shader_corpus_stage_frontier.py --self-test
