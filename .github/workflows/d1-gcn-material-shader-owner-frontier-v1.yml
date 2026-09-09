@@ -1,0 +1,186 @@
+name: D1 GCN material shader owner frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-material-shader-owner-frontier-v1.yml'
+      - 'tools/d1_gcn_material_shader_owner_frontier_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  PACKAGES_TXT_SHA256: '9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+  ACTIVITY_INDEX_SHA256: '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06'
+  SHADER_ARTIFACT_ID: '10086896274'
+  SHADER_ZIP_SHA256: '7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959'
+  SHADER_REPORT_SHA256: '01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412'
+
+jobs:
+  owner-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin implementation source
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gcn_material_shader_owner_frontier_v1.py
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact universal package denominator
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/shader index runtime cache out
+          curl --fail --location --retry 4 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o index/packages.txt
+          echo "$PACKAGES_TXT_SHA256  index/packages.txt" | sha256sum --check --strict
+
+          curl --fail --location --retry 4 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o index/D1_CURRENT_ACTIVITY_INDEX.json
+          echo "$ACTIVITY_INDEX_SHA256  index/D1_CURRENT_ACTIVITY_INDEX.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" \
+            -o input/catalog.zip
+          echo "$CATALOG_ZIP_SHA256  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          python - <<'PY'
+          import json
+          d=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          assert d['schema']=='d1_remote_package_member_catalog/v1',d.get('schema')
+          assert d['physical_member_count']==1275,d['physical_member_count']
+          assert d['package_family_count']==337,d['package_family_count']
+          assert d['packages_txt_sha256']=='9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5'
+          assert d['source_activity_index_sha256']=='6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06'
+          print('D1_OWNER_CATALOG_DENOMINATOR_EXACT',d['package_family_count'],d['physical_member_count'])
+          PY
+
+      - name: Rebuild the same exact current-entry index used by the shader corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_everything_index_fast.py \
+            --location-index index/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list index/packages.txt \
+            --registry evidence/d1_export_class_registry.json \
+            --sqlite index/D1_CURRENT_EVERYTHING.sqlite \
+            --summary out/D1_CURRENT_EVERYTHING.json \
+            --queue index/D1_CURRENT_EVERYTHING.tsv \
+            | tee out/everything_index_stdout.txt
+
+          python - <<'PY'
+          import json,sqlite3
+          d=json.load(open('out/D1_CURRENT_EVERYTHING.json'))
+          assert not d.get('violations'),(d.get('violations') or [])[:20]
+          db=sqlite3.connect('index/D1_CURRENT_EVERYTHING.sqlite')
+          meta=dict(db.execute('select key,value from meta'))
+          n=db.execute("select count(*) from current_entries where upper(reference)='80801AD7'").fetchone()[0]
+          assert meta['packages_txt_sha256']=='9ab9cac1a7798e5bd558d4db5a1dcd36a71dbba307eaac3345a4a65c31c0f9a5',meta
+          assert n>0,n
+          print('D1_CURRENT_PS4_MATERIAL_DENOMINATOR_DISCOVERED',n)
+          PY
+
+      - name: Recover pinned Oodle 3 runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover frozen exact shader corpus report
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_ARTIFACT_ID}/zip" \
+            -o input/shader.zip
+          echo "$SHADER_ZIP_SHA256  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          report="$(find input/shader -type f -name 'D1_SHADER_CORPUS_PS_VS_DS_V3.json' -print -quit)"
+          test -n "$report"
+          echo "$SHADER_REPORT_SHA256  $report" | sha256sum --check --strict
+          cp "$report" input/D1_SHADER_CORPUS_PS_VS_DS_V3.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/D1_SHADER_CORPUS_PS_VS_DS_V3.json'))
+          assert d['schema']=='d1_remote_ps4_shader_corpus_extract/v3'
+          assert d['status']=='D1_REMOTE_PS4_SHADER_CORPUS_EXACT_PS_VS_DS'
+          assert not d['violations']
+          assert d['header_population']['total']==37892,d['header_population']
+          assert d['header_population']['stage_counts']=={'DS':79,'PS':25405,'VS':12408},d['header_population']
+          assert len(d['unique_gcn_programs'])==26464,len(d['unique_gcn_programs'])
+          print('D1_OWNER_SHADER_PREREQUISITE_EXACT')
+          PY
+
+      - name: Build exact retail material to VS PS owner frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_material_shader_owner_frontier_v1.py \
+            --sqlite index/D1_CURRENT_EVERYTHING.sqlite \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --runtime runtime \
+            --shader-corpus input/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            -o out/D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_V1.json \
+            | tee out/material_shader_owner_stdout.txt
+
+      - name: Fail closed and freeze discovered owner denominator
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p='out/D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_V1.json'
+          d=json.load(open(p))
+          c=d['coverage']
+          assert d['schema']=='d1_gcn_material_shader_owner_frontier/v1',d.get('schema')
+          assert d['status']=='D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['current_material_entry_count']>0,c
+          assert c['material_payload_recovered_count']==c['current_material_entry_count'],c
+          assert c['material_parse_success_count']==c['current_material_entry_count'],c
+          assert c['material_header_vs_ps_pair_promotions']==c['materials_with_resolved_vs_ps_owner_pair'],c
+          assert c['param_index_to_attr_index_promotions']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['param_index_to_attr_index_provenance']=='NEXT_GATE',d['semantic_boundary']
+          assert d['semantic_boundary']['domain_shader_pipeline_ownership']=='WITHHELD_SEPARATE_TESSELLATION_GATE'
+          print('D1_MATERIAL_SHADER_OWNER_FRONTIER_EXACT',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_V1.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-MATERIAL-SHADER-OWNER-FRONTIER-V1
+          path: |
+            out/D1_GCN_MATERIAL_SHADER_OWNER_FRONTIER_V1.json
+            out/D1_CURRENT_EVERYTHING.json
+            out/SHA256SUMS.txt
+            out/everything_index_stdout.txt
+            out/material_shader_owner_stdout.txt
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
