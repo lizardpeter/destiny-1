@@ -1,0 +1,63 @@
+{
+  "schema": "d1_gcn_vector_interpolation_checkpoint/v1",
+  "status": "D1_GCN_VECTOR_INTERPOLATION_CORPUS_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34386549764,
+    "source_commit": "32aefcc642be8349b2156d5952cb1fa425a843e9",
+    "artifact_id": 10118014123,
+    "artifact_name": "D1-GCN-VECTOR-INTERPOLATION-V1",
+    "artifact_digest_sha256": "96f93fffdfaf26b7dca5d8cda87657700761ceffaebd37dc4aff4637ba45116c",
+    "corpus_report_sha256": "cf5e2deb487b6f5d0b9d8192a3bb43e8a32cff211b962a3211baa03c5d1e0b54",
+    "semantics_report_sha256": "7dc44fec8d1ddef8e966de9049fd57869b7c7cefaf4a3169a046eee3339cfeed"
+  },
+  "implementation": {
+    "semantics_commit": "ea639f29e39a6111f856805e5906002a059d80a5",
+    "overlay_commit": "313223e2e08f1744e8d07720fb1a920024d75d8e",
+    "corpus_replay_commit": "7e5c9c3517e5fb62b85aa22e45283776ec66b8a6",
+    "workflow_commit": "32aefcc642be8349b2156d5952cb1fa425a843e9"
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_instructions_replayed": 4896165,
+    "programs_with_interpolation": 17868,
+    "interpolation_instruction_count": 425370,
+    "interpolation_result_component_count": 425370,
+    "opcode_instruction_counts": {"v_interp_mov_f32": 6, "v_interp_p1_f32": 212682, "v_interp_p2_f32": 212682},
+    "parameter_value_identity_node_count": 638052,
+    "m0_state_reference_count": 425370,
+    "vgpr_source_state_reference_count": 425364,
+    "old_destination_arithmetic_input_count": 212682,
+    "parameter_move_instruction_count": 6,
+    "overlay_node_count": 2126838,
+    "attribute_instruction_counts": {"0":117512,"1":96430,"2":84680,"3":51340,"4":42506,"5":22306,"6":10592,"7":4},
+    "channel_instruction_counts": {"w":46744,"x":135850,"y":132320,"z":110456},
+    "shader_expression_semantic_promotions": 0
+  },
+  "architectural_result_surface": {
+    "total_vgpr_result_components": 3864039,
+    "formula_components_source_closed": 2994369,
+    "interpolation_components_source_closed": 425370,
+    "formula_plus_interpolation_components": 3419739,
+    "formula_plus_interpolation_percent": 88.50166884961564,
+    "remaining_non_formula_non_interpolation_components": 444300,
+    "resource_and_ds_components": 309271,
+    "resource_and_ds_percent_of_total": 8.003827083525813
+  },
+  "semantic_boundary": {
+    "vintrp_formula_identity": "GLOBAL_SOURCE_CLOSED_SYMBOLIC",
+    "vintrp_result_to_existing_lane_ssa": "GLOBAL_EXACT",
+    "vintrp_m0_state_identity": "GLOBAL_EXACT_CROSS_GRAPH",
+    "vintrp_attribute_channel_identity": "GLOBAL_EXACT",
+    "p2_old_destination_arithmetic_role": "GLOBAL_EXACT",
+    "parameter_contents": "LDS_PARAMETER_VALUE_OPAQUE",
+    "floating_numeric_replay": "WITHHELD",
+    "vertex_to_pixel_varying_semantics": "NEXT_GATE",
+    "material_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "policy": "Every exact VINTRP result is attached to the existing lane-SSA result/write identities with exact barycentric VGPR state, automatic M0 state, ATTR/CHAN and P2 old-destination arithmetic role. P0/P10/P20 contents remain opaque until vertex-to-pixel parameter provenance is closed; no host floating evaluation or semantic varying name is guessed."
+}
