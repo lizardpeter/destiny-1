@@ -1,0 +1,188 @@
+name: D1 GCN vector value operand frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-vector-value-operand-frontier-v1.yml'
+      - 'tools/d1_gcn_vector_value_semantics_v1.py'
+      - 'tools/d1_gcn_vector_value_operand_frontier_v1.py'
+      - 'tools/d1_gcn_vgpr_machine_semantics_v1.py'
+      - 'tools/d1_condition_machine_semantics_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  VGPR_ARTIFACT_ID: '10108802450'
+  VGPR_ZIP_SHA256: '9e1051c5dcc2688a8d457b3e0dee752cf2975a07b73b52254f82173b58a09517'
+  VGPR_REPORT_SHA256: 'aa54c90ac66669066c83b2b92405464032bccaa1f41d713d8b26f466480f39f6'
+  CONDITION_ARTIFACT_ID: '10107497534'
+  CONDITION_ZIP_SHA256: 'ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5'
+  CONDITION_REPORT_SHA256: '5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5'
+
+jobs:
+  vector-value-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Pin exact frontier implementation graph
+        run: |
+          set -euo pipefail
+          check_blob() { test "$(git hash-object "$1")" = "$2" || { echo "blob drift: $1" >&2; exit 2; }; }
+          check_blob tools/d1_gcn_vector_value_semantics_v1.py 138ead28aea10c476704d88d5718f742913ff73b
+          check_blob tools/d1_gcn_vector_value_operand_frontier_v1.py d4ecfc6b9d2a744420f7e90f50deda673107bc59
+          check_blob tools/d1_gcn_vgpr_machine_semantics_v1.py 0818013dbd3f680fd27afb19133c3bffc8b5d952
+          check_blob tools/d1_condition_machine_semantics_v1.py 263f6a0bcdd1a3c128883ca5dd78a727bab80d67
+          check_blob tools/d1_gcn_shader_corpus_structural_census.py 88c2e88f80b39e501481e6ae494b6fec2e1cad32
+          check_blob tools/d1_gcn_shader_corpus_structural_census_v3.py 62d69b08d657d7be874e4da3d8c222465d798f5a
+          python -m py_compile tools/d1_gcn_vector_value_semantics_v1.py tools/d1_gcn_vector_value_operand_frontier_v1.py
+
+      - name: Validate conservative vector value registry
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/prereq
+          python tools/d1_gcn_vector_value_semantics_v1.py > out/D1_GCN_VECTOR_VALUE_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_VALUE_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_VALUE_SEMANTICS_FRONTIER_SOURCE_CLOSED',d
+          assert d['observed_vgpr_def_opcode_count']==74,d
+          assert d['category_opcode_counts']=={
+            'BUFFER_RESOURCE_VALUE_OPAQUE':3,
+            'DS_LDS_VALUE_OPAQUE':3,
+            'DYNAMIC_VGPR_SOURCE_IDENTITY':1,
+            'IMAGE_RESOURCE_VALUE_OPAQUE':10,
+            'INTERPOLATION_VALUE_OPAQUE':3,
+            'PREDICATE_SELECT_VALUE':1,
+            'SINGLE_LANE_MUTATION_VALUE':1,
+            'VALU_CARRY_COUPLED_VALUE':2,
+            'VALU_FORMULA_PENDING':50,
+          },d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify frozen VGPR and condition prerequisites
+        run: |
+          set -euo pipefail
+          fetch_artifact() {
+            id="$1"; ziphash="$2"; outfile="$3"
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" \
+              -o "$outfile"
+            echo "$ziphash  $outfile" | sha256sum --check --strict
+          }
+          fetch_artifact "$VGPR_ARTIFACT_ID" "$VGPR_ZIP_SHA256" source/prereq/vgpr.zip
+          fetch_artifact "$CONDITION_ARTIFACT_ID" "$CONDITION_ZIP_SHA256" source/prereq/condition.zip
+          unzip -q source/prereq/vgpr.zip D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json -d source/prereq/vgpr
+          unzip -q source/prereq/condition.zip D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json -d source/prereq/condition
+          echo "$VGPR_REPORT_SHA256  source/prereq/vgpr/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          echo "$CONDITION_REPORT_SHA256  source/prereq/condition/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          v=json.load(open('source/prereq/vgpr/D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_V1.json'))
+          c=json.load(open('source/prereq/condition/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json'))
+          assert v['status']=='D1_GCN_VGPR_LANE_SSA_CORPUS_REPLAY_EXACT',v.get('violations',[])[:20]
+          assert not v['violations']
+          vc=v['coverage']
+          assert vc['exact_programs_replayed']==26464,vc
+          assert vc['exact_instructions_replayed']==4896165,vc
+          assert vc['vgpr_def_instruction_count']==3690362,vc
+          assert vc['vgpr_def_entry_count']==3864039,vc
+          assert vc['single_lane_write_node_count']==9436,vc
+          assert vc['dynamic_vgpr_read_boundary_count']==6,vc
+          assert vc['shader_expression_semantic_promotions']==0,vc
+          assert c['status']=='D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_EXACT',c.get('violations',[])[:20]
+          assert not c['violations']
+          cc=c['coverage']
+          assert cc['carry_mask_definition_count']==11521,cc
+          assert cc['cndmask_mask_use_count']==114066,cc
+          assert cc['shader_expression_semantic_promotions']==0,cc
+          PY
+
+      - name: Census exact vector value operand and result forms
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vector_value_operand_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            -o out/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json \
+            | tee out/vector_value_operand_frontier_stdout.txt
+
+      - name: Fail closed on complete VGPR-result frontier
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_EXACT',d['violations'][:100]
+          assert not d['violations']
+          assert not d['unresolved']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['vgpr_def_instruction_count']==3690362,c
+          assert c['vgpr_def_entry_count']==3864039,c
+          assert c['vgpr_def_opcode_count']==74,c
+          assert c['single_lane_write_instruction_count']==9436,c
+          assert c['dynamic_vgpr_source_instruction_count']==6,c
+          assert c['condition_carry_coupled_instruction_count']==11521,c
+          assert c['predicate_select_instruction_count']==114066,c
+          assert sum(c['category_instruction_counts'].values())==3690362,c
+          assert sum(c['category_def_entry_counts'].values())==3864039,c
+          assert c['write_behavior_instruction_counts']=={
+            'EXEC_MASKED_WHOLE_LANE_DEST':3680926,
+            'SINGLE_LANE_UNMASKED':9436,
+          },c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['resource_lds_interpolation_values']=='EXPLICIT_OPAQUE_BOUNDARIES',d['semantic_boundary']
+          assert d['semantic_boundary']['per_opcode_valu_formula_semantics']=='NEXT_GATE',d['semantic_boundary']
+          print('D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_VECTOR_VALUE_SEMANTICS_V1.json \
+            out/D1_GCN_VECTOR_VALUE_OPERAND_FRONTIER_V1.json \
+            > out/SHA256SUMS.txt
+          cat > out/SOURCE_ARTIFACT_IDS.txt <<EOF
+          structural=${STRUCTURAL_ARTIFACT_ID}
+          vgpr=${VGPR_ARTIFACT_ID}
+          condition=${CONDITION_ARTIFACT_ID}
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VECTOR-VALUE-OPERAND-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
