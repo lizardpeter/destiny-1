@@ -1,0 +1,79 @@
+{
+  "schema": "d1_gcn_condition_symbolic_dataflow_checkpoint/v1",
+  "status": "D1_GCN_CONDITION_SYMBOLIC_DATAFLOW_V1_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "workflow_commit": "f88d45c08ca49557fe5403c9a8e25f6b6da0c369",
+    "workflow": ".github/workflows/d1-gcn-condition-symbolic-dataflow-v1.yml",
+    "machine_semantics": "tools/d1_condition_machine_semantics_v1.py",
+    "machine_frontier": "tools/d1_condition_machine_frontier_v1.py",
+    "symbolic_dataflow": "tools/d1_condition_symbolic_dataflow_v1.py",
+    "corpus_replay": "tools/d1_condition_symbolic_corpus_replay_v1.py"
+  },
+  "prerequisites": {
+    "structural_artifact_id": 10087524653,
+    "structural_artifact_digest_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+    "structural_census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed",
+    "exec_artifact_id": 10105101197,
+    "exec_artifact_digest_sha256": "cf2e1843755eceb7ebdfd1623ac5eba3f47d0d5d41b8188788f7fd0c0eae7792",
+    "exec_symbolic_replay_sha256": "484e2fedbd28cff405a2edeb740fa0bb78ce337e1bb6a931b59fc701e316574f"
+  },
+  "workflow_run": {
+    "run_id": 34360166020,
+    "conclusion": "success",
+    "artifact_id": 10107497534,
+    "artifact_name": "D1-GCN-CONDITION-SYMBOLIC-DATAFLOW-V1",
+    "artifact_digest_sha256": "ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5",
+    "machine_semantics_report_sha256": "4209e91ab5cfbfd3653959d192cf8ee9e080225f7998b67fd5d70e849e0a51b8",
+    "machine_frontier_report_sha256": "bb3a5ef1b372c91062dccc61440be8ec35c2c096c6308fbc4009c3f10fe014d3",
+    "symbolic_replay_report_sha256": "5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5"
+  },
+  "machine_frontier": {
+    "compare_instruction_count": 115023,
+    "compare_vcc_destination_count": 101601,
+    "compare_sgpr_pair_destination_count": 13422,
+    "carry_instruction_count": 11521,
+    "cndmask_instruction_count": 114066,
+    "cndmask_vcc_predicate_count": 110902,
+    "cndmask_sgpr_pair_predicate_count": 3164,
+    "scc_producer_instruction_count": 55835,
+    "scc_branch_consumer_count": 1840,
+    "vcc_branch_consumer_count": 300,
+    "vcc_half_write_count": 26464,
+    "structural_explicit_scc_def_count": 0
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"PS": 18375, "VS": 8069, "DS": 20},
+    "exact_instructions_replayed": 4896165,
+    "effect_aware_basic_block_count": 68622,
+    "concrete_cfg_edge_count": 51073,
+    "condition_symbolic_node_count": 1224147,
+    "condition_cfg_phi_node_count": 172140,
+    "unresolved_control_entry_block_count": 8053,
+    "tracked_sgpr_pair_instances": 20746,
+    "compare_mask_definition_count": 115023,
+    "carry_mask_definition_count": 11521,
+    "scalar_mask_definition_count": 26582,
+    "mask_half_write_count": 32122,
+    "opaque_mask_half_write_count": 117821,
+    "opaque_whole_vcc_write_count": 0,
+    "cndmask_mask_use_count": 114066,
+    "vcc_branch_mask_use_count": 300,
+    "scc_definition_count": 55835,
+    "scc_branch_use_count": 1840,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "exec_mask_symbolic_dataflow": "GLOBAL_EXACT_PREREQUISITE",
+    "condition_mask_machine_semantics": "SOURCE_CLOSED",
+    "scc_machine_semantics": "SOURCE_CLOSED",
+    "condition_mask_symbolic_dataflow": "GLOBAL_EXACT",
+    "scc_symbolic_dataflow": "GLOBAL_EXACT",
+    "branch_feasibility": "WITHHELD",
+    "lane_aware_vgpr_ssa": "NEXT_GATE",
+    "shader_expression_semantics": "UNPROVEN",
+    "shader_expression_semantic_promotions": 0
+  }
+}
