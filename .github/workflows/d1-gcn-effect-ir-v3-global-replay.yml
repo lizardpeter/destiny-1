@@ -1,0 +1,118 @@
+name: D1 GCN effect IR v3 global replay
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-effect-ir-v3-global-replay.yml'
+      - 'tools/d1_gcn_effect_ir_v3.py'
+      - 'tools/d1_gcn_effect_ir_corpus_replay_v1.py'
+      - 'tools/d1_gcn_arch_effects_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  EVIDENCE_ARTIFACT_ID: '10088200204'
+  EVIDENCE_REPORT_SHA256: '0fc89bae78694917b431b2062bbce794d72e3ef770aa66603dd1bc6f560069cd'
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Validate architectural registry
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_arch_effects_v1.py >/tmp/registry.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/registry.json'))
+          assert d['status']=='D1_GCN_ARCH_EFFECT_REGISTRY_SOURCE_CLOSED_TRANCHE_V1'
+          assert d['source_closed_opcode_count']==27
+          assert d['semantic_promotions']==0
+          PY
+
+      - name: Download exact structural v2 IR corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source/structural source/evidence out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Download exact global structural evidence
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${EVIDENCE_ARTIFACT_ID}/zip" \
+            -o source/evidence.zip
+          unzip -q source/evidence.zip D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json -d source/evidence
+          echo "$EVIDENCE_REPORT_SHA256  source/evidence/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json" | sha256sum --check --strict
+
+      - name: Replay additive effect-aware IR v3 across all exact programs
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_effect_ir_corpus_replay_v1.py \
+            --ir-dir source/structural/work/ir \
+            --evidence source/evidence/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json \
+            --expected-evidence-sha256 "$EVIDENCE_REPORT_SHA256" \
+            -o out/D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json \
+            | tee out/stdout.txt
+
+      - name: Fail closed on exact replay boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json'))
+          assert d['status']=='D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['source_closed_instruction_count']==255449,c
+          assert c['source_closed_program_count']==20137,c
+          assert c['source_closed_stage_program_counts']=={'DS':19,'PS':12050,'VS':8068},c
+          assert c['indirect_pc_swap_instruction_count']==8053,c
+          assert c['indirect_pc_swap_program_count']==8053,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert c['effect_v3_basic_block_count'] >= c['structural_v2_basic_block_count'],c
+          assert c['effect_v3_concrete_cfg_edge_count'] <= c['structural_v2_concrete_cfg_edge_count'],c
+          print('D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$EVIDENCE_ARTIFACT_ID" > out/SOURCE_EVIDENCE_ARTIFACT_ID.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-EFFECT-IR-V3-GLOBAL-REPLAY
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
