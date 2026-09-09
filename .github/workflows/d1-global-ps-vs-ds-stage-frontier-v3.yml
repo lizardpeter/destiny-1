@@ -12,8 +12,8 @@ permissions:
   actions: read
 
 env:
-  SOURCE_RUN_ID: '34306478810'
-  SOURCE_RUN_HEAD_SHA: '5a6c0ae55136049044ab01974ddfae1c3eba8755'
+  SOURCE_RUN_ID: '34306771519'
+  SOURCE_RUN_HEAD_SHA: 'bc2fec2f8366b32d60bb0a5b066bad8fbb5fd7ac'
   SOURCE_ARTIFACT_NAME: 'D1-GLOBAL-PS-VS-DS-STRUCTURAL-V3'
 
 jobs:
@@ -56,9 +56,9 @@ jobs:
           done
           test "$completed" = 1
           python - <<'PY'
-          import json
+          import json,os
           d=json.load(open('source/run.json'))
-          assert d['head_sha']=='5a6c0ae55136049044ab01974ddfae1c3eba8755',d['head_sha']
+          assert d['head_sha']==os.environ['SOURCE_RUN_HEAD_SHA'],d['head_sha']
           assert d.get('conclusion')=='success',d.get('conclusion')
           PY
 
