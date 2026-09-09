@@ -1,0 +1,69 @@
+{
+  "schema": "d1_gcn_vgpr_machine_frontier_checkpoint/v1",
+  "status": "D1_GCN_VGPR_MACHINE_FRONTIER_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "machine_semantics_commit": "a0cb5dda49cbed31a72118f7cef2856197cd8e16",
+    "machine_frontier_commit": "680e48e1b38b68c65574485c2258335dcb66e5a5",
+    "workflow_commit": "6edb1daeb2d8c8ebdb0520792767887aec519be7",
+    "machine_semantics": "tools/d1_gcn_vgpr_machine_semantics_v1.py",
+    "machine_frontier": "tools/d1_gcn_vgpr_machine_frontier_v1.py",
+    "workflow": ".github/workflows/d1-gcn-vgpr-machine-frontier-v1.yml"
+  },
+  "prerequisites": {
+    "structural_artifact_id": 10087524653,
+    "structural_artifact_digest_sha256": "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb",
+    "structural_census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed",
+    "condition_artifact_id": 10107497534,
+    "condition_artifact_digest_sha256": "ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5",
+    "condition_symbolic_replay_sha256": "5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5"
+  },
+  "workflow_run": {
+    "run_id": 34361800203,
+    "conclusion": "success",
+    "artifact_id": 10108191155,
+    "artifact_name": "D1-GCN-VGPR-MACHINE-FRONTIER-V1",
+    "artifact_digest_sha256": "03655a8fe104b84558354b6e3193332b309e4ebb9ff7dd4b36b8e89d6b49475b",
+    "machine_semantics_report_sha256": "d61197414d6a22d41862520afc8b6b830502a95d90dd28da6fa025d7751536c8",
+    "machine_frontier_report_sha256": "928900f0afff752eb4674164594c8494ab157118529a85311678ca8c4bf60907"
+  },
+  "coverage": {
+    "exact_program_count": 26464,
+    "exact_instruction_count": 4896165,
+    "vgpr_def_instruction_count": 3690362,
+    "vgpr_def_entry_count": 3864039,
+    "vgpr_use_instruction_count": 3561612,
+    "vgpr_use_entry_count": 6469818,
+    "programs_with_vgpr_defs": 26464,
+    "programs_with_vgpr_uses": 26464,
+    "exec_masked_def_instruction_count": 3680926,
+    "exec_masked_def_entry_count": 3854603,
+    "single_lane_unmasked_instruction_count": 9436,
+    "single_lane_unmasked_def_entry_count": 9436,
+    "dynamic_vgpr_source_instruction_count": 6,
+    "max_vgpr_index": 251,
+    "vgpr_def_width_histogram": {"1": 3603865, "2": 32444, "3": 20926, "4": 33127},
+    "vgpr_use_width_histogram": {"1": 1383421, "2": 1600347, "3": 425673, "4": 152171},
+    "shader_expression_semantic_promotions": 0,
+    "violations": 0
+  },
+  "machine_semantics": {
+    "ordinary_vector_destination_writes": "EXEC_MASKED_WHOLE_LANE_DEST",
+    "special_unmasked_opcode": "v_writelane_b32",
+    "special_unmasked_behavior": "SINGLE_LANE_UNMASKED",
+    "observed_writelane_literal_lane_set": "0..39",
+    "dynamic_vgpr_source_opcode": "v_movrels_b32",
+    "dynamic_vgpr_source_identity": "VGPR[encoded_source + M0]"
+  },
+  "semantic_boundary": {
+    "vgpr_destination_lane_mutation": "GLOBAL_EXACT",
+    "ordinary_vector_exec_gating": "SOURCE_CLOSED",
+    "v_writelane_exec_exception": "SOURCE_CLOSED",
+    "v_movrels_dynamic_source": "SOURCE_CLOSED_IDENTITY",
+    "vgpr_value_semantics": "WITHHELD",
+    "lane_aware_vgpr_ssa": "NEXT_GATE",
+    "shader_expression_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  }
+}
