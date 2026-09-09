@@ -1,0 +1,133 @@
+name: D1 GCN value machine frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - tools/d1_gcn_value_machine_semantics_v1.py
+      - tools/d1_gcn_value_machine_frontier_v1.py
+      - tools/d1_gcn_vgpr_machine_semantics_v1.py
+      - tools/d1_gcn_sgpr_machine_semantics_v1.py
+      - tools/d1_condition_machine_semantics_v1.py
+      - tools/d1_gcn_exec_mask_semantics_v1.py
+      - .github/workflows/d1-gcn-value-machine-frontier-v1.yml
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: "10087524653"
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb"
+  STRUCTURAL_CENSUS_SHA256: "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  VGPR_MACHINE_BLOB_SHA1: "0818013dbd3f680fd27afb19133c3bffc8b5d952"
+  SGPR_MACHINE_BLOB_SHA1: "b76b8594cb38fee94fed57b556ebc7f5291a1ddc"
+  CONDITION_MACHINE_BLOB_SHA1: "263f6a0bcdd1a3c128883ca5dd78a727bab80d67"
+  EXEC_MACHINE_BLOB_SHA1: "3f100abaff594335fc2a709dbd4cd2d285d8fcae"
+  VALUE_MACHINE_BLOB_SHA1: "da61e8a4fd6164f5aa443c0c873f7edd5775417e"
+  VALUE_FRONTIER_BLOB_SHA1: "884d2afadfaeaf8d63eb6545e3a9882df2219d55"
+
+jobs:
+  value-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Pin exact machine-state prerequisite registries
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/d1_gcn_vgpr_machine_semantics_v1.py)" = "$VGPR_MACHINE_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_sgpr_machine_semantics_v1.py)" = "$SGPR_MACHINE_BLOB_SHA1"
+          test "$(git hash-object tools/d1_condition_machine_semantics_v1.py)" = "$CONDITION_MACHINE_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_exec_mask_semantics_v1.py)" = "$EXEC_MACHINE_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_value_machine_semantics_v1.py)" = "$VALUE_MACHINE_BLOB_SHA1"
+          test "$(git hash-object tools/d1_gcn_value_machine_frontier_v1.py)" = "$VALUE_FRONTIER_BLOB_SHA1"
+
+      - name: Validate source-closed value operation registry
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural
+          python tools/d1_gcn_value_machine_semantics_v1.py > out/D1_GCN_VALUE_MACHINE_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VALUE_MACHINE_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_VALUE_MACHINE_SEMANTICS_SOURCE_CLOSED',d
+          p=d['frozen_prerequisites']
+          assert p['vgpr_def_opcode_count']==74,p
+          assert p['sgpr_def_opcode_count']==31,p
+          assert p['condition_compare_opcode_count']==18,p
+          assert p['scalar_mask_opcode_count']==8,p
+          assert d['value_producer_opcode_count']>=74,d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural IR corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Prove exact global value-producing opcode frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_value_machine_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            --structural-census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            -o out/D1_GCN_VALUE_MACHINE_FRONTIER_V1.json \
+            | tee out/value_frontier_stdout.txt
+
+      - name: Fail closed on value machine boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VALUE_MACHINE_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_VALUE_MACHINE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert not d['unclosed_examples']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['observed_vgpr_result_opcode_count']==74,c
+          assert c['observed_scalar_result_opcode_count']==31,c
+          assert c['unclosed_value_definition_row_count']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert c['value_producer_instruction_count']>0,c
+          assert c['definition_entry_count']>0,c
+          print('D1_GCN_VALUE_MACHINE_FRONTIER_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_VALUE_MACHINE_SEMANTICS_V1.json \
+            out/D1_GCN_VALUE_MACHINE_FRONTIER_V1.json \
+            > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VALUE-MACHINE-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
