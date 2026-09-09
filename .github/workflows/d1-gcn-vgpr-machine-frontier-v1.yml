@@ -1,0 +1,146 @@
+name: D1 GCN VGPR machine frontier v1
+
+on:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - tools/d1_gcn_vgpr_machine_semantics_v1.py
+      - tools/d1_gcn_vgpr_machine_frontier_v1.py
+      - .github/workflows/d1-gcn-vgpr-machine-frontier-v1.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: "10087524653"
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: "d806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb"
+  STRUCTURAL_CENSUS_SHA256: "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  CONDITION_ARTIFACT_ID: "10107497534"
+  CONDITION_ARTIFACT_ZIP_SHA256: "ff70f70b90796e1e5eb45caaf0eda8de8d6c780403635b628623630ac6326fa5"
+  CONDITION_REPLAY_SHA256: "5ea3b3b86539bb6a818efd901fd73ef2fc4942e8fec395c6471ca594329f08e5"
+
+jobs:
+  vgpr-machine-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate source-closed VGPR lane mutation semantics
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/condition
+          python tools/d1_gcn_vgpr_machine_semantics_v1.py > out/D1_GCN_VGPR_MACHINE_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VGPR_MACHINE_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_VGPR_MACHINE_SEMANTICS_SOURCE_CLOSED',d
+          assert len(d['opcode_behaviors'])==74,d
+          assert d['special_unmasked_opcodes']==['v_writelane_b32'],d
+          assert d['dynamic_vgpr_source_opcodes']==['v_movrels_b32'],d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Verify exact condition symbolic prerequisite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CONDITION_ARTIFACT_ID}/zip" \
+            -o source/condition.zip
+          echo "$CONDITION_ARTIFACT_ZIP_SHA256  source/condition.zip" | sha256sum --check --strict
+          unzip -q source/condition.zip D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json -d source/condition
+          echo "$CONDITION_REPLAY_SHA256  source/condition/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/condition/D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_CONDITION_SYMBOLIC_CORPUS_REPLAY_EXACT',d.get('violations',[])[:20]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Prove exact VGPR machine frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_vgpr_machine_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            -o out/D1_GCN_VGPR_MACHINE_FRONTIER_V1.json \
+            | tee out/vgpr_machine_frontier_stdout.txt
+
+      - name: Fail closed on exact VGPR mutation surface
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_VGPR_MACHINE_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_VGPR_MACHINE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          expected={
+            'exact_program_count':26464,
+            'exact_instruction_count':4896165,
+            'vgpr_def_instruction_count':3690362,
+            'vgpr_def_entry_count':3864039,
+            'vgpr_use_instruction_count':3561612,
+            'vgpr_use_entry_count':6469818,
+            'programs_with_vgpr_defs':26464,
+            'programs_with_vgpr_uses':26464,
+            'exec_masked_def_instruction_count':3680926,
+            'exec_masked_def_entry_count':3854603,
+            'single_lane_unmasked_instruction_count':9436,
+            'single_lane_unmasked_def_entry_count':9436,
+            'dynamic_vgpr_source_instruction_count':6,
+            'max_vgpr_index':251,
+            'shader_expression_semantic_promotions':0,
+          }
+          for k,v in expected.items(): assert c[k]==v,(k,c[k],v)
+          assert c['vgpr_def_width_histogram']=={'1':3603865,'2':32444,'3':20926,'4':33127},c
+          assert c['vgpr_use_width_histogram']=={'1':1383421,'2':1600347,'3':425673,'4':152171},c
+          assert set(map(int,c['writelane_literal_lane_counts']))==set(range(40)),c
+          print('D1_GCN_VGPR_MACHINE_FRONTIER_EXACT')
+          print(json.dumps(expected,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_VGPR_MACHINE_SEMANTICS_V1.json \
+            out/D1_GCN_VGPR_MACHINE_FRONTIER_V1.json \
+            > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$CONDITION_ARTIFACT_ID" > out/SOURCE_CONDITION_ARTIFACT_ID.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-VGPR-MACHINE-FRONTIER-V1
+          path: out/
+          retention-days: 30
