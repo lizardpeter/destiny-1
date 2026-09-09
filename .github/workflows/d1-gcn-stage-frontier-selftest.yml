@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - 'tools/d1_gcn_shader_corpus_stage_frontier.py'
+      - 'tools/d1_gcn_shader_corpus_stage_frontier_v2.py'
+      - 'tools/d1_gcn_shader_corpus_structural_census_v2.py'
       - '.github/workflows/d1-gcn-stage-frontier-selftest.yml'
 
 permissions:
@@ -18,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Run exact PS VS stage-frontier self-test
+      - name: Run exact PS VS stage-frontier V2 self-test
         run: |
           set -euo pipefail
-          python tools/d1_gcn_shader_corpus_stage_frontier.py --self-test
+          python tools/d1_gcn_shader_corpus_stage_frontier_v2.py --self-test
