@@ -1,0 +1,106 @@
+name: D1 GCN resource value binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_gcn_resource_value_semantics_v1.py'
+      - 'tools/d1_gcn_resource_value_binding_v1.py'
+      - 'tools/d1_gcn_resource_value_binding_corpus_replay_v1.py'
+      - '.github/workflows/d1-gcn-resource-value-binding-v1.yml'
+
+permissions: {contents: read, actions: read}
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+
+jobs:
+  resource-value-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Verify frozen architecture prerequisites and resource registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_resource_value_semantics_v1.py \
+            tools/d1_gcn_resource_value_binding_v1.py \
+            tools/d1_gcn_resource_value_binding_corpus_replay_v1.py \
+            tools/d1_gcn_vgpr_lane_ssa_v1.py tools/d1_gcn_sgpr_ssa_v1.py
+          python tools/d1_gcn_resource_value_semantics_v1.py > resource_semantics.json
+          python - <<'PY'
+          import json
+          d=json.load(open('resource_semantics.json'))
+          assert d['status']=='D1_GCN_RESOURCE_VALUE_SEMANTICS_SOURCE_CLOSED',d
+          assert d['opcode_count']==16,d
+          assert not d['violations'],d['violations']
+          e=json.load(open('evidence/d1_gcn_vector_formula_source_binding_v1_2026-09-09.json'))
+          assert e['status']=='D1_GCN_VECTOR_FORMULA_SOURCE_BINDING_CORPUS_EXACT',e
+          e=json.load(open('evidence/d1_gcn_vector_interpolation_v1_2026-09-09.json'))
+          assert e['status']=='D1_GCN_VECTOR_INTERPOLATION_CORPUS_EXACT',e
+          print('RESOURCE_REGISTRY_AND_PREREQUISITES_EXACT')
+          PY
+      - name: Download exact structural corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" -o input/structural.zip
+          echo "${STRUCTURAL_ARTIFACT_ZIP_SHA256}  input/structural.zip" | sha256sum --check --strict
+          unzip -q input/structural.zip -d input/structural
+          echo "${STRUCTURAL_CENSUS_SHA256}  input/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find input/structural/work/ir -maxdepth 1 -name '*.json' | wc -l)" -eq 26464
+      - name: Replay exact resource value binding globally
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp resource_semantics.json reports/D1_GCN_RESOURCE_VALUE_SEMANTICS_V1.json
+          python tools/d1_gcn_resource_value_binding_corpus_replay_v1.py \
+            --ir-dir input/structural/work/ir \
+            --census input/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --workers 4 \
+            -o reports/D1_GCN_RESOURCE_VALUE_BINDING_CORPUS_V1.json | tee reports/stdout.txt
+      - name: Fail closed on resource architectural boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_GCN_RESOURCE_VALUE_BINDING_CORPUS_V1.json'));c=d['coverage']
+          assert d['status']=='D1_GCN_RESOURCE_VALUE_BINDING_CORPUS_EXACT',d['violations'][:20]
+          assert d['violations']==[],d['violations'][:20]
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['resource_instruction_count']==135641,c
+          assert c['resource_result_component_count']==309271,c
+          assert c['image_instruction_count']==115466 and c['image_result_component_count']==258432,c
+          assert c['buffer_instruction_count']==10129 and c['buffer_result_component_count']==40392,c
+          assert c['ds_instruction_count']==10046 and c['ds_result_component_count']==10447,c
+          assert c['vgpr_source_state_component_reference_count']==482039,c
+          assert c['resource_descriptor_sgpr_component_reference_count']==964244,c
+          assert c['sampler_descriptor_sgpr_component_reference_count']==435180,c
+          assert c['scalar_source_state_component_reference_count']==1399464,c
+          assert c['buffer_scalar_offset_state_reference_count']==40,c
+          assert c['ds_m0_state_reference_count']==490,c
+          assert c['architectural_result_components_formula_interpolation_resource']==3729010,c
+          assert c['remaining_machine_special_result_components']==135029,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['runtime_resource_table_assignment']=='NEXT_GATE',d['semantic_boundary']
+          print('D1_GCN_RESOURCE_VALUE_BINDING_CORPUS_EXACT',c['architectural_result_surface_percent'])
+          PY
+          sha256sum reports/D1_GCN_RESOURCE_VALUE_SEMANTICS_V1.json reports/D1_GCN_RESOURCE_VALUE_BINDING_CORPUS_V1.json reports/stdout.txt > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-RESOURCE-VALUE-BINDING-V1
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
