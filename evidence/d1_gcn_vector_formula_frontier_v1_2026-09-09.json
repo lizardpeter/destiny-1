@@ -1,0 +1,80 @@
+{
+  "schema": "d1_gcn_vector_formula_frontier_checkpoint/v1",
+  "status": "D1_GCN_VECTOR_BASE_FORMULA_FRONTIER_V1_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "implementation": {
+    "formula_registry_commit": "5e6de031d830355822dae3ce78d96add777cbb60",
+    "formula_frontier_commit": "51c5c18ef1a4c1e1b7fa89e5f0b2ebf29ae54983",
+    "workflow_commit": "8b3e37c28a8564b0b48b12ade1b09f1d0c1aadc6",
+    "formula_registry_blob_sha": "331f08a4465f70e5c74304ff5a947c9439c0da30",
+    "formula_frontier_blob_sha": "7f092a1c9e044a26bf0593f99834ce6477ce17ec",
+    "formula_registry": "tools/d1_gcn_vector_formula_semantics_v1.py",
+    "formula_frontier": "tools/d1_gcn_vector_formula_frontier_v1.py",
+    "workflow": ".github/workflows/d1-gcn-vector-formula-frontier-v1.yml"
+  },
+  "workflow_run": {
+    "run_id": 34378110348,
+    "conclusion": "success",
+    "artifact_id": 10114709465,
+    "artifact_name": "D1-GCN-VECTOR-FORMULA-FRONTIER-V1",
+    "artifact_digest_sha256": "2ff805d16f75fda05f6e4b3674a6f551391379018439d63a3bc21809ad06094f",
+    "formula_frontier_report_sha256": "cc809bbd728435f5d017b13abb3fe791ac334889e824c8ad3dda8e848ca8ceb0",
+    "formula_semantics_report_sha256": "f84fa230efc7a33cccd0a80e8dc9c10045137117e4bf7c65433efdd964de3cce"
+  },
+  "exact_input": {
+    "vector_operand_frontier_artifact_id": 10114127724,
+    "vector_operand_frontier_artifact_zip_sha256": "cde67778313311a2ef4c0693d338903a536538d589cc11cd86dca4300acd6190",
+    "vector_operand_frontier_report_sha256": "7faed68ab12c02a02224299504f1d7b42e5c4b8697557410bc385ab16b4791c6",
+    "vector_value_semantics_report_sha256": "0020ba6d263524f7dc4ad375d654ca19f78fe246003e94ff574b2a167d672177"
+  },
+  "corpus_identity": {
+    "exact_unique_gcn_programs": 26464,
+    "exact_native_instruction_count": 4896165,
+    "vgpr_def_instruction_count": 3690362,
+    "vgpr_result_component_count": 3864039
+  },
+  "base_formula_coverage": {
+    "source_documented_opcode_count": 50,
+    "source_documented_instruction_count": 2994322,
+    "source_documented_result_component_count": 2994369,
+    "exact_operand_form_count": 340,
+    "bit_exact_replay_ready_opcode_count": 12,
+    "bit_exact_replay_ready_instruction_count": 389102,
+    "bit_exact_replay_ready_result_component_count": 389149,
+    "floating_or_special_symbolic_opcode_count": 38,
+    "floating_or_special_symbolic_instruction_count": 2605220
+  },
+  "modifier_coverage": {
+    "instructions_touching_any_abs_neg_omod_clamp_modifier": 313444,
+    "neg_instruction_count": 158330,
+    "abs_instruction_count": 47624,
+    "omod_instruction_count": 28931,
+    "clamp_instruction_count": 129395,
+    "clamp_numeric_semantics_withheld_instruction_count": 129395,
+    "modifier_opcode_counts": {
+      "ABS": 10,
+      "NEG": 14,
+      "OMOD": 11,
+      "CLAMP": 9
+    }
+  },
+  "source_boundary": {
+    "architecture": "AMD Sea Islands / GFX7",
+    "document_id": "70653",
+    "revision": "1.3",
+    "base_opcode_formulas": "SOURCE_CLOSED_SYMBOLIC",
+    "vop3_abs_then_neg_order": "SOURCE_CLOSED",
+    "vop3_output_modifier": "SOURCE_CLOSED",
+    "floating_point_mode_state": "SOURCE_CLOSED_AS_ARCHITECTURAL_STATE",
+    "vop3_clamp_numeric_range": "WITHHELD_AMD_REV1_3_INTERNAL_SOURCE_CONFLICT",
+    "resource_lds_interpolation_values": "UNCHANGED_OPAQUE_BOUNDARIES"
+  },
+  "semantic_boundary": {
+    "shader_expression_semantic_promotions": 0,
+    "material_semantic_promotions": 0,
+    "numeric_fp_replay": "WITHHELD",
+    "next_gate": "EMIT_SOURCE_BACKED_BASE_VALUE_NODES_INTO_LANE_AWARE_VGPR_SSA_WITH_MODIFIER_AND_MODE_NODES_PRESERVED",
+    "policy": "The exact retail VALU surface is source-closed at base architectural operation identity only. MAD/MAC, legacy, conversion and special-function opcode atomicity is preserved; floating arithmetic is not replaced by host math; the AMD revision 1.3 CLAMP-range conflict is retained explicitly rather than guessed; shader/material intent remains unpromoted."
+  }
+}
