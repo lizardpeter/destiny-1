@@ -1,0 +1,160 @@
+name: D1 GCN EXEC symbolic dataflow v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-exec-symbolic-dataflow-v1.yml'
+      - 'tools/d1_gcn_exec_mask_semantics_v1.py'
+      - 'tools/d1_gcn_exec_mask_machine_frontier_v1.py'
+      - 'tools/d1_gcn_exec_symbolic_dataflow_v1.py'
+      - 'tools/d1_gcn_exec_symbolic_corpus_replay_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ARTIFACT_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  EXEC_FRONTIER_SHA256: '18d2170930ff83a4301a8bfb6665bde837322dcece7717ec18d0cbab459f34a1'
+  V3_ARTIFACT_ID: '10089281757'
+  V3_ARTIFACT_ZIP_SHA256: '3a3856258a55221be895a7a24b178c448afc3a91449f78a2bebdccb9b633e2e4'
+  V3_STAGE_LEDGER_SHA256: '71b028ae76a887153e0d8d92482f0b7b6be4528c46e2a81d23ea588727819821'
+
+jobs:
+  exec-symbolic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Validate source-closed EXEC machine semantics
+        run: |
+          set -euo pipefail
+          mkdir -p out source/structural source/v3
+          python tools/d1_gcn_exec_mask_semantics_v1.py > out/D1_GCN_EXEC_MASK_MACHINE_SEMANTICS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_EXEC_MASK_MACHINE_SEMANTICS_V1.json'))
+          assert d['status']=='D1_GCN_EXEC_MASK_MACHINE_SEMANTICS_SOURCE_CLOSED',d
+          assert d['source_closed_opcode_count']==9,d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+
+      - name: Download exact structural corpus and EXEC frontier
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ARTIFACT_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          echo "$EXEC_FRONTIER_SHA256  source/structural/out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Download exact green v3 stage ledger
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V3_ARTIFACT_ID}/zip" \
+            -o source/v3.zip
+          echo "$V3_ARTIFACT_ZIP_SHA256  source/v3.zip" | sha256sum --check --strict
+          unzip -q source/v3.zip D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json -d source/v3
+          echo "$V3_STAGE_LEDGER_SHA256  source/v3/D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json" | sha256sum --check --strict
+
+      - name: Prove complete nine-opcode EXEC machine frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_exec_mask_machine_frontier_v1.py \
+            --exec-frontier source/structural/out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json \
+            --census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            -o out/D1_GCN_EXEC_MASK_MACHINE_FRONTIER_V1.json \
+            | tee out/machine_frontier_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_EXEC_MASK_MACHINE_FRONTIER_V1.json'))
+          assert d['status']=='D1_GCN_EXEC_MASK_MACHINE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['explicit_structural_exec_instruction_count']==109678,c
+          assert c['implicit_cmpx_exec_instruction_count']==12,c
+          assert c['machine_exec_instruction_count']==109690,c
+          assert c['machine_exec_opcode_count']==9,c
+          assert c['machine_exec_unique_program_count']==18521,c
+          assert c['stage_machine_exec_unique_program_counts']=={'PS':17807,'VS':714},c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Replay path-aware symbolic EXEC dataflow globally
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_exec_symbolic_corpus_replay_v1.py \
+            --workers 4 \
+            --ir-dir source/structural/work/ir \
+            --stage-ledger source/v3/D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json \
+            --exec-frontier source/structural/out/D1_GCN_EXEC_MASK_OPCODE_FRONTIER_PS_VS_DS.json \
+            -o out/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json \
+            | tee out/symbolic_replay_stdout.txt
+
+      - name: Fail closed on exact symbolic boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json'))
+          assert d['status']=='D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_programs_replayed']==26464,c
+          assert c['exact_instructions_replayed']==4896165,c
+          assert c['effect_aware_basic_block_count']==68622,c
+          assert c['concrete_cfg_edge_count']==51073,c
+          assert c['explicit_structural_exec_instruction_count']==109678,c
+          assert c['implicit_cmpx_exec_instruction_count']==12,c
+          assert c['exec_transition_count']==73607,c
+          assert c['exec_branch_predicate_count']==14828,c
+          assert c['machine_exec_opcode_counts']=={
+            's_and_b64':1922,'s_and_saveexec_b64':9305,'s_andn2_b64':12581,
+            's_cbranch_execnz':6,'s_cbranch_execz':14822,'s_mov_b64':51134,
+            's_wqm_b64':19908,'v_cmpx_eq_i32':6,'v_cmpx_lt_u32':6,
+          },c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exec_touching_stage_program_counts']=={'PS':17807,'VS':714},c
+          assert c['exec_touching_program_count']==18521,c
+          assert c['unresolved_control_entry_block_count']==8053,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_EXEC_MASK_MACHINE_SEMANTICS_V1.json \
+            out/D1_GCN_EXEC_MASK_MACHINE_FRONTIER_V1.json \
+            out/D1_GCN_EXEC_SYMBOLIC_CORPUS_REPLAY_V1.json \
+            > out/SHA256SUMS.txt
+          printf '%s\n' "$STRUCTURAL_ARTIFACT_ID" > out/SOURCE_STRUCTURAL_ARTIFACT_ID.txt
+          printf '%s\n' "$V3_ARTIFACT_ID" > out/SOURCE_V3_ARTIFACT_ID.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-EXEC-SYMBOLIC-DATAFLOW-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
