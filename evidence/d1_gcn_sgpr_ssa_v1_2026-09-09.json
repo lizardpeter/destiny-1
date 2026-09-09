@@ -8,7 +8,8 @@
   "artifact": {
     "id": 10110002727,
     "name": "D1-GCN-SGPR-SSA-V1",
-    "zip_sha256": "243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5"
+    "zip_sha256": "243807ea751d5e66d8080ffc87c381005977c4236fc11a4d9942c7b4a4c09af5",
+    "report_sha256": "fade0a42fb83fbc9b45b5c418925182d97e65870ebef9d33f2f18e31d31b4166"
   },
   "sources": {
     "structural_artifact_id": 10087524653,
