@@ -1,0 +1,61 @@
+{
+  "schema": "d1_gcn_resource_value_binding_checkpoint/v1",
+  "status": "D1_GCN_RESOURCE_VALUE_BINDING_CORPUS_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34394970199,
+    "source_commit": "698b7dbbf825384296654e14aa6191f151f6d799",
+    "artifact_id": 10121208331,
+    "artifact_name": "D1-GCN-RESOURCE-VALUE-BINDING-V1",
+    "artifact_digest_sha256": "8f4494088e5e03354a3d2146e71329e1872b87d8553a39459d361c4d3d304824",
+    "corpus_report_sha256": "f4dcc67423cc278c63269bc69384741b4204bd15ba5539718388b297b140e585",
+    "semantics_report_sha256": "9b79f4772935754f65a788295f8e0b8f7484cd7ec95db6ccc9ae7759bd90e824"
+  },
+  "implementation": {
+    "semantics_commit": "adbd7a6e3bcbdfffe4048790715735d34463b1bc",
+    "binding_commit": "9da5c3c03430bcf350b576af93f361adc14d264f",
+    "corpus_replay_commit": "877c09bbe3745f4e43f5253e7d6a5161cdfd5e58",
+    "workflow_commit": "698b7dbbf825384296654e14aa6191f151f6d799"
+  },
+  "coverage": {
+    "exact_programs_replayed": 26464,
+    "stage_program_counts": {"DS": 20, "PS": 18375, "VS": 8069},
+    "exact_instructions_replayed": 4896165,
+    "resource_instruction_count": 135641,
+    "resource_result_component_count": 309271,
+    "image_instruction_count": 115466,
+    "image_result_component_count": 258432,
+    "buffer_instruction_count": 10129,
+    "buffer_result_component_count": 40392,
+    "ds_instruction_count": 10046,
+    "ds_result_component_count": 10447,
+    "vgpr_source_state_component_reference_count": 482039,
+    "resource_descriptor_sgpr_component_reference_count": 964244,
+    "sampler_descriptor_sgpr_component_reference_count": 435180,
+    "scalar_source_state_component_reference_count": 1399464,
+    "buffer_scalar_offset_state_reference_count": 40,
+    "ds_m0_state_reference_count": 490,
+    "architectural_result_components_formula_interpolation_resource": 3729010,
+    "total_vgpr_result_components": 3864039,
+    "architectural_result_surface_percent": 96.50549593314146,
+    "remaining_machine_special_result_components": 135029,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "image_buffer_ds_operation_identity": "GLOBAL_SOURCE_CLOSED",
+    "resource_result_to_existing_lane_ssa": "GLOBAL_EXACT",
+    "resource_operand_register_state": "GLOBAL_EXACT",
+    "resource_descriptor_sgpr_state": "GLOBAL_EXACT_CROSS_GRAPH",
+    "sampler_descriptor_sgpr_state": "GLOBAL_EXACT_CROSS_GRAPH",
+    "lds_m0_state": "GLOBAL_EXACT_CROSS_GRAPH",
+    "descriptor_contents": "OPAQUE_STATE_VALUES",
+    "runtime_resource_table_assignment": "NEXT_GATE",
+    "material_texture_sampler_constant_binding": "NEXT_GATE",
+    "shader_expression_semantics": "WITHHELD",
+    "material_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "policy": "Every observed IMAGE, BUFFER/TBUFFER and DS result component is reconciled to its pre-existing active-lane result and physical write identity, and every architectural VGPR, SGPR, sampler-descriptor and M0 operand is reconciled to exact existing machine state. Descriptor contents, runtime resource-table assignment, memory contents, texture roles and material meaning remain withheld until independently proven."
+}
