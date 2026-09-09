@@ -8,6 +8,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import d1_gcn_scalar_value_semantics_v1 as sem
 import d1_gcn_shader_corpus_structural_census as census
+from d1_gcn_shader_corpus_structural_census_v3 import fixed_reg_kind
 
 SCHEMA = "d1_gcn_scalar_value_operand_frontier/v1"
 STATUS = "D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_EXACT"
@@ -58,7 +59,7 @@ def build(ir_dir: Path) -> dict:
                 violations.append(f"def_width:{sha}:{x['index']}:{op}:{len(sd)}!={ew}")
             operands=tuple(census.normalized_operand(z) for z in (x.get('operands') or []))
             operand_forms[op][operands]+=1
-            kinds=tuple(census.reg_kind(z) for z in (x.get('uses') or []))
+            kinds=tuple(fixed_reg_kind(z) for z in (x.get('uses') or []))
             use_kind_forms[op][kinds]+=1
             special=tuple(k for k in kinds if k in {'EXEC','VCC','SCC','VGPR','M0'})
             if special:
