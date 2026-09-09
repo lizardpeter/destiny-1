@@ -78,7 +78,9 @@ jobs:
           python tools/d1_gcn_effect_ir_corpus_replay_v1.py \
             --ir-dir source/structural/work/ir \
             --evidence source/evidence/D1_GCN_OPCODE_STRUCTURAL_EVIDENCE_FRONTIER_V1.json \
+            --structural-census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
             --expected-evidence-sha256 "$EVIDENCE_REPORT_SHA256" \
+            --expected-census-sha256 "$STRUCTURAL_CENSUS_SHA256" \
             -o out/D1_GCN_EFFECT_IR_V3_GLOBAL_REPLAY.json \
             | tee out/stdout.txt
 
@@ -92,6 +94,10 @@ jobs:
           assert not d['violations']
           c=d['coverage']
           assert c['exact_programs_replayed']==26464,c
+          assert c['exact_stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['frontier_provenance_program_count']==26379,c
+          assert c['baseline_only_program_count']==85,c
+          assert c['baseline_only_stage_program_counts']=={'PS':85},c
           assert c['exact_instructions_replayed']==4896165,c
           assert c['source_closed_instruction_count']==255449,c
           assert c['source_closed_program_count']==20137,c
