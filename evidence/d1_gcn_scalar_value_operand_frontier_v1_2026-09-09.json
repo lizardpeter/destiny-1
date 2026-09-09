@@ -1,0 +1,113 @@
+{
+  "schema": "d1_gcn_scalar_value_operand_frontier_checkpoint/v1",
+  "status": "D1_GCN_SCALAR_VALUE_OPERAND_FRONTIER_EXACT",
+  "date": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow_run_id": 34367964052,
+  "workflow_source_commit": "f11c2cfa1450efd850fb57409b138f32bdd7501c",
+  "artifact": {
+    "id": 10110694265,
+    "name": "D1-GCN-SCALAR-VALUE-OPERAND-FRONTIER-V1",
+    "zip_sha256": "ef8e08cb40c02ee33b6fb476e07b0fc2deab3e20cd7d728f9baee041706420c9",
+    "report_sha256": "0877607b6f0a918e7c72e52995ccb1bf75296c74a5f43911b2825102b905d5b6"
+  },
+  "sources": {
+    "structural_artifact_id": 10087524653,
+    "sgpr_ssa_artifact_id": 10110002727,
+    "sgpr_ssa_report_sha256": "fade0a42fb83fbc9b45b5c418925182d97e65870ebef9d33f2f18e31d31b4166",
+    "scalar_value_semantics_commit": "cc8e6c2a0b602e685071a22675c9bec5c68a3ec4",
+    "operand_frontier_commit": "c1c5f8cb0e58e379c3028d21c6af2fed607a728e",
+    "corrected_vcc_pin_commit": "f11c2cfa1450efd850fb57409b138f32bdd7501c"
+  },
+  "coverage": {
+    "exact_program_count": 26464,
+    "exact_instruction_count": 4896165,
+    "sgpr_def_instruction_count": 610052,
+    "sgpr_def_entry_count": 2056285,
+    "sgpr_def_opcode_count": 31,
+    "operand_form_count": 68,
+    "use_kind_form_count": 48,
+    "architectural_value_semantic_opcode_count": 26,
+    "opaque_memory_value_opcode_count": 5,
+    "category_instruction_counts": {
+      "CONDITION_MASK_VALUE": 13422,
+      "CROSS_STATE_IDENTITY": 32167,
+      "PURE_SCALAR_TRANSFORM": 70540,
+      "SCALAR_MEMORY_RESULT": 493923
+    },
+    "category_def_entry_counts": {
+      "CONDITION_MASK_VALUE": 26844,
+      "CROSS_STATE_IDENTITY": 49525,
+      "PURE_SCALAR_TRANSFORM": 95219,
+      "SCALAR_MEMORY_RESULT": 1884697
+    },
+    "instructions_with_special_structural_use_kinds": 62193,
+    "special_structural_use_signature_counts": {
+      "EXEC": 24262,
+      "VCC": 3916,
+      "VCC|EXEC": 5793,
+      "VGPR": 23486,
+      "VGPR|VGPR": 4736
+    },
+    "shader_expression_semantic_promotions": 0
+  },
+  "retail_operand_facts": {
+    "s_mov_b64": {
+      "instruction_count": 20597,
+      "exec_source_count": 20593,
+      "vcc_source_count": 4,
+      "ordinary_sgpr_pair_source_count": 0
+    },
+    "s_and_b64": {
+      "instruction_count": 1681,
+      "sgpr_pair_and_vcc_count": 1679,
+      "ordinary_sgpr_pair_pair_count": 2
+    },
+    "s_andn2_b64": {
+      "instruction_count": 2355,
+      "sgpr_pair_and_vcc_count": 2192,
+      "sgpr_pair_and_exec_count": 157,
+      "ordinary_sgpr_pair_pair_count": 6
+    },
+    "s_or_b64": {
+      "instruction_count": 44,
+      "sgpr_pair_and_vcc_count": 41,
+      "ordinary_sgpr_pair_pair_count": 3
+    },
+    "s_xor_b64": {
+      "instruction_count": 2,
+      "ordinary_sgpr_pair_pair_count": 2
+    },
+    "s_and_saveexec_b64": {
+      "instruction_count": 9305,
+      "vcc_and_exec_count": 5793,
+      "sgpr_pair_and_exec_count": 3512
+    },
+    "v_readlane_b32": {
+      "instruction_count": 14592,
+      "form": "SGPR <- VGPR[immediate lane]",
+      "ignores_exec": true
+    },
+    "v_readfirstlane_b32": {
+      "instruction_count": 217,
+      "form": "SGPR <- VGPR[first active EXEC lane]",
+      "ignores_exec_as_execution_mask": true,
+      "exec_is_lane_selector": true
+    },
+    "s_swappc_b64": {
+      "instruction_count": 8053,
+      "result_identity": "PC+4"
+    }
+  },
+  "violations": [],
+  "unresolved": [],
+  "semantic_boundary": {
+    "actual_operand_source_domains": "GLOBAL_EXACT",
+    "nonmemory_architectural_value_rules": "SOURCE_DOCUMENTED",
+    "cross_domain_value_graph": "NEXT_GATE",
+    "scalar_memory_load_values": "OPAQUE",
+    "shader_expression_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "policy": "This checkpoint freezes the corrected VCC-aware whole-corpus operand/source-domain frontier for all SGPR-defining instructions. It proves actual retail source classes and source-backed architectural value categories only. Cross-domain value links are not yet promoted; SMEM load values, resource meaning, shader expressions and material semantics remain withheld."
+}
