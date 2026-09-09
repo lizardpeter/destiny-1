@@ -1,0 +1,158 @@
+name: D1 PS VS corpus extract v2 regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-ps-vs-corpus-extract-v2-regression.yml'
+      - 'tools/d1_remote_ps4_shader_corpus_extract_v2.py'
+
+env:
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact universal member catalog and Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out serial parallel
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "$CATALOG_ZIP_SHA256  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build exact four-package regression plan
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          rows=[
+            ('PS','808EE505','808EE508','0077',32,8,112,1,8,2276),
+            ('VS','809DE9AB','809DE9AC','00EF',32,9,124,1,9,1204),
+            ('VS','809DF743','809DF744','00EF',32,9,116,1,9,824),
+            ('PS','8108E7B7','8108E864','0447',32,8,96,1,8,556),
+            ('PS','8108E7B8','8108E865','0447',32,8,88,1,8,292),
+            ('PS','8108E953','8108E9C6','0447',32,8,92,1,8,388),
+            ('PS','80AAE1CD','80AAE1CE','0157',32,8,60,1,8,68),
+            ('PS','8108E955','8108E9C8','0447',32,8,108,1,8,1108),
+            ('PS','8108E958','8108E9CB','0447',32,8,104,1,8,700),
+            ('PS','8108E956','8108E9C9','0447',32,8,92,1,8,420),
+            ('PS','8108E959','8108E9CC','0447',32,8,88,1,8,300),
+          ]
+          headers=[]
+          refs={}
+          for stage,h,r,pkg,ht,hs,hsize,nt,ns,nsize in rows:
+              headers.append({
+                  'stage':stage,'header':h,'header_package_id':pkg,
+                  'header_type':ht,'header_subtype':hs,'header_file_size':hsize,
+                  'native_program_reference':r,
+                  'native_program_meta':{
+                      'tag_hash':r,'package_id':pkg,'type':nt,'subtype':ns,'file_size':nsize
+                  }
+              })
+              refs.setdefault(r,{'native_program_reference':r,'headers':[]})['headers'].append({'stage':stage,'header':h})
+          for q in refs.values():
+              q['header_count']=len(q['headers'])
+              q['stage_counts']={s:sum(x['stage']==s for x in q['headers']) for s in sorted({x['stage'] for x in q['headers']})}
+          plan={
+              'schema':'d1_shader_corpus_plan/v1',
+              'status':'D1_SHADER_CORPUS_PLAN_COMPLETE',
+              'source':{'fixture':'exact current metadata rows from D1 global everything index artifact 9995061546'},
+              'header_population':{'total':len(headers),'stage_counts':{'PS':9,'VS':2},'unique_header_tag_count':len(headers)},
+              'native_reference_population':{'unique_native_program_reference_count':len(refs),'shared_native_reference_count':0,'max_headers_per_native_reference':1},
+              'headers':headers,'native_references':[refs[k] for k in sorted(refs)],'violations':[],
+              'policy':'Regression fixture contains exact current Tiger metadata identities only.'
+          }
+          open('out/REGRESSION_PLAN.json','w').write(json.dumps(plan,indent=2)+'\n')
+          print('FIXTURE',len(headers),'headers',len(refs),'native refs')
+          PY
+
+      - name: Recover serial reference output
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_ps4_shader_corpus_extract_v2.py \
+            --plan out/REGRESSION_PLAN.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --runtime runtime --workers 1 \
+            --out-dir serial --report out/SERIAL.json
+
+      - name: Recover package-parallel output
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_ps4_shader_corpus_extract_v2.py \
+            --plan out/REGRESSION_PLAN.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --runtime runtime --workers 6 \
+            --out-dir parallel --report out/PARALLEL.json
+
+      - name: Require byte-identical serial parallel recovery and frozen 808EE505 code
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          a=json.load(open('out/SERIAL.json')); b=json.load(open('out/PARALLEL.json'))
+          for d in (a,b):
+              assert d['schema']=='d1_remote_ps4_shader_corpus_extract/v2',d.get('schema')
+              assert d['status']=='D1_REMOTE_PS4_SHADER_CORPUS_EXACT',d['violations'][:20]
+              assert not d['violations']
+              assert d['header_population']['total']==11 and d['header_population']['payload_recovered_count']==11,d['header_population']
+              assert d['native_reference_population']['planned_unique']==11,d['native_reference_population']
+              assert d['native_reference_population']['payload_recovered_count']==11,d['native_reference_population']
+              assert d['native_reference_population']['gcn_code_recovered_count']==11,d['native_reference_population']
+          def header_map(d): return {x['header']:(x['header_payload']['bytes'],x['header_payload']['sha256'],x['retail_native_program_reference']) for x in d['headers']}
+          def native_map(d): return {x['native_program_reference']:(x['native_payload']['bytes'],x['native_payload']['sha256'],x['gcn_code']['bytes'],x['gcn_code']['sha256'],x['binary_info']['stage']) for x in d['native_programs']}
+          assert header_map(a)==header_map(b)
+          assert native_map(a)==native_map(b)
+          assert sorted((x['gcn_sha256'],x['gcn_bytes'],x['native_program_references'],x['headers']) for x in a['unique_gcn_programs']) == sorted((x['gcn_sha256'],x['gcn_bytes'],x['native_program_references'],x['headers']) for x in b['unique_gcn_programs'])
+          n=native_map(a)['808EE508']
+          assert n[2]==2200,n
+          assert n[3]=='28a54dd7f33bb4e7d24dbf953213001ed00204c77ae3707eb04299b83436e5c7',n
+          # File outputs themselves must also match exactly.
+          import hashlib,pathlib
+          def files(root):
+              out={}
+              for p in pathlib.Path(root).rglob('*.bin'):
+                  out[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+              return out
+          assert files('serial')==files('parallel')
+          print('D1_SHADER_CORPUS_EXTRACT_V2_REGRESSION_CLOSED',json.dumps({
+              'headers':11,'native_refs':11,'unique_gcn':a['gcn_program_population']['unique_exact_code_sha256_count'],
+              '808EE505_gcn_bytes':n[2],'808EE505_gcn_sha256':n[3]
+          },sort_keys=True))
+          PY
+          sha256sum out/REGRESSION_PLAN.json out/SERIAL.json out/PARALLEL.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PS-VS-CORPUS-EXTRACT-V2-REGRESSION
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
