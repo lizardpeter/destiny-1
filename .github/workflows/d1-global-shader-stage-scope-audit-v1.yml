@@ -1,0 +1,127 @@
+name: D1 global shader stage scope audit v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-shader-stage-scope-audit-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: '34303352426'
+  SOURCE_RUN_HEAD_SHA: 'a0156414c7999208c9d0c9da16fff8443fa45f50'
+  SOURCE_ARTIFACT_NAME: 'D1-GLOBAL-PS-VS-NATIVE-CORPUS-V2'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Self-test fail-closed stage scope audit
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_stage_scope_audit.py --self-test
+
+      - name: Wait for exact raw native V2 source run
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          completed=''
+          for _ in $(seq 1 720); do
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" \
+              -o source/run.json
+            read -r status conclusion head_sha < <(python - <<'PY'
+          import json
+          d=json.load(open('source/run.json'))
+          print(d.get('status',''), d.get('conclusion') or '-', d.get('head_sha',''))
+          PY
+            )
+            echo "SOURCE_RUN status=$status conclusion=$conclusion head_sha=$head_sha"
+            test "$head_sha" = "$SOURCE_RUN_HEAD_SHA"
+            if test "$status" = completed; then completed=1; break; fi
+            sleep 30
+          done
+          test "$completed" = 1
+          python - <<'PY'
+          import json
+          d=json.load(open('source/run.json'))
+          assert d['head_sha']=='a0156414c7999208c9d0c9da16fff8443fa45f50',d['head_sha']
+          assert d.get('conclusion')=='success',d.get('conclusion')
+          PY
+
+      - name: Download and verify exact raw checkpoint
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+            -o source/artifacts.json
+          artifact_id=$(python - <<'PY'
+          import json,os
+          d=json.load(open('source/artifacts.json'))
+          rows=[x for x in d.get('artifacts',[]) if x.get('name')==os.environ['SOURCE_ARTIFACT_NAME'] and not x.get('expired')]
+          assert len(rows)==1,[(x.get('id'),x.get('name'),x.get('expired')) for x in d.get('artifacts',[])]
+          print(rows[0]['id'])
+          PY
+          )
+          echo "$artifact_id" | tee source/source_artifact_id.txt
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+            -o source/source_artifact.zip
+          sha256sum source/source_artifact.zip | tee source/source_artifact_zip.sha256
+          mkdir -p source/corpus
+          unzip -q source/source_artifact.zip -d source/corpus
+          (
+            cd source/corpus
+            sha256sum --check --strict out/SHA256SUMS.txt
+          )
+          test -s source/corpus/out/D1_CURRENT_EVERYTHING.json
+          test -s source/corpus/out/D1_SHADER_CORPUS_PLAN.json
+
+      - name: Audit exact current archive shader-stage scope
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_stage_scope_audit.py \
+            --summary source/corpus/out/D1_CURRENT_EVERYTHING.json \
+            --plan source/corpus/out/D1_SHADER_CORPUS_PLAN.json \
+            -o out/D1_SHADER_STAGE_SCOPE_AUDIT.json \
+            | tee out/stage_scope_stdout.txt
+          cp source/run.json out/SOURCE_WORKFLOW_RUN.json
+          cp source/source_artifact_id.txt out/SOURCE_ARTIFACT_ID.txt
+          cp source/source_artifact_zip.sha256 out/SOURCE_ARTIFACT_ZIP_SHA256.txt
+          sha256sum out/D1_SHADER_STAGE_SCOPE_AUDIT.json > out/SHA256SUMS.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_SHADER_STAGE_SCOPE_AUDIT.json'))
+          assert d['status']=='D1_SHADER_STAGE_SCOPE_AUDIT_EXACT',d['violations'][:50]
+          assert not d['violations']
+          print('COVERAGE',json.dumps(d['coverage'],sort_keys=True))
+          print('PROVEN_STAGE_PAIRS',json.dumps(d['proven_shader_stage_pairs'],sort_keys=True))
+          print('TYPE32',json.dumps(d['current_type32_subtypes'],sort_keys=True))
+          print('TYPE1',json.dumps(d['current_type1_subtypes'],sort_keys=True))
+          print('FRONTIER',json.dumps(d['additional_stage_or_class_frontier'],sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-SHADER-STAGE-SCOPE-AUDIT-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
