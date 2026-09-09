@@ -1,0 +1,133 @@
+name: D1 GCN material LocalShader corpus v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-material-localshader-corpus-v1.yml'
+      - 'tools/d1_gcn_material_localshader_corpus_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  REFERENCE_ARTIFACT_ID: '10129121118'
+  REFERENCE_ZIP_SHA256: 'a293d78521b6ff5b8852bfaeeec694ded28f327a4ab03cb7d64036d44b52eb5f'
+  REFERENCE_REPORT_SHA256: 'd859a8f19e267ec3a0f36afbe949d4bf523811f7f9509f6af6d2696c0142284c'
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  SHADER_ARTIFACT_ID: '10086896274'
+  SHADER_ZIP_SHA256: '7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959'
+  SHADER_REPORT_SHA256: '01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412'
+
+jobs:
+  localshader-corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin implementation source
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gcn_material_localshader_corpus_v1.py
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact frozen prerequisites
+        run: |
+          set -euo pipefail
+          mkdir -p input/reference input/catalog input/shader runtime work/exact out
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${REFERENCE_ARTIFACT_ID}/zip" -o input/reference.zip
+          echo "$REFERENCE_ZIP_SHA256  input/reference.zip" | sha256sum --check --strict
+          unzip -q input/reference.zip -d input/reference
+          echo "$REFERENCE_REPORT_SHA256  input/reference/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "$CATALOG_ZIP_SHA256  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SHADER_ARTIFACT_ID}/zip" -o input/shader.zip
+          echo "$SHADER_ZIP_SHA256  input/shader.zip" | sha256sum --check --strict
+          unzip -q input/shader.zip -d input/shader
+          shader_report="$(find input/shader -type f -name 'D1_SHADER_CORPUS_PS_VS_DS_V3.json' -print -quit)"
+          test -n "$shader_report"
+          echo "$SHADER_REPORT_SHA256  $shader_report" | sha256sum --check --strict
+          cp "$shader_report" input/D1_SHADER_CORPUS_PS_VS_DS_V3.json
+
+      - name: Recover pinned Oodle 3 runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Extract exact material-referenced LocalShader corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_material_localshader_corpus_v1.py \
+            --reference-probe input/reference/D1_GCN_MATERIAL_SHADER_REFERENCE_PROBE_MERGED_V1.json \
+            --existing-shader-corpus input/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+            --runtime runtime \
+            --workers 4 \
+            --binary-dir work/exact \
+            -o out/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json \
+            | tee out/material_localshader_corpus_stdout.txt
+          tar -cf out/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar -C work/exact .
+
+      - name: Fail closed and freeze exact LocalShader denominator
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p='out/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json'
+          d=json.load(open(p)); c=d['coverage']
+          assert d['schema']=='d1_gcn_material_localshader_corpus/v1'
+          assert d['status']=='D1_GCN_MATERIAL_LOCALSHADER_CORPUS_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['localshader_wrapper_count']==177,c
+          assert c['localshader_native_reference_count']==177,c
+          assert c['unique_localshader_gcn_program_count']==65,c
+          assert c['material_occurrence_count']==3967,c
+          assert c['input_usage_slot_count_histogram']=={'3':80,'4':57,'6':40},c
+          assert c['existing_ps_vs_ds_unique_gcn_program_count']==26464,c
+          assert c['localshader_gcn_overlap_with_existing_ps_vs_ds']==0,c
+          assert c['combined_known_unique_gcn_program_count']==26529,c
+          assert c['combined_known_shader_wrapper_count']==38069,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['localshader_as_vertexshader']=='FORBIDDEN'
+          print('D1_MATERIAL_LOCALSHADER_CORPUS_EXACT',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json out/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-MATERIAL-LOCALSHADER-CORPUS-V1
+          path: |
+            out/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json
+            out/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar
+            out/SHA256SUMS.txt
+            out/material_localshader_corpus_stdout.txt
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
