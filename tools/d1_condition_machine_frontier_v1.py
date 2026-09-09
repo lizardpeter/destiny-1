@@ -87,6 +87,12 @@ def build(ir_dir:Path):
  if total_ins!=EXPECTED_INSTRUCTIONS:violations.append(f'instruction_count:{total_ins}!={EXPECTED_INSTRUCTIONS}')
  for k,w in EXPECTED.items():
   if c[k]!=w:violations.append(f'{k}:{c[k]}!={w}')
+ # Materialize expected zero-valued counters in the durable coverage ledger.
+ # Counter lookups above already proved their exact value; omitting a zero key from
+ # JSON makes downstream fail-closed consumers unable to distinguish proved-zero
+ # from missing/unmeasured.
+ for k in EXPECTED:
+  c.setdefault(k,0)
  if dict(cmp_ops)!=dict(collections.Counter({op:0 for op in []})+cmp_ops):pass
  if set(cmp_ops)!=set(sem.COMPARES):violations.append(f'compare_opcode_set:{sorted(cmp_ops)}')
  if set(scc_ops)!=set(sem.SCC_PRODUCERS):violations.append(f'scc_opcode_set:{sorted(scc_ops)}')
