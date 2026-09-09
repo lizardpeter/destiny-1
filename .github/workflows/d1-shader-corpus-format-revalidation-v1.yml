@@ -1,0 +1,97 @@
+name: D1 shader corpus format revalidation v1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  revalidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: d1-crota-source-semantics-v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Recover immutable global shader diagnostic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p recovered
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/10086369300/zip" > recovered/global.zip
+          unzip -q recovered/global.zip -d recovered/global
+          test -f recovered/global/D1_SHADER_CORPUS_EXTRACT_V2.json
+          test -f recovered/global/D1_SHADER_EXACT_BINARIES.tar
+
+      - name: Verify exact retained corpus inputs
+        run: |
+          set -euo pipefail
+          echo 'af371f3c08754b4684fab4450788a107d064a05cb8fb94165cd08661797a8513  recovered/global/D1_SHADER_CORPUS_EXTRACT_V2.json' | sha256sum -c -
+          echo 'df0550a4f5e7d28f1c25248a1c1231bdc78a86c78ac3cb17f1fdf763fd95c121  recovered/global/D1_SHADER_EXACT_BINARIES.tar' | sha256sum -c -
+
+      - name: Revalidate corrected wrapper semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_corpus_format_revalidate.py \
+            --extract recovered/global/D1_SHADER_CORPUS_EXTRACT_V2.json \
+            --binaries recovered/global/D1_SHADER_EXACT_BINARIES.tar \
+            --out out/D1_SHADER_CORPUS_FORMAT_REVALIDATION_V1.json
+
+      - name: Enforce complete accounting gate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path('out/D1_SHADER_CORPUS_FORMAT_REVALIDATION_V1.json').read_text())
+          assert d['status'] == 'D1_SHADER_CORPUS_FORMAT_REVALIDATED'
+          a = d['accounting']
+          assert a['header_reference_count'] == 37892
+          assert a['native_program_count'] == 37179
+          assert a['unique_exact_gcn_sha256_count'] == 26464
+          assert a['legacy_violation_count'] == 496
+          assert a['all_legacy_violations_structurally_resolved'] is True
+          assert a['legacy_violation_classes'] == {
+              'pixel_embedded_extent_vs_entry_size': 259,
+              'subtype9_native_domain_stage': 79,
+              'subtype9_vertex_size_assumption': 79,
+              'subtype9_vertex_stage_assumption': 79,
+          }
+          assert d['native_stage_counts'] == {
+              'DomainShader': 79,
+              'PixelShader': 24771,
+              'VertexShader': 12329,
+          }
+          p = d['corrected_rules']['pixel_wrapper']
+          assert p['references_validated'] == 25405
+          assert p['package_entry_trailing_bytes_distribution'] == {
+              '0': 25146, '64': 254, '208': 5,
+          }
+          s9 = d['corrected_rules']['subtype9_wrapper']
+          assert s9['references_validated'] == 12487
+          assert s9['vertex_shader']['reference_count'] == 12408
+          assert s9['domain_shader']['reference_count'] == 79
+          print(json.dumps({'status': d['status'], 'accounting': a, 'native_stage_counts': d['native_stage_counts']}, indent=2))
+          PY
+
+      - name: Hash result
+        run: sha256sum out/D1_SHADER_CORPUS_FORMAT_REVALIDATION_V1.json | tee out/SHA256SUMS.txt
+
+      - name: Upload immutable revalidation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: D1-SHADER-CORPUS-FORMAT-REVALIDATION-V1
+          path: |
+            out/D1_SHADER_CORPUS_FORMAT_REVALIDATION_V1.json
+            out/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
