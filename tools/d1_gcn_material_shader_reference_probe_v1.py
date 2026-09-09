@@ -107,10 +107,9 @@ def exact_entry(c: RemoteCorpus, tag: str) -> tuple[dict, bytes]:
         "file_size": int(e["file_size"]),
         "starting_block": int(e["starting_block"]),
         "starting_block_offset": int(e["starting_block_offset"]),
-        "entry_b": int(e["entry_b"]),
+        "entry_b": norm(e["entry_b"]),
     }
     return meta, payload
-
 
 
 def _worker_init(catalog_paths: list[str], base_url: str, part_count: int, runtime: str) -> None:
