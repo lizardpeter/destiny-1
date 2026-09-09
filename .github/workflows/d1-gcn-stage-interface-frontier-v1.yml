@@ -1,0 +1,135 @@
+name: D1 GCN stage interface frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d1-crota-source-semantics-v1
+    paths:
+      - 'tools/d1_gcn_stage_interface_frontier_v1.py'
+      - '.github/workflows/d1-gcn-stage-interface-frontier-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXACT_ARTIFACT_ID: '10086896274'
+  EXACT_ZIP_SHA256: '7a569aadeef093018de0aa3710fc3a2e201f6a06760b5fc3274c18a553c2e959'
+  EXACT_REPORT_SHA256: '01e56d6781bde12a778f80c984f018da3e7c214869db48ae52ac5af8e2ff9412'
+  STRUCTURAL_ARTIFACT_ID: '10087524653'
+  STRUCTURAL_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  STRUCTURAL_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+
+jobs:
+  stage-interface-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Pin exact stage-interface implementation
+        run: |
+          set -euo pipefail
+          test "$(git hash-object tools/d1_gcn_stage_interface_frontier_v1.py)" = 'af4a381a27c9fdb303945e105ed56e707640ba59'
+          python -m py_compile tools/d1_gcn_stage_interface_frontier_v1.py
+          python tools/d1_gcn_stage_interface_frontier_v1.py --self-test
+
+      - name: Download exact shader corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source/exact source/structural out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${EXACT_ARTIFACT_ID}/zip" \
+            -o source/exact.zip
+          echo "$EXACT_ZIP_SHA256  source/exact.zip" | sha256sum --check --strict
+          unzip -q source/exact.zip D1_SHADER_CORPUS_PS_VS_DS_V3.json -d source/exact
+          echo "$EXACT_REPORT_SHA256  source/exact/D1_SHADER_CORPUS_PS_VS_DS_V3.json" | sha256sum --check --strict
+
+      - name: Download exact structural corpus
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/structural.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/structural.zip" | sha256sum --check --strict
+          unzip -q source/structural.zip \
+            'out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json' \
+            'work/ir/*' \
+            -d source/structural
+          echo "$STRUCTURAL_CENSUS_SHA256  source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+          test "$(find source/structural/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 26464
+
+      - name: Build exact anonymous stage-interface frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_stage_interface_frontier_v1.py \
+            --ir-dir source/structural/work/ir \
+            --census source/structural/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --extract-report source/exact/D1_SHADER_CORPUS_PS_VS_DS_V3.json \
+            -o out/D1_GCN_STAGE_INTERFACE_FRONTIER_V1.json \
+            | tee out/stage_interface_frontier_stdout.txt
+
+      - name: Fail closed on exact interface surface
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p='out/D1_GCN_STAGE_INTERFACE_FRONTIER_V1.json'
+          d=json.load(open(p))
+          assert d['status']=='D1_GCN_STAGE_INTERFACE_FRONTIER_EXACT',d['violations'][:100]
+          assert not d['violations']
+          c=d['coverage']
+          assert c['exact_program_count']==26464,c
+          assert c['stage_program_counts']=={'DS':20,'PS':18375,'VS':8069},c
+          assert c['exact_header_count']==37892,c
+          assert c['header_stage_counts']=={'DS':79,'PS':25405,'VS':12408},c
+          assert c['exact_instruction_count']==4896165,c
+          assert c['pixel_program_count']==18375,c
+          assert c['pixel_programs_with_interpolation']==17868,c
+          assert c['pixel_programs_without_interpolation']==507,c
+          assert c['interpolation_instruction_count']==425370,c
+          assert c['interpolation_opcode_counts']=={'v_interp_mov_f32':6,'v_interp_p1_f32':212682,'v_interp_p2_f32':212682},c
+          assert c['attribute_instruction_counts']=={'0':117512,'1':96430,'2':84680,'3':51340,'4':42506,'5':22306,'6':10592,'7':4},c
+          assert c['channel_instruction_counts']=={'w':46744,'x':135850,'y':132320,'z':110456},c
+          assert c['unique_pixel_import_signatures']==465,c
+          assert c['parameter_export_instruction_counts']=={'DS':68,'VS':37907},c
+          assert c['parameter_export_program_counts']=={'DS':20,'VS':8069},c
+          assert c['parameter_export_enable_mask_counts']=={'DS':{'15':68},'VS':{'15':37907}},c
+          assert c['parameter_export_compressed_count']==0,c
+          assert c['parameter_export_done_count']==0,c
+          assert c['unique_parameter_export_signatures']=={'DS':2,'VS':8},c
+          assert c['pixel_import_signatures_with_global_vs_compatible_shape']==17868,c
+          assert c['pixel_import_signatures_with_global_any_producer_compatible_shape']==17868,c
+          assert c['material_backed_shader_pair_promotions']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert len(d['header_to_exact_program'])==37892
+          assert d['semantic_boundary']['param_index_to_attr_index_provenance']=='WITHHELD_UNTIL_RETAIL_PIPELINE_OWNER_JOIN'
+          assert d['semantic_boundary']['material_header_vs_ps_pair_relation']=='AUTHORITATIVE_NEXT_JOIN_SOURCE'
+          print('D1_GCN_STAGE_INTERFACE_FRONTIER_EXACT')
+          print(json.dumps(c,sort_keys=True))
+          PY
+          sha256sum out/D1_GCN_STAGE_INTERFACE_FRONTIER_V1.json > out/SHA256SUMS.txt
+          cat > out/SOURCE_ARTIFACT_IDS.txt <<EOF
+          exact=${EXACT_ARTIFACT_ID}
+          structural=${STRUCTURAL_ARTIFACT_ID}
+          EOF
+          printf '%s\n' "$GITHUB_SHA" > out/SOURCE_COMMIT_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-STAGE-INTERFACE-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
