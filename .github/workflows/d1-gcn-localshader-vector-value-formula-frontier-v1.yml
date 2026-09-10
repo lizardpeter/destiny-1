@@ -53,8 +53,8 @@ jobs:
           assert v['observed_vgpr_def_opcode_count']==74
           assert v['category_opcode_counts']['VALU_FORMULA_PENDING']==50
           assert v['shader_expression_semantic_promotions']==0
-          assert f['status']=='D1_GCN_VECTOR_FORMULA_SEMANTICS_SOURCE_CLOSED'
-          assert f['formula_opcode_count']==50
+          assert f['status']=='D1_GCN_VECTOR_BASE_FORMULAS_SOURCE_CLOSED'
+          assert f['base_formula_opcode_count']==50
           assert f['shader_expression_semantic_promotions']==0
           print('D1_VECTOR_VALUE_FORMULA_REGISTRIES_SOURCE_CLOSED')
           PY
