@@ -1,0 +1,171 @@
+name: D1 GCN LocalShader vector value formula frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-vector-value-formula-frontier-v1.yml'
+      - 'tools/d1_gcn_candidate_vector_value_frontier_v1.py'
+      - 'tools/d1_gcn_candidate_vector_formula_frontier_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10154740845'
+  STRUCTURAL_ZIP_SHA256: '6849dd6088ae5782d681b7a83df8c28fa63632a49f6c9ed1508bd017cc5c9034'
+  STRUCTURAL_REPORT_SHA256: '1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d'
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+  LANE_ARTIFACT_ID: '10154960432'
+  LANE_ZIP_SHA256: '3e189eb5fe23215f941927d890cd064e58c475b6a36c21107af47fe84cae0c2c'
+  LANE_REPORT_SHA256: '8313cff99fb58f022f670b2bd9bd62b0ce5a2200ec97dcda879ca32d93a05a19'
+
+jobs:
+  vector-value-formula:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin universal value and formula registries
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_candidate_vector_value_frontier_v1.py \
+            tools/d1_gcn_candidate_vector_formula_frontier_v1.py \
+            tools/d1_gcn_vector_value_semantics_v1.py \
+            tools/d1_gcn_vector_formula_semantics_v1.py \
+            tools/d1_gcn_vgpr_machine_semantics_v1.py
+          python tools/d1_gcn_vector_value_semantics_v1.py >/tmp/value_registry.json
+          python tools/d1_gcn_vector_formula_semantics_v1.py >/tmp/formula_registry.json
+          python - <<'PY'
+          import json
+          v=json.load(open('/tmp/value_registry.json'))
+          f=json.load(open('/tmp/formula_registry.json'))
+          assert v['status']=='D1_GCN_VECTOR_VALUE_SEMANTICS_FRONTIER_SOURCE_CLOSED'
+          assert v['observed_vgpr_def_opcode_count']==74
+          assert v['category_opcode_counts']['VALU_FORMULA_PENDING']==50
+          assert v['shader_expression_semantic_promotions']==0
+          assert f['status']=='D1_GCN_VECTOR_FORMULA_SEMANTICS_SOURCE_CLOSED'
+          assert f['formula_opcode_count']==50
+          assert f['shader_expression_semantic_promotions']==0
+          print('D1_VECTOR_VALUE_FORMULA_REGISTRIES_SOURCE_CLOSED')
+          PY
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact LocalShader prerequisites
+        run: |
+          set -euo pipefail
+          mkdir -p source/struct source/raw source/lane out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" -o source/struct.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/struct.zip" | sha256sum --check --strict
+          unzip -q source/struct.zip -d source/struct
+          echo "$STRUCTURAL_REPORT_SHA256  source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LANE_ARTIFACT_ID}/zip" -o source/lane.zip
+          echo "$LANE_ZIP_SHA256  source/lane.zip" | sha256sum --check --strict
+          unzip -q source/lane.zip -d source/lane
+          echo "$LANE_REPORT_SHA256  source/lane/out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json" | sha256sum --check --strict
+
+      - name: Classify exact LocalShader VGPR value frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_vector_value_frontier_v1.py \
+            --structural-source-closure source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            --lane-ssa-report source/lane/out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json \
+            --ir-dir source/raw/work/ir \
+            -o out/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json \
+            | tee out/vector_value_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e; echo "$rc" > out/value_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json
+
+      - name: Require source-closed value-registry subset
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json')); c=d['coverage']
+          print('VALUE_STATUS',d['status'])
+          print('VALUE_COVERAGE',json.dumps(c,sort_keys=True))
+          print('VALUE_VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VALUE_VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_VALUE_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['exact_program_count']==65,c
+          assert c['exact_instruction_count']==10858,c
+          assert c['vgpr_def_instruction_count']==8651,c
+          assert c['vgpr_def_entry_count']==9806,c
+          assert c['candidate_vgpr_opcode_surface_is_registry_subset'] is True,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_EXACT')
+          PY
+          test "$(cat out/value_exit_code.txt)" -eq 0
+
+      - name: Classify source-backed LocalShader formula frontier
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_vector_formula_frontier_v1.py \
+            --vector-frontier out/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json \
+            -o out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_V1.json \
+            | tee out/vector_formula_frontier_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e; echo "$rc" > out/formula_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_V1.json
+
+      - name: Require exact candidate formula registry subset
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_V1.json')); c=d['coverage']
+          print('FORMULA_STATUS',d['status'])
+          print('FORMULA_COVERAGE',json.dumps(c,sort_keys=True))
+          print('FORMULA_OPCODES',json.dumps(d['candidate_formula_opcodes']))
+          print('FORMULA_VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('FORMULA_VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_BASE_FORMULA_FRONTIER_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['exact_program_count']==65,c
+          assert c['exact_instruction_count']==10858,c
+          assert c['formula_instruction_count']>0,c
+          assert c['formula_result_component_count']>=c['formula_instruction_count'],c
+          assert c['bit_exact_replay_ready_instruction_count']<=c['formula_instruction_count'],c
+          assert c['shader_expression_semantic_promotions']==0,c
+          print('D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_EXACT')
+          PY
+          test "$(cat out/formula_exit_code.txt)" -eq 0
+          sha256sum \
+            out/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json \
+            out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_V1.json \
+            out/vector_value_frontier_stdout.txt \
+            out/vector_formula_frontier_stdout.txt \
+            > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-VECTOR-VALUE-FORMULA-FRONTIER-V1
+          path: out/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
