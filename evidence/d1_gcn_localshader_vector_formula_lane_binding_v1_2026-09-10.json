@@ -1,0 +1,57 @@
+{
+  "schema": "d1_gcn_localshader_vector_formula_lane_binding_checkpoint/v1",
+  "status": "D1_GCN_CANDIDATE_VECTOR_FORMULA_LANE_BINDING_REPLAY_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34498491014,
+    "source_commit": "363677869555aa90c3076c3fe0d4cebc27433765",
+    "artifact_id": 10160805324,
+    "artifact_name": "D1-GCN-LOCALSHADER-VECTOR-FORMULA-LANE-BINDING-V1",
+    "artifact_digest_sha256": "91a380b2b91d424e05d54bd3ee2cdb42c08bd42b5e30f8f6e1fe162466f3a2bc",
+    "report_sha256": "a9c52c65c75d224d90d2d5a57da554b7ff6cd3293641eba80c95a6c50e1d4347",
+    "stdout_sha256": "682fd83f29a3c6a5f4047fe18d7517eded25006fc13c5f323e97f82e3d4a5826"
+  },
+  "implementation": {
+    "candidate_replay_commit": "9b44e1530f8a135af14d85531d2620b680fde951",
+    "workflow_commit": "363677869555aa90c3076c3fe0d4cebc27433765",
+    "universal_formula_lane_analyzer_changed": false
+  },
+  "coverage": {
+    "planned_unique_gcn_programs": 65,
+    "exact_formula_lane_bound_unique_gcn_programs": 65,
+    "exact_instructions_replayed": 10858,
+    "formula_instruction_count": 7981,
+    "formula_result_component_binding_count": 7981,
+    "physical_write_binding_count": 7981,
+    "formula_raw_input_accounting_instruction_count": 7981,
+    "bit_exact_instruction_count": 584,
+    "bit_exact_result_component_count": 584,
+    "symbolic_formula_instruction_count": 7397,
+    "symbolic_formula_result_component_count": 7397,
+    "opaque_nonformula_result_component_count": 1825,
+    "mode_snapshot_instruction_count": 7397,
+    "old_destination_arithmetic_input_instruction_count": 3093,
+    "old_destination_arithmetic_input_component_count": 3093,
+    "modifier_touched_instruction_count": 678,
+    "abs_modifier_instruction_count": 132,
+    "neg_modifier_instruction_count": 423,
+    "omod_modifier_instruction_count": 68,
+    "clamp_modifier_instruction_count": 55,
+    "integrated_graph_node_count": 81844,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "localshader_specific_formula_lane_decoder": false,
+    "physical_vgpr_lane_ssa": "REUSED_WITH_IDENTITIES_UNCHANGED",
+    "formula_result_to_lane_candidate_binding": "EXACT",
+    "formula_result_to_physical_write_binding": "EXACT",
+    "integer_bit_exact_operations": "EXECUTABLE_ARCHITECTURAL_NODES",
+    "floating_special_operations": "SOURCE_CLOSED_SYMBOLIC_MODE_RETAINED",
+    "vop3_clamp_numeric_range": "WITHHELD_AMD_REV1_3_INTERNAL_SOURCE_CONFLICT",
+    "resource_lds_interpolation_values": "UNCHANGED_OPAQUE_BOUNDARIES",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "policy": "Every source-backed LocalShader formula result is attached to the pre-existing lane-aware VGPR result and physical-write identity by the unchanged universal formula-to-lane analyzer. Integer/bit nodes are executable at the architectural bit-pattern level; floating and special operations remain symbolic with MODE retained, and CLAMP remains numerically withheld."
+}
