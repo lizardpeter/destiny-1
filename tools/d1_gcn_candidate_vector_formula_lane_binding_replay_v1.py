@@ -221,7 +221,7 @@ def replay(struct_path: Path, lane_path: Path, value_path: Path, formula_path: P
         "programs": compact_rows,
         "violations": violations,
         "semantic_boundary": {
-            "candidate_stage_affects_formula_lane_analyzer": false,
+            "candidate_stage_affects_formula_lane_analyzer": False,
             "physical_vgpr_lane_ssa": "REUSED_WITH_IDENTITIES_UNCHANGED",
             "formula_result_to_lane_candidate_binding": "EXACT" if not violations else "NOT_PROMOTED",
             "formula_result_to_physical_write_binding": "EXACT" if not violations else "NOT_PROMOTED",
