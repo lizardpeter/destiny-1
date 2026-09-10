@@ -1,0 +1,52 @@
+{
+  "schema": "d1_gcn_localshader_tbuffer_value_binding_checkpoint/v1",
+  "status": "D1_GCN_LOCALSHADER_TBUFFER_VALUE_BINDING_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34529765060,
+    "source_commit": "f05ebe17ae540069406e6bfaed08bebd03d3b3a6",
+    "artifact_id": 10172999823,
+    "artifact_name": "D1-GCN-LOCALSHADER-TBUFFER-VALUE-BINDING-V1",
+    "artifact_digest_sha256": "5ab56917790e00e46f4d6bb88f4c5816969c49029f61c470ce14e8dba2b24824",
+    "report_sha256": "f2c825df22b78dd0aa473012ffcb40e84c2a1362fbcdec49fef8e857746186a1"
+  },
+  "implementation": {
+    "analyzer_commit": "634ce2e08eb21639b17886b2ed7ba1efc8b0096e",
+    "analyzer_blob_sha": "614018c1abd37de93ba05b31b3599783f1811af4",
+    "workflow_commit": "f05ebe17ae540069406e6bfaed08bebd03d3b3a6"
+  },
+  "inputs": {
+    "usage_binding_artifact_id": 10172731401,
+    "usage_binding_zip_sha256": "5c4dcfc72768f3e0960dead4a612c9d35281c3246cd7ded5f32c4efc83563533",
+    "usage_binding_report_sha256": "6c6c07d03ed06d8b53693326cbabd9fde7c7a2f7b0c41e02939e700cf4f21127",
+    "special_value_artifact_id": 10167298103,
+    "special_value_zip_sha256": "4555c8c974b8e01efdca600398ebfc890981d6b676975bf4505bf667bf00e47f",
+    "special_value_report_sha256": "facad438183f53785977b2e8388195c75bf235c7f6c40a990d8d161344b5a2cd"
+  },
+  "coverage": {
+    "exact_bound_program_count": 65,
+    "tbuffer_program_count": 39,
+    "tbuffer_instruction_count": 385,
+    "tbuffer_result_component_count": 1540,
+    "resource_identity_counts": {"ImmConstBuffer:10": 385},
+    "descriptor_window_counts": {"s[12:15]": 260, "s[8:11]": 125},
+    "per_program_instruction_histogram": {"3": 1, "6": 1, "8": 17, "12": 20},
+    "vaddr_reaching_node_kind_counts": {"EXEC_GATED_LANE_WRITE": 385},
+    "resource_read_expression_component_count": 1540,
+    "runtime_buffer_content_promotions": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "tbuffer_resource_identity": "EXACT_IMM_CONST_BUFFER_API_SLOT_10",
+    "tbuffer_descriptor_state": "EXACT_PROGRAM_ENTRY_USER_DATA",
+    "tbuffer_vaddr_state": "EXACT_EXISTING_LANE_SSA_REFERENCE",
+    "tbuffer_architectural_read_expression": "EXACT_GFX7_TYPED_FLOAT4_READ_IDENTITY",
+    "tbuffer_runtime_buffer_contents": "OPAQUE",
+    "api_slot_10_runtime_binding_owner": "NEXT_GATE",
+    "semantic_record_name": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": []
+}
