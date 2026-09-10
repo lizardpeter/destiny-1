@@ -1,0 +1,145 @@
+name: D1 GCN LocalShader structural source closure v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-structural-source-closure-v1.yml'
+      - 'tools/d1_gcn_source_closed_structural_promote_v1.py'
+      - 'evidence/d1_gcn_localshader_structural_frontier_source_closure_v1_2026-09-10.json'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ARTIFACT_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+  BASELINE_ARTIFACT_ID: '10087524653'
+  BASELINE_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  BASELINE_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+
+jobs:
+  source-closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin source-closure implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_source_closed_structural_promote_v1.py \
+            tools/d1_gcn_structural_candidate_compare_v1.py \
+            tools/d1_gcn_cfg_ir_v2.py \
+            tools/d1_gcn_shader_corpus_structural_census.py \
+            tools/d1_gcn_shader_corpus_structural_census_v3.py
+          python - <<'PY'
+          import json
+          p='evidence/d1_gcn_localshader_structural_frontier_source_closure_v1_2026-09-10.json'
+          d=json.load(open(p))
+          assert d['schema']=='d1_gcn_source_closed_structural_extension/v1'
+          assert d['status']=='D1_GCN_SOURCE_CLOSED_STRUCTURAL_EXTENSION_EXACT'
+          assert not d['violations']
+          assert len(d['approved_forms'])==4
+          assert sum(int(x['observed_instruction_count']) for x in d['approved_forms'])==706
+          assert d['semantic_boundary']['localshader_specific_decoder'] is False
+          assert d['semantic_boundary']['shader_expression_semantics_promoted']==0
+          print('D1_LOCALSHADER_STRUCTURAL_SOURCE_EXTENSION_EXACT')
+          PY
+          git diff --exit-code
+          git status --short
+
+      - name: Recover frozen raw LocalShader structural frontier
+        run: |
+          set -euo pipefail
+          mkdir -p source/raw source/baseline out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" \
+            -o source/raw.zip
+          echo "$RAW_ARTIFACT_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          test -s source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+      - name: Recover frozen 26464-program structural baseline
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASELINE_ARTIFACT_ID}/zip" \
+            -o source/baseline.zip
+          echo "$BASELINE_ZIP_SHA256  source/baseline.zip" | sha256sum --check --strict
+          unzip -q source/baseline.zip -d source/baseline
+          echo "$BASELINE_CENSUS_SHA256  source/baseline/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json" | sha256sum --check --strict
+
+      - name: Promote only AMD-source-closed structural forms
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_source_closed_structural_promote_v1.py \
+            --raw-replay source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json \
+            --baseline-census source/baseline/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --source-closed-extension evidence/d1_gcn_localshader_structural_frontier_source_closure_v1_2026-09-10.json \
+            --ir-dir source/raw/work/ir \
+            -o out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            | tee out/source_closure_stdout.txt
+
+      - name: Require exact universal LocalShader structural admission
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json'))
+          c=d['coverage']; a=d['architecture']
+          assert d['status']=='D1_GCN_SOURCE_CLOSED_STRUCTURAL_PROMOTION_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65,c
+          assert c['exact_parse_accounted_unique_gcn_programs']==65,c
+          assert c['architecture_admitted_unique_gcn_programs']==65,c
+          assert c['instruction_count']==10858,c
+          assert c['encoded_bytes']==52512,c
+          assert a['frozen_baseline_opcode_count']==124,a
+          assert a['frozen_baseline_structural_form_count']==638,a
+          assert a['source_closed_extension_form_count']==4,a
+          assert a['candidate_novel_vs_baseline_opcodes']==['ds_write2_b32'],a
+          assert len(a['candidate_novel_vs_baseline_structural_forms'])==4,a
+          assert a['unapproved_opcodes']==[],a
+          assert a['unapproved_structural_forms']==[],a
+          assert a['unapproved_encoding_widths']==[],a
+          assert a['unapproved_classification_rules']==[],a
+          usage={x['form']['opcode']+':'+'|'.join(x['form']['operand_syntax'])+':'+'|'.join(x['form']['use_kinds']):x['instruction_count'] for x in a['source_closed_extension_usage']}
+          assert sum(usage.values())==706,usage
+          ds=sum(v for k,v in usage.items() if k.startswith('ds_write2_b32:'))
+          mul=sum(v for k,v in usage.items() if k.startswith('v_mul_lo_i32:'))
+          assert ds==641 and mul==65,(ds,mul)
+          assert d['semantic_boundary']['gfx7_parser_changed'] is False
+          assert d['semantic_boundary']['localshader_specific_decoder'] is False
+          assert d['semantic_boundary']['shader_expression_semantics_promoted']==0
+          print('D1_GCN_LOCALSHADER_UNIVERSAL_STRUCTURAL_SOURCE_CLOSED',json.dumps(c,sort_keys=True))
+          PY
+          sha256sum \
+            out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            out/source_closure_stdout.txt \
+            evidence/d1_gcn_localshader_structural_frontier_source_closure_v1_2026-09-10.json \
+            > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-STRUCTURAL-SOURCE-CLOSED-V1
+          path: |
+            out/
+            evidence/d1_gcn_localshader_structural_frontier_source_closure_v1_2026-09-10.json
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
