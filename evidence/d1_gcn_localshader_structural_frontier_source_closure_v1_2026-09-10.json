@@ -1,0 +1,115 @@
+{
+  "schema": "d1_gcn_source_closed_structural_extension/v1",
+  "status": "D1_GCN_SOURCE_CLOSED_STRUCTURAL_EXTENSION_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "failed_frontier": {
+    "workflow_run_id": 34425126890,
+    "artifact_id": 10132369372,
+    "artifact_digest_sha256": "dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739",
+    "report_sha256": "d6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3",
+    "candidate_manifest_sha256": "104253732e9239f05f732327c0d951e0848bf63e5b74bfdbc33e22f74ec071c8",
+    "exact_programs_parse_accounted": 65,
+    "exact_instruction_count": 10858,
+    "exact_encoded_bytes": 52512,
+    "frontier_instruction_occurrences": {
+      "ds_write2_b32": 641,
+      "v_mul_lo_i32_sgpr_source_form": 65
+    }
+  },
+  "authoritative_source": {
+    "publisher": "Advanced Micro Devices, Inc.",
+    "document": "AMD Sea Islands Series Instruction Set Architecture",
+    "document_id": "70653",
+    "revision": "1.3",
+    "release_date": "2013-12-01",
+    "url": "https://www.amd.com/content/dam/amd/en/documents/radeon-tech-docs/instruction-set-architectures/sea-islands-instruction-set-architecture_0.pdf",
+    "proof": [
+      {
+        "topic": "DS_WRITE2_B32 opcode and address semantics",
+        "pages": ["12-142", "12-143", "13-36", "13-40"],
+        "facts": [
+          "DS_WRITE2_B32 is DS opcode 14 (0x0E).",
+          "It writes D0 to DS[ADDR + offset0*4] and D1 to DS[ADDR + offset1*4].",
+          "OFFSET0 and OFFSET1 are the two 8-bit DS offset fields.",
+          "The DS encoding uses ADDR, DATA0 and DATA1 VGPR source fields.",
+          "The DS instruction encoding is 64 bits, with encoding bits 31:26 equal to 110110."
+        ]
+      },
+      {
+        "topic": "V_MUL_LO_I32 VOP3a and SGPR source legality",
+        "pages": ["12-134", "12-135", "13-25", "13-30"],
+        "facts": [
+          "V_MUL_LO_I32 is VOP3a opcode 363 (0x16B).",
+          "Its result is the low-order 32 bits of signed integer multiplication D.i = S0.i * S1.i.",
+          "VOP3a SRC0 accepts SGPR0-SGPR103 and VGPR0-VGPR255 among its legal source selectors.",
+          "VOP3a SRC1 and SRC2 use the same source-selector format as SRC0.",
+          "Therefore the observed v_mul_lo_i32 VGPR, VGPR, SGPR form is architecturally legal."
+        ]
+      }
+    ]
+  },
+  "approved_forms": [
+    {
+      "form": {
+        "opcode": "ds_write2_b32",
+        "encoding_width_bytes": 8,
+        "operand_syntax": ["v#", "v#", "v# offset1:IMM_INT"],
+        "def_kinds": [],
+        "use_kinds": ["VGPR", "VGPR", "VGPR"],
+        "has_branch_target": false,
+        "classification_rule": "NO_DESTINATION"
+      },
+      "observed_instruction_count": 65,
+      "source_closed_reason": "Opcode 14 is a two-dword DS/LDS write with ADDR, DATA0 and DATA1 VGPR sources. CLRX omits offset0 when its encoded value is zero."
+    },
+    {
+      "form": {
+        "opcode": "ds_write2_b32",
+        "encoding_width_bytes": 8,
+        "operand_syntax": ["v#", "v#", "v# offset0:IMM_INT offset1:IMM_INT"],
+        "def_kinds": [],
+        "use_kinds": ["VGPR", "VGPR", "VGPR"],
+        "has_branch_target": false,
+        "classification_rule": "NO_DESTINATION"
+      },
+      "observed_instruction_count": 520,
+      "source_closed_reason": "Opcode 14 is a two-dword DS/LDS write using the two encoded 8-bit offset fields and three VGPR source roles."
+    },
+    {
+      "form": {
+        "opcode": "ds_write2_b32",
+        "encoding_width_bytes": 8,
+        "operand_syntax": ["v#", "v#", "v# offset0:IMM_INT offset1:IMM_INT"],
+        "def_kinds": [],
+        "use_kinds": ["VGPR", "VGPR"],
+        "has_branch_target": false,
+        "classification_rule": "NO_DESTINATION"
+      },
+      "observed_instruction_count": 56,
+      "source_closed_reason": "The architectural instruction still has ADDR, DATA0 and DATA1 VGPR source roles; the structural parser intentionally deduplicates identical physical register names, so DATA0==DATA1 yields two distinct VGPR names in the use set."
+    },
+    {
+      "form": {
+        "opcode": "v_mul_lo_i32",
+        "encoding_width_bytes": 8,
+        "operand_syntax": ["v#", "v#", "s#"],
+        "def_kinds": ["VGPR"],
+        "use_kinds": ["VGPR", "SGPR"],
+        "has_branch_target": false,
+        "classification_rule": "GENERIC_FIRST_OPERAND_DESTINATION"
+      },
+      "observed_instruction_count": 65,
+      "source_closed_reason": "V_MUL_LO_I32 is VOP3a opcode 363 and VOP3 source selector fields permit SGPR sources."
+    }
+  ],
+  "semantic_boundary": {
+    "scope": "GFX7_STRUCTURAL_ARCHITECTURE_ONLY",
+    "localshader_specific_decoder": false,
+    "shader_expression_semantics_promoted": 0,
+    "tessellation_pipeline_ownership_promoted": 0,
+    "lds_layout_semantics_promoted": 0,
+    "policy": "These forms are admitted only because the AMD Sea Islands ISA independently proves their opcode, operand classes, width and structural read/write role. Their occurrence in LocalShader does not by itself promote shader-stage ownership or higher-level expression semantics."
+  },
+  "violations": []
+}
