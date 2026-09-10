@@ -1,0 +1,60 @@
+{
+  "schema": "d1_gcn_localshader_sgpr_m0_ssa_checkpoint/v1",
+  "status": "D1_GCN_LOCALSHADER_SGPR_M0_SSA_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34484764073,
+    "source_commit": "4ac1feebc258e2daac124e4108cb577703603a17",
+    "artifact_id": 10155115258,
+    "artifact_name": "D1-GCN-LOCALSHADER-SGPR-M0-SSA-V1",
+    "artifact_digest_sha256": "550f3aba1e4edfa1d74bb959840ad3d0cebf5a8dc3c73a98cea29f7090acada5",
+    "report_sha256": "e8bd87c13dd78119b539cc4fdab3aac26f50f4ccff98166d7f961b39544c7c04",
+    "sha256s_sha256": "aeff2e4cddad3f8eadf7face6e46fe68780484d645263b11fc554a36e5c2cea9"
+  },
+  "implementation": {
+    "candidate_replay_commit": "6397277053c40d7f6fb3af3c90ae2de18716c4bd",
+    "workflow_commit": "4ac1feebc258e2daac124e4108cb577703603a17",
+    "unchanged_analyzer": "tools/d1_gcn_sgpr_ssa_v1.py",
+    "unchanged_machine_registry": "tools/d1_gcn_sgpr_machine_semantics_v1.py",
+    "unchanged_m0_classifier": "tools/d1_gcn_m0_implicit_frontier_v1.py"
+  },
+  "coverage": {
+    "unique_localshader_gcn_programs": 65,
+    "exact_sgpr_m0_ssa_programs": 65,
+    "stage_program_counts": {"LS": 65},
+    "exact_instructions_replayed": 10858,
+    "effect_aware_basic_block_count": 130,
+    "concrete_cfg_edge_count": 0,
+    "scalar_ssa_node_count": 7462,
+    "tracked_scalar_register_instances": 1690,
+    "max_sgpr_index": 51,
+    "program_entry_scalar_node_count": 1690,
+    "scalar_cfg_phi_node_count": 0,
+    "unresolved_control_entry_block_count": 65,
+    "unresolved_control_entry_scalar_node_count": 1690,
+    "non_scalar_source_leaf_count": 21,
+    "sgpr_def_instruction_count": 818,
+    "sgpr_def_entry_count": 2020,
+    "sgpr_use_instruction_count": 3231,
+    "sgpr_use_entry_count": 5983,
+    "whole_scalar_write_entry_count": 1978,
+    "exec_gated_mask_half_write_entry_count": 42,
+    "scalar_result_component_node_count": 2020,
+    "m0_def_instruction_count": 65,
+    "implicit_m0_use_instruction_count": 641,
+    "implicit_m0_use_opcode_counts": {"ds_write2_b32": 641},
+    "v_mul_lo_i32_sgpr_use_instruction_count": 65,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "candidate_stage_affects_scalar_analyzer": false,
+    "localshader_specific_scalar_model": false,
+    "physical_sgpr_m0_ssa": "EXACT",
+    "implicit_m0_provenance": "EXACT",
+    "ds_write2_b32_m0_dependency": "GENERIC_SOURCE_BACKED_LDS_RULE",
+    "opcode_result_value_semantics": "NEXT_GATE",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "violations": []
+}
