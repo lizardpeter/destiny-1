@@ -1,0 +1,66 @@
+{
+  "schema": "d1_gcn_localshader_structural_source_closed_checkpoint/v1",
+  "status": "D1_GCN_LOCALSHADER_UNIVERSAL_STRUCTURAL_SOURCE_CLOSED",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34483799032,
+    "source_commit": "9fd53c765dff8c37f87eb157544ad1501d6d6a31",
+    "artifact_id": 10154740845,
+    "artifact_name": "D1-GCN-LOCALSHADER-STRUCTURAL-SOURCE-CLOSED-V1",
+    "artifact_digest_sha256": "6849dd6088ae5782d681b7a83df8c28fa63632a49f6c9ed1508bd017cc5c9034",
+    "report_sha256": "1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d",
+    "sha256s_sha256": "b5efc016bd220f9e62bfb23bbe96c77de32de4616d273af554f32a1681485c00"
+  },
+  "implementation": {
+    "raw_candidate_compare_commit": "f9dac6d4603775fb1032a34f4742e45752d616e0",
+    "raw_replay_workflow_commit": "3253009cbf66a9101fc1da771ace607b88a46a95",
+    "source_closure_evidence_commit": "61689e5298a7654acfc8dbfa290822ac489370c2",
+    "source_closed_promoter_commit": "c2e3ace65da2ef87415b336470a1489cb9d3e29b",
+    "source_closure_workflow_commit": "9fd53c765dff8c37f87eb157544ad1501d6d6a31"
+  },
+  "inputs": {
+    "localshader_exact_corpus_artifact_id": 10129441932,
+    "localshader_exact_binaries_tar_sha256": "56de210523f9d0a64790e698c52b8911260837f8f12628d75e34084814c61e25",
+    "raw_structural_frontier_run_id": 34425126890,
+    "raw_structural_frontier_artifact_id": 10132369372,
+    "raw_structural_frontier_artifact_sha256": "dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739",
+    "raw_structural_frontier_report_sha256": "d6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3",
+    "frozen_ps_vs_ds_structural_census_artifact_id": 10087524653,
+    "frozen_ps_vs_ds_structural_census_sha256": "5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed"
+  },
+  "coverage": {
+    "unique_localshader_gcn_programs": 65,
+    "parse_accounted_programs": 65,
+    "architecture_admitted_programs": 65,
+    "exact_instruction_count": 10858,
+    "exact_encoded_bytes": 52512,
+    "candidate_opcode_count": 35,
+    "candidate_structural_form_count": 63,
+    "frozen_baseline_opcode_count": 124,
+    "frozen_baseline_structural_form_count": 638,
+    "source_closed_new_opcode_count": 1,
+    "source_closed_new_structural_form_count": 4,
+    "source_closed_frontier_instruction_count": 706,
+    "ds_write2_b32_instruction_count": 641,
+    "v_mul_lo_i32_sgpr_source_form_instruction_count": 65
+  },
+  "source_closed_frontier": {
+    "new_opcode": "ds_write2_b32",
+    "approved_form_count": 4,
+    "unapproved_opcodes": [],
+    "unapproved_structural_forms": [],
+    "unapproved_encoding_widths": [],
+    "unapproved_classification_rules": []
+  },
+  "semantic_boundary": {
+    "generic_gfx7_parser_changed": false,
+    "localshader_specific_decoder": false,
+    "localshader_as_vertexshader": "FORBIDDEN",
+    "shader_expression_semantics_promoted": 0,
+    "tessellation_pipeline_ownership_promoted": 0,
+    "lds_layout_semantics_promoted": 0,
+    "next_gate": "GENERIC_VGPR_LANE_SSA_REPLAY"
+  },
+  "violations": []
+}
