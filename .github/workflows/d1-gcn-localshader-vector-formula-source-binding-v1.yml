@@ -1,0 +1,138 @@
+name: D1 GCN LocalShader vector formula source binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-vector-formula-source-binding-v1.yml'
+      - 'tools/d1_gcn_candidate_vector_formula_source_binding_replay_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10154740845'
+  STRUCTURAL_ZIP_SHA256: '6849dd6088ae5782d681b7a83df8c28fa63632a49f6c9ed1508bd017cc5c9034'
+  STRUCTURAL_REPORT_SHA256: '1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d'
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+  FORMULA_LANE_ARTIFACT_ID: '10160805324'
+  FORMULA_LANE_ZIP_SHA256: '91a380b2b91d424e05d54bd3ee2cdb42c08bd42b5e30f8f6e1fe162466f3a2bc'
+  FORMULA_LANE_REPORT_SHA256: 'a9c52c65c75d224d90d2d5a57da554b7ff6cd3293641eba80c95a6c50e1d4347'
+  SCALAR_ARTIFACT_ID: '10155115258'
+  SCALAR_ZIP_SHA256: '550f3aba1e4edfa1d74bb959840ad3d0cebf5a8dc3c73a98cea29f7090acada5'
+  SCALAR_REPORT_SHA256: 'e8bd87c13dd78119b539cc4fdab3aac26f50f4ccff98166d7f961b39544c7c04'
+
+jobs:
+  formula-source-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin unchanged universal source-binding implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_candidate_vector_formula_source_binding_replay_v1.py \
+            tools/d1_gcn_vector_formula_source_binding_v1.py \
+            tools/d1_gcn_vector_formula_lane_binding_v1.py \
+            tools/d1_gcn_vector_formula_semantics_v1.py \
+            tools/d1_gcn_vector_bit_exact_eval_v1.py \
+            tools/d1_gcn_vgpr_lane_ssa_v1.py \
+            tools/d1_gcn_sgpr_ssa_v1.py \
+            tools/d1_gcn_sgpr_machine_semantics_v1.py \
+            tools/d1_gcn_m0_implicit_frontier_v1.py
+          python tools/d1_gcn_vector_bit_exact_eval_v1.py --self-test >/dev/null
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact frozen LocalShader prerequisites
+        run: |
+          set -euo pipefail
+          mkdir -p source/struct source/raw source/formula_lane source/scalar out bound
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" -o source/struct.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/struct.zip" | sha256sum --check --strict
+          unzip -q source/struct.zip -d source/struct
+          echo "$STRUCTURAL_REPORT_SHA256  source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FORMULA_LANE_ARTIFACT_ID}/zip" -o source/formula_lane.zip
+          echo "$FORMULA_LANE_ZIP_SHA256  source/formula_lane.zip" | sha256sum --check --strict
+          unzip -q source/formula_lane.zip -d source/formula_lane
+          echo "$FORMULA_LANE_REPORT_SHA256  source/formula_lane/out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_LANE_BINDING_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SCALAR_ARTIFACT_ID}/zip" -o source/scalar.zip
+          echo "$SCALAR_ZIP_SHA256  source/scalar.zip" | sha256sum --check --strict
+          unzip -q source/scalar.zip -d source/scalar
+          echo "$SCALAR_REPORT_SHA256  source/scalar/out/D1_GCN_LOCALSHADER_SGPR_M0_SSA_V1.json" | sha256sum --check --strict
+
+      - name: Bind every LocalShader formula source to exact architectural state
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_vector_formula_source_binding_replay_v1.py \
+            --structural-source-closure source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            --formula-lane-binding source/formula_lane/out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_LANE_BINDING_V1.json \
+            --sgpr-m0-ssa source/scalar/out/D1_GCN_LOCALSHADER_SGPR_M0_SSA_V1.json \
+            --ir-dir source/raw/work/ir \
+            --binding-dir bound \
+            -o out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_SOURCE_BINDING_V1.json \
+            | tee out/formula_source_binding_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e; echo "$rc" > out/replay_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_SOURCE_BINDING_V1.json
+
+      - name: Require complete exact source-state binding
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          d=json.load(open('out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_SOURCE_BINDING_V1.json')); c=d['coverage']
+          print('STATUS',d['status']); print('COVERAGE',json.dumps(c,sort_keys=True)); print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_FORMULA_SOURCE_BINDING_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65 and c['exact_source_bound_unique_gcn_programs']==65,c
+          assert c['exact_instructions_replayed']==10858,c
+          assert c['formula_instruction_count']==7981,c
+          assert c['formula_source_slot_count']==15833,c
+          assert c['exact_formula_source_binding_count']==15833,c
+          assert c['vgpr_source_slot_count']+c['sgpr_source_slot_count']+c['literal_source_slot_count']==15833,c
+          assert c['sgpr_placeholder_replacement_count']==c['sgpr_source_slot_count'],c
+          assert c['formula_source_placeholder_leak_count']==0,c
+          assert c['v_mul_lo_i32_sgpr_source_binding_count']==65,c
+          assert c['scalar_ssa_node_count']==7462,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert len(list(pathlib.Path('bound').glob('*.json')))==65
+          assert d['semantic_boundary']['candidate_stage_affects_formula_source_analyzer'] is False
+          print('D1_GCN_LOCALSHADER_VECTOR_FORMULA_SOURCE_BINDING_EXACT')
+          PY
+          test "$(cat out/replay_exit_code.txt)" -eq 0
+          find out bound -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-VECTOR-FORMULA-SOURCE-BINDING-V1
+          path: |
+            out/
+            bound/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
