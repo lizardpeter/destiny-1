@@ -1,0 +1,149 @@
+name: D1 GCN LocalShader typed buffer usage binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-tbuffer-usage-binding-v1.yml'
+      - 'tools/d1_gcn_localshader_tbuffer_usage_binding_v1.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LOCALSHADER_ARTIFACT_ID: '10129441932'
+  LOCALSHADER_ZIP_SHA256: '8db78b9dc60d20638b36d17107cd1c5a424fd7468f3e885098fcd97373d64280'
+  LOCALSHADER_REPORT_SHA256: 'c33579c8b876423620d97c626dab821959f496b71da495e35587b360c021bbe1'
+  LOCALSHADER_BINARIES_TAR_SHA256: '56de210523f9d0a64790e698c52b8911260837f8f12628d75e34084814c61e25'
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+  SPECIAL_VALUE_ARTIFACT_ID: '10167298103'
+  SPECIAL_VALUE_ZIP_SHA256: '4555c8c974b8e01efdca600398ebfc890981d6b676975bf4505bf667bf00e47f'
+  SPECIAL_VALUE_REPORT_SHA256: 'facad438183f53785977b2e8388195c75bf235c7f6c40a990d8d161344b5a2cd'
+  ANALYZER_BLOB_SHA: '3e17e3c7ff04330aa527a4e03d43d7759f38e667'
+  ORBSHDR_PARSER_BLOB_SHA: 'a6abfb6779bf6e9ee599d24904766ddfca86ac1e'
+
+jobs:
+  tbuffer-usage-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin exact analyzer and OrbShdr parser
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_localshader_tbuffer_usage_binding_v1.py \
+            tools/d1_ps4_shader_binary_probe.py
+          test "$(git hash-object tools/d1_gcn_localshader_tbuffer_usage_binding_v1.py)" = "$ANALYZER_BLOB_SHA"
+          test "$(git hash-object tools/d1_ps4_shader_binary_probe.py)" = "$ORBSHDR_PARSER_BLOB_SHA"
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact frozen LocalShader corpus
+        run: |
+          set -euo pipefail
+          mkdir -p source/local source/local/binaries source/raw source/special out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LOCALSHADER_ARTIFACT_ID}/zip" \
+            -o source/local.zip
+          echo "$LOCALSHADER_ZIP_SHA256  source/local.zip" | sha256sum --check --strict
+          unzip -q source/local.zip -d source/local
+          echo "$LOCALSHADER_REPORT_SHA256  source/local/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json" | sha256sum --check --strict
+          echo "$LOCALSHADER_BINARIES_TAR_SHA256  source/local/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar" | sha256sum --check --strict
+          tar -xf source/local/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar -C source/local/binaries
+          test "$(find source/local/binaries/native -maxdepth 1 -type f -name 'LS_*.bin' | wc -l)" -eq 177
+          test "$(find source/local/binaries/gcn -maxdepth 1 -type f -name '*.bin' | wc -l)" -eq 65
+
+      - name: Recover exact structural LocalShader IR
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" \
+            -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+      - name: Require frozen special-value prerequisite
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SPECIAL_VALUE_ARTIFACT_ID}/zip" \
+            -o source/special.zip
+          echo "$SPECIAL_VALUE_ZIP_SHA256  source/special.zip" | sha256sum --check --strict
+          unzip -q source/special.zip -d source/special
+          echo "$SPECIAL_VALUE_REPORT_SHA256  source/special/out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/special/out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json'))
+          c=d['coverage']
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_SPECIAL_VALUE_BINDING_REPLAY_EXACT',d.get('violations')
+          assert not d['violations']
+          assert c['tbuffer_load_format_xyzw_instruction_count']==385,c
+          assert c['typed_buffer_opaque_result_component_count']==1540,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          PY
+
+      - name: Bind every LocalShader TBUFFER descriptor to exact usage slot
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_localshader_tbuffer_usage_binding_v1.py \
+            --localshader-corpus source/local/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json \
+            --binary-root source/local/binaries \
+            --ir-dir source/raw/work/ir \
+            -o out/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json \
+            | tee out/tbuffer_usage_binding_stdout.txt
+
+      - name: Require complete exact descriptor binding
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json')); c=d['coverage']
+          print('STATUS',d['status']); print('COVERAGE',json.dumps(c,sort_keys=True)); print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['exact_localshader_program_count']==65 and c['exact_localshader_wrapper_count']==177,c
+          assert c['exact_instruction_count']==10858,c
+          assert c['tbuffer_program_count']==39 and c['tbuffer_wrapper_count']==56,c
+          assert c['tbuffer_material_occurrence_count']==3386,c
+          assert c['tbuffer_instruction_count']==385 and c['tbuffer_result_component_count']==1540,c
+          assert c['tbuffer_descriptor_usage_type_counts']=={'ImmConstBuffer':385},c
+          assert c['tbuffer_descriptor_api_slot_counts']=={'10':385},c
+          assert c['tbuffer_descriptor_window_counts']=={'s[12:15]':260,'s[8:11]':125},c
+          assert c['tbuffer_descriptor_program_window_counts']=={'s[12:15]':26,'s[8:11]':13},c
+          assert c['tbuffer_per_program_instruction_histogram']=={'3':1,'6':1,'8':17,'12':20},c
+          assert c['direct_unmutated_program_entry_descriptor_count']==385,c
+          assert c['mutated_descriptor_count']==0,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert c['tessellation_pipeline_ownership_promotions']==0,c
+          assert d['semantic_boundary']['tbuffer_descriptor_input_usage']=='EXACT_IMM_CONST_BUFFER_API_SLOT_10'
+          assert d['semantic_boundary']['tbuffer_descriptor_reaching_state']=='EXACT_UNMUTATED_PROGRAM_ENTRY_USER_DATA'
+          assert d['semantic_boundary']['api_slot_10_runtime_binding_owner']=='NEXT_GATE'
+          print('D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_EXACT')
+          PY
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-TBUFFER-USAGE-BINDING-V1
+          path: out/
+          retention-days: 30
