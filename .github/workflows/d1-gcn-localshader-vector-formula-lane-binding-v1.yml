@@ -1,0 +1,141 @@
+name: D1 GCN LocalShader vector formula lane binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-vector-formula-lane-binding-v1.yml'
+      - 'tools/d1_gcn_candidate_vector_formula_lane_binding_replay_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10154740845'
+  STRUCTURAL_ZIP_SHA256: '6849dd6088ae5782d681b7a83df8c28fa63632a49f6c9ed1508bd017cc5c9034'
+  STRUCTURAL_REPORT_SHA256: '1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d'
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+  LANE_ARTIFACT_ID: '10154960432'
+  LANE_ZIP_SHA256: '3e189eb5fe23215f941927d890cd064e58c475b6a36c21107af47fe84cae0c2c'
+  LANE_REPORT_SHA256: '8313cff99fb58f022f670b2bd9bd62b0ce5a2200ec97dcda879ca32d93a05a19'
+  FRONTIER_ARTIFACT_ID: '10160534929'
+  FRONTIER_ZIP_SHA256: '374bb79363e5b0881d7409bc46c2d7da47f7dd69cbdfa1240bad2f47ff0cfdb9'
+  VALUE_REPORT_SHA256: '35d1ae0ed6fd576a350ab26900144583a69678597a4a84e2409ad61aaebb5e76'
+  FORMULA_REPORT_SHA256: 'fa9df009d02accbe63b462e34bdb36680358b90317b3b69db76a7d557d62f73d'
+
+jobs:
+  formula-lane-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin unchanged universal formula lane implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_candidate_vector_formula_lane_binding_replay_v1.py \
+            tools/d1_gcn_vector_formula_lane_binding_v1.py \
+            tools/d1_gcn_vector_formula_semantics_v1.py \
+            tools/d1_gcn_vector_bit_exact_eval_v1.py \
+            tools/d1_gcn_vgpr_lane_ssa_v1.py \
+            tools/d1_gcn_exec_symbolic_dataflow_v1.py \
+            tools/d1_gcn_vgpr_machine_semantics_v1.py
+          python tools/d1_gcn_vector_bit_exact_eval_v1.py --self-test
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact frozen LocalShader prerequisites
+        run: |
+          set -euo pipefail
+          mkdir -p source/struct source/raw source/lane source/frontier out binding
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" -o source/struct.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/struct.zip" | sha256sum --check --strict
+          unzip -q source/struct.zip -d source/struct
+          echo "$STRUCTURAL_REPORT_SHA256  source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LANE_ARTIFACT_ID}/zip" -o source/lane.zip
+          echo "$LANE_ZIP_SHA256  source/lane.zip" | sha256sum --check --strict
+          unzip -q source/lane.zip -d source/lane
+          echo "$LANE_REPORT_SHA256  source/lane/out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FRONTIER_ARTIFACT_ID}/zip" -o source/frontier.zip
+          echo "$FRONTIER_ZIP_SHA256  source/frontier.zip" | sha256sum --check --strict
+          unzip -q source/frontier.zip -d source/frontier
+          echo "$VALUE_REPORT_SHA256  source/frontier/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json" | sha256sum --check --strict
+          echo "$FORMULA_REPORT_SHA256  source/frontier/D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_V1.json" | sha256sum --check --strict
+
+      - name: Replay all exact LocalShaders through unchanged formula lane binding
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_vector_formula_lane_binding_replay_v1.py \
+            --structural-source-closure source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            --lane-ssa-report source/lane/out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json \
+            --vector-frontier source/frontier/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json \
+            --formula-frontier source/frontier/D1_GCN_LOCALSHADER_VECTOR_FORMULA_FRONTIER_V1.json \
+            --ir-dir source/raw/work/ir \
+            --binding-dir binding \
+            -o out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_LANE_BINDING_V1.json \
+            | tee out/formula_lane_binding_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e; echo "$rc" > out/replay_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_LANE_BINDING_V1.json
+
+      - name: Require exact formula to existing lane identities
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          d=json.load(open('out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_LANE_BINDING_V1.json')); c=d['coverage']
+          print('STATUS',d['status']); print('COVERAGE',json.dumps(c,sort_keys=True)); print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_FORMULA_LANE_BINDING_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65 and c['exact_formula_lane_bound_unique_gcn_programs']==65,c
+          assert c['exact_instructions_replayed']==10858,c
+          assert c['formula_instruction_count']==7981,c
+          assert c['formula_result_component_binding_count']==7981,c
+          assert c['physical_write_binding_count']==7981,c
+          assert c['formula_raw_input_accounting_instruction_count']==7981,c
+          assert c['bit_exact_instruction_count']==584 and c['bit_exact_result_component_count']==584,c
+          assert c['symbolic_formula_instruction_count']==7397 and c['symbolic_formula_result_component_count']==7397,c
+          assert c['opaque_nonformula_result_component_count']==1825,c
+          assert c['modifier_touched_instruction_count']==678,c
+          assert c['abs_modifier_instruction_count']==132 and c['neg_modifier_instruction_count']==423,c
+          assert c['omod_modifier_instruction_count']==68 and c['clamp_modifier_instruction_count']==55,c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert len(list(pathlib.Path('binding').glob('*.json')))==65
+          assert d['semantic_boundary']['candidate_stage_affects_formula_lane_analyzer'] is False
+          print('D1_GCN_LOCALSHADER_VECTOR_FORMULA_LANE_BINDING_EXACT')
+          PY
+          test "$(cat out/replay_exit_code.txt)" -eq 0
+          find out binding -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-VECTOR-FORMULA-LANE-BINDING-V1
+          path: |
+            out/
+            binding/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
