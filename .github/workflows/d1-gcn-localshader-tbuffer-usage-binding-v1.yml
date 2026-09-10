@@ -95,8 +95,10 @@ jobs:
           c=d['coverage']
           assert d['status']=='D1_GCN_CANDIDATE_VECTOR_SPECIAL_VALUE_BINDING_REPLAY_EXACT',d.get('violations')
           assert not d['violations']
-          assert c['tbuffer_load_format_xyzw_instruction_count']==385,c
+          assert c['typed_buffer_opaque_instruction_count']==385,c
           assert c['typed_buffer_opaque_result_component_count']==1540,c
+          assert c['opcode_instruction_counts']['tbuffer_load_format_xyzw']==385,c
+          assert c['opcode_result_component_counts']['tbuffer_load_format_xyzw']==1540,c
           assert c['shader_expression_semantic_promotions']==0,c
           PY
 
