@@ -1,0 +1,145 @@
+name: D1 GCN LocalShader VGPR lane SSA v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-vgpr-lane-ssa-v1.yml'
+      - 'tools/d1_gcn_candidate_vgpr_lane_ssa_replay_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10154740845'
+  STRUCTURAL_ZIP_SHA256: '6849dd6088ae5782d681b7a83df8c28fa63632a49f6c9ed1508bd017cc5c9034'
+  STRUCTURAL_REPORT_SHA256: '1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d'
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+
+jobs:
+  vgpr-lane-ssa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin universal lane-SSA implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_candidate_vgpr_lane_ssa_replay_v1.py \
+            tools/d1_gcn_vgpr_lane_ssa_v1.py \
+            tools/d1_gcn_exec_symbolic_dataflow_v1.py \
+            tools/d1_gcn_vgpr_machine_semantics_v1.py
+          python tools/d1_gcn_vgpr_machine_semantics_v1.py >/tmp/vgpr_machine.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/vgpr_machine.json'))
+          assert d['status']=='D1_GCN_VGPR_MACHINE_SEMANTICS_SOURCE_CLOSED'
+          assert len(d['opcode_behaviors'])==74
+          assert 'v_mul_lo_i32' in d['opcode_behaviors']
+          assert d['shader_expression_semantic_promotions']==0
+          print('D1_VGPR_MACHINE_SOURCE_CLOSED')
+          PY
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact source-closed LocalShader structure
+        run: |
+          set -euo pipefail
+          mkdir -p source/struct source/raw out lane
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" \
+            -o source/struct.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/struct.zip" | sha256sum --check --strict
+          unzip -q source/struct.zip -d source/struct
+          echo "$STRUCTURAL_REPORT_SHA256  source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json'))
+          assert d['status']=='D1_GCN_SOURCE_CLOSED_STRUCTURAL_PROMOTION_EXACT'
+          assert not d['violations']
+          c=d['coverage']
+          assert c['planned_unique_gcn_programs']==65
+          assert c['exact_parse_accounted_unique_gcn_programs']==65
+          assert c['architecture_admitted_unique_gcn_programs']==65
+          assert c['instruction_count']==10858
+          assert c['encoded_bytes']==52512
+          print('D1_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_EXACT')
+          PY
+
+      - name: Recover exact 65 Structural IR programs
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" \
+            -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+      - name: Replay through unchanged universal VGPR lane SSA
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_vgpr_lane_ssa_replay_v1.py \
+            --structural-source-closure source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            --raw-replay source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json \
+            --ir-dir source/raw/work/ir \
+            --lane-dir lane \
+            -o out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json \
+            | tee out/vgpr_lane_ssa_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > out/replay_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json
+
+      - name: Fail closed and freeze lane-SSA evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_VGPR_LANE_SSA_V1.json')); c=d['coverage']
+          print('STATUS',d['status'])
+          print('COVERAGE',json.dumps(c,sort_keys=True))
+          print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_VGPR_LANE_SSA_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65,c
+          assert c['exact_lane_ssa_unique_gcn_programs']==65,c
+          assert c['stage_program_counts']=={'LS':65},c
+          assert c['exact_instructions_replayed']==10858,c
+          assert c['vgpr_result_component_node_count']==c['vgpr_def_entry_count'],c
+          assert c['exec_gated_write_node_count']+c['single_lane_write_node_count']==c['vgpr_def_entry_count'],c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert len(list(__import__('pathlib').Path('lane').glob('*.json')))==65
+          assert d['semantic_boundary']['candidate_stage_affects_lane_analyzer'] is False
+          print('D1_GCN_LOCALSHADER_VGPR_LANE_SSA_EXACT')
+          PY
+          test "$(cat out/replay_exit_code.txt)" -eq 0
+          find out lane -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-VGPR-LANE-SSA-V1
+          path: |
+            out/
+            lane/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
