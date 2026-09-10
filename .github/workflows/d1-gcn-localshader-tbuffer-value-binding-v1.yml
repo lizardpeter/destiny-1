@@ -1,0 +1,114 @@
+name: D1 GCN LocalShader typed buffer value binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-tbuffer-value-binding-v1.yml'
+      - 'tools/d1_gcn_localshader_tbuffer_value_binding_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  USAGE_ARTIFACT_ID: '10172731401'
+  USAGE_ZIP_SHA256: '5c4dcfc72768f3e0960dead4a612c9d35281c3246cd7ded5f32c4efc83563533'
+  USAGE_REPORT_SHA256: '6c6c07d03ed06d8b53693326cbabd9fde7c7a2f7b0c41e02939e700cf4f21127'
+  SPECIAL_ARTIFACT_ID: '10167298103'
+  SPECIAL_ZIP_SHA256: '4555c8c974b8e01efdca600398ebfc890981d6b676975bf4505bf667bf00e47f'
+  SPECIAL_REPORT_SHA256: 'facad438183f53785977b2e8388195c75bf235c7f6c40a990d8d161344b5a2cd'
+  ANALYZER_BLOB_SHA: '614018c1abd37de93ba05b31b3599783f1811af4'
+
+jobs:
+  tbuffer-value-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin analyzer
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gcn_localshader_tbuffer_value_binding_v1.py
+          test "$(git hash-object tools/d1_gcn_localshader_tbuffer_value_binding_v1.py)" = "$ANALYZER_BLOB_SHA"
+          git diff --exit-code
+          git status --short
+
+      - name: Recover frozen descriptor usage binding
+        run: |
+          set -euo pipefail
+          mkdir -p source/usage source/special out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${USAGE_ARTIFACT_ID}/zip" -o source/usage.zip
+          echo "$USAGE_ZIP_SHA256  source/usage.zip" | sha256sum --check --strict
+          unzip -q source/usage.zip -d source/usage
+          echo "$USAGE_REPORT_SHA256  source/usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          d=json.load(open('source/usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json')); c=d['coverage']
+          assert d['status']=='D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_EXACT' and not d['violations']
+          assert c['tbuffer_instruction_count']==385 and c['tbuffer_result_component_count']==1540,c
+          assert c['tbuffer_descriptor_api_slot_counts']=={'10':385},c
+          assert c['direct_unmutated_program_entry_descriptor_count']==385 and c['mutated_descriptor_count']==0,c
+          PY
+
+      - name: Recover frozen LocalShader special-value graphs
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SPECIAL_ARTIFACT_ID}/zip" -o source/special.zip
+          echo "$SPECIAL_ZIP_SHA256  source/special.zip" | sha256sum --check --strict
+          unzip -q source/special.zip -d source/special
+          echo "$SPECIAL_REPORT_SHA256  source/special/out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json" | sha256sum --check --strict
+          test "$(find source/special/bound -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+          python - <<'PY'
+          import json
+          d=json.load(open('source/special/out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json')); c=d['coverage']
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_SPECIAL_VALUE_BINDING_REPLAY_EXACT' and not d['violations']
+          assert c['typed_buffer_opaque_instruction_count']==385,c
+          assert c['typed_buffer_opaque_result_component_count']==1540,c
+          PY
+
+      - name: Bind typed-buffer results to exact API10 resource reads
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_localshader_tbuffer_value_binding_v1.py \
+            --usage-binding source/usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json \
+            --bound-dir source/special/bound \
+            -o out/D1_GCN_LOCALSHADER_TBUFFER_VALUE_BINDING_V1.json \
+            | tee out/tbuffer_value_binding_stdout.txt
+
+      - name: Require complete exact resource-read binding
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_TBUFFER_VALUE_BINDING_V1.json')); c=d['coverage']
+          print('STATUS',d['status']); print('COVERAGE',json.dumps(c,sort_keys=True)); print('VIOLATIONS',len(d['violations']))
+          assert d['status']=='D1_GCN_LOCALSHADER_TBUFFER_VALUE_BINDING_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['exact_bound_program_count']==65 and c['tbuffer_program_count']==39,c
+          assert c['tbuffer_instruction_count']==385 and c['tbuffer_result_component_count']==1540,c
+          assert c['resource_identity_counts']=={'ImmConstBuffer:10':385},c
+          assert c['descriptor_window_counts']=={'s[12:15]':260,'s[8:11]':125},c
+          assert c['per_program_instruction_histogram']=={'3':1,'6':1,'8':17,'12':20},c
+          assert c['resource_read_expression_component_count']==1540,c
+          assert c['vaddr_reaching_node_kind_counts']=={'EXEC_GATED_LANE_WRITE':385},c
+          assert c['runtime_buffer_content_promotions']==0 and c['shader_expression_semantic_promotions']==0,c
+          assert d['semantic_boundary']['tbuffer_architectural_read_expression']=='EXACT_GFX7_TYPED_FLOAT4_READ_IDENTITY'
+          assert d['semantic_boundary']['api_slot_10_runtime_binding_owner']=='NEXT_GATE'
+          print('D1_GCN_LOCALSHADER_TBUFFER_VALUE_BINDING_EXACT')
+          PY
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-TBUFFER-VALUE-BINDING-V1
+          path: out/
+          retention-days: 30
