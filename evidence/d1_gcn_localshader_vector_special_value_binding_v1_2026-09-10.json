@@ -1,0 +1,61 @@
+{
+  "schema": "d1_gcn_localshader_vector_special_value_binding_checkpoint/v1",
+  "status": "D1_GCN_CANDIDATE_VECTOR_SPECIAL_VALUE_BINDING_REPLAY_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34514995482,
+    "source_commit": "f0a636047dc5585672aba0ffcf5b00dec1e949cd",
+    "artifact_id": 10167298103,
+    "artifact_name": "D1-GCN-LOCALSHADER-VECTOR-SPECIAL-VALUE-BINDING-V1",
+    "artifact_digest_sha256": "4555c8c974b8e01efdca600398ebfc890981d6b676975bf4505bf667bf00e47f",
+    "report_sha256": "facad438183f53785977b2e8388195c75bf235c7f6c40a990d8d161344b5a2cd"
+  },
+  "implementation": {
+    "special_value_semantics_commit": "294bd09815c6451f89a42c9b34262f979ff90736",
+    "special_value_binding_commit": "fb123058a0815f4567548b3ed31e8d846d692849",
+    "candidate_replay_commit": "21189421bfbd6048917f6bb7451cd2e2159bc0cb",
+    "workflow_commit": "f0a636047dc5585672aba0ffcf5b00dec1e949cd",
+    "candidate_stage_affects_special_value_analyzer": false
+  },
+  "inputs": {
+    "raw_localshader_artifact_id": 10132369372,
+    "raw_localshader_zip_sha256": "dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739",
+    "vector_value_frontier_artifact_id": 10160534929,
+    "vector_value_frontier_report_sha256": "35d1ae0ed6fd576a350ab26900144583a69678597a4a84e2409ad61aaebb5e76",
+    "formula_source_binding_artifact_id": 10161067108,
+    "formula_source_binding_report_sha256": "13bb99f47dd52ae003b695015062514db3f581371ffad060db8340b9ec52b6d6"
+  },
+  "coverage": {
+    "exact_program_count": 65,
+    "exact_instruction_count": 10858,
+    "vgpr_def_instruction_count": 8651,
+    "vgpr_result_component_count": 9806,
+    "formula_instruction_count": 7981,
+    "formula_result_component_count": 7981,
+    "special_instruction_count": 670,
+    "special_result_component_count": 1825,
+    "v_add_i32_instruction_count": 234,
+    "v_cndmask_b32_instruction_count": 51,
+    "tbuffer_load_format_xyzw_instruction_count": 385,
+    "carry_mask_alias_count": 234,
+    "predicate_mask_alias_count": 51,
+    "source_backed_computational_result_component_count": 8266,
+    "typed_buffer_opaque_result_component_count": 1540,
+    "architecturally_classified_vgpr_result_component_count": 9806,
+    "generic_opaque_nonformula_result_component_count": 0,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "v_add_i32_low32_value": "SOURCE_CLOSED_BIT_EXACT",
+    "v_add_i32_carry_mask": "EXACT_CROSS_GRAPH_REFERENCE",
+    "v_cndmask_b32_value_and_predicate": "SOURCE_CLOSED_WITH_CONDITION_GRAPH_ALIAS",
+    "typed_buffer_result_width_and_input_identity": "EXACT",
+    "typed_buffer_fetched_contents": "OPAQUE_RESOURCE_DESCRIPTOR_BACKING_MEMORY_WITHHELD",
+    "localshader_specific_value_decoder": false,
+    "shader_expression_semantics": "WITHHELD",
+    "material_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": []
+}
