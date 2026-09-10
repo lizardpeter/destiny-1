@@ -1,0 +1,142 @@
+name: D1 GCN LocalShader special vector value binding v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-vector-special-value-binding-v1.yml'
+      - 'tools/d1_gcn_vector_special_value_semantics_v1.py'
+      - 'tools/d1_gcn_vector_special_value_binding_v1.py'
+      - 'tools/d1_gcn_candidate_vector_special_value_binding_replay_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+  VALUE_ARTIFACT_ID: '10160534929'
+  VALUE_ZIP_SHA256: '374bb79363e5b0881d7409bc46c2d7da47f7dd69cbdfa1240bad2f47ff0cfdb9'
+  VALUE_REPORT_SHA256: '35d1ae0ed6fd576a350ab26900144583a69678597a4a84e2409ad61aaebb5e76'
+  FORMULA_SOURCE_ARTIFACT_ID: '10161067108'
+  FORMULA_SOURCE_ZIP_SHA256: '678cd66d730b67a5ae3e2e008baf20c3a7a222bff709e44d8596c22e9065df35'
+  FORMULA_SOURCE_REPORT_SHA256: '13bb99f47dd52ae003b695015062514db3f581371ffad060db8340b9ec52b6d6'
+
+jobs:
+  special-value-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Validate source-backed special-value implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_vector_special_value_semantics_v1.py \
+            tools/d1_gcn_vector_special_value_binding_v1.py \
+            tools/d1_gcn_candidate_vector_special_value_binding_replay_v1.py \
+            tools/d1_gcn_vector_formula_source_binding_v1.py \
+            tools/d1_gcn_vector_formula_lane_binding_v1.py \
+            tools/d1_gcn_vector_formula_semantics_v1.py \
+            tools/d1_gcn_vector_bit_exact_eval_v1.py \
+            tools/d1_condition_symbolic_dataflow_v1.py \
+            tools/d1_gcn_sgpr_ssa_v1.py
+          python tools/d1_gcn_vector_special_value_semantics_v1.py > /tmp/special_semantics.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/special_semantics.json'))
+          assert d['status']=='D1_GCN_VECTOR_SPECIAL_VALUE_SEMANTICS_SOURCE_CLOSED',d
+          assert d['opcode_count']==3,d
+          assert set(d['opcodes'])=={'v_add_i32','v_cndmask_b32','tbuffer_load_format_xyzw'},d
+          assert d['shader_expression_semantic_promotions']==0,d
+          PY
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact frozen LocalShader prerequisites
+        run: |
+          set -euo pipefail
+          mkdir -p source/raw source/value source/formula_source out bound
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test -s source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_CANDIDATE_MANIFEST_V1.json
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VALUE_ARTIFACT_ID}/zip" -o source/value.zip
+          echo "$VALUE_ZIP_SHA256  source/value.zip" | sha256sum --check --strict
+          unzip -q source/value.zip -d source/value
+          echo "$VALUE_REPORT_SHA256  source/value/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json" | sha256sum --check --strict
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FORMULA_SOURCE_ARTIFACT_ID}/zip" -o source/formula_source.zip
+          echo "$FORMULA_SOURCE_ZIP_SHA256  source/formula_source.zip" | sha256sum --check --strict
+          unzip -q source/formula_source.zip -d source/formula_source
+          echo "$FORMULA_SOURCE_REPORT_SHA256  source/formula_source/out/D1_GCN_LOCALSHADER_VECTOR_FORMULA_SOURCE_BINDING_V1.json" | sha256sum --check --strict
+
+      - name: Bind every LocalShader non-formula VGPR result
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_vector_special_value_binding_replay_v1.py \
+            --candidate-manifest source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_CANDIDATE_MANIFEST_V1.json \
+            --vector-frontier source/value/D1_GCN_LOCALSHADER_VECTOR_VALUE_FRONTIER_V1.json \
+            --ir-dir source/raw/work/ir \
+            --binding-dir bound \
+            -o out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json \
+            | tee out/special_value_binding_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e; echo "$rc" > out/replay_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json
+
+      - name: Require complete exact non-formula value partition
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          d=json.load(open('out/D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_V1.json')); c=d['coverage']
+          print('STATUS',d['status']); print('COVERAGE',json.dumps(c,sort_keys=True)); print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_VECTOR_SPECIAL_VALUE_BINDING_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65 and c['exact_special_value_bound_unique_gcn_programs']==65,c
+          assert c['exact_instructions_replayed']==10858,c
+          assert c['vgpr_def_instruction_count']==8651 and c['vgpr_result_component_count']==9806,c
+          assert c['formula_instruction_count']==7981 and c['formula_result_component_count']==7981,c
+          assert c['special_instruction_count']==670 and c['special_result_component_count']==1825,c
+          assert c['computational_special_instruction_count']==285 and c['computational_special_result_component_count']==285,c
+          assert c['typed_buffer_opaque_instruction_count']==385 and c['typed_buffer_opaque_result_component_count']==1540,c
+          assert c['carry_mask_alias_count']==234 and c['predicate_mask_alias_count']==51,c
+          assert c['source_backed_computational_result_component_count']==8266,c
+          assert c['architecturally_classified_vgpr_result_component_count']==9806,c
+          assert c['generic_opaque_nonformula_result_component_count']==0,c
+          assert c['opcode_instruction_counts']=={'tbuffer_load_format_xyzw':385,'v_add_i32':234,'v_cndmask_b32':51},c
+          assert c['opcode_result_component_counts']=={'tbuffer_load_format_xyzw':1540,'v_add_i32':234,'v_cndmask_b32':51},c
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert len(list(pathlib.Path('bound').glob('*.json')))==65
+          assert d['semantic_boundary']['candidate_stage_affects_special_value_analyzer'] is False
+          print('D1_GCN_LOCALSHADER_VECTOR_SPECIAL_VALUE_BINDING_EXACT')
+          PY
+          test "$(cat out/replay_exit_code.txt)" -eq 0
+          find out bound -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-VECTOR-SPECIAL-VALUE-BINDING-V1
+          path: |
+            out/
+            bound/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
