@@ -1,0 +1,42 @@
+{
+  "schema": "d1_gcn_material_localshader_corpus_checkpoint/v1",
+  "status": "D1_GCN_MATERIAL_LOCALSHADER_CORPUS_EXACT",
+  "date_utc": "2026-09-09",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34416733575,
+    "source_commit": "b5c1d767884c0e262232c7b23b90efc28423602e",
+    "artifact_id": 10129441932,
+    "artifact_name": "D1-GCN-MATERIAL-LOCALSHADER-CORPUS-V1",
+    "artifact_digest_sha256": "8db78b9dc60d20638b36d17107cd1c5a424fd7468f3e885098fcd97373d64280",
+    "report_sha256": "c33579c8b876423620d97c626dab821959f496b71da495e35587b360c021bbe1",
+    "exact_binaries_tar_sha256": "56de210523f9d0a64790e698c52b8911260837f8f12628d75e34084814c61e25"
+  },
+  "implementation": {
+    "extractor_commit": "767235f02ac4420c584035a5247c5542b969ed33",
+    "extractor_blob_sha": "bd980cd0e520d43ba95b4b524824ea0320daee20",
+    "workflow_commit": "b5c1d767884c0e262232c7b23b90efc28423602e",
+    "workflow_blob_sha": "4ead70d35c27934d5fba01a4b69fb9fa08e35605"
+  },
+  "coverage": {
+    "localshader_wrapper_count": 177,
+    "localshader_native_reference_count": 177,
+    "unique_localshader_gcn_program_count": 65,
+    "material_occurrence_count": 3967,
+    "input_usage_slot_count_histogram": {"3": 80, "4": 57, "6": 40},
+    "existing_ps_vs_ds_unique_gcn_program_count": 26464,
+    "localshader_gcn_overlap_with_existing_ps_vs_ds": 0,
+    "combined_known_unique_gcn_program_count": 26529,
+    "combined_known_shader_wrapper_count": 38069,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "wrapper_stage": "GLOBAL_EXACT_FOR_MATERIAL_REFERENCED_32_11_POPULATION",
+    "gcn_code_identity": "EXACT",
+    "localshader_as_vertexshader": "FORBIDDEN",
+    "localshader_to_hullshader_ownership": "WITHHELD",
+    "domainshader_pipeline_ownership": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "violations": []
+}
