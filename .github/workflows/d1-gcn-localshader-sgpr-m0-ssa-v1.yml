@@ -1,0 +1,110 @@
+name: D1 GCN LocalShader SGPR M0 SSA v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-sgpr-m0-ssa-v1.yml'
+      - 'tools/d1_gcn_candidate_sgpr_m0_ssa_replay_v1.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  STRUCTURAL_ARTIFACT_ID: '10154740845'
+  STRUCTURAL_ZIP_SHA256: '6849dd6088ae5782d681b7a83df8c28fa63632a49f6c9ed1508bd017cc5c9034'
+  STRUCTURAL_REPORT_SHA256: '1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d'
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  RAW_REPORT_SHA256: 'd6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3'
+
+jobs:
+  sgpr-m0-ssa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Pin universal scalar SSA implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_candidate_sgpr_m0_ssa_replay_v1.py \
+            tools/d1_gcn_sgpr_ssa_v1.py \
+            tools/d1_gcn_sgpr_machine_semantics_v1.py \
+            tools/d1_gcn_m0_implicit_frontier_v1.py \
+            tools/d1_gcn_exec_symbolic_dataflow_v1.py
+          python tools/d1_gcn_sgpr_machine_semantics_v1.py >/tmp/sgpr_machine.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/sgpr_machine.json'))
+          assert d['status']=='D1_GCN_SGPR_MACHINE_SEMANTICS_SOURCE_CLOSED'
+          assert len(d['observed_sgpr_def_opcodes'])==31
+          assert d['shader_expression_semantic_promotions']==0
+          print('D1_SGPR_MACHINE_SOURCE_CLOSED')
+          PY
+          git diff --exit-code
+          git status --short
+      - name: Recover exact source-closed structure and raw IR
+        run: |
+          set -euo pipefail
+          mkdir -p source/struct source/raw out ssa
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STRUCTURAL_ARTIFACT_ID}/zip" -o source/struct.zip
+          echo "$STRUCTURAL_ZIP_SHA256  source/struct.zip" | sha256sum --check --strict
+          unzip -q source/struct.zip -d source/struct
+          echo "$STRUCTURAL_REPORT_SHA256  source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          echo "$RAW_REPORT_SHA256  source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json" | sha256sum --check --strict
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+      - name: Replay through unchanged universal SGPR M0 SSA
+        run: |
+          set -euo pipefail
+          set +e
+          python tools/d1_gcn_candidate_sgpr_m0_ssa_replay_v1.py \
+            --structural-source-closure source/struct/out/D1_GCN_LOCALSHADER_STRUCTURAL_SOURCE_CLOSED_V1.json \
+            --raw-replay source/raw/out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json \
+            --ir-dir source/raw/work/ir --ssa-dir ssa \
+            -o out/D1_GCN_LOCALSHADER_SGPR_M0_SSA_V1.json | tee out/sgpr_m0_ssa_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e; echo "$rc" > out/replay_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+      - name: Fail closed and freeze scalar SSA evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          d=json.load(open('out/D1_GCN_LOCALSHADER_SGPR_M0_SSA_V1.json')); c=d['coverage']
+          print('STATUS',d['status']); print('COVERAGE',json.dumps(c,sort_keys=True)); print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_CANDIDATE_SGPR_M0_SSA_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65 and c['exact_sgpr_m0_ssa_unique_gcn_programs']==65,c
+          assert c['stage_program_counts']=={'LS':65},c
+          assert c['exact_instructions_replayed']==10858,c
+          assert c['whole_scalar_write_entry_count']+c['exec_gated_mask_half_write_entry_count']==c['sgpr_def_entry_count'],c
+          assert c['scalar_result_component_node_count']==c['sgpr_def_entry_count'],c
+          assert c['implicit_m0_use_opcode_counts'].get('ds_write2_b32')==641,c['implicit_m0_use_opcode_counts']
+          assert c['shader_expression_semantic_promotions']==0,c
+          assert len(list(pathlib.Path('ssa').glob('*.json')))==65
+          assert d['semantic_boundary']['candidate_stage_affects_scalar_analyzer'] is False
+          print('D1_GCN_LOCALSHADER_SGPR_M0_SSA_EXACT')
+          PY
+          test "$(cat out/replay_exit_code.txt)" -eq 0
+          find out ssa -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-SGPR-M0-SSA-V1
+          path: |
+            out/
+            ssa/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
