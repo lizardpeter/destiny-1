@@ -1,0 +1,64 @@
+{
+  "schema": "d1_gcn_localshader_vgpr_lane_ssa_checkpoint/v1",
+  "status": "D1_GCN_LOCALSHADER_VGPR_LANE_SSA_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34484394329,
+    "source_commit": "6e66bd2399a58e45102dec711c0bf70d2a36c86a",
+    "artifact_id": 10154960432,
+    "artifact_name": "D1-GCN-LOCALSHADER-VGPR-LANE-SSA-V1",
+    "artifact_digest_sha256": "3e189eb5fe23215f941927d890cd064e58c475b6a36c21107af47fe84cae0c2c",
+    "report_sha256": "8313cff99fb58f022f670b2bd9bd62b0ce5a2200ec97dcda879ca32d93a05a19",
+    "sha256s_sha256": "158e861a1b387d7d41310779413a80fc9df5b3eab439318732ea97a6a4da953d"
+  },
+  "implementation": {
+    "candidate_replay_commit": "ddf6b8304b46ccf59dfeaab380c37310dc530524",
+    "workflow_commit": "6e66bd2399a58e45102dec711c0bf70d2a36c86a",
+    "unchanged_analyzer": "tools/d1_gcn_vgpr_lane_ssa_v1.py",
+    "unchanged_machine_registry": "tools/d1_gcn_vgpr_machine_semantics_v1.py"
+  },
+  "input": {
+    "structural_source_closed_artifact_id": 10154740845,
+    "structural_source_closed_report_sha256": "1a9b5be8139d310d577dec1249d0324e8b4b7a0ddedf04ba476a5e979420a71d",
+    "raw_structural_artifact_id": 10132369372,
+    "raw_structural_report_sha256": "d6bbaa6f51866e01b617832cf421611e9f30d5c87d602ae2a51d8428304c05d3"
+  },
+  "coverage": {
+    "unique_localshader_gcn_programs": 65,
+    "exact_lane_ssa_programs": 65,
+    "stage_program_counts": {"LS": 65},
+    "exact_instructions_replayed": 10858,
+    "effect_aware_basic_block_count": 130,
+    "concrete_cfg_edge_count": 0,
+    "vgpr_ssa_node_count": 38568,
+    "tracked_vgpr_instances": 3227,
+    "max_vgpr_index": 79,
+    "program_entry_vgpr_node_count": 3227,
+    "vgpr_cfg_phi_node_count": 0,
+    "unresolved_control_entry_block_count": 65,
+    "unresolved_control_entry_vgpr_node_count": 3227,
+    "non_vgpr_source_leaf_count": 3851,
+    "vgpr_def_instruction_count": 8651,
+    "vgpr_def_entry_count": 9806,
+    "vgpr_use_instruction_count": 8959,
+    "vgpr_use_entry_count": 18697,
+    "exec_gated_write_node_count": 9806,
+    "single_lane_write_node_count": 0,
+    "vgpr_result_component_node_count": 9806,
+    "dynamic_vgpr_read_boundary_count": 0,
+    "v_mul_lo_i32_write_instruction_count": 65,
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "candidate_stage_affects_lane_analyzer": false,
+    "localshader_specific_lane_model": false,
+    "physical_vgpr_lane_ssa": "EXACT",
+    "inactive_lane_preservation": "EXACT",
+    "non_vgpr_sources": "INSTRUCTION_LOCAL_SYMBOLIC_LEAVES",
+    "ordinary_sgpr_value_ssa": "NEXT_GATE",
+    "opcode_result_value_semantics": "WITHHELD",
+    "shader_expression_semantics": "WITHHELD"
+  },
+  "violations": []
+}
