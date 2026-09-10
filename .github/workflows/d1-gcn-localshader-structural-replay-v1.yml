@@ -1,0 +1,216 @@
+name: D1 GCN LocalShader structural replay v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-gcn-localshader-structural-replay-v1.yml'
+      - 'tools/d1_gcn_structural_candidate_compare_v1.py'
+      - 'tools/d1_gcn_cfg_ir_v2.py'
+      - 'tools/d1_gcn_shader_corpus_structural_census.py'
+      - 'tools/d1_gcn_shader_corpus_structural_census_v3.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LOCALSHADER_ARTIFACT_ID: '10129441932'
+  LOCALSHADER_ZIP_SHA256: '8db78b9dc60d20638b36d17107cd1c5a424fd7468f3e885098fcd97373d64280'
+  LOCALSHADER_REPORT_SHA256: 'c33579c8b876423620d97c626dab821959f496b71da495e35587b360c021bbe1'
+  LOCALSHADER_BINARIES_SHA256: '56de210523f9d0a64790e698c52b8911260837f8f12628d75e34084814c61e25'
+  BASELINE_ARTIFACT_ID: '10087524653'
+  BASELINE_ZIP_SHA256: 'd806e55c856546df11416e0677989a34f5b454189d10f713da38b93501ec50fb'
+  BASELINE_CENSUS_SHA256: '5477f5a4194303b266dabdb22b10f050001011b1f61708c18877736273f800ed'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  structural-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Pin and self-test universal implementation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_structural_candidate_compare_v1.py \
+            tools/d1_gcn_cfg_ir_v2.py \
+            tools/d1_gcn_shader_corpus_structural_census.py \
+            tools/d1_gcn_shader_corpus_structural_census_v3.py
+          python tools/d1_gcn_structural_candidate_compare_v1.py --self-test
+          python tools/d1_gcn_cfg_ir_parse_accounting_selftest.py
+          git diff --exit-code
+          git status --short
+
+      - name: Recover exact frozen LocalShader denominator
+        run: |
+          set -euo pipefail
+          mkdir -p source/localshader source/exact source/baseline out work
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LOCALSHADER_ARTIFACT_ID}/zip" \
+            -o source/localshader.zip
+          echo "$LOCALSHADER_ZIP_SHA256  source/localshader.zip" | sha256sum --check --strict
+          unzip -q source/localshader.zip -d source/localshader
+          echo "$LOCALSHADER_REPORT_SHA256  source/localshader/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json" | sha256sum --check --strict
+          echo "$LOCALSHADER_BINARIES_SHA256  source/localshader/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar" | sha256sum --check --strict
+          tar -xf source/localshader/D1_GCN_MATERIAL_LOCALSHADER_EXACT_BINARIES.tar -C source/exact
+          test "$(find source/exact/gcn -maxdepth 1 -type f -name '*.bin' | wc -l)" -eq 65
+
+      - name: Recover exact frozen 26464-program structural baseline
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASELINE_ARTIFACT_ID}/zip" \
+            -o source/baseline.zip
+          echo "$BASELINE_ZIP_SHA256  source/baseline.zip" | sha256sum --check --strict
+          unzip -q source/baseline.zip -d source/baseline
+          baseline='source/baseline/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json'
+          echo "$BASELINE_CENSUS_SHA256  $baseline" | sha256sum --check --strict
+          python - <<'PY'
+          import json
+          p='source/baseline/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json'
+          d=json.load(open(p)); c=d['census']; v=d['coverage']
+          assert d['status']=='D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_COMPLETE'
+          assert not d['violations']
+          assert v['unique_exact_gcn_program_total']==26464,v
+          assert v['structurally_complete_unique_gcn_programs']==26464,v
+          assert c['instruction_count']==4896165,c
+          assert c['opcode_count']==124,c
+          assert c['structural_form_count']==638,c
+          print('D1_FROZEN_STRUCTURAL_BASELINE_EXACT')
+          PY
+
+      - name: Project LocalShader provenance into stage-neutral exact candidate manifest
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          src=json.load(open('source/localshader/D1_GCN_MATERIAL_LOCALSHADER_CORPUS_V1.json'))
+          assert src['schema']=='d1_gcn_material_localshader_corpus/v1'
+          assert src['status']=='D1_GCN_MATERIAL_LOCALSHADER_CORPUS_EXACT'
+          assert not src['violations']
+          assert src['coverage']['unique_localshader_gcn_program_count']==65
+          programs=[]
+          for p in src['unique_gcn_programs']:
+              assert p['stage']=='LS' and p['orb_stage']=='LocalShader'
+              members=p['members']
+              wrappers=sorted({str(x['wrapper']).upper() for x in members})
+              native=sorted({str(x['native_program_reference']).upper() for x in members})
+              programs.append({
+                  'gcn_sha256':p['gcn_sha256'].lower(),
+                  'gcn_bytes':int(p['gcn_bytes']),
+                  'binary_file':p['gcn_file'],
+                  'representative':wrappers[0],
+                  'stages':['LS'],
+                  'provenance':{
+                      'orb_stage':'LocalShader',
+                      'wrappers':wrappers,
+                      'native_program_references':native,
+                      'material_occurrence_count':int(p['material_occurrence_count']),
+                      'members':members,
+                  },
+              })
+          programs.sort(key=lambda x:x['gcn_sha256'])
+          assert len(programs)==65 and len({x['gcn_sha256'] for x in programs})==65
+          out={
+              'schema':'d1_gcn_structural_candidate_manifest/v1',
+              'status':'D1_GCN_STRUCTURAL_CANDIDATE_MANIFEST_EXACT',
+              'source':{
+                  'kind':'D1 material-referenced OrbShdr LocalShader',
+                  'artifact_id':10129441932,
+                  'report_sha256':'c33579c8b876423620d97c626dab821959f496b71da495e35587b360c021bbe1',
+                  'exact_binaries_tar_sha256':'56de210523f9d0a64790e698c52b8911260837f8f12628d75e34084814c61e25',
+              },
+              'programs':programs,
+              'violations':[],
+              'policy':'Stage/provenance admission only. No LocalShader-specific GFX7 decoding or semantic promotion is permitted.',
+          }
+          json.dump(out,open('out/D1_GCN_LOCALSHADER_STRUCTURAL_CANDIDATE_MANIFEST_V1.json','w'),indent=2)
+          open('out/D1_GCN_LOCALSHADER_STRUCTURAL_CANDIDATE_MANIFEST_V1.json','a').write('\n')
+          print('D1_LOCALSHADER_STRUCTURAL_CANDIDATE_MANIFEST_EXACT',len(programs))
+          PY
+
+      - name: Build exact pinned CLRX GFX700 disassembler
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build \
+            -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON \
+            -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          printf '%s\n' "$exe" > out/CLRXDISASM_PATH.txt
+
+      - name: Replay all 65 through unchanged universal Structural IR and compare architecture
+        run: |
+          set -euo pipefail
+          exe="$(cat out/CLRXDISASM_PATH.txt)"
+          set +e
+          python tools/d1_gcn_structural_candidate_compare_v1.py \
+            --manifest out/D1_GCN_LOCALSHADER_STRUCTURAL_CANDIDATE_MANIFEST_V1.json \
+            --program-dir source/exact \
+            --baseline-census source/baseline/out/D1_GCN_SHADER_CORPUS_STRUCTURAL_CENSUS_PS_VS_DS.json \
+            --clrx "$exe" \
+            --work-dir work \
+            -o out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json \
+            | tee out/localshader_structural_replay_stdout.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > out/replay_exit_code.txt
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          test -s out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json
+
+      - name: Fail closed and freeze replay evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_LOCALSHADER_STRUCTURAL_REPLAY_V1.json'))
+          c=d['coverage']; a=d['architecture_comparison']
+          print('STATUS',d['status'])
+          print('COVERAGE',json.dumps(c,sort_keys=True))
+          print('ARCHITECTURE',json.dumps({k:v for k,v in a.items() if k not in ('novel_cfg_signature_combinations','unsupported_structural_forms')},sort_keys=True))
+          print('VIOLATIONS',len(d['violations']))
+          for x in d['violations'][:100]: print('VIOLATION',x)
+          assert d['status']=='D1_GCN_STRUCTURAL_CANDIDATE_ARCHITECTURE_REPLAY_EXACT',d['violations'][:50]
+          assert not d['violations']
+          assert c['planned_unique_gcn_programs']==65,c
+          assert c['exact_parse_accounted_unique_gcn_programs']==65,c
+          assert a['baseline_opcode_count']==124,a
+          assert a['baseline_structural_form_count']==638,a
+          assert a['unsupported_opcode_count']==0,a
+          assert a['unsupported_structural_form_count']==0,a
+          assert a['unsupported_encoding_widths']==[],a
+          assert a['unsupported_classification_rules']==[],a
+          assert a['novel_exact_encodings_are_architecture_violation'] is False
+          assert a['novel_cfg_signature_combinations_are_architecture_violation'] is False
+          print('D1_GCN_LOCALSHADER_UNIVERSAL_STRUCTURAL_REPLAY_EXACT')
+          PY
+          test "$(cat out/replay_exit_code.txt)" -eq 0
+          find out work -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-LOCALSHADER-STRUCTURAL-REPLAY-V1
+          path: |
+            out/
+            work/ir/
+            work/disasm/
+            work/stderr/
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: error
