@@ -1,0 +1,53 @@
+{
+  "schema": "d1_gcn_localshader_vector_formula_source_binding_checkpoint/v1",
+  "status": "D1_GCN_CANDIDATE_VECTOR_FORMULA_SOURCE_BINDING_REPLAY_EXACT",
+  "date_utc": "2026-09-10",
+  "branch": "d1-crota-source-semantics-v1",
+  "workflow": {
+    "run_id": 34499107456,
+    "source_commit": "9f1b15044e15d9c1b3c571251015f9b28abb1a66",
+    "artifact_id": 10161067108,
+    "artifact_name": "D1-GCN-LOCALSHADER-VECTOR-FORMULA-SOURCE-BINDING-V1",
+    "artifact_digest_sha256": "678cd66d730b67a5ae3e2e008baf20c3a7a222bff709e44d8596c22e9065df35",
+    "report_sha256": "13bb99f47dd52ae003b695015062514db3f581371ffad060db8340b9ec52b6d6",
+    "stdout_sha256": "3bb550a47fec0de4127d344abc4369fe2d0adcfd84620047f9518638367f84f6"
+  },
+  "implementation": {
+    "candidate_source_replay_commit": "61a4891a3117992d817d19a3e299fc9287ad8892",
+    "workflow_commit": "9f1b15044e15d9c1b3c571251015f9b28abb1a66",
+    "universal_formula_source_analyzer_changed": false
+  },
+  "coverage": {
+    "planned_unique_gcn_programs": 65,
+    "exact_source_bound_unique_gcn_programs": 65,
+    "exact_instructions_replayed": 10858,
+    "formula_instruction_count": 7981,
+    "formula_source_slot_count": 15833,
+    "exact_formula_source_binding_count": 15833,
+    "vgpr_source_slot_count": 13281,
+    "sgpr_source_slot_count": 2239,
+    "literal_source_slot_count": 313,
+    "sgpr_placeholder_replacement_count": 2239,
+    "formula_source_placeholder_leak_count": 0,
+    "v_mul_lo_i32_sgpr_source_binding_count": 65,
+    "integrated_vector_node_count": 84083,
+    "scalar_ssa_node_count": 7462,
+    "scalar_state_kind_counts": {"WHOLE_SCALAR_WRITE": 2239},
+    "shader_expression_semantic_promotions": 0
+  },
+  "semantic_boundary": {
+    "localshader_specific_formula_source_decoder": false,
+    "formula_result_lane_binding": "EXACT_PREREQUISITE",
+    "vgpr_formula_source_state_identity": "EXACT",
+    "sgpr_formula_source_state_identity": "EXACT_CROSS_GRAPH_REFERENCE",
+    "literal_formula_source_identity": "EXACT",
+    "instruction_local_sgpr_formula_source_placeholders": "ZERO_REMAINING",
+    "scalar_memory_values": "OPAQUE_RESOURCE_ADDRESS_WITHHELD",
+    "resource_lds_interpolation_values": "NEXT_ARCHITECTURAL_VALUE_FRONTIER",
+    "shader_expression_semantics": "WITHHELD",
+    "material_semantics": "WITHHELD",
+    "shader_expression_semantic_promotions": 0
+  },
+  "violations": [],
+  "policy": "All 15,833 explicit LocalShader formula sources bind to existing architectural VGPR or SGPR states or exact encoded literals through the unchanged universal source binder. All 2,239 scalar placeholders are replaced by exact cross-graph SGPR-SSA references, including the 65 newly observed V_MUL_LO_I32 SGPR sources. No placeholder leaks remain and no shader or material meaning is inferred."
+}
