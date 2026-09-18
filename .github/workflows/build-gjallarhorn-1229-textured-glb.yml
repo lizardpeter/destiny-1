@@ -56,8 +56,10 @@ jobs:
             'ps4_investment_assets_0144_5.pkg':335872,
           }
           d=json.load(open('reports/0144_extract.json'))
-          got={Path(x['name']).name:int(x['size']) for x in d.get('extracted',[])}
+          got={Path(name).name:int(row['size']) for name,row in d.get('members',{}).items()}
           assert got==expected,(got,expected)
+          assert all(Path(row['output']).is_file() for row in d['members'].values()),d
+          assert all(len(row['sha256'])==64 for row in d['members'].values()),d
           print('GJALLARHORN_0144_DEPENDENCY_FAMILY_RECOVERED',got)
           PY
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x3FEBBBE00 \
