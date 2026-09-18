@@ -2,13 +2,18 @@
   "schema": "d1_api10_session_checkpoint/v1",
   "status": "DURABLE_RESUMABLE",
   "branch": "d1-crota-source-semantics-v1",
-  "checkpoint_after_commit": "276d8d2a129980a677772db8fc5bca99dde699fa",
+  "checkpoint_after_commit": "b4141e6a2c0badb217f460b8c02d722096445fdb",
   "proven_this_session": [
     "Exact Xur native VS GCN families with 1, 2, and 4 influences consume ImmConstBuffer API10 from user-data start SGPR 8 / descriptor s[8:11] as consecutive float4 real+dual quaternion record pairs.",
     "Exact Vex VS GCN e6f18138... consumes the same API10 binding but selects three consecutive float4 rows for a rigid transform; API10 record structure is therefore heterogeneous.",
     "Actions run 35364289395 exposed literal escaped newline sequences accidentally committed into both the API10 regression test and validator source.",
     "Commit 4dfdb8771ef3b019afa62842a4fe6a294e3fe197 repaired the regression test; commit 276d8d2a129980a677772db8fc5bca99dde699fa repaired validator syntax without weakening fail-closed gates.",
-    "Actions run 35365331694 / job 105666278638 completed successfully: Python compile, validator regression self-test, and blocker semantic-gate assertions all passed."
+    "Actions run 35365331694 / job 105666278638 completed successfully: Python compile, validator regression self-test, and blocker semantic-gate assertions all passed.",
+    "Added a fail-closed per-GCN API10 consumer-classification gate and regression tests; exact roles may be recorded only with exact native/runtime evidence and all writer/allocation/universal-schema/engine-name/semantic fields withheld.",
+    "Checkpointed four exact classified API10 GCN consumers out of the frozen 39-program denominator: three Xur DQ layouts plus Vex three-row rigid layout; the remaining 35 are not inferred.",
+    "Repository availability audit showed checked-in semantic handlers are insufficient to classify the remaining frozen API10 census; reconstruction requires the exact frozen census/input bytes or primary runtime evidence.",
+    "Persisted a frozen-producer reconstruction gate for artifact 10539900120 (ZIP SHA-256 b64ddfd28937c6d5adddf8464817da6f836fd32c1b3e20e1b51841ce3d185897) and input artifact IDs 10172731401 / 10529319011.",
+    "Pivoted after the API10 evidence blocker and formalized the already-supported PS4 subtype 32:7 material role: 122 header/payload pairs, 88 technique refs, OrbShdr API0 plus exact GCN loads prove material Vector4/b0 storage for the validated ROI path; official D1 Tiger class name remains WITHHELD."
   ],
   "ci": {
     "previous_failed_run_id": 35364289395,
@@ -32,6 +37,7 @@
     "engine semantic",
     "claim that every member of the exact 39-program API10 set has a transform/palette role"
   ],
-  "next_hard_gate": "Primary API10 runtime writer/descriptor/backing capture remains unavailable in repository evidence. Expand exact consumer-role classification over additional members of the 39-program set when exact disassemblies are available; otherwise pivot to another source-closed Destiny closure rather than inferring runtime semantics.",
-  "resume_rule": "Read branch head first and preserve newer concurrent Destiny commits; never reset to this checkpoint if head advanced."
+  "next_hard_gate": "API10: recover exact frozen input/census bytes or primary runtime writer+descriptor+backing capture; otherwise classify only programs with exact recovered native GCN. Parallel source-closed frontier: recover official D1 Tiger name for subtype 32:7 and audit non-material uses, or continue texture 65:1/5:1 official-role closure.",
+  "resume_rule": "Read branch head first and preserve newer concurrent Destiny commits; never reset to this checkpoint if head advanced.",
+  "ci_observation": "Fresh workflows were committed for API10 classification, repository-evidence audit, and subtype7 material-b0 proof. GitHub connector had not surfaced workflow-run/status records when checked, so no green claim is made."
 }
