@@ -1,0 +1,40 @@
+name: D1 API10 structural role diversity
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_structural_role_diversity_proof.py'
+      - 'tools/d1_api10_dq_consumer_cross_family_proof.py'
+      - 'tools/d1_vex_80aae149_vs_semantic_proof.py'
+      - '.github/workflows/d1-api10-structural-role-diversity.yml'
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m py_compile tools/d1_api10_structural_role_diversity_proof.py
+          python tools/d1_api10_structural_role_diversity_proof.py --dq tools/d1_api10_dq_consumer_cross_family_proof.py --vex tools/d1_vex_80aae149_vs_semantic_proof.py -o out/D1_API10_STRUCTURAL_ROLE_DIVERSITY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_STRUCTURAL_ROLE_DIVERSITY.json'))
+          assert d['status']=='D1_API10_STRUCTURAL_ROLE_DIVERSITY_EXACT',d
+          assert len(d['proven_roles'])==2
+          assert d['common_binding']['descriptor_window']=='s[8:11]'
+          assert d['semantic_boundary']['universal_record_schema']=='WITHHELD'
+          assert d['semantic_boundary']['engine_semantic']=='WITHHELD'
+          PY
+          sha256sum out/D1_API10_STRUCTURAL_ROLE_DIVERSITY.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-STRUCTURAL-ROLE-DIVERSITY
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
