@@ -1,0 +1,53 @@
+name: D1 API10 rare LocalShader native dataflow proof
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_rare_localshader_dataflow_proof.py'
+      - '.github/workflows/d1-api10-rare-localshader-dataflow.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned retail proof artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fL             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10564682786/zip"             -o input/rare.zip
+          unzip -q input/rare.zip -d input/rare
+          echo "28014ea55c5a4c1204b72e50232d06f11f54ef25f63caa5d465b041bde6d3ba2  input/rare/reports/rare_localshader_probe.json" | sha256sum -c -
+          echo "657b604db09e5f399a1a1748f708f0f358e0e26419b1519a682a2c5d013b9106  input/rare/reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json" | sha256sum -c -
+          echo "3869d3c727099a9e1f910786917195b46be0d9b30261aa0e014773e803c72262  input/rare/disasm/80A08667.s" | sha256sum -c -
+          echo "212ffbbef3fac54a4432580e1dc3a89eab6546314f50b5a5f75898bdb5ae99d9  input/rare/disasm/80A0627B.s" | sha256sum -c -
+      - name: Prove exact native dataflow
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_api10_rare_localshader_dataflow_proof.py
+          python tools/d1_api10_rare_localshader_dataflow_proof.py             --probe input/rare/reports/rare_localshader_probe.json             --retail-proof input/rare/reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json             --three-disasm input/rare/disasm/80A08667.s             --six-disasm input/rare/disasm/80A0627B.s             -o out/D1_API10_RARE_LOCALSHADER_DATAFLOW.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_RARE_LOCALSHADER_DATAFLOW.json'))
+          assert d['status']=='D1_API10_RARE_LOCALSHADER_DATAFLOW_EXACT',d
+          assert [x['tbuffer_instruction_count'] for x in d['programs']]==[3,6],d
+          assert all(x['orbshdr_stage']=='LocalShader' for x in d['programs']),d
+          assert all(x['lds_output']['record_stride_bytes']==80 for x in d['programs']),d
+          assert all(x['lds_output']['unwritten_dword_slots']==[15,19] for x in d['programs']),d
+          assert all(v=='WITHHELD' for v in d['semantic_boundary'].values()),d
+          PY
+          sha256sum out/D1_API10_RARE_LOCALSHADER_DATAFLOW.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-RARE-LOCALSHADER-DATAFLOW
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
