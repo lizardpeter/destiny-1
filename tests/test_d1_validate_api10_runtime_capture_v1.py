@@ -13,7 +13,8 @@ def run(doc):
 raw=b"\x00\x01\x02\x03"
 sample={
  "gcn_sha256":"0"*64,
- "membership_proof":"SOURCE_CLOSED_39_MEMBER_SET",\n "consumer_record_structure":"CAPTURE_SPECIFIC_WITHHELD_NAME",
+ "membership_proof":"SOURCE_CLOSED_39_MEMBER_SET",
+ "consumer_record_structure":"CAPTURE_SPECIFIC_WITHHELD_NAME",
  "descriptor_window":"s[12:15]",
  "tbuffer_instruction_count":8,
  "descriptor_dwords":[0,1,2,3],
@@ -29,7 +30,15 @@ bad=json.loads(json.dumps(base)); bad["engine_semantic"]="guessed_name"
 r=run(bad)
 assert r.returncode!=0 and "engine semantic must remain WITHHELD" in (r.stdout+r.stderr),(r.stdout,r.stderr)
 
-bad=json.loads(json.dumps(base)); bad["universal_record_schema"]="DQ_PAIR"\nr=run(bad)\nassert r.returncode!=0 and "universal record schema must remain WITHHELD" in (r.stdout+r.stderr),(r.stdout,r.stderr)\n\nbad=json.loads(json.dumps(base)); bad["samples"][0]["consumer_record_structure"]="UNIVERSAL_API10"\nr=run(bad)\nassert r.returncode!=0 and "consumer record structure" in (r.stdout+r.stderr),(r.stdout,r.stderr)\n\nbad=json.loads(json.dumps(base)); bad["samples"][0]["descriptor_dwords"]=[0,1,2]
+bad=json.loads(json.dumps(base)); bad["universal_record_schema"]="DQ_PAIR"
+r=run(bad)
+assert r.returncode!=0 and "universal record schema must remain WITHHELD" in (r.stdout+r.stderr),(r.stdout,r.stderr)
+
+bad=json.loads(json.dumps(base)); bad["samples"][0]["consumer_record_structure"]="UNIVERSAL_API10"
+r=run(bad)
+assert r.returncode!=0 and "consumer record structure" in (r.stdout+r.stderr),(r.stdout,r.stderr)
+
+bad=json.loads(json.dumps(base)); bad["samples"][0]["descriptor_dwords"]=[0,1,2]
 r=run(bad)
 assert r.returncode!=0 and "descriptor dwords" in (r.stdout+r.stderr),(r.stdout,r.stderr)
 
