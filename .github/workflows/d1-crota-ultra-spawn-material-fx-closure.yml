@@ -5,6 +5,10 @@ on:
   push:
     paths:
       - '.github/workflows/d1-crota-ultra-spawn-material-fx-closure.yml'
+      - 'tools/d1_remote_activity_material_dependency_closure.py'
+      - 'tools/d1_remote_activity_texture_export.py'
+      - 'tools/d1_texture_backing_chain_v1.py'
+      - 'tools/d1_texture_export.py'
 
 permissions:
   contents: read
