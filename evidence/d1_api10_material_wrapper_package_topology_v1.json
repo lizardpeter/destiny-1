@@ -1,0 +1,53 @@
+{
+  "schema": "d1_api10_material_wrapper_package_topology/v1",
+  "status": "D1_API10_MATERIAL_WRAPPER_PACKAGE_TOPOLOGY_EXACT",
+  "provenance": {
+    "material_chain_artifact_id": 10529319011,
+    "material_chain_json_sha256": "23415246337abdbb1543447e0123fa809027e3b9e94d5efee12a1476e7a2a113"
+  },
+  "coverage": {
+    "material_occurrence_count": 3386,
+    "same_package_occurrences": 239,
+    "cross_package_occurrences": 3147,
+    "unique_material_to_wrapper_package_pairs": 129,
+    "unique_wrapper_package_count": 16,
+    "wrapper_native_program_package_mismatch_count": 0
+  },
+  "wrapper_package_ids": [
+    "00E2",
+    "00EE",
+    "00EF",
+    "0101",
+    "0103",
+    "0104",
+    "011E",
+    "021F",
+    "025C",
+    "0289",
+    "03F3",
+    "03F5",
+    "03FD",
+    "072B",
+    "0771",
+    "0773"
+  ],
+  "descriptor_window_relation_counts": {
+    "s[12:15]": {"CROSS_PACKAGE": 695, "SAME_PACKAGE": 124},
+    "s[8:11]": {"CROSS_PACKAGE": 2452, "SAME_PACKAGE": 115}
+  },
+  "tbuffer_family_relation_counts": {
+    "3": {"CROSS_PACKAGE": 13, "SAME_PACKAGE": 1},
+    "6": {"CROSS_PACKAGE": 1, "SAME_PACKAGE": 2},
+    "8": {"CROSS_PACKAGE": 1248, "SAME_PACKAGE": 72},
+    "12": {"CROSS_PACKAGE": 1885, "SAME_PACKAGE": 164}
+  },
+  "recovery_rule": "Resolve LocalShader wrapper and native-program bytes from their FileHash-derived logical package family; material physical/logical package co-location is not a valid recovery assumption.",
+  "semantic_boundary": {
+    "filehash_package_routing": "EXACT",
+    "wrapper_native_same_package": "EXACT",
+    "material_package_semantic_ownership": "WITHHELD",
+    "wrapper_package_semantic_ownership": "WITHHELD",
+    "runtime_binding_owner": "WITHHELD",
+    "engine_semantic": "WITHHELD"
+  }
+}
