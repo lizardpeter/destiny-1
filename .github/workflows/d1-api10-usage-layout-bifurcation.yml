@@ -1,0 +1,43 @@
+name: D1 API10 usage-layout bifurcation proof
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_verify_api10_usage_layout_bifurcation_v1.py'
+      - 'evidence/d1_api10_usage_layout_bifurcation_v1.json'
+      - 'evidence/d1_api10_program_wrapper_material_index_v1.json'
+      - 'evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'
+      - '.github/workflows/d1-api10-usage-layout-bifurcation.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover frozen usage artifact and verify exact bifurcation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fL             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10172731401/zip"             -o input/usage.zip
+          unzip -q input/usage.zip -d input/usage
+          test -f input/usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json
+          echo "6c6c07d03ed06d8b53693326cbabd9fde7c7a2f7b0c41e02939e700cf4f21127  input/usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json" | sha256sum -c -
+          python -m py_compile tools/d1_verify_api10_usage_layout_bifurcation_v1.py
+          python tools/d1_verify_api10_usage_layout_bifurcation_v1.py             --census evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json             --index evidence/d1_api10_program_wrapper_material_index_v1.json             --evidence evidence/d1_api10_usage_layout_bifurcation_v1.json             --usage input/usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json
+          sha256sum evidence/d1_api10_usage_layout_bifurcation_v1.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-USAGE-LAYOUT-BIFURCATION
+          path: |
+            evidence/d1_api10_usage_layout_bifurcation_v1.json
+            out/SHA256SUMS.txt
+          retention-days: 90
+          if-no-files-found: error
