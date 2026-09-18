@@ -119,6 +119,41 @@ jobs:
           PY
           sha256sum out/*.json > out/SHA256SUMS.txt
 
+      - name: Require Vex blend proof to fail closed on evidence drift
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json,shlex
+          d=json.load(open('out/input_paths.json'))
+          for k,v in d.items(): print(f'{k.upper()}={shlex.quote(v)}')
+          PY
+          )"
+          mkdir -p /tmp/vex-blend-negative
+          python - <<'PY'
+          import json
+          p=json.load(open('out/input_paths.json'))['state4']
+          d=json.load(open(p))
+          row=next(x for x in d['rows'] if x['material']=='816CE240')
+          row['lanes_u8']=[0x89,0,0,0]
+          json.dump(d,open('/tmp/vex-blend-negative/state.json','w'))
+          p=json.load(open('out/input_paths.json'))['circuit_gcn']
+          d=json.load(open(p));d['output_alpha']='MUTATED_NONZERO'
+          json.dump(d,open('/tmp/vex-blend-negative/circuit.json','w'))
+          p=json.load(open('out/input_paths.json'))['correlation']
+          d=json.load(open(p));d['source_blend_descriptors']['8']=d['source_blend_descriptors']['8'].replace('dest_blend: InvSrcAlpha','dest_blend: Zero')
+          json.dump(d,open('/tmp/vex-blend-negative/correlation.json','w'))
+          PY
+          if python tools/d1_vex_816ce240_blend_contract.py             --state4 /tmp/vex-blend-negative/state.json --correlation "$CORRELATION"             --card-gcn "$CARD_GCN" --circuit-gcn "$CIRCUIT_GCN"             --out /tmp/vex-blend-negative/should-fail-state.json; then
+            echo 'ERROR: mutated 0x88 material state was accepted' >&2; exit 1
+          fi
+          if python tools/d1_vex_816ce240_blend_contract.py             --state4 "$STATE4" --correlation "$CORRELATION"             --card-gcn "$CARD_GCN" --circuit-gcn /tmp/vex-blend-negative/circuit.json             --out /tmp/vex-blend-negative/should-fail-alpha.json; then
+            echo 'ERROR: mutated circuitry alpha contract was accepted' >&2; exit 1
+          fi
+          if python tools/d1_vex_816ce240_blend_contract.py             --state4 "$STATE4" --correlation /tmp/vex-blend-negative/correlation.json             --card-gcn "$CARD_GCN" --circuit-gcn "$CIRCUIT_GCN"             --out /tmp/vex-blend-negative/should-fail-descriptor.json; then
+            echo 'ERROR: mutated blend descriptor was accepted' >&2; exit 1
+          fi
+          echo 'VEX_BLEND_NEGATIVE_GATES_GREEN'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
