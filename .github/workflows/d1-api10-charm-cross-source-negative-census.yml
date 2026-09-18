@@ -1,0 +1,49 @@
+name: D1 API10 Charm cross-source negative census
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_charm_cross_source_negative_census.py'
+      - '.github/workflows/d1-api10-charm-cross-source-negative-census.yml'
+permissions: {contents: read}
+env:
+  CHARM_COMMIT: '50d36ee1f9ecadad7522504c20b1f3f9c97e30af'
+  EXTERNS_BLOB: '7311688c71ab3a9e9d6eacd5393d07254688bace'
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned Charm sources
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/MontagueM/Charm/${CHARM_COMMIT}/Tiger/Schema/Shaders/TFX%20Bytecode/Externs.cs" -o source/Externs.cs
+          test "$(git hash-object source/Externs.cs)" = "$EXTERNS_BLOB"
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/MontagueM/Charm/${CHARM_COMMIT}/Tiger/Exporters/Source2Handler.cs" -o source/Source2Handler.cs
+          git hash-object source/Source2Handler.cs | tee out/SOURCE2HANDLER_GIT_BLOB.txt
+      - name: Run fail-closed cross-source census
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_api10_charm_cross_source_negative_census.py
+          python tools/d1_api10_charm_cross_source_negative_census.py --externs source/Externs.cs --source2 source/Source2Handler.cs -o out/D1_API10_CHARM_CROSS_SOURCE_NEGATIVE_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_CHARM_CROSS_SOURCE_NEGATIVE_CENSUS.json'))
+          assert d['status']=='D1_API10_CHARM_CROSS_SOURCE_NEGATIVE_EXACT',d
+          assert d['source2_explicit_cbuffer_indices']==[2,8,13],d
+          assert d['api10']['in_tfxscope'] is False,d
+          assert d['api10']['explicitly_handled_by_source2'] is False,d
+          assert d['api10']['engine_semantic']=='WITHHELD',d
+          PY
+          sha256sum out/D1_API10_CHARM_CROSS_SOURCE_NEGATIVE_CENSUS.json out/SOURCE2HANDLER_GIT_BLOB.txt > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-CHARM-CROSS-SOURCE-NEGATIVE-CENSUS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
