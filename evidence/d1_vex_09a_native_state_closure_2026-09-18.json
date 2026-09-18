@@ -1,0 +1,117 @@
+{
+  "schema": "d1_vex_09a_native_state_closure_provenance/v1",
+  "date": "2026-09-18",
+  "status": "D1_VEX_09A_NATIVE_STATE_CLOSURE_REPRODUCED",
+  "target": {
+    "owner": "816CE12B",
+    "model": "816CE09A",
+    "circuitry_material": "816CE240",
+    "pixel_shader": "816CE0A8",
+    "native_shader": "816CE0AE",
+    "gcn_sha256": "8e0e11cd37896f14873d86215ddec89dd5be34d457e33f6b734b7c3fd0e126fd"
+  },
+  "source_artifacts": [
+    {
+      "role": "roi_material_state_and_pinned_pipeline_source",
+      "artifact_id": 10020034615,
+      "zip_sha256": "96738187a697b9fbbd1e695ce3da3e9e728eb3fb95caedc4b857e072523d52e1",
+      "files": [
+        {
+          "path": "out/material_state4.json",
+          "sha256": "c6d36eedc0c60383fdd475494cf74b314a706472737bdefe709c37d50352bc61"
+        },
+        {
+          "path": "out/cross_source_correlation.json",
+          "sha256": "40f1ef9101cf092878fd315a8698d70a680871bd9489c4a549eac66f2a8f26bf"
+        }
+      ]
+    },
+    {
+      "role": "independent_card_shader_cross_fixture",
+      "artifact_id": 10005293226,
+      "zip_sha256": "861c241b03d4400a501023cdc6cf726759279eb7eb26e627128185eefa0734ee",
+      "files": [
+        {
+          "path": "80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY.json",
+          "sha256": "625bc9aee2b7e4c10e678bb03bb635f00c06733a61e0480f0b4cf14cfc0b8dd0"
+        }
+      ]
+    },
+    {
+      "role": "exact_816CE0A8_retail_gcn",
+      "artifact_id": 10020280794,
+      "zip_sha256": "ae9297ad16c494a910176426d05aae0bde65ec8a600a0c179f21af44a2da55d2",
+      "files": [
+        {
+          "path": "out/816CE0A8_output_alpha_zero.json",
+          "sha256": "9c8b8743edc1fa84a169511f4df4fec8c91970560132d817d5d10767421d822e"
+        },
+        {
+          "path": "out/816CE0A8_remote_shader_extract.json",
+          "sha256": "db9efc5c772fcccbb92e117ba00a90c0cd3ad3b1a0abbe6db122c4b0b9a4cae2"
+        },
+        {
+          "path": "out/PS_816CE0A8.s",
+          "sha256": "07d0f08c9016840ed3c10ffd39d27417da49cc6158028997df1319fe097577a8"
+        }
+      ]
+    }
+  ],
+  "reproduced_outputs": [
+    {
+      "tool": "tools/d1_vex_816ce240_blend_contract.py",
+      "tool_commit": "744c4ac3b0cd069073241b933b66726a50f3b513",
+      "sha256": "3bef39c969a263c5e560435411202a04932b431f62022235f39ca8576be52908",
+      "status": "D1_VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT"
+    },
+    {
+      "tool": "tools/d1_vex_816ce0a8_global_cb_proof.py",
+      "tool_commit": "6208118044981bf7b4fffcf2d51cf1cdc077f2db",
+      "sha256": "cd923d7fa255d94fc75f4f8a700a400aa2c1dbbaf095360650bd5228c4aa141b",
+      "status": "D1_VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT"
+    }
+  ],
+  "exact_findings": {
+    "material_state_bytes_at_0x20": [
+      136,
+      0,
+      0,
+      0
+    ],
+    "blend_state_index": 8,
+    "blend_state_8_rgb_equation": "S.rgb + D.rgb * (1 - S.a)",
+    "blend_state_8_alpha_equation": "S.a + D.a * (1 - S.a)",
+    "circuit_source_alpha": 0,
+    "resulting_native_rgb_composition": "S.rgb + D.rgb",
+    "resulting_native_alpha_composition": "D.a",
+    "extended_user_data_constant_buffers": [
+      {
+        "api_slot": 0,
+        "start_register": 28,
+        "spill_dword_offset": 12
+      },
+      {
+        "api_slot": 12,
+        "start_register": 32,
+        "spill_dword_offset": 16
+      },
+      {
+        "api_slot": 13,
+        "start_register": 36,
+        "spill_dword_offset": 20
+      }
+    ],
+    "api12_view_origin_delta": "float3(api12[28]-attr4.x, api12[29]-attr4.y, api12[30]-attr4.z)",
+    "api13_global_rgb_factor": "api13[6] * api13[7]",
+    "api0_centered_height_scale": "(t0_scalar - 0.5) * api0[8]"
+  },
+  "withheld": {
+    "api12_engine_producer": true,
+    "api12_live_values": true,
+    "api13_engine_producer": true,
+    "api13_live_values": true,
+    "engine_facing_blend_state_name": true,
+    "material_state_bytes_0x21_0x23_global_semantics": true
+  },
+  "policy": "The manifest records only reproduced exact retail/source-correlated facts with pinned artifact and file hashes. It does not assign Bungie engine names, runtime values, addresses, or unresolved state-lane semantics."
+}
