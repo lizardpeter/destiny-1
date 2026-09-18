@@ -32,8 +32,10 @@ sys.path.insert(0,str(HERE))
 import d1_tower_map_schema_validate_v5 as v5
 from d1_material_decode import parse_material
 from d1_texture_export import (
-    decode_header, expected_base_size, unswizzle_ps4, make_dds, FORMAT_NAME
+    decode_header, expected_base_size, normalize_top_level_payload,
+    unswizzle_ps4, make_dds, FORMAT_NAME
 )
+from d1_texture_backing_chain_v1 import resolve_texture_backing
 from d1_dds_to_png import decode_dds
 from d1_filehash import decode_int, plausible_int
 
@@ -96,34 +98,71 @@ def pkg_id_from_tag(h:str)->str|None:
     return f'{pkg:04x}'
 
 
-def resolve_chain(c, h:str, max_depth:int=4):
-    cur=norm(h); out=[]; seen=set()
-    for _ in range(max_depth):
-        if cur in seen: break
-        seen.add(cur)
-        meta=c.entry_meta(cur)
-        payload,src=c.payload(cur)
-        row={'hash':cur,'meta':meta,'source':src,'payload':payload}
-        out.append(row)
-        if not meta: break
-        nxt=norm(meta.get('reference','FFFFFFFF'))
-        if nxt=='FFFFFFFF': break
-        if c.entry_meta(nxt) is None:
-            # Preserve the exact unresolved edge so dependency closure recovers
-            # the backing package rather than incorrectly blaming the texture
-            # header's own package namespace.
-            row['unresolved_reference']=nxt
-            row['unresolved_reference_package_id']=pkg_id_from_tag(nxt)
-            break
-        cur=nxt
-    return out
+def resolve_chain(c, h:str):
+    """Resolve only source-closed D1 texture storage shapes.
+
+    Returns (rows, mode, backing_hash, error).  Missing serialized references are
+    preserved as dependency-frontier evidence; a present-but-unproven class shape
+    is an explicit error rather than an adjacency traversal.
+    """
+    th=norm(h);out=[]
+    hm=c.entry_meta(th);hp,hsrc=c.payload(th)
+    head={'hash':th,'meta':hm,'source':hsrc,'payload':hp}
+    out.append(head)
+    if hm is None:
+        return out,None,None,'texture header unavailable'
+    hk=(hm.get('type'),hm.get('subtype'))
+    if hk not in {(32,1),(32,2)}:
+        return out,None,None,f'not a proven texture header class: {hk}'
+
+    first_hash=norm(hm.get('reference','FFFFFFFF'))
+    if first_hash=='FFFFFFFF':
+        return out,None,None,'texture header missing backing reference'
+    fm=c.entry_meta(first_hash)
+    if fm is None:
+        head['unresolved_reference']=first_hash
+        head['unresolved_reference_package_id']=pkg_id_from_tag(first_hash)
+        return out,None,None,f'backing reference unavailable: {first_hash}'
+    fp,fsrc=c.payload(first_hash)
+    first={'hash':first_hash,'meta':fm,'source':fsrc,'payload':fp}
+    out.append(first)
+
+    if hk==(32,1) and (fm.get('type'),fm.get('subtype'))==(65,1):
+        terminal_hash=norm(fm.get('reference','FFFFFFFF'))
+        if terminal_hash=='FFFFFFFF':
+            return out,None,None,'65:1 first hop missing terminal reference'
+        tm=c.entry_meta(terminal_hash)
+        if tm is None:
+            first['unresolved_reference']=terminal_hash
+            first['unresolved_reference_package_id']=pkg_id_from_tag(terminal_hash)
+            return out,None,None,f'terminal backing reference unavailable: {terminal_hash}'
+        tp,tsrc=c.payload(terminal_hash)
+        out.append({'hash':terminal_hash,'meta':tm,'source':tsrc,'payload':tp})
+
+    global_by={x['hash']:(None,x['meta']) for x in out[1:] if x.get('meta') is not None}
+    try:
+        _first,backing,mode=resolve_texture_backing(global_by,hm)
+    except Exception as ex:
+        return out,None,None,f'strict backing-chain rejection: {ex}'
+    bh=norm(backing[1].get('tag_hash') or '')
+    if not bh:
+        # Corpus metadata historically does not need tag_hash because lookup is
+        # already keyed by it; recover the exact key without guessing.
+        for x in out[1:]:
+            if x.get('meta') is backing[1] or x.get('meta')==backing[1]:
+                bh=x['hash'];break
+    if not bh:
+        return out,None,None,'strict backing-chain resolved without backing identity'
+    return out,mode,bh,None
 
 
 def export_texture(c, th:str, outdir:Path):
     th=norm(th)
     outdir.mkdir(parents=True,exist_ok=True)
-    chain=resolve_chain(c,th)
+    chain,chain_mode,backing_hash,chain_error=resolve_chain(c,th)
     row={'texture':th,'package_id':pkg_id_from_tag(th),
+         'strict_backing_chain_mode':chain_mode,
+         'strict_backing_hash':backing_hash,
          'chain':[{
              'hash':x['hash'],'meta':x['meta'],'source':x['source'],
              'payload_bytes':None if x['payload'] is None else len(x['payload']),
@@ -140,6 +179,14 @@ def export_texture(c, th:str, outdir:Path):
         row['missing_dependency_package_ids']=sorted({
             p for p in (pkg_id_from_tag(h) for h in unresolved) if p is not None
         })
+    if chain_error:
+        row['error']=chain_error
+        if not row.get('missing_dependency_package_ids'):
+            # Only use the header namespace when the serialized chain did not
+            # expose a stronger unresolved reference.
+            p=pkg_id_from_tag(th)
+            if p is not None: row['missing_dependency_package_ids']=[p]
+        return row
     if not chain or chain[0]['payload'] is None:
         row['error']='texture header unavailable'
         if not row.get('missing_dependency_package_ids'):
@@ -154,23 +201,21 @@ def export_texture(c, th:str, outdir:Path):
     row['header_info']=hdr
 
     expected=expected_base_size(hdr['width'],hdr['height'],hdr['surface_format'],hdr['array_size'])
-    # The last reachable payload in the normal D1 chain is the full-resolution
-    # backing. Prefer the deepest payload large enough for the top-level surface.
-    backing=None
-    for x in reversed(chain[1:]):
-        if x['payload'] is not None and (expected is None or len(x['payload'])>=expected):
-            backing=x; break
-    if backing is None:
-        row['error']='full-resolution backing unavailable'
-        # If the chain ended at a serialized FileHash not present in the current
-        # corpus, that target package is the actionable dependency. Fall back to
-        # the texture header namespace only when no stronger source edge exists.
+    backing=next((x for x in chain[1:] if x['hash']==backing_hash),None)
+    if backing is None or backing['payload'] is None:
+        row['error']='strict backing payload unavailable'
         if not row.get('missing_dependency_package_ids'):
-            p=pkg_id_from_tag(th)
+            p=pkg_id_from_tag(backing_hash or th)
             if p is not None: row['missing_dependency_package_ids']=[p]
         return row
-    raw=backing['payload']
-    if expected is not None: raw=raw[:expected]
+    try:
+        raw=normalize_top_level_payload(
+            backing['payload'],expected,strict=True,
+            label=f'{th} backing {backing_hash}'
+        )
+    except Exception as ex:
+        row['error']=f'backing size validation failed: {ex}'
+        return row
     swizzled=((hdr['flags1']&0xC00)!=0x400) or hdr['array_size']==6
     try:
         linear=unswizzle_ps4(raw,hdr['width'],hdr['height'],hdr['array_size'],hdr['surface_format']) if swizzled else raw
@@ -302,6 +347,7 @@ def main()->int:
     report={
         'schema_version':3,'status':'D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT',
         'filehash_routing':'d1_filehash.decode_int/bank-aware',
+        'texture_backing_policy':'STRICT_PROVEN_SHAPES_ONLY',
         'visible_material_count':len(visible),'material_decode_errors':len(errors),
         'unique_texture_tags':len(unique),'decoded_texture_tags':len(unique)-len(missing),
         'texture_errors':len(missing),
