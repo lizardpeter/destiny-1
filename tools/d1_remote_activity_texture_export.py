@@ -36,7 +36,8 @@ def collect_textures(doc:dict)->dict[str,dict]:
    for tr in mr.get('dependencies',{}).get(stage,{}).get('textures',[]):
     h=norm(tr['texture'])
     sig={'header_info':tr.get('header_info'),'final_payload_hash':tr.get('final_payload_hash'),
-         'final_payload_type_subtype':tr.get('final_payload_type_subtype')}
+         'final_payload_type_subtype':tr.get('final_payload_type_subtype'),
+         'storage_mode':tr.get('storage_mode'),'strict_backing_hash':tr.get('strict_backing_hash')}
     old=out.get(h)
     if old is not None and old!=sig:raise ValueError(f'conflicting exact texture closure rows for {h}: {old} vs {sig}')
     out[h]=sig
@@ -66,9 +67,20 @@ def main()->int:
     for k in ('width','height','surface_format','array_size','flags1','flags2','flags3'):
      if k in prior and prior[k]!=hdr.get(k):row['violations'].append(f'header_drift:{k}:{prior[k]}!={hdr.get(k)}')
     row['header_info']=hdr;back=proof.get('final_payload_hash')
+    mode=proof.get('storage_mode')
+    strict_back=proof.get('strict_backing_hash')
+    if mode not in {'direct','two_hop_65_1_to_5_1'}:
+     row['violations'].append(f'unproven_storage_mode:{mode!r}')
     if not back:row['violations'].append('no_proven_final_payload')
     else:
-     back=norm(back);bm=c.entry_meta(back);raw,bsrc=c.payload(back);row['backing_hash']=back;row['backing_meta']=bm;row['backing_source']=bsrc
+     back=norm(back)
+     if not strict_back or norm(strict_back)!=back:
+      row['violations'].append(f'final_payload_not_strict_backing:{back}!={strict_back}')
+     bm=c.entry_meta(back);raw,bsrc=c.payload(back);row['backing_hash']=back;row['backing_meta']=bm;row['backing_source']=bsrc;row['storage_mode']=mode
+     expected_kind=proof.get('final_payload_type_subtype')
+     actual_kind=None if bm is None else [bm.get('type'),bm.get('subtype')]
+     if expected_kind!=actual_kind:
+      row['violations'].append(f'backing_class_drift:{expected_kind!r}!={actual_kind!r}')
      if raw is None:row['violations'].append('backing_payload_unavailable')
      else:
       expected=expected_base_size(hdr['width'],hdr['height'],hdr['surface_format'],hdr['array_size']);row['expected_base_size']=expected;row['backing_bytes']=len(raw);row['backing_sha256']=sha(raw)
@@ -104,7 +116,7 @@ def main()->int:
   rows.append(row)
  out={'schema':'d1_remote_activity_texture_export/v1','status':'D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_COMPLETE' if not viol else 'D1_REMOTE_ACTIVITY_TEXTURE_EXPORT_WITH_VIOLATIONS',
       'source_material_closure':str(a.material_closure),'texture_count':len(tex),'dds_file_count':sum(f['kind']=='dds' for r in rows for f in r['files']),'png_file_count':sum(f['kind']=='png' for r in rows for f in r['files']),
-      'rows':rows,'violations':viol,'policy':'Only exact texture header/backing identities already proven by the material closure are exported. No material role or PBR semantic is inferred here.'}
+      'rows':rows,'violations':viol,'policy':'Only exact texture header/backing identities admitted by the upstream strict storage-shape proof are exported. The materializer rechecks storage mode, backing identity and backing class before reading bytes. No material role or PBR semantic is inferred here.'}
  (a.out_dir/'texture_export_manifest.json').write_text(json.dumps(out,indent=2)+'\n');print('STATUS',out['status'],'TEXTURES',out['texture_count'],'DDS',out['dds_file_count'],'PNG',out['png_file_count'],'VIOLATIONS',len(viol));return 0 if not viol else 2
 
 if __name__=='__main__':raise SystemExit(main())
