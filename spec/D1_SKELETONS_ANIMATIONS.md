@@ -1,6 +1,6 @@
 # Destiny 1 Skeletons and Animations — Living Specification
 
-Status: **PS4 skeleton + skin + runtime-rig + two animation clips validated on retail bytes; target `816CE09A` visible ownership now independently proven; general clip schema still incomplete**  
+Status: **PS4 skeleton/skin/runtime-rig/animation is productionized across multiple retail families; activity-owned selector/control discovery and native retarget execution are source-closed at large scale; codec internals remain delegated to a pinned parser and not every compression mode is independently re-derived in this repository**  
 Target: final-era Destiny 1 / Rise of Iron Tiger v24.
 
 ## D1 entity -> skeleton chain
@@ -192,7 +192,7 @@ transform record and includes standard body/weapon mechanism hashes such as
 Those names remain cross-generation/source leads until validated on the specific
 D1 weapon bytes being exported.
 
-## Animation class
+## Animation class and current production status
 
 Final D1 ROI class:
 
@@ -200,13 +200,45 @@ Final D1 ROI class:
 0x808005A1 = s_animation_clip
 ```
 
-Two concrete PS4 clips (`816CE09D/E`) have been decoded and exported against the
-12-node rig. The full reusable clip decoder used during the successful runtime
-investigation has **not yet been promoted into the committed tool tree**, so the
-general animation-track layout remains partially unresolved.
+The old statement that only `816CE09D/E` had a usable animation path is
+superseded. The repository now has reusable source-owned activity animation
+planning and production glTF appenders built around the pinned D1 ROI parser:
 
-The supplied Xbox Cabal patch-1 package has 22 clip entries but they require
-patch 0 and therefore still cannot independently validate Xbox clip decoding.
+- `tools/d1_activity_actor_animation_seed.py`
+- `tools/d1_activity_actor_animation_control_plan.py`
+- `tools/d1_activity_actor_animation_option_plan_v2.py`
+- `tools/d1_gltf_append_retail_animation_library.py`
+- `tools/d1_gltf_append_retargeted_retail_animation_library.py`
+
+The strongest generic retail checkpoint is the Wrath of the Machine v3 closure
+recorded in
+`knowledge/records/d1_activity_animation_v3_source_closure_2026-09-07.json`:
+
+```text
+source-owned animation-capable actors       123
+unique exact 80802C0E controls               45
+unique selector-selected clips             1144
+animation-list bank clips                   1739
+native retarget pair executions             2909
+native retarget successes                   2909
+native retarget failures                       0
+frontiers                                      0
+violations                                     0
+```
+
+The selector format is also source-closed for the observed D1 corpus, including
+the explicit empty sentinel `0000FFFF` and the retail implicit-null-tail form.
+A null selector slot is never converted into a fabricated clip.
+
+Important remaining distinction: the production path executes the exact retail
+clips through a pinned D1 parser/decoder/retarget implementation and verifies
+their output/ownership at scale, but this repository has **not independently
+re-derived every animation compression codec field from first principles**.
+Therefore “production decode/retarget path closed for validated families” and
+“all codec internals semantically reversed” remain separate claims.
+
+The supplied Xbox Cabal patch-1 package still requires patch 0 for an independent
+Xbox animation-codec validation.
 
 ## General animation RE requirements
 
@@ -238,9 +270,11 @@ clips:                         816CE09D / 816CE09E
 materials:                     809C475F / 816CE240
 ```
 
-The active animation engineering target is to **promote the successful clip +
-skin export into reusable code** and combine it with the now-solved material /
-texture pipeline.
+The reusable clip/skin export path is now present and validated across large
+activity corpora. Active animation work is family-specific ownership/selector
+closure where still absent (for example remaining Tower articulated families),
+plus independent codec reconstruction where exact parser behavior has not yet
+been semantically re-derived.
 
 Immediate deliverable target:
 
