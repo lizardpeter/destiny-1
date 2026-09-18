@@ -38,8 +38,8 @@ def main():
   if b.get(k)!="WITHHELD":die("semantic boundary "+k)
 
  overlap=None
- if d.get("status")=="SOURCE_CLOSED_CROSS_STAGE_REFERENCE_ONLY":
-  if not a.localshader_census:die("cross-stage manifest requires LocalShader census")
+ if d.get("status") in {"SOURCE_CLOSED_CROSS_STAGE_REFERENCE_ONLY","SOURCE_CLOSED_LOCALSHADER_PARTIAL"}:
+  if not a.localshader_census:die("classification manifest requires LocalShader census")
   c=json.loads(a.localshader_census.read_text())
   if c.get("schema")!="d1_gcn_localshader_api10_access_family_census/v2" or c.get("status")!="D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT" or c.get("violations"):die("LocalShader census")
   local={x.get("gcn_sha256") for x in c.get("programs",[])}
@@ -56,6 +56,24 @@ def main():
   expected="DISJOINT_GCN_POPULATIONS" if overlap==0 else "OVERLAPPING_GCN_POPULATIONS"
   if rel.get("conclusion")!=expected:die("population relation conclusion")
   if any(r.get("source_hardware_stage")!="VertexShader" for r in rows):die("cross-stage source hardware stage")
+ elif d.get("status")=="SOURCE_CLOSED_LOCALSHADER_PARTIAL":
+  if not a.localshader_census:die("classification manifest requires LocalShader census")
+  c=json.loads(a.localshader_census.read_text())
+  if c.get("schema")!="d1_gcn_localshader_api10_access_family_census/v2" or c.get("status")!="D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT" or c.get("violations"):die("LocalShader census")
+  local={x.get("gcn_sha256"):x for x in c.get("programs",[])}
+  if len(local)!=39:die("LocalShader denominator")
+  if not seen <= set(local):die("nonmember LocalShader classification")
+  overlap=len(seen)
+  cov=d.get("coverage",{})
+  if cov.get("classified_localshader_programs")!=len(rows):die("LocalShader classified count")
+  if cov.get("localshader_api10_program_denominator")!=39:die("LocalShader coverage denominator")
+  if cov.get("unclassified_localshader_programs")!=39-len(rows):die("LocalShader unclassified count")
+  if cov.get("classification_complete_for_localshader") is not (len(rows)==39):die("LocalShader completion gate")
+  for r in rows:
+   if r.get("source_hardware_stage")!="LocalShader":die("LocalShader source hardware stage")
+   m=local[r["gcn_sha256"]]
+   if r.get("descriptor_window")!=m.get("descriptor_window"):die("LocalShader descriptor window")
+   if r.get("tbuffer_instruction_count")!=m.get("tbuffer_instruction_count"):die("LocalShader TBUFFER count")
 
  print(json.dumps({"status":"D1_API10_CONSUMER_CLASSIFICATION_VALID","program_count":len(rows),"localshader_membership_overlap":overlap,"gcn_sha256":sorted(seen),"semantic_boundary":{k:"WITHHELD" for k in sorted(WITHHELD)}},indent=2))
 if __name__=="__main__":main()
