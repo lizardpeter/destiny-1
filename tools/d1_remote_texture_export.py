@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export exact D1 PS4 textures through verified remote package catalogs.
 
-This adapts the validated d1_texture_export implementation to the same
+This adapts the validated strict d1_texture_export_v2 implementation to the same
 MultiPackageReader used by Guardian geometry. Requested texture headers are
 resolved by exact Tiger FileHash across verified logical package families, and
 the existing texture exporter follows their serialized streamed/backing chain.
@@ -28,7 +28,7 @@ from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_investment_parent_probe import RemoteLogicalPackage
 from d1_remote_model_export import MultiPackageReader
 from d1_split_tar_extract import SplitHttpTar
-from d1_texture_export import export_reader
+from d1_texture_export_v2 import export_reader
 
 
 def norm(v:str)->str:
