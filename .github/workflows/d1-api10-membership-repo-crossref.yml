@@ -1,0 +1,40 @@
+name: D1 API10 membership repository cross-reference
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_membership_repo_crossref.py'
+      - 'evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'
+      - '.github/workflows/d1-api10-membership-repo-crossref.yml'
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Cross-reference exact 39-member census
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m py_compile tools/d1_api10_membership_repo_crossref.py
+          python tools/d1_api10_membership_repo_crossref.py             --root .             --census evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json             -o out/D1_API10_MEMBERSHIP_REPO_CROSSREF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_MEMBERSHIP_REPO_CROSSREF.json'))
+          assert d['status']=='D1_API10_MEMBERSHIP_REPO_CROSSREF_EXACT',d
+          assert d['membership_program_count']==39,d
+          assert d['programs_with_checked_in_references']+d['programs_without_checked_in_references']==39,d
+          assert all(v=='WITHHELD' for v in d['semantic_boundary'].values()),d
+          assert d['evidence_class']=='REPOSITORY_AVAILABILITY_AUDIT_NOT_RETAIL_SEMANTIC_PROOF'
+          PY
+          sha256sum out/D1_API10_MEMBERSHIP_REPO_CROSSREF.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-MEMBERSHIP-REPO-CROSSREF
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
