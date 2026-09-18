@@ -1,0 +1,41 @@
+name: D1 API10 cross-GCN data role
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_cross_gcn_data_role_proof.py'
+      - 'tools/d1_xur_vs_80876960_semantic_proof.py'
+      - 'tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py'
+      - '.github/workflows/d1-api10-cross-gcn-data-role.yml'
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Cross-prove exact native consumer role
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m py_compile tools/d1_api10_cross_gcn_data_role_proof.py
+          python tools/d1_api10_cross_gcn_data_role_proof.py --two tools/d1_xur_vs_80876960_semantic_proof.py --four tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py -o out/D1_API10_CROSS_GCN_DATA_ROLE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_CROSS_GCN_DATA_ROLE.json'))
+          assert d['status']=='D1_API10_CROSS_GCN_DATA_ROLE_EXACT',d
+          assert d['combined_material_occurrences_in_these_proofs']==17,d
+          assert d['source_closed_role']['descriptor_window']=='s[8:11]',d
+          assert d['source_closed_role']['pair_structure']=='each proven influence selects records 2*index and 2*index+1',d
+          assert all(v=='WITHHELD' for v in d['semantic_boundary'].values()),d
+          PY
+          sha256sum out/D1_API10_CROSS_GCN_DATA_ROLE.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-CROSS-GCN-DATA-ROLE
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
