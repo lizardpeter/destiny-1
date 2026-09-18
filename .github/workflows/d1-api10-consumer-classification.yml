@@ -7,6 +7,7 @@ on:
       - 'tools/d1_validate_api10_consumer_classification_v1.py'
       - 'tests/test_d1_validate_api10_consumer_classification_v1.py'
       - 'evidence/d1_api10_consumer_classification_v1.json'
+      - 'evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'
       - '.github/workflows/d1-api10-consumer-classification.yml'
 permissions: {contents: read}
 jobs:
@@ -21,12 +22,18 @@ jobs:
           set -euo pipefail
           python -m py_compile tools/d1_validate_api10_consumer_classification_v1.py tests/test_d1_validate_api10_consumer_classification_v1.py
           python tests/test_d1_validate_api10_consumer_classification_v1.py
-          python tools/d1_validate_api10_consumer_classification_v1.py evidence/d1_api10_consumer_classification_v1.json
+          python tools/d1_validate_api10_consumer_classification_v1.py             evidence/d1_api10_consumer_classification_v1.json             --localshader-census evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
           python - <<'PY'
           import json
           d=json.load(open('evidence/d1_api10_consumer_classification_v1.json'))
-          assert d['coverage']=={'classified_exact_gcn_programs':4,'global_api10_program_denominator':39,'classification_complete':False}
+          assert d['status']=='SOURCE_CLOSED_CROSS_STAGE_REFERENCE_ONLY'
+          assert d['coverage']['classified_cross_stage_programs']==4
+          assert d['coverage']['localshader_api10_program_denominator']==39
+          assert d['coverage']['localshader_membership_overlap']==0
+          assert d['coverage']['localshader_programs_classified_by_this_manifest']==0
+          assert d['coverage']['classification_complete_for_localshader'] is False
+          assert d['population_relation']['conclusion']=='DISJOINT_GCN_POPULATIONS'
           assert len({x['gcn_sha256'] for x in d['programs']})==4
-          assert {x['descriptor_window'] for x in d['programs']}=={'s[8:11]'}
+          assert {x['source_hardware_stage'] for x in d['programs']}=={'VertexShader'}
           assert all(v=='WITHHELD' for v in d['semantic_boundary'].values())
           PY
