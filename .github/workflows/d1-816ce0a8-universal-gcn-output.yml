@@ -99,6 +99,31 @@ jobs:
           print('VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT')
           PY
 
+      - name: Require global-CB proof to fail closed on descriptor/dataflow drift
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/vex-global-negative
+          python - <<'PY'
+          import json
+          p='out/816CE0A8_remote_shader_extract.json'
+          d=json.load(open(p))
+          slot=next(x for x in d['shaders'][0]['usage']['slots'] if x.get('usage_name')=='ImmConstBuffer' and x.get('api_slot')==13)
+          slot['start_register']=35
+          json.dump(d,open('/tmp/vex-global-negative/extract.json','w'))
+          text=open('disasm/PS_816CE0A8.s').read()
+          old='v_mul_f32       v1, s1, v1'
+          assert old in text,old
+          text=text.replace(old,'v_mul_f32       v1, s2, v1',1)
+          open('/tmp/vex-global-negative/disasm.s','w').write(text)
+          PY
+          if python tools/d1_vex_816ce0a8_global_cb_proof.py             --extract-report /tmp/vex-global-negative/extract.json             --disassembly disasm/PS_816CE0A8.s             --out /tmp/vex-global-negative/should-fail-layout.json; then
+            echo 'ERROR: mutated API13 start register was accepted' >&2; exit 1
+          fi
+          if python tools/d1_vex_816ce0a8_global_cb_proof.py             --extract-report out/816CE0A8_remote_shader_extract.json             --disassembly /tmp/vex-global-negative/disasm.s             --out /tmp/vex-global-negative/should-fail-dataflow.json; then
+            echo 'ERROR: mutated API13 RGB dataflow was accepted' >&2; exit 1
+          fi
+          echo 'VEX_GLOBAL_CB_NEGATIVE_GATES_GREEN'
+
       - name: Prove circuitry output alpha is exact zero
         run: |
           set -euo pipefail
