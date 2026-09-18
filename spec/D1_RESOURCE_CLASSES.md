@@ -104,6 +104,6 @@ Canonical project term remains `GpuSubtype7` until the exact official D1 semanti
 
 1. Continue model/entity/static-map tags that bind GPU resources to actual objects, parts, LODs, transforms and materials; metadata-driven entity-model export is now working on Xbox.
 2. Resolve official names/semantics for type `65:1` and `5:1` across a wider texture corpus.
-3. Promote the exact semantic name for D1 subtype 7 using material/shader binding semantics; `PSVector4Container` usage is now source-correlated.
+3. Recover the official D1 Tiger class name for subtype 7 and audit any non-material/global uses; the validated ROI material Vector4/b0 role is already instruction-closed.
 4. Validate VertexShader and additional shader classes from packages where they occur.
 5. Implement Xbox Durango detiling and validate full texture export.
