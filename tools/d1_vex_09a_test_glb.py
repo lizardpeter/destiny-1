@@ -305,15 +305,12 @@ def sha256_path(path: Path) -> str:
 def load_native_state_proofs(blend_path: Path | None, global_cb_path: Path | None) -> dict | None:
     """Validate optional exact native-state proofs before embedding their claims.
 
-    This compatibility phase permits both paths to be omitted so historical
-    callers keep working. If either is supplied, both are required and every
-    target identity/equation must match exactly; partial/stale proof input is
-    rejected rather than silently downgraded.
+    Proof-grade export requires both inputs. Every target identity/equation must
+    match exactly; partial/stale proof input is rejected rather than silently
+    downgraded.
     """
-    if blend_path is None and global_cb_path is None:
-        return None
     if blend_path is None or global_cb_path is None:
-        raise RuntimeError("native-state promotion requires both --blend-proof and --global-cb-proof")
+        raise RuntimeError("proof-grade 09A export requires both --blend-proof and --global-cb-proof")
     blend=json.loads(blend_path.read_text())
     glob=json.loads(global_cb_path.read_text())
     if blend.get("status")!="D1_VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT" or blend.get("violations"):
@@ -351,7 +348,7 @@ def load_native_state_proofs(blend_path: Path | None, global_cb_path: Path | Non
     }
 
 
-def add_images_and_materials(gltf: GLTF2, recipe_dir: Path, recipe: dict, native_state: dict | None = None) -> dict[str, int]:
+def add_images_and_materials(gltf: GLTF2, recipe_dir: Path, recipe: dict, native_state: dict) -> dict[str, int]:
     gltf.samplers.extend([
         Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=REPEAT, wrapT=REPEAT),
         Sampler(magFilter=LINEAR, minFilter=LINEAR_MIPMAP_LINEAR, wrapS=CLAMP_TO_EDGE, wrapT=CLAMP_TO_EDGE),
@@ -422,28 +419,23 @@ def add_images_and_materials(gltf: GLTF2, recipe_dir: Path, recipe: dict, native
             "shader": "816CE0A8",
             "texture": "816CE1C5",
             "sampler": "816CE0AA",
-            **({
-                "nativeBlendSelector": "0x88",
-                "nativeBlendStateIndex": 8,
-                "nativeBlendEquation": "S.rgb + D.rgb * (1 - S.a)",
-                "nativeSourceAlpha": 0,
-                "nativeCompositionRGB": "S.rgb + D.rgb",
-                "nativeCompositionAlpha": "D.a",
-                "api12ViewOriginDelta": native_state["global_cb"]["proven_equations"]["view_origin_delta"],
-                "api13GlobalRgbFactor": native_state["global_cb"]["proven_equations"]["global_rgb_factor"],
-                "api12Producer": "WITHHELD",
-                "api12LiveValues": "WITHHELD",
-                "api13Producer": "WITHHELD",
-                "api13LiveValues": "WITHHELD",
-                "nativeStateProofs": {
-                    "blend_sha256": native_state["blend_proof_sha256"],
-                    "global_cb_sha256": native_state["global_cb_proof_sha256"],
-                },
-                "portableWarning": "Core glTF cannot express the exact native additive circuitry composition. Emissive/base-color fields are portable approximations; API12/API13 producer names and live values remain withheld.",
-            } if native_state else {
-                "nativeBlendMode": "UNRESOLVED_NO_PROOF_INPUT",
-                "portableWarning": "Exact native-state proofs were not supplied to this compatibility invocation; portable circuitry remains explicitly unpromoted.",
-            }),
+            "nativeBlendSelector": "0x88",
+            "nativeBlendStateIndex": 8,
+            "nativeBlendEquation": "S.rgb + D.rgb * (1 - S.a)",
+            "nativeSourceAlpha": 0,
+            "nativeCompositionRGB": "S.rgb + D.rgb",
+            "nativeCompositionAlpha": "D.a",
+            "api12ViewOriginDelta": native_state["global_cb"]["proven_equations"]["view_origin_delta"],
+            "api13GlobalRgbFactor": native_state["global_cb"]["proven_equations"]["global_rgb_factor"],
+            "api12Producer": "WITHHELD",
+            "api12LiveValues": "WITHHELD",
+            "api13Producer": "WITHHELD",
+            "api13LiveValues": "WITHHELD",
+            "nativeStateProofs": {
+                "blend_sha256": native_state["blend_proof_sha256"],
+                "global_cb_sha256": native_state["global_cb_proof_sha256"],
+            },
+            "portableWarning": "Core glTF cannot express the exact native additive circuitry composition. Emissive/base-color fields are portable approximations; API12/API13 producer names and live values remain withheld.",
         },
     )
     circuit_idx = len(gltf.materials)
@@ -516,12 +508,12 @@ def build(args) -> dict:
             "owner": OWNER, "model": MODEL, "skeleton": SKELETON, "runtimeRig": RIG,
             "animations": list(CLIPS), "mainMaterial": MAIN_MATERIAL, "circuitryMaterial": CIRCUIT_MATERIAL,
             "portableMaterialRecipe": recipe,
-            "nativeStatePromotion": ({
+            "nativeStatePromotion": {
                 "blendStatus": native_state["blend"]["status"],
                 "globalCbStatus": native_state["global_cb"]["status"],
                 "blendProofSha256": native_state["blend_proof_sha256"],
                 "globalCbProofSha256": native_state["global_cb_proof_sha256"],
-            } if native_state else {"status": "WITHHELD_NO_PROOF_INPUT"}),
+            },
         },
         "reverseEngineeringPolicy": "Native D1 data preserved; core glTF material is explicitly an approximation. Do not use portable PBR fields to redefine native Destiny semantics.",
     }
@@ -546,12 +538,12 @@ def build(args) -> dict:
         "clips": clip_reports,
         "native_owner": OWNER,
         "native_materials": [MAIN_MATERIAL, CIRCUIT_MATERIAL],
-        "native_state_promotion": ({
+        "native_state_promotion": {
             "blend_status": native_state["blend"]["status"],
             "global_cb_status": native_state["global_cb"]["status"],
             "blend_proof_sha256": native_state["blend_proof_sha256"],
             "global_cb_proof_sha256": native_state["global_cb_proof_sha256"],
-        } if native_state else {"status": "WITHHELD_NO_PROOF_INPUT"}),
+        },
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n")
@@ -564,8 +556,8 @@ def main() -> None:
     ap.add_argument("--runtime", type=Path, required=True)
     ap.add_argument("--parser-root", type=Path, required=True, help="checkout of SolUnshadowed/tiger-animation-parser")
     ap.add_argument("--recipe-dir", type=Path, required=True)
-    ap.add_argument("--blend-proof", type=Path, help="exact D1_VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT proof")
-    ap.add_argument("--global-cb-proof", type=Path, help="exact D1_VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT proof")
+    ap.add_argument("--blend-proof", type=Path, required=True, help="exact D1_VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT proof")
+    ap.add_argument("--global-cb-proof", type=Path, required=True, help="exact D1_VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT proof")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--report", type=Path, required=True)
     args = ap.parse_args()
