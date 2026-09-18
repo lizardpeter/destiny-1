@@ -1,0 +1,6 @@
+{
+  "schema":"d1_localshader_api10_runtime_capture/v1",
+  "captures":[
+    {"program_id":"NOT-A-RETAIL-PROGRAM","tbuffer_instruction_count":3,"descriptor_window":"s[8:11]","descriptor_dwords":[1,2,3,4],"engine_semantic":"WITHHELD","evidence":{"source":"PRIMARY_RUNTIME_CAPTURE_PLACEHOLDER","sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}
+  ]
+}
