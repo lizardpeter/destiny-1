@@ -1,0 +1,25 @@
+name: D1 LocalShader API10 capture gate v1
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_localshader_api10_capture_gate_v1.py'
+      - 'tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json'
+      - 'evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json'
+      - '.github/workflows/d1-localshader-api10-capture-gate-v1.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate frozen family contract with non-semantic fixture
+        run: |
+          python3 tools/d1_localshader_api10_capture_gate_v1.py \
+            --frozen evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json \
+            --captures tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json \
+            --out /tmp/d1_api10_capture_gate.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-localshader-api10-capture-gate-v1
+          path: /tmp/d1_api10_capture_gate.json
