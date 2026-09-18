@@ -63,15 +63,22 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
+          from pathlib import Path
           d=json.load(open('out/D1_GCN_RESOURCE_LDS_REBUILD_V1.json')); p=d['resource_lds_provenance']; c=p['coverage']; r=d['scalar_regeneration']
+          expected={'ds_write2_b32':641,'tbuffer_load_format_xyzw':385}
           assert d['status']=='D1_GCN_RESOURCE_LDS_REBUILD_EXACT',d
-          assert r['program_count']==65,r
+          assert r['program_count']==65 and r['instruction_count']==10858,r
           assert p['status']=='D1_GCN_RESOURCE_LDS_PROVENANCE_EXACT_SYMBOLIC',p.get('violations')
-          assert not p['violations']
-          assert c['target_opcode_counts']=={'ds_write2_b32':641,'tbuffer_load_format_xyzw':385},c
-          assert c['accounted_opcode_counts']==c['target_opcode_counts'],c
-          assert c['record_count']==1026,c
-          assert len(list(__import__('pathlib').Path('out/scalar').glob('*.json')))==65
+          assert not p['violations'] and c['violation_count']==0
+          assert c['input_program_count']==65 and c['exact_symbolic_program_count']==65,c
+          assert c['structural_instruction_count']==10858,c
+          assert c['target_counts']==expected,c
+          assert c['accounted_counts']==expected,c
+          assert c['expected_opcode_counts']==expected,c
+          assert c['target_instruction_count']==1026,c
+          assert c['exact_symbolic_provenance_instruction_count']==1026,c
+          assert c['unresolved_downstream_counts']=={'UNRESOLVED_CONCRETE_RESOURCE':385,'UNRESOLVED_EXTERNAL_LANE_AND_LDS_ALLOCATION_STATE':641},c
+          assert len(list(Path('out/scalar').glob('*.json')))==65
           print('D1_GCN_RESOURCE_LDS_REBUILD_EXACT')
           PY
           find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
