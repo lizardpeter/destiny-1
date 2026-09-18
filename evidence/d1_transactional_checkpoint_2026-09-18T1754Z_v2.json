@@ -1,0 +1,43 @@
+{
+  "schema": "d1_transactional_checkpoint/v1",
+  "status": "DURABLE_RESUMABLE",
+  "branch": "d1-crota-source-semantics-v1",
+  "base_head_read": "75af6b3d801a6fce2b579ba2bb742fbc2f5b376e",
+  "transactions": [
+    {
+      "topic": "strict texture exporter integration",
+      "commits": ["e4009ef18efdc37a6c51249de33544d8b4918ce6","67db9419c5b0f43c420cc9dbf2e3cbe9340f534a","52ee4a653d221f160d614281fb40d51804765ccd"],
+      "finding": "Added d1_texture_export_v2.py as a production fail-closed entry point over the established exporter. It replaces legacy adjacency traversal with resolve_texture_backing, preserving only proven 32:1->1:1, 32:1->65:1->5:1, and direct 32:2->1:2 shapes. Regression proves arbitrary resolvable second hops are rejected.",
+      "ci_run_id": 35376836005,
+      "ci_conclusion": "success"
+    },
+    {
+      "topic": "exact API10 frozen program membership recovery",
+      "commits": ["6a9a540c94987895c34119c0eace19e253ef8b1e","efa2bf8c47f8a98f30990c38afdef4c6f97175a6","a1a9467f108e4d4c00a8598102a2ff584cc8bbd5","33769a436f0dcf5953d9542983f0e542f7b909eb","0898e20a80f7ab3a60d16225a9ec9367ab11e6a6"],
+      "finding": "Artifact 10539900120 was still live. Recovery run 35376918979 proved the artifact ZIP SHA-256 b64ddfd28937c6d5adddf8464817da6f836fd32c1b3e20e1b51841ce3d185897 and exact census SHA-256 7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8, then committed the exact 39-program census to evidence/frozen/. This closes the exact program-membership blocker only.",
+      "recovery_run_id": 35376918979,
+      "recovery_job_id": 105703653548,
+      "membership_ci_run_id": 35377008511,
+      "membership_ci_job_id": 105703938896,
+      "membership_ci_conclusion": "success",
+      "note": "Recovery run 35376876666 failed only because the first workflow revision referenced a nonexistent validator filename; recovery/hash verification itself had succeeded. The workflow was repaired and run 35376918979 is green. Run 35376973333 was an expected sequencing failure because the CI assertion changed before the evidence status update; run 35377008511 validates the final coherent state green."
+    }
+  ],
+  "newly_proven": {
+    "api10_exact_program_membership_bytes": "PROVEN_AND_DURABLE",
+    "api10_program_count": 39,
+    "api10_program_instruction_histogram": {"3":1,"6":1,"8":17,"12":20},
+    "api10_descriptor_windows": ["s[12:15]","s[8:11]"]
+  },
+  "semantic_boundary": {
+    "api10_runtime_writer": "WITHHELD",
+    "api10_four_descriptor_dwords": "WITHHELD_PENDING_PRIMARY_RUNTIME_CAPTURE",
+    "api10_backing_allocation": "WITHHELD",
+    "api10_engine_semantic": "WITHHELD",
+    "api10_universal_record_schema": "WITHHELD",
+    "texture_65_1_official_name": "UNKNOWN",
+    "texture_5_1_official_name": "UNKNOWN"
+  },
+  "next_hard_gate": "Use evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json as the mandatory v2 membership input for a primary runtime capture from one exact member. Require actual command/user-data writer provenance, four descriptor dwords, exact backing bytes/hash/length, and a proven descriptor-range relation. If runtime evidence is unavailable, continue source-closed texture/material/geometry closure rather than infer semantics.",
+  "resume_rule": "Read branch head first and preserve newer concurrent Destiny commits. Do not reset to this checkpoint."
+}
