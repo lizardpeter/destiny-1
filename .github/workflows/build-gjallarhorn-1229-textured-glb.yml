@@ -43,6 +43,23 @@ jobs:
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x59B629600 \
             --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
             --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5DED7DE00 \
+            --target ps4_investment_assets_0144_2.pkg --target ps4_investment_assets_0144_3.pkg --target ps4_investment_assets_0144_4.pkg --target ps4_investment_assets_0144_5.pkg \
+            --out recovered --manifest reports/0144_extract.json --retries 6 --timeout 90
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          expected={
+            'ps4_investment_assets_0144_2.pkg':33804288,
+            'ps4_investment_assets_0144_3.pkg':655360,
+            'ps4_investment_assets_0144_4.pkg':221184,
+            'ps4_investment_assets_0144_5.pkg':335872,
+          }
+          d=json.load(open('reports/0144_extract.json'))
+          got={Path(x['name']).name:int(x['size']) for x in d.get('extracted',[])}
+          assert got==expected,(got,expected)
+          print('GJALLARHORN_0144_DEPENDENCY_FAMILY_RECOVERED',got)
+          PY
           python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x3FEBBBE00 \
             --target ps4_gear_player_0100_0.pkg --target ps4_gear_player_0100_1.pkg --target ps4_gear_player_0100_2.pkg --target ps4_gear_player_0100_5.pkg \
             --target ps4_gear_player_0101_0.pkg --target ps4_gear_player_0101_1.pkg --target ps4_gear_player_0101_2.pkg --target ps4_gear_player_0101_5.pkg \
@@ -92,7 +109,9 @@ jobs:
           export LINOODLE_SKIP_DLLMAIN=1
           python tools/d1_gjallarhorn_1229_glb_validated.py \
             --pkg-011c recovered/ps4_gear_weapons_011c_5.pkg --pkg-011e recovered/ps4_gear_weapons_011e_5.pkg \
-            --pkg-0139 recovered/ps4_investment_assets_0139_5.pkg --runtime runtime --model-dir models \
+            --pkg-0139 recovered/ps4_investment_assets_0139_5.pkg \
+            --dependency-pkg recovered/ps4_investment_assets_0144_5.pkg \
+            --runtime runtime --model-dir models \
             --out out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_GEOMETRY.glb --report reports/gjallarhorn_1229_geometry.json
       - name: Export all 24 exact source textures
         run: |
@@ -128,6 +147,8 @@ jobs:
           tex=json.loads(Path('reports/gjallarhorn_1229_textured.json').read_text())
           plates=json.loads(Path('reports/gjallarhorn_1229_composed_plates.json').read_text())
           assert len(g.meshes)==8 and geo['total_lod1_triangles']==10738
+          assert g.extras['d1Gjallarhorn']['geometryPackageIds']==['011C','011E','0139','0144']
+          assert g.extras['d1Gjallarhorn']['additionalDependencyPackageIds']==['0144']
           assert tex['model_count']==6 and tex['mesh_count']==8
           assert plates['plate_image_count']==18 and len(g.images)==18 and len(g.textures)==12
           assert g.extras['d1GjallarhornPortableTextureLayer']['geometryChanged'] is False
