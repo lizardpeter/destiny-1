@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-corpus census of exact LocalShader API10 access-shape families.
 
-Consumes the independently exact usage-binding and material-chain reports.  It
+Consumes the independently exact usage-binding and material-chain reports. It
 classifies only structural access counts + descriptor entry windows; it assigns
 no backing-buffer or engine semantic meaning. The exact family census is also a
 minimum coverage contract for any future runtime-writer capture corpus.
@@ -15,6 +15,8 @@ def main():
  if m.get('status')!='D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_EXACT' or m.get('violations'):v.append('material_chain_not_exact')
  ps=u.get('programs',[]); by={p.get('gcn_sha256'):p for p in ps}
  if len(ps)!=39:v.append(f'program_denominator:{len(ps)}')
+ if len(by)!=len(ps):v.append('duplicate_or_missing_program_identity')
+ if any(not isinstance(k,str) or len(k)!=64 or any(c not in '0123456789abcdef' for c in k.lower()) for k in by):v.append('invalid_program_sha256')
  if sum(len(p.get('wrappers',[])) for p in ps)!=56:v.append('wrapper_denominator')
  mat=collections.Counter(); unknown=[]
  for b in m.get('bindings',[]):
@@ -33,6 +35,8 @@ def main():
  mh=collections.Counter()
  for (n,w),c in mat.items():mh[n]+=c
  if dict(sorted(mh.items()))!={3:14,6:3,8:1320,12:2049}:v.append(f'material_family_histogram_drift:{dict(mh)}')
- out={'schema':'d1_gcn_localshader_api10_access_family_census/v1','status':STATUS if not v else 'D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_WITH_VIOLATIONS','coverage':{'program_count':len(ps),'wrapper_count':sum(len(p.get('wrappers',[])) for p in ps),'material_occurrence_count':sum(mat.values()),'instruction_count_families':[3,6,8,12],'descriptor_windows':sorted({p['descriptor_window'] for p in ps}),'program_instruction_histogram':{str(k):val for k,val in sorted(collections.Counter(p['tbuffer_instruction_count'] for p in ps).items())},'material_instruction_histogram':{str(k):val for k,val in sorted(mh.items())}},'families':families,'semantic_boundary':{'access_shape':'EXACT','descriptor_entry_window':'EXACT','runtime_writer':'WITHHELD','backing_allocation':'WITHHELD','engine_semantic':'WITHHELD'},'capture_strategy':'A runtime-writer capture corpus must cover both descriptor windows and all four exact TBUFFER-count families (3,6,8,12); a single API10 capture is not sufficient to generalize runtime ownership.','violations':v}
- a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2,sort_keys=True)+'\n');print(json.dumps({'status':out['status'],'coverage':out['coverage'],'violations':v},indent=2));return 0 if not v else 2
+ programs=[{'gcn_sha256':p['gcn_sha256'],'tbuffer_instruction_count':p['tbuffer_instruction_count'],'descriptor_window':p['descriptor_window'],'wrapper_count':len(p.get('wrappers',[]))} for p in sorted(ps,key=lambda x:x['gcn_sha256'])]
+ if len(programs)!=39:v.append('program_membership_denominator')
+ out={'schema':'d1_gcn_localshader_api10_access_family_census/v2','status':STATUS if not v else 'D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_WITH_VIOLATIONS','coverage':{'program_count':len(ps),'wrapper_count':sum(len(p.get('wrappers',[])) for p in ps),'material_occurrence_count':sum(mat.values()),'instruction_count_families':[3,6,8,12],'descriptor_windows':sorted({p['descriptor_window'] for p in ps}),'program_instruction_histogram':{str(k):val for k,val in sorted(collections.Counter(p['tbuffer_instruction_count'] for p in ps).items())},'material_instruction_histogram':{str(k):val for k,val in sorted(mh.items())}},'programs':programs,'families':families,'semantic_boundary':{'access_shape':'EXACT','descriptor_entry_window':'EXACT','runtime_writer':'WITHHELD','backing_allocation':'WITHHELD','engine_semantic':'WITHHELD'},'capture_strategy':'Primary runtime captures must bind to one of the exact program identities emitted here; coverage must span both descriptor windows and all four exact TBUFFER-count families (3,6,8,12).','violations':v}
+ a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2,sort_keys=True)+'\n');print(json.dumps({'status':out['status'],'coverage':out['coverage'],'program_membership_count':len(programs),'violations':v},indent=2));return 0 if not v else 2
 if __name__=='__main__':raise SystemExit(main())
