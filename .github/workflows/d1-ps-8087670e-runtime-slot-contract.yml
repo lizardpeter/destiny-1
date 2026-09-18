@@ -1,0 +1,96 @@
+name: D1 PS 8087670E runtime slot contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_ps_8087670e_runtime_slot_contract.py'
+      - '.github/workflows/d1-ps-8087670e-runtime-slot-contract.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: '${{ github.token }}'
+  PEER_ARTIFACT_ID: '10075914627'
+  PEER_ZIP_SHA256: '21b878324d8c8821ce7bd329ef2e21143d0bdac6bf265dd100e398aba470a18d'
+  FINAL_ARTIFACT_ID: '10076330783'
+  FINAL_ZIP_SHA256: '5c570481c45ff03c679b021b18a01ebfc3ff59d97a5cef876b6a53321b1aaca3'
+  BUNGIE_ARTIFACT_ID: '10078060944'
+  BUNGIE_ZIP_SHA256: '6ee0bf91fff5876818fcda18ed0663e3a6e0ace450af38e22092457a4f735e57'
+  T5_ARTIFACT_ID: '10078474700'
+  T5_ZIP_SHA256: '61bc8466d614afd37afdd882477979624a6f14f7ee86e32351b5030d303977e0'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact pinned proof products
+        run: |
+          set -euo pipefail
+          mkdir -p input/peer input/final input/bungie input/t5 out
+          for spec in \
+            "peer:${PEER_ARTIFACT_ID}:${PEER_ZIP_SHA256}" \
+            "final:${FINAL_ARTIFACT_ID}:${FINAL_ZIP_SHA256}" \
+            "bungie:${BUNGIE_ARTIFACT_ID}:${BUNGIE_ZIP_SHA256}" \
+            "t5:${T5_ARTIFACT_ID}:${T5_ZIP_SHA256}"; do
+            IFS=: read -r name aid sha <<< "$spec"
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}/zip" \
+              -o "input/${name}.zip"
+            echo "${sha}  input/${name}.zip" | sha256sum --check --strict
+            unzip -q "input/${name}.zip" -d "input/${name}"
+          done
+
+          echo '909f50e5b7999d6e3960210d755a0cae5a43eb909e4733f73318829c283be3b1  input/peer/PS_8087670E_PEER_MATERIAL_CENSUS.json' | sha256sum --check --strict
+          echo 'b0dd0f22d1d204ebaad6132f813af25402da0430af03c0cb87ba0904415e98f4  input/final/PS_8087670E_API15_BINDING.json' | sha256sum --check --strict
+          echo 'b3a7388114e476304984d5ef3d95c730abdaae0a317092ba4cf3a9476d5a954c  input/final/PS_8087670E_BLEND_FACTOR.json' | sha256sum --check --strict
+          echo 'e4885e920fb2560ad1d7c63bddaed2b8a6d5faea24e1d0ff5f9ca23f55d1e964  input/bungie/PS_8087670E_BUNGIE_WEBGL_CORRELATION.json' | sha256sum --check --strict
+          echo '42f6ed9fe1e9f53ac84669a6b6a6fb042cc3d959e31f44fec5ba2068011b52ef  input/t5/reports/80AB04C7_T5_CHAIN_EXACT.json' | sha256sum --check --strict
+
+      - name: Build exact runtime-slot frontier contract
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_ps_8087670e_runtime_slot_contract.py
+          python tools/d1_ps_8087670e_runtime_slot_contract.py \
+            --peer-census input/peer/PS_8087670E_PEER_MATERIAL_CENSUS.json \
+            --api15-binding input/final/PS_8087670E_API15_BINDING.json \
+            --blend-factor input/final/PS_8087670E_BLEND_FACTOR.json \
+            --bungie-correlation input/bungie/PS_8087670E_BUNGIE_WEBGL_CORRELATION.json \
+            --t5-proof input/t5/reports/80AB04C7_T5_CHAIN_EXACT.json \
+            -o out/D1_PS_8087670E_RUNTIME_SLOT_CONTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_PS_8087670E_RUNTIME_SLOT_CONTRACT.json'))
+          assert d['status']=='D1_PS_8087670E_RUNTIME_SLOT_FRONTIER_EXACT' and not d['violations'],d
+          den=d['retail_peer_denominator']
+          assert den['unique_material_count']==10 and den['physical_occurrence_count']==70,den
+          assert den['t4_serialized_occurrence_count']==0 and den['t4_absent_occurrence_count']==70,den
+          assert den['serialized_texture_slot_set']==[0,1,2,3,5],den
+          assert d['t4_frontier']['classification']=='NON_MATERIAL_RESOURCE_TABLE_BINDING_REQUIRED',d
+          assert d['api15_frontier']['selected_vec4_index']==0,d
+          assert d['api15_frontier']['surviving_component']=='c0.w',d
+          assert d['api15_frontier']['factor_equation']=='f = -API15.c0.w',d
+          assert d['gates']['t4_runtime_binding_closed'] is False,d
+          assert d['gates']['api15_c0_w_runtime_value_closed'] is False,d
+          assert d['gates']['final_shader_color_closed'] is False,d
+          print('8087670E_RUNTIME_SLOT_FRONTIER_EXACT')
+          PY
+          sha256sum out/D1_PS_8087670E_RUNTIME_SLOT_CONTRACT.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-PS-8087670E-RUNTIME-SLOT-CONTRACT
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
