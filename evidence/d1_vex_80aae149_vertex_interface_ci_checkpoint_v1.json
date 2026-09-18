@@ -1,0 +1,43 @@
+{
+  "schema": "d1_vex_80aae149_vertex_interface_ci_checkpoint/v1",
+  "status": "FAIL_CLOSED_PENDING_DIAGNOSTIC_REPORT",
+  "retail_shader": "80AAE149",
+  "native_shader": "80AAE14A",
+  "known_exact_native_sha256": "71f11fd1f403eb087ae2fa6d9051f0f4e0ae27f680208ae269bef11e84b39996",
+  "known_exact_gcn_sha256": "e6f18138e330a9c6b3ddce2e71890b1bcda73f732c4f6007b4c788c0ff62f4c0",
+  "known_exact_gcn_bytes": 508,
+  "producer": {
+    "workflow": ".github/workflows/d1-vex-80aae149-vertex-interface.yml",
+    "successful_recovery_run_id": 35351952735,
+    "successful_recovery_artifact_id": 10550940180,
+    "successful_recovery_artifact_digest": "sha256:94c75f077396fdfbc79e2a493f6cafbb145a2f120c460aed7e020827db4002bf",
+    "proof_attempt_run_id": 35352691213,
+    "proof_attempt_job_id": 105624371294,
+    "proof_attempt_head_sha": "b25573ccf0a0689d264f3feeb35474781905b44f"
+  },
+  "observed_ci_boundary": {
+    "exact_package_recovery": "PASS",
+    "exact_native_vertex_shader_extract": "PASS",
+    "pinned_clrx_build_and_disassembly": "PASS",
+    "semantic_proof": "FAIL",
+    "negative_mutation_gates": "SKIPPED_AFTER_PROOF_FAILURE",
+    "artifact_upload": "SKIPPED_AFTER_PROOF_FAILURE"
+  },
+  "promotion_policy": {
+    "vertex_interface_semantics": "WITHHELD_UNTIL_PROOF_REPORT_IS_RECOVERED_AND_VIOLATIONS_ARE_RESOLVED",
+    "fetch_shader_source_mapping": "WITHHELD",
+    "api10_engine_semantic": "WITHHELD",
+    "api11_engine_semantic": "WITHHELD",
+    "api12_engine_semantic": "WITHHELD"
+  },
+  "next_exact_question": "Recover the proof program's emitted violations from the exact CLRX disassembly. The current workflow skips artifact upload after the failing proof step, so preserve diagnostic output on failure before changing any proof anchor. Do not relax ordered instruction anchors without primary evidence.",
+  "localshader_api10_boundary": {
+    "membership_program_count": 39,
+    "membership_wrapper_count": 56,
+    "membership_material_occurrence_count": 3386,
+    "descriptor_windows": ["s[12:15]", "s[8:11]"],
+    "runtime_writer": "WITHHELD",
+    "backing_allocation": "WITHHELD",
+    "engine_semantic": "WITHHELD"
+  }
+}
