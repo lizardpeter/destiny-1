@@ -31,7 +31,7 @@ A numeric type/subtype is not given an official semantic name unless the evidenc
 | 1 | 4 | VertexBuffer data | CONFIRMED_CROSS_SOURCE | sizes/strides validated |
 | 32 | 6 | IndexBuffer header | CONFIRMED_CROSS_SOURCE | PS4 + Xbox decoded headers |
 | 1 | 6 | IndexBuffer data | CONFIRMED_CROSS_SOURCE | u16/u32 topology validated |
-| 32 | 7 | `GpuSubtype7` header; likely D1 ConstantBuffer | STRONGLY_SUPPORTED | 122 PS4 headers; payload size = unit_count×16; 88 ROI material PSVector4Container refs |
+| 32 | 7 | `GpuSubtype7` header; material Vector4/b0 storage role proven, official D1 class name UNKNOWN | CONFIRMED_CROSS_PLATFORM_SEMANTIC role / official name UNKNOWN | 122 PS4 headers; payload size = unit_count×16; 88 ROI material PSVector4Container refs; exact OrbShdr API0 + GCN b0 load closure |
 | 1 | 7 | `GpuSubtype7` data | STRONGLY_SUPPORTED | linked payload family |
 | 32 | 8 | PixelShader header | CONFIRMED_CROSS_SOURCE | 7 PS4 headers; packed size/input-slot field solved |
 | 1 | 8 | PixelShader native data | CONFIRMED_CROSS_SOURCE | GCN + OrbShdr parsed |
@@ -90,7 +90,7 @@ The former 12-byte Xbox tail is therefore solved, not padding.
 
 ## Subtype 7 status
 
-Do not silently rename D1 subtype 7 to ConstantBuffer yet. However, the case is now strong:
+Do not silently rename D1 subtype 7 to ConstantBuffer yet. Its **material Vector4/b0 storage role is now proven for the validated ROI material path**, while the official D1 Tiger class name and any non-material/global uses remain unresolved:
 
 - 122/122 PS4 headers are exactly 16 bytes.
 - 122/122 linked payloads satisfy `payload_size = header.unit_count * 16`.
