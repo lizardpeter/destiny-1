@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-816ce0a8-universal-gcn-output.yml'
       - 'tools/d1_remote_ps4_shader_extract.py'
+      - 'tools/d1_vex_816ce0a8_global_cb_proof.py'
 
 permissions:
   contents: read
@@ -73,6 +74,30 @@ jobs:
           "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_816CE0A8_gcn.bin > disasm/PS_816CE0A8.s
           grep -q s_endpgm disasm/PS_816CE0A8.s
           tail -n 40 disasm/PS_816CE0A8.s
+
+      - name: Prove exact API0/API12/API13 descriptor and dataflow provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_vex_816ce0a8_global_cb_proof.py \
+            --extract-report out/816CE0A8_remote_shader_extract.json \
+            --disassembly disasm/PS_816CE0A8.s \
+            --out out/816CE0A8_global_cb_proof.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/816CE0A8_global_cb_proof.json'))
+          assert d['status']=='D1_VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT' and not d['violations'],d
+          assert d['gcn_sha256']=='8e0e11cd37896f14873d86215ddec89dd5be34d457e33f6b734b7c3fd0e126fd'
+          assert d['extended_user_data']['constant_buffers']==[
+              {'api_slot':0,'start_register':28,'extended_user_data_dword_offset':12},
+              {'api_slot':12,'start_register':32,'extended_user_data_dword_offset':16},
+              {'api_slot':13,'start_register':36,'extended_user_data_dword_offset':20},
+          ]
+          assert d['proven_equations']['global_rgb_factor']=='api13[6] * api13[7]'
+          assert d['proven_equations']['view_origin_delta']=='float3(api12[28]-attr4.x, api12[29]-attr4.y, api12[30]-attr4.z)'
+          assert d['gates']['api13_engine_producer_closed'] is False
+          assert d['gates']['api13_live_values_closed'] is False
+          print('VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT')
+          PY
 
       - name: Prove circuitry output alpha is exact zero
         run: |
