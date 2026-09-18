@@ -1,0 +1,50 @@
+name: D1 PS4 API10 TfxScope exclusion proof
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_ps4_api10_tfxscope_exclusion_proof.py'
+      - 'evidence/d1_localshader_api10_membership_provenance_v1.json'
+      - '.github/workflows/d1-ps4-api10-tfxscope-exclusion-proof.yml'
+permissions:
+  contents: read
+env:
+  CHARM_COMMIT: '50d36ee1f9ecadad7522504c20b1f3f9c97e30af'
+  CHARM_EXTERNS_BLOB_SHA1: '7311688c71ab3a9e9d6eacd5393d07254688bace'
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Pin D1 TfxScope source
+        run: |
+          set -euo pipefail
+          mkdir -p source out
+          curl -fsSL --retry 4 "https://raw.githubusercontent.com/MontagueM/Charm/${CHARM_COMMIT}/Tiger/Schema/Shaders/TFX%20Bytecode/Externs.cs" -o source/Externs.cs
+          test "$(git hash-object source/Externs.cs)" = "${CHARM_EXTERNS_BLOB_SHA1}"
+      - name: Prove API10 has no source TfxScope name
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_ps4_api10_tfxscope_exclusion_proof.py
+          python tools/d1_ps4_api10_tfxscope_exclusion_proof.py --externs source/Externs.cs --membership-manifest evidence/d1_localshader_api10_membership_provenance_v1.json -o out/D1_PS4_API10_TFXSCOPE_EXCLUSION_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_PS4_API10_TFXSCOPE_EXCLUSION_PROOF.json'))
+          assert d['status']=='D1_PS4_API10_TFXSCOPE_NAME_EXCLUDED_EXACT' and not d['violations'],d
+          assert d['api10']['present_in_tfxscope'] is False,d
+          assert d['api10']['exact_program_membership_count']==39,d
+          assert d['api10']['runtime_writer']=='WITHHELD',d
+          assert d['api10']['backing_allocation']=='WITHHELD',d
+          assert d['api10']['engine_semantic']=='WITHHELD',d
+          PY
+          sha256sum out/D1_PS4_API10_TFXSCOPE_EXCLUSION_PROOF.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-PS4-API10-TFXSCOPE-EXCLUSION-PROOF
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
