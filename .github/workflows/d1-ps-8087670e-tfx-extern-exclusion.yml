@@ -1,0 +1,67 @@
+name: D1 PS 8087670E TFX extern exclusion
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_ps_8087670e_tfx_extern_exclusion.py'
+      - '.github/workflows/d1-ps-8087670e-tfx-extern-exclusion.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: '${{ github.token }}'
+  LOCAL_STATE_ARTIFACT_ID: '10069648391'
+  LOCAL_STATE_ZIP_SHA256: 'f1f925c702fc83661c98bff27e8d34fdd6a96f0a2df263bf285b27e43f225573'
+  MATERIAL_STATE_SHA256: '2fc62b5eb6eefa1cd101b64ea9d28ab170ec001297f8479a07f1d73cae47cbd0'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact 85-material Tower local state
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LOCAL_STATE_ARTIFACT_ID}/zip" \
+            -o input/local-state.zip
+          echo "${LOCAL_STATE_ZIP_SHA256}  input/local-state.zip" | sha256sum --check --strict
+          unzip -q input/local-state.zip -d input/local-state
+          echo "${MATERIAL_STATE_SHA256}  input/local-state/THREE_NPC_MATERIAL_STAGE_STATE.json" | sha256sum --check --strict
+      - name: Prove target TFX contains no extern producer
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_ps_8087670e_tfx_extern_exclusion.py
+          python tools/d1_ps_8087670e_tfx_extern_exclusion.py \
+            --material-state input/local-state/THREE_NPC_MATERIAL_STAGE_STATE.json \
+            -o out/D1_PS_8087670E_TFX_EXTERN_EXCLUSION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_PS_8087670E_TFX_EXTERN_EXCLUSION.json'))
+          assert d['status']=='D1_PS_8087670E_MATERIAL_TFX_EXTERN_EXCLUSION_EXACT' and not d['violations'],d
+          assert d['whole_three_npc_tfx_extern_histogram']=={'Frame':82},d
+          assert d['target_tfx_identical'] is True,d
+          assert d['target_tfx_extern_read_count']==0,d
+          assert d['opcode_49']['semantic']=='WITHHELD',d
+          assert d['remaining_runtime_frontier']['api15_c0_w_source']=='NON_MATERIAL_TFX_RUNTIME_PRODUCER_REQUIRED',d
+          assert d['remaining_runtime_frontier']['t4_resource_source']=='NON_MATERIAL_RESOURCE_TABLE_PRODUCER_REQUIRED',d
+          print('8087670E_MATERIAL_TFX_EXTERN_EXCLUSION_EXACT')
+          PY
+          sha256sum out/D1_PS_8087670E_TFX_EXTERN_EXCLUSION.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-PS-8087670E-TFX-EXTERN-EXCLUSION
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
