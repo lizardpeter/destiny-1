@@ -11,6 +11,7 @@ def run(doc):
         return subprocess.run([sys.executable,str(VALIDATOR),str(p)],text=True,capture_output=True)
 
 raw=b"\x00\x01\x02\x03"
+writer_raw=b"\xc0\xde\x10\x00\x01\x02\x03\x04"
 sample={
  "gcn_sha256":"0"*64,
  "membership_proof":"SOURCE_CLOSED_39_MEMBER_SET",
@@ -18,7 +19,7 @@ sample={
  "descriptor_window":"s[12:15]",
  "tbuffer_instruction_count":8,
  "descriptor_dwords":[0,1,2,3],
- "writer":{"evidence_class":"PRIMARY_RUNTIME","raw_bytes_sha256":"1"*64,"capture_locator":"fixture-only"},
+ "writer":{"evidence_class":"PRIMARY_RUNTIME","raw_bytes_hex":writer_raw.hex(),"raw_bytes_sha256":hashlib.sha256(writer_raw).hexdigest(),"capture_locator":"fixture-only"},
  "backing":{"evidence_class":"PRIMARY_RUNTIME","bytes_hex":raw.hex(),"sha256":hashlib.sha256(raw).hexdigest(),"length":len(raw),"descriptor_range_relation":"PROVEN"}
 }
 base={"schema":"d1_ps4_api10_runtime_capture/v1","engine_semantic":"WITHHELD","universal_record_schema":"WITHHELD","samples":[sample]}
@@ -45,5 +46,17 @@ assert r.returncode!=0 and "descriptor dwords" in (r.stdout+r.stderr),(r.stdout,
 bad=json.loads(json.dumps(base)); bad["samples"][0]["backing"]["sha256"]="f"*64
 r=run(bad)
 assert r.returncode!=0 and "backing sha256" in (r.stdout+r.stderr),(r.stdout,r.stderr)
+
+bad=json.loads(json.dumps(base)); del bad["samples"][0]["writer"]["raw_bytes_hex"]
+r=run(bad)
+assert r.returncode!=0 and "writer raw bytes" in (r.stdout+r.stderr),(r.stdout,r.stderr)
+
+bad=json.loads(json.dumps(base)); bad["samples"][0]["writer"]["raw_bytes_hex"]="00"
+r=run(bad)
+assert r.returncode!=0 and "writer raw bytes sha256" in (r.stdout+r.stderr),(r.stdout,r.stderr)
+
+bad=json.loads(json.dumps(base)); bad["samples"][0]["writer"]["raw_bytes_sha256"]="not-a-sha"
+r=run(bad)
+assert r.returncode!=0 and "writer raw bytes sha256" in (r.stdout+r.stderr),(r.stdout,r.stderr)
 
 print("API10_RUNTIME_CAPTURE_VALIDATOR_SELFTEST_GREEN")
