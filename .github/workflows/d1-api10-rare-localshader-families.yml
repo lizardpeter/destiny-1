@@ -1,0 +1,99 @@
+name: D1 API10 rare LocalShader families retail proof
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-api10-rare-localshader-families.yml'
+      - 'tools/d1_split_tar_extract.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+permissions: {contents: read}
+env:
+  CLRX_COMMIT: fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime and exact retail package
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports shader disasm
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          python tools/d1_split_tar_extract.py             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10             --start-offset 0x408A02C00             --target ps4_gear_player_0103_5.pkg             --out recovered --manifest reports/package_extract.json --retries 6 --timeout 90
+          test "$(stat -c%s recovered/ps4_gear_player_0103_5.pkg)" = 225280
+      - name: Recover exact LocalShader payloads
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_ps4_shader_binary_probe.py recovered/ps4_gear_player_0103_5.pkg             --runtime runtime             --tag-hash 80A08667 --tag-hash 80A0627B             --dump-dir shader -o reports/rare_localshader_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/rare_localshader_probe.json'))
+          by={x['tag_hash']:x for x in d['shaders']}
+          E={
+            '80A08667':('80A08668','2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f',3),
+            '80A0627B':('80A0627C','44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c',6),
+          }
+          want=[('SubPtrFetchShader',0,0),('PtrVertexBufferTable',0,2),('ImmConstBuffer',10,8),('ImmConstBuffer',11,12)]
+          for h,(native,gcn,nloads) in E.items():
+            r=by[h]
+            assert r['present'] and r['payload_reference']==native,r
+            assert r['binary_info']['stage']=='LocalShader',r
+            assert r['code_sha256']==gcn,r
+            got=[(x['usage_name'],x['api_slot'],x['start_register']) for x in r['usage']['slots']]
+            assert got==want,(h,got)
+          PY
+      - name: Build pinned CLRX
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          echo "CLRXDISASM=$exe" >> "$GITHUB_ENV"
+      - name: Disassemble and prove rare access families
+        run: |
+          set -euo pipefail
+          "$CLRXDISASM" --raw --gpuType=GFX700 --hexcode shader/80A08667_gcn_code.bin > disasm/80A08667.s 2> disasm/80A08667.stderr
+          "$CLRXDISASM" --raw --gpuType=GFX700 --hexcode shader/80A0627B_gcn_code.bin > disasm/80A0627B.s 2> disasm/80A0627B.stderr
+          test ! -s disasm/80A08667.stderr
+          test ! -s disasm/80A0627B.stderr
+          grep -q s_endpgm disasm/80A08667.s
+          grep -q s_endpgm disasm/80A0627B.s
+          python - <<'PY'
+          import json,re,hashlib
+          E={
+            '80A08667':('80A08668','2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f',3),
+            '80A0627B':('80A0627C','44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c',6),
+          }
+          out={'schema':'d1_api10_rare_localshader_retail_proof/v1','status':'D1_API10_RARE_LOCALSHADER_RETAIL_PROOF_EXACT','programs':[],'semantic_boundary':{'runtime_writer':'WITHHELD','descriptor_dwords':'WITHHELD','backing_allocation':'WITHHELD','engine_semantic':'WITHHELD'}}
+          for wrapper,(native,gcn,nloads) in E.items():
+            text=open(f'disasm/{wrapper}.s').read()
+            lines=[x.strip() for x in text.splitlines() if 'tbuffer_load_format_xyzw' in x]
+            assert len(lines)==nloads,(wrapper,len(lines),lines)
+            assert all('s[8:11]' in x for x in lines),(wrapper,lines)
+            raw=open(f'shader/{wrapper}_gcn_code.bin','rb').read()
+            assert hashlib.sha256(raw).hexdigest()==gcn
+            out['programs'].append({'wrapper':wrapper,'native_program_reference':native,'gcn_sha256':gcn,'orbshdr_stage':'LocalShader','descriptor_window':'s[8:11]','tbuffer_instruction_count':nloads,'tbuffer_disassembly_lines':lines})
+          open('reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+          sha256sum reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json shader/* disasm/*.s > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-RARE-LOCALSHADER-RETAIL-PROOF
+          path: |
+            reports/
+            shader/
+            disasm/
+          retention-days: 90
+          if-no-files-found: error
