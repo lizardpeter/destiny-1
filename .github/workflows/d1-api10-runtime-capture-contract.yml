@@ -1,0 +1,42 @@
+name: D1 API10 runtime capture contract
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'evidence/d1_ps4_api10_runtime_capture_contract_v1.json'
+      - 'tools/d1_validate_api10_runtime_capture_v1.py'
+      - 'tests/test_d1_validate_api10_runtime_capture_v1.py'
+      - '.github/workflows/d1-api10-runtime-capture-contract.yml'
+permissions:
+  contents: read
+jobs:
+  validate-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Compile and regression-test fail-closed validator
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_validate_api10_runtime_capture_v1.py tests/test_d1_validate_api10_runtime_capture_v1.py
+          python tests/test_d1_validate_api10_runtime_capture_v1.py
+      - name: Assert blocker contract preserves semantic gates
+        run: |
+          python - <<'PY'
+          import json
+          p='evidence/d1_ps4_api10_runtime_capture_contract_v1.json'
+          d=json.load(open(p))
+          assert d['status']=='BLOCKED_PENDING_PRIMARY_RUNTIME_CAPTURE'
+          assert d['source_closed_membership']['program_count']==39
+          assert d['source_closed_membership']['access_family_count']==6
+          assert d['minimum_cross_family_capture']['instruction_counts']==[3,6,8,12]
+          assert set(d['minimum_cross_family_capture']['descriptor_windows'])=={'s[12:15]','s[8:11]'}
+          g=d['acceptance_gates']
+          assert g['runtime_writer']=='WITHHELD_UNTIL_CAPTURE'
+          assert g['backing_allocation']=='WITHHELD_UNTIL_CAPTURE'
+          assert g['engine_semantic']=='WITHHELD_UNTIL_INDEPENDENT_SEMANTIC_PROOF'
+          print('API10_RUNTIME_CAPTURE_CONTRACT_GREEN')
+          PY
