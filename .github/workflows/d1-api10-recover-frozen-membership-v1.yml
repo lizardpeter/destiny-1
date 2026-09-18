@@ -1,0 +1,61 @@
+name: D1 API10 recover frozen membership v1
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-api10-recover-frozen-membership-v1.yml'
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: d1-api10-recover-frozen-membership-v1
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d1-crota-source-semantics-v1
+          fetch-depth: 0
+      - name: Recover exact frozen census artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/${{ github.repository }}/actions/artifacts/10539900120/zip > /tmp/api10-membership.zip
+          echo 'b64ddfd28937c6d5adddf8464817da6f836fd32c1b3e20e1b51841ce3d185897  /tmp/api10-membership.zip' | sha256sum -c -
+          rm -rf /tmp/api10-membership
+          mkdir /tmp/api10-membership
+          unzip -q /tmp/api10-membership.zip -d /tmp/api10-membership
+          test -f /tmp/api10-membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
+          echo '7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8  /tmp/api10-membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json' | sha256sum -c -
+          mkdir -p evidence/frozen
+          cp /tmp/api10-membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json evidence/frozen/
+      - name: Validate recovered bytes with source-closed verifier
+        run: |
+          set -euo pipefail
+          python3 tools/d1_validate_api10_runtime_capture_membership_v2.py --help >/dev/null
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          p=pathlib.Path('evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json')
+          b=p.read_bytes()
+          assert hashlib.sha256(b).hexdigest()=='7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8'
+          j=json.loads(b)
+          print('recovered top-level keys:', sorted(j))
+          PY
+      - name: Persist exact primary producer output
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
+          if git diff --cached --quiet; then
+            echo 'Exact frozen census already present.'
+            exit 0
+          fi
+          git commit -m 'd1: recover exact frozen API10 membership census'
+          git pull --rebase origin d1-crota-source-semantics-v1
+          git push origin HEAD:d1-crota-source-semantics-v1
