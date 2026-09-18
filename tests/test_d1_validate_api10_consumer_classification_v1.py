@@ -31,4 +31,18 @@ r=run(cross,census);assert r.returncode==0,(r.stdout,r.stderr)
 r=run(cross);assert r.returncode!=0 and "requires LocalShader census" in r.stderr+r.stdout
 bad=json.loads(json.dumps(census));bad["programs"][0]["gcn_sha256"]="a"*64
 r=run(cross,bad);assert r.returncode!=0 and "LocalShader overlap" in r.stderr+r.stdout
+# LocalShader partial classifications must be exact members and must reproduce
+# their frozen descriptor-window/TBUFFER metadata.
+local_census={"schema":"d1_gcn_localshader_api10_access_family_census/v2","status":"D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT","violations":[],"programs":[{"gcn_sha256":f"{i:064x}","descriptor_window":"s[8:11]","tbuffer_instruction_count":8} for i in range(1,40)]}
+local=json.loads(json.dumps(base))
+local["status"]="SOURCE_CLOSED_LOCALSHADER_PARTIAL"
+local["programs"][0]["gcn_sha256"]=f"{1:064x}"
+local["programs"][0]["source_hardware_stage"]="LocalShader"
+local["programs"][0]["tbuffer_instruction_count"]=8
+local["coverage"]={"classified_localshader_programs":1,"localshader_api10_program_denominator":39,"unclassified_localshader_programs":38,"classification_complete_for_localshader":False}
+r=run(local,local_census);assert r.returncode==0,(r.stdout,r.stderr)
+bad=json.loads(json.dumps(local));bad["programs"][0]["gcn_sha256"]="f"*64
+r=run(bad,local_census);assert r.returncode!=0 and "nonmember" in r.stderr+r.stdout,(r.stdout,r.stderr)
+bad=json.loads(json.dumps(local));bad["programs"][0]["tbuffer_instruction_count"]=12
+r=run(bad,local_census);assert r.returncode!=0 and "TBUFFER count" in r.stderr+r.stdout,(r.stdout,r.stderr)
 print("API10_CONSUMER_CLASSIFIER_SELFTEST_GREEN")
