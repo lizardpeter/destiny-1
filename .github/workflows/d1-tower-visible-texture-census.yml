@@ -7,6 +7,8 @@ on:
       - '.github/workflows/d1-tower-visible-texture-census.yml'
       - 'tools/d1_world_material_texture_export.py'
       - 'tools/d1_texture_export.py'
+      - 'tools/d1_texture_backing_chain_v1.py'
+      - 'tests/test_d1_world_material_texture_strict_chain.py'
       - 'tools/d1_dds_to_png.py'
       - 'tools/d1_material_decode.py'
       - 'tools/d1_tower_recover_current_corpus.py'
@@ -66,6 +68,28 @@ jobs:
             "${args[@]}" --runtime runtime "${vargs[@]}" --out textures \
             | tee reports/texture_export_stdout.txt
           cp textures/material_texture_manifest.json reports/material_texture_manifest.json
+          python - <<'PY'
+          import collections,json
+          d=json.load(open('textures/material_texture_manifest.json'))
+          assert d['texture_backing_policy']=='STRICT_PROVEN_SHAPES_ONLY',d
+          ok=[r for r in d['textures'].values() if not r.get('error')]
+          bad=[r for r in d['textures'].values() if r.get('error')]
+          modes=collections.Counter(r.get('strict_backing_chain_mode') for r in ok)
+          assert set(modes).issubset({'direct','two_hop_65_1_to_5_1'}),modes
+          assert all(r.get('strict_backing_hash') for r in ok),[r['texture'] for r in ok if not r.get('strict_backing_hash')]
+          summary={
+            'status':'D1_TOWER_VISIBLE_TEXTURE_STRICT_CHAIN_CENSUS',
+            'visible_material_count':d['visible_material_count'],
+            'unique_texture_tags':d['unique_texture_tags'],
+            'decoded_texture_tags':d['decoded_texture_tags'],
+            'texture_errors':d['texture_errors'],
+            'strict_chain_mode_histogram':dict(sorted(modes.items())),
+            'error_reason_histogram':dict(sorted(collections.Counter(r.get('error') for r in bad).items())),
+            'missing_texture_package_ids':d['missing_texture_package_ids'],
+          }
+          json.dump(summary,open('reports/D1_TOWER_VISIBLE_TEXTURE_STRICT_CHAIN_SUMMARY.json','w'),indent=2)
+          print(json.dumps(summary,indent=2))
+          PY
 
       - uses: actions/upload-artifact@v4
         if: always()
