@@ -1,0 +1,27 @@
+name: D1 GCN resource LDS rebuild smoke v1
+
+on:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_gcn_resource_lds_rebuild_v1.py'
+      - 'tools/d1_gcn_resource_lds_provenance_v1.py'
+      - 'tools/d1_gcn_sgpr_ssa_v1.py'
+      - '.github/workflows/d1-gcn-resource-lds-rebuild-smoke-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile exact producer and consumers
+        run: |
+          python -m py_compile \
+            tools/d1_gcn_sgpr_ssa_v1.py \
+            tools/d1_gcn_resource_lds_provenance_v1.py \
+            tools/d1_gcn_resource_lds_rebuild_v1.py
+      - name: Run frozen provenance self-test
+        run: python tools/d1_gcn_resource_lds_provenance_v1.py --self-test
+      - name: Verify rebuild CLI is loadable
+        run: python tools/d1_gcn_resource_lds_rebuild_v1.py --help >/dev/null
