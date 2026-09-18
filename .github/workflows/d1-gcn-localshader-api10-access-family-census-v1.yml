@@ -30,14 +30,23 @@ jobs:
             --materials materials/D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_V1.json \
             --out reports/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
           python - <<'PY'
-          import json
+          import collections,json
           d=json.load(open('reports/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'))
+          assert d['schema']=='d1_gcn_localshader_api10_access_family_census/v2',d
           assert d['status']=='D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT',d
           assert d['coverage']['program_count']==39,d
           assert d['coverage']['wrapper_count']==56,d
           assert d['coverage']['material_occurrence_count']==3386,d
           assert d['coverage']['program_instruction_histogram']=={'3':1,'6':1,'8':17,'12':20},d
           assert d['coverage']['material_instruction_histogram']=={'3':14,'6':3,'8':1320,'12':2049},d
+          assert len(d['programs'])==39,d
+          assert len({p['gcn_sha256'] for p in d['programs']})==39,d
+          assert collections.Counter(p['tbuffer_instruction_count'] for p in d['programs'])==collections.Counter({3:1,6:1,8:17,12:20}),d
+          assert sum(p['wrapper_count'] for p in d['programs'])==56,d
+          fam={(f['tbuffer_instruction_count'],f['descriptor_window']):set(f['gcn_sha256']) for f in d['families']}
+          assert len(fam)==6,d
+          for p in d['programs']:
+              assert p['gcn_sha256'] in fam[(p['tbuffer_instruction_count'],p['descriptor_window'])],p
           assert not d['violations'],d
           PY
       - uses: actions/upload-artifact@v4
