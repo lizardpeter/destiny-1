@@ -29,6 +29,7 @@ from d1_remote_investment_parent_probe import RemoteLogicalPackage
 from d1_remote_model_export import MultiPackageReader
 from d1_split_tar_extract import SplitHttpTar
 from d1_texture_export_v2 import export_reader
+from d1_texture_backing_chain_v1 import resolve_texture_backing
 
 
 def norm(v:str)->str:
@@ -58,35 +59,38 @@ def preflight(r:MultiPackageReader,by:dict[str,dict],wanted:list[str])->dict:
             row['stages'].append({'stage':'header','entry':entry_desc(he),'ok':False,'error':repr(ex)})
             row['error_stage']='header';row['error']=repr(ex);failures.append(row);rows.append(row);continue
 
-        mid=by.get(he['reference'].upper())
-        if mid is None:
-            row['error_stage']='stream';row['error']=f"stream {he['reference'].upper()} absent from catalog views"
-            row['stages'].append({'stage':'stream','entry':None,'tag_hash':he['reference'].upper(),'ok':False,'error':row['error']})
+        try:
+            shape_by={k:(None,e) for k,e in by.items()}
+            first_rec,back_rec,mode=resolve_texture_backing(shape_by,he)
+            mid=first_rec[1];back=back_rec[1]
+            row['strict_storage_mode']=mode
+        except Exception as ex:
+            row['error_stage']='storage_shape';row['error']=repr(ex)
+            row['stages'].append({'stage':'storage_shape','entry':entry_desc(he),'ok':False,'error':repr(ex)})
             failures.append(row);rows.append(row);continue
+
         try:
             mb=r.entry(mid['index'])
-            row['stages'].append({'stage':'stream','entry':entry_desc(mid),'bytes':len(mb),'ok':True})
+            row['stages'].append({'stage':'first_hop','entry':entry_desc(mid),'bytes':len(mb),'ok':True})
         except Exception as ex:
-            row['stages'].append({'stage':'stream','entry':entry_desc(mid),'ok':False,'error':repr(ex)})
-            row['error_stage']='stream';row['error']=repr(ex);failures.append(row);rows.append(row);continue
+            row['stages'].append({'stage':'first_hop','entry':entry_desc(mid),'ok':False,'error':repr(ex)})
+            row['error_stage']='first_hop';row['error']=repr(ex);failures.append(row);rows.append(row);continue
 
-        nxt=mid['reference'].upper();back=by.get(nxt)
-        if back is None:
-            # d1_texture_export intentionally accepts the stream itself as the
-            # backing when there is no second serialized tag hop.
-            back=mid
-        try:
-            bb=r.entry(back['index'])
-            row['stages'].append({'stage':'backing','entry':entry_desc(back),'bytes':len(bb),'ok':True})
-        except Exception as ex:
-            row['stages'].append({'stage':'backing','entry':entry_desc(back),'ok':False,'error':repr(ex)})
-            row['error_stage']='backing';row['error']=repr(ex);failures.append(row);rows.append(row);continue
+        if back is mid:
+            bb=mb
+        else:
+            try:
+                bb=r.entry(back['index'])
+            except Exception as ex:
+                row['stages'].append({'stage':'backing','entry':entry_desc(back),'ok':False,'error':repr(ex)})
+                row['error_stage']='backing';row['error']=repr(ex);failures.append(row);rows.append(row);continue
+        row['stages'].append({'stage':'backing','entry':entry_desc(back),'bytes':len(bb),'ok':True})
         rows.append(row)
     return {
         'schema':'d1_remote_texture_preflight/v1','requested_count':len(wanted),
         'success_count':len(rows)-len(failures),'failure_count':len(failures),
         'rows':rows,'failures':failures,
-        'policy':'Every requested texture header and its exact serialized stream/backing FileHash chain is physically read before bulk export; exceptions retain exact source package and file index.'
+        'policy':'Every requested texture header is first admitted by the shared strict D1 storage-shape resolver, then every required payload is physically read before bulk export; exceptions retain exact source package and file index.'
     }
 
 
