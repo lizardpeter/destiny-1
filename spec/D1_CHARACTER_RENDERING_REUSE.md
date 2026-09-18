@@ -42,7 +42,7 @@ Lookup is fail-closed through:
 
 `tools/d1_shader_semantic_registry_lookup.py`
 
-The first registry checkpoint contains **9 exact GCN programs: 6 PS + 3 VS** from the current Xur proof waves.
+The current registry checkpoint contains **14 exact GCN programs: 10 PS + 4 VS**. Thirteen come from the exact Xur semantic waves and the fourteenth is the independently retail-proven `80AAE149` VS program (`e6f18138…2f4c0`), registered by exact bounded GCN identity. Registry growth is no longer constrained to one fixture: independently pinned exact proofs may extend it while retaining their own artifact/hash provenance.
 
 A concrete proof that serialized shader identity is too narrow is the shared Xur VS GCN family: serialized VS headers `8087695C`, `809DF743`, and `80A08C19` all resolve to the same exact 700-byte native GCN program. Its post-fetch equations therefore belong to the native program identity, not to one TagHash or one NPC.
 
@@ -105,7 +105,20 @@ Do not propagate any of the following from one character to another without exac
 - blend/depth/raster/composition state;
 - a portable Blender/PBR approximation.
 
-## 8. Practical whole-game workflow
+## 8. Global runtime/default resource gaps
+
+A native-used texture index absent from every serialized peer Material must be treated as a runtime/default resource-table input, not as an exporter omission.
+
+The current strongest example is PS `8087670E`:
+
+- 10 unique retail Materials / 70 physical occurrences use the exact bounded shader family;
+- all 70 serialize exactly texture slots `t0,t1,t2,t3,t5`;
+- **0/70 serialize `t4`**, while exact GCN samples `t4`;
+- current material state selects API15 `c0`; only `c0.w` survives and the exact factor is `f=-API15.c0.w`.
+
+Therefore both the t4 resource and API15 c0 value require non-Material producer/backing evidence before exact rendering. This family-wide negative result is reusable anywhere the same GCN appears, but the actual runtime resource/value remains draw/context-owned.
+
+## 9. Practical whole-game workflow
 
 For each newly encountered character or enemy:
 
