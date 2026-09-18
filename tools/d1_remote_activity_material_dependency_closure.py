@@ -32,6 +32,7 @@ sys.path.insert(0,str(HERE))
 
 from d1_material_decode import PS4_MATERIAL_CLASS,parse_material
 from d1_texture_export import decode_header,expected_base_size,FORMAT_NAME
+from d1_texture_backing_chain_v1 import resolve_texture_backing
 from d1_filehash import package_hex
 from d1_playable_guardian_entity_resource_resolve import load_catalogs
 from d1_remote_activity_placements import RemoteCorpus
@@ -102,11 +103,37 @@ def texture_chain(c:RemoteCorpus,h:str)->tuple[dict,list[str],list[dict]]:
   # second hop. Only the validated 65:1 shape authorizes following another link.
   break
  if out['storage_chain']:
+  # Reuse the project-wide admitted storage-shape resolver.  This converts the
+  # serialized reference walk above into a proof gate rather than treating
+  # adjacency or a sufficiently large payload as storage semantics.
+  global_by={
+   norm(x['tag_hash']):(None,x.get('meta') or {})
+   for x in out['storage_chain']
+   if x.get('meta') is not None
+  }
+  try:
+   _first,strict_backing,storage_mode=resolve_texture_backing(global_by,hm)
+   strict_hash=norm((strict_backing[1] or {}).get('tag_hash',''))
+   if not strict_hash:
+    # exact_tag/meta() always supplies tag_hash; this fallback is defensive and
+    # uses an already-serialized row identity only.
+    for x in out['storage_chain']:
+     if (x.get('meta') or {})==strict_backing[1]:
+      strict_hash=norm(x['tag_hash']);break
+   out['storage_mode']=storage_mode
+   out['strict_backing_hash']=strict_hash
+  except Exception as ex:
+   viol.append('texture_storage_shape_rejected:'+repr(ex))
+   out['storage_mode']=None
+   out['strict_backing_hash']=None
+
   final=out['storage_chain'][-1]
   out['final_payload_hash']=final['tag_hash']
   out['final_payload_type_subtype']=[(final.get('meta') or {}).get('type'),(final.get('meta') or {}).get('subtype')]
   expected=hi.get('expected_base_size');actual=(final.get('payload') or {}).get('bytes')
   out['base_size_validation']={'expected':expected,'actual':actual,'sufficient':None if expected is None or actual is None else actual>=expected}
+  if out.get('strict_backing_hash') and norm(final['tag_hash'])!=out['strict_backing_hash']:
+   viol.append(f'final_payload_not_strict_backing:{final["tag_hash"]}!={out["strict_backing_hash"]}')
   if expected is not None and actual is not None and actual<expected:
    viol.append(f'full_resolution_payload_short:{actual}<{expected}')
  else:
@@ -177,7 +204,7 @@ def main()->int:
       'material_count':len(mats),'materials':mats,'unique_texture_count':len(textures),'textures':sorted(textures),
       'unique_shader_count':len(shaders-NULLS),'shaders':sorted(shaders-NULLS),'unique_vector4_container_count':len(constants-NULLS),'vector4_containers':sorted(constants-NULLS),
       'unresolved_external_variant_models':frontier,'rows':rows,'typed_edges':edges,'typed_edge_count':len(edges),'violations':viol,
-      'policy':('Every dependency is serialized by an exact selected retail Material or by a validated FileEntry reference chain. Texture register identity, shaders, TFX, samplers and constant resources are preserved exactly. Texture register numbers are not promoted to PBR semantics. The validated streamed texture shape is 32:1/32:2 -> 65:1 -> 5:1, while direct backing targets are preserved without inventing a second hop. Unresolved external material variants remain an explicit frontier.')}
+      'policy':('Every dependency is serialized by an exact selected retail Material or by a validated FileEntry reference chain. Texture register identity, shaders, TFX, samplers and constant resources are preserved exactly. Texture register numbers are not promoted to PBR semantics. The admitted storage shapes are exactly 32:1 -> 1:1, 32:1 -> 65:1 -> 5:1, and observed direct cube 32:2 -> 1:2. Any other present reference shape is a violation. Unresolved external material variants remain an explicit frontier.')}
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
  print('STATUS',status,'MATERIALS',len(mats),'TEXTURES',len(textures),'SHADERS',len(shaders-NULLS),'VEC4',len(constants-NULLS),'EDGES',len(edges),'VARIANT_FRONTIER',len(frontier),'VIOLATIONS',len(viol))
  return 0 if not viol else 2
