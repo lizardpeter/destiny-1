@@ -1,0 +1,29 @@
+{
+  "schema":"d1_api10_frozen_producer_reconstruction_plan/v1",
+  "status":"BLOCKED_PENDING_FROZEN_INPUT_RECOVERY",
+  "target_output":{"artifact_id":10539900120,"artifact_zip_sha256":"b64ddfd28937c6d5adddf8464817da6f836fd32c1b3e20e1b51841ce3d185897","schema":"d1_gcn_localshader_api10_access_family_census/v2","program_count":39,"wrapper_count":56,"material_occurrence_count":3386,"family_count":6},
+  "frozen_inputs":[
+    {"name":"D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json","artifact_id":10172731401,"required":"exact bytes/hash from membership provenance manifest"},
+    {"name":"D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_V1.json","artifact_id":10529319011,"required":"exact bytes/hash from membership provenance manifest"}
+  ],
+  "available_checked_in_verifier":"tools/d1_verify_api10_membership_provenance_v1.py",
+  "missing_from_checked_in_repository":[
+    "39-member census JSON bytes",
+    "two frozen input JSON byte streams",
+    "remaining per-program native disassembly/consumer evidence needed for classification"
+  ],
+  "safe_reconstruction_gate":[
+    "recover exact frozen input bytes and verify manifest SHA-256 before use",
+    "re-run original/equivalent deterministic census producer",
+    "require exact 39/56/3386/6 denominators and both descriptor windows",
+    "compare reconstructed census bytes or canonical deterministic content against frozen output SHA-256",
+    "retain runtime_writer/backing_allocation/engine_semantic WITHHELD"
+  ],
+  "forbidden_shortcuts":[
+    "do not rebuild membership from repository text search",
+    "do not substitute current Xur/Vex semantic-handler set for the 39-member census",
+    "do not infer missing GCN identities from TBUFFER counts or SGPR windows",
+    "do not promote artifact metadata into runtime semantics"
+  ],
+  "pivot":"Until frozen bytes are recoverable, continue source-closed work on other Destiny boundaries or primary runtime capture."
+}
