@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Regenerate scalar/M0 SSA from structural IR before resource/LDS provenance.
 
-This intentionally removes the historical per-program scalar artifact as a trust input.
-The checked-in SGPR/M0 analyzer is run directly over the exact IR corpus, then the
-existing fail-closed provenance join consumes those regenerated reports together with
-the independently-produced exact vector-binding corpus.
+This removes the historical per-program scalar artifact as a trust input. The
+checked-in SGPR/M0 analyzer runs directly over the exact structural IR corpus;
+the existing fail-closed provenance join then consumes those regenerated reports
+with the independently-produced exact vector-binding corpus.
 """
 from __future__ import annotations
 
@@ -20,32 +20,37 @@ SCHEMA = "d1_gcn_resource_lds_rebuild/v1"
 
 
 def json_files(root: Path) -> list[Path]:
-    return sorted(p for p in root.rglob("*.json") if p.is_file())
+    if not root.is_dir():
+        raise GateError(f"missing structural IR directory {root}")
+    files = sorted(p for p in root.glob("*.json") if p.is_file())
+    if not files:
+        raise GateError(f"no structural IR JSON files under {root}")
+    return files
 
 
 def regenerate_scalar(ir_dir: Path, scalar_dir: Path) -> dict:
     files = json_files(ir_dir)
-    if not files:
-        raise GateError(f"no structural IR JSON files under {ir_dir}")
     scalar_dir.mkdir(parents=True, exist_ok=True)
-    seen_sha: set[str] = set()
+    seen_stems: set[str] = set()
     instruction_count = 0
     for src in files:
+        if src.stem in seen_stems:
+            raise GateError(f"duplicate structural program stem {src.stem}")
+        seen_stems.add(src.stem)
         ir = json.loads(src.read_text(encoding="utf-8"))
         if not isinstance(ir, dict):
             raise GateError(f"{src}: structural IR top level is not an object")
         out = analyze_scalar(ir)
         if out.get("status") != SCALAR_EXACT or out.get("violations"):
             raise GateError(f"{src}: regenerated scalar SSA is not exact")
-        sha = out.get("program_sha256")
-        if not isinstance(sha, str) or len(sha) != 64:
-            raise GateError(f"{src}: regenerated scalar report lacks exact program_sha256")
-        if sha in seen_sha:
-            raise GateError(f"duplicate structural program identity {sha}")
-        seen_sha.add(sha)
-        instruction_count += int(out.get("instruction_count", 0))
-        (scalar_dir / f"{sha}.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return {"program_count": len(seen_sha), "instruction_count": instruction_count, "program_sha256": sorted(seen_sha)}
+        if out.get("shader") != ir.get("shader"):
+            raise GateError(f"{src}: scalar regeneration changed shader identity")
+        if int(out.get("instruction_count", -1)) != len(ir.get("instructions", [])):
+            raise GateError(f"{src}: scalar regeneration changed instruction count")
+        instruction_count += int(out["instruction_count"])
+        # The provenance corpus deliberately joins by the original program stem.
+        (scalar_dir / src.name).write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {"program_count": len(seen_stems), "instruction_count": instruction_count, "program_stems": sorted(seen_stems)}
 
 
 def main() -> int:
