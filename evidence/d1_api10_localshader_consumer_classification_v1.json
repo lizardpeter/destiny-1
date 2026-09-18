@@ -1,0 +1,64 @@
+{
+  "schema": "d1_api10_consumer_classification/v1",
+  "status": "SOURCE_CLOSED_LOCALSHADER_PARTIAL",
+  "scope": "Exact retail LocalShader GCN programs that are members of the frozen 39-program API10 census and now have independently closed native consumer arithmetic.",
+  "source_artifact": {
+    "retail_recovery_run_id": 35388270542,
+    "retail_recovery_job_id": 105740277559,
+    "retail_recovery_artifact_id": 10564682786,
+    "retail_recovery_artifact_digest": "sha256:cf5b8b040e4e1ea27a6548eae573f8fbdb98ed6427d3c76d4354e2f68ba98871",
+    "dataflow_run_id": 35388689007,
+    "dataflow_job_id": 105741682901,
+    "dataflow_artifact_id": 10564878246,
+    "dataflow_artifact_digest": "sha256:3b39bba3f39d9fca34bf21285ba2e1894959a715213dfd229d89171a0887fa1d",
+    "dataflow_json_sha256": "a6331448ca9ed812910442f3bfbff0774d653276456ec46c523f80795d3a7bf4"
+  },
+  "programs": [
+    {
+      "gcn_sha256": "2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f",
+      "evidence_class": "EXACT_NATIVE_GCN",
+      "source_hardware_stage": "LocalShader",
+      "wrapper": "80A08667",
+      "native_program_reference": "80A08668",
+      "descriptor_window": "s[8:11]",
+      "tbuffer_instruction_count": 3,
+      "consumer_record_structure": "one selected three-float4-row affine/basis transform",
+      "consumer_math_role": "one API10 three-row record transforms pre-affined position and two basis-like 3-vectors; native LDS output uses an 80-byte per-index record",
+      "runtime_writer": "WITHHELD",
+      "backing_allocation": "WITHHELD",
+      "universal_record_schema": "WITHHELD",
+      "engine_buffer_name": "WITHHELD",
+      "engine_semantic": "WITHHELD"
+    },
+    {
+      "gcn_sha256": "44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c",
+      "evidence_class": "EXACT_NATIVE_GCN",
+      "source_hardware_stage": "LocalShader",
+      "wrapper": "80A0627B",
+      "native_program_reference": "80A0627C",
+      "descriptor_window": "s[8:11]",
+      "tbuffer_instruction_count": 6,
+      "consumer_record_structure": "two selected three-float4-row transforms blended component-wise before affine/basis use",
+      "consumer_math_role": "two API10 three-row records are selected and coefficient-blended before transforming position and two 3-vectors; native LDS output uses an 80-byte per-index record",
+      "runtime_writer": "WITHHELD",
+      "backing_allocation": "WITHHELD",
+      "universal_record_schema": "WITHHELD",
+      "engine_buffer_name": "WITHHELD",
+      "engine_semantic": "WITHHELD"
+    }
+  ],
+  "coverage": {
+    "classified_localshader_programs": 2,
+    "localshader_api10_program_denominator": 39,
+    "unclassified_localshader_programs": 37,
+    "classification_complete_for_localshader": false
+  },
+  "semantic_boundary": {
+    "runtime_writer": "WITHHELD",
+    "backing_allocation": "WITHHELD",
+    "universal_record_schema": "WITHHELD",
+    "engine_buffer_name": "WITHHELD",
+    "engine_semantic": "WITHHELD"
+  },
+  "policy": "2/39 is exact LocalShader consumer-side classification, not runtime ownership or a universal API10 semantic. Remaining programs require their own exact native GCN evidence."
+}
