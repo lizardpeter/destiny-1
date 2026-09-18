@@ -16,14 +16,31 @@ def die(msg): raise SystemExit("FAIL: "+msg)
 def load(path):
     with open(path,"r",encoding="utf-8") as f:return json.load(f)
 def canon_program_id(v): return str(v).strip().lower()
+def exact_sha256(v): return isinstance(v,str) and HEX64.fullmatch(v) is not None
+
+def require_primary_evidence(ev,label="primary evidence"):
+    """Require durable identity for a primary evidence byte stream.
+
+    A source label alone is not provenance.  The byte stream must carry an exact
+    SHA-256 so later runs can prove they are validating the same evidence.
+    """
+    if not isinstance(ev,dict):die(f"{label} must be an object")
+    if not isinstance(ev.get("source"),str) or not ev["source"].strip():die(f"{label} requires non-empty source")
+    if not exact_sha256(ev.get("sha256")):die(f"{label} sha256 must be 64 hex digits")
+
+def require_semantic_provenance(ev,i):
+    """Semantic promotion needs independently hash-addressed writer + backing evidence."""
+    for key in ("writer_trace","backing_bytes"):
+        item=ev.get(key)
+        require_primary_evidence(item,f"capture[{i}] {key}")
+    # The two evidence objects must remain distinct provenance records.  This
+    # prevents one opaque blob from being relabeled as both required proof legs.
+    w,b=ev["writer_trace"],ev["backing_bytes"]
+    if w["source"]==b["source"] and w["sha256"].lower()==b["sha256"].lower():
+        die(f"capture[{i}] writer_trace and backing_bytes must be distinct evidence records")
 
 def build_program_index(frozen):
-    """Build exact program membership from the source-closed census.
-
-    v2 names the identity field gcn_sha256. Older experimental tables used
-    program_id; accept that spelling only as a compatibility alias, and require
-    the identity itself to remain an exact SHA-256 either way.
-    """
+    """Build exact program membership from the source-closed census."""
     rows=frozen.get("programs")
     if rows is None:return None
     if not isinstance(rows,list):die("frozen programs must be a list")
@@ -66,20 +83,20 @@ def main():
             if not a.allow_test_fixtures:die(f"capture[{i}] test fixture rejected without explicit --allow-test-fixtures")
             family=claimed
         else:
+            require_primary_evidence(ev,f"capture[{i}] primary evidence")
             if program_index is None:die("primary capture rejected: frozen evidence lacks exact program membership table")
             if pid not in program_index:die(f"capture[{i}] program_id {pid} is not in frozen exact census")
             family=program_index[pid]
             if claimed!=family:die(f"capture[{i}] family claim {claimed} disagrees with frozen program family {family}")
-            if not HEX64.fullmatch(str(ev["sha256"])):die(f"capture[{i}] primary evidence sha256 must be 64 hex digits")
         if family not in EXPECTED_FAMILIES:die(f"capture[{i}] unknown family {family}")
         d=r["descriptor_dwords"]
         if not(isinstance(d,list) and len(d)==4 and all(isinstance(x,int) and not isinstance(x,bool) and 0<=x<=0xffffffff for x in d)):die(f"capture[{i}] descriptor_dwords must be four exact u32 values")
         if r.get("engine_semantic") not in (None,"WITHHELD"):
             if fixture:die(f"capture[{i}] test fixture may not assert engine semantic")
-            if not ev.get("writer_trace") or not ev.get("backing_bytes"):die(f"capture[{i}] semantic asserted without writer_trace + backing_bytes")
+            require_semantic_provenance(ev,i)
         seen.add(family)
     missing=sorted(EXPECTED_FAMILIES-seen)
-    result={"schema":"d1_localshader_api10_capture_gate/v1","status":"D1_LOCALSHADER_API10_CAPTURE_COVERAGE_EXACT" if not missing else "D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE","validated_capture_count":len(rows),"covered_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in sorted(seen)],"missing_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in missing],"primary_capture_membership_gate":"EXACT_GCN_SHA256_TABLE_REQUIRED","semantic_boundary":{"runtime_writer":"WITHHELD_UNLESS_PRIMARY_TRACE","backing_allocation":"WITHHELD_UNLESS_PRIMARY_BYTES","engine_semantic":"WITHHELD_UNLESS_BOTH"}}
+    result={"schema":"d1_localshader_api10_capture_gate/v1","status":"D1_LOCALSHADER_API10_CAPTURE_COVERAGE_EXACT" if not missing else "D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE","validated_capture_count":len(rows),"covered_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in sorted(seen)],"missing_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in missing],"primary_capture_membership_gate":"EXACT_GCN_SHA256_TABLE_REQUIRED","semantic_boundary":{"runtime_writer":"WITHHELD_UNLESS_HASHED_PRIMARY_TRACE","backing_allocation":"WITHHELD_UNLESS_HASHED_PRIMARY_BYTES","engine_semantic":"WITHHELD_UNLESS_BOTH_DISTINCT"}}
     if a.out:Path(a.out).write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(result,indent=2));return 2 if missing else 0
 if __name__=="__main__":sys.exit(main())
