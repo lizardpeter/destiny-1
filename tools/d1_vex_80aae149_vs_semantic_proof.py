@@ -97,9 +97,10 @@ def main()->int:
  lines=[norm(x) for x in text.splitlines() if norm(x)]
  cur=0;found=[]
  for q in ANCHORS:
-  try:i=lines.index(q,cur)
-  except ValueError:v.append('missing_or_out_of_order:'+q);continue
-  found.append(q);cur=i+1
+  nq=norm(q)
+  try:i=lines.index(nq,cur)
+  except ValueError:v.append('missing_or_out_of_order:'+nq);continue
+  found.append(nq);cur=i+1
  exact=not v
  out={
   'schema':'d1_vex_80aae149_vs_semantic_proof/v1',
