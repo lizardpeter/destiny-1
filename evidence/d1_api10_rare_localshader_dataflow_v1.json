@@ -1,0 +1,190 @@
+{
+  "schema": "d1_api10_rare_localshader_dataflow/v1",
+  "status": "D1_API10_RARE_LOCALSHADER_DATAFLOW_EXACT",
+  "source_artifact": {
+    "run_id": 35388270542,
+    "artifact_id": 10564682786,
+    "artifact_digest": "sha256:cf5b8b040e4e1ea27a6548eae573f8fbdb98ed6427d3c76d4354e2f68ba98871"
+  },
+  "programs": [
+    {
+      "wrapper": "80A08667",
+      "native_program_reference": "80A08668",
+      "gcn_sha256": "2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f",
+      "orbshdr_stage": "LocalShader",
+      "api10_descriptor_window": "s[8:11]",
+      "api11_descriptor_window": "s[12:15]",
+      "tbuffer_instruction_count": 3,
+      "post_fetch_index_dataflow": {
+        "source_lane": "v7",
+        "exact_arithmetic": "selector = uint(0x3dcccccd + 0x46fffe00 * v7); base = 3 * selector",
+        "api10_record_indices": [
+          "base",
+          "base+1",
+          "base+2"
+        ],
+        "loaded_float4_registers": [
+          "v[22:25]",
+          "v[26:29]",
+          "v[30:33]"
+        ]
+      },
+      "consumer_structure": "one selected three-float4-row affine/basis transform",
+      "instruction_level_relations": [
+        "api11 offset 0x14 supplies a scalar scale plus xyz bias used to pre-affine source position lanes v4/v5/v6",
+        "the three API10 rows transform that pre-affined position with row w components included",
+        "the same API10 row xyz components transform two source 3-vectors and their cross product is multiplied by source lane v19",
+        "api11 offsets 0x18 and 0x1c participate in two-coordinate affine arithmetic and a clamped scalar dot expression"
+      ],
+      "m0_write": "s_mov_b32 m0, 0x10000",
+      "lds_output": {
+        "record_stride_bytes": 80,
+        "record_index_lane": "v1",
+        "written_dword_slots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          16,
+          17,
+          18
+        ],
+        "unwritten_dword_slots": [
+          15,
+          19
+        ]
+      }
+    },
+    {
+      "wrapper": "80A0627B",
+      "native_program_reference": "80A0627C",
+      "gcn_sha256": "44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c",
+      "orbshdr_stage": "LocalShader",
+      "api10_descriptor_window": "s[8:11]",
+      "api11_descriptor_window": "s[12:15]",
+      "tbuffer_instruction_count": 6,
+      "post_fetch_index_dataflow": {
+        "selector_lanes": [
+          "v9",
+          "v8"
+        ],
+        "api10_record_indices": [
+          "3*v9+0",
+          "3*v9+1",
+          "3*v9+2",
+          "3*v8+0",
+          "3*v8+1",
+          "3*v8+2"
+        ],
+        "loaded_float4_registers_by_selector": [
+          [
+            "v[26:29]",
+            "v[30:33]",
+            "v[42:45]"
+          ],
+          [
+            "v[34:37]",
+            "v[38:41]",
+            "v[46:49]"
+          ]
+        ]
+      },
+      "blend_coefficient_dataflow": {
+        "source_lanes": [
+          "v11",
+          "v10"
+        ],
+        "conversion": "v_cvt_f32_u32",
+        "exact_literal_bits": "0x3b808081",
+        "role": "the two converted/scaled lanes multiply corresponding components of the two selected three-row records before pairwise accumulation"
+      },
+      "consumer_structure": "two selected three-float4-row transforms blended component-wise before affine/basis use",
+      "instruction_level_relations": [
+        "the blended row xyz components transform source 3-vectors v16..v18 and v20..v22",
+        "their transformed-vector cross product is multiplied by source lane v23",
+        "api11 offset 0x14 supplies a scalar scale plus xyz bias used before the blended affine position transform",
+        "api11 offsets 0x18 and 0x1c participate in two-coordinate affine arithmetic and a clamped scalar dot expression"
+      ],
+      "m0_write": "s_mov_b32 m0, 0x10000",
+      "lds_output": {
+        "record_stride_bytes": 80,
+        "record_index_lane": "v1",
+        "written_dword_slots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          16,
+          17,
+          18
+        ],
+        "unwritten_dword_slots": [
+          15,
+          19
+        ]
+      }
+    }
+  ],
+  "shared_localshader_output_contract": {
+    "lds_record_stride_bytes": 80,
+    "written_dword_slots": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      16,
+      17,
+      18
+    ],
+    "unwritten_dword_slots": [
+      15,
+      19
+    ],
+    "hardware_tessellation_consumer": "WITHHELD"
+  },
+  "semantic_boundary": {
+    "api10_runtime_writer": "WITHHELD",
+    "api10_descriptor_dwords": "WITHHELD",
+    "api10_backing_allocation": "WITHHELD",
+    "api10_engine_semantic": "WITHHELD",
+    "api11_engine_semantic": "WITHHELD",
+    "m0_engine_meaning": "WITHHELD",
+    "lds_record_engine_name": "WITHHELD",
+    "hardware_tessellation_ownership": "WITHHELD",
+    "selector_engine_name": "WITHHELD"
+  },
+  "policy": "Only exact OrbShdr metadata, bounded GCN identity, ordered native arithmetic, descriptor-register use, and LDS writes are promoted. Transform/basis describes mathematical consumer structure; no bone/skeleton/tessellation/runtime-owner naming is assigned."
+}
