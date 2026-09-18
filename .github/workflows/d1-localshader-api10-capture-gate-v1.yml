@@ -50,17 +50,22 @@ jobs:
           PY
       - name: Validate frozen family contract with non-semantic fixture
         run: |
-          python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json --out /tmp/d1_api10_capture_gate.json
+          python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json --allow-test-fixtures --out /tmp/d1_api10_capture_gate.json
+      - name: Require fixture bypass to be explicit
+        run: |
+          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json --out /tmp/should-not-exist.json; then
+            echo 'ERROR: fixture evidence bypassed exact membership without explicit opt-in' >&2; exit 1
+          fi
       - name: Require incomplete family coverage to fail closed
         run: |
-          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_incomplete_v1.json --out /tmp/d1_api10_capture_gate_incomplete.json; then exit 1; fi
+          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_incomplete_v1.json --allow-test-fixtures --out /tmp/d1_api10_capture_gate_incomplete.json; then exit 1; fi
           python3 - <<'PY'
           import json
           p=json.load(open('/tmp/d1_api10_capture_gate_incomplete.json'));assert p['status']=='D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE';assert len(p['missing_families'])==5
           PY
       - name: Require unproven engine semantic to fail closed
         run: |
-          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_negative_semantic_v1.json --out /tmp/d1_api10_capture_gate_semantic.json; then exit 1; fi
+          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_negative_semantic_v1.json --allow-test-fixtures --out /tmp/d1_api10_capture_gate_semantic.json; then exit 1; fi
       - name: Require unknown primary program to fail closed against exact membership
         run: |
           if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_fake_primary_v1.json --out /tmp/d1_api10_capture_gate_fake_primary.json; then
