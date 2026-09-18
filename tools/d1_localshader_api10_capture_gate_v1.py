@@ -1,77 +1,80 @@
 #!/usr/bin/env python3
-"""Fail-closed validator for future Destiny 1 LocalShader API10 runtime captures.
+"""Fail-closed validator for Destiny 1 LocalShader API10 runtime captures.
 
-This tool intentionally proves no engine semantic.  It validates that a capture corpus
-covers the frozen source-closed access families before runtime-writer conclusions are
-allowed to generalize across the retail LocalShader population.
+A capture is useful only when it is bound to an exact program present in the frozen
+source census.  Family labels supplied by a capture are never trusted as authority.
+No engine semantic is inferred here.
 """
-import argparse, json, sys
+import argparse, hashlib, json, re, sys
 from pathlib import Path
 
-EXPECTED_FAMILIES = {
-    (3, "s[8:11]"),
-    (6, "s[8:11]"),
-    (8, "s[12:15]"),
-    (8, "s[8:11]"),
-    (12, "s[12:15]"),
-    (12, "s[8:11]"),
-}
-EXPECTED_COVERAGE = {"program_count":39, "wrapper_count":56, "material_occurrence_count":3386}
+EXPECTED_FAMILIES={(3,"s[8:11]"),(6,"s[8:11]"),(8,"s[12:15]"),(8,"s[8:11]"),(12,"s[12:15]"),(12,"s[8:11]")}
+EXPECTED_COVERAGE={"program_count":39,"wrapper_count":56,"material_occurrence_count":3386}
+HEX64=re.compile(r"^[0-9a-fA-F]{64}$")
 
-
-def die(msg):
-    raise SystemExit("FAIL: " + msg)
-
-
+def die(msg): raise SystemExit("FAIL: "+msg)
 def load(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(path,"r",encoding="utf-8") as f:return json.load(f)
+def canon_program_id(v): return str(v).strip().upper()
 
+def build_program_index(frozen):
+    """Require a program-level membership table when validating primary captures.
+
+    Older frozen v1 evidence intentionally contains only aggregate families.  It is
+    still sufficient for TEST_FIXTURE_NOT_PRIMARY_EVIDENCE regression tests, but it
+    must never authorize a primary runtime capture by a caller-provided family label.
+    """
+    rows=frozen.get("programs")
+    if rows is None:return None
+    if not isinstance(rows,list):die("frozen programs must be a list")
+    idx={}
+    for i,r in enumerate(rows):
+        for k in ("program_id","tbuffer_instruction_count","descriptor_window"):
+            if k not in r:die(f"frozen programs[{i}] missing {k}")
+        pid=canon_program_id(r["program_id"]); fam=(int(r["tbuffer_instruction_count"]),r["descriptor_window"])
+        if fam not in EXPECTED_FAMILIES:die(f"frozen program {pid} has unknown family {fam}")
+        if pid in idx:die(f"duplicate frozen program_id {pid}")
+        idx[pid]=fam
+    if len(idx)!=EXPECTED_COVERAGE["program_count"]:die(f"frozen program table drift: {len(idx)} != 39")
+    return idx
 
 def main():
-    ap=argparse.ArgumentParser()
-    ap.add_argument("--frozen", required=True)
-    ap.add_argument("--captures", required=True)
-    ap.add_argument("--out")
-    a=ap.parse_args()
-    frozen=load(a.frozen); captures=load(a.captures)
-    if frozen.get("status") != "D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT":
-        die("frozen census status is not exact")
+    ap=argparse.ArgumentParser();ap.add_argument("--frozen",required=True);ap.add_argument("--captures",required=True);ap.add_argument("--out");a=ap.parse_args()
+    frozen=load(a.frozen);captures=load(a.captures)
+    if frozen.get("status")!="D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT":die("frozen census status is not exact")
     cov=frozen.get("coverage",{})
     for k,v in EXPECTED_COVERAGE.items():
-        if cov.get(k) != v: die(f"frozen {k} drift: {cov.get(k)!r} != {v}")
-    fam={(int(x["tbuffer_instruction_count"]), x["descriptor_window"]) for x in frozen.get("families",[])}
-    if fam != EXPECTED_FAMILIES: die(f"frozen family drift: {sorted(fam)}")
+        if cov.get(k)!=v:die(f"frozen {k} drift: {cov.get(k)!r} != {v}")
+    fam={(int(x["tbuffer_instruction_count"]),x["descriptor_window"]) for x in frozen.get("families",[])}
+    if fam!=EXPECTED_FAMILIES:die(f"frozen family drift: {sorted(fam)}")
+    program_index=build_program_index(frozen)
     rows=captures.get("captures")
-    if not isinstance(rows,list): die("captures must be a list")
-    seen=set(); validated=[]
+    if not isinstance(rows,list):die("captures must be a list")
+    seen=set();validated=[]
     for i,r in enumerate(rows):
         for key in ("program_id","descriptor_window","tbuffer_instruction_count","descriptor_dwords","evidence"):
-            if key not in r: die(f"capture[{i}] missing {key}")
-        family=(int(r["tbuffer_instruction_count"]),r["descriptor_window"])
-        if family not in EXPECTED_FAMILIES: die(f"capture[{i}] unknown family {family}")
-        d=r["descriptor_dwords"]
-        if not (isinstance(d,list) and len(d)==4 and all(isinstance(x,int) and 0<=x<=0xffffffff for x in d)):
-            die(f"capture[{i}] descriptor_dwords must be four exact u32 values")
+            if key not in r:die(f"capture[{i}] missing {key}")
+        pid=canon_program_id(r["program_id"]); claimed=(int(r["tbuffer_instruction_count"]),r["descriptor_window"])
         ev=r["evidence"]
-        if not isinstance(ev,dict) or not ev.get("source") or not ev.get("sha256"):
-            die(f"capture[{i}] requires source and sha256 evidence provenance")
-        # Runtime semantics may only be asserted with an explicit writer trace and backing-byte provenance.
+        if not isinstance(ev,dict) or not ev.get("source") or not ev.get("sha256"):die(f"capture[{i}] requires source and sha256 evidence provenance")
+        fixture=ev.get("source")=="TEST_FIXTURE_NOT_PRIMARY_EVIDENCE"
+        if fixture:
+            family=claimed
+        else:
+            if program_index is None:die("primary capture rejected: frozen evidence lacks exact program membership table")
+            if pid not in program_index:die(f"capture[{i}] program_id {pid} is not in frozen exact census")
+            family=program_index[pid]
+            if claimed!=family:die(f"capture[{i}] family claim {claimed} disagrees with frozen program family {family}")
+            if not HEX64.fullmatch(str(ev["sha256"])):die(f"capture[{i}] primary evidence sha256 must be 64 hex digits")
+        if family not in EXPECTED_FAMILIES:die(f"capture[{i}] unknown family {family}")
+        d=r["descriptor_dwords"]
+        if not(isinstance(d,list) and len(d)==4 and all(isinstance(x,int) and 0<=x<=0xffffffff for x in d)):die(f"capture[{i}] descriptor_dwords must be four exact u32 values")
         if r.get("engine_semantic") not in (None,"WITHHELD"):
-            if not ev.get("writer_trace") or not ev.get("backing_bytes"):
-                die(f"capture[{i}] semantic asserted without writer_trace + backing_bytes")
-        seen.add(family); validated.append(r["program_id"])
+            if fixture:die(f"capture[{i}] test fixture may not assert engine semantic")
+            if not ev.get("writer_trace") or not ev.get("backing_bytes"):die(f"capture[{i}] semantic asserted without writer_trace + backing_bytes")
+        seen.add(family);validated.append(pid)
     missing=sorted(EXPECTED_FAMILIES-seen)
-    result={
-      "schema":"d1_localshader_api10_capture_gate/v1",
-      "status":"D1_LOCALSHADER_API10_CAPTURE_COVERAGE_EXACT" if not missing else "D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE",
-      "validated_capture_count":len(rows),
-      "covered_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in sorted(seen)],
-      "missing_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in missing],
-      "semantic_boundary":{"runtime_writer":"WITHHELD_UNLESS_PRIMARY_TRACE","backing_allocation":"WITHHELD_UNLESS_PRIMARY_BYTES","engine_semantic":"WITHHELD_UNLESS_BOTH"}
-    }
-    if a.out: Path(a.out).write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
-    print(json.dumps(result,indent=2))
-    if missing: return 2
-    return 0
-if __name__=="__main__": sys.exit(main())
+    result={"schema":"d1_localshader_api10_capture_gate/v1","status":"D1_LOCALSHADER_API10_CAPTURE_COVERAGE_EXACT" if not missing else "D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE","validated_capture_count":len(rows),"covered_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in sorted(seen)],"missing_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in missing],"primary_capture_membership_gate":"EXACT_PROGRAM_TABLE_REQUIRED","semantic_boundary":{"runtime_writer":"WITHHELD_UNLESS_PRIMARY_TRACE","backing_allocation":"WITHHELD_UNLESS_PRIMARY_BYTES","engine_semantic":"WITHHELD_UNLESS_BOTH"}}
+    if a.out:Path(a.out).write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
+    print(json.dumps(result,indent=2));return 2 if missing else 0
+if __name__=="__main__":sys.exit(main())
