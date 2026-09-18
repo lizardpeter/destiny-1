@@ -42,6 +42,10 @@ jobs:
             --target ps4_investment_assets_0139_0.pkg --target ps4_investment_assets_0139_1.pkg \
             --target ps4_investment_assets_0139_2.pkg --target ps4_investment_assets_0139_3.pkg --target ps4_investment_assets_0139_5.pkg \
             --out recovered --manifest reports/0139_extract.json --retries 6 --timeout 90
+          python tools/d1_split_tar_extract.py --base-url "$base" --part-count 10 --start-offset 0x5DED7DE00 \
+            --target ps4_investment_assets_0144_2.pkg --target ps4_investment_assets_0144_3.pkg \
+            --target ps4_investment_assets_0144_4.pkg --target ps4_investment_assets_0144_5.pkg \
+            --out recovered --manifest reports/0144_extract.json --retries 6 --timeout 90
       - name: Recover all six exact selected model headers
         run: |
           set -euo pipefail
@@ -99,6 +103,7 @@ jobs:
             --pkg-011c recovered/ps4_gear_weapons_011c_5.pkg \
             --pkg-011e recovered/ps4_gear_weapons_011e_5.pkg \
             --pkg-0139 recovered/ps4_investment_assets_0139_5.pkg \
+            --dependency-pkg recovered/ps4_investment_assets_0144_5.pkg \
             --runtime runtime --model-dir models \
             --out out/GJALLARHORN_YEAR3_ARRANGEMENT_1229_GEOMETRY.glb \
             --report reports/gjallarhorn_1229_geometry.json
@@ -117,6 +122,8 @@ jobs:
           assert len(r['models'])==6 and sum(x['mesh_count'] for x in r['models'])==8
           assert r['total_lod1_triangles']>5000,r['total_lod1_triangles']
           assert r['output_bytes']==p.stat().st_size
+          assert g.extras['d1Gjallarhorn']['geometryPackageIds']==['011C','011E','0139','0144']
+          assert g.extras['d1Gjallarhorn']['additionalDependencyPackageIds']==['0144']
           print(json.dumps({'bytes':p.stat().st_size,'meshes':len(g.meshes),'materials':len(g.materials),'triangles':r['total_lod1_triangles'],'bbox_min':r['bbox_min'],'bbox_max':r['bbox_max']},indent=2))
           PY
       - name: Bundle proof
@@ -139,7 +146,7 @@ jobs:
 
           This GLB exports all six retail-selected LOD1 model components in their native shared
           model coordinate system. The six models contain eight mesh records total. Geometry
-          resources span logical packages 011C, 011E and 0139. A presentation root recenters
+          resources span logical packages 011C, 011E, 0139 and source-referenced GPU dependency family 0144. A presentation root recenters
           the assembled geometry. Native material hashes are retained, but this first proof
           uses neutral portable PBR placeholders while texture/dye/shader binding is being
           closed. No geometry, weights, transforms, or animations are invented.
