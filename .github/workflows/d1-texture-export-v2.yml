@@ -11,6 +11,7 @@ on:
       - 'tests/test_d1_texture_backing_chain_v1.py'
       - 'tools/d1_world_material_texture_export.py'
       - 'tests/test_d1_world_material_texture_strict_chain.py'
+      - 'tests/test_d1_remote_activity_texture_chain_strict.py'
       - 'tools/d1_texture_consumer_policy_audit.py'
       - 'tools/d1_texture_export_generation_safe.py'
       - 'tools/d1_texture_census_tolerant.py'
@@ -31,8 +32,9 @@ jobs:
         with: {python-version: '3.13'}
       - run: |
           set -euo pipefail
-          python -m py_compile tools/d1_texture_export.py tools/d1_texture_export_v2.py tools/d1_texture_backing_chain_v1.py tools/d1_world_material_texture_export.py tools/d1_texture_consumer_policy_audit.py tools/d1_texture_export_generation_safe.py tools/d1_texture_census_tolerant.py tools/d1_remote_texture_export.py tools/d1_remote_texture_export_generation_safe.py tools/d1_remote_activity_material_dependency_closure.py tools/d1_remote_activity_texture_export.py tests/test_d1_texture_export_v2.py tests/test_d1_texture_backing_chain_v1.py tests/test_d1_world_material_texture_strict_chain.py
+          python -m py_compile tools/d1_texture_export.py tools/d1_texture_export_v2.py tools/d1_texture_backing_chain_v1.py tools/d1_world_material_texture_export.py tools/d1_texture_consumer_policy_audit.py tools/d1_texture_export_generation_safe.py tools/d1_texture_census_tolerant.py tools/d1_remote_texture_export.py tools/d1_remote_texture_export_generation_safe.py tools/d1_remote_activity_material_dependency_closure.py tools/d1_remote_activity_texture_export.py tests/test_d1_texture_export_v2.py tests/test_d1_texture_backing_chain_v1.py tests/test_d1_world_material_texture_strict_chain.py tests/test_d1_remote_activity_texture_chain_strict.py
           python tests/test_d1_texture_backing_chain_v1.py
           python tests/test_d1_texture_export_v2.py
           python tests/test_d1_world_material_texture_strict_chain.py
+          python tests/test_d1_remote_activity_texture_chain_strict.py
           python tools/d1_texture_consumer_policy_audit.py -o texture_consumer_policy.json
