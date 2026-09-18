@@ -1,0 +1,36 @@
+name: D1 API-slot semantic scope guard v1
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api_slot_semantic_scope_guard_v1.py'
+      - 'evidence/d1_native_shader_semantic_registry_v1.json'
+      - 'evidence/d1_gcn_localshader_api10_entry_layout_census_2026-09-18.json'
+      - '.github/workflows/d1-api-slot-semantic-scope-guard-v1.yml'
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove API10 semantic scopes remain isolated
+        run: |
+          python tools/d1_api_slot_semantic_scope_guard_v1.py \
+            --registry evidence/d1_native_shader_semantic_registry_v1.json \
+            --local evidence/d1_gcn_localshader_api10_entry_layout_census_2026-09-18.json \
+            --out reports/D1_API_SLOT_SEMANTIC_SCOPE_GUARD_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_API_SLOT_SEMANTIC_SCOPE_GUARD_V1.json'))
+          assert d['status']=='D1_API_SLOT_SEMANTIC_SCOPE_GUARD_EXACT',d
+          assert d['api_slot']==10,d
+          assert d['independent_scopes']['localshader_entry_binding']['program_count']==39,d
+          assert d['independent_scopes']['localshader_entry_binding']['runtime_writer']=='WITHHELD',d
+          assert d['independent_scopes']['vertex_shader_instruction_proven'],d
+          assert not d['violations'],d
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-api-slot-semantic-scope-guard-v1
+          path: reports/D1_API_SLOT_SEMANTIC_SCOPE_GUARD_V1.json
+          if-no-files-found: error
