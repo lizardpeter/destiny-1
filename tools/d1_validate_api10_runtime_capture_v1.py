@@ -3,22 +3,26 @@
 
 A capture is evidence only when it ties an exact source-closed program identity
 to the consuming stage/window, four raw descriptor dwords, primary writer
-provenance, and exact backing bytes. Engine semantic and any universal record
-schema are intentionally outside this validator.
+provenance including the captured writer bytes, and exact backing bytes. Engine
+semantic and any universal record schema are intentionally outside this validator.
 """
 import argparse, hashlib, json
 from pathlib import Path
 
 WINDOWS={"s[12:15]","s[8:11]"}
 COUNTS={3,6,8,12}
+HEX=set("0123456789abcdef")
 
 def die(msg):
     raise SystemExit("API10_RUNTIME_CAPTURE_INVALID: "+msg)
 
-def sha256_bytes_hex(s):
-    try: b=bytes.fromhex(s)
-    except ValueError: die("backing_bytes_hex")
-    return hashlib.sha256(b).hexdigest(),len(b)
+def decode_hex(s,label):
+    if not isinstance(s,str) or len(s)%2 or any(c not in HEX for c in s): die(label)
+    try: return bytes.fromhex(s)
+    except ValueError: die(label)
+
+def valid_sha256(s):
+    return isinstance(s,str) and len(s)==64 and all(c in HEX for c in s)
 
 def main():
     ap=argparse.ArgumentParser()
@@ -33,7 +37,7 @@ def main():
     seen_counts=set(); seen_windows=set(); seen_programs=set()
     for i,s in enumerate(samples):
         p=s.get("gcn_sha256","")
-        if len(p)!=64 or any(c not in "0123456789abcdef" for c in p): die(f"sample {i} gcn_sha256")
+        if not valid_sha256(p): die(f"sample {i} gcn_sha256")
         if p in seen_programs: die(f"sample {i} duplicate program")
         seen_programs.add(p)
         if s.get("membership_proof")!="SOURCE_CLOSED_39_MEMBER_SET": die(f"sample {i} membership")
@@ -47,11 +51,16 @@ def main():
         dw=s.get("descriptor_dwords")
         if not isinstance(dw,list) or len(dw)!=4 or any(not isinstance(x,int) or x<0 or x>0xffffffff for x in dw): die(f"sample {i} descriptor dwords")
         writer=s.get("writer",{})
-        if writer.get("evidence_class")!="PRIMARY_RUNTIME" or not writer.get("raw_bytes_sha256") or not writer.get("capture_locator"): die(f"sample {i} writer provenance")
+        if writer.get("evidence_class")!="PRIMARY_RUNTIME" or not writer.get("capture_locator"): die(f"sample {i} writer provenance")
+        writer_raw=decode_hex(writer.get("raw_bytes_hex"),f"sample {i} writer raw bytes")
+        writer_sha=writer.get("raw_bytes_sha256")
+        if not valid_sha256(writer_sha) or hashlib.sha256(writer_raw).hexdigest()!=writer_sha: die(f"sample {i} writer raw bytes sha256")
+        if not writer_raw: die(f"sample {i} writer raw bytes empty")
         backing=s.get("backing",{})
-        if backing.get("evidence_class")!="PRIMARY_RUNTIME" or not backing.get("bytes_hex"): die(f"sample {i} backing")
-        h,nbytes=sha256_bytes_hex(backing["bytes_hex"])
-        if h!=backing.get("sha256"): die(f"sample {i} backing sha256")
+        if backing.get("evidence_class")!="PRIMARY_RUNTIME": die(f"sample {i} backing")
+        backing_raw=decode_hex(backing.get("bytes_hex"),f"sample {i} backing bytes")
+        h=hashlib.sha256(backing_raw).hexdigest(); nbytes=len(backing_raw)
+        if not valid_sha256(backing.get("sha256")) or h!=backing.get("sha256"): die(f"sample {i} backing sha256")
         if nbytes!=backing.get("length"): die(f"sample {i} backing length")
         if backing.get("descriptor_range_relation")!="PROVEN": die(f"sample {i} descriptor/backing relation")
     coverage={"instruction_counts":sorted(seen_counts),"descriptor_windows":sorted(seen_windows)}
