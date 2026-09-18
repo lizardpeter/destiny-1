@@ -102,9 +102,19 @@ jobs:
               assert off in line and f'], {vaddr}, s[8:11], 0 idxen' in line,(wrapper,line,off,vaddr)
             for proof in INDEX_PROOF[wrapper]:
               assert proof in text,(wrapper,proof)
+            reuse='NONE_OBSERVED'
+            if wrapper=='80A0627B':
+              # API10's s[8:11] descriptor is consumed by all six TBUFFER loads
+              # before this later scalar load overwrites the same SGPR window
+              # from s[12:15]. This proves register reuse, not resource identity.
+              overwrite='/*00000000010c: c2840d18         */ s_buffer_load_dwordx4 s[8:11], s[12:15], 0x18'
+              assert overwrite in text,(wrapper,overwrite)
+              last_tbuffer=max(text.index(x) for x in lines)
+              assert last_tbuffer < text.index(overwrite),(wrapper,'reuse ordering')
+              reuse='POST_API10_CONSUMPTION_SGPR_REUSE_FROM_S12_15_AT_0x10c'
             raw=open(f'shader/{wrapper}_gcn_code.bin','rb').read()
             assert hashlib.sha256(raw).hexdigest()==gcn
-            out['programs'].append({'wrapper':wrapper,'native_program_reference':native,'gcn_sha256':gcn,'orbshdr_stage':'LocalShader','descriptor_window':'s[8:11]','tbuffer_instruction_count':nloads,'tbuffer_format':'32_32_32_32,float','addressing':'idxen','access_topology':EXPECT[wrapper],'index_generation_proof':INDEX_PROOF[wrapper],'tbuffer_disassembly_lines':lines})
+            out['programs'].append({'wrapper':wrapper,'native_program_reference':native,'gcn_sha256':gcn,'orbshdr_stage':'LocalShader','descriptor_window':'s[8:11]','tbuffer_instruction_count':nloads,'tbuffer_format':'32_32_32_32,float','addressing':'idxen','access_topology':EXPECT[wrapper],'index_generation_proof':INDEX_PROOF[wrapper],'post_api10_sgpr_reuse':reuse,'tbuffer_disassembly_lines':lines})
           open('reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json','w').write(json.dumps(out,indent=2)+'\n')
           PY
           sha256sum reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json shader/* disasm/*.s > reports/SHA256SUMS.txt
