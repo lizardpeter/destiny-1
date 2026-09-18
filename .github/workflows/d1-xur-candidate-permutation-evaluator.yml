@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-xur-candidate-permutation-evaluator.yml'
       - 'tools/d1_xur_candidate_permutation_evaluator.py'
+      - 'tools/d1_xur_mida_permutation_crosscheck.py'
 
 permissions: {contents: read, actions: read}
 env:
@@ -56,6 +57,37 @@ jobs:
           assert d['proof']['descriptor_evaluation_algorithm_source_closed'] is False,d['proof']
           assert all(v is False for v in d['gates'].values()),d['gates']
           print('XUR_CANDIDATE_PERMUTATION_EVALUATOR_ACCEPTED_FAIL_CLOSED')
+          PY
+      - name: Cross-check against pinned later-engine exact-signature evaluator
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            'https://raw.githubusercontent.com/DeltaDesigns/MIDA/0a5adc9a31951bd1b244ab9792e20e496f598a7b/Tiger/Schema/Entity/EntityModelParent.cs' \
+            -o reports/MIDA_EntityModelParent_0a5adc9.cs
+          test "$(git hash-object reports/MIDA_EntityModelParent_0a5adc9.cs)" = '4902d44098a22295081e37e622683f7630d1a9fc'
+          grep -q 'PairsToPermutation.TryGetValue(keyVals' reports/MIDA_EntityModelParent_0a5adc9.cs
+          grep -q 'keysMap\[m.Unk8\[0\].SwitchKey\] = m.Unk8\[0\].Value' reports/MIDA_EntityModelParent_0a5adc9.cs
+
+          python tools/d1_xur_mida_permutation_crosscheck.py \
+            --static-graph input/static/D1_XUR_MODEL_PARENT_PERMUTATION_STATIC_GRAPH.json \
+            --placement-config input/config/D1_XUR_SCRIPTED_OWNER_SWITCH_PROBE.json \
+            --candidate reports/D1_XUR_CANDIDATE_PERMUTATION_EVALUATOR.json \
+            -o reports/D1_XUR_MIDA_PERMUTATION_CROSSCHECK.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_XUR_MIDA_PERMUTATION_CROSSCHECK.json'))
+          assert d['status']=='D1_XUR_COMPARATIVE_PERMUTATION_CROSSCHECK_COMPLETE' and not d['violations'],d
+          assert d['variant_group_count']==81,d
+          assert d['gates']['D1_retail_descriptor_evaluator_source_closed'] is False,d
+          assert all(d['gates'][k] is False for k in (
+            'E6_80C885E6_live_selection_proven',
+            'E7_80C885E7_live_selection_proven',
+            'E8_80C885E8_live_selection_proven')),d
+          print('XUR_MIDA_COMPARATIVE_CROSSCHECK_COMPLETE',
+                'unique',d['comparative_exact_signature_unique_groups'],
+                'none',d['comparative_exact_signature_no_match_groups'],
+                'ambiguous',d['comparative_exact_signature_ambiguous_groups'],
+                'converged',d['converged_with_d1_subset_max_specificity_groups'])
           PY
       - run: find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
