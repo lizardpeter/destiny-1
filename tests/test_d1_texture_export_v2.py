@@ -39,3 +39,41 @@ assert legacy.follow_backing is v2.strict_follow_backing
 legacy.follow_backing=old
 
 print('D1_TEXTURE_EXPORT_V2_STRICT_GATE_GREEN')
+
+
+# Exact BC block sizing must work for dimensions smaller than/non-multiple of 4.
+assert legacy.expected_base_size(1,1,legacy.GCN_BC1)==8
+assert legacy.expected_base_size(3,5,legacy.GCN_BC3)==32
+assert legacy.expected_base_size(5,5,legacy.GCN_BC5)==64
+assert legacy.expected_base_size(7,9,legacy.GCN_RGBA8)==7*9*4
+
+# Strict payload normalization must reject truncation rather than allowing the
+# deswizzler to synthesize zero-filled blocks from missing source bytes.
+try:
+    legacy.normalize_top_level_payload(b'\0'*7,8,strict=True,label='fixture')
+except ValueError as e:
+    assert 'truncated' in str(e) and 'need at least 8 bytes, got 7' in str(e)
+else:
+    raise AssertionError('strict texture size gate accepted truncated backing')
+assert legacy.normalize_top_level_payload(b'\0'*9,8,strict=True)==b'\0'*8
+
+# A completed v2 manifest is itself fail-closed.
+assert v2.strict_manifest_violations({
+    'missing_requested':[],
+    'textures':[{'header':'A','available':True,'array_size':1,'dds':'A.dds'}],
+})==[]
+v=v2.strict_manifest_violations({
+    'missing_requested':['B'],
+    'textures':[
+        {'header':'A','available':False},
+        {'header':'C','available':True,'array_size':1,'dds':None},
+        {'header':'D','available':True,'array_size':6,'face_dds':['x']*5},
+        {'header':'E','available':True,'array_size':2},
+    ],
+})
+assert 'missing_requested:B' in v
+assert 'A:header_unavailable' in v
+assert 'C:missing_dds' in v
+assert 'D:incomplete_cube_dds' in v
+assert 'E:unsupported_array_size:2' in v
+print('D1_TEXTURE_EXPORT_V2_SIZE_AND_MANIFEST_GATES_GREEN')
