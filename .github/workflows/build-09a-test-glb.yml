@@ -7,6 +7,7 @@ on:
       - 'tools/d1_vex_09a_test_glb.py'
       - 'tools/d1_vex_816ce240_blend_contract.py'
       - 'tools/d1_vex_816ce0a8_global_cb_proof.py'
+      - 'tools/d1_vex_09a_runtime_contract.py'
       - 'tools/d1_dds_to_png.py'
       - 'tools/d1_gltf_material_recipe.py'
       - 'tools/d1_texture_export.py'
@@ -87,6 +88,21 @@ jobs:
             --out proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json
           echo '3bef39c969a263c5e560435411202a04932b431f62022235f39ca8576be52908  proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json' | sha256sum -c --strict
           echo 'cd923d7fa255d94fc75f4f8a700a400aa2c1dbbaf095360650bd5228c4aa141b  proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json' | sha256sum -c --strict
+          python tools/d1_vex_09a_runtime_contract.py \
+            --blend-proof proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json \
+            --global-cb-proof proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json \
+            --out proof/D1_VEX_09A_NATIVE_RUNTIME_CONTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('proof/D1_VEX_09A_NATIVE_RUNTIME_CONTRACT.json'))
+          assert d['status']=='D1_VEX_09A_RUNTIME_CONTRACT_PARTIAL_EXACT' and not d['violations'],d
+          vk=d['circuitry_pass']['vulkan_color_blend_attachment']
+          assert vk['srcColorBlendFactor']=='VK_BLEND_FACTOR_ONE'
+          assert vk['dstColorBlendFactor']=='VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA'
+          assert d['implementation_readiness']['exact_live_render_ready'] is False
+          assert len(d['implementation_readiness']['hard_blockers'])==2
+          print('VEX_09A_RUNTIME_CONTRACT_PARTIAL_EXACT')
+          PY
 
       - name: Recover exact retail package families
         run: |
@@ -221,6 +237,7 @@ jobs:
           cp reports/glb_sha256.txt out/SHA256SUMS.txt
           cp proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json out/
           cp proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json out/
+          cp proof/D1_VEX_09A_NATIVE_RUNTIME_CONTRACT.json out/
           cat > out/README.txt <<'EOF'
           Destiny 1 PS4 Vex 816CE09A proof export
 
