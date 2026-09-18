@@ -8,9 +8,9 @@ entry/block table merely because its package/index still exists there.
 For every requested texture header this tool searches complete serialized
 texture chains newest-to-oldest:
 
-    texture header (32:1 / 32:2)
-        -> serialized reference, normally streamed mip record
-        -> serialized reference when present, otherwise the stream payload
+    Texture2D 32:1 -> direct 1:1
+    Texture2D 32:1 -> 65:1 first hop -> terminal 5:1
+    TextureCube 32:2 -> direct 1:2
 
 A candidate is accepted only when every required payload can be read, the
 texture header decodes, the backing surface unswizzles, and Pillow can decode
@@ -41,9 +41,11 @@ from d1_texture_export import (
     Image,
     decode_header,
     expected_base_size,
+    normalize_top_level_payload,
     make_dds,
     unswizzle_ps4,
 )
+from d1_texture_backing_chain_v1 import resolve_texture_backing
 
 HEADER_TYPES = {(32, 1), (32, 2)}
 
@@ -144,9 +146,10 @@ def child_max_patch(parent_tag: str, parent_patch: int, child_tag: str) -> int |
 def render_texture(header_tag: str, header_bytes: bytes, backing_bytes: bytes) -> tuple[dict, bytes | None, bytes | None]:
     h = decode_header(header_bytes)
     expected = expected_base_size(h['width'], h['height'], h['surface_format'], h['array_size'])
-    raw = backing_bytes
-    if expected and len(raw) >= expected:
-        raw = raw[:expected]
+    raw = normalize_top_level_payload(
+        backing_bytes, expected, strict=True,
+        label=f'{header_tag} generation-safe backing'
+    )
     swizzled = ((h['flags1'] & 0xC00) != 0x400) or h['array_size'] == 6
     linear = unswizzle_ps4(raw, h['width'], h['height'], h['array_size'], h['surface_format']) if swizzled else raw
     fmt_name = FORMAT_NAME.get(h['surface_format']) or ('GCN%02X' % h['surface_format'])
@@ -182,38 +185,63 @@ def try_texture(pool: SnapshotPool, tag: str) -> dict:
         except Exception as ex:
             attempts.append({'header': hd, 'error_stage': 'decode_header', 'error': repr(ex)})
             continue
+
         stream_tag = hc['entry']['reference'].upper()
         smax = child_max_patch(tag, hc['patch_id'], stream_tag)
         stream_had_candidate = False
         for sc in pool.candidates(stream_tag, max_patch=smax):
             stream_had_candidate = True
             if not sc.get('ok'):
-                attempts.append({'header': hd, 'stream_candidate': {k: v for k, v in sc.items() if k not in ('view', 'entry', 'payload')}})
+                attempts.append({'header': hd, 'first_hop_candidate': {k: v for k, v in sc.items() if k not in ('view', 'entry', 'payload')}})
                 continue
             sd = sc['desc']
-            backing_tag = sc['entry']['reference'].upper()
-            bmax = child_max_patch(stream_tag, sc['patch_id'], backing_tag)
-            if pool.any_entry_exists(backing_tag, max_patch=bmax):
-                backing_candidates = pool.candidates(backing_tag, max_patch=bmax)
-            else:
-                # Matches d1_texture_export: if the stream's reference is not a
-                # resolvable FileHash, the stream payload itself is the backing.
-                backing_candidates = iter([{
-                    'ok': True,
-                    'patch_id': sc['patch_id'],
-                    'entry': sc['entry'],
-                    'payload': sc['payload'],
-                    'desc': {**sd, 'fallback': 'stream payload used as backing because serialized reference is not a catalog FileHash'},
-                }])
-            for bc in backing_candidates:
-                if not bc.get('ok'):
-                    attempts.append({'header': hd, 'stream': sd, 'backing_candidate': {k: v for k, v in bc.items() if k not in ('view', 'entry', 'payload')}})
+            sk = (int(sc['entry']['type']), int(sc['entry']['subtype']))
+
+            backing_candidates = []
+            if sk == (65, 1):
+                # The only admitted two-hop shape is Texture2D 32:1 -> 65:1 -> 5:1.
+                if (int(hc['entry']['type']), int(hc['entry']['subtype'])) != (32, 1):
+                    attempts.append({'header': hd, 'first_hop': sd, 'error_stage': 'storage_shape',
+                                     'error': '65:1 first hop is admitted only for Texture2D 32:1'})
                     continue
+                backing_tag = sc['entry']['reference'].upper()
+                bmax = child_max_patch(stream_tag, sc['patch_id'], backing_tag)
+                for bc in pool.candidates(backing_tag, max_patch=bmax, expected_types={(5, 1)}):
+                    if not bc.get('ok'):
+                        attempts.append({'header': hd, 'first_hop': sd, 'backing_candidate': {k: v for k, v in bc.items() if k not in ('view', 'entry', 'payload')}})
+                        continue
+                    backing_candidates.append(bc)
+                if not backing_candidates:
+                    attempts.append({'header': hd, 'first_hop': sd, 'error_stage': 'backing_lookup',
+                                     'error': f'{backing_tag} has no valid 5:1 candidate package snapshot'})
+                    continue
+            else:
+                # Direct modes are validated below by the shared resolver. Do not
+                # chase the direct payload's own reference even if it resolves.
+                backing_candidates = [sc]
+
+            for bc in backing_candidates:
                 bd = bc['desc']
+                shape_by = {
+                    stream_tag: (None, sc['entry']),
+                    bd['tag_hash'].upper(): (None, bc['entry']),
+                }
+                try:
+                    _first, _back, storage_mode = resolve_texture_backing(shape_by, hc['entry'])
+                except Exception as ex:
+                    attempts.append({'header': hd, 'first_hop': sd, 'backing': bd,
+                                     'error_stage': 'storage_shape', 'error': repr(ex)})
+                    continue
+                expected_back = _back[1]
+                if expected_back is not bc['entry'] and expected_back != bc['entry']:
+                    attempts.append({'header': hd, 'first_hop': sd, 'backing': bd,
+                                     'error_stage': 'storage_identity',
+                                     'error': 'shared resolver selected a different backing entry'})
+                    continue
                 try:
                     rendered, dds, png = render_texture(tag, hc['payload'], bc['payload'])
                 except Exception as ex:
-                    attempts.append({'header': hd, 'stream': sd, 'backing': bd, 'error_stage': 'render', 'error': repr(ex)})
+                    attempts.append({'header': hd, 'first_hop': sd, 'backing': bd, 'error_stage': 'render', 'error': repr(ex)})
                     continue
                 return {
                     'resolved': True,
@@ -223,6 +251,7 @@ def try_texture(pool: SnapshotPool, tag: str) -> dict:
                     'stream_entry': sd,
                     'backing': bd['tag_hash'],
                     'backing_entry': bd,
+                    'storage_mode': storage_mode,
                     'header_info': hinfo,
                     'rendered': rendered,
                     '_dds': dds,
@@ -231,7 +260,7 @@ def try_texture(pool: SnapshotPool, tag: str) -> dict:
                     'attempts': attempts,
                 }
         if not stream_had_candidate:
-            attempts.append({'header': hd, 'error_stage': 'stream_lookup', 'error': f'{stream_tag} has no candidate package snapshot'})
+            attempts.append({'header': hd, 'error_stage': 'first_hop_lookup', 'error': f'{stream_tag} has no candidate package snapshot'})
     return {'resolved': False, 'header': tag, 'attempts': attempts}
 
 
@@ -312,8 +341,8 @@ def main() -> int:
         'failures': failures,
         'catalog_package_ids': [f'{x:04X}' for x in sorted(catalogs)],
         'policy': (
-            'Each requested FileHash is resolved by complete readable/decodable texture chain across verified physical snapshots, newest to oldest. '
-            'Same-package child references may not use a newer snapshot than their selected parent. No filename-neighbor inference or silent resampling is used.'
+            'Each requested FileHash is resolved newest-to-oldest across verified physical snapshots, but a candidate is admitted only when it matches a shared strict D1 storage shape (32:1->1:1, 32:1->65:1->5:1, or 32:2->1:2). '
+            'Same-package child references may not use a newer snapshot than their selected parent. Direct payload references are not chased. No filename-neighbor inference, adjacency fallback, or silent resampling is used.'
         ),
     }
     (a.out / 'remote_texture_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
