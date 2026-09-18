@@ -1,0 +1,43 @@
+{
+  "schema": "d1_transactional_checkpoint/v1",
+  "status": "DURABLE_RESUMABLE",
+  "branch": "d1-crota-source-semantics-v1",
+  "base_head_read": "dad604d7e5687ef88259ae04b9125c71e914b611",
+  "transactions": [
+    {
+      "topic": "API10 exact runtime-capture membership",
+      "commits": [
+        "75eccadb2a679af83da9e6c3fb8622eacc96a504",
+        "b69cd8d6d0fe0eb38f2dc2f4eb822acd465beff7",
+        "bb22bd551cc90f351a794540f9704cbaa4f8b501",
+        "44b497d80ec3247c1eb35a0af119eaaf547945e2"
+      ],
+      "finding": "The v1 capture validator self-asserted SOURCE_CLOSED_39_MEMBER_SET but did not compare gcn_sha256 against the frozen 39 identities. v2 now requires raw census bytes whose SHA-256 equals 7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8, validates exact 39-member uniqueness/histogram/window coverage, and checks each capture's window/count against its census member.",
+      "ci_run_id": 35370908444,
+      "ci_conclusion": "success",
+      "remaining_blocker": "Exact frozen census bytes are not checked in; provenance preserves artifact 10539900120 and hashes but not the 39 identities. Runtime writer, backing allocation, universal record schema and engine semantic remain WITHHELD."
+    },
+    {
+      "topic": "Texture backing-chain fail-closed resolver",
+      "commits": [
+        "7a8e77c13ebfcc24c0cb08d324f4082364523d76",
+        "2054e7e5e12ed44b0216952307fb8d0a7f6e0779",
+        "e6f53affc549d345a89a32a5f6a013c2726d487f"
+      ],
+      "finding": "Added a pure resolver that accepts only proven D1 chain shapes 32:1->1:1, 32:1->65:1->5:1 and observed direct 32:2->1:2. It rejects arbitrary resolvable adjacency, wrong 65:1 terminals, and unproven cube two-hop extension. 65:1/5:1 remain role labels, not official Tiger names.",
+      "ci_run_id": 35370975461,
+      "ci_conclusion": "success",
+      "remaining_work": "Integrate the pure resolver into d1_texture_export.py in a separate transaction after preserving current exporter regression coverage; do not silently change existing manifests without fixture validation."
+    }
+  ],
+  "next_hard_gate": "First try to recover/reconstruct exact API10 frozen census bytes and prove the pinned SHA-256. If unavailable, integrate the now-green strict texture-chain resolver into the exporter with fixture/regression validation, then continue official 65:1/5:1 role/name evidence or another source-closed GPU-resource closure.",
+  "semantic_boundary": {
+    "api10_runtime_writer": "WITHHELD",
+    "api10_backing_allocation": "WITHHELD",
+    "api10_engine_semantic": "WITHHELD",
+    "api10_universal_record_schema": "WITHHELD",
+    "texture_65_1_official_name": "UNKNOWN",
+    "texture_5_1_official_name": "UNKNOWN"
+  },
+  "resume_rule": "Read branch head first and preserve any newer concurrent Destiny commits. Never reset to this checkpoint if the branch advanced."
+}
