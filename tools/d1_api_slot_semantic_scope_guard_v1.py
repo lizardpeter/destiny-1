@@ -7,7 +7,7 @@ STATUS='D1_API_SLOT_SEMANTIC_SCOPE_GUARD_EXACT'
 EXPECTED_VS={
  'a5ad940fbf21746563f6585b889ac91b4220c94a3559e768028c894454bcdc12':'D1_XUR_VS_A5AD940F_DATAFLOW_SEMANTICS_EXACT',
  'b045462d7896e5c5012e8587076f6c669455b35009c197cd1c50d4e7529a1ab6':'D1_XUR_VS_80876960_TWO_INFLUENCE_DQ_EXACT',
- '24392dbd8f217a832456372a8d9c24d3ef365ab5a0b8bcd362882ca845052964':'D1_XUR_VS_8087695B_FOUR_INFLUENCE_DQ_EXACT',
+ '24392dbd8f217a832456372a8d9c24d3ef365ab5a0b8bcd362882ca845052964':'D1_XUR_VS_24392DBD_FOUR_INFLUENCE_DQ_EXACT',
 }
 def main()->int:
  ap=argparse.ArgumentParser();ap.add_argument('--registry',type=Path,required=True);ap.add_argument('--local',type=Path,required=True);ap.add_argument('-o','--out',type=Path,required=True);a=ap.parse_args();reg=json.loads(a.registry.read_text());loc=json.loads(a.local.read_text());v=[]
