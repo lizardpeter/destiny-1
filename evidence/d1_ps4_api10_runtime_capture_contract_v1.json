@@ -7,8 +7,16 @@
     "program_count": 39,
     "wrapper_count": 56,
     "material_occurrence_count": 3386,
-    "instruction_histogram": {"3": 1, "6": 1, "8": 17, "12": 20},
-    "descriptor_windows": ["s[12:15]", "s[8:11]"],
+    "instruction_histogram": {
+      "3": 1,
+      "6": 1,
+      "8": 17,
+      "12": 20
+    },
+    "descriptor_windows": [
+      "s[12:15]",
+      "s[8:11]"
+    ],
     "access_family_count": 6
   },
   "negative_source_proof": {
@@ -27,8 +35,16 @@
   ],
   "minimum_cross_family_capture": {
     "rule": "Capture exact representatives spanning both descriptor windows and every observed TBUFFER instruction-count family before generalizing.",
-    "instruction_counts": [3, 6, 8, 12],
-    "descriptor_windows": ["s[12:15]", "s[8:11]"]
+    "instruction_counts": [
+      3,
+      6,
+      8,
+      12
+    ],
+    "descriptor_windows": [
+      "s[12:15]",
+      "s[8:11]"
+    ]
   },
   "acceptance_gates": {
     "program_identity_matches_source_closed_39_member_set": true,
@@ -46,7 +62,24 @@
     "Do not infer engine meaning from SGPR window, TBUFFER count, ordering, adjacency, or slot reuse.",
     "Do not promote a runtime writer name into an engine semantic without independent primary evidence.",
     "Do not decode a GPU address from descriptor dwords until the applicable GCN descriptor encoding is pinned and proven.",
-    "Do not substitute host floating-point behavior for unresolved GCN behavior."
+    "Do not substitute host floating-point behavior for unresolved GCN behavior.",
+    "Do not generalize the Xur dual-quaternion API10 record-pair layout to all API10 programs; exact Vex GCN independently uses a three-float4-row transform layout."
   ],
-  "pivot_policy": "If primary runtime capture is unavailable, preserve this blocker and continue a source-closed Destiny transaction elsewhere."
+  "pivot_policy": "If primary runtime capture is unavailable, preserve this blocker and continue a source-closed Destiny transaction elsewhere.",
+  "consumer_side_primary_findings": {
+    "status": "SOURCE_CLOSED_EXACT_FOR_LISTED_GCN_ONLY",
+    "dq_families": {
+      "gcn_sha256": [
+        "a5ad940fbf21746563f6585b889ac91b4220c94a3559e768028c894454bcdc12",
+        "b045462d7896e5c5012e8587076f6c669455b35009c197cd1c50d4e7529a1ab6",
+        "24392dbd8f217a832456372a8d9c24d3ef365ab5a0b8bcd362882ca845052964"
+      ],
+      "role": "API10 s[8:11] supplies indexed consecutive float4 real+dual quaternion record pairs to exact native DQ transform/skinning arithmetic"
+    },
+    "rigid_three_row_family": {
+      "gcn_sha256": "e6f18138e330a9c6b3ddce2e71890b1bcda73f732c4f6007b4c788c0ff62f4c0",
+      "role": "API10 s[8:11] supplies three consecutive float4 rows per selected rigid transform"
+    },
+    "implication": "API10 has heterogeneous proven consumer record structures. A universal record schema, writer, backing allocation, and engine semantic remain withheld."
+  }
 }
