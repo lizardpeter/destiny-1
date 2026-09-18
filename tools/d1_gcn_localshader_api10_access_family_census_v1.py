@@ -3,7 +3,8 @@
 
 Consumes the independently exact usage-binding and material-chain reports.  It
 classifies only structural access counts + descriptor entry windows; it assigns
-no backing-buffer or engine semantic meaning.
+no backing-buffer or engine semantic meaning. The exact family census is also a
+minimum coverage contract for any future runtime-writer capture corpus.
 """
 import argparse,collections,json
 from pathlib import Path
@@ -29,7 +30,6 @@ def main():
    families.append({'tbuffer_instruction_count':n,'descriptor_window':w,'program_count':len(q),'wrapper_count':sum(len(p['wrappers']) for p in q),'material_occurrence_count':mat[(n,w)],'gcn_sha256':sorted(p['gcn_sha256'] for p in q)})
  expected_counts={3:1,6:1,8:17,12:20}
  if collections.Counter(p['tbuffer_instruction_count'] for p in ps)!=collections.Counter(expected_counts):v.append('instruction_family_program_histogram_drift')
- # Counter(dict) is intentional: keys are counts, values are exact program multiplicities.
  mh=collections.Counter()
  for (n,w),c in mat.items():mh[n]+=c
  if dict(sorted(mh.items()))!={3:14,6:3,8:1320,12:2049}:v.append(f'material_family_histogram_drift:{dict(mh)}')
