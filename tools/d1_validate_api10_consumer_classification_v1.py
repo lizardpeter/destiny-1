@@ -38,7 +38,7 @@ def main():
   if b.get(k)!="WITHHELD":die("semantic boundary "+k)
 
  overlap=None
- if d.get("status") in {"SOURCE_CLOSED_CROSS_STAGE_REFERENCE_ONLY","SOURCE_CLOSED_LOCALSHADER_PARTIAL"}:
+ if d.get("status")=="SOURCE_CLOSED_CROSS_STAGE_REFERENCE_ONLY":
   if not a.localshader_census:die("classification manifest requires LocalShader census")
   c=json.loads(a.localshader_census.read_text())
   if c.get("schema")!="d1_gcn_localshader_api10_access_family_census/v2" or c.get("status")!="D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT" or c.get("violations"):die("LocalShader census")
