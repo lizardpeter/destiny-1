@@ -1,0 +1,18 @@
+name: D1 PS4 sampler decoder regression
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_ps4_sampler_probe.py'
+      - 'tests/test_d1_ps4_sampler_probe.py'
+      - '.github/workflows/d1-ps4-sampler-decoder-regression.yml'
+permissions:
+  contents: read
+jobs:
+  sampler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode frozen retail descriptor vectors and reject malformed blobs
+        run: python3 tests/test_d1_ps4_sampler_probe.py
