@@ -2,8 +2,8 @@
 """Bulk-census D1 PS4 textures without letting one bad generation abort a family.
 
 For every texture-header TagHash seen in any supplied same-family snapshot, try
-snapshots newest-to-oldest. Each attempt uses the normal strict
-`d1_texture_export.export_reader` for exactly one TagHash. A successful attempt
+snapshots newest-to-oldest. Each attempt uses the strict
+`d1_texture_export_v2.export_reader` for exactly one TagHash. A successful attempt
 copies its portable outputs to the final directory; failures remain explicit in
 the aggregate manifest.
 
@@ -16,7 +16,7 @@ import argparse,json,shutil
 from pathlib import Path
 
 from d1_entry_extract import EntryReader
-from d1_texture_export import export_reader
+from d1_texture_export_v2 import export_reader
 
 
 def main()->int:
