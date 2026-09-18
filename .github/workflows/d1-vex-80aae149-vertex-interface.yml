@@ -1,0 +1,86 @@
+name: D1 Vex 80AAE149 vertex interface recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-vex-80aae149-vertex-interface.yml'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover verified Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered shader disasm reports out
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact logical package 0157
+        run: |
+          set -euo pipefail
+          python tools/d1_split_tar_extract.py             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10             --start-offset 0x46AF91400             --target ps4_globals_0157_0.pkg             --target ps4_globals_0157_1.pkg             --out recovered --manifest reports/0157_extract.json
+          python - <<'PY'
+          h=int('80AAE149',16)-0x80800000
+          assert h>>13==0x157 and (h&0x1fff)==329
+          print('80AAE149_ROUTE','pkg=0157','entry=329')
+          PY
+
+      - name: Extract exact 80AAE149 native vertex shader
+        run: |
+          set -euo pipefail
+          printf '{"pixel_shader_frequency":{}}\n' > reports/empty_manifest.json
+          python tools/d1_world_shader_extract.py             --snapshot recovered/ps4_globals_0157_0.pkg             --snapshot recovered/ps4_globals_0157_1.pkg             --runtime runtime             --manifest reports/empty_manifest.json             --shader 80AAE149             --out-dir shader             --report reports/80AAE149_extract.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/80AAE149_extract.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
+          assert len(d['shaders'])==1,d
+          r=d['shaders'][0]
+          assert r['shader']=='80AAE149',r
+          assert r['binary_info']['stage']=='VertexShader',r
+          assert r['header_meta']['reference']==r['native_shader'],r
+          print('VEX_80AAE149_VERTEX_GCN_EXACT',r['native_shader'],r['gcn_bytes'],r['gcn_sha256'])
+          PY
+
+      - name: Build pinned CLRX and disassemble exact vertex stream
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          test -f shader/PS_80AAE149_gcn.bin
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_80AAE149_gcn.bin > disasm/VS_80AAE149.s
+          grep -q s_endpgm disasm/VS_80AAE149.s
+          sha256sum shader/PS_80AAE149_gcn.bin disasm/VS_80AAE149.s reports/80AAE149_extract.json > out/SHA256SUMS.txt
+          cp reports/80AAE149_extract.json out/
+          cp disasm/VS_80AAE149.s out/
+          cp shader/PS_80AAE149_gcn.bin out/VS_80AAE149_gcn.bin
+          cp reports/0157_extract.json out/
+          tail -n 80 disasm/VS_80AAE149.s
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-VEX-80AAE149-EXACT-VERTEX-INTERFACE
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
