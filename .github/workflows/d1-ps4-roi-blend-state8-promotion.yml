@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-ps4-roi-blend-state8-promotion.yml'
       - 'tools/d1_ps4_roi_blend_state_promotion.py'
+      - 'tools/d1_vex_816ce240_blend_contract.py'
 
 permissions:
   contents: read
@@ -89,6 +90,32 @@ jobs:
           assert d['blend_state_8']['portable_name']=='PREMULTIPLIED_ALPHA_COMPOSITION'
           assert d['cross_fixture_predictions']['816CE240_816CE0A8']['state8_result']=='source_rgb + destination_rgb'
           print('ROI_BLEND_STATE8_PROMOTED',d['promotion_scope'])
+          PY
+          sha256sum out/*.json > out/SHA256SUMS.txt
+
+      - name: Emit exact Vex 816CE240 native blend contract
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json,shlex
+          d=json.load(open('out/input_paths.json'))
+          for k,v in d.items(): print(f'{k.upper()}={shlex.quote(v)}')
+          PY
+          )"
+          python tools/d1_vex_816ce240_blend_contract.py \
+            --state4 "$STATE4" --correlation "$CORRELATION" \
+            --card-gcn "$CARD_GCN" --circuit-gcn "$CIRCUIT_GCN" \
+            --out out/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json'))
+          assert d['status']=='D1_VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT' and not d['violations'],d
+          assert d['serialized_state_bytes']==[136,0,0,0]
+          assert d['promoted_state_lane']['blend_state_index']==8
+          assert d['native_composition']['rgb']=='S.rgb + D.rgb'
+          assert d['native_composition']['alpha']=='D.a'
+          assert d['portable_boundary']['core_gltf_equivalent'] is False
+          print('VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT')
           PY
           sha256sum out/*.json > out/SHA256SUMS.txt
 
