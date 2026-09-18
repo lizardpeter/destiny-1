@@ -1,0 +1,47 @@
+name: D1 LocalShader API10 access-family census v1
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_gcn_localshader_api10_access_family_census_v1.py'
+      - '.github/workflows/d1-gcn-localshader-api10-access-family-census-v1.yml'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover exact upstream reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/artifacts/10172731401/zip > usage.zip
+          gh api repos/${{ github.repository }}/actions/artifacts/10529319011/zip > materials.zip
+          unzip -q usage.zip -d usage
+          unzip -q materials.zip -d materials
+          sha256sum usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json materials/D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_V1.json
+      - name: Build fail-closed access-family census
+        run: |
+          python tools/d1_gcn_localshader_api10_access_family_census_v1.py \
+            --usage usage/D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json \
+            --materials materials/D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_V1.json \
+            --out reports/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'))
+          assert d['status']=='D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT',d
+          assert d['coverage']['program_count']==39,d
+          assert d['coverage']['wrapper_count']==56,d
+          assert d['coverage']['material_occurrence_count']==3386,d
+          assert d['coverage']['program_instruction_histogram']=={'3':1,'6':1,'8':17,'12':20},d
+          assert d['coverage']['material_instruction_histogram']=={'3':14,'6':3,'8':1320,'12':2049},d
+          assert not d['violations'],d
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-gcn-localshader-api10-access-family-census-v1
+          path: reports/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
+          if-no-files-found: error
