@@ -8,6 +8,7 @@ on:
       - '.github/workflows/d1-vex-80aae149-vertex-interface.yml'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_ps4_shader_binary_probe.py'
+      - 'tools/d1_vex_80aae149_vs_semantic_proof.py'
 
 permissions:
   contents: read
@@ -76,6 +77,48 @@ jobs:
           cp shader/PS_80AAE149_gcn.bin out/VS_80AAE149_gcn.bin
           cp reports/0157_extract.json out/
           tail -n 80 disasm/VS_80AAE149.s
+
+      - name: Prove exact rigid palette + param0..param4 interface
+        run: |
+          set -euo pipefail
+          python tools/d1_vex_80aae149_vs_semantic_proof.py \
+            --extract-report reports/80AAE149_extract.json \
+            --disassembly disasm/VS_80AAE149.s \
+            --out out/D1_VEX_80AAE149_VERTEX_INTERFACE_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_VEX_80AAE149_VERTEX_INTERFACE_PROOF.json'))
+          assert d['status']=='D1_VEX_80AAE149_VERTEX_INTERFACE_EXACT' and not d['violations'],d
+          assert d['rigid_palette_index']['exact_expression']=='uint(0.1 + 32767.0 * fetch_v7)'
+          assert d['rigid_palette_index']['row_indices']==['3*joint','3*joint+1','3*joint+2']
+          assert d['basis_chain']['basis2']=='cross(param0.xyz,param1.xyz) * fetch_v19; exported as param2.xyz'
+          assert d['coordinate_chain']['param3']=='float4(x,y,x,y)'
+          assert d['pixel_interface']['attr4']=='param4 = (pre-clip transformed position P.xyz,1)'
+          assert d['basis_chain']['semantic_names']=='WITHHELD_PENDING_FETCH_SHADER_SOURCE_MAPPING'
+          print('VEX_80AAE149_VERTEX_INTERFACE_EXACT')
+          PY
+          sha256sum out/D1_VEX_80AAE149_VERTEX_INTERFACE_PROOF.json >> out/SHA256SUMS.txt
+
+      - name: Require vertex-interface proof to fail closed on palette/basis drift
+        run: |
+          set -euo pipefail
+          cp disasm/VS_80AAE149.s /tmp/VS_80AAE149_bad_palette.s
+          cp disasm/VS_80AAE149.s /tmp/VS_80AAE149_bad_cross.s
+          python - <<'PY'
+          p='/tmp/VS_80AAE149_bad_palette.s';s=open(p).read()
+          old='v_mul_lo_u32    v0, v0, 3';assert old in s
+          open(p,'w').write(s.replace(old,'v_mul_lo_u32    v0, v0, 4',1))
+          p='/tmp/VS_80AAE149_bad_cross.s';s=open(p).read()
+          old='v_mul_f32       v1, v19, v1';assert old in s
+          open(p,'w').write(s.replace(old,'v_mul_f32       v1, v18, v1',1))
+          PY
+          if python tools/d1_vex_80aae149_vs_semantic_proof.py             --extract-report reports/80AAE149_extract.json --disassembly /tmp/VS_80AAE149_bad_palette.s             --out /tmp/should-fail-palette.json; then
+            echo 'ERROR: mutated rigid-palette row stride was accepted' >&2; exit 1
+          fi
+          if python tools/d1_vex_80aae149_vs_semantic_proof.py             --extract-report reports/80AAE149_extract.json --disassembly /tmp/VS_80AAE149_bad_cross.s             --out /tmp/should-fail-cross.json; then
+            echo 'ERROR: mutated handed cross-product path was accepted' >&2; exit 1
+          fi
+          echo 'VEX_80AAE149_NEGATIVE_GATES_GREEN'
 
       - uses: actions/upload-artifact@v4
         with:
