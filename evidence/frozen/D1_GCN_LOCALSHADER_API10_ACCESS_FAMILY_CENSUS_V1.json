@@ -1,0 +1,371 @@
+{
+  "capture_strategy": "Primary runtime captures must bind to one of the exact program identities emitted here; coverage must span both descriptor windows and all four exact TBUFFER-count families (3,6,8,12).",
+  "coverage": {
+    "descriptor_windows": [
+      "s[12:15]",
+      "s[8:11]"
+    ],
+    "instruction_count_families": [
+      3,
+      6,
+      8,
+      12
+    ],
+    "material_instruction_histogram": {
+      "12": 2049,
+      "3": 14,
+      "6": 3,
+      "8": 1320
+    },
+    "material_occurrence_count": 3386,
+    "program_count": 39,
+    "program_instruction_histogram": {
+      "12": 20,
+      "3": 1,
+      "6": 1,
+      "8": 17
+    },
+    "wrapper_count": 56
+  },
+  "families": [
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": [
+        "2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f"
+      ],
+      "material_occurrence_count": 14,
+      "program_count": 1,
+      "tbuffer_instruction_count": 3,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": [
+        "44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c"
+      ],
+      "material_occurrence_count": 3,
+      "program_count": 1,
+      "tbuffer_instruction_count": 6,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": [
+        "0a7441c0e463219c063dec4c42eb9bb55990faa5362c78dbaae60c7f1148ece0",
+        "1052548a3c3d23018802a9810d45badbaf9a45f95845ae17ad6ea50b809e58f4",
+        "25534890514c1a576b4ebb71c8ca8c0c9f0147df1aa4b149f8eeb310c265b53b",
+        "5623f04593033947d5b7f22ab5f9c70e77cc689a517783a1d621ede522ee80a0",
+        "9241a6278a33c84e4bef8d0c1c9127f029d841f8a8a04ab0aeef078ed333d75f",
+        "a3037a636f72492c2840a6c5e62c7aba1a434b203960ffa07ff1048d537bbf44",
+        "a719f18a9a803f50819b0699e9b29a0965c523a6002d1dcc5cced2c2e06e059d",
+        "b2fe8651250de02ad0f6136bf2b1a2829346bb2bc83ca22aef5802b2262d3397",
+        "b48daf445423a08c99f0fb1b5f89a64c767c8450158bef8ad2c28c74cdc558f4",
+        "bca98f63e57101ca43cb2b5ac82bcc58333d1a2bd14f5b93a57a3d0d06b6552e",
+        "d5a4e21c0b7756ccc3e0d08f31d8ca0e44d97cecbba61d25c12ba154d6490150",
+        "ee9fd59d8d91627f3d285e04e6b2cd256931b3d8e48e96a50276bb69601569c3",
+        "f6916fcc1c5f35c57c6b300d98d4f30c1d1f4706c3cbf94ef6aec775871d46d8"
+      ],
+      "material_occurrence_count": 602,
+      "program_count": 13,
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 27
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": [
+        "17091e9206b9d7962a7cc5e620984cd372c71a6dc3d3fd2cf389e705081e46db",
+        "c1b5d988b66cd5d9b2fcce523623694adc2bf6ade43bff0afbea583b40549f76",
+        "ce6a509e578cbf5327818b8d75ae51eb6a5b94ddbe8dc60ac7c8b93bba62e133",
+        "f6f491d6d757dd96a01464a3fd9a293ba1c05770811f3157155b8a3ec8586140"
+      ],
+      "material_occurrence_count": 718,
+      "program_count": 4,
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 4
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": [
+        "01a74e4dbad26cbf28ffd30f9698d822b80b4f7b47010f4f4f46bbf661b1e83c",
+        "043103907279fa0ba16eb0582bb07cd016fd1accc7be5a4fa8f6183397ea7049",
+        "37c47507a88f81a1b0347541dba41e7aedd1d60746b1670dda9c6625840eacb6",
+        "43658c0038d75519825ae1266614d5c7822ed5b49be03bc85118ee24028d8b3e",
+        "7339cc0c04ee5df9090a5219ea5b73c985d4d269e3719418dedc24aaaa64642a",
+        "7d8cc1ce8772043739979f1d8af1567415320eef718fe1b8152019770148580a",
+        "8c89d4e52890eb800e46b2d1d3e81c92b8fe19f8e603f187c84dbd66d33f0e95",
+        "9c7c58324e9928856a2b53002437ed863ad201392c821cbc8f8203b4f5ce5f79",
+        "9cb908cb12dc0b912c8b9e9d619fd39b03b01f0903f6a91210f842bf714da167",
+        "a0715599f935e99e5c23fc227361e513ff8018f953c0a07c452b7258dfa023ea",
+        "a6d2ecce7e679c755331b24eaf9af154f5b15218e0125478fc083eb824e05066",
+        "ade31b084bc01a948c7717a9afbe7f7626950bc086e49f424c717cac5499fc43",
+        "ea9398331d782db99df9ca7d0794519b24e2d207cd9434e0bf986a6fa45dadec"
+      ],
+      "material_occurrence_count": 217,
+      "program_count": 13,
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 13
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": [
+        "619a60ac13b8e7d3336d760732a9b3447430a28caddf30e1c7d1119bd5269dda",
+        "83b4fffead5399cb9b591c33e3bc00503fb3f7bc3d05efe018933367101d507b",
+        "a6530e9fbd3ff472b9bd3ad6a505011e8b3badb9d2f3a0ec03916ea6de5a1441",
+        "aa1a79619285a02adc735a008cefdff744508188fb1e3de2c65cdab3173e0d08",
+        "ca3206faaf99a1cdac668a3d2671575bfcafd252c866fb32070d8abe7513a8a8",
+        "f0d6457081e015ff188bdaa88c543d664aa0ef3155aa071068c6acbf04b50786",
+        "fd52c2df1be70a6a308963f2247b400e9a4953aeec3e4742ae4e2f9e4e525c45"
+      ],
+      "material_occurrence_count": 1832,
+      "program_count": 7,
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 10
+    }
+  ],
+  "programs": [
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "01a74e4dbad26cbf28ffd30f9698d822b80b4f7b47010f4f4f46bbf661b1e83c",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "043103907279fa0ba16eb0582bb07cd016fd1accc7be5a4fa8f6183397ea7049",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "0a7441c0e463219c063dec4c42eb9bb55990faa5362c78dbaae60c7f1148ece0",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "1052548a3c3d23018802a9810d45badbaf9a45f95845ae17ad6ea50b809e58f4",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "17091e9206b9d7962a7cc5e620984cd372c71a6dc3d3fd2cf389e705081e46db",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "25534890514c1a576b4ebb71c8ca8c0c9f0147df1aa4b149f8eeb310c265b53b",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f",
+      "tbuffer_instruction_count": 3,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "37c47507a88f81a1b0347541dba41e7aedd1d60746b1670dda9c6625840eacb6",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "43658c0038d75519825ae1266614d5c7822ed5b49be03bc85118ee24028d8b3e",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c",
+      "tbuffer_instruction_count": 6,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "5623f04593033947d5b7f22ab5f9c70e77cc689a517783a1d621ede522ee80a0",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "619a60ac13b8e7d3336d760732a9b3447430a28caddf30e1c7d1119bd5269dda",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 2
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "7339cc0c04ee5df9090a5219ea5b73c985d4d269e3719418dedc24aaaa64642a",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "7d8cc1ce8772043739979f1d8af1567415320eef718fe1b8152019770148580a",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "83b4fffead5399cb9b591c33e3bc00503fb3f7bc3d05efe018933367101d507b",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "8c89d4e52890eb800e46b2d1d3e81c92b8fe19f8e603f187c84dbd66d33f0e95",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "9241a6278a33c84e4bef8d0c1c9127f029d841f8a8a04ab0aeef078ed333d75f",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "9c7c58324e9928856a2b53002437ed863ad201392c821cbc8f8203b4f5ce5f79",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "9cb908cb12dc0b912c8b9e9d619fd39b03b01f0903f6a91210f842bf714da167",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "a0715599f935e99e5c23fc227361e513ff8018f953c0a07c452b7258dfa023ea",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "a3037a636f72492c2840a6c5e62c7aba1a434b203960ffa07ff1048d537bbf44",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "a6530e9fbd3ff472b9bd3ad6a505011e8b3badb9d2f3a0ec03916ea6de5a1441",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "a6d2ecce7e679c755331b24eaf9af154f5b15218e0125478fc083eb824e05066",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "a719f18a9a803f50819b0699e9b29a0965c523a6002d1dcc5cced2c2e06e059d",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "aa1a79619285a02adc735a008cefdff744508188fb1e3de2c65cdab3173e0d08",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "ade31b084bc01a948c7717a9afbe7f7626950bc086e49f424c717cac5499fc43",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "b2fe8651250de02ad0f6136bf2b1a2829346bb2bc83ca22aef5802b2262d3397",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "b48daf445423a08c99f0fb1b5f89a64c767c8450158bef8ad2c28c74cdc558f4",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "bca98f63e57101ca43cb2b5ac82bcc58333d1a2bd14f5b93a57a3d0d06b6552e",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "c1b5d988b66cd5d9b2fcce523623694adc2bf6ade43bff0afbea583b40549f76",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "ca3206faaf99a1cdac668a3d2671575bfcafd252c866fb32070d8abe7513a8a8",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "ce6a509e578cbf5327818b8d75ae51eb6a5b94ddbe8dc60ac7c8b93bba62e133",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "d5a4e21c0b7756ccc3e0d08f31d8ca0e44d97cecbba61d25c12ba154d6490150",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "ea9398331d782db99df9ca7d0794519b24e2d207cd9434e0bf986a6fa45dadec",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "ee9fd59d8d91627f3d285e04e6b2cd256931b3d8e48e96a50276bb69601569c3",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "f0d6457081e015ff188bdaa88c543d664aa0ef3155aa071068c6acbf04b50786",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[12:15]",
+      "gcn_sha256": "f6916fcc1c5f35c57c6b300d98d4f30c1d1f4706c3cbf94ef6aec775871d46d8",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 3
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "f6f491d6d757dd96a01464a3fd9a293ba1c05770811f3157155b8a3ec8586140",
+      "tbuffer_instruction_count": 8,
+      "wrapper_count": 1
+    },
+    {
+      "descriptor_window": "s[8:11]",
+      "gcn_sha256": "fd52c2df1be70a6a308963f2247b400e9a4953aeec3e4742ae4e2f9e4e525c45",
+      "tbuffer_instruction_count": 12,
+      "wrapper_count": 1
+    }
+  ],
+  "schema": "d1_gcn_localshader_api10_access_family_census/v2",
+  "semantic_boundary": {
+    "access_shape": "EXACT",
+    "backing_allocation": "WITHHELD",
+    "descriptor_entry_window": "EXACT",
+    "engine_semantic": "WITHHELD",
+    "runtime_writer": "WITHHELD"
+  },
+  "status": "D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT",
+  "violations": []
+}
