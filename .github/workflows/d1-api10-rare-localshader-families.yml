@@ -77,14 +77,34 @@ jobs:
             '80A0627B':('80A0627C','44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c',6),
           }
           out={'schema':'d1_api10_rare_localshader_retail_proof/v1','status':'D1_API10_RARE_LOCALSHADER_RETAIL_PROOF_EXACT','programs':[],'semantic_boundary':{'runtime_writer':'WITHHELD','descriptor_dwords':'WITHHELD','backing_allocation':'WITHHELD','engine_semantic':'WITHHELD'}}
+          EXPECT={
+            # Exact instruction offsets/vaddr operands from the pinned CLRX decode.
+            # These are access topology only; no engine semantic is inferred.
+            '80A08667':[
+              ('000000000038','v0'),('000000000044','v2'),('000000000050','v0'),
+            ],
+            '80A0627B':[
+              ('00000000002c','v0'),('000000000034','v3'),('000000000044','v0'),
+              ('00000000004c','v7'),('000000000054','v9'),('00000000005c','v2'),
+            ],
+          }
+          INDEX_PROOF={
+            '80A08667':['v_mul_lo_u32    v0, v0, 3','v_add_i32       v2, vcc, 1, v0','v_add_i32       v0, vcc, 2, v0'],
+            '80A0627B':['v_mul_lo_u32    v0, v9, 3','v_mul_lo_u32    v2, v8, 3','v_add_i32       v3, vcc, 1, v0','v_add_i32       v7, vcc, 1, v2','v_add_i32       v9, vcc, 2, v0','v_add_i32       v2, vcc, 2, v2'],
+          }
           for wrapper,(native,gcn,nloads) in E.items():
             text=open(f'disasm/{wrapper}.s').read()
             lines=[x.strip() for x in text.splitlines() if 'tbuffer_load_format_xyzw' in x]
             assert len(lines)==nloads,(wrapper,len(lines),lines)
             assert all('s[8:11]' in x for x in lines),(wrapper,lines)
+            assert all('idxen' in x and 'format:[32_32_32_32,float]' in x for x in lines),(wrapper,lines)
+            for line,(off,vaddr) in zip(lines,EXPECT[wrapper]):
+              assert off in line and f'], {vaddr}, s[8:11], 0 idxen' in line,(wrapper,line,off,vaddr)
+            for proof in INDEX_PROOF[wrapper]:
+              assert proof in text,(wrapper,proof)
             raw=open(f'shader/{wrapper}_gcn_code.bin','rb').read()
             assert hashlib.sha256(raw).hexdigest()==gcn
-            out['programs'].append({'wrapper':wrapper,'native_program_reference':native,'gcn_sha256':gcn,'orbshdr_stage':'LocalShader','descriptor_window':'s[8:11]','tbuffer_instruction_count':nloads,'tbuffer_disassembly_lines':lines})
+            out['programs'].append({'wrapper':wrapper,'native_program_reference':native,'gcn_sha256':gcn,'orbshdr_stage':'LocalShader','descriptor_window':'s[8:11]','tbuffer_instruction_count':nloads,'tbuffer_format':'32_32_32_32,float','addressing':'idxen','access_topology':EXPECT[wrapper],'index_generation_proof':INDEX_PROOF[wrapper],'tbuffer_disassembly_lines':lines})
           open('reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json','w').write(json.dumps(out,indent=2)+'\n')
           PY
           sha256sum reports/D1_API10_RARE_LOCALSHADER_RETAIL_PROOF.json shader/* disasm/*.s > reports/SHA256SUMS.txt
