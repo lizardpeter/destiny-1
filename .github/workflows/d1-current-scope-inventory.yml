@@ -1,0 +1,91 @@
+name: D1 current renderer scope inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_scope_inventory_v1.py'
+      - '.github/workflows/d1-current-scope-inventory.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: '${{ github.token }}'
+  SCOPE_ARTIFACT_ID: '10082865715'
+  SCOPE_ZIP_SHA256: '86c94b6e906c39a3a30b65878a3fb03e19ab220cc06fa86cd53d3bfeec452c78'
+  SCOPE_CENSUS_SHA256: '5f8201a927b477572b4988fac61b1a9aff5d591f0ca295d6dd4aa1689e7d9d79'
+  QUICKTAG_COMMIT: 'bdad2e92442439bb0f71c67aca608b7ca0a8c74c'
+  QUICKTAG_SCANNER_BLOB: '56e50ee0118e399e6db73d420c0ef70cc715857c'
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact current scope census
+        run: |
+          set -euo pipefail
+          mkdir -p input out source
+          curl -fsSL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SCOPE_ARTIFACT_ID}/zip" \
+            -o input/scopes.zip
+          echo "${SCOPE_ZIP_SHA256}  input/scopes.zip" | sha256sum --check --strict
+          unzip -q input/scopes.zip -d input/scopes
+          echo "${SCOPE_CENSUS_SHA256}  input/scopes/D1_GLOBAL_SCOPE_CLASS_CENSUS.json" | sha256sum --check --strict
+          test "$(find input/scopes/payloads -name '*.bin' -type f | wc -l)" = '23'
+
+      - name: Pin raw-string parser source
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            "https://raw.githubusercontent.com/v4nguard/quicktag/${QUICKTAG_COMMIT}/crates/scanner/src/lib.rs" \
+            -o source/quicktag_scanner.rs
+          test "$(git hash-object source/quicktag_scanner.rs)" = "${QUICKTAG_SCANNER_BLOB}"
+          grep -q 'pub fn read_raw_string_blob' source/quicktag_scanner.rs
+          grep -q 'let buffer_size: u64 = c.read_le()' source/quicktag_scanner.rs
+
+      - name: Decode all current s_scope names
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_scope_inventory_v1.py
+          python tools/d1_scope_inventory_v1.py \
+            --census input/scopes/D1_GLOBAL_SCOPE_CLASS_CENSUS.json \
+            --payload-dir input/scopes/payloads \
+            -o out/D1_CURRENT_SCOPE_INVENTORY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_CURRENT_SCOPE_INVENTORY.json'))
+          assert d['status']=='D1_CURRENT_SCOPE_INVENTORY_EXACT' and not d['violations'],d
+          expected={
+            'frame','view','rigid_model','editor_mesh','editor_terrain','cui_view','cui_object',
+            'skinning','speedtree','chunk_model','decal','instances','speedtree_instance_data',
+            'speedtree_lod_drawcall_data','transparent','transparent_advanced',
+            'sdsm_bias_and_scale_textures','terrain','postprocess','cui_bitmap','cui_standard',
+            'ui_font','cui_hud'
+          }
+          assert d['scope_count']==23,d
+          assert set(d['scope_names'])==expected,(set(d['scope_names'])^expected)
+          assert d['gear_or_dye_named_scopes']==[],d
+          assert d['gates']['all_current_scope_raw_names_closed'] is True,d
+          assert d['gates']['gear_or_dye_scope_identified_by_serialized_name'] is False,d
+          assert d['gates']['api15_runtime_value_closed'] is False,d
+          print('D1_CURRENT_SCOPE_INVENTORY_EXACT',len(d['scope_names']))
+          PY
+          sha256sum out/D1_CURRENT_SCOPE_INVENTORY.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CURRENT-SCOPE-INVENTORY
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
