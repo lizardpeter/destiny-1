@@ -1,0 +1,52 @@
+{
+  "schema": "d1_ps4_api10_runtime_capture_contract/v1",
+  "status": "BLOCKED_PENDING_PRIMARY_RUNTIME_CAPTURE",
+  "branch": "d1-crota-source-semantics-v1",
+  "source_closed_membership": {
+    "manifest": "evidence/d1_localshader_api10_membership_provenance_v1.json",
+    "program_count": 39,
+    "wrapper_count": 56,
+    "material_occurrence_count": 3386,
+    "instruction_histogram": {"3": 1, "6": 1, "8": 17, "12": 20},
+    "descriptor_windows": ["s[12:15]", "s[8:11]"],
+    "access_family_count": 6
+  },
+  "negative_source_proof": {
+    "tool": "tools/d1_ps4_api10_tfxscope_exclusion_proof.py",
+    "result": "Pinned D1 TfxScope source contains no CBuffer index 10; no engine-facing API10 scope name may be inherited from it."
+  },
+  "required_primary_observations": [
+    "exact program identity (GCN SHA-256) at the draw/dispatch that consumes API10",
+    "shader stage and exact SGPR descriptor window used by that program",
+    "four descriptor dwords exactly as written to user-data SGPRs",
+    "command-buffer packet or equivalent primary writer bytes that establish those four dwords",
+    "writer callsite/provenance sufficient to distinguish command emission from later shader consumption",
+    "decoded descriptor base address only when the descriptor encoding itself is independently proven",
+    "backing allocation identity, byte range, and exact captured bytes covering every TBUFFER load used by the selected program",
+    "capture point/order tying descriptor write, backing bytes, and consuming draw/dispatch together"
+  ],
+  "minimum_cross_family_capture": {
+    "rule": "Capture exact representatives spanning both descriptor windows and every observed TBUFFER instruction-count family before generalizing.",
+    "instruction_counts": [3, 6, 8, 12],
+    "descriptor_windows": ["s[12:15]", "s[8:11]"]
+  },
+  "acceptance_gates": {
+    "program_identity_matches_source_closed_39_member_set": true,
+    "descriptor_dwords_are_primary_runtime_bytes": true,
+    "writer_provenance_is_primary_runtime_evidence": true,
+    "backing_bytes_are_primary_runtime_evidence": true,
+    "descriptor_to_backing_range_is_proven_not_inferred": true,
+    "cross_family_consistency_is_checked": true,
+    "runtime_writer": "WITHHELD_UNTIL_CAPTURE",
+    "backing_allocation": "WITHHELD_UNTIL_CAPTURE",
+    "engine_semantic": "WITHHELD_UNTIL_INDEPENDENT_SEMANTIC_PROOF"
+  },
+  "forbidden_inferences": [
+    "Do not infer engine meaning from API number 10.",
+    "Do not infer engine meaning from SGPR window, TBUFFER count, ordering, adjacency, or slot reuse.",
+    "Do not promote a runtime writer name into an engine semantic without independent primary evidence.",
+    "Do not decode a GPU address from descriptor dwords until the applicable GCN descriptor encoding is pinned and proven.",
+    "Do not substitute host floating-point behavior for unresolved GCN behavior."
+  ],
+  "pivot_policy": "If primary runtime capture is unavailable, preserve this blocker and continue a source-closed Destiny transaction elsewhere."
+}
