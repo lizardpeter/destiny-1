@@ -1,0 +1,57 @@
+{
+  "schema": "d1_gcn_localshader_api10_entry_layout_census/v1",
+  "status": "D1_GCN_LOCALSHADER_API10_ENTRY_LAYOUT_CENSUS_EXACT",
+  "source": {
+    "artifact_id": 10172731401,
+    "artifact_zip_sha256": "5c4dcfc72768f3e0960dead4a612c9d35281c3246cd7ded5f32c4efc83563533",
+    "report": "D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_V1.json",
+    "report_sha256": "6c6c07d03ed06d8b53693326cbabd9fde7c7a2f7b0c41e02939e700cf4f21127",
+    "source_status": "D1_GCN_LOCALSHADER_TBUFFER_USAGE_BINDING_EXACT"
+  },
+  "coverage": {
+    "api10_program_count": 39,
+    "api10_wrapper_count": 56,
+    "api10_material_occurrence_count": 3386,
+    "api10_usage_layout_count": 2,
+    "api10_direct_immconstbuffer_program_count": 39,
+    "ptr_const_buffer_table_program_count": 0,
+    "ptr_resource_table_program_count": 0,
+    "ptr_extended_user_data_program_count": 26
+  },
+  "layouts": [
+    {
+      "program_count": 13,
+      "wrapper_count": 16,
+      "material_occurrence_count": 2567,
+      "descriptor_window": "s[8:11]",
+      "slots": [
+        [18, 0, 0, "12000000"],
+        [23, 0, 2, "17000200"],
+        [2, 10, 8, "020a0800"],
+        [2, 11, 12, "020b0c00"]
+      ]
+    },
+    {
+      "program_count": 26,
+      "wrapper_count": 40,
+      "material_occurrence_count": 819,
+      "descriptor_window": "s[12:15]",
+      "slots": [
+        [18, 0, 0, "12000000"],
+        [23, 0, 2, "17000200"],
+        [27, 1, 6, "1b010600"],
+        [2, 0, 8, "02000800"],
+        [2, 10, 12, "020a0c00"],
+        [2, 11, 16, "020b1000"]
+      ]
+    }
+  ],
+  "violations": [],
+  "semantic_boundary": {
+    "api10_delivery": "EXACT_DIRECT_IMMCONSTBUFFER_PROGRAM_ENTRY_USER_DATA",
+    "api10_table_indirection": "ABSENT_FROM_EXACT_API10_INPUT_USAGE_LAYOUTS",
+    "runtime_writer": "WITHHELD",
+    "backing_memory_semantics": "WITHHELD"
+  },
+  "policy": "Frozen from the pinned exact usage-binding artifact. API10 is a direct ImmConstBuffer InputUsageSlot in every one of the 39 exact LocalShader programs; neither PtrConstBufferTable nor PtrResourceTable occurs in either API10 layout. PtrExtendedUserData occurs only in the 26-program s[12:15] layout and is a distinct slot at start register 6. This narrows the next gate to the direct user-data writer; it does not name the runtime owner or backing contents."
+}
