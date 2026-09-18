@@ -1,0 +1,36 @@
+name: D1 API10 checked-in semantic source audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_checked_in_semantic_source_audit.py'
+      - 'evidence/d1_api10_consumer_classification_v1.json'
+      - '.github/workflows/d1-api10-checked-in-semantic-source-audit.yml'
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: |
+          set -euo pipefail
+          mkdir -p out
+          python tools/d1_api10_checked_in_semantic_source_audit.py --root . --classification evidence/d1_api10_consumer_classification_v1.json -o out/D1_API10_CHECKED_IN_SEMANTIC_SOURCE_AUDIT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_CHECKED_IN_SEMANTIC_SOURCE_AUDIT.json'))
+          assert d['status']=='D1_API10_CHECKED_IN_SEMANTIC_SOURCE_AUDIT_EXACT'
+          assert d['global_source_closed_api10_program_denominator']==39
+          assert d['classified_programs_with_checked_in_handlers']>=3
+          assert d['evidence_class']=='REPOSITORY_AVAILABILITY_AUDIT_NOT_RETAIL_SEMANTIC_PROOF'
+          PY
+          sha256sum out/D1_API10_CHECKED_IN_SEMANTIC_SOURCE_AUDIT.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-CHECKED-IN-SEMANTIC-SOURCE-AUDIT
+          path: out/
+          retention-days: 90
