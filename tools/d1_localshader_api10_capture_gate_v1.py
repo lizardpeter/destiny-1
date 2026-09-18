@@ -2,10 +2,10 @@
 """Fail-closed validator for Destiny 1 LocalShader API10 runtime captures.
 
 A capture is useful only when it is bound to an exact program present in the frozen
-source census.  Family labels supplied by a capture are never trusted as authority.
+source census. Family labels supplied by a capture are never trusted as authority.
 No engine semantic is inferred here.
 """
-import argparse, hashlib, json, re, sys
+import argparse, json, re, sys
 from pathlib import Path
 
 EXPECTED_FAMILIES={(3,"s[8:11]"),(6,"s[8:11]"),(8,"s[12:15]"),(8,"s[8:11]"),(12,"s[12:15]"),(12,"s[8:11]")}
@@ -15,25 +15,29 @@ HEX64=re.compile(r"^[0-9a-fA-F]{64}$")
 def die(msg): raise SystemExit("FAIL: "+msg)
 def load(path):
     with open(path,"r",encoding="utf-8") as f:return json.load(f)
-def canon_program_id(v): return str(v).strip().upper()
+def canon_program_id(v): return str(v).strip().lower()
 
 def build_program_index(frozen):
-    """Require a program-level membership table when validating primary captures.
+    """Build exact program membership from the source-closed census.
 
-    Older frozen v1 evidence intentionally contains only aggregate families.  It is
-    still sufficient for TEST_FIXTURE_NOT_PRIMARY_EVIDENCE regression tests, but it
-    must never authorize a primary runtime capture by a caller-provided family label.
+    v2 names the identity field gcn_sha256. Older experimental tables used
+    program_id; accept that spelling only as a compatibility alias, and require
+    the identity itself to remain an exact SHA-256 either way.
     """
     rows=frozen.get("programs")
     if rows is None:return None
     if not isinstance(rows,list):die("frozen programs must be a list")
     idx={}
     for i,r in enumerate(rows):
-        for k in ("program_id","tbuffer_instruction_count","descriptor_window"):
+        raw_pid=r.get("gcn_sha256",r.get("program_id"))
+        if raw_pid is None:die(f"frozen programs[{i}] missing gcn_sha256")
+        for k in ("tbuffer_instruction_count","descriptor_window"):
             if k not in r:die(f"frozen programs[{i}] missing {k}")
-        pid=canon_program_id(r["program_id"]); fam=(int(r["tbuffer_instruction_count"]),r["descriptor_window"])
+        pid=canon_program_id(raw_pid)
+        if not HEX64.fullmatch(pid):die(f"frozen programs[{i}] identity is not an exact SHA-256")
+        fam=(int(r["tbuffer_instruction_count"]),r["descriptor_window"])
         if fam not in EXPECTED_FAMILIES:die(f"frozen program {pid} has unknown family {fam}")
-        if pid in idx:die(f"duplicate frozen program_id {pid}")
+        if pid in idx:die(f"duplicate frozen program identity {pid}")
         idx[pid]=fam
     if len(idx)!=EXPECTED_COVERAGE["program_count"]:die(f"frozen program table drift: {len(idx)} != 39")
     return idx
@@ -50,7 +54,7 @@ def main():
     program_index=build_program_index(frozen)
     rows=captures.get("captures")
     if not isinstance(rows,list):die("captures must be a list")
-    seen=set();validated=[]
+    seen=set()
     for i,r in enumerate(rows):
         for key in ("program_id","descriptor_window","tbuffer_instruction_count","descriptor_dwords","evidence"):
             if key not in r:die(f"capture[{i}] missing {key}")
@@ -68,13 +72,13 @@ def main():
             if not HEX64.fullmatch(str(ev["sha256"])):die(f"capture[{i}] primary evidence sha256 must be 64 hex digits")
         if family not in EXPECTED_FAMILIES:die(f"capture[{i}] unknown family {family}")
         d=r["descriptor_dwords"]
-        if not(isinstance(d,list) and len(d)==4 and all(isinstance(x,int) and 0<=x<=0xffffffff for x in d)):die(f"capture[{i}] descriptor_dwords must be four exact u32 values")
+        if not(isinstance(d,list) and len(d)==4 and all(isinstance(x,int) and not isinstance(x,bool) and 0<=x<=0xffffffff for x in d)):die(f"capture[{i}] descriptor_dwords must be four exact u32 values")
         if r.get("engine_semantic") not in (None,"WITHHELD"):
             if fixture:die(f"capture[{i}] test fixture may not assert engine semantic")
             if not ev.get("writer_trace") or not ev.get("backing_bytes"):die(f"capture[{i}] semantic asserted without writer_trace + backing_bytes")
-        seen.add(family);validated.append(pid)
+        seen.add(family)
     missing=sorted(EXPECTED_FAMILIES-seen)
-    result={"schema":"d1_localshader_api10_capture_gate/v1","status":"D1_LOCALSHADER_API10_CAPTURE_COVERAGE_EXACT" if not missing else "D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE","validated_capture_count":len(rows),"covered_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in sorted(seen)],"missing_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in missing],"primary_capture_membership_gate":"EXACT_PROGRAM_TABLE_REQUIRED","semantic_boundary":{"runtime_writer":"WITHHELD_UNLESS_PRIMARY_TRACE","backing_allocation":"WITHHELD_UNLESS_PRIMARY_BYTES","engine_semantic":"WITHHELD_UNLESS_BOTH"}}
+    result={"schema":"d1_localshader_api10_capture_gate/v1","status":"D1_LOCALSHADER_API10_CAPTURE_COVERAGE_EXACT" if not missing else "D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE","validated_capture_count":len(rows),"covered_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in sorted(seen)],"missing_families":[{"tbuffer_instruction_count":x,"descriptor_window":w} for x,w in missing],"primary_capture_membership_gate":"EXACT_GCN_SHA256_TABLE_REQUIRED","semantic_boundary":{"runtime_writer":"WITHHELD_UNLESS_PRIMARY_TRACE","backing_allocation":"WITHHELD_UNLESS_PRIMARY_BYTES","engine_semantic":"WITHHELD_UNLESS_BOTH"}}
     if a.out:Path(a.out).write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(result,indent=2));return 2 if missing else 0
 if __name__=="__main__":sys.exit(main())
