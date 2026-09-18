@@ -20,7 +20,7 @@ import shutil
 from pathlib import Path
 
 from d1_entry_extract import EntryReader
-from d1_texture_export import export_reader
+from d1_texture_export_v2 import export_reader
 
 
 def norm_hash(value: str) -> str:
