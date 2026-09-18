@@ -1,0 +1,39 @@
+{
+  "schema": "d1_api10_runtime_capture_membership_gate/v2",
+  "status": "BLOCKED_PENDING_EXACT_FROZEN_CENSUS_BYTES",
+  "branch": "d1-crota-source-semantics-v1",
+  "discovery": {
+    "validator_v1": "tools/d1_validate_api10_runtime_capture_v1.py",
+    "problem": "v1 accepts membership_proof=SOURCE_CLOSED_39_MEMBER_SET as a self-asserted string but does not compare gcn_sha256 to the exact frozen 39-program census",
+    "consequence": "v1 can validate writer/backing structure but cannot by itself prove the acceptance gate program_identity_matches_source_closed_39_member_set"
+  },
+  "replacement_validator": "tools/d1_validate_api10_runtime_capture_v2.py",
+  "frozen_membership_producer": {
+    "provenance_manifest": "evidence/d1_localshader_api10_membership_provenance_v1.json",
+    "output_name": "D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json",
+    "output_sha256": "7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8",
+    "artifact_id": 10539900120,
+    "artifact_zip_sha256": "b64ddfd28937c6d5adddf8464817da6f836fd32c1b3e20e1b51841ce3d185897",
+    "program_count": 39,
+    "instruction_histogram": {"3": 1, "6": 1, "8": 17, "12": 20},
+    "descriptor_windows": ["s[12:15]", "s[8:11]"]
+  },
+  "v2_fail_closed_gates": [
+    "membership census raw bytes must hash exactly to the frozen producer output SHA-256",
+    "census must expose exactly 39 unique lowercase GCN SHA-256 identities",
+    "census instruction histogram must remain exactly 1/1/17/20 for 3/6/8/12 TBUFFER instructions",
+    "both exact descriptor windows must remain present",
+    "each runtime sample GCN SHA-256 must be an exact census member",
+    "sample descriptor window and TBUFFER count must equal that census member's frozen values",
+    "writer provenance, four descriptor dwords, exact backing bytes/hash/length and proven descriptor-range relation remain required",
+    "engine semantic and universal API10 record schema remain WITHHELD"
+  ],
+  "exact_missing_primary_input": "Raw D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json bytes with SHA-256 7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8. The checked-in provenance manifest preserves denominators and producer hashes but not the 39 identities.",
+  "semantic_boundary": {
+    "runtime_writer": "WITHHELD",
+    "backing_allocation": "WITHHELD",
+    "engine_semantic": "WITHHELD",
+    "universal_record_schema": "WITHHELD"
+  },
+  "resume": "Recover the exact frozen census bytes from artifact 10539900120 or reconstruct the producer output from the two pinned input artifacts and prove SHA-256 equality before using v2 for a positive runtime-capture promotion."
+}
