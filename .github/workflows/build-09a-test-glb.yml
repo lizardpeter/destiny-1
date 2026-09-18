@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/build-09a-test-glb.yml'
       - 'tools/d1_vex_09a_test_glb.py'
+      - 'tools/d1_vex_816ce240_blend_contract.py'
+      - 'tools/d1_vex_816ce0a8_global_cb_proof.py'
       - 'tools/d1_dds_to_png.py'
       - 'tools/d1_gltf_material_recipe.py'
       - 'tools/d1_texture_export.py'
@@ -12,6 +14,15 @@ on:
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  STATE_ARTIFACT_ID: '10020034615'
+  STATE_ARTIFACT_ZIP_SHA256: '96738187a697b9fbbd1e695ce3da3e9e728eb3fb95caedc4b857e072523d52e1'
+  CARD_ARTIFACT_ID: '10005293226'
+  CARD_ARTIFACT_ZIP_SHA256: '861c241b03d4400a501023cdc6cf726759279eb7eb26e627128185eefa0734ee'
+  CIRCUIT_ARTIFACT_ID: '10020280794'
+  CIRCUIT_ARTIFACT_ZIP_SHA256: 'ae9297ad16c494a910176426d05aae0bde65ec8a600a0c179f21af44a2da55d2'
 
 jobs:
   build:
@@ -37,6 +48,45 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Reconstruct exact Vex native-state proofs from pinned artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p proof-input/state proof-input/card proof-input/circuit proof
+          for spec in \
+            "state:${STATE_ARTIFACT_ID}:${STATE_ARTIFACT_ZIP_SHA256}" \
+            "card:${CARD_ARTIFACT_ID}:${CARD_ARTIFACT_ZIP_SHA256}" \
+            "circuit:${CIRCUIT_ARTIFACT_ID}:${CIRCUIT_ARTIFACT_ZIP_SHA256}"; do
+            IFS=: read -r name aid sha <<< "$spec"
+            curl -fsSL --retry 4 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}/zip" \
+              -o "proof-input/${name}.zip"
+            echo "${sha}  proof-input/${name}.zip" | sha256sum --check --strict
+            unzip -q "proof-input/${name}.zip" -d "proof-input/${name}"
+          done
+          echo 'c6d36eedc0c60383fdd475494cf74b314a706472737bdefe709c37d50352bc61  proof-input/state/out/material_state4.json' | sha256sum -c --strict
+          echo '40f1ef9101cf092878fd315a8698d70a680871bd9489c4a549eac66f2a8f26bf  proof-input/state/out/cross_source_correlation.json' | sha256sum -c --strict
+          echo '625bc9aee2b7e4c10e678bb03bb635f00c06733a61e0480f0b4cf14cfc0b8dd0  proof-input/card/80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY.json' | sha256sum -c --strict
+          echo '9c8b8743edc1fa84a169511f4df4fec8c91970560132d817d5d10767421d822e  proof-input/circuit/out/816CE0A8_output_alpha_zero.json' | sha256sum -c --strict
+          echo 'db9efc5c772fcccbb92e117ba00a90c0cd3ad3b1a0abbe6db122c4b0b9a4cae2  proof-input/circuit/out/816CE0A8_remote_shader_extract.json' | sha256sum -c --strict
+          echo '07d0f08c9016840ed3c10ffd39d27417da49cc6158028997df1319fe097577a8  proof-input/circuit/out/PS_816CE0A8.s' | sha256sum -c --strict
+
+          python tools/d1_vex_816ce240_blend_contract.py \
+            --state4 proof-input/state/out/material_state4.json \
+            --correlation proof-input/state/out/cross_source_correlation.json \
+            --card-gcn proof-input/card/80CA0B97_CARD_GCN_OUTPUT_DEPENDENCY.json \
+            --circuit-gcn proof-input/circuit/out/816CE0A8_output_alpha_zero.json \
+            --out proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json
+          python tools/d1_vex_816ce0a8_global_cb_proof.py \
+            --extract-report proof-input/circuit/out/816CE0A8_remote_shader_extract.json \
+            --disassembly proof-input/circuit/out/PS_816CE0A8.s \
+            --out proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json
+          echo '3bef39c969a263c5e560435411202a04932b431f62022235f39ca8576be52908  proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json' | sha256sum -c --strict
+          echo 'cd923d7fa255d94fc75f4f8a700a400aa2c1dbbaf095360650bd5228c4aa141b  proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json' | sha256sum -c --strict
 
       - name: Recover exact retail package families
         run: |
@@ -121,6 +171,8 @@ jobs:
             --runtime runtime \
             --parser-root tiger-animation-parser \
             --recipe-dir recipe \
+            --blend-proof proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json \
+            --global-cb-proof proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json \
             --out out/816CE09A_PROVEN_MATERIAL_TEST.glb \
             --report reports/816CE09A_PROVEN_MATERIAL_TEST.json
           sha256sum out/816CE09A_PROVEN_MATERIAL_TEST.glb | tee reports/glb_sha256.txt
@@ -144,6 +196,14 @@ jobs:
           assert len(g.animations)==2
           assert [x.name for x in g.animations]==['816CE09D','816CE09E']
           assert len(g.materials)==2
+          circuit=next(x for x in g.materials if x.name=='D1_816CE240_Circuitry_PORTABLE')
+          ex=circuit.extras
+          assert ex['nativeBlendSelector']=='0x88'
+          assert ex['nativeBlendStateIndex']==8
+          assert ex['nativeCompositionRGB']=='S.rgb + D.rgb'
+          assert ex['nativeCompositionAlpha']=='D.a'
+          assert ex['api13GlobalRgbFactor']=='api13[6] * api13[7]'
+          assert ex['api12Producer']=='WITHHELD' and ex['api13LiveValues']=='WITHHELD'
           assert len(g.meshes[0].primitives)==2
           assert all(x.attributes.JOINTS_0 is not None and x.attributes.WEIGHTS_0 is not None for x in g.meshes[0].primitives)
           r=json.loads(Path('reports/816CE09A_PROVEN_MATERIAL_TEST.json').read_text())
@@ -159,6 +219,8 @@ jobs:
           cp recipe/material_recipe.json out/material_recipe.json
           cp reports/816CE09A_PROVEN_MATERIAL_TEST.json out/816CE09A_PROVEN_MATERIAL_TEST.report.json
           cp reports/glb_sha256.txt out/SHA256SUMS.txt
+          cp proof/D1_VEX_816CE240_NATIVE_BLEND_CONTRACT.json out/
+          cp proof/D1_VEX_816CE0A8_GLOBAL_CB_PROOF.json out/
           cat > out/README.txt <<'EOF'
           Destiny 1 PS4 Vex 816CE09A proof export
 
@@ -183,8 +245,11 @@ jobs:
 
           This GLB is a portable glTF approximation of byte-proven native D1 material
           behavior. Native hashes, equations and approximation policy are preserved in
-          GLB extras and material_recipe.json. It is NOT a claim that core glTF PBR is
-          equivalent to Destiny's native two-pass/deferred renderer.
+          GLB extras and material_recipe.json. For circuitry material 816CE240 the
+          source-closed blend selector is 0x88 -> state 8, and exact PS 816CE0A8 alpha=0
+          reduces native RGB composition to Source + Destination. API12/API13 producer
+          names and live values remain withheld. Core glTF PBR/emission is not claimed
+          equivalent to Destiny's native renderer.
           EOF
 
       - uses: actions/upload-artifact@v4
