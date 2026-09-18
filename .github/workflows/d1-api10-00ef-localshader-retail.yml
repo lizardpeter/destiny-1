@@ -1,0 +1,113 @@
+name: D1 API10 00EF LocalShader retail census
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-api10-00ef-localshader-retail.yml'
+      - 'tools/d1_remote_ps4_shader_binary_probe.py'
+permissions: {contents: read}
+env:
+  CLRX_COMMIT: fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime reports shader disasm
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover exact 00EF LocalShader payloads
+        run: |
+          set -euo pipefail
+          export LINOODLE_SKIP_DLLMAIN=1
+          python tools/d1_remote_ps4_shader_binary_probe.py             --runtime runtime             --member ps4_race_set_all_00ef_0.pkg:46023276544:232409088             --member ps4_race_set_all_00ef_1.pkg:46255686144:12650496             --member ps4_race_set_all_00ef_2.pkg:46268337152:6375424             --member ps4_race_set_all_00ef_3.pkg:46274713088:176128             --member ps4_race_set_all_00ef_5.pkg:46274889728:184320             --tag-hash 809DE970 --tag-hash 809DF003 --tag-hash 809DF007             --tag-hash 809DF018 --tag-hash 809DF019 --tag-hash 809DF4CA             --tag-hash 809DF63E --tag-hash 809DF641 --tag-hash 809DF754             --tag-hash 809DF75D --tag-hash 809DF986             --dump-dir shader -o reports/00ef_localshader_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/00ef_localshader_probe.json'))
+          assert d['status']=='D1_REMOTE_PS4_SHADER_BINARY_PROBE_EXACT',d
+          E={
+           '809DE970':('809DE971','17091e9206b9d7962a7cc5e620984cd372c71a6dc3d3fd2cf389e705081e46db','s[8:11]',8),
+           '809DF003':('809DF02F','043103907279fa0ba16eb0582bb07cd016fd1accc7be5a4fa8f6183397ea7049','s[12:15]',12),
+           '809DF007':('809DF033','9c7c58324e9928856a2b53002437ed863ad201392c821cbc8f8203b4f5ce5f79','s[12:15]',12),
+           '809DF018':('809DF03C','ca3206faaf99a1cdac668a3d2671575bfcafd252c866fb32070d8abe7513a8a8','s[8:11]',12),
+           '809DF019':('809DF03D','83b4fffead5399cb9b591c33e3bc00503fb3f7bc3d05efe018933367101d507b','s[8:11]',12),
+           '809DF4CA':('809DF4CB','c1b5d988b66cd5d9b2fcce523623694adc2bf6ade43bff0afbea583b40549f76','s[8:11]',8),
+           '809DF63E':('809DF655','01a74e4dbad26cbf28ffd30f9698d822b80b4f7b47010f4f4f46bbf661b1e83c','s[12:15]',12),
+           '809DF641':('809DF658','a0715599f935e99e5c23fc227361e513ff8018f953c0a07c452b7258dfa023ea','s[12:15]',12),
+           '809DF754':('809DF755','ce6a509e578cbf5327818b8d75ae51eb6a5b94ddbe8dc60ac7c8b93bba62e133','s[8:11]',8),
+           '809DF75D':('809DF75E','619a60ac13b8e7d3336d760732a9b3447430a28caddf30e1c7d1119bd5269dda','s[8:11]',12),
+           '809DF986':('809DF987','f0d6457081e015ff188bdaa88c543d664aa0ef3155aa071068c6acbf04b50786','s[8:11]',12),
+          }
+          by={x['tag_hash']:x for x in d['shaders']}
+          assert set(by)==set(E),(set(by),set(E))
+          lean=[('SubPtrFetchShader',0,0),('PtrVertexBufferTable',0,2),('ImmConstBuffer',10,8),('ImmConstBuffer',11,12)]
+          ext=[('SubPtrFetchShader',0,0),('PtrVertexBufferTable',0,2),('PtrExtendedUserData',1,6),('ImmConstBuffer',0,8),('ImmConstBuffer',10,12),('ImmConstBuffer',11,16)]
+          for h,(native,gcn,window,nloads) in E.items():
+            r=by[h]
+            assert r['package_id']=='00EF' and r['payload_reference']==native,r
+            assert r['binary_info']['stage']=='LocalShader' and r['code_sha256']==gcn,r
+            got=[(x['usage_name'],x['api_slot'],x['start_register']) for x in r['usage']['slots']]
+            assert got==(lean if window=='s[8:11]' else ext),(h,got)
+          PY
+      - name: Build pinned CLRX
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          test "$(git -C clrx rev-parse HEAD)" = "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe";echo "CLRXDISASM=$exe" >> "$GITHUB_ENV"
+      - name: Disassemble and close exact 00EF census
+        run: |
+          set -euo pipefail
+          for h in 809DE970 809DF003 809DF007 809DF018 809DF019 809DF4CA 809DF63E 809DF641 809DF754 809DF75D 809DF986; do
+            "$CLRXDISASM" --raw --gpuType=GFX700 --hexcode "shader/${h}_gcn_code.bin" > "disasm/${h}.s" 2> "disasm/${h}.stderr"
+            test ! -s "disasm/${h}.stderr"
+            grep -q s_endpgm "disasm/${h}.s"
+          done
+          python - <<'PY'
+          import json,hashlib
+          E={
+           '809DE970':('809DE971','17091e9206b9d7962a7cc5e620984cd372c71a6dc3d3fd2cf389e705081e46db','s[8:11]',8),
+           '809DF003':('809DF02F','043103907279fa0ba16eb0582bb07cd016fd1accc7be5a4fa8f6183397ea7049','s[12:15]',12),
+           '809DF007':('809DF033','9c7c58324e9928856a2b53002437ed863ad201392c821cbc8f8203b4f5ce5f79','s[12:15]',12),
+           '809DF018':('809DF03C','ca3206faaf99a1cdac668a3d2671575bfcafd252c866fb32070d8abe7513a8a8','s[8:11]',12),
+           '809DF019':('809DF03D','83b4fffead5399cb9b591c33e3bc00503fb3f7bc3d05efe018933367101d507b','s[8:11]',12),
+           '809DF4CA':('809DF4CB','c1b5d988b66cd5d9b2fcce523623694adc2bf6ade43bff0afbea583b40549f76','s[8:11]',8),
+           '809DF63E':('809DF655','01a74e4dbad26cbf28ffd30f9698d822b80b4f7b47010f4f4f46bbf661b1e83c','s[12:15]',12),
+           '809DF641':('809DF658','a0715599f935e99e5c23fc227361e513ff8018f953c0a07c452b7258dfa023ea','s[12:15]',12),
+           '809DF754':('809DF755','ce6a509e578cbf5327818b8d75ae51eb6a5b94ddbe8dc60ac7c8b93bba62e133','s[8:11]',8),
+           '809DF75D':('809DF75E','619a60ac13b8e7d3336d760732a9b3447430a28caddf30e1c7d1119bd5269dda','s[8:11]',12),
+           '809DF986':('809DF987','f0d6457081e015ff188bdaa88c543d664aa0ef3155aa071068c6acbf04b50786','s[8:11]',12),
+          }
+          out={'schema':'d1_api10_00ef_localshader_retail_census/v1','status':'D1_API10_00EF_LOCALSHADER_RETAIL_CENSUS_EXACT','programs':[],'semantic_boundary':{'consumer_math_role':'UNCLASSIFIED_PENDING_DATAFLOW','runtime_writer':'WITHHELD','descriptor_dwords':'WITHHELD','backing_allocation':'WITHHELD','engine_semantic':'WITHHELD'}}
+          for h,(native,gcn,window,nloads) in E.items():
+            raw=open(f'shader/{h}_gcn_code.bin','rb').read();assert hashlib.sha256(raw).hexdigest()==gcn
+            text=open(f'disasm/{h}.s').read();loads=[x.strip() for x in text.splitlines() if 'tbuffer_load_format_xyzw' in x]
+            assert len(loads)==nloads,(h,len(loads),nloads)
+            assert all(window in x for x in loads),(h,window,loads)
+            out['programs'].append({'wrapper':h,'native_program_reference':native,'gcn_sha256':gcn,'orbshdr_stage':'LocalShader','descriptor_window':window,'tbuffer_instruction_count':nloads,'disassembly_sha256':hashlib.sha256(text.encode()).hexdigest(),'tbuffer_disassembly_lines':loads})
+          assert len(out['programs'])==11 and len({x['gcn_sha256'] for x in out['programs']})==11
+          open('reports/D1_API10_00EF_LOCALSHADER_RETAIL_CENSUS.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+          sha256sum reports/* shader/* disasm/*.s > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-00EF-LOCALSHADER-RETAIL-CENSUS
+          path: |
+            reports/
+            shader/
+            disasm/
+          retention-days: 90
+          if-no-files-found: error
