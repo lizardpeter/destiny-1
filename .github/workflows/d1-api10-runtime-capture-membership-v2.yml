@@ -8,6 +8,7 @@ on:
       - 'tests/test_d1_validate_api10_runtime_capture_v2.py'
       - 'evidence/d1_api10_runtime_capture_membership_gate_v2.json'
       - 'evidence/d1_localshader_api10_membership_provenance_v1.json'
+      - 'evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'
       - '.github/workflows/d1-api10-runtime-capture-membership-v2.yml'
 permissions:
   contents: read
@@ -24,19 +25,21 @@ jobs:
           set -euo pipefail
           python -m py_compile tools/d1_validate_api10_runtime_capture_v2.py tests/test_d1_validate_api10_runtime_capture_v2.py
           python tests/test_d1_validate_api10_runtime_capture_v2.py
-      - name: Assert durable blocker remains fail-closed
+      - name: Assert exact frozen membership is durable while runtime semantics stay withheld
         run: |
           python - <<'PY'
-          import json
+          import hashlib,json,pathlib
           d=json.load(open('evidence/d1_api10_runtime_capture_membership_gate_v2.json'))
-          assert d['status']=='BLOCKED_PENDING_EXACT_FROZEN_CENSUS_BYTES'
+          assert d['status']=='EXACT_FROZEN_CENSUS_RECOVERED_RUNTIME_CAPTURE_PENDING'
           p=d['frozen_membership_producer']
-          assert p['output_sha256']=='7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8'
-          assert p['program_count']==39
-          assert p['instruction_histogram']=={'3':1,'6':1,'8':17,'12':20}
-          assert set(p['descriptor_windows'])=={'s[12:15]','s[8:11]'}
+          census=pathlib.Path(d['frozen_membership_path']).read_bytes()
+          assert hashlib.sha256(census).hexdigest()==p['output_sha256']=='7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8'
+          j=json.loads(census)
+          assert j['coverage']['program_count']==p['program_count']==39
+          assert j['coverage']['program_instruction_histogram']==p['instruction_histogram']=={'3':1,'6':1,'8':17,'12':20}
+          assert set(j['coverage']['descriptor_windows'])==set(p['descriptor_windows'])=={'s[12:15]','s[8:11]'}
           assert d['semantic_boundary']=={
             'runtime_writer':'WITHHELD','backing_allocation':'WITHHELD',
             'engine_semantic':'WITHHELD','universal_record_schema':'WITHHELD'}
-          print('API10_RUNTIME_CAPTURE_V2_BLOCKER_GREEN')
+          print('API10_RUNTIME_CAPTURE_V2_FROZEN_MEMBERSHIP_GREEN')
           PY
