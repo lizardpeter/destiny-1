@@ -7,6 +7,7 @@ on:
       - 'tools/d1_validate_api10_consumer_classification_v1.py'
       - 'tests/test_d1_validate_api10_consumer_classification_v1.py'
       - 'evidence/d1_api10_consumer_classification_v1.json'
+      - 'evidence/d1_api10_localshader_consumer_classification_v1.json'
       - 'evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'
       - '.github/workflows/d1-api10-consumer-classification.yml'
 permissions: {contents: read}
@@ -36,4 +37,10 @@ jobs:
           assert len({x['gcn_sha256'] for x in d['programs']})==4
           assert {x['source_hardware_stage'] for x in d['programs']}=={'VertexShader'}
           assert all(v=='WITHHELD' for v in d['semantic_boundary'].values())
+          l=json.load(open('evidence/d1_api10_localshader_consumer_classification_v1.json'))
+          assert l['status']=='SOURCE_CLOSED_LOCALSHADER_PARTIAL'
+          assert l['coverage']=={'classified_localshader_programs':2,'localshader_api10_program_denominator':39,'unclassified_localshader_programs':37,'classification_complete_for_localshader':False}
+          assert {x['tbuffer_instruction_count'] for x in l['programs']}=={3,6}
+          assert {x['source_hardware_stage'] for x in l['programs']}=={'LocalShader'}
+          assert all(v=='WITHHELD' for v in l['semantic_boundary'].values())
           PY
