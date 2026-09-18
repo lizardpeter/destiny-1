@@ -1,6 +1,6 @@
 {
   "schema": "d1_api10_runtime_capture_membership_gate/v2",
-  "status": "BLOCKED_PENDING_EXACT_FROZEN_CENSUS_BYTES",
+  "status": "EXACT_FROZEN_CENSUS_RECOVERED_RUNTIME_CAPTURE_PENDING",
   "branch": "d1-crota-source-semantics-v1",
   "discovery": {
     "validator_v1": "tools/d1_validate_api10_runtime_capture_v1.py",
@@ -8,12 +8,14 @@
     "consequence": "v1 can validate writer/backing structure but cannot by itself prove the acceptance gate program_identity_matches_source_closed_39_member_set"
   },
   "replacement_validator": "tools/d1_validate_api10_runtime_capture_v2.py",
+  "frozen_membership_path": "evidence/frozen/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json",
   "frozen_membership_producer": {
     "provenance_manifest": "evidence/d1_localshader_api10_membership_provenance_v1.json",
     "output_name": "D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json",
     "output_sha256": "7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8",
     "artifact_id": 10539900120,
     "artifact_zip_sha256": "b64ddfd28937c6d5adddf8464817da6f836fd32c1b3e20e1b51841ce3d185897",
+    "recovery_run_id": 35376918979,
     "program_count": 39,
     "instruction_histogram": {"3": 1, "6": 1, "8": 17, "12": 20},
     "descriptor_windows": ["s[12:15]", "s[8:11]"]
@@ -28,12 +30,12 @@
     "writer provenance, four descriptor dwords, exact backing bytes/hash/length and proven descriptor-range relation remain required",
     "engine semantic and universal API10 record schema remain WITHHELD"
   ],
-  "exact_missing_primary_input": "Raw D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json bytes with SHA-256 7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8. The checked-in provenance manifest preserves denominators and producer hashes but not the 39 identities.",
+  "closed_primary_input": "Exact frozen census bytes are now durable in-repository and hash to the pinned producer SHA-256. This closes program membership only; it does not prove runtime writer, descriptor dwords, backing allocation, or engine meaning.",
   "semantic_boundary": {
     "runtime_writer": "WITHHELD",
     "backing_allocation": "WITHHELD",
     "engine_semantic": "WITHHELD",
     "universal_record_schema": "WITHHELD"
   },
-  "resume": "Recover the exact frozen census bytes from artifact 10539900120 or reconstruct the producer output from the two pinned input artifacts and prove SHA-256 equality before using v2 for a positive runtime-capture promotion."
+  "resume": "Use the recovered exact census as the required membership input to v2 for future primary runtime captures. Next hard gate is a capture from an exact census member with primary command/user-data writer provenance, four descriptor dwords, exact backing bytes/hash/length, and proven descriptor-range relation."
 }
