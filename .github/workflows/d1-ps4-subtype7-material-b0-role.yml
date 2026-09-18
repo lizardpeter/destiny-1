@@ -1,0 +1,40 @@
+name: D1 PS4 subtype7 material b0 role
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_ps4_subtype7_material_b0_role_proof.py'
+      - 'tools/d1_vector_container_probe.py'
+      - 'spec/D1_MATERIALS_SHADERS.md'
+      - 'spec/D1_GPU_RESOURCES.md'
+      - '.github/workflows/d1-ps4-subtype7-material-b0-role.yml'
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m py_compile tools/d1_ps4_subtype7_material_b0_role_proof.py
+          python tools/d1_ps4_subtype7_material_b0_role_proof.py --materials-spec spec/D1_MATERIALS_SHADERS.md --resource-spec spec/D1_GPU_RESOURCES.md --probe tools/d1_vector_container_probe.py -o out/D1_PS4_SUBTYPE7_MATERIAL_B0_ROLE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_PS4_SUBTYPE7_MATERIAL_B0_ROLE.json'))
+          assert d['status']=='D1_PS4_SUBTYPE7_MATERIAL_B0_ROLE_EXACT',d
+          assert d['resource']['validated_header_payload_pairs']==122
+          assert d['resource']['technique_refs_at_0x32c']==88
+          assert d['official_d1_tiger_class_name']=='WITHHELD'
+          assert d['global_all_usage_semantics']=='WITHHELD'
+          PY
+          sha256sum out/D1_PS4_SUBTYPE7_MATERIAL_B0_ROLE.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-PS4-SUBTYPE7-MATERIAL-B0-ROLE
+          path: out/
+          retention-days: 90
