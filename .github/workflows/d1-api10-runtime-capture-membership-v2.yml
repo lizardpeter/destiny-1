@@ -1,0 +1,42 @@
+name: D1 API10 runtime capture exact membership v2
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_validate_api10_runtime_capture_v2.py'
+      - 'tests/test_d1_validate_api10_runtime_capture_v2.py'
+      - 'evidence/d1_api10_runtime_capture_membership_gate_v2.json'
+      - 'evidence/d1_localshader_api10_membership_provenance_v1.json'
+      - '.github/workflows/d1-api10-runtime-capture-membership-v2.yml'
+permissions:
+  contents: read
+jobs:
+  fail-closed-membership:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Compile and regression test v2
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_validate_api10_runtime_capture_v2.py tests/test_d1_validate_api10_runtime_capture_v2.py
+          python tests/test_d1_validate_api10_runtime_capture_v2.py
+      - name: Assert durable blocker remains fail-closed
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('evidence/d1_api10_runtime_capture_membership_gate_v2.json'))
+          assert d['status']=='BLOCKED_PENDING_EXACT_FROZEN_CENSUS_BYTES'
+          p=d['frozen_membership_producer']
+          assert p['output_sha256']=='7305071b52d427a7cc78da79fe795ca490fcf9edc05c06fbf1cc1c02ab9bfce8'
+          assert p['program_count']==39
+          assert p['instruction_histogram']=={'3':1,'6':1,'8':17,'12':20}
+          assert set(p['descriptor_windows'])=={'s[12:15]','s[8:11]'}
+          assert d['semantic_boundary']=={
+            'runtime_writer':'WITHHELD','backing_allocation':'WITHHELD',
+            'engine_semantic':'WITHHELD','universal_record_schema':'WITHHELD'}
+          print('API10_RUNTIME_CAPTURE_V2_BLOCKER_GREEN')
+          PY
