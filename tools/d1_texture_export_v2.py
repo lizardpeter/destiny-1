@@ -31,9 +31,53 @@ def install_strict_chain_gate():
     legacy.follow_backing = strict_follow_backing
 
 
+def strict_manifest_violations(rep:dict)->list[str]:
+    """Return fail-closed production violations for a completed legacy report."""
+    out=[]
+    missing=[str(x).upper() for x in rep.get('missing_requested') or []]
+    if missing:
+        out.append('missing_requested:'+','.join(sorted(missing)))
+    for row in rep.get('textures') or []:
+        h=str(row.get('header','UNKNOWN')).upper()
+        if row.get('available') is False:
+            out.append(f'{h}:header_unavailable')
+            continue
+        if row.get('error'):
+            out.append(f"{h}:row_error:{row['error']}")
+            continue
+        n=int(row.get('array_size',1) or 1)
+        if n==1:
+            if not row.get('dds'):
+                out.append(f'{h}:missing_dds')
+        elif n==6:
+            if len(row.get('face_dds') or [])!=6:
+                out.append(f'{h}:incomplete_cube_dds')
+        else:
+            out.append(f'{h}:unsupported_array_size:{n}')
+    return out
+
+
 def export_reader(*args, **kwargs):
     install_strict_chain_gate()
-    return legacy.export_reader(*args, **kwargs)
+    kwargs['strict_backing_size']=True
+    rep=legacy.export_reader(*args, **kwargs)
+    violations=strict_manifest_violations(rep)
+    rep['schema']='d1_texture_export_v2/v1'
+    rep['status']='D1_TEXTURE_EXPORT_V2_EXACT' if not violations else 'D1_TEXTURE_EXPORT_V2_REJECTED'
+    rep['strict_chain_gate']='PROVEN_SHAPES_ONLY'
+    rep['strict_backing_size']=True
+    rep['violations']=violations
+    # legacy.export_reader writes first; replace it with the authoritative v2
+    # manifest so failure evidence remains durable for batch/CI consumers.
+    outdir=kwargs.get('outdir')
+    if outdir is None and len(args)>=2:
+        outdir=args[1]
+    if outdir is not None:
+        Path(outdir).mkdir(parents=True,exist_ok=True)
+        (Path(outdir)/'texture_manifest.json').write_text(json.dumps(rep,indent=2)+'\n')
+    if violations:
+        raise RuntimeError('strict texture export rejected: '+'; '.join(violations))
+    return rep
 
 
 def main():
