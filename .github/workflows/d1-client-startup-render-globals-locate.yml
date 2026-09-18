@@ -1,0 +1,57 @@
+name: D1 client-startup render_globals locate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-client-startup-render-globals-locate.yml'
+      - 'tools/d1_pkg_probe.py'
+      - 'tools/d1_split_tar_extract.py'
+
+permissions: {contents: read}
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact current client startup globals package
+        run: |
+          set -euo pipefail
+          mkdir -p recovered out
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --start-offset 0x1f97d7200 \
+            --target ps4_client_startup_globals_018d_5.pkg \
+            --out recovered --manifest out/extract.json --retries 6 --timeout 90
+          test -f recovered/ps4_client_startup_globals_018d_5.pkg
+          test "$(stat -c %s recovered/ps4_client_startup_globals_018d_5.pkg)" = '83968'
+      - name: Validate package and locate render_globals
+        run: |
+          set -euo pipefail
+          python tools/d1_pkg_probe.py recovered/ps4_client_startup_globals_018d_5.pkg -o out/018D_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/018D_probe.json'))
+          assert d['header']['pkg_id']==0x018d,d['header']
+          assert d['header']['patch_id']==5,d['header']
+          assert d['table_validation']['named_sha1_matches'] is True,d['table_validation']
+          rows=[x for x in d['named_tags'] if 'render_global' in x['name'].lower()]
+          print('RENDER_GLOBAL_ROWS',json.dumps(rows,indent=2))
+          if not rows:
+              print('NO_RENDER_GLOBALS_IN_018D')
+          PY
+      - name: Persist hashes
+        if: always()
+        run: find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CLIENT-STARTUP-RENDER-GLOBALS-LOCATE
+          path: out/
+          retention-days: 90
+          if-no-files-found: error

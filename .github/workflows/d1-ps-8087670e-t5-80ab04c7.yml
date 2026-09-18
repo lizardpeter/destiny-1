@@ -1,0 +1,123 @@
+name: D1 PS 8087670E current t5 80AB04C7 exact decode
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-ps-8087670e-t5-80ab04c7.yml'
+      - 'tools/d1_texture_export.py'
+      - 'tools/d1_dds_to_png.py'
+      - 'tools/d1_entry_extract.py'
+
+permissions: {contents: read}
+
+env:
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  decode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover verified runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime recovered reports/raw textures
+          python -m pip install --disable-pip-version-check pillow
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Recover exact current globals 0158 logical package
+        run: |
+          set -euo pipefail
+          python tools/d1_split_tar_extract.py \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 --start-offset 0x46AF91400 \
+            --target ps4_globals_0158_1.pkg --target ps4_globals_0158_2.pkg --target ps4_globals_0158_3.pkg \
+            --target ps4_globals_0158_4.pkg --target ps4_globals_0158_5.pkg --target ps4_globals_0158_6.pkg \
+            --out recovered --manifest reports/0158_extract.json --retries 6 --timeout 90
+          test -f recovered/ps4_globals_0158_6.pkg
+      - name: Probe and export current t5
+        run: |
+          set -euo pipefail
+          python tools/d1_entry_extract.py recovered/ps4_globals_0158_6.pkg --runtime runtime --tag-hash 80AB04C7 \
+            --dump-dir reports/raw -o reports/80AB04C7_entry.json
+          cat reports/80AB04C7_entry.json
+          python tools/d1_texture_export.py recovered/ps4_globals_0158_6.pkg --runtime runtime \
+            --tag-hash 80AB04C7 --out textures/80AB04C7
+          cat textures/80AB04C7/texture_manifest.json
+      - name: Resolve exact direct-or-wrapper texture chain
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,struct,subprocess
+          from tools.d1_entry_extract import EntryReader
+          from tools.d1_investment_arrangement_probe import filehash_pkg_index
+          pkg=pathlib.Path('recovered/ps4_globals_0158_6.pkg'); rt=pathlib.Path('runtime')
+          r=EntryReader(pkg,rt); by={str(e['tag_hash']).upper():e for e in r.entries}; root=by['80AB04C7']
+          def probe(h):
+              return json.loads(pathlib.Path(f'reports/{h}_entry.json').read_text()) if pathlib.Path(f'reports/{h}_entry.json').exists() else None
+          rootdoc=json.load(open('reports/80AB04C7_entry.json')); e=rootdoc['entries'][0]
+          chain=[{'tag_hash':'80AB04C7','entry':e}]; texture_header=None
+          if e['type']==32 and e['subtype'] in (1,2):
+              texture_header='80AB04C7'
+          elif e['type']==16:
+              raw=next(pathlib.Path('reports/raw').glob('80AB04C7_*.bin')).read_bytes()
+              candidates=[]
+              for off in range(0,len(raw)-3,4):
+                  v=struct.unpack_from('<I',raw,off)[0]; h=f'{v:08X}'
+                  q=by.get(h)
+                  if q and q['type']==32 and q['subtype'] in (1,2):
+                      candidates.append((off,h,q))
+              if len(candidates)!=1:
+                  raise SystemExit(f'expected exactly one typed texture-header edge in wrapper, got {[(o,h) for o,h,_ in candidates]}')
+              off,texture_header,q=candidates[0]
+              subprocess.check_call(['python','tools/d1_entry_extract.py',str(pkg),'--runtime',str(rt),'--tag-hash',texture_header,'--dump-dir','reports/raw','-o',f'reports/{texture_header}_entry.json'])
+              chain.append({'wrapper_edge_offset':off,'tag_hash':texture_header,'entry':json.load(open(f'reports/{texture_header}_entry.json'))['entries'][0]})
+          else:
+              raise SystemExit(f'unsupported current t5 root type {e["type"]}:{e["subtype"]}')
+          subprocess.check_call(['python','tools/d1_texture_export.py',str(pkg),'--runtime',str(rt),'--tag-hash',texture_header,'--out',f'textures/{texture_header}'])
+          m=json.load(open(f'textures/{texture_header}/texture_manifest.json'))
+          assert m.get('missing_requested')==[] and len(m.get('textures') or [])==1,m
+          row=m['textures'][0]
+          out={'schema_version':1,'status':'D1_PS_8087670E_T5_80AB04C7_TEXTURE_CHAIN_EXACT','root':'80AB04C7','chain':chain,'texture_header':texture_header,'manifest_row':row,'violations':[]}
+          pathlib.Path('reports/80AB04C7_T5_CHAIN_EXACT.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+      - name: Decode pixel statistics
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          from PIL import Image,ImageStat
+          d=json.load(open('reports/80AB04C7_T5_CHAIN_EXACT.json')); h=d['texture_header']
+          pngs=list(pathlib.Path('textures',h).glob('*.png'))
+          assert len(pngs)==1,pngs
+          p=pngs[0]; im=Image.open(p).convert('RGBA'); st=ImageStat.Stat(im)
+          extrema=[list(x) for x in im.getextrema()]
+          stats={'file':str(p),'size':list(im.size),'mode':im.mode,'extrema':extrema,'mean':[float(x) for x in st.mean],'rms':[float(x) for x in st.rms]}
+          d['pixel_statistics']=stats
+          # Do not infer role from dimensions alone; classify only exact uniform/neutral pixel evidence.
+          px=list(im.getdata()); uniq=sorted(set(px))
+          d['unique_rgba_count']=len(uniq); d['unique_rgba_preview']=[list(x) for x in uniq[:32]]
+          d['uniform_rgba']=list(uniq[0]) if len(uniq)==1 else None
+          pathlib.Path('reports/80AB04C7_T5_CHAIN_EXACT.json').write_text(json.dumps(d,indent=2)+'\n')
+          print(json.dumps({'status':d['status'],'manifest_row':d['manifest_row'],'pixel_statistics':stats,'unique_rgba_count':len(uniq),'uniform_rgba':d['uniform_rgba']},indent=2))
+          PY
+      - name: Persist hashes
+        if: always()
+        run: find reports textures -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PS-8087670E-T5-80AB04C7-EXACT
+          path: |
+            reports/
+            textures/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6

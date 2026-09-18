@@ -1,0 +1,72 @@
+name: D1 current named-tag catalog
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_remote_named_tag_catalog.py'
+      - '.github/workflows/d1-current-named-tag-catalog.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned universal package catalog
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+      - name: Catalog all current named tags and locate renderer roots
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_named_tag_catalog.py
+          python tools/d1_remote_named_tag_catalog.py \
+            --catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --query render_globals --query gear_dye --query gear_plated \
+            --out out/D1_CURRENT_NAMED_TAG_CATALOG.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_CURRENT_NAMED_TAG_CATALOG.json'))
+          assert d['status']=='D1_CURRENT_NAMED_TAG_CATALOG_EXACT',d['violations']
+          assert d['scanned_package_count']==d['package_family_count']==337,d
+          rg=d['queries']['render_globals']
+          assert rg, 'render_globals named tag not found'
+          print('CURRENT_NAMED_TAG_CATALOG_GREEN',d['named_row_count'],'RENDER_GLOBALS',rg)
+          print('GEAR_DYE_NAMES',d['queries']['gear_dye'])
+          print('GEAR_PLATED_NAMES',d['queries']['gear_plated'])
+          PY
+
+      - name: Persist hashes
+        if: always()
+        run: find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-CURRENT-NAMED-TAG-CATALOG
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6

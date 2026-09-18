@@ -1,0 +1,89 @@
+name: D1 Tower three-NPC PS semantics wave 5
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_three_npc_ps_80876710_semantic_proof.py'
+      - 'tools/d1_three_npc_ps_809d8353_semantic_proof.py'
+      - '.github/workflows/d1-tower-three-npc-ps-semantics-wave5.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  FRONTIER_ARTIFACT_ID: '10069257974'
+  FRONTIER_ARTIFACT_SHA256: 'fe26726d4853c2ad2e2bc46c4a4ae51346e71583420f6e36cc573bb344799f27'
+  STATE_ARTIFACT_ID: '10069795151'
+  STATE_ARTIFACT_SHA256: '5dd54066b4460a49b7bb9106b870f4a1523e2ecd7d83e0932a59fcebbda70830'
+  WAVE4_ARTIFACT_ID: '10073144399'
+  WAVE4_ARTIFACT_SHA256: '3185cdd53b2129282639fb833a87e0415595b047f6de0c48245340cef9fe3c09'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned evidence and predecessor
+        run: |
+          set -euo pipefail
+          mkdir -p input/frontier input/state input/wave4 reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FRONTIER_ARTIFACT_ID}/zip" -o input/frontier.zip
+          echo "${FRONTIER_ARTIFACT_SHA256}  input/frontier.zip" | sha256sum --check --strict
+          unzip -q input/frontier.zip -d input/frontier
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STATE_ARTIFACT_ID}/zip" -o input/state.zip
+          echo "${STATE_ARTIFACT_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WAVE4_ARTIFACT_ID}/zip" -o input/wave4.zip
+          echo "${WAVE4_ARTIFACT_SHA256}  input/wave4.zip" | sha256sum --check --strict
+          unzip -q input/wave4.zip -d input/wave4
+          test -f input/wave4/CUMULATIVE_PS_SEMANTICS_183_OF_218.json
+          test -f input/frontier/all_visible_ps_extract.json
+          test -f input/frontier/THREE_NPC_PS_IMAGE_USAGE.json
+          test -f input/frontier/disasm/PS_80876710.s
+          test -f input/frontier/disasm/PS_809D8353.s
+          test -f input/state/THREE_NPC_MATERIAL_STAGE_STATE.json
+      - name: Prove 80876710 exact product-color family
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_80876710_semantic_proof.py --extract-report input/frontier/all_visible_ps_extract.json --image-usage input/frontier/THREE_NPC_PS_IMAGE_USAGE.json --material-state input/state/THREE_NPC_MATERIAL_STAGE_STATE.json --disassembly input/frontier/disasm/PS_80876710.s --out reports/PS_80876710_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_80876710_SEMANTICS.json'));assert d['status']=='D1_TOWER_PS_80876710_CURRENT_STATE_COLOR_SEMANTICS_EXACT' and not d['violations'] and d['visible_primitive_count']==6,d
+          print('PS_80876710_EXACT',d['visible_primitive_count'])
+          PY
+      - name: Prove 809D8353 exact reflected-detail family
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_809d8353_semantic_proof.py --extract-report input/frontier/all_visible_ps_extract.json --image-usage input/frontier/THREE_NPC_PS_IMAGE_USAGE.json --material-state input/state/THREE_NPC_MATERIAL_STAGE_STATE.json --disassembly input/frontier/disasm/PS_809D8353.s --out reports/PS_809D8353_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_809D8353_SEMANTICS.json'));assert d['status']=='D1_TOWER_PS_809D8353_CURRENT_STATE_COLOR_SEMANTICS_EXACT' and not d['violations'] and d['visible_primitive_count']==6,d
+          print('PS_809D8353_EXACT',d['visible_primitive_count'])
+          PY
+      - name: Build cumulative 195-of-218 checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          prev=json.load(open('input/wave4/CUMULATIVE_PS_SEMANTICS_183_OF_218.json'))
+          a=json.load(open('reports/PS_80876710_SEMANTICS.json'));b=json.load(open('reports/PS_809D8353_SEMANTICS.json'))
+          assert prev['status']=='D1_TOWER_THREE_NPC_BLOCKED_PS_SEMANTICS_183_OF_218_EXACT',prev
+          original=prev['original_blocked_visible_primitive_count'];closed=prev['semantic_closed_visible_primitive_count']+a['visible_primitive_count']+b['visible_primitive_count'];remaining=original-closed
+          assert (original,closed,remaining)==(218,195,23),(original,closed,remaining)
+          out={'schema_version':1,'status':'D1_TOWER_THREE_NPC_BLOCKED_PS_SEMANTICS_195_OF_218_EXACT','original_blocked_visible_primitive_count':original,'semantic_closed_visible_primitive_count':closed,'semantic_remaining_visible_primitive_count':remaining,'semantic_closed_fraction':closed/original,'new_wave_programs':['80876710','809D8353'],'new_wave_visible_primitive_count':12,'portable_blender_recreation_complete':False,'policy':'195 of 218 formerly heuristic-forbidden visible primitives have CI-promoted native/current-state color semantics. Remaining 23 remain fail-closed.'}
+          Path('reports/CUMULATIVE_PS_SEMANTICS_195_OF_218.json').write_text(json.dumps(out,indent=2)+'\n');print(json.dumps(out,indent=2))
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-PS-SEMANTICS-WAVE5
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6

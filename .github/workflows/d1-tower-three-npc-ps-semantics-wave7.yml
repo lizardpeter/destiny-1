@@ -1,0 +1,101 @@
+name: D1 Tower three-NPC PS semantics wave 7
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/d1_three_npc_ps_wave7_local_semantic_proof.py'
+      - '.github/workflows/d1-tower-three-npc-ps-semantics-wave7.yml'
+
+permissions: {contents: read, actions: read}
+
+env:
+  FRONTIER_ARTIFACT_ID: '10069257974'
+  FRONTIER_ARTIFACT_SHA256: 'fe26726d4853c2ad2e2bc46c4a4ae51346e71583420f6e36cc573bb344799f27'
+  STATE_ARTIFACT_ID: '10069795151'
+  STATE_ARTIFACT_SHA256: '5dd54066b4460a49b7bb9106b870f4a1523e2ecd7d83e0932a59fcebbda70830'
+  WAVE6_ARTIFACT_ID: '10075291931'
+  WAVE6_ARTIFACT_SHA256: 'bfccb36b654e77beab3ceccc1312c42325487459fdb8842fede3700ffd979f68'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env: {GH_TOKEN: '${{ github.token }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned evidence and 206-of-218 predecessor
+        run: |
+          set -euo pipefail
+          mkdir -p input/frontier input/state input/wave6 reports
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${FRONTIER_ARTIFACT_ID}/zip" -o input/frontier.zip
+          echo "${FRONTIER_ARTIFACT_SHA256}  input/frontier.zip" | sha256sum --check --strict
+          unzip -q input/frontier.zip -d input/frontier
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STATE_ARTIFACT_ID}/zip" -o input/state.zip
+          echo "${STATE_ARTIFACT_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${WAVE6_ARTIFACT_ID}/zip" -o input/wave6.zip
+          echo "${WAVE6_ARTIFACT_SHA256}  input/wave6.zip" | sha256sum --check --strict
+          unzip -q input/wave6.zip -d input/wave6
+          test -f input/wave6/CUMULATIVE_PS_SEMANTICS_206_OF_218.json
+          test -f input/frontier/all_visible_ps_extract.json
+          test -f input/frontier/THREE_NPC_PS_IMAGE_USAGE.json
+          test -f input/state/THREE_NPC_MATERIAL_STAGE_STATE.json
+          for sh in 8087645C 8087656A 8087670C 808762E1; do test -f "input/frontier/disasm/PS_${sh}.s"; done
+      - name: Prove four remaining local-only programs
+        run: |
+          set -euo pipefail
+          python tools/d1_three_npc_ps_wave7_local_semantic_proof.py \
+            --extract-report input/frontier/all_visible_ps_extract.json \
+            --image-usage input/frontier/THREE_NPC_PS_IMAGE_USAGE.json \
+            --material-state input/state/THREE_NPC_MATERIAL_STAGE_STATE.json \
+            --disasm-dir input/frontier/disasm \
+            --out reports/PS_WAVE7_LOCAL_SEMANTICS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/PS_WAVE7_LOCAL_SEMANTICS.json'))
+          assert d['status']=='D1_TOWER_THREE_NPC_PS_SEMANTICS_WAVE7_EXACT' and not d['violations'],d
+          assert d['program_count']==4 and d['visible_primitive_count']==7,d
+          assert d['gates']['runtime_global_api15_closed'] is False,d
+          print('WAVE7_LOCAL_EXACT',d['visible_primitive_count'])
+          PY
+      - name: Build cumulative 213-of-218 checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          prev=json.load(open('input/wave6/CUMULATIVE_PS_SEMANTICS_206_OF_218.json'))
+          cur=json.load(open('reports/PS_WAVE7_LOCAL_SEMANTICS.json'))
+          assert prev['status']=='D1_TOWER_THREE_NPC_BLOCKED_PS_SEMANTICS_206_OF_218_EXACT',prev
+          original=prev['original_blocked_visible_primitive_count']
+          closed=prev['semantic_closed_visible_primitive_count']+cur['visible_primitive_count']
+          remaining=original-closed
+          assert (original,closed,remaining)==(218,213,5),(original,closed,remaining)
+          out={
+            'schema_version':1,
+            'status':'D1_TOWER_THREE_NPC_BLOCKED_PS_SEMANTICS_213_OF_218_EXACT',
+            'original_blocked_visible_primitive_count':original,
+            'semantic_closed_visible_primitive_count':closed,
+            'semantic_remaining_visible_primitive_count':remaining,
+            'semantic_closed_fraction':closed/original,
+            'new_wave_programs':[x['shader'] for x in cur['proofs']],
+            'new_wave_visible_primitive_count':cur['visible_primitive_count'],
+            'sole_remaining_program':{'shader':'8087670E','visible_primitive_count':5,'runtime_dependencies':['ImmConstBuffer API15','runtime/default t4 resource binding']},
+            'portable_blender_recreation_complete':False,
+            'policy':'213 of 218 formerly heuristic-forbidden visible primitives are CI-promoted. The final five stay fail-closed until PS 8087670E runtime API15 and t4 inputs are recovered.'
+          }
+          Path('reports/CUMULATIVE_PS_SEMANTICS_213_OF_218.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+          find reports -type f -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-PS-SEMANTICS-WAVE7
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6

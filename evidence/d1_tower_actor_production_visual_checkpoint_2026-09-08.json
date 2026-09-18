@@ -1,6 +1,7 @@
 {
-  "schema_version": 1,
-  "status": "D1_TOWER_ACTOR_PRODUCTION_VISUAL_CHECKPOINT_PINNED",
+  "schema_version": 2,
+  "status": "D1_TOWER_ACTOR_PRODUCTION_RESOURCE_CHECKPOINT_PINNED_VISUAL_CORRECTNESS_REJECTED",
+  "previous_status": "D1_TOWER_ACTOR_PRODUCTION_VISUAL_CHECKPOINT_PINNED",
   "material_signature_checkpoint": {
     "run_id": 34171981779,
     "artifact_id": 10035991740,
@@ -43,7 +44,37 @@
     "portable_base_bound_material_instance_count": 687,
     "portable_normal_bound_material_instance_count": 550,
     "required_material_package_ids": ["003b", "00ef", "0154", "0169", "0244", "024c", "0250"],
-    "recovered_texture_dependency_package_ids": ["0155", "0156", "0157", "0158"]
+    "recovered_texture_dependency_package_ids": ["0155", "0156", "0157", "0158"],
+    "classification": "RESOURCE_COMPLETE_EVIDENCE_SCOPED_PREVIEW_NOT_VISUAL_CORRECTNESS",
+    "portable_base_binding_warning": "The production binder allowed STRONG_FORMAT_CANDIDATE and MEDIUM_PREVIEW_CANDIDATE resources into standard glTF baseColorTexture slots. These are preview heuristics, not native color-dataflow proof."
+  },
+  "three_npc_material_correctness_rejection": {
+    "run_id": 34258148555,
+    "artifact_id": 10068794522,
+    "artifact_name": "D1-TOWER-3-NPC-MATERIAL-CORRECTNESS-AUDIT",
+    "artifact_zip_sha256": "90812780872801f05055650a3a070a786c2a67e9489f38ee8fb3849cd6d6ce8b",
+    "target_visible_unique_material_count": 85,
+    "direct_portable_proven_material_count": 6,
+    "forbidden_heuristic_basecolor_material_count": 78,
+    "no_proven_portable_color_material_count": 3,
+    "actors": {
+      "80C88CEF:SIG03": {"visible_material_count": 54, "heuristic_basecolor_count": 47, "direct_portable_proven_count": 5, "no_proven_portable_color_count": 2},
+      "809D8104:SIG00": {"visible_material_count": 22, "heuristic_basecolor_count": 21, "direct_portable_proven_count": 0, "no_proven_portable_color_count": 1},
+      "80C88434:SIG00": {"visible_material_count": 11, "heuristic_basecolor_count": 10, "direct_portable_proven_count": 1, "no_proven_portable_color_count": 0}
+    }
+  },
+  "three_npc_native_ps_registry_match": {
+    "run_id": 34258580301,
+    "artifact_id": 10068963677,
+    "artifact_name": "D1-TOWER-3-NPC-NATIVE-PS-REGISTRY-MATCH",
+    "artifact_zip_sha256": "632289881cbadd9d2de08d0855b3084f2fcfff7b3899bb13063b8909a64f9e89",
+    "serialized_pixel_shader_header_count": 34,
+    "unique_bounded_native_gcn_program_count": 32,
+    "semantic_registry_matched_unique_gcn_program_count": 9,
+    "semantic_registry_unmatched_unique_gcn_program_count": 23,
+    "visible_primitive_count_with_closed_program": 64,
+    "visible_primitive_count_with_unclosed_program": 218,
+    "reuse_identity": "exact bounded native GCN SHA-256 only"
   },
   "transparency_checkpoint": {
     "run_id": 34173459838,
@@ -70,6 +101,12 @@
     "unused_visible_signature": "809D8104:SIG04"
   },
   "gates": {
+    "resource_and_texture_recovery_complete": true,
+    "native_skin_geometry_checkpoint_green": true,
+    "heuristic_basecolor_allowed_in_correctness_export": false,
+    "all_visible_material_color_equations_source_closed": false,
+    "all_visible_materials_portably_recreated": false,
+    "visual_correctness_export_allowed": false,
     "runtime_active_scenario_selected": false,
     "runtime_active_D912_group_selected": false,
     "runtime_active_actor_location_selected": false,
@@ -79,5 +116,6 @@
     "E7_80C885E7_live_selection_proven": false,
     "E8_80C885E8_live_selection_proven": false
   },
-  "policy": "This record pins already-green visual/material/texture/location artifacts. It does not promote retail descriptor-evaluator semantics or runtime scenario/group/location/animation selection. The 30 textured GLBs are the corrected production visual assets; the 547-row location join is a set of source alternatives, not a simultaneous-spawn claim."
+  "supersession_reason": "Blender and CI canaries exposed saturated control/palette resources as visible color because preview-only texture-role candidates were written into standard glTF baseColorTexture. Exact resource recovery remains valid; visual material correctness does not.",
+  "policy": "This record now pins geometry, material-resource, texture-decode, transparency and location evidence only. The 30 textured GLBs are evidence-scoped preview assets and MUST NOT be promoted as retail-correct visual exports. A correctness material requires source/instruction-closed native color dataflow plus that material instance's exact textures/constants/samplers/required runtime inputs. Semantic reuse requires exact bounded native GCN SHA equality. Shared-model retail material permutation selection remains an independent gate."
 }

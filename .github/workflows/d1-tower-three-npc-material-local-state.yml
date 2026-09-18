@@ -1,0 +1,261 @@
+name: D1 Tower three-NPC exact material local state
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-tower-three-npc-material-local-state.yml'
+      - 'tools/d1_material_stage_state_resolve.py'
+      - 'tools/d1_material_decode.py'
+      - 'tools/d1_ps4_sampler_probe.py'
+      - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_world_material_constant_export.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  AUDIT_ARTIFACT_ID: '10068794522'
+  AUDIT_ARTIFACT_SHA256: '90812780872801f05055650a3a070a786c2a67e9489f38ee8fb3849cd6d6ce8b'
+  TEXTURED_ARTIFACT_ID: '10036629355'
+  TEXTURED_ARTIFACT_SHA256: 'd6f54ca844af839e6d97fa6fb51e002727d5bb20e92d2e2e7832da4c99343654'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  state:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned three-NPC audit, production manifest, catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/audit input/textured input/catalog runtime reports corpus_initial corpus_payload out
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUDIT_ARTIFACT_ID}/zip" -o input/audit.zip
+          echo "${AUDIT_ARTIFACT_SHA256}  input/audit.zip" | sha256sum --check --strict
+          unzip -q input/audit.zip -d input/audit
+          test -f input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${TEXTURED_ARTIFACT_ID}/zip" -o input/textured.zip
+          echo "${TEXTURED_ARTIFACT_SHA256}  input/textured.zip" | sha256sum --check --strict
+          unzip -q input/textured.zip 'reports/material_texture_manifest.json' -d input/textured
+          test -f input/textured/reports/material_texture_manifest.json
+
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Derive exact 85-material target and local-state dependency seed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          audit=json.load(open('input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json'))
+          manifest=json.load(open('input/textured/reports/material_texture_manifest.json'))
+          assert audit['status']=='D1_TOWER_THREE_NPC_MATERIAL_CORRECTNESS_AUDIT_COMPLETE' and not audit['violations'],audit
+          assert manifest['visible_material_count']==320 and not manifest.get('material_decode_errors') and not manifest.get('texture_errors'),manifest
+          target=sorted({m['material'] for a in audit['actors'] for m in a['materials']})
+          assert len(target)==85,target
+          mats=manifest['materials']
+          missing=sorted(set(target)-set(mats)); assert not missing,missing
+          NULL={'00000000','FFFFFFFF'}
+          def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
+          def pid(h):
+              v=int(h,16);assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          const=set();samp=set()
+          for mh in target:
+              m=mats[mh]
+              for h in (m.get('constants') or {}).values():
+                  h=norm(h)
+                  if h not in NULL:const.add(h)
+              for stage in ('vs','ps'):
+                  for r in ((m.get('samplers') or {}).get(stage) or {}).get('items',[]):
+                      h=norm(r.get('first_dword_hex','FFFFFFFF'))
+                      if h not in NULL:samp.add(h)
+          hashes=set(target)|const|samp
+          ids=sorted({pid(h) for h in hashes})
+          Path('reports/material_tags.txt').write_text('\n'.join(target)+'\n')
+          Path('reports/constant_container_tags.txt').write_text('\n'.join(sorted(const))+('\n' if const else ''))
+          Path('reports/sampler_tags.txt').write_text('\n'.join(sorted(samp))+('\n' if samp else ''))
+          Path('reports/initial_package_ids.txt').write_text('\n'.join(ids)+'\n')
+          seed={
+              'status':'D1_TOWER_THREE_NPC_LOCAL_STATE_DEPENDENCY_SEED_EXACT',
+              'material_count':len(target),'constant_container_count':len(const),'sampler_tag_count':len(samp),
+              'materials':target,'constant_containers':sorted(const),'samplers':sorted(samp),'initial_package_ids':ids,
+          }
+          Path('reports/local_state_dependency_seed.json').write_text(json.dumps(seed,indent=2)+'\n')
+          print('THREE_NPC_LOCAL_STATE_SEED','materials',len(target),'constant_containers',len(const),'samplers',len(samp),'package_ids',ids)
+          PY
+
+      - name: Recover exact initial local-state package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/initial_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus_initial --report reports/local_state_initial_corpus.json
+
+      - name: Discover external constant payload families from exact FileEntry references
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys,json
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          snaps=sorted(Path('corpus_initial').glob('*.pkg'))
+          c=v5.v3.base.Corpus([p.resolve() for p in snaps],Path('runtime').resolve())
+          tags=[x.strip() for x in open('reports/constant_container_tags.txt') if x.strip()]
+          def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
+          def pid(h):
+              v=int(h,16);assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+          rows=[];payloads=set();viol=[]
+          for h in tags:
+              m=c.entry_meta(h)
+              if m is None:
+                  viol.append(f'{h}:metadata unavailable');continue
+              ref=norm(m.get('reference','FFFFFFFF'))
+              if ref in ('FFFFFFFF','00000000'):
+                  viol.append(f'{h}:null payload reference');continue
+              payloads.add(ref);rows.append({'container':h,'meta':m,'payload':ref,'payload_package_id':pid(ref)})
+          if viol:raise SystemExit(repr(viol))
+          initial={x.strip() for x in open('reports/initial_package_ids.txt') if x.strip()}
+          pids=sorted({pid(h) for h in payloads})
+          extra=sorted(set(pids)-initial)
+          Path('reports/constant_payload_tags.txt').write_text('\n'.join(sorted(payloads))+('\n' if payloads else ''))
+          Path('reports/constant_payload_extra_package_ids.txt').write_text('\n'.join(extra)+('\n' if extra else ''))
+          Path('reports/constant_payload_refs.json').write_text(json.dumps({
+              'status':'D1_TOWER_THREE_NPC_CONSTANT_CONTAINER_PAYLOAD_REFS_EXACT',
+              'container_count':len(rows),'unique_payload_count':len(payloads),'payload_package_ids':pids,
+              'extra_package_ids':extra,'rows':rows,
+          },indent=2)+'\n')
+          print('THREE_NPC_CONSTANT_PAYLOAD_REFS','containers',len(rows),'payloads',len(payloads),'extra',extra)
+          PY
+
+      - name: Recover any extra constant-payload package families
+        run: |
+          set -euo pipefail
+          if [ -s reports/constant_payload_extra_package_ids.txt ]; then
+            args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/constant_payload_extra_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py \
+              --package-list reports/packages.txt "${args[@]}" \
+              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+              --out-dir corpus_payload --report reports/local_state_payload_corpus.json
+          else
+            printf '%s\n' '{"status":"D1_TOWER_THREE_NPC_LOCAL_STATE_NO_EXTRA_PAYLOAD_FAMILIES"}' > reports/local_state_payload_corpus.json
+          fi
+
+      - name: Resolve all 85 visible material-local VS and PS states fail-closed
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_initial corpus_payload -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          mapfile -t mats < reports/material_tags.txt
+          margs=(); for m in "${mats[@]}"; do margs+=(--material "$m"); done
+          python tools/d1_material_stage_state_resolve.py \
+            "${snaps[@]}" --runtime runtime "${margs[@]}" \
+            --out reports/THREE_NPC_MATERIAL_STAGE_STATE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/THREE_NPC_MATERIAL_STAGE_STATE.json'))
+          assert d['status']=='D1_MATERIAL_STAGE_STATE_EXACT',d
+          assert d['selected_material_count']==85 and d['resolved_material_count']==85,d
+          assert not d['violations'],d['violations']
+          print('THREE_NPC_MATERIAL_LOCAL_STATE_EXACT','materials',d['resolved_material_count'],
+                'VS',d['unique_vertex_shader_count'],'PS',d['unique_pixel_shader_count'],
+                'TFX',d['unique_tfx_program_count_by_stage_sha'],
+                'external_vec4',d['unique_external_vector4_container_count'],
+                'native_samplers',d['unique_native_sampler_count'])
+          PY
+
+      - name: Prove target shader/material identity joins and summarize local-state frontier
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json,os
+          from pathlib import Path
+          audit=json.load(open('input/audit/THREE_NPC_MATERIAL_CORRECTNESS_AUDIT.json'))
+          state=json.load(open('reports/THREE_NPC_MATERIAL_STAGE_STATE.json'))
+          assert state['status']=='D1_MATERIAL_STAGE_STATE_EXACT' and not state['violations'],state
+          target_ps=collections.defaultdict(list)
+          for a in audit['actors']:
+              for m in a['materials']:
+                  target_ps[m['pixel_shader']].append((a['key'],m['material'],m['primitive_count']))
+                  sr=state['materials'].get(m['material']); assert sr,(a['key'],m['material'])
+                  assert sr['ps']['shader']==m['pixel_shader'],(a['key'],m['material'],sr['ps']['shader'],m['pixel_shader'])
+          top=['809D835F','809D835A','80876577','809D835C','8087630D','809D8370','809D8363','809D836C']
+          top_rows=[]
+          for ps in top:
+              rows=target_ps.get(ps,[])
+              if not rows: continue
+              mats=[]
+              for actor,mh,prim in rows:
+                  r=state['materials'][mh]
+                  mats.append({
+                      'actor':actor,'material':mh,'primitive_count':prim,
+                      'material_state4_hex':r['material_state4_hex'],
+                      'tfx_bytes_hex':r['ps']['tfx_bytecode']['bytes_hex'],
+                      'tfx_complete':r['ps']['tfx_disassembly']['complete'],
+                      'tfx_private_constants':r['ps']['tfx_private_constants']['items'],
+                      'cbuffer_raw_hex':[x['raw_hex'] for x in r['ps']['cbuffers']['items']],
+                      'textures':{str(x['texture_index']):x['texture'] for x in r['ps']['textures']['items']},
+                      'sampler_tags':[x['first_dword_hex'] for x in r['ps']['samplers']['items']],
+                      'native_sampler_payload_sha256':[(x.get('native_sampler') or {}).get('payload_sha256') for x in r['ps'].get('sampler_references',[])],
+                  })
+              top_rows.append({'pixel_shader':ps,'material_count':len(mats),'primitive_count':sum(x['primitive_count'] for x in mats),'materials':mats})
+          out={
+              'schema_version':1,'status':'D1_TOWER_THREE_NPC_MATERIAL_LOCAL_STATE_EXACT',
+              'material_count':85,'vertex_shader_count':state['unique_vertex_shader_count'],'pixel_shader_count':state['unique_pixel_shader_count'],
+              'unique_tfx_program_count_by_stage_sha':state['unique_tfx_program_count_by_stage_sha'],
+              'external_vector4_container_count':state['unique_external_vector4_container_count'],
+              'native_sampler_count':state['unique_native_sampler_count'],
+              'material_state4_histogram':state['material_state4_histogram'],
+              'vector_storage_relation_counts':state['vector_storage_relation_counts'],
+              'tfx_opcode_histogram':state['tfx_opcode_histogram'],'tfx_extern_histogram':state['tfx_extern_histogram'],
+              'high_impact_pixel_shader_local_states':top_rows,
+              'gates':{
+                  'all_85_material_local_states_exact':True,
+                  'all_visible_pixel_shader_dataflow_closed':False,
+                  'portable_recreation_complete':False,
+                  'retail_material_permutation_selected':False,
+              },
+              'policy':'This closes material-local TFX/constants/samplers/state and exact stage bindings only. It does not infer native GCN equations or promote a portable material.',
+              'violations':[],
+          }
+          Path('out/THREE_NPC_MATERIAL_LOCAL_STATE_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\n')
+          Path('out/THREE_NPC_MATERIAL_STAGE_STATE.json').write_text(json.dumps(state,indent=2)+'\n')
+          print(json.dumps({k:out[k] for k in ('status','material_count','vertex_shader_count','pixel_shader_count','unique_tfx_program_count_by_stage_sha','external_vector4_container_count','native_sampler_count')},indent=2))
+          print('HIGH_IMPACT',[(x['pixel_shader'],x['material_count'],x['primitive_count']) for x in top_rows])
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-3-NPC-EXACT-MATERIAL-LOCAL-STATE
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 9
