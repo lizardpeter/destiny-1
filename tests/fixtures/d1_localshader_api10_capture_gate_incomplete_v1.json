@@ -1,0 +1,6 @@
+{
+  "schema":"d1_localshader_api10_runtime_capture/v1",
+  "captures":[
+    {"program_id":"fixture-3-s8","tbuffer_instruction_count":3,"descriptor_window":"s[8:11]","descriptor_dwords":[0,0,0,0],"engine_semantic":"WITHHELD","evidence":{"source":"TEST_FIXTURE_NOT_PRIMARY_EVIDENCE","sha256":"fixture"}}
+  ]
+}
