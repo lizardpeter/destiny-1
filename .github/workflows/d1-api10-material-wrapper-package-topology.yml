@@ -1,0 +1,52 @@
+name: D1 API10 material-wrapper package topology
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_material_wrapper_package_topology.py'
+      - 'evidence/d1_api10_material_wrapper_package_topology_v1.json'
+      - '.github/workflows/d1-api10-material-wrapper-package-topology.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover frozen material chain and reproduce topology
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10529319011/zip" -o input/material.zip
+          unzip -q input/material.zip -d input/material
+          echo "23415246337abdbb1543447e0123fa809027e3b9e94d5efee12a1476e7a2a113  input/material/D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_V1.json" | sha256sum -c -
+          python -m py_compile tools/d1_api10_material_wrapper_package_topology.py
+          python tools/d1_api10_material_wrapper_package_topology.py             input/material/D1_GCN_LOCALSHADER_API10_MATERIAL_CHAIN_V1.json             -o out/recomputed.json
+          python - <<'PY'
+          import json
+          expected=json.load(open('evidence/d1_api10_material_wrapper_package_topology_v1.json'))
+          got=json.load(open('out/recomputed.json'))
+          assert got==expected,(got,expected)
+          assert got['coverage']['material_occurrence_count']==3386
+          assert got['coverage']['same_package_occurrences']==239
+          assert got['coverage']['cross_package_occurrences']==3147
+          assert got['coverage']['wrapper_native_program_package_mismatch_count']==0
+          assert got['semantic_boundary']['runtime_binding_owner']=='WITHHELD'
+          assert got['semantic_boundary']['engine_semantic']=='WITHHELD'
+          PY
+          sha256sum evidence/d1_api10_material_wrapper_package_topology_v1.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-MATERIAL-WRAPPER-PACKAGE-TOPOLOGY
+          path: |
+            evidence/d1_api10_material_wrapper_package_topology_v1.json
+            out/SHA256SUMS.txt
+          retention-days: 90
+          if-no-files-found: error
