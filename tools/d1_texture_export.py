@@ -70,11 +70,40 @@ def ceil_pow2(x:int)->int:
     return 1 if x<=1 else 1<<(x-1).bit_length()
 
 def expected_base_size(w:int,h:int,gfmt:int,array_size:int=1)->int|None:
-    if gfmt in {GCN_BC1,GCN_BC4}: one=w*h//2
-    elif gfmt in {GCN_BC2,GCN_BC3,GCN_BC5,0x28,0x29}: one=w*h
-    elif gfmt in BPP: one=w*h*(BPP[gfmt]//8)
-    else: return None
+    """Exact top-level byte count for one PS4 surface/array.
+
+    Block-compressed formats are sized in complete 4x4 blocks.  The historical
+    w*h/2 and w*h shortcuts are equivalent only when both dimensions are
+    multiples of four and are unsafe as a general strictness gate.
+    """
+    if w<=0 or h<=0:
+        raise ValueError(f'invalid texture dimensions {w}x{h}')
+    if gfmt in COMPRESSED:
+        bs=BLOCK_SIZE.get(gfmt)
+        if not bs:
+            return None
+        one=max(1,(w+3)//4)*max(1,(h+3)//4)*bs
+    elif gfmt in BPP:
+        one=w*h*(BPP[gfmt]//8)
+    else:
+        return None
     return one*max(1,array_size)
+
+
+def normalize_top_level_payload(raw:bytes,expected:int|None,*,strict:bool=False,label:str='texture backing')->bytes:
+    """Return exactly the top-level payload span when its size is known.
+
+    In strict mode a short backing is rejected before deswizzle.  This prevents
+    the deswizzler's bounds checks from turning absent source blocks into
+    zero-filled output bytes.
+    """
+    if expected is None:
+        return raw
+    if len(raw)<expected:
+        if strict:
+            raise ValueError(f'{label} truncated: need at least {expected} bytes, got {len(raw)}')
+        return raw
+    return raw[:expected]
 
 def _unswizzle_face(data:bytes,width:int,height:int,gfmt:int)->bytes:
     compressed=gfmt in COMPRESSED
@@ -172,7 +201,7 @@ def follow_backing(global_by,header_entry):
         if nxt in global_by: backing=global_by[nxt]
     return mid,backing
 
-def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list[EntryReader]|None=None)->dict:
+def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list[EntryReader]|None=None,*,strict_backing_size:bool=False)->dict:
     if r.h['platform']!='PS4': raise ValueError('this exporter currently targets D1 ROI PS4')
     deps=dependencies or []
     for d in deps:
@@ -195,7 +224,7 @@ def export_reader(r,outdir:Path,tag_hashes:list[str]|None=None,dependencies:list
         if not backing or not backing[0].available(backing[1]['index']):
             rows.append({'header':e['tag_hash'],'available':True,'error':'backing unavailable','header_info':h,'owner_package':str(hr.pkg)}); continue
         br,be=backing; raw=br.entry(be['index']); expected=expected_base_size(h['width'],h['height'],h['surface_format'],h['array_size'])
-        if expected and len(raw)>=expected: raw=raw[:expected]
+        raw=normalize_top_level_payload(raw,expected,strict=strict_backing_size,label=f"{e['tag_hash']} backing {be['tag_hash']}")
         swizzled=((h['flags1']&0xC00)!=0x400) or h['array_size']==6
         linear=unswizzle_ps4(raw,h['width'],h['height'],h['array_size'],h['surface_format']) if swizzled else raw
         fmt_name=FORMAT_NAME.get(h['surface_format']) or ('GCN%02X' % h['surface_format'])
