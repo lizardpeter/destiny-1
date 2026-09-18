@@ -1,0 +1,63 @@
+name: D1 Vex 80AAE149 proof diagnostic replay
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-vex-80aae149-proof-diagnostic.yml'
+      - 'tools/d1_vex_80aae149_vs_semantic_proof.py'
+      - 'evidence/d1_vex_80aae149_vertex_interface_ci_checkpoint_v1.json'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover frozen successful producer artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p frozen out
+          gh api repos/${{ github.repository }}/actions/artifacts/10550940180/zip > frozen.zip
+          echo '94c75f077396fdfbc79e2a493f6cafbb145a2f120c460aed7e020827db4002bf  frozen.zip' | sha256sum --check --strict
+          unzip -q frozen.zip -d frozen
+          test -f frozen/80AAE149_extract.json
+          test -f frozen/VS_80AAE149.s
+          test -f frozen/VS_80AAE149_gcn.bin
+          sha256sum frozen/* > out/FROZEN_SHA256SUMS.txt
+      - name: Replay proof and preserve exact violations
+        id: proof
+        shell: bash
+        run: |
+          set +e
+          python tools/d1_vex_80aae149_vs_semantic_proof.py \
+            --extract-report frozen/80AAE149_extract.json \
+            --disassembly frozen/VS_80AAE149.s \
+            --out out/D1_VEX_80AAE149_VERTEX_INTERFACE_PROOF_DIAGNOSTIC.json \
+            > out/proof.stdout 2> out/proof.stderr
+          rc=$?
+          set -e
+          echo "$rc" > out/proof.exit_code
+          python - <<'PY'
+          import json
+          p='out/D1_VEX_80AAE149_VERTEX_INTERFACE_PROOF_DIAGNOSTIC.json'
+          d=json.load(open(p))
+          print('status=',d.get('status'))
+          print('violations=',json.dumps(d.get('violations'),indent=2))
+          PY
+          sha256sum out/D1_VEX_80AAE149_VERTEX_INTERFACE_PROOF_DIAGNOSTIC.json >> out/FROZEN_SHA256SUMS.txt
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-VEX-80AAE149-PROOF-DIAGNOSTIC
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
