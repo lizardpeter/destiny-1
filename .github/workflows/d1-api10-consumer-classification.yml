@@ -1,0 +1,32 @@
+name: D1 API10 consumer classification gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_validate_api10_consumer_classification_v1.py'
+      - 'tests/test_d1_validate_api10_consumer_classification_v1.py'
+      - 'evidence/d1_api10_consumer_classification_v1.json'
+      - '.github/workflows/d1-api10-consumer-classification.yml'
+permissions: {contents: read}
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_validate_api10_consumer_classification_v1.py tests/test_d1_validate_api10_consumer_classification_v1.py
+          python tests/test_d1_validate_api10_consumer_classification_v1.py
+          python tools/d1_validate_api10_consumer_classification_v1.py evidence/d1_api10_consumer_classification_v1.json
+          python - <<'PY'
+          import json
+          d=json.load(open('evidence/d1_api10_consumer_classification_v1.json'))
+          assert d['coverage']=={'classified_exact_gcn_programs':4,'global_api10_program_denominator':39,'classification_complete':False}
+          assert len({x['gcn_sha256'] for x in d['programs']})==4
+          assert {x['descriptor_window'] for x in d['programs']}=={'s[8:11]'}
+          assert all(v=='WITHHELD' for v in d['semantic_boundary'].values())
+          PY
