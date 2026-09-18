@@ -1,0 +1,103 @@
+name: D1 global current SDye inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_remote_reference_class_census.py'
+      - 'tools/d1_global_sdye_inventory_v1.py'
+      - 'tools/d1_investment_dye_resolver.py'
+      - '.github/workflows/d1-global-sdye-inventory.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: '${{ github.token }}'
+  LINOODLE_SKIP_DLLMAIN: '1'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover pinned universal catalog and Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/payloads
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Enumerate every current ROI s_gear_dye payload
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_reference_class_census.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --reference 80801AF4 \
+            --dump-dir out/payloads \
+            -o out/D1_GLOBAL_SDYE_CLASS_CENSUS.json | tee out/class_census_stdout.txt
+          python - <<'PY'
+          import json,pathlib
+          d=json.load(open('out/D1_GLOBAL_SDYE_CLASS_CENSUS.json'))
+          assert d['status']=='D1_REMOTE_REFERENCE_CLASS_CENSUS_EXACT' and not d['violations'],d
+          assert d['package_family_count']==d['opened_package_family_count']==337,d
+          assert set(d['reference_counts'])=={'80801AF4'},d['reference_counts']
+          assert d['reference_counts']['80801AF4']==d['matching_entry_count']>0,d
+          assert len(list(pathlib.Path('out/payloads').glob('*.bin')))==d['matching_entry_count'],d
+          print('GLOBAL_SDYE_CLASS_CENSUS_GREEN',d['matching_entry_count'],d['package_counts'])
+          PY
+
+      - name: Parse exact SDye fields and probe 8087670E family resources
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_global_sdye_inventory_v1.py
+          python tools/d1_global_sdye_inventory_v1.py \
+            --census out/D1_GLOBAL_SDYE_CLASS_CENSUS.json \
+            --payload-dir out/payloads \
+            --probe-texture 80AB04C7 \
+            --probe-texture 80AA9F35 \
+            -o out/D1_GLOBAL_SDYE_INVENTORY.json | tee out/sdye_inventory_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GLOBAL_SDYE_INVENTORY.json'))
+          assert d['status']=='D1_GLOBAL_SDYE_INVENTORY_EXACT' and not d['violations'],d
+          assert d['dye_occurrence_count']==d['unique_dye_count']>0,d
+          assert d['gates']['all_current_dye_payloads_parsed'] is True,d
+          assert d['gates']['stage_part_slot_to_concrete_dye_closed'] is False,d
+          assert d['gates']['runtime_shader_binding_closed'] is False,d
+          print('GLOBAL_SDYE_INVENTORY_GREEN',
+                'dyes',d['unique_dye_count'],
+                'textures',d['unique_serialized_texture_count'],
+                'probes',d['probe_textures'])
+          PY
+
+      - name: Persist hashes
+        if: always()
+        run: |
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GLOBAL-CURRENT-SDYE-INVENTORY
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
