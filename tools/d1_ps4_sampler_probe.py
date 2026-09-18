@@ -10,7 +10,8 @@ Validated D1 class 0x80801A42 is 24 bytes:
 
 Field masks and enum names follow the public PS4 Gnm register definitions used
 by GPCS4. Raw words are always retained so source-derived names cannot destroy
-retail information.
+retail information.  A 24-byte tag of another class is never decoded merely
+because its size happens to match the sampler layout.
 """
 from __future__ import annotations
 import argparse,json,struct,sys
@@ -41,32 +42,7 @@ def decode_blob(b:bytes)->dict:
     cx=field(w0,0x00000007,0); cy=field(w0,0x00000038,3); cz=field(w0,0x000001c0,6)
     mag=field(w2,0x00300000,20); minf=field(w2,0x00c00000,22); zf=field(w2,0x03000000,24); mip=field(w2,0x0c000000,26)
     lod_bias_raw=field(w2,0x00003fff,0); border=field(w3,0xc0000000,30)
-    return {
-      'declared_file_size':declared,
-      'descriptor_offset':8,
-      'descriptor_hex':b[8:24].hex(),
-      'words_hex':[f'{x:08X}' for x in (w0,w1,w2,w3)],
-      'wrap_x':{'value':cx,'gnm_name':WRAP.get(cx)},
-      'wrap_y':{'value':cy,'gnm_name':WRAP.get(cy)},
-      'wrap_z':{'value':cz,'gnm_name':WRAP.get(cz)},
-      'max_aniso_ratio_raw':field(w0,0x00000e00,9),
-      'depth_compare_raw':field(w0,0x00007000,12),
-      'force_unnormalized_raw':field(w0,0x00008000,15),
-      'aniso_threshold_raw':field(w0,0x00070000,16),
-      'force_degamma_raw':field(w0,0x00100000,20),
-      'filter_reduction_mode_raw':field(w0,0x60000000,29),
-      'min_lod_raw':field(w1,0x00000fff,0),
-      'max_lod_raw':field(w1,0x00fff000,12),
-      'lod_bias_raw_unsigned14':lod_bias_raw,
-      'lod_bias_raw_signed14':signed(lod_bias_raw,14),
-      'lod_bias_secondary_raw':field(w2,0x000fc000,14),
-      'mag_filter':{'value':mag,'gnm_name':FILTER.get(mag)},
-      'min_filter':{'value':minf,'gnm_name':FILTER.get(minf)},
-      'z_filter':{'value':zf,'gnm_name':ZFILTER.get(zf)},
-      'mip_filter':{'value':mip,'gnm_name':MIPFILTER.get(mip)},
-      'border_color':{'value':border,'gnm_name':BORDER.get(border)},
-      'border_color_ptr_raw':field(w3,0x00000fff,0),
-    }
+    return {'declared_file_size':declared,'descriptor_offset':8,'descriptor_hex':b[8:24].hex(),'words_hex':[f'{x:08X}' for x in (w0,w1,w2,w3)],'wrap_x':{'value':cx,'gnm_name':WRAP.get(cx)},'wrap_y':{'value':cy,'gnm_name':WRAP.get(cy)},'wrap_z':{'value':cz,'gnm_name':WRAP.get(cz)},'max_aniso_ratio_raw':field(w0,0x00000e00,9),'depth_compare_raw':field(w0,0x00007000,12),'force_unnormalized_raw':field(w0,0x00008000,15),'aniso_threshold_raw':field(w0,0x00070000,16),'force_degamma_raw':field(w0,0x00100000,20),'filter_reduction_mode_raw':field(w0,0x60000000,29),'min_lod_raw':field(w1,0x00000fff,0),'max_lod_raw':field(w1,0x00fff000,12),'lod_bias_raw_unsigned14':lod_bias_raw,'lod_bias_raw_signed14':signed(lod_bias_raw,14),'lod_bias_secondary_raw':field(w2,0x000fc000,14),'mag_filter':{'value':mag,'gnm_name':FILTER.get(mag)},'min_filter':{'value':minf,'gnm_name':FILTER.get(minf)},'z_filter':{'value':zf,'gnm_name':ZFILTER.get(zf)},'mip_filter':{'value':mip,'gnm_name':MIPFILTER.get(mip)},'border_color':{'value':border,'gnm_name':BORDER.get(border)},'border_color_ptr_raw':field(w3,0x00000fff,0)}
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('pkg',type=Path);ap.add_argument('--runtime',type=Path,required=True);ap.add_argument('--tag-hash',action='append',required=True);ap.add_argument('-o','--output',type=Path)
@@ -74,9 +50,12 @@ def main():
     for raw in a.tag_hash:
         h=raw.upper().removeprefix('0X'); e=by.get(h)
         if e is None: rows.append({'tag_hash':h,'present':False}); continue
-        row={'tag_hash':h,'present':True,'entry_index':e['index'],'class_hash':e['reference'],'type':e['type'],'subtype':e['subtype'],'available':r.available(e['index'])}
+        class_matches=e['reference'].upper()==SAMPLER_CLASS
+        row={'tag_hash':h,'present':True,'entry_index':e['index'],'class_hash':e['reference'],'type':e['type'],'subtype':e['subtype'],'available':r.available(e['index']),'class_matches_validated_sampler':class_matches}
         if row['available']:
-            b=r.entry(e['index']); row['raw_hex']=b.hex(); row['decoded']=decode_blob(b); row['class_matches_validated_sampler']=e['reference'].upper()==SAMPLER_CLASS
+            b=r.entry(e['index']); row['raw_hex']=b.hex()
+            if class_matches: row['decoded']=decode_blob(b)
+            else: row['decode_withheld']='class hash does not match validated sampler class 80801A42'
         rows.append(row)
     rep={'package':str(r.pkg),'platform':r.h['platform'],'validated_sampler_class':SAMPLER_CLASS,'samplers':rows};text=json.dumps(rep,indent=2)
     if a.output:a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(text+'\n');print('wrote',a.output)
