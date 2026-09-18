@@ -1,0 +1,83 @@
+name: D1 GCN resource LDS rebuild v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_gcn_resource_lds_rebuild_v1.py'
+      - '.github/workflows/d1-gcn-resource-lds-rebuild-v1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  RAW_ARTIFACT_ID: '10132369372'
+  RAW_ZIP_SHA256: 'dac11963c6f7fe8d70213f71f5ae9b157195b317e0fa9b38315181edfcf92739'
+  SPECIAL_VALUE_ARTIFACT_ID: '10167298103'
+  SPECIAL_VALUE_ZIP_SHA256: '4555c8c974b8e01efdca600398ebfc890981d6b676975bf4505bf667bf00e47f'
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Compile exact analyzers
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gcn_sgpr_ssa_v1.py tools/d1_gcn_resource_lds_provenance_v1.py tools/d1_gcn_resource_lds_rebuild_v1.py
+          python tools/d1_gcn_resource_lds_provenance_v1.py --self-test
+      - name: Recover pinned structural IR and exact vector binding
+        run: |
+          set -euo pipefail
+          mkdir -p source/raw source/special out/scalar
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RAW_ARTIFACT_ID}/zip" -o source/raw.zip
+          echo "$RAW_ZIP_SHA256  source/raw.zip" | sha256sum --check --strict
+          unzip -q source/raw.zip -d source/raw
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SPECIAL_VALUE_ARTIFACT_ID}/zip" -o source/special.zip
+          echo "$SPECIAL_VALUE_ZIP_SHA256  source/special.zip" | sha256sum --check --strict
+          unzip -q source/special.zip -d source/special
+          test "$(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+          test "$(find source/special/bound -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 65
+          diff -u <(find source/raw/work/ir -maxdepth 1 -type f -name '*.json' -printf '%f\n' | sort) <(find source/special/bound -maxdepth 1 -type f -name '*.json' -printf '%f\n' | sort)
+      - name: Regenerate scalar SSA and resource LDS provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_resource_lds_rebuild_v1.py \
+            --ir-dir source/raw/work/ir \
+            --binding-dir source/special/bound \
+            --scalar-output-dir out/scalar \
+            --expect-opcode tbuffer_load_format_xyzw=385 \
+            --expect-opcode ds_write2_b32=641 \
+            --output out/D1_GCN_RESOURCE_LDS_REBUILD_V1.json | tee out/rebuild_stdout.txt
+      - name: Freeze exact census
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GCN_RESOURCE_LDS_REBUILD_V1.json')); p=d['resource_lds_provenance']; c=p['coverage']; r=d['scalar_regeneration']
+          assert d['status']=='D1_GCN_RESOURCE_LDS_REBUILD_EXACT',d
+          assert r['program_count']==65,r
+          assert p['status']=='D1_GCN_RESOURCE_LDS_PROVENANCE_EXACT_SYMBOLIC',p.get('violations')
+          assert not p['violations']
+          assert c['target_opcode_counts']=={'ds_write2_b32':641,'tbuffer_load_format_xyzw':385},c
+          assert c['accounted_opcode_counts']==c['target_opcode_counts'],c
+          assert c['record_count']==1026,c
+          assert len(list(__import__('pathlib').Path('out/scalar').glob('*.json')))==65
+          print('D1_GCN_RESOURCE_LDS_REBUILD_EXACT')
+          PY
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-GCN-RESOURCE-LDS-REBUILD-V1
+          path: out/
+          retention-days: 30
