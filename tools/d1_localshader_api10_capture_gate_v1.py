@@ -43,7 +43,7 @@ def build_program_index(frozen):
     return idx
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument("--frozen",required=True);ap.add_argument("--captures",required=True);ap.add_argument("--out");a=ap.parse_args()
+    ap=argparse.ArgumentParser();ap.add_argument("--frozen",required=True);ap.add_argument("--captures",required=True);ap.add_argument("--out");ap.add_argument("--allow-test-fixtures",action="store_true",help="permit TEST_FIXTURE_NOT_PRIMARY_EVIDENCE rows; never use for primary capture validation");a=ap.parse_args()
     frozen=load(a.frozen);captures=load(a.captures)
     if frozen.get("status")!="D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT":die("frozen census status is not exact")
     cov=frozen.get("coverage",{})
@@ -63,6 +63,7 @@ def main():
         if not isinstance(ev,dict) or not ev.get("source") or not ev.get("sha256"):die(f"capture[{i}] requires source and sha256 evidence provenance")
         fixture=ev.get("source")=="TEST_FIXTURE_NOT_PRIMARY_EVIDENCE"
         if fixture:
+            if not a.allow_test_fixtures:die(f"capture[{i}] test fixture rejected without explicit --allow-test-fixtures")
             family=claimed
         else:
             if program_index is None:die("primary capture rejected: frozen evidence lacks exact program membership table")
