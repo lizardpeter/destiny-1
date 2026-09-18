@@ -1,0 +1,66 @@
+{
+  "schema": "d1_vex_09a_proof_glb_native_state_validation/v1",
+  "date": "2026-09-18",
+  "status": "D1_VEX_09A_PROOF_GLB_NATIVE_STATE_VALIDATED",
+  "workflow": {
+    "run_id": 35351776587,
+    "workflow_id": 350158999,
+    "job_id": 105621382864,
+    "head_sha": "627f293deb56078f265c63fbc01eb3538709cef9",
+    "conclusion": "success",
+    "artifact": {
+      "id": 10550130635,
+      "name": "816CE09A-proven-material-test-glb",
+      "zip_digest": "sha256:7799d7cbed5dcf6c23840a1e43aef84df585e79fc0a117287b7aa1250ce78eb4",
+      "size_in_bytes": 7269378
+    }
+  },
+  "outputs": {
+    "glb": {
+      "name": "816CE09A_PROVEN_MATERIAL_TEST.glb",
+      "bytes": 7246784,
+      "sha256": "cd9c7e7d2b045eef76121b842e8f5e63364304f411b205ca52b37aad0861a5da"
+    },
+    "blend_proof": {
+      "sha256": "3bef39c969a263c5e560435411202a04932b431f62022235f39ca8576be52908",
+      "status": "D1_VEX_816CE240_NATIVE_ADDITIVE_RGB_EXACT"
+    },
+    "global_cb_proof": {
+      "sha256": "cd923d7fa255d94fc75f4f8a700a400aa2c1dbbaf095360650bd5228c4aa141b",
+      "status": "D1_VEX_816CE0A8_GLOBAL_CB_DATAFLOW_EXACT"
+    },
+    "runtime_contract": {
+      "sha256": "619f95eef70536988c3602f530bfe004af88eac99da9c98932d073bd69f96a0c",
+      "status": "D1_VEX_09A_RUNTIME_CONTRACT_PARTIAL_EXACT"
+    }
+  },
+  "structure": {
+    "mesh_count": 1,
+    "node_count": 14,
+    "skin_count": 1,
+    "animation_count": 2,
+    "animation_names": [
+      "816CE09D",
+      "816CE09E"
+    ],
+    "material_count": 2,
+    "image_count": 11,
+    "vertex_count": 4172,
+    "triangle_count": 5336
+  },
+  "embedded_native_state": {
+    "material": "816CE240",
+    "shader": "816CE0A8",
+    "native_blend_selector": "0x88",
+    "native_blend_state_index": 8,
+    "native_composition_rgb": "S.rgb + D.rgb",
+    "native_composition_alpha": "D.a",
+    "api12_view_origin_delta": "float3(api12[28]-attr4.x, api12[29]-attr4.y, api12[30]-attr4.z)",
+    "api13_global_rgb_factor": "api13[6] * api13[7]",
+    "api12_producer": "WITHHELD",
+    "api12_live_values": "WITHHELD",
+    "api13_producer": "WITHHELD",
+    "api13_live_values": "WITHHELD"
+  },
+  "policy": "This record freezes a successful retail-package proof build and its cryptographic outputs. The GLB remains a portable approximation; only the embedded native-state fields listed here are promoted by the exact proof artifacts. Runtime API12/API13 producers and live values remain unproven."
+}
