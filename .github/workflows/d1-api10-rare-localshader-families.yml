@@ -5,7 +5,7 @@ on:
     branches: [d1-crota-source-semantics-v1]
     paths:
       - '.github/workflows/d1-api10-rare-localshader-families.yml'
-      - 'tools/d1_split_tar_extract.py'
+      - 'tools/d1_remote_ps4_shader_binary_probe.py'
       - 'tools/d1_ps4_shader_binary_probe.py'
 permissions: {contents: read}
 env:
@@ -18,33 +18,33 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Runtime and exact retail package
+      - name: Runtime
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered reports shader disasm
+          mkdir -p runtime reports shader disasm
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-          python tools/d1_split_tar_extract.py             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10             --start-offset 0x408A02C00             --target ps4_gear_player_0103_5.pkg             --out recovered --manifest reports/package_extract.json --retries 6 --timeout 90
-          test "$(stat -c%s recovered/ps4_gear_player_0103_5.pkg)" = 225280
-      - name: Recover exact LocalShader payloads
+      - name: Recover exact logical-package LocalShader payloads
         run: |
           set -euo pipefail
           export LINOODLE_SKIP_DLLMAIN=1
-          python tools/d1_ps4_shader_binary_probe.py recovered/ps4_gear_player_0103_5.pkg             --runtime runtime             --tag-hash 80A08667 --tag-hash 80A0627B             --dump-dir shader -o reports/rare_localshader_probe.json
+          python tools/d1_remote_ps4_shader_binary_probe.py             --runtime runtime             --tag-hash 80A08667 --tag-hash 80A0627B             --member ps4_gear_player_0103_0.pkg:0x406EAF800:26697728             --member ps4_gear_player_0103_1.pkg:0x408825A00:1630208             --member ps4_gear_player_0103_2.pkg:0x4089B3C00:323584             --member ps4_gear_player_0103_5.pkg:0x408A02E00:225280             --member ps4_gear_player_0104_0.pkg:0x408A3A000:56281088             --member ps4_gear_player_0104_1.pkg:0x40BFE6A00:823296             --member ps4_gear_player_0104_2.pkg:0x40C0AFC00:237568             --member ps4_gear_player_0104_3.pkg:0x40C0E9E00:593920             --member ps4_gear_player_0104_4.pkg:0x40C17B000:598016             --member ps4_gear_player_0104_5.pkg:0x40C20D200:182272             --dump-dir shader -o reports/rare_localshader_probe.json
           python - <<'PY'
           import json
           d=json.load(open('reports/rare_localshader_probe.json'))
+          assert d['status']=='D1_REMOTE_PS4_SHADER_BINARY_PROBE_EXACT',d
           by={x['tag_hash']:x for x in d['shaders']}
           E={
-            '80A08667':('80A08668','2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f',3),
-            '80A0627B':('80A0627C','44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c',6),
+            '80A08667':('80A08668','2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f',3,'0104'),
+            '80A0627B':('80A0627C','44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c',6,'0103'),
           }
           want=[('SubPtrFetchShader',0,0),('PtrVertexBufferTable',0,2),('ImmConstBuffer',10,8),('ImmConstBuffer',11,12)]
-          for h,(native,gcn,nloads) in E.items():
+          for h,(native,gcn,nloads,pkg) in E.items():
             r=by[h]
-            assert r['present'] and r['payload_reference']==native,r
+            assert r['package_id']==pkg,r
+            assert r['payload_reference']==native,r
             assert r['binary_info']['stage']=='LocalShader',r
             assert r['code_sha256']==gcn,r
             got=[(x['usage_name'],x['api_slot'],x['start_register']) for x in r['usage']['slots']]
@@ -71,7 +71,7 @@ jobs:
           grep -q s_endpgm disasm/80A08667.s
           grep -q s_endpgm disasm/80A0627B.s
           python - <<'PY'
-          import json,re,hashlib
+          import json,hashlib
           E={
             '80A08667':('80A08668','2611323e1fd51d609701f16bb7a6ca11da116ace11be3861659d10813154828f',3),
             '80A0627B':('80A0627C','44643993ac626aa827f90578ad0b5b6c2adc1d78e0e888a761ffb0554aeb008c',6),
