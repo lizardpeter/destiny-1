@@ -1,0 +1,52 @@
+name: D1 API10 00EF LocalShader structure census
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_00ef_localshader_structure_census.py'
+      - '.github/workflows/d1-api10-00ef-localshader-structure.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact 00EF retail corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10565230330/zip"             -o input/00ef.zip
+          unzip -q input/00ef.zip -d input/00ef
+          echo "cec4e79ac0f42d152c87632688097df1176330b98864d2b014cec863b0e593ff  input/00ef/reports/D1_API10_00EF_LOCALSHADER_RETAIL_CENSUS.json" | sha256sum -c -
+      - name: Build exact non-semantic structure census
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_api10_00ef_localshader_structure_census.py
+          python tools/d1_api10_00ef_localshader_structure_census.py             --retail-census input/00ef/reports/D1_API10_00EF_LOCALSHADER_RETAIL_CENSUS.json             --disasm-dir input/00ef/disasm             -o out/D1_API10_00EF_LOCALSHADER_STRUCTURE_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_00EF_LOCALSHADER_STRUCTURE_CENSUS.json'))
+          assert d['status']=='D1_API10_00EF_LOCALSHADER_STRUCTURE_CENSUS_EXACT',d
+          c=d['coverage']
+          assert c['program_count']==11,c
+          assert c['lds_record_stride_histogram']=={'80':6,'96':5},c
+          assert c['m0_0x10000_program_count']==11,c
+          assert all(d['cross_dimension_findings'].values()),d
+          assert d['semantic_boundary']['hardware_tessellation_ownership']=='WITHHELD'
+          assert d['semantic_boundary']['engine_semantic']=='WITHHELD'
+          PY
+          sha256sum out/D1_API10_00EF_LOCALSHADER_STRUCTURE_CENSUS.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-00EF-LOCALSHADER-STRUCTURE-CENSUS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
