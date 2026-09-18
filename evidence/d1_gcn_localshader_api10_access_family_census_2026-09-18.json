@@ -1,0 +1,16 @@
+{
+  "schema":"d1_gcn_localshader_api10_access_family_census_frozen/v1",
+  "status":"D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT",
+  "source_workflow":{"run_id":35308776965,"artifact_id":10532502102,"artifact_digest":"sha256:fd051f50761824a13286b3364f3981e3b55330d32202cdafd7bc4c1f9eae75c6","head_sha":"894c5990326853a3617adff9fb20c3740177f344"},
+  "coverage":{"program_count":39,"wrapper_count":56,"material_occurrence_count":3386,"descriptor_windows":["s[12:15]","s[8:11]"],"instruction_count_families":[3,6,8,12],"program_instruction_histogram":{"3":1,"6":1,"8":17,"12":20},"material_instruction_histogram":{"3":14,"6":3,"8":1320,"12":2049}},
+  "families":[
+    {"tbuffer_instruction_count":3,"descriptor_window":"s[8:11]","program_count":1,"wrapper_count":1,"material_occurrence_count":14},
+    {"tbuffer_instruction_count":6,"descriptor_window":"s[8:11]","program_count":1,"wrapper_count":1,"material_occurrence_count":3},
+    {"tbuffer_instruction_count":8,"descriptor_window":"s[12:15]","program_count":13,"wrapper_count":27,"material_occurrence_count":602},
+    {"tbuffer_instruction_count":8,"descriptor_window":"s[8:11]","program_count":4,"wrapper_count":4,"material_occurrence_count":718},
+    {"tbuffer_instruction_count":12,"descriptor_window":"s[12:15]","program_count":13,"wrapper_count":13,"material_occurrence_count":217},
+    {"tbuffer_instruction_count":12,"descriptor_window":"s[8:11]","program_count":7,"wrapper_count":10,"material_occurrence_count":1832}
+  ],
+  "semantic_boundary":{"access_shape":"EXACT","descriptor_entry_window":"EXACT","runtime_writer":"WITHHELD","backing_allocation":"WITHHELD","engine_semantic":"WITHHELD"},
+  "capture_strategy":"A runtime-writer capture corpus must cover both descriptor windows and all four exact TBUFFER-count families (3,6,8,12); a single API10 capture is not sufficient to generalize runtime ownership."
+}
