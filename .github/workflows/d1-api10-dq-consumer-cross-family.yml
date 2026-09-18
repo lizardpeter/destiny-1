@@ -1,0 +1,42 @@
+name: D1 API10 DQ consumer cross-family proof
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_api10_dq_consumer_cross_family_proof.py'
+      - 'tools/d1_xur_vs_8087695c_family_semantic_proof.py'
+      - 'tools/d1_xur_vs_80876960_semantic_proof.py'
+      - 'tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py'
+      - '.github/workflows/d1-api10-dq-consumer-cross-family.yml'
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m py_compile tools/d1_api10_dq_consumer_cross_family_proof.py
+          python tools/d1_api10_dq_consumer_cross_family_proof.py --one tools/d1_xur_vs_8087695c_family_semantic_proof.py --two tools/d1_xur_vs_80876960_semantic_proof.py --four tools/d1_xur_vs_8087695b_four_influence_semantic_proof.py -o out/D1_API10_DQ_CONSUMER_CROSS_FAMILY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API10_DQ_CONSUMER_CROSS_FAMILY.json'))
+          assert d['status']=='D1_API10_DQ_CONSUMER_CROSS_FAMILY_EXACT',d
+          assert d['influence_counts']==[1,2,4]
+          assert d['material_occurrences']==48
+          assert d['proven_common_role']['record_width_bytes']==16
+          assert d['limits']['all_39_api10_programs_have_dq_role'] is False
+          assert all(d['limits'][x]=='WITHHELD' for x in ['runtime_writer','backing_allocation','engine_buffer_name','engine_semantic'])
+          PY
+          sha256sum out/D1_API10_DQ_CONSUMER_CROSS_FAMILY.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-API10-DQ-CONSUMER-CROSS-FAMILY
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
