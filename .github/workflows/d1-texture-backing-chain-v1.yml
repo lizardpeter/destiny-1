@@ -1,0 +1,23 @@
+name: D1 texture backing chain v1
+on:
+  workflow_dispatch:
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - 'tools/d1_texture_backing_chain_v1.py'
+      - 'tests/test_d1_texture_backing_chain_v1.py'
+      - '.github/workflows/d1-texture-backing-chain-v1.yml'
+permissions:
+  contents: read
+jobs:
+  exact-chain-shapes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_texture_backing_chain_v1.py tests/test_d1_texture_backing_chain_v1.py
+          python tests/test_d1_texture_backing_chain_v1.py
