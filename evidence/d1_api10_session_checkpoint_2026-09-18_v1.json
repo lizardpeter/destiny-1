@@ -1,0 +1,24 @@
+{
+  "schema": "d1_api10_session_checkpoint/v1",
+  "status": "DURABLE_RESUMABLE",
+  "branch": "d1-crota-source-semantics-v1",
+  "checkpoint_after_commit": "019a46929be5041e5980be7559363ace45f72920",
+  "proven_this_session": [
+    "Exact Xur native VS GCN families with 1, 2, and 4 influences all consume ImmConstBuffer API10 from user-data start SGPR 8 / descriptor s[8:11].",
+    "Those Xur families use API10 as consecutive float4 real+dual quaternion record pairs in exact native dual-quaternion transform/skinning arithmetic.",
+    "Exact Vex VS GCN e6f18138... also consumes API10 from s[8:11] but selects three consecutive float4 rows for a rigid transform.",
+    "Therefore API10's consumer-side record structure is heterogeneous across exact retail GCN and cannot be generalized from API number or SGPR window."
+  ],
+  "still_withheld": [
+    "runtime command/user-data writer",
+    "four live descriptor dwords",
+    "descriptor backing allocation identity and bytes",
+    "universal API10 record schema",
+    "engine-facing buffer name",
+    "engine semantic",
+    "claim that every member of the exact 39-program API10 set has a transform/palette role"
+  ],
+  "ci_observation": "The GitHub connector returned no workflow-run/status records yet for the new branch commits; no green CI claim is made.",
+  "next_hard_gate": "Recover primary runtime writer + descriptor/backing capture for exact members of the 39-program set, preserving per-program consumer_record_structure. If unavailable, expand exact consumer-role classification over the remaining API10 GCN programs without assigning a universal semantic.",
+  "resume_rule": "Read branch head first; preserve any newer concurrent Destiny commits. Do not reset to this checkpoint if head advanced."
+}
