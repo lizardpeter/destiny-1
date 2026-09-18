@@ -14,7 +14,7 @@ This ledger is authoritative for unresolved data. An entry remains here until ev
 | Header signature area | 256-byte blob at `header_signature_offset` | dense region on PS4 and Xbox | PARTIAL | identify cryptographic algorithm/key and verification procedure |
 | FileEntry.entry_b | bits `8..15` | zero across canonical PS4 sample | UNKNOWN | determine reserved vs meaningful using larger corpus |
 | FileEntry.entry_b | bits `16..23` | seven PS4 values; preserved 209/209 PS4 and 3171/3171 Xbox local edges | PARTIAL / semantics UNKNOWN | correlate with package family, streaming/allocation/resource grouping |
-| GPU subtype 7 | `32:7 / 1:7` | 16-byte header; unit_count×16 payload; 88 technique refs | STRONGLY_SUPPORTED ConstantBuffer role | confirm through D1 shader/technique binding semantics |
+| GPU subtype 7 | `32:7 / 1:7` | 16-byte header; unit_count×16 payload; 88 technique refs; OrbShdr API0 + exact GCN b0 loads | MATERIAL Vector4/b0 ROLE PROVEN / OFFICIAL CLASS NAME UNKNOWN | recover D1-specific official Tiger class naming and check any non-material/global uses |
 | D1 texture chain | type `65:1` | first hop in two-hop texture path | ROLE SOLVED / OFFICIAL NAME UNKNOWN | wider corpus + structured consumer |
 | D1 texture chain | type `5:1` | terminal texture payload | ROLE SOLVED / OFFICIAL NAME UNKNOWN | wider corpus + official class correlation |
 | PS4 Texture2D | `0x04..0x05` | two unknown bytes | UNKNOWN | correlate format/mips/tile state across textures |
