@@ -5,38 +5,55 @@ on:
     branches: [d1-crota-source-semantics-v1]
     paths:
       - 'tools/d1_localshader_api10_capture_gate_v1.py'
+      - 'tools/d1_gcn_localshader_api10_access_family_census_v1.py'
       - 'tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json'
       - 'tests/fixtures/d1_localshader_api10_capture_gate_incomplete_v1.json'
       - 'tests/fixtures/d1_localshader_api10_capture_gate_negative_semantic_v1.json'
       - 'tests/fixtures/d1_localshader_api10_capture_gate_fake_primary_v1.json'
-      - 'evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json'
       - '.github/workflows/d1-localshader-api10-capture-gate-v1.yml'
+permissions:
+  actions: read
+  contents: read
 jobs:
-  validate:
+  gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Recover regenerated exact program membership
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/artifacts/10539900120/zip > membership.zip
+          unzip -q membership.zip -d membership
+          sha256sum membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json'))
+          assert d['schema']=='d1_gcn_localshader_api10_access_family_census/v2',d
+          assert d['status']=='D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_EXACT',d
+          assert len(d['programs'])==39,d
+          assert len({p['gcn_sha256'] for p in d['programs']})==39,d
+          PY
       - name: Validate frozen family contract with non-semantic fixture
         run: |
-          python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json --captures tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json --out /tmp/d1_api10_capture_gate.json
+          python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_complete_v1.json --out /tmp/d1_api10_capture_gate.json
       - name: Require incomplete family coverage to fail closed
         run: |
-          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json --captures tests/fixtures/d1_localshader_api10_capture_gate_incomplete_v1.json --out /tmp/d1_api10_capture_gate_incomplete.json; then exit 1; fi
+          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_incomplete_v1.json --out /tmp/d1_api10_capture_gate_incomplete.json; then exit 1; fi
           python3 - <<'PY'
           import json
           p=json.load(open('/tmp/d1_api10_capture_gate_incomplete.json'));assert p['status']=='D1_LOCALSHADER_API10_CAPTURE_COVERAGE_INCOMPLETE';assert len(p['missing_families'])==5
           PY
       - name: Require unproven engine semantic to fail closed
         run: |
-          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json --captures tests/fixtures/d1_localshader_api10_capture_gate_negative_semantic_v1.json --out /tmp/d1_api10_capture_gate_semantic.json; then exit 1; fi
-      - name: Require unbound primary capture to fail closed
+          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_negative_semantic_v1.json --out /tmp/d1_api10_capture_gate_semantic.json; then exit 1; fi
+      - name: Require unknown primary program to fail closed against exact membership
         run: |
-          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen evidence/d1_gcn_localshader_api10_access_family_census_2026-09-18.json --captures tests/fixtures/d1_localshader_api10_capture_gate_fake_primary_v1.json --out /tmp/d1_api10_capture_gate_fake_primary.json; then
-            echo 'ERROR: primary capture was accepted without exact frozen program membership' >&2; exit 1
+          if python3 tools/d1_localshader_api10_capture_gate_v1.py --frozen membership/D1_GCN_LOCALSHADER_API10_ACCESS_FAMILY_CENSUS_V1.json --captures tests/fixtures/d1_localshader_api10_capture_gate_fake_primary_v1.json --out /tmp/d1_api10_capture_gate_fake_primary.json; then
+            echo 'ERROR: unknown primary program was accepted against exact membership' >&2; exit 1
           fi
       - uses: actions/upload-artifact@v4
         with:
           name: d1-localshader-api10-capture-gate-v1
-          path: |
-            /tmp/d1_api10_capture_gate.json
-            /tmp/d1_api10_capture_gate_incomplete.json
+          path: /tmp/d1_api10_capture_gate.json
+          if-no-files-found: error
