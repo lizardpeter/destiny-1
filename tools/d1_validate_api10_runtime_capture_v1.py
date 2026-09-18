@@ -6,11 +6,12 @@ to the consuming stage/window, four raw descriptor dwords, primary writer
 provenance including the captured writer bytes, and exact backing bytes. Engine
 semantic and any universal record schema are intentionally outside this validator.
 """
-import argparse, hashlib, json
+import argparse, hashlib, json, struct
 from pathlib import Path
 
 WINDOWS={"s[12:15]","s[8:11]"}
 COUNTS={3,6,8,12}
+STAGES={"LOCAL_SHADER"}
 HEX=set("0123456789abcdef")
 
 def die(msg):
@@ -41,6 +42,8 @@ def main():
         if p in seen_programs: die(f"sample {i} duplicate program")
         seen_programs.add(p)
         if s.get("membership_proof")!="SOURCE_CLOSED_39_MEMBER_SET": die(f"sample {i} membership")
+        if s.get("consumer_stage") not in STAGES: die(f"sample {i} consumer stage")
+        if not isinstance(s.get("consumer_locator"),str) or not s["consumer_locator"].strip(): die(f"sample {i} consumer locator")
         if not s.get("consumer_record_structure") or s.get("consumer_record_structure")=="UNIVERSAL_API10": die(f"sample {i} consumer record structure")
         w=s.get("descriptor_window")
         if w not in WINDOWS: die(f"sample {i} descriptor_window")
@@ -49,7 +52,10 @@ def main():
         if n not in COUNTS: die(f"sample {i} tbuffer count")
         seen_counts.add(n)
         dw=s.get("descriptor_dwords")
-        if not isinstance(dw,list) or len(dw)!=4 or any(not isinstance(x,int) or x<0 or x>0xffffffff for x in dw): die(f"sample {i} descriptor dwords")
+        if not isinstance(dw,list) or len(dw)!=4 or any(type(x) is not int or x<0 or x>0xffffffff for x in dw): die(f"sample {i} descriptor dwords")
+        descriptor_raw=decode_hex(s.get("descriptor_bytes_hex"),f"sample {i} descriptor raw bytes")
+        if len(descriptor_raw)!=16: die(f"sample {i} descriptor raw bytes length")
+        if list(struct.unpack("<4I",descriptor_raw))!=dw: die(f"sample {i} descriptor dwords/raw bytes mismatch")
         writer=s.get("writer",{})
         if writer.get("evidence_class")!="PRIMARY_RUNTIME" or not writer.get("capture_locator"): die(f"sample {i} writer provenance")
         writer_raw=decode_hex(writer.get("raw_bytes_hex"),f"sample {i} writer raw bytes")
@@ -59,6 +65,7 @@ def main():
         backing=s.get("backing",{})
         if backing.get("evidence_class")!="PRIMARY_RUNTIME": die(f"sample {i} backing")
         backing_raw=decode_hex(backing.get("bytes_hex"),f"sample {i} backing bytes")
+        if not backing_raw: die(f"sample {i} backing bytes empty")
         h=hashlib.sha256(backing_raw).hexdigest(); nbytes=len(backing_raw)
         if not valid_sha256(backing.get("sha256")) or h!=backing.get("sha256"): die(f"sample {i} backing sha256")
         if nbytes!=backing.get("length"): die(f"sample {i} backing length")
