@@ -144,10 +144,11 @@ def resolve_chain(c, h:str):
         _first,backing,mode=resolve_texture_backing(global_by,hm)
     except Exception as ex:
         return out,None,None,f'strict backing-chain rejection: {ex}'
-    bh=norm(backing[1].get('tag_hash') or '')
-    if not bh:
-        # Corpus metadata historically does not need tag_hash because lookup is
-        # already keyed by it; recover the exact key without guessing.
+    raw_bh=backing[1].get('tag_hash')
+    bh=norm(raw_bh) if raw_bh else None
+    if bh is None:
+        # Corpus metadata historically does not carry tag_hash because lookup is
+        # already keyed by it; recover the exact key from the rows we just built.
         for x in out[1:]:
             if x.get('meta') is backing[1] or x.get('meta')==backing[1]:
                 bh=x['hash'];break
