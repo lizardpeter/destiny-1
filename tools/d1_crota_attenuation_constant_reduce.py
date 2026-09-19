@@ -12,7 +12,7 @@ FAMILIES={
 }
 # Exact API0 material-cbuffer dword reads frozen from the native GFX700 programs.
 READS_958=[11,12,13,16,17,23,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48]
-READS_959=[8,9,15,19]
+READS_959=[8,9,15,19]\nDIRECT_ALPHA_958=[11,12,13,16,17,23,27,48]\nDIRECT_ALPHA_959=[8,9,15,19]
 
 def flat(stage):
  vals=[];raw=[]
@@ -35,8 +35,10 @@ def diff(a,b):
  return out
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--stage-state',type=Path,required=True);ap.add_argument('--cbuffer-usage',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);a=ap.parse_args()
- d=json.loads(a.stage_state.read_text());cu=json.loads(a.cbuffer_usage.read_text());v=[];rows=[]
+ ap=argparse.ArgumentParser();ap.add_argument('--stage-state',type=Path,required=True);ap.add_argument('--cbuffer-usage',type=Path,required=True);ap.add_argument('--alpha-slice',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);a=ap.parse_args()
+ d=json.loads(a.stage_state.read_text());cu=json.loads(a.cbuffer_usage.read_text());al=json.loads(a.alpha_slice.read_text());v=[];rows=[]
+ if al.get('status')!='D1_GCN_TERMINAL_ALPHA_SLICE_EXACT' or al.get('violations'):v.append('terminal alpha slice not exact')
+ alpha={x['shader']:x for x in al.get('shaders',[])}
  if cu.get('status')!='D1_GCN_CBUFFER_USAGE_EXACT' or cu.get('missing_usage'):v.append('cbuffer usage not exact')
  usage={x['shader']:x for x in cu.get('shaders',[])}
  if d.get('status')!='D1_MATERIAL_STAGE_STATE_EXACT' or d.get('violations'):v.append('stage state not exact')
@@ -51,11 +53,19 @@ def main():
    if not ur:raise ValueError(f'{aps}: cbuffer provenance row missing')
    reads=[int(x) for x in (ur.get('api_slot_read_dwords') or {}).get('0',[])]
    if reads!=expected:raise ValueError(f'{aps}: derived API0 reads {reads} != frozen exact {expected}')
+   ar=alpha.get(aps)
+   if not ar:raise ValueError(f'{aps}: terminal alpha slice missing')
+   direct=[int(x) for x in (ar.get('value_slice') or {}).get('cbuffer_dwords',{}).get('0',[])]
+   expected_direct=DIRECT_ALPHA_958 if aps=='8108E958' else DIRECT_ALPHA_959
+   if direct!=expected_direct:raise ValueError(f'{aps}: direct terminal-alpha API0 dwords {direct} != {expected_direct}')
    sr=selected(qv,qr,reads);changes=diff(c['ps'],q['ps'])
    row={'family':name,'color_material':ch,'attenuation_material':ah,'color_shader':cps,'attenuation_shader':aps,
         'color_cbuffer_dword_count':len(cv),'attenuation_cbuffer_dword_count':len(qv),
         'attenuation_api0_reads':sr,'derived_api0_read_dwords':reads,'frozen_expected_api0_read_dwords':expected,
         'api0_read_set_revalidated_from_gcn':True,
+        'terminal_alpha_direct_api0_dwords':direct,
+        'terminal_alpha_direct_api0_revalidated':True,
+        'terminal_alpha_value_slice':ar.get('value_slice'),
         'color_vs_attenuation_changed_dwords':changes,'changed_dword_count':len(changes)}
    if aps=='8108E959':
     m={x['dword']:x['value'] for x in sr}
@@ -68,7 +78,7 @@ def main():
       'status':'D1_CROTA_ATTENUATION_CONSTANTS_EXACT' if len(rows)==4 and not v else 'D1_CROTA_ATTENUATION_CONSTANTS_PARTIAL',
       'rows':rows,'violations':v,
       'withheld':['semantic names of API0 cbuffer values','API12/global cbuffer semantic names','native pass order'],
-      'policy':'Dword offsets are mechanically recovered from exact GCN scalar-buffer descriptor provenance on every run and checked against the frozen shader-family read set. Values come only from exact serialized PS cbuffers; no preview constants are used.'}
+      'policy':'Dword offsets are mechanically recovered from exact GCN scalar-buffer descriptor provenance on every run and checked against the frozen shader-family read set. The terminal MRT0.A backward slice separately identifies the direct arithmetic subset. Values come only from exact serialized PS cbuffers; no preview constants are used.'}
  a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
  print(json.dumps({'status':out['status'],'rows':[{'family':r['family'],'changed':r['changed_dword_count'],'reads':r['attenuation_api0_reads'],'coefficients':r.get('exact_symbolic_coefficients'),'interval':r.get('coefficient_only_alpha_interval_before_render_target_clamp')} for r in rows],'violations':v},indent=2))
  return 0 if out['status']=='D1_CROTA_ATTENUATION_CONSTANTS_EXACT' else 2
