@@ -1,0 +1,129 @@
+name: D1 Crota animation state GlobalStrings resolution
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-animation-state-globalstrings.yml'
+      - 'tools/d1_animation_state_hash_export.py'
+      - 'tools/d1_remote_global_stringhash_resolve.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CATALOG_ARTIFACT_ID: '9994811238'
+  CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  BODY_ARTIFACT_ID: '10027389376'
+  BODY_ZIP_SHA256: '9cb9f25e01138bf89de4b641e19308bcbc3f2ca49f73f223b0a01890ffca0ca4'
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact catalog body artifact and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog input/body runtime out
+          fetch() {
+            local id="$1" zip="$2" sha="$3" dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "$sha  $zip" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          fetch "$CATALOG_ARTIFACT_ID" input/catalog.zip "$CATALOG_ZIP_SHA256" input/catalog
+          echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          fetch "$BODY_ARTIFACT_ID" input/body.zip "$BODY_ZIP_SHA256" input/body
+          test -f input/body/CROTA_ANIMATION_OPTIONS_V3.json
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Export exact Crota selector hashes
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_state_hash_export.py input/body/CROTA_ANIMATION_OPTIONS_V3.json \
+            --out out/CROTA_ANIMATION_STATE_HASHES.json \
+            --args-out out/CROTA_ANIMATION_STATE_HASH_ARGS.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_STATE_HASHES.json'))
+          assert d['status']=='D1_ANIMATION_STATE_HASH_EXPORT_EXACT',d
+          assert d['state_record_count']==128,d
+          assert d['unique_state_hash_count']==128,d
+          assert d['source_payload_named_record_count']==0,d
+          assert not d['violations'],d['violations']
+          print('CROTA_STATE_HASHES_EXACT',d['unique_state_hash_count'])
+          PY
+
+      - name: Resolve exact hashes through verified retail GlobalStrings banks
+        run: |
+          set -euo pipefail
+          read -ra HASH_ARGS < out/CROTA_ANIMATION_STATE_HASH_ARGS.txt
+          python tools/d1_remote_global_stringhash_resolve.py \
+            "${HASH_ARGS[@]}" \
+            --global-package-id 0x0151 --global-package-id 0x0154 --global-package-id 0x0155 \
+            --global-package-id 0x0156 --global-package-id 0x0157 --global-package-id 0x0158 \
+            --global-package-id 0x0169 --global-package-id 0x018D --global-package-id 0x01E3 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o out/CROTA_ANIMATION_STATE_GLOBALSTRINGS.json | tee out/globalstrings_stdout.txt
+          python - <<'PY'
+          import json,pathlib
+          h=json.load(open('out/CROTA_ANIMATION_STATE_HASHES.json'))
+          d=json.load(open('out/CROTA_ANIMATION_STATE_GLOBALSTRINGS.json'))
+          assert d['schema']=='d1_remote_global_stringhash_resolve/v1',d
+          assert d['violation_count']==0,d['violations']
+          assert not d['scan_errors'],d['scan_errors']
+          assert set(d['target_string_hashes'])==set(h['unique_state_hashes']),(
+              len(d['target_string_hashes']),len(h['unique_state_hashes']))
+          compact={}
+          collision_count=0
+          for k,rows in sorted(d['resolved'].items()):
+              vals=sorted({x['string'] for x in rows if x.get('ok') and x.get('string') is not None})
+              compact[k]=vals
+              if len(vals)>1: collision_count+=1
+          resolved={k:v for k,v in compact.items() if v}
+          out={
+              'schema':'d1_crota_animation_state_globalstrings_summary/v1',
+              'status':'D1_CROTA_ANIMATION_STATE_GLOBALSTRINGS_EXACT',
+              'target_hash_count':len(h['unique_state_hashes']),
+              'resolved_hash_count':len(resolved),
+              'unresolved_hash_count':len(d['unresolved_target_hashes']),
+              'collision_hash_count':collision_count,
+              'resolved':resolved,
+              'unresolved_hashes':d['unresolved_target_hashes'],
+              'global_package_ids':d['global_package_ids'],
+              'global_container_count':d['global_container_count'],
+              'semantic_boundary':{
+                  'exact_globalstrings_hits':'SOURCE_NAMES_IF_PRESENT',
+                  'unresolved_hash_behavior_names':'WITHHELD',
+                  'heuristic_clip_names':'PROHIBITED_BY_THIS_PROOF',
+              },
+          }
+          pathlib.Path('out/CROTA_ANIMATION_STATE_GLOBALSTRINGS_SUMMARY.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('CROTA_STATE_GLOBALSTRINGS','TARGETS',out['target_hash_count'],
+                'RESOLVED',out['resolved_hash_count'],'UNRESOLVED',out['unresolved_hash_count'],
+                'COLLISIONS',out['collision_hash_count'])
+          for k,v in resolved.items(): print('STATE_NAME',k,v)
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-ANIMATION-STATE-GLOBALSTRINGS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
