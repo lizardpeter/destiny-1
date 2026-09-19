@@ -27,6 +27,7 @@ import struct
 import sys
 import tempfile
 import traceback
+import numpy as np
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -42,6 +43,64 @@ from d1_remote_s_entity_resource_package_find import S_ENTITY_REF, parse_entity_
 from d1_split_tar_extract import SplitHttpTar
 
 NULLS = {'00000000', 'FFFFFFFF'}
+
+MOTION_EPS = 1e-6
+
+def _track_motion_summary(tracks: list) -> dict:
+    """Summarize exact decoded local-space variation without naming behavior."""
+    dyn_scale=[]; dyn_rot=[]; dyn_tr=[]; any_dyn=[]
+    for i,t in enumerate(tracks):
+        changed=False
+        sc=getattr(t,'scales',None)
+        if sc is not None and len(sc)>1:
+            a=np.asarray(sc,dtype=np.float64)
+            if float(np.max(np.abs(a-a[0])))>MOTION_EPS:
+                dyn_scale.append(i); changed=True
+        rot=getattr(t,'rotations',None)
+        if rot is not None and len(rot)>1:
+            q=np.asarray(rot,dtype=np.float64)
+            q0=q[0]
+            qn=np.linalg.norm(q,axis=1); n0=float(np.linalg.norm(q0))
+            if n0>0 and np.all(qn>0):
+                dots=np.abs((q @ q0)/(qn*n0))
+                if float(1.0-np.min(np.clip(dots,0.0,1.0)))>MOTION_EPS:
+                    dyn_rot.append(i); changed=True
+            elif float(np.max(np.abs(q-q0)))>MOTION_EPS:
+                dyn_rot.append(i); changed=True
+        tr=getattr(t,'translations',None)
+        if tr is not None and len(tr)>1:
+            a=np.asarray(tr,dtype=np.float64)
+            if float(np.max(np.abs(a-a[0])))>MOTION_EPS:
+                dyn_tr.append(i); changed=True
+        if changed:
+            any_dyn.append(i)
+    bone0={}
+    if tracks:
+        tr=getattr(tracks[0],'translations',None)
+        if tr is not None and len(tr):
+            a=np.asarray(tr,dtype=np.float64)
+            start=a[0]; end=a[-1]
+            bone0={
+                'translation_start':start.tolist(),
+                'translation_end':end.tolist(),
+                'translation_end_minus_start':(end-start).tolist(),
+                'translation_end_displacement':float(np.linalg.norm(end-start)),
+                'translation_peak_displacement_from_start':float(np.max(np.linalg.norm(a-start,axis=1))),
+            }
+    return {
+        'epsilon':MOTION_EPS,
+        'track_count':len(tracks),
+        'dynamic_scale_track_count':len(dyn_scale),
+        'dynamic_rotation_track_count':len(dyn_rot),
+        'dynamic_translation_track_count':len(dyn_tr),
+        'dynamic_any_track_count':len(any_dyn),
+        'dynamic_scale_track_indices':dyn_scale,
+        'dynamic_rotation_track_indices':dyn_rot,
+        'dynamic_translation_track_indices':dyn_tr,
+        'dynamic_any_track_indices':any_dyn,
+        'bone0_translation_syntax':bone0,
+        'semantic_boundary':'LOCAL_SPACE_VARIATION_ONLY_BONE0_NOT_NAMED_ROOT_MOTION',
+    }
 CONTROL_REF = '80802C0E'
 CLIP_REF = '808005A1'
 RUNTIME_RIG_PAIR = ('808008B2', '8080099B')
@@ -279,6 +338,7 @@ def main() -> int:
                     'decoded_track_count': len(decoded),
                     'retargeted_track_count': len(retargeted),
                     'local_track_count': len(local),
+                    'local_motion_summary': _track_motion_summary(local),
                     'retarget_success': True,
                 })
             except Exception as ex:
