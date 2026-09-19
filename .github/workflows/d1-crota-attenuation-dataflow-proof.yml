@@ -1,0 +1,84 @@
+name: D1 Crota frozen attenuation dataflow proof
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-crota-attenuation-dataflow-proof.yml'
+      - 'tools/d1_crota_attenuation_dataflow_proof.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ACTOR_ARTIFACT_ID: '10005225514'
+  ACTOR_ZIP_SHA256: '6687cb12dcc423152592bdaff9e7efd86c119fa5b4e5e11cd885cc05ee20491b'
+  SHADER_ARTIFACT_ID: '10030265852'
+  SHADER_ZIP_SHA256: '05bed80356309a0b03d86a9b0c12493e4faf9730d393171e0e189b0d4050f2f7'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover frozen exact Crota evidence
+        run: |
+          set -euo pipefail
+          python -m pip install -q Pillow
+          mkdir -p input/actor input/shader out
+          fetch() {
+            local id="$1" zip="$2" sha="$3" dst="$4"
+            curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$zip"
+            echo "$sha  $zip" | sha256sum --check --strict
+            unzip -q "$zip" -d "$dst"
+          }
+          fetch "$ACTOR_ARTIFACT_ID" input/actor.zip "$ACTOR_ZIP_SHA256" input/actor
+          fetch "$SHADER_ARTIFACT_ID" input/shader.zip "$SHADER_ZIP_SHA256" input/shader
+          test -f input/actor/crota_raid_actor_material_dependencies.json
+          test -f input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json
+          for h in 8108E958 8108E959 80AAE1CD; do test -f "input/shader/PS_${h}_GFX700.s"; done
+          for h in 8108E7B6 80AACF2A 80AAD0E1 8108E951 8108E952; do
+            test "$(find input/actor/texture_export/textures -maxdepth 1 -name "${h}_*.png" | wc -l)" -eq 1
+          done
+      - name: Reduce exact native attenuation inputs
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_attenuation_dataflow_proof.py \
+            --material-dependencies input/actor/crota_raid_actor_material_dependencies.json \
+            --image-usage input/shader/CROTA_VISUAL_GCN_IMAGE_USAGE.json \
+            --disasm-dir input/shader \
+            --texture-dir input/actor/texture_export/textures \
+            --out out/CROTA_ATTENUATION_DATAFLOW_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ATTENUATION_DATAFLOW_PROOF.json'))
+          assert d['status']=='D1_CROTA_ATTENUATION_DATAFLOW_REDUCED_EXACT',d
+          assert not d['violations'],d['violations']
+          assert len(d['material_pairs'])==5,d
+          p=d['procedural_8108E958']
+          assert p['access_masks']=={'0':'x','1':'w','2':'w','3':'xy','4':'w'},p
+          assert p['constant_samples']=={'t1.w':1.0,'t2.w':1.0,'t4.w':1.0},p
+          a=d['atlas_8108E959']
+          assert a['access_masks']=={'0':'w'},a
+          assert 't0.w = 1.0 exactly' in a['texture_alpha'],a
+          q=d['detail_80AAE1CD']
+          assert q['native_output']=='RGB=0; alpha=1.0',q
+          print('CROTA_ATTENUATION_REDUCTION_GREEN')
+          print('PROC',p)
+          print('ATLAS',a)
+          print('DETAIL',q)
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-CROTA-ATTENUATION-DATAFLOW-PROOF
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
