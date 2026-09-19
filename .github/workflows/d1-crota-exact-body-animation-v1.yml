@@ -16,8 +16,10 @@ on:
       - 'tools/d1_crota_skin_bone_map.py'
       - 'tools/d1_world_articulated_skin_census.py'
       - 'tools/d1_remote_crota_skin_census.py'
-      - 'tools/d1_animation_frame_event_pointer_census.py'\n      - 'tools/d1_animation_event_prefix_structure.py'
+      - 'tools/d1_animation_frame_event_pointer_census.py'
+      - 'tools/d1_animation_event_prefix_structure.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
+      - 'tools/d1_crota_animation_component_state_census.py'
       - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
@@ -245,6 +247,47 @@ jobs:
           assert [x['clip_count'] for x in d['source_component_families']]==[68,13,1],d
           print('CROTA_COMPONENT_TARGET',d['target_components'])
           print('CROTA_COMPONENT_SOURCE_FAMILIES',d['source_component_families'])
+          PY
+
+      - name: Census selector states by exact runtime-component family
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_animation_component_state_census.py \
+            --options out/CROTA_ANIMATION_OPTIONS_V3.json \
+            --control 8108E5C0 \
+            --out out/CROTA_ANIMATION_COMPONENT_STATE_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_COMPONENT_STATE_CENSUS.json'))
+          assert d['status']=='D1_CROTA_ANIMATION_COMPONENT_STATE_CENSUS_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['control']=='8108E5C0',d
+          assert d['selected_clip_count']==82,d
+          assert d['state_record_count']==128,d
+          assert d['component_family_count']==3,d
+          assert [x['selected_clip_count'] for x in d['families']]==[68,13,1],d['families']
+          pats={(x['selection_count'],tuple(x['family_sequence'])):x['state_record_count'] for x in d['state_family_patterns']}
+          assert pats[(1,(0,))]==100,pats
+          assert pats[(1,(1,))]==24,pats
+          assert pats[(1,(2,))]==2,pats
+          assert pats[(2,(0,0))]==1,pats
+          assert pats[(2,(0,1))]==1,pats
+          assert d['multi_selection_record_count']==2,d
+          mr={x['record_index']:x for x in d['multi_selection_records']}
+          assert mr[92]['state_hash']=='2866EB1D' and mr[92]['family_sequence']==[0,0],mr[92]
+          assert [x['frame_count'] for x in mr[92]['selected']]==[31,31],mr[92]
+          assert mr[127]['state_hash']=='A726F478' and mr[127]['family_sequence']==[0,1],mr[127]
+          assert [x['frame_count'] for x in mr[127]['selected']]==[31,41],mr[127]
+          assert abs(mr[92]['scalar_minus_lead_clip_frame_intervals_div_30'])<1e-6,mr[92]
+          assert abs(mr[127]['scalar_minus_lead_clip_frame_intervals_div_30'])<1e-6,mr[127]
+          assert d['semantic_boundary']['behavioral_clip_names']=='WITHHELD',d
+          print('CROTA_COMPONENT_STATE_FAMILIES',
+                [(x['family_index'],x['selected_clip_count'],x['runtime_components']) for x in d['families']])
+          print('CROTA_COMPONENT_STATE_PATTERNS',d['state_family_patterns'])
+          print('CROTA_COMPONENT_MULTI_SELECTION',
+                [(x['record_index'],x['state_hash'],x['scalar_f32'],x['family_sequence'],
+                  [(y['clip'],y['frame_count']) for y in x['selected']])
+                 for x in d['multi_selection_records']])
           PY
 
       - name: Map runtime-rig controls onto exact skeleton nodes
