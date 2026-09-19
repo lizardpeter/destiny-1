@@ -39,25 +39,42 @@ Next productive material transaction: correlate all `8087670E` peers by complete
 
 ## Crota native material frontier
 
-The Blender R10 reconstruction is deliberately not fully source-closed: its node graph names unresolved attenuation terms `D1_PROXY_*`. Keep those proxies visibly separate from exact retail evidence.
+The attenuation-input frontier advanced materially in this run.
 
-Next productive shader/material transaction:
-- reopen exact Crota paired color/attenuation PS programs;
-- trace each sampled resource index through the corrected D1 assignment-prefix model;
-- classify each scalar/color input as exact serialized binding, runtime/default hole, inline/cbuffer value, or unresolved;
-- replace a `D1_PROXY_*` factor only when the producer/value is source-closed.
+Exact current high-detail pair closure:
+- color `8108E7A9/8108E7B2 -> PS8108E955`; partners `8108E7AB/8108E7B4 -> PS8108E958`;
+- color `8108E7AA/8108E7B3 -> PS8108E956`; partners `8108E7AC/8108E7B5 -> PS8108E959`;
+- color `8108E7B1 -> PS8108E953`; partner `809DD1DC -> PS80AAE1CD`.
+All ten selected materials retain state-byte0 `0x88`.
 
-Do not tune constants by appearance and call them solved.
+Native terminal-alpha backward slicing now separates generic shader capability from selected-material behavior:
+- `PS8108E958` generic terminal alpha directly consumes API0 dwords 11,12,13,16,17,23,27,48; API12 dwords 28-30; and sampled lanes t0.x/t1.w/t2.w/t4.w.
+- `PS8108E959` generic terminal alpha directly consumes API0 dwords 8,9,15,19; API12 dwords 28-30; and t0.w.
+- exact DXT1 block scans prove no transparent-index texels in `8108E951`, `8108E952`, or `80AACF2A`; their sampled alpha domain is exactly `{1}`.
+- current `8108E958` partner material constants have m11=1, m12=6, m13=-4.499999523162842, m23=1, m27=0, m48=0. Therefore API12/view-dot influence is algebraically dead, t1.w/t2.w/t4.w are constants 1, and terminal alpha varies only with BC4 `8108E7B6:t0.x`.
+- current `8108E959` partner constants have m15=1 and m19=0, while `8108E951:t0.w=1`; terminal alpha therefore reduces exactly to 1.0 and the API12/view-dot branch is dead for these selected materials.
+- `PS80AAE1CD` remains exact black RGB / alpha 1.
+
+The old R10 hand-tuned attenuation values were removed. R10 now replays the source-specialized `8108E958` BC4 equation and uses exact alpha=1 inputs for `8108E959` and `80AAE1CD`.
+
+Important remaining boundary: the blend equation is exact, but native pass/render-target ownership and draw order remain WITHHELD. The combined Blender closure is explicitly a portable inspection reconstruction rather than a source-closed framebuffer-order claim.
+
+Serialized geometry provides a new constraint: 14 exact duplicated color/partner geometry instances were found, and every color part is serialized before its matching partner part. This is **not** promoted to draw order. A same-target color->partner execution would erase color for the alpha=1 partner families, so naïve part-array order cannot be assumed to equal final framebuffer order.
 
 ## Animation frontier
 
-Crota's exact body path is already source-closed at the resource graph level: physical s_entity `8108E484`, embedded model `8108E5B7`, skeleton resource `8108E4BB` with 50 nodes, runtime rig `8108E4CB`, plus calibrated animation-owner class pairs and pinned native retarget execution.
+Crota's exact body path remains source-closed at the resource graph level: physical s_entity `8108E484`, embedded model `8108E5B7`, skeleton resource `8108E4BB` with 50 nodes, runtime rig `8108E4CB`, one selected control `8108E5C0`, and 82 selector-selected clips passing the pinned native decode/retarget/localize path.
 
-Next productive animation transaction:
-- move beyond resource enumeration into clip semantics and timing;
-- census exact selected clips/control hashes for Crota and structurally comparable Hive actors;
-- compare track/bone coverage, frame/sample timing, constant-vs-animated channels, root-motion candidates, and selector/control-state reuse;
-- keep behavioral labels withheld unless source strings/script/control evidence establishes them.
+This run advanced the executable analysis beyond resource enumeration:
+- retargeted clips now retain exact local-space motion variation by target track;
+- motion tracks are joined back to exact 50-node skeleton hash/hierarchy identities without inventing anatomical names;
+- the runtime rig/control, skin usage, dynamic motion and skeleton hierarchy domains are joined in dedicated censuses;
+- state scalar timing is exact at 30 frame-intervals per scalar unit for all single-selection records and the first selected clip of both multi-selection records;
+- the two multi-selection records both have scalar 1.0: one selects 31/31-frame clips and one selects 31/41-frame clips, strengthening the exact lead-selection correlation while alternate timing semantics remain withheld;
+- frame-event header pointers are source-closed as pointer structures; pointed-to record semantics remain unresolved;
+- a new bounded 32-byte event-target prefix census tests aligned word structure and frame-bounded candidate lanes without naming any field.
+
+Next animation frontier: source-close the frame-event target record schema or find independent string/control evidence for behavioral clip labels. Do not infer root-motion or event semantics from numerical patterns alone.
 
 ## API10 frontier
 
