@@ -1,0 +1,116 @@
+name: D1 PS4 api12 cross-corpus census
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-ps4-api12-census.yml'
+      - 'tools/d1_ps4_api12_census.py'
+      - 'tools/d1_gcn_constant_buffer_usage_analyze.py'
+      - 'tools/d1_gcn_cbuffer_usage_analyze.py'
+      - 'notes/D1_PS4_API12_VIEW_SCOPE_FRONTIER.md'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  CROTA_ARTIFACT_ID: '10030265852'
+  CROTA_ZIP_SHA256: '05bed80356309a0b03d86a9b0c12493e4faf9730d393171e0e189b0d4050f2f7'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Tower and Crota PS4 shader corpora
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/top upstream/common upstream/light upstream/crota upstream/crota_disasm reports
+          top_run="$(gh run list --workflow d1-tower-top-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          common_run="$(gh run list --workflow d1-tower-common-layer-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          light_run="$(gh run list --workflow d1-tower-light-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$top_run" && test -n "$common_run" && test -n "$light_run"
+          gh run download "$top_run" -n d1-tower-top40-pixel-shader-disassembly -D upstream/top
+          gh run download "$common_run" -n d1-tower-common65-pixel-shader-disassembly -D upstream/common
+          gh run download "$light_run" -n d1-tower-light-shader-disassembly -D upstream/light
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CROTA_ARTIFACT_ID}/zip" -o upstream/crota.zip
+          echo "${CROTA_ZIP_SHA256}  upstream/crota.zip" | sha256sum --check --strict
+          unzip -q upstream/crota.zip -d upstream/crota
+          test -f upstream/crota/CROTA_VISUAL_SHADER_EXTRACT.json
+          for f in upstream/crota/PS_*_GFX700.s; do
+            b="$(basename "$f" _GFX700.s)"
+            cp "$f" "upstream/crota_disasm/${b}.s"
+          done
+          test "$(find upstream/crota_disasm -name 'PS_*.s' | wc -l)" -eq 10
+          printf 'top=%s\ncommon=%s\nlight=%s\ncrota_artifact=%s\n'             "$top_run" "$common_run" "$light_run" "$CROTA_ARTIFACT_ID" | tee reports/upstream_sources.txt
+
+      - name: Recompute exact constant-buffer provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_constant_buffer_usage_analyze.py             --extract-report upstream/top/reports/top40_shader_extract.json             --disasm-dir upstream/top/disasm             --out reports/top40_constant_buffer_usage.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py             --extract-report upstream/common/reports/common65_shader_extract.json             --disasm-dir upstream/common/disasm             --out reports/common65_constant_buffer_usage.json
+          python tools/d1_gcn_constant_buffer_usage_analyze.py             --extract-report upstream/light/reports/tower_light_shader_report.json             --disasm-dir upstream/light/disasm             --out reports/light32_constant_buffer_usage.json
+          python tools/d1_gcn_cbuffer_usage_analyze.py             --extract-report upstream/crota/CROTA_VISUAL_SHADER_EXTRACT.json             --disasm-dir upstream/crota_disasm             --out reports/crota10_constant_buffer_usage.json
+          python - <<'PY'
+          import json
+          for name,path,n,status in (
+              ('top','reports/top40_constant_buffer_usage.json',40,'D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED'),
+              ('common','reports/common65_constant_buffer_usage.json',65,'D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED'),
+              ('light','reports/light32_constant_buffer_usage.json',32,'D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED'),
+              ('crota','reports/crota10_constant_buffer_usage.json',10,'D1_GCN_CBUFFER_USAGE_EXACT'),
+          ):
+              d=json.load(open(path))
+              assert d['status']==status,(name,d.get('status'),d.get('violations'),d.get('missing_usage'))
+              assert d['shader_count']==n,(name,d['shader_count'],n)
+          c=json.load(open('reports/crota10_constant_buffer_usage.json'))
+          assert not c['missing_usage'],c['missing_usage']
+          by={x['shader']:x for x in c['shaders']}
+          for h in ('8108E953','8108E955','8108E956','8108E958','8108E959'):
+              assert all(x in by[h]['api_slot_read_dwords'].get('12',[]) for x in (28,29,30)),(h,by[h])
+          print('CROTA_API12_28_30_SPILL_AWARE_PROVENANCE_GREEN')
+          PY
+
+      - name: Census PS4 api12 dwords across all four corpora
+        run: |
+          set -euo pipefail
+          python tools/d1_ps4_api12_census.py             --input top40=reports/top40_constant_buffer_usage.json             --input common65=reports/common65_constant_buffer_usage.json             --input light32=reports/light32_constant_buffer_usage.json             --input crota10=reports/crota10_constant_buffer_usage.json             --disasm top40=upstream/top/disasm             --disasm common65=upstream/common/disasm             --disasm light32=upstream/light/disasm             --disasm crota10=upstream/crota_disasm             --out reports/D1_PS4_API12_CROSS_CORPUS_CENSUS.json             | tee reports/D1_PS4_API12_CROSS_CORPUS_CENSUS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/D1_PS4_API12_CROSS_CORPUS_CENSUS.json'))
+          assert d['status']=='D1_PS4_API12_CENSUS_COMPLETE',d['violations']
+          assert d['corpus_shader_row_count']==147,d['corpus_shader_row_count']
+          assert d['input_usage_schemas']=={
+            'top40':'direct','common65':'direct','light32':'direct','crota10':'provenance'
+          },d['input_usage_schemas']
+          got=set(d['shaders_covering_all_target_dwords'])
+          required={'8108E953','8108E955','8108E956','8108E958','8108E959'}
+          assert required <= got,(required-got,sorted(got))
+          assert d['single_load_covering_all_target_dword_count']>=5,d
+          assert d['semantic_boundary']['dword_28_30_semantic']=='WITHHELD',d
+          assert d['semantic_boundary']['View_scope_label']=='EXTERNAL_LINEAGE_NOT_PROMOTED_BY_THIS_CENSUS',d
+          print('PS4_API12_CENSUS_ROWS',d['corpus_shader_row_count'])
+          print('PS4_API12_SHADER_COUNT',d['api12_shader_count'])
+          print('PS4_API12_DWORD_HISTOGRAM',d['api12_dword_load_histogram'])
+          print('PS4_API12_28_30_SHADER_COUNT',d['shaders_covering_all_target_dword_count'])
+          print('PS4_API12_28_30_SHADERS',d['shaders_covering_all_target_dwords'])
+          PY
+
+      - name: Persist hashes
+        if: always()
+        run: find reports -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > reports/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-PS4-API12-CROSS-CORPUS-CENSUS
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
