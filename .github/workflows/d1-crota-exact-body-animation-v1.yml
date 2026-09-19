@@ -12,7 +12,7 @@ on:
       - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_crota_skeleton_usage_union.py'\n      - 'tools/d1_crota_skeleton_usage_matrix.py'\n      - 'tools/d1_crota_skin_bone_map.py'\n      - 'tools/d1_world_articulated_skin_census.py'\n      - 'tools/d1_remote_crota_skin_census.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
       - 'tools/d1_crota_runtime_component_boundary.py'\n      - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
-      - 'tools/d1_animation_selector_alias_census.py'
+      - 'tools/d1_animation_selector_alias_census.py'\n      - 'tools/d1_animation_event_timing_correlation.py'
       - 'tools/d1_animation_control_state_map_v2.py'
       - 'tools/d1_tiger_animation_safe_offsets.py'
 
@@ -412,6 +412,29 @@ jobs:
                 'ALIASED_RECORDS',d['state_records_in_alias_groups'])
           for x in d['selected_sequence_groups'][:8]:
               print('SELECTOR_GROUP',x['state_record_count'],x['selected_clip_sequence'],x['state_hashes'],x['scalar_values'])
+          PY
+
+      - name: Correlate exact frame-event pointers with timing and selector reuse
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_event_timing_correlation.py \
+            --events out/CROTA_ANIMATION_FRAME_EVENT_POINTER_CENSUS.json \
+            --timing out/CROTA_ANIMATION_STATE_SCALAR_TIMING_PROOF.json \
+            --aliases out/CROTA_ANIMATION_SELECTOR_ALIAS_CENSUS.json \
+            --out out/CROTA_ANIMATION_EVENT_TIMING_CORRELATION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_EVENT_TIMING_CORRELATION.json'))
+          assert d['status']=='D1_ANIMATION_EVENT_TIMING_CORRELATION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['clip_count']==82,d
+          assert d['semantic_boundary']['pointer_count_as_event_count']=='WITHHELD',d
+          assert d['semantic_boundary']['event_behavior']=='WITHHELD',d
+          print('CROTA_EVENT_TIMING_GROUPS',d['pointer_count_frame_groups'])
+          print('CROTA_EVENT_BEARING_CLIPS',d['event_pointer_bearing_clip_count'])
+          for x in d['event_pointer_bearing_clips'][:30]:
+              print('EVENT_POINTER_CLIP',x['clip'],'FRAMES',x['frame_count'],
+                    'POINTERS',x['frame_event_pointer_count'],'STATE_HASHES',x['state_hash_count'])
           PY
 
       - name: Hash and upload
