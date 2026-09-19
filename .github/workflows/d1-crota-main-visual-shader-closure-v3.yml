@@ -22,6 +22,7 @@ on:
       - 'tools/d1_crota_attenuation_symbolic_reduce.py'
       - 'tools/d1_bc1_alpha_domain_proof.py'
       - 'tools/d1_crota_attenuation_material_specialize.py'
+      - 'tools/d1_crota_serialized_pair_order.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_crota_material_pair_invariants.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
@@ -60,7 +61,8 @@ jobs:
             tools/d1_crota_attenuation_constant_reduce.py \
             tools/d1_crota_attenuation_symbolic_reduce.py \
             tools/d1_bc1_alpha_domain_proof.py \
-            tools/d1_crota_attenuation_material_specialize.py
+            tools/d1_crota_attenuation_material_specialize.py \
+            tools/d1_crota_serialized_pair_order.py
           python -m unittest tests.test_d1_gcn_provenance_analysis -v
 
       - name: Recover exact Crota shader corpus
@@ -449,6 +451,26 @@ jobs:
               assert r['serialized_coefficients']['m27']==0.0,r
           print('CROTA_ATTENUATION_MATERIAL_SPECIALIZED',
                 [(h,by[h]['terminal_alpha_class'],by[h]['remaining_direct_varying_texture_lanes']) for h in sorted(by)])
+          PY
+
+          python tools/d1_crota_serialized_pair_order.py \
+            --material-bindings input/actor/crota_raid_actor_material_bindings.json \
+            --out out/CROTA_SERIALIZED_PAIR_ORDER.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SERIALIZED_PAIR_ORDER.json'))
+          assert d['status']=='D1_CROTA_SERIALIZED_PAIR_ORDER_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['pair_instance_count']==14,d
+          assert d['color_before_partner_count']==14,d
+          assert d['partner_before_color_count']==0,d
+          assert d['semantic_boundary']['draw_submission_order']=='WITHHELD',d
+          assert d['semantic_boundary']['render_target_identity']=='WITHHELD',d
+          print('CROTA_SERIALIZED_PAIR_ORDER',
+                [(x['mesh_index'],x['color_material'],x['partner_material'],
+                  x['color_part_index'],x['partner_part_index'],x['geometry_key'])
+                 for x in d['rows']])
+          print('CROTA_PAIR_ORDER_CONDITIONAL',d['conditional_framebuffer_consequence'])
           PY
           python - <<'PY'
           import json
