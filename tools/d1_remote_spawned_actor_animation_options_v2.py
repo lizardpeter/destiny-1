@@ -121,6 +121,35 @@ def _tag_array_len(a) -> int:
     if hasattr(a,'length'):
         return int(a.length)
     return int(len(a))
+
+def _frame_event_pointer_summary(hd, payload: bytes) -> dict:
+    """Preserve the exact D1 ROI frame-event pointer array without decoding records."""
+    p=hd.frame_events_array_pointer
+    count=int(p.length);base=int(p.get_address())
+    if count<0:
+        raise ValueError(f'negative frame-event pointer count {count}')
+    if count and (base<0 or base+count*8>len(payload)):
+        raise ValueError(f'frame-event pointer array OOB: count={count} base={base:#x} len={len(payload):#x}')
+    rows=[]
+    for i in range(count):
+        po=base+i*8
+        rel=struct.unpack_from('<Q',payload,po)[0]
+        target=None if rel==0 else po+rel
+        if target is not None and not (0<=target<len(payload)):
+            raise ValueError(f'frame-event pointer {i} target OOB: ptr={po:#x} rel={rel:#x} target={target:#x} len={len(payload):#x}')
+        prefix=b'' if target is None else payload[target:min(len(payload),target+32)]
+        rows.append({
+            'index':i,'pointer_offset':po,'raw_relative_u64':rel,
+            'raw_relative_hex':f'{rel:016X}','target_offset':target,
+            'target_prefix_byte_count':len(prefix),'target_prefix_hex':prefix.hex(),
+        })
+    return {
+        'count':count,'array_offset':base,
+        'nonnull_count':sum(x['target_offset'] is not None for x in rows),
+        'unique_nonnull_target_count':len({x['target_offset'] for x in rows if x['target_offset'] is not None}),
+        'pointers':rows,
+        'semantic_boundary':'POINTER_STRUCTURE_AND_BOUNDED_PREFIX_ONLY_EVENT_SCHEMA_WITHHELD',
+    }
 CONTROL_REF = '80802C0E'
 CLIP_REF = '808005A1'
 RUNTIME_RIG_PAIR = ('808008B2', '8080099B')
@@ -285,6 +314,7 @@ def main() -> int:
                     'animated_rotation':_tag_array_len(cm.animated_rotation_control_map),
                     'animated_translation':_tag_array_len(cm.animated_translation_control_map),
                 },
+                'frame_event_pointers': _frame_event_pointer_summary(hd,b),
                 'runtime_components': component_rows(anim.runtime_rig_components),
                 '_animation': anim,
             }
@@ -345,6 +375,7 @@ def main() -> int:
                 'source_static_codec': cp['static_codec'],
                 'source_animated_codec': cp['animated_codec'],
                 'source_control_map_counts': cp['control_map_counts'],
+                'source_frame_event_pointers': cp['frame_event_pointers'],
                 'target_node_count': skd['node_count'],
                 'target_rig_control_count': rgd['control_count'],
                 'source_dimensions_exact': (
