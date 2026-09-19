@@ -93,7 +93,7 @@ jobs:
       - name: Extract exact complete Crota highest-detail shader variants
         run: |
           set -euo pipefail
-          printf '%s\\n' '{"pixel_shader_frequency":{"8108E7B7":2,"8108E7B8":2,"8108E953":1,"80AAE1CD":1,"8108E955":2,"8108E958":2,"8108E956":2,"8108E959":2}}' > out/minimal_shader_manifest.json
+          printf '%s\n' '{"pixel_shader_frequency":{"8108E7B7":2,"8108E7B8":2,"8108E953":1,"80AAE1CD":1,"8108E955":2,"8108E958":2,"8108E956":2,"8108E959":2}}' > out/minimal_shader_manifest.json
           mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
           snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
           python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime \
