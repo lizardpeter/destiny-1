@@ -252,7 +252,7 @@ def make_ethereal_materials(doc: dict) -> list[dict]:
             m.pop('emissiveTexture', None)
             m['emissiveFactor'] = rgb
             strength = 2.8
-            proxy = 'source cbuffer RGB + translucent/emissive proxy; procedural attenuation is view/runtime dependent'
+            proxy = 'source cbuffer RGB + translucent/emissive proxy; exact current partner alpha reduces to BC4 8108E7B6 scalar only (API12 branch algebraically dead)'
         elif tag in ATLAS:
             alpha = 0.36
             tex = pbr.get('baseColorTexture')
@@ -262,7 +262,7 @@ def make_ethereal_materials(doc: dict) -> list[dict]:
             m['emissiveTexture'] = copy.deepcopy(tex)
             m['emissiveFactor'] = [0.55, 1.0, 0.82]
             strength = 2.2
-            proxy = 'exact 8108E951 RGB + translucent/emissive proxy; paired PS8108E959 attenuation remains native contract'
+            proxy = 'exact 8108E951 RGB + translucent/emissive proxy; exact current PS8108E959 partner alpha = 1.0'
         else:
             alpha = 0.30
             tex = pbr.get('baseColorTexture')
@@ -272,7 +272,7 @@ def make_ethereal_materials(doc: dict) -> list[dict]:
             m['emissiveTexture'] = copy.deepcopy(tex)
             m['emissiveFactor'] = DETAIL_FACTOR
             strength = 2.4
-            proxy = 'exact 8108E952 RGB + translucent/emissive proxy; paired 80AAE1CD is black alpha=1'
+            proxy = 'exact 8108E952 RGB + translucent/emissive proxy; paired 80AAE1CD is exact black alpha=1'
         m['alphaMode'] = 'BLEND'
         m['doubleSided'] = True
         ext = dict(m.get('extensions') or {})
@@ -288,6 +288,14 @@ def make_ethereal_materials(doc: dict) -> list[dict]:
             'attenuationMaterial': ATTENUATION_PARTNER[tag],
             'attenuationPixelShader': ATTEN_PS[tag],
             'portableProxy': proxy,
+            'partnerAlphaEvidence': (
+                'PS8108E958_CURRENT_MATERIAL_BC4_T0X_ONLY'
+                if tag in PROC else
+                'PS8108E959_CURRENT_MATERIAL_EXACT_ONE'
+                if tag in ATLAS else
+                'PS80AAE1CD_EXACT_ONE'
+            ),
+            'nativePassOrder': 'WITHHELD',
         }
         rows.append({
             'material_index': mi,
@@ -381,8 +389,9 @@ def main() -> int:
         'nativeBlendStateIndex': 8,
         'nativeBlendEquation': 'Source + Destination*(1-SourceAlpha)',
         'nativeColorPass': 'PS 8108E953/955/956 export RGB with alpha=0',
-        'nativeAttenuationPass': 'PS 80AAE1CD exports black alpha=1; PS 8108E958/959 export black with attenuation alpha',
-        'portablePolicy': 'Core glTF cannot encode the native two-pass custom blend; active group-2 surfaces use a translucent emissive proxy while exact partner identities remain in extras.',
+        'nativePartnerOutput': 'PS 80AAE1CD exports black alpha=1; current PS 8108E959 partner materials reduce to black alpha=1; current PS 8108E958 partner materials reduce to black alpha controlled only by BC4 8108E7B6 t0.x',
+        'nativePassOrder': 'WITHHELD',
+        'portablePolicy': 'Core glTF cannot encode the exact blend equation plus unresolved native draw/pass order; active group-2 surfaces remain an explicitly marked translucent/emissive inspection proxy while exact partner identities and alpha specialization remain in extras.',
         'normalRepair': TARGET_NORMAL_NODE,
         'staticArmaturePolicy': 'bind-no-armature removes only active scene skin/armature links so Blender cannot display bones as geometry-like rods',
     }
@@ -422,11 +431,17 @@ def main() -> int:
             'blend_state_index': 8,
             'blend_equation': 'Source + Destination*(1-SourceAlpha)',
             'color_pass_ps': ['8108E953', '8108E955', '8108E956'],
-            'attenuation_pass_ps': ['80AAE1CD', '8108E958', '8108E959'],
+            'partner_ps': ['80AAE1CD', '8108E958', '8108E959'],
+            'partner_alpha_specialization': {
+                '80AAE1CD': 'EXACT_ONE',
+                '8108E959_selected_materials': 'EXACT_ONE',
+                '8108E958_selected_materials': 'BC4_8108E7B6_T0X_ONLY',
+            },
+            'native_pass_order': 'WITHHELD',
         },
         'withheld': [
-            'native-equivalent custom two-pass blend in core glTF',
-            'runtime/view-dependent exact attenuation scalar for PS 8108E958/959',
+            'native-equivalent framebuffer/draw ordering in core glTF',
+            'engine pass ownership/order for the paired color and partner ranges',
         ],
     }
     a.report.parent.mkdir(parents=True, exist_ok=True)
