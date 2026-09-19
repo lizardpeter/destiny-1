@@ -35,8 +35,10 @@ MAT_PROC = {'D1_8108E7A9', 'D1_8108E7B2'}
 MAT_ATLAS = {'D1_8108E7AA', 'D1_8108E7B3'}
 MAT_DETAIL = {'D1_8108E7B1'}
 ACTIVE = MAT_PROC | MAT_ATLAS | MAT_DETAIL
-PROC_COLOR = (0.18661969900131226, 1.0, 0.8700880408287048, 1.0)
-DETAIL_COLOR = (0.22183096408843994, 1.0, 0.9177990555763245, 1.0)
+PROC_EXACT_NORMALIZED_GAIN = (0.18661969900131226, 1.0, 0.8700880408287048, 1.0)
+DETAIL_EXACT_RGB_VECTOR = (0.22183096408843994, 1.0, 0.9177990555763245, 1.0)
+ATLAS_EXACT_STATIC_RGB_VECTOR = (0.3931313157081604, 0.6766623854637146, 0.6658802032470703, 1.0)
+ATLAS_PREVIEW_TINT = (0.72, 1.0, 0.86, 1.0)
 
 
 def args_after_double_dash():
@@ -224,31 +226,48 @@ def build_native_material(mat):
 
     if tag in MAT_PROC:
         t = add_tex(nodes, tex_control, 'D1_SCALAR_EQUIVALENT_8108E7B6_CONTROL', -820,170)
-        ramp = nodes.new('ShaderNodeValToRGB'); ramp.name='D1_PROXY_PROC_COLOR_RAMP'; ramp.label='D1_PROXY_PROC_COLOR_RAMP'; ramp.location=(-500,190)
+        ramp = nodes.new('ShaderNodeValToRGB'); ramp.name='D1_PROXY_955_PROC_COLOR_RAMP'; ramp.label='D1_PROXY_955_PROC_COLOR_RAMP'; ramp.location=(-500,190)
         ramp.color_ramp.elements[0].position=0.05; ramp.color_ramp.elements[0].color=(0.005,0.025,0.02,1)
-        ramp.color_ramp.elements[1].position=0.72; ramp.color_ramp.elements[1].color=PROC_COLOR
+        ramp.color_ramp.elements[1].position=0.72; ramp.color_ramp.elements[1].color=PROC_EXACT_NORMALIZED_GAIN
         links.new(t.outputs['Color'],ramp.inputs['Fac'])
         links.new(ramp.outputs['Color'],emission.inputs['Color'])
         emission.inputs['Strength'].default_value=1.65
         partner_alpha=build_proc_partner_alpha(nodes,links,t.outputs['Color'])
         links.new(partner_alpha,mix.inputs['Fac'])
-        proxy='PS8108E955_COLOR + PS8108E958_EXACT_MATERIAL_SPECIALIZED_BC4_ALPHA'
+        proxy='PS8108E955_RGB_DEPENDENCIES_SOURCE_CLOSED_BUT_RUNTIME_SCALE_AND_FULL_PORTABLE_REPLAY_WITHHELD + PS8108E958_EXACT_MATERIAL_SPECIALIZED_BC4_ALPHA'
+        mat['d1_r10_color_shader']='8108E955'
+        mat['d1_r10_color_exact_normalized_gain']=list(PROC_EXACT_NORMALIZED_GAIN[:3])
+        mat['d1_r10_color_exact_material_scalar']=55.0
+        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] scale'
+        mat['d1_r10_color_preview_proxy']='D1_PROXY_955_PROC_COLOR_RAMP + emission strength 1.65'
     elif tag in MAT_ATLAS:
         t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-780,190)
         mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_ATLAS_GREEN_GAIN'; mult.location=(-430,190)
-        tint=add_rgb(nodes,(0.72,1.0,0.86,1.0),'D1_SOURCE_GREEN_TINT',-700,20)
+        tint=add_rgb(nodes,ATLAS_PREVIEW_TINT,'D1_PROXY_956_ATLAS_TINT',-700,20)
         links.new(t.outputs['Color'],mult.inputs[0]); links.new(tint.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
         emission.inputs['Strength'].default_value=2.2
         a=add_value(nodes,1.0,'D1_EXACT_8108E959_PARTNER_ALPHA_ONE',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E956_EXACT_ATLAS_COLOR + PS8108E959_EXACT_CURRENT_MATERIAL_ALPHA_ONE'
+        proxy='PS8108E956_RGB_DEPENDENCIES_SOURCE_CLOSED_BUT_ANGULAR_AND_RUNTIME_SCALE_NOT_PORTABLY_REPLAYED + PS8108E959_EXACT_CURRENT_MATERIAL_ALPHA_ONE'
+        mat['d1_r10_color_shader']='8108E956'
+        mat['d1_r10_color_exact_static_rgb_vector']=list(ATLAS_EXACT_STATIC_RGB_VECTOR[:3])
+        mat['d1_r10_color_exact_angular_bias']=[0.0003782951971516013,0.008264296688139439,0.0054319994524121284]
+        mat['d1_r10_color_exact_angular_slope']=[0.9996216893196106,0.9917356967926025,0.9945679903030396]
+        mat['d1_r10_color_exact_material_scalar']=18.0
+        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] scale'
+        mat['d1_r10_color_preview_proxy']='D1_PROXY_956_ATLAS_TINT + emission strength 2.2'
     elif tag in MAT_DETAIL:
         t=add_tex(nodes,tex_detail,'D1_EXACT_8108E952_DETAIL_COLOR',-780,190)
-        tint=add_rgb(nodes,DETAIL_COLOR,'D1_EXACT_DETAIL_TINT',-690,20)
+        tint=add_rgb(nodes,DETAIL_EXACT_RGB_VECTOR,'D1_EXACT_953_MATERIAL_RGB_VECTOR',-690,20)
         mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_DETAIL_COLOR_MULT'; mult.location=(-430,190)
         links.new(t.outputs['Color'],mult.inputs[0]); links.new(tint.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
         emission.inputs['Strength'].default_value=2.0
         a=add_value(nodes,1.0,'D1_EXACT_80AAE1CD_PARTNER_ALPHA_ONE',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E953_EXACT_DETAIL_COLOR + 80AAE1CD_EXACT_BLACK_ALPHA_ONE'
+        proxy='PS8108E953_RGB_DEPENDENCIES_SOURCE_CLOSED_BUT_ANGULAR_AND_RUNTIME_SCALE_NOT_PORTABLY_REPLAYED + 80AAE1CD_EXACT_BLACK_ALPHA_ONE'
+        mat['d1_r10_color_shader']='8108E953'
+        mat['d1_r10_color_exact_material_rgb_vector']=list(DETAIL_EXACT_RGB_VECTOR[:3])
+        mat['d1_r10_color_exact_material_scalar']=9.0
+        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] scale'
+        mat['d1_r10_color_preview_proxy']='emission strength 2.0; angular/runtime scale not replayed'
     else:
         raise RuntimeError(tag)
 
