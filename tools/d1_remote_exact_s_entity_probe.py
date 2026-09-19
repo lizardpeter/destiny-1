@@ -117,9 +117,17 @@ def main() -> int:
                             try:
                                 sk = parse_skeleton_resource(child_payload)
                                 info = sk['skeleton_info']
+                                nodes=[{
+                                    'index':int(x['index']),
+                                    'node_hash':x['node_hash'],
+                                    'parent_node_index':int(x['parent_node_index']),
+                                    'first_child_node_index':int(x['first_child_node_index']),
+                                    'next_sibling_node_index':int(x['next_sibling_node_index']),
+                                } for x in info.get('bones', [])]
                                 rrow['skeleton'] = {
                                     'node_count': int(info['node_hierarchy']['count']),
-                                    'bone_hashes': [x['node_hash'] for x in info.get('bones', [])],
+                                    'bone_hashes': [x['node_hash'] for x in nodes],
+                                    'nodes': nodes,
                                 }
                             except Exception as ex:
                                 rrow['skeleton_parse_error'] = repr(ex)
