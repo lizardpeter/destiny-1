@@ -18,6 +18,7 @@ on:
       - 'tools/d1_material_decode.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
+      - 'tools/d1_crota_vs_signed_cross_export.py'
 
 permissions:
   contents: read
@@ -163,6 +164,23 @@ jobs:
             cp "disasm/${b}.s" "out/${b}_GFX700.s"
           done
           test "$(find disasm -name '*.s' | wc -l)" -eq 10
+
+      - name: Prove exact Crota vertex signed-cross export relation
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_vs_signed_cross_export.py --disasm-dir disasm \
+            --out out/CROTA_VS_SIGNED_CROSS_EXPORT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_VS_SIGNED_CROSS_EXPORT.json'))
+          assert d['status']=='D1_CROTA_VS_SIGNED_CROSS_EXPORT_EXACT',d
+          assert not d['violations'],d['violations']
+          assert len(d['shaders'])==2,d
+          for r in d['shaders']:
+              assert not r['missing_anchors'],r
+              assert r['export_relation']=='param2.xyz = factor * cross(param0.xyz, param1.xyz); param2.w = 1.0',r
+              print('VS_SIGNED_CROSS',r['vertex_shader'],r['vector_a_registers'],r['vector_b_registers'],r['signed_cross_factor_register'])
+          PY
 
       - name: Prove exact GNM vertex-to-pixel varying linkage
         run: |
