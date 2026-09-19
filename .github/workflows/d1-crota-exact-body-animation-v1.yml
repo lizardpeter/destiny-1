@@ -9,7 +9,7 @@ on:
       - 'tools/d1_remote_runtime_rig_probe.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
-      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'
+      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
@@ -170,6 +170,26 @@ jobs:
           print('CROTA_ANIMATION_SOURCE_CLOSED','CONTROLS',out['animation']['unique_control_count'],'SELECTED_CLIPS',out['animation']['unique_selector_selected_clip_count'],'BANK_CLIPS',out['animation']['unique_animation_list_clip_count'],'RETARGETS',out['animation']['retarget_pair_execution_count'])
           print('CONTROL_HASHES',out['animation']['control_hashes'])
           print('SELECTED_CLIP_HASHES',out['animation']['unique_selector_selected_clip_hashes'])
+          PY
+
+      - name: Census exact selected-clip frame-event pointer structures
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_frame_event_pointer_census.py \
+            --options out/CROTA_ANIMATION_OPTIONS_V3.json \
+            --out out/CROTA_ANIMATION_FRAME_EVENT_POINTER_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_FRAME_EVENT_POINTER_CENSUS.json'))
+          assert d['status']=='D1_ANIMATION_FRAME_EVENT_POINTER_CENSUS_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['resolved_clip_count']==d['selected_unique_clip_count'],d
+          assert d['semantic_boundary']['event_record_schema']=='WITHHELD',d
+          assert d['semantic_boundary']['event_names']=='WITHHELD',d
+          print('CROTA_FRAME_EVENT_POINTER_HISTOGRAM',d['frame_event_pointer_count_histogram'])
+          print('CROTA_CLIPS_WITH_FRAME_EVENT_POINTERS',d['clips_with_nonzero_frame_event_pointer_count'])
+          print('CROTA_EVENT_POINTER_TOTAL',d['total_frame_event_pointer_count'])
+          print('CROTA_EVENT_PREFIX_GROUPS',[(x['occurrence_count'],x['target_prefix_byte_count'],x['target_prefix_sha256']) for x in d['target_prefix_groups'][:16]])
           PY
 
       - name: Prove exact Crota runtime-component retarget boundary
