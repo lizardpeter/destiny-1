@@ -101,6 +101,26 @@ def _track_motion_summary(tracks: list) -> dict:
         'bone0_translation_syntax':bone0,
         'semantic_boundary':'LOCAL_SPACE_VARIATION_ONLY_BONE0_NOT_NAMED_ROOT_MOTION',
     }
+
+def _codec_header_summary(h) -> dict | None:
+    if h is None:
+        return None
+    out={
+        'codec_type':int(h.codec_type),
+        'scale_stream_count':int(h.scale_stream_count),
+        'rotation_stream_count':int(h.rotation_stream_count),
+        'translation_stream_count':int(h.translation_stream_count),
+        'prob_error_value':float(h.prob_error_value),
+        'prob_compression_rate':float(h.prob_compression_rate),
+    }
+    if hasattr(h,'frame_count'):
+        out['frame_count']=int(h.frame_count)
+    return out
+
+def _tag_array_len(a) -> int:
+    if hasattr(a,'length'):
+        return int(a.length)
+    return int(len(a))
 CONTROL_REF = '80802C0E'
 CLIP_REF = '808005A1'
 RUNTIME_RIG_PAIR = ('808008B2', '8080099B')
@@ -245,14 +265,26 @@ def main() -> int:
             m, b, src = exact(c, h, CLIP_REF)
             anim = filebacked(read_animation, b, ver)
             hd = anim.animation_header
+            cm=anim.control_maps
             clip_cache[h] = {
                 'tag_hash': h,
                 'entry_index': int(m['index']),
                 'size': int(m['file_size']),
                 'source': src,
+                'animation_hash': f'{int(hd.animation_hash):08X}',
                 'frame_count': int(hd.frame_count),
                 'node_count': int(hd.node_count),
                 'rig_control_count': int(hd.rig_control_count),
+                'static_codec': _codec_header_summary(anim.static_bones_header),
+                'animated_codec': _codec_header_summary(anim.animated_bones_header),
+                'control_map_counts': {
+                    'static_scale':_tag_array_len(cm.static_scale_control_map),
+                    'static_rotation':_tag_array_len(cm.static_rotation_control_map),
+                    'static_translation':_tag_array_len(cm.static_translation_control_map),
+                    'animated_scale':_tag_array_len(cm.animated_scale_control_map),
+                    'animated_rotation':_tag_array_len(cm.animated_rotation_control_map),
+                    'animated_translation':_tag_array_len(cm.animated_translation_control_map),
+                },
                 'runtime_components': component_rows(anim.runtime_rig_components),
                 '_animation': anim,
             }
