@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/workflows/d1-crota-raid-scripted-actor-assets-v1.yml'
+      - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
+      - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
+      - 'tools/d1_animation_motion_census.py'
 
 permissions:
   contents: read
@@ -146,6 +149,24 @@ jobs:
           assert a['frontier_count']==0,a['frontiers'][:20]
           assert a['retarget_pair_failure_count']==0,a
           print('RAID_ACTOR_ANIMATION','CAPABLE',s['animation_capable_entity_count'],'CONTROLS',a['unique_control_count'],'SELECTED',a['unique_selector_selected_clip_count'],'BANK',a['unique_animation_list_clip_count'],'RETARGETS',a['retarget_pair_success_count'])
+          PY
+          python tools/d1_animation_motion_census.py out/crota_raid_actor_animation_options_v3.json \
+            --out out/CROTA_RAID_ACTOR_ANIMATION_MOTION_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RAID_ACTOR_ANIMATION_MOTION_CENSUS.json'))
+          assert d['status']=='D1_ANIMATION_MOTION_CENSUS_EXACT',d
+          assert d['missing_motion_summary_count']==0,d['missing_motion_summaries']
+          assert d['successful_clip_instance_count']>0,d
+          assert d['sample_rate_hz']=='WITHHELD',d
+          print('RAID_MOTION_INSTANCES',d['successful_clip_instance_count'])
+          print('RAID_FRAME_COUNTS',d['frame_count_histogram'])
+          print('RAID_ANIMATED_CODECS',d['animated_codec_type_histogram'])
+          print('RAID_STATIC_CODECS',d['static_codec_type_histogram'])
+          print('RAID_CONTROL_MAP_SHAPES',d['control_map_shape_histogram'])
+          print('RAID_DYNAMIC_TRACKS',d['dynamic_any_track_count_histogram'])
+          print('RAID_BONE0_END_RANGE',d['bone0_translation_end_displacement_range'])
+          print('RAID_BONE0_PEAK_RANGE',d['bone0_translation_peak_displacement_range'])
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
