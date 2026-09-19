@@ -195,6 +195,18 @@ jobs:
           print('DYNAMIC_TRANSLATION_TRACK_HISTOGRAM',d['dynamic_translation_track_count_histogram'])
           print('DYNAMIC_ROTATION_TRACK_HISTOGRAM',d['dynamic_rotation_track_count_histogram'])
           print('DYNAMIC_SCALE_TRACK_HISTOGRAM',d['dynamic_scale_track_count_histogram'])
+          print('ANIMATED_CODEC_HISTOGRAM',d['animated_codec_type_histogram'])
+          print('STATIC_CODEC_HISTOGRAM',d['static_codec_type_histogram'])
+          print('CONTROL_MAP_SHAPES',d['control_map_shape_histogram'])
+          assert sum(d['animated_codec_type_histogram'].values())==d['successful_clip_instance_count'],d
+          assert sum(d['static_codec_type_histogram'].values())==d['successful_clip_instance_count'],d
+          for r in d['rows']:
+              assert r['source_animation_hash'],r
+              assert r['source_control_map_counts'],r
+              ac=r['source_animated_codec']
+              if ac is not None:
+                  assert 0 <= int(ac['codec_type']) <= 3,ac
+                  assert int(ac['scale_stream_count']) >= 0 and int(ac['rotation_stream_count']) >= 0 and int(ac['translation_stream_count']) >= 0,ac
           print('BONE0_END_DISPLACEMENT_RANGE',d['bone0_translation_end_displacement_range'])
           print('BONE0_PEAK_DISPLACEMENT_RANGE',d['bone0_translation_peak_displacement_range'])
           PY
