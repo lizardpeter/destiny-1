@@ -9,7 +9,7 @@ on:
       - 'tools/d1_remote_runtime_rig_probe.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
-      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
+      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_crota_skeleton_usage_union.py'\n      - 'tools/d1_crota_skin_bone_map.py'\n      - 'tools/d1_world_articulated_skin_census.py'\n      - 'tools/d1_remote_crota_skin_census.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
@@ -280,6 +280,40 @@ jobs:
           print('CROTA_DYNAMIC_ROTATION_NODES',d['nodes_dynamic_rotation_in_any_clip_instance'])
           print('CROTA_DYNAMIC_SCALE_NODES',d['nodes_dynamic_scale_in_any_clip_instance'])
           print('CROTA_TOP_DYNAMIC_NODE_HASHES',[(x['index'],x['node_hash'],x['parent_node_index'],x['dynamic_any_clip_instances']) for x in top])
+          PY
+
+      - name: Join exact retail skin use with dynamic animation use
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_crota_skin_census.py \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            --out out/CROTA_EXACT_SKIN_CENSUS.json
+          python tools/d1_crota_skin_bone_map.py \
+            --skin-census out/CROTA_EXACT_SKIN_CENSUS.json \
+            --s-entity out/CROTA_EXACT_S_ENTITY_8108E484.json \
+            --skeleton-resource 8108E4BB \
+            --out out/CROTA_SKIN_BONE_MAP.json
+          python tools/d1_crota_skeleton_usage_union.py \
+            --skin-bone-map out/CROTA_SKIN_BONE_MAP.json \
+            --motion-bone-map out/CROTA_ANIMATION_MOTION_BONE_MAP.json \
+            --out out/CROTA_SKELETON_USAGE_UNION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SKELETON_USAGE_UNION.json'))
+          assert d['status']=='D1_CROTA_SKELETON_USAGE_UNION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['node_count']==50,d
+          assert sum(d['usage_class_counts'].values())==50,d
+          assert d['semantic_boundary']['helper_bone_label']=='WITHHELD',d
+          print('CROTA_SKELETON_USAGE_CLASSES',d['usage_class_counts'])
+          print('CROTA_SKELETON_USAGE_OBSERVATIONS',d['structural_observations'])
+          for x in d['nodes']:
+              if x['usage_class']!='SKIN_AND_DYNAMIC_MOTION':
+                  print('SKELETON_USAGE_EXCEPTION',x['index'],x['node_hash'],x['parent_node_index'],
+                        x['usage_class'],'SKIN_REFS',x['skin_reference_count'],
+                        'DYNAMIC_CLIPS',x['dynamic_any_clip_instances'])
           PY
 
       - name: Prove exact control-scalar to frame timing ratio
