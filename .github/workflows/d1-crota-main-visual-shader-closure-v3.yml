@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-crota-main-visual-shader-closure-v3.yml'
       - 'tools/d1_crota_visual_shader_v3_trigger.py'
-      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_world_shader_extract.py'\n      - 'tools/d1_gnm_vs_ps_linkage.py'\n      - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_paired_shader_differential.py'
       - 'tools/d1_material_stage_state_resolve.py'
@@ -163,6 +163,30 @@ jobs:
             cp "disasm/${b}.s" "out/${b}_GFX700.s"
           done
           test "$(find disasm -name '*.s' | wc -l)" -eq 10
+
+      - name: Prove exact GNM vertex-to-pixel varying linkage
+        run: |
+          set -euo pipefail
+          python tools/d1_gnm_vs_ps_linkage.py \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json --disasm-dir disasm \
+            --link 809DE9AB:8108E955 --link 809DE9AB:8108E958 \
+            --link 809DE9AB:8108E956 --link 809DE9AB:8108E959 \
+            --link 809DF743:8108E953 --link 809DF743:80AAE1CD \
+            --link 809DF743:8108E955 --link 809DF743:8108E958 \
+            --link 809DF743:8108E956 --link 809DF743:8108E959 \
+            --out out/CROTA_GNM_VS_PS_LINKAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_GNM_VS_PS_LINKAGE.json'))
+          assert d['status']=='D1_GNM_VS_PS_LINKAGE_EXACT',d
+          assert d['link_count']==10,d
+          assert not d['violations'],d['violations']
+          for r in d['links']:
+              assert not r['unmatched_nondefault_inputs'],r
+              print('GNM_LINK',r['vertex_shader'],r['pixel_shader'],
+                    'CONSUMED',[(x['attr_index'],x['semantic'],x['vs_param_index']) for x in r['consumed_linkage']],
+                    'ALL',[(x['attr_index'],x['semantic'],x['vs_param_index'],x['ps_default_value']) for x in r['linkage']])
+          PY
 
       - name: Prove exact terminal MRT0 channel classes
         run: |
