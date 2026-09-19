@@ -51,7 +51,7 @@ jobs:
           curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
           python tools/d1_tower_recover_articulated_visual_corpus.py \
             --package-list out/packages.txt \
-            --required-package-id 00ef --required-package-id 0447 --required-package-id 0157 \
+            --required-package-id 00ee --required-package-id 00ef --required-package-id 0447 --required-package-id 0157 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --out-dir corpus --report out/CROTA_VISUAL_SHADER_CORPUS.json
 
