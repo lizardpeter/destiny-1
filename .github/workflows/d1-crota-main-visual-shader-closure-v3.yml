@@ -1,4 +1,4 @@
-name: D1 Crota main visual shader closure v4
+name: D1 Crota main visual shader closure v5
 
 on:
   workflow_dispatch:
@@ -14,8 +14,6 @@ on:
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_crota_material_pair_census.py'
       - 'tools/d1_crota_attenuation_constant_reduce.py'
-      - 'tools/d1_material_stage_state_resolve.py'
-      - 'tools/d1_material_decode.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
       - 'tools/d1_crota_vs_signed_cross_export.py'
@@ -61,41 +59,6 @@ jobs:
             --required-package-id 00ee --required-package-id 00ef --required-package-id 0447 --required-package-id 0157 \
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --out-dir corpus --report out/CROTA_VISUAL_SHADER_CORPUS.json
-
-      - name: Resolve exact color and serialized partner material state
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
-          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
-          python tools/d1_material_stage_state_resolve.py "${snaps[@]}" --runtime runtime \
-            --material 0x8108E7A9 --material 0x8108E7AB \
-            --material 0x8108E7AA --material 0x8108E7AC \
-            --material 0x8108E7B1 --material 0x809DD1DC \
-            --material 0x8108E7B2 --material 0x8108E7B4 \
-            --material 0x8108E7B3 --material 0x8108E7B5 \
-            --out out/CROTA_COLOR_PARTNER_MATERIAL_STAGE_STATE.json
-          python - <<'PY'
-          import json
-          d=json.load(open('out/CROTA_COLOR_PARTNER_MATERIAL_STAGE_STATE.json'))
-          assert d['status']=='D1_MATERIAL_STAGE_STATE_EXACT',d
-          expected={
-            '8108E7A9':'8108E955','8108E7AB':'8108E958',
-            '8108E7AA':'8108E956','8108E7AC':'8108E959',
-            '8108E7B1':'8108E953','809DD1DC':'80AAE1CD',
-            '8108E7B2':'8108E955','8108E7B4':'8108E958',
-            '8108E7B3':'8108E956','8108E7B5':'8108E959',
-          }
-          assert set(d['materials'])==set(expected),d['materials'].keys()
-          for h,ps in expected.items():
-              r=d['materials'][h]
-              assert not r.get('error'),r
-              assert r['ps']['shader']==ps,(h,r['ps']['shader'],ps)
-              assert r['ps']['tfx_disassembly']['complete'],(h,r['ps']['tfx_disassembly'])
-              print('PAIR_MATERIAL',h,'PS',ps,'STATE4',r['material_state4_hex'],
-                    'TEXTURES',[(x['texture_index'],x['texture']) for x in r['ps']['textures']['items']],
-                    'SAMPLERS',[x['sampler_taghash'] for x in r['ps']['sampler_references']],
-                    'TFX_SHA',r['ps']['tfx_program_sha256'])
-          PY
 
       - name: Resolve exact ten paired high-detail Crota materials
         run: |
@@ -281,7 +244,7 @@ jobs:
               print('  B_EXCESS',x['native_structure']['b_excess_mnemonics'])
           PY
           python tools/d1_crota_material_pair_state.py \
-            --stage-state out/CROTA_COLOR_PARTNER_MATERIAL_STAGE_STATE.json \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
             --paired-gcn out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json \
             --out out/CROTA_MATERIAL_PAIR_STATE.json
           python - <<'PY'
@@ -303,7 +266,7 @@ jobs:
             --paired-gcn out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json \
             --out out/CROTA_PAIRED_MATERIAL_CENSUS.json
           python tools/d1_crota_attenuation_constant_reduce.py \
-            --stage-state out/CROTA_COLOR_PARTNER_MATERIAL_STAGE_STATE.json \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
             --out out/CROTA_ATTENUATION_CONSTANT_REDUCTION.json
           python - <<'PY'
           import json
@@ -341,7 +304,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: D1-CROTA-MAIN-VISUAL-SHADER-CLOSURE-V4
+          name: D1-CROTA-MAIN-VISUAL-SHADER-CLOSURE-V5
           path: out/
           retention-days: 30
           if-no-files-found: error
