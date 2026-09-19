@@ -338,9 +338,13 @@ def main() -> int:
             clip_components = cp['runtime_components']
             rr = {
                 'clip': cliph,
+                'source_animation_hash': cp['animation_hash'],
                 'frame_count': cp['frame_count'],
                 'source_node_count': cp['node_count'],
                 'source_rig_control_count': cp['rig_control_count'],
+                'source_static_codec': cp['static_codec'],
+                'source_animated_codec': cp['animated_codec'],
+                'source_control_map_counts': cp['control_map_counts'],
                 'target_node_count': skd['node_count'],
                 'target_rig_control_count': rgd['control_count'],
                 'source_dimensions_exact': (
