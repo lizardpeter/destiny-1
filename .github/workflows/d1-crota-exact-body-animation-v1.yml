@@ -7,7 +7,7 @@ on:
       - '.github/workflows/d1-crota-exact-body-animation-v1.yml'
       - 'tools/d1_remote_exact_s_entity_probe.py'
       - 'tools/d1_remote_runtime_rig_probe.py'
-      - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
+      - 'tools/d1_remote_spawned_actor_animation_options_v3.py'\n      - 'tools/d1_remote_spawned_actor_animation_options_v2.py'\n      - 'tools/d1_animation_motion_census.py'
       - 'tools/d1_animation_control_state_map_v2.py'
       - 'tools/d1_tiger_animation_safe_offsets.py'
 
@@ -165,6 +165,34 @@ jobs:
           print('CROTA_ANIMATION_SOURCE_CLOSED','CONTROLS',out['animation']['unique_control_count'],'SELECTED_CLIPS',out['animation']['unique_selector_selected_clip_count'],'BANK_CLIPS',out['animation']['unique_animation_list_clip_count'],'RETARGETS',out['animation']['retarget_pair_execution_count'])
           print('CONTROL_HASHES',out['animation']['control_hashes'])
           print('SELECTED_CLIP_HASHES',out['animation']['unique_selector_selected_clip_hashes'])
+          PY
+
+      - name: Census exact retargeted Crota motion variation
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_motion_census.py out/CROTA_ANIMATION_OPTIONS_V3.json \
+            --out out/CROTA_ANIMATION_MOTION_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_MOTION_CENSUS.json'))
+          assert d['status']=='D1_ANIMATION_MOTION_CENSUS_EXACT',d
+          assert d['missing_motion_summary_count']==0,d['missing_motion_summaries']
+          assert d['successful_clip_instance_count']>0,d
+          assert d['sample_rate_hz']=='WITHHELD',d
+          assert d['behavioral_clip_names']=='WITHHELD',d
+          for r in d['rows']:
+              assert r['target_node_count']==50,r
+              m=r['local_motion_summary']
+              assert m['track_count']==50,m
+              assert m['semantic_boundary']=='LOCAL_SPACE_VARIATION_ONLY_BONE0_NOT_NAMED_ROOT_MOTION',m
+          print('CROTA_MOTION_CLIPS',d['successful_clip_instance_count'])
+          print('FRAME_HISTOGRAM',d['frame_count_histogram'])
+          print('DYNAMIC_ANY_TRACK_HISTOGRAM',d['dynamic_any_track_count_histogram'])
+          print('DYNAMIC_TRANSLATION_TRACK_HISTOGRAM',d['dynamic_translation_track_count_histogram'])
+          print('DYNAMIC_ROTATION_TRACK_HISTOGRAM',d['dynamic_rotation_track_count_histogram'])
+          print('DYNAMIC_SCALE_TRACK_HISTOGRAM',d['dynamic_scale_track_count_histogram'])
+          print('BONE0_END_DISPLACEMENT_RANGE',d['bone0_translation_end_displacement_range'])
+          print('BONE0_PEAK_DISPLACEMENT_RANGE',d['bone0_translation_peak_displacement_range'])
           PY
 
       - name: Hash and upload
