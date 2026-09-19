@@ -9,7 +9,7 @@ on:
       - 'tools/d1_remote_runtime_rig_probe.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
-      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_crota_skeleton_usage_union.py'\n      - 'tools/d1_crota_skin_bone_map.py'\n      - 'tools/d1_world_articulated_skin_census.py'\n      - 'tools/d1_remote_crota_skin_census.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
+      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_crota_skeleton_usage_union.py'\n      - 'tools/d1_crota_skeleton_usage_matrix.py'\n      - 'tools/d1_crota_skin_bone_map.py'\n      - 'tools/d1_world_articulated_skin_census.py'\n      - 'tools/d1_remote_crota_skin_census.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
       - 'tools/d1_crota_runtime_component_boundary.py'\n      - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
@@ -337,6 +337,24 @@ jobs:
                   print('SKELETON_USAGE_EXCEPTION',x['index'],x['node_hash'],x['parent_node_index'],
                         x['usage_class'],'SKIN_REFS',x['skin_reference_count'],
                         'DYNAMIC_CLIPS',x['dynamic_any_clip_instances'])
+          PY
+          python tools/d1_crota_skeleton_usage_matrix.py \
+            --usage-union out/CROTA_SKELETON_USAGE_UNION.json \
+            --control-map out/CROTA_RUNTIME_CONTROL_SKELETON_MAP.json \
+            --out out/CROTA_SKELETON_USAGE_MATRIX.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SKELETON_USAGE_MATRIX.json'))
+          assert d['status']=='D1_CROTA_SKELETON_USAGE_MATRIX_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['node_count']==50 and d['runtime_control_count']==44,d
+          assert d['semantic_boundary']['helper_bone_interpretation']=='WITHHELD',d
+          print('CROTA_SKELETON_PATTERN_HISTOGRAM',d['pattern_histogram'])
+          print('CROTA_SKELETON_THREE_DOMAIN_OBSERVATIONS',d['observations'])
+          for x in d['nodes']:
+              if x['has_target_only_suffix_control'] or (x['has_skin_influence'] and not x['has_runtime_control']) or (x['has_dynamic_motion'] and not x['has_runtime_control']):
+                  print('CROTA_SKELETON_MATRIX_NODE',x['index'],x['node_hash'],x['parent_node_index'],
+                        x['structural_pattern'],x['runtime_controls'])
           PY
 
       - name: Prove exact control-scalar to frame timing ratio
