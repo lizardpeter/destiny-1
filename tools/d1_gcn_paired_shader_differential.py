@@ -49,14 +49,18 @@ def parse_disasm(path:Path):
         if em:
             # CLRX prints four comma-separated export lanes; modifiers follow.
             tail=em.group(2).strip()
-            operands=[x.strip() for x in tail.split(',')[:4]]
+            raw_operands=[x.strip() for x in tail.split(',')[:4]]
+            operands=[x.split()[0] if x.split() else '' for x in raw_operands]
+            if len(operands) != 4:
+                raise ValueError(f'{path.name}:{ln}: malformed export operands {raw_operands!r}')
             exports.append({
                 'line':ln,'address':rec['address'],'target':em.group(1),
                 'operands':operands,
+                'raw_operands':raw_operands,
                 'live_lanes':[i for i,x in enumerate(operands) if x.lower()!='off'],
-                'compressed':bool(re.search(r'\\bcompr\\b',tail)),
-                'done':bool(re.search(r'\\bdone\\b',tail)),
-                'valid_mask':bool(re.search(r'\\bvm\\b',tail)),
+                'compressed':bool(re.search(r'\bcompr\b',tail)),
+                'done':bool(re.search(r'\bdone\b',tail)),
+                'valid_mask':bool(re.search(r'\bvm\b',tail)),
                 'assembly':line.strip(),
             })
     mn=collections.Counter(x['mnemonic'] for x in rows)
