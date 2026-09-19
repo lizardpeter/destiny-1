@@ -9,7 +9,7 @@ on:
       - 'tools/d1_remote_runtime_rig_probe.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
-      - 'tools/d1_animation_motion_census.py'
+      - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
@@ -230,6 +230,36 @@ jobs:
                   assert int(ac['scale_stream_count']) >= 0 and int(ac['rotation_stream_count']) >= 0 and int(ac['translation_stream_count']) >= 0,ac
           print('BONE0_END_DISPLACEMENT_RANGE',d['bone0_translation_end_displacement_range'])
           print('BONE0_PEAK_DISPLACEMENT_RANGE',d['bone0_translation_peak_displacement_range'])
+          PY
+
+      - name: Map dynamic tracks onto exact Crota skeleton hierarchy
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_motion_bone_map.py \
+            --motion-census out/CROTA_ANIMATION_MOTION_CENSUS.json \
+            --s-entity out/CROTA_EXACT_S_ENTITY_8108E484.json \
+            --skeleton-resource 8108E4BB \
+            --out out/CROTA_ANIMATION_MOTION_BONE_MAP.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_MOTION_BONE_MAP.json'))
+          assert d['status']=='D1_ANIMATION_MOTION_BONE_MAP_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['skeleton_resource']=='8108E4BB',d
+          assert d['skeleton_node_count']==50,d
+          assert d['clip_instance_count']>0,d
+          assert len(d['node_activity_rows'])==50,d
+          assert d['semantic_boundary']['anatomical_names']=='WITHHELD',d
+          assert d['semantic_boundary']['bone0_root_motion_semantic']=='WITHHELD',d
+          for n in d['node_activity_rows']:
+              assert len(n['node_hash'])==8,n
+              assert 0 <= int(n['index']) < 50,n
+          top=sorted(d['node_activity_rows'],key=lambda x:(-x['dynamic_any_clip_instances'],x['index']))[:15]
+          print('CROTA_DYNAMIC_SKELETON_NODES',d['nodes_dynamic_in_any_clip_instance'])
+          print('CROTA_DYNAMIC_TRANSLATION_NODES',d['nodes_dynamic_translation_in_any_clip_instance'])
+          print('CROTA_DYNAMIC_ROTATION_NODES',d['nodes_dynamic_rotation_in_any_clip_instance'])
+          print('CROTA_DYNAMIC_SCALE_NODES',d['nodes_dynamic_scale_in_any_clip_instance'])
+          print('CROTA_TOP_DYNAMIC_NODE_HASHES',[(x['index'],x['node_hash'],x['parent_node_index'],x['dynamic_any_clip_instances']) for x in top])
           PY
 
       - name: Prove exact control-scalar to frame timing ratio
