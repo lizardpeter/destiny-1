@@ -11,6 +11,10 @@ on:
       - 'tools/d1_gcn_paired_shader_differential.py'
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_material_decode.py'
+      - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_crota_material_pair_census.py'
+      - 'tools/d1_material_stage_state_resolve.py'
+      - 'tools/d1_material_decode.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
 
@@ -89,6 +93,32 @@ jobs:
                     'TEXTURES',[(x['texture_index'],x['texture']) for x in r['ps']['textures']['items']],
                     'SAMPLERS',[x['sampler_taghash'] for x in r['ps']['sampler_references']],
                     'TFX_SHA',r['ps']['tfx_program_sha256'])
+          PY
+
+      - name: Resolve exact ten paired high-detail Crota materials
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -type f -name '*.pkg' | sort)
+          snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
+          python tools/d1_material_stage_state_resolve.py "${snaps[@]}" --runtime runtime \
+            --material 0x8108E7A9 --material 0x8108E7AB \
+            --material 0x8108E7AA --material 0x8108E7AC \
+            --material 0x8108E7B1 --material 0x809DD1DC \
+            --material 0x8108E7B2 --material 0x8108E7B4 \
+            --material 0x8108E7B3 --material 0x8108E7B5 \
+            --out out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json'))
+          wanted={'8108E7A9','8108E7AB','8108E7AA','8108E7AC','8108E7B1','809DD1DC','8108E7B2','8108E7B4','8108E7B3','8108E7B5'}
+          assert d['status']=='D1_MATERIAL_STAGE_STATE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert set(d['materials'])==wanted,(wanted-set(d['materials']),set(d['materials'])-wanted)
+          for h,r in sorted(d['materials'].items()):
+              assert r['material_state4_u8'][0]==0x88,(h,r['material_state4_u8'])
+              print('PAIR_MATERIAL',h,'VS',r['vs']['shader'],'PS',r['ps']['shader'],'STATE4',r['material_state4_hex'],
+                    'PS_TEX',[(x['texture_index'],x['texture']) for x in r['ps']['textures']['items']],
+                    'PS_SAMPLERS',[x['sampler_taghash'] for x in r['ps']['sampler_references']])
           PY
 
       - name: Extract exact complete Crota highest-detail shader variants
@@ -224,6 +254,27 @@ jobs:
                     'PS',p['color_ps'],p['partner_ps'],
                     'STATE4',p['color_material_state4_hex'],p['partner_material_state4_hex'],
                     'STATE_EQUAL',p['state4_equal'])
+          PY
+          python tools/d1_crota_material_pair_census.py \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --paired-gcn out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json \
+            --out out/CROTA_PAIRED_MATERIAL_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_PAIRED_MATERIAL_CENSUS.json'))
+          assert d['status']=='D1_CROTA_MATERIAL_PAIR_CENSUS_EXACT',d
+          assert d['resolved_pair_count']==5,d
+          assert not d['violations'],d['violations']
+          for r in d['rows']:
+              assert r['material_state4']['color'].startswith('88'),r
+              assert r['material_state4']['attenuation'].startswith('88'),r
+              print('MATERIAL_PAIR',r['color_material'],r['attenuation_material'],
+                    'PS',r['color_pixel_shader'],r['attenuation_pixel_shader'],
+                    'SAME_VS',r['vertex_shader']['identical'],
+                    'SAME_TEXTURES',r['ps_texture_map']['identical'],
+                    'SAME_SAMPLERS',r['ps_sampler_records']['identical'],
+                    'SAME_TFX',r['ps_tfx']['identical'],
+                    'SAME_CBUFFERS',r['ps_cbuffers']['identical'])
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
