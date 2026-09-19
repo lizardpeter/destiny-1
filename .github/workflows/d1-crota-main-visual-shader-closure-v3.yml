@@ -13,6 +13,7 @@ on:
       - 'tools/d1_material_decode.py'
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_crota_material_pair_census.py'
+      - 'tools/d1_crota_attenuation_constant_reduce.py'
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_material_decode.py'
       - 'tools/d1_crota_material_pair_state.py'
@@ -259,6 +260,24 @@ jobs:
             --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
             --paired-gcn out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json \
             --out out/CROTA_PAIRED_MATERIAL_CENSUS.json
+          python tools/d1_crota_attenuation_constant_reduce.py \
+            --stage-state out/CROTA_COLOR_PARTNER_MATERIAL_STAGE_STATE.json \
+            --out out/CROTA_ATTENUATION_CONSTANT_REDUCTION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ATTENUATION_CONSTANT_REDUCTION.json'))
+          assert d['status']=='D1_CROTA_ATTENUATION_CONSTANTS_EXACT',d
+          assert not d['violations'],d['violations']
+          assert len(d['rows'])==4,d
+          for r in d['rows']:
+              print('ATTENUATION_CONSTANTS',r['family'],
+                    'PS',r['attenuation_shader'],
+                    'READS',[(x['dword'],x['value']) for x in r['attenuation_api0_reads']],
+                    'CHANGED_DWORDS',r['changed_dword_count'])
+              if r['attenuation_shader']=='8108E959':
+                  q=r['exact_symbolic_coefficients']
+                  print('ATLAS_COEFFICIENTS',q,'ALPHA_INTERVAL',r['coefficient_only_alpha_interval_before_render_target_clamp'])
+          PY
           python - <<'PY'
           import json
           d=json.load(open('out/CROTA_PAIRED_MATERIAL_CENSUS.json'))
