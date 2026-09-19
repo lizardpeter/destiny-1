@@ -19,6 +19,7 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 import d1_tower_map_schema_validate_v5 as v5
 from d1_ps4_shader_binary_probe import find_footer, parse_binary_info, parse_usage
+from d1_ps4_gnm_shader_header_semantics import decode as decode_gnm_header
 
 
 def norm(h:str)->str:
@@ -68,6 +69,18 @@ def main()->int:
         if n<=0 or n>footer or n>len(nb):
             row['error']=f'invalid bounded code length {n} footer={footer} payload={len(nb)}';rows.append(row);errors.append(row);continue
         code=nb[:n];fn=f'PS_{sh}_gcn.bin';(a.out_dir/fn).write_bytes(code)
+        header_fn=f'PS_{sh}_header.bin'
+        (a.out_dir/header_fn).write_bytes(hb)
+        row['header_sha256']=hashlib.sha256(hb).hexdigest()
+        row['header_file']=header_fn
+        row['header_raw_hex']=hb.hex()
+        try:
+            row['gnm_header']=decode_gnm_header(hb,info['stage'],int(info['num_input_usage_slots']))
+            if row['gnm_header']['status']!='D1_PS4_GNM_SHADER_HEADER_EXACT':
+                raise ValueError(f"GNM header semantic-table validation failed: {row['gnm_header']['violations']}")
+        except Exception as ex:
+            row['error']=f'GNM header semantic parse failed: {ex!r}'
+            rows.append(row);errors.append(row);continue
         row.update({'binary_info':info,'usage':usage,'gcn_file':fn,'gcn_bytes':n,'gcn_sha256':hashlib.sha256(code).hexdigest()})
         rows.append(row)
 
