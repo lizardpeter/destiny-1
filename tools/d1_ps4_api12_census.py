@@ -22,10 +22,29 @@ def named_path(raw:str):
  return n.strip(),Path(p)
 
 def covered(load):
+ if load.get('dword_indices') is not None:
+  return [int(x) for x in load.get('dword_indices') or []]
  off=load.get('static_offset')
+ if off is None: off=load.get('offset_dwords')
  if off is None:return []
  w=int(load.get('width_dwords') or 1)
  return list(range(int(off),int(off)+w))
+
+def schema_kind(doc):
+ if doc.get('status')=='D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED':return 'direct'
+ if doc.get('status')=='D1_GCN_CBUFFER_USAGE_EXACT':return 'provenance'
+ return None
+
+def api12_loads(shader_row,kind):
+ if kind=='direct':
+  for load in shader_row.get('loads',[]):
+   cb=load.get('constant_buffer')
+   if cb and int(cb.get('api_slot',-1))==12:
+    yield load
+ elif kind=='provenance':
+  for load in shader_row.get('loads',[]):
+   if int(load.get('api_slot',-1))==12:
+    yield load
 
 def main():
  ap=argparse.ArgumentParser()
@@ -36,10 +55,13 @@ def main():
  ddirs=dict(a.disasm);violations=[];rows=[];unique=set()
  slot12_offsets=collections.Counter();target_hits={x:[] for x in TARGET}
  shader_loads=collections.defaultdict(list)
+ docs=[]
  for corpus,path in a.input:
-  d=json.loads(path.read_text())
-  if d.get('status')!='D1_GCN_CONSTANT_BUFFER_USAGE_ANALYZED':
-   violations.append(f'{corpus}: usage status {d.get("status")}')
+  d=json.loads(path.read_text());docs.append((corpus,d))
+  kind=schema_kind(d)
+  if kind is None:
+   violations.append(f'{corpus}: unsupported usage status {d.get("status")}')
+   continue
   for sh in d.get('shaders',[]):
    h=str(sh.get('shader') or '').upper()
    if not h:
@@ -49,17 +71,17 @@ def main():
    if dd is not None:
     p=dd/f'PS_{h}.s'
     if p.exists():lines=p.read_text(errors='replace').splitlines()
-   for load in sh.get('loads',[]):
-    cb=load.get('constant_buffer')
-    if not cb or int(cb.get('api_slot',-1))!=12:continue
+   for load in api12_loads(sh,kind):
     cov=covered(load)
     rec={
-     'corpus':corpus,'shader':h,
+     'corpus':corpus,'shader':h,'source_usage_schema':kind,
      'line_number':load.get('line_number'),
-     'line':load.get('line'),
+     'line':load.get('line') or load.get('assembly'),
+     'address':load.get('address'),
      'descriptor_start_register':load.get('descriptor_start_register'),
+     'descriptor_registers':load.get('descriptor_registers'),
      'width_dwords':int(load.get('width_dwords') or 1),
-     'static_offset':load.get('static_offset'),
+     'static_offset':load.get('static_offset') if load.get('static_offset') is not None else load.get('offset_dwords'),
      'covered_dword_offsets':cov,
     }
     if lines is not None and load.get('line_number'):
@@ -87,7 +109,8 @@ def main():
   'schema':'d1_ps4_api12_census/v1',
   'status':'D1_PS4_API12_CENSUS_COMPLETE' if rows and not violations else 'D1_PS4_API12_CENSUS_PARTIAL',
   'corpora':[n for n,_ in a.input],
-  'corpus_shader_row_count':sum(len(json.loads(p.read_text()).get('shaders',[])) for _,p in a.input),
+  'corpus_shader_row_count':sum(len(d.get('shaders',[])) for _,d in docs),
+  'input_usage_schemas':{corpus:schema_kind(d) for corpus,d in docs},
   'unique_shader_count':len(unique),
   'api12_shader_count':len(api12_shaders),
   'api12_shaders':api12_shaders,
@@ -104,6 +127,7 @@ def main():
   'semantic_boundary':{
    'api12_slot':'EXACT_SONY_INPUT_USAGE',
    'dword_offsets':'EXACT_GCN_SCALAR_BUFFER_LOADS',
+   'descriptor_spill_tracking':'SUPPORTED_WHEN_INPUT_SCHEMA_IS_PROVENANCE',
    'dword_28_30_semantic':'WITHHELD',
    'View_scope_label':'EXTERNAL_LINEAGE_NOT_PROMOTED_BY_THIS_CENSUS',
    'camera_position_label':'EXTERNAL_LINEAGE_NOT_PROMOTED_BY_THIS_CENSUS',
