@@ -12,6 +12,7 @@ on:
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_material_decode.py'
       - 'tools/d1_crota_material_pair_state.py'
+      - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
 
 permissions:
   contents: read
@@ -132,6 +133,34 @@ jobs:
           done
           test "$(find disasm -name '*.s' | wc -l)" -eq 10
 
+      - name: Prove exact terminal MRT0 channel classes
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_mrt0_export_proof.py \
+            --disasm disasm/PS_80AAE1CD_GFX700.s \
+            --disasm disasm/PS_8108E953_GFX700.s \
+            --disasm disasm/PS_8108E955_GFX700.s \
+            --disasm disasm/PS_8108E958_GFX700.s \
+            --disasm disasm/PS_8108E956_GFX700.s \
+            --disasm disasm/PS_8108E959_GFX700.s \
+            --out out/CROTA_TERMINAL_MRT0_EXPORT_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_TERMINAL_MRT0_EXPORT_PROOF.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT0_EXPORT_EXACT',d
+          got={x['shader']:x['channel_classes'] for x in d['shaders']}
+          expected={
+            '80AAE1CD':{'R':'ZERO','G':'ZERO','B':'ZERO','A':'ONE'},
+            '8108E953':{'R':'COMPUTED','G':'COMPUTED','B':'COMPUTED','A':'ZERO'},
+            '8108E955':{'R':'COMPUTED','G':'COMPUTED','B':'COMPUTED','A':'ZERO'},
+            '8108E956':{'R':'COMPUTED','G':'COMPUTED','B':'COMPUTED','A':'ZERO'},
+            '8108E958':{'R':'ZERO','G':'ZERO','B':'ZERO','A':'COMPUTED'},
+            '8108E959':{'R':'ZERO','G':'ZERO','B':'ZERO','A':'COMPUTED'},
+          }
+          assert got==expected,(got,expected)
+          for h in sorted(got): print('MRT0_CHANNELS',h,got[h])
+          PY
+
       - name: Close exact image resource usage
         run: |
           set -euo pipefail
@@ -187,8 +216,10 @@ jobs:
           d=json.load(open('out/CROTA_MATERIAL_PAIR_STATE.json'))
           assert d['status']=='D1_CROTA_MATERIAL_PAIR_STATE_EXACT',d
           assert d['pair_count']==5,d
+          assert d['pairs_with_partner_cbuffers_exact_prefix_of_color']==5,d
           assert d['semantic_boundary']['runtime_scalar_values']=='WITHHELD',d
           for p in d['pairs']:
+              assert p['serialized_ps_input_equality']['partner_cbuffers_exact_prefix_of_color'],p
               print('MATERIAL_PAIR',p['color_material'],p['partner_material'],
                     'PS',p['color_ps'],p['partner_ps'],
                     'STATE4',p['color_material_state4_hex'],p['partner_material_state4_hex'],
