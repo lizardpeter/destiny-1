@@ -145,11 +145,26 @@ def main() -> int:
     assign_hist = collections.Counter(str(x['assignment_count']) for x in rows)
     dst_hist = collections.Counter(f"0x{x['destination_code']:02X}" for r in rows for x in r['assignments'])
 
+    # Preserve evidence classes explicitly.  This prevents a future consumer from
+    # accidentally treating continued/community opcode names as Bungie-D1 identities.
+    evidence_classes = {
+        'official_d1_opcode_identities': OFFICIAL_D1_BYTECODE_IDENTITIES,
+        'retail_structural_promotions': {
+            'ps_texture_assignment_prefix': {
+                'bytes': '49 <texture_index> 47 <destination_code>',
+                'destination_rule': 'destination_code == 0x21 + texture_index',
+                'semantic_scope': 'resource-assignment structure only; low-level opcode/stack names withheld',
+            },
+        },
+        'runtime_default_resource_values': 'WITHHELD',
+    }
+
     out = {
-        'schema_version': 1,
+        'schema_version': 2,
         'status': 'D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX_EXACT' if not violations else 'D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX_PARTIAL',
         'bungie_gdc_source': BUNGIE_GDC_SOURCE,
         'official_d1_bytecode_identities': OFFICIAL_D1_BYTECODE_IDENTITIES,
+        'evidence_classes': evidence_classes,
         'critical_correction': 'The later/community generic TFX opcode labels cannot be used as D1 retail semantics in this region. D1 resource binding is therefore decoded here from exact retail structural correlation, while 0x49/0x47 low-level stack names remain withheld.',
         'material_count': total_materials,
         'material_ps_streams_with_assignment_prefix': len(rows),
