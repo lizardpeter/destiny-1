@@ -91,12 +91,12 @@ def bc4_scalar_census(data:bytes)->dict:
         'endpoint0_gt_endpoint1_block_count':mode_gt,
         'endpoint0_le_endpoint1_block_count':mode_le,
         'texel_count':n,
-        'decoded_u8_min':min(hist) if hist else None,
-        'decoded_u8_max':max(hist) if hist else None,
-        'decoded_u8_unique_value_count':len(hist),
-        'decoded_u8_zero_count':hist.get(0,0),
-        'decoded_u8_255_count':hist.get(255,0),
-        'decoded_u8_mean':(sum(v*n0 for v,n0 in hist.items())/n if n else None),
+        'preview_decoder_u8_min':min(hist) if hist else None,
+        'preview_decoder_u8_max':max(hist) if hist else None,
+        'preview_decoder_u8_unique_value_count':len(hist),
+        'preview_decoder_u8_zero_count':hist.get(0,0),
+        'preview_decoder_u8_255_count':hist.get(255,0),
+        'preview_decoder_u8_mean':(sum(v*n0 for v,n0 in hist.items())/n if n else None),
         'semantic':'UNNAMED_BC4_SCALAR_CHANNEL',
     }
 
@@ -141,10 +141,12 @@ def main():
         'violations':violations,
         'semantic_boundary':{
             'BC1_alpha':'EXACT_DXT1_BLOCK_PROOF',
-            'BC4_value_domain':'EXACT_ENCODED_CHANNEL_CENSUS',
+            'BC4_encoded_blocks':'EXACT_ENDPOINT_AND_INDEX_BYTES',
+            'BC4_preview_decoder_census':'DETERMINISTIC_EXPORTER_EQUIVALENT_NOT_GPU_BIT_EXACT',
+            'BC4_gpu_sample_numeric_values':'WITHHELD',
             'BC4_material_meaning':'WITHHELD',
         },
-        'policy':'DDS files are manifest-hash-verified. BC1 alpha constancy is proven from exact DXT1 endpoint/index bytes, independent of PNG decoding. BC4 values remain an unnamed scalar texture input.',
+        'policy':'DDS files are manifest-hash-verified. BC1 alpha constancy is proven from exact DXT1 endpoint/index bytes, independent of PNG decoding. BC4 endpoint/index bytes are exact; its u8 census follows the deterministic exporter preview convention and is not asserted bit-identical to PS4 sampling. The channel remains semantically unnamed.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
     print(json.dumps({'status':out['status'],'alpha_one':alpha_one,
