@@ -86,8 +86,7 @@ jobs:
           assert all(len(owners.get(p,[]))==1 for p in (('808020BF','808029D2'),('80802B92','808020BB'))),owners
           print('CROTA_BODY','8108E484','MODEL','8108E5B7','SKELETON','8108E4BB','BONES',50,'RIG',rigs[0])
           print('ANIMATION_OWNERS',owners)
-          open('out/CROTA_EXACT_ANIMATION_OWNER_TAGS.json','w').write(json.dumps({'rig':rigs[0],'owners':{f'{a}->{b}':v for (a,b),v in owners.items()}},indent=2)+'
-')
+          open('out/CROTA_EXACT_ANIMATION_OWNER_TAGS.json','w').write(json.dumps({'rig':rigs[0],'owners':{f'{a}->{b}':v for (a,b),v in owners.items()}},indent=2)+'\\n')
           PY
 
       - name: Decode exact Crota runtime rig
@@ -164,8 +163,7 @@ jobs:
               },
               'policy':'Identity comes from the source-mapped D912 SMapDataEntry EntitySK plus S331 EntityName 64C53DB9 resolved through exact GlobalStrings. Physical resources come only from s_entity 8108E484 Resource[]. Animation controls come only from the two calibrated owner class pairs and their fixed source-proven 80802C0E fields; every selected clip must pass the pinned native D1 retarget path.',
           }
-          pathlib.Path('out/CROTA_EXACT_BODY_ANIMATION_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'
-')
+          pathlib.Path('out/CROTA_EXACT_BODY_ANIMATION_CHECKPOINT.json').write_text(json.dumps(out,indent=2)+'\\n')
           print('CROTA_ANIMATION_SOURCE_CLOSED','CONTROLS',out['animation']['unique_control_count'],'SELECTED_CLIPS',out['animation']['unique_selector_selected_clip_count'],'BANK_CLIPS',out['animation']['unique_animation_list_clip_count'],'RETARGETS',out['animation']['retarget_pair_execution_count'])
           print('CONTROL_HASHES',out['animation']['control_hashes'])
           print('SELECTED_CLIP_HASHES',out['animation']['unique_selector_selected_clip_hashes'])
