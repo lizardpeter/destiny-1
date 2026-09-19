@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/d1-crota-model-stage-part-census.yml'
       - 'tools/d1_crota_model_stage_part_census.py'
+      - 'tools/d1_crota_serialized_pair_order.py'
+      - 'tools/d1_crota_pair_stage_group_join.py'
 
 env:
   BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
@@ -65,6 +67,30 @@ jobs:
           assert d['mesh_count']==3 and d['part_count']==54,d
           assert d['lod_enum']['7']=='LowPolyGeom2' and d['lod_enum']['9']=='LowPolyGeom3',d['lod_enum']
           print('CROTA_STAGE_CENSUS_GREEN','STAGES',len(d['stage_summary']),'FAMILIES',len(d['geometry_families']))
+          PY
+
+          python tools/d1_crota_serialized_pair_order.py \
+            --material-bindings input/actor/crota_raid_actor_material_bindings.json \
+            --out out/CROTA_SERIALIZED_PAIR_ORDER.json
+          python tools/d1_crota_pair_stage_group_join.py \
+            --stage-census out/CROTA_8108E5B7_STAGE_PART_CENSUS.json \
+            --pair-order out/CROTA_SERIALIZED_PAIR_ORDER.json \
+            --out out/CROTA_PAIR_STAGE_GROUP_JOIN.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_PAIR_STAGE_GROUP_JOIN.json'))
+          assert d['status']=='D1_CROTA_PAIR_STAGE_GROUP_JOIN_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['pair_instance_count']==14,d
+          assert all(x['color_group_index'] is not None and x['partner_group_index'] is not None for x in d['rows']),d
+          assert d['semantic_boundary']['native_draw_order']=='WITHHELD',d
+          print('CROTA_PAIR_STAGE_GROUPS',
+                'SAME',d['same_stage_part_group_count'],
+                'DIFFERENT',d['different_stage_part_group_count'])
+          for x in d['rows']:
+              print('PAIR_STAGE',x['mesh_index'],x['color_part_index'],x['partner_part_index'],
+                    x['color_group_index'],x['partner_group_index'],
+                    x['same_stage_part_group'])
           PY
           sha256sum out/* > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
