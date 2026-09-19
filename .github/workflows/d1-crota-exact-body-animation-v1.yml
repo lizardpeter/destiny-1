@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/d1-crota-exact-body-animation-v1.yml'
       - 'tools/d1_remote_exact_s_entity_probe.py'
+      - 'tools/d1_skeleton_lineage_name_map.py'
       - 'tools/d1_remote_runtime_rig_probe.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
@@ -101,6 +102,37 @@ jobs:
           print('CROTA_BODY','8108E484','MODEL','8108E5B7','SKELETON','8108E4BB','BONES',50,'RIG',rigs[0])
           print('ANIMATION_OWNERS',owners)
           open('out/CROTA_EXACT_ANIMATION_OWNER_TAGS.json','w').write(json.dumps({'rig':rigs[0],'owners':{f'{a}->{b}':v for (a,b),v in owners.items()}},indent=2)+'\\n')
+          PY
+
+      - name: Join exact Crota node hashes to pinned parser lineage names
+        run: |
+          set -euo pipefail
+          python tools/d1_skeleton_lineage_name_map.py \
+            --s-entity out/CROTA_EXACT_S_ENTITY_8108E484.json \
+            --skeleton-resource 8108E4BB \
+            --parser-root parser \
+            --out out/CROTA_SKELETON_LINEAGE_NAMES.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SKELETON_LINEAGE_NAMES.json'))
+          assert d['status']=='D1_SKELETON_LINEAGE_NAME_MAP_EXACT_HASH_JOIN',d
+          assert not d['violations'],d['violations']
+          assert d['node_count']==50,d
+          assert d['lineage_named_node_count']==46,d
+          assert d['unresolved_node_count']==4,d
+          by={x['index']:x for x in d['rows']}
+          assert (by[0]['node_hash'],by[0]['bungie_name'])==('E5685C1A','b_pedestal'),by[0]
+          assert (by[2]['node_hash'],by[2]['bungie_name'])==('6EBAC0C7','b_pelvis'),by[2]
+          assert (by[5]['node_hash'],by[5]['bungie_name'])==('A2A652A1','b_spine_1'),by[5]
+          assert (by[18]['node_hash'],by[18]['bungie_name'])==('40D6927E','b_head'),by[18]
+          assert (by[27]['node_hash'],by[27]['bungie_name'])==('9EF0E980','b_utility'),by[27]
+          assert [(x['index'],x['node_hash']) for x in d['unresolved_nodes']]==[
+            (1,'0E355AA8'),(21,'A485F9B8'),(26,'A91E97AF'),(30,'57F11E8A')
+          ],d['unresolved_nodes']
+          assert d['evidence_classes']['node_hash_and_order']=='EXACT_RETAIL_ENTITYSKELETON',d
+          assert d['evidence_classes']['bungie_name_string']=='PINNED_COMMUNITY_PARSER_LINEAGE_TABLE',d
+          print('CROTA_LINEAGE_NAMED_BONES',d['lineage_named_node_count'],'OF',d['node_count'])
+          print('CROTA_UNRESOLVED_BONE_HASHES',[(x['index'],x['node_hash']) for x in d['unresolved_nodes']])
           PY
 
       - name: Decode exact Crota runtime rig
