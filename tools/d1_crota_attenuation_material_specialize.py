@@ -49,6 +49,7 @@ def main()->int:
     ap.add_argument('--alpha-slice',type=Path,required=True)
     ap.add_argument('--symbolic',type=Path,required=True)
     ap.add_argument('--bc1-alpha',type=Path,required=True)
+    ap.add_argument('--texture-channels',type=Path,required=True)
     ap.add_argument('--out',type=Path,required=True)
     a=ap.parse_args()
 
@@ -56,6 +57,7 @@ def main()->int:
     sl=json.loads(a.alpha_slice.read_text())
     sy=json.loads(a.symbolic.read_text())
     bc=json.loads(a.bc1_alpha.read_text())
+    tc=json.loads(a.texture_channels.read_text())
     violations=[];rows=[]
 
     if st.get('status')!='D1_MATERIAL_STAGE_STATE_EXACT' or st.get('violations'):
@@ -66,11 +68,23 @@ def main()->int:
         violations.append('symbolic attenuation reduction not exact')
     if bc.get('status')!='D1_BC1_ALPHA_DOMAIN_EXACT' or bc.get('violations'):
         violations.append('BC1 alpha-domain proof not exact')
+    if tc.get('status')!='D1_CROTA_TEXTURE_CHANNEL_PROOF_EXACT' or tc.get('violations'):
+        violations.append('consolidated texture-channel proof not exact')
 
     mats={norm(k):v for k,v in (st.get('materials') or {}).items()}
     slices={norm(x['shader']):x for x in sl.get('shaders',[])}
     symbolic={(norm(x['material']),norm(x['pixel_shader'])):x for x in sy.get('rows',[])}
     alpha={norm(x['texture']):x for x in bc.get('textures',[])}
+    tcrows={norm(k):v for k,v in (tc.get('textures') or {}).items()}
+    for h in ('80AACF2A','8108E951','8108E952'):
+        a0=alpha.get(h); t0=tcrows.get(h)
+        if not a0 or not t0:
+            violations.append(f'{h}: missing cross-proof row')
+        elif bool(a0.get('alpha_exact_one')) != bool(t0.get('sample_alpha_constant_one')):
+            violations.append(f'{h}: BC1 alpha proof disagreement')
+    bc4=tcrows.get('8108E7B6')
+    if not bc4 or bc4.get('format')!='BC4':
+        violations.append('8108E7B6: exact BC4 channel proof missing')
 
     for partner,spec in PAIRS.items():
         m=mats.get(partner);color=mats.get(spec['color']);sh=spec['shader']
@@ -131,6 +145,15 @@ def main()->int:
               },
               'remaining_direct_varying_texture_lanes':['t0.x'],
               'remaining_direct_texture':'8108E7B6',
+              'remaining_direct_texture_channel_evidence':None if not bc4 else {
+                'format':bc4.get('format'),
+                'decoded_u8_min':bc4.get('decoded_u8_min'),
+                'decoded_u8_max':bc4.get('decoded_u8_max'),
+                'decoded_u8_unique_value_count':bc4.get('decoded_u8_unique_value_count'),
+                'decoded_u8_zero_count':bc4.get('decoded_u8_zero_count'),
+                'decoded_u8_255_count':bc4.get('decoded_u8_255_count'),
+                'linear_sha256':bc4.get('linear_sha256'),
+              },
               'specialized_equation':[
                 'V = 1',
                 'F = clamp(0.010300000198185444 * (0.6000000238418579 + 9.399999618530273*1) * (0.6000000238418579 + 9.399999618530273*1) - 0.05999999865889549)',
@@ -176,12 +199,13 @@ def main()->int:
       },
       'semantic_boundary':{
         'terminal_alpha_numerical_dependency':'EXACT_FOR_THE_FOUR_SELECTED_RETAIL_PARTNER_MATERIALS',
+        'surviving_8108E958_texture_channel':'EXACT_BC4_8108E7B6_T0_X',
         'generic_shader_capability':'NOT_REDUCED_GLOBALLY',
         'API12_semantic_name':'WITHHELD',
         'native_pass_order':'WITHHELD',
         'portable_material_role':'WITHHELD',
       },
-      'policy':'Specialization applies only to exact selected partner material payloads. A dead dependency for these constants is not promoted as a generic shader invariant, and numerical alpha does not establish engine pass ownership/order.',
+      'policy':'Specialization applies only to exact selected partner material payloads. BC1 alpha substitutions are cross-checked by two exact block-byte proofs; the surviving 8108E7B6 BC4 lane carries its exact retail channel census but remains semantically unnamed. A dead dependency for these constants is not promoted as a generic shader invariant, and numerical alpha does not establish engine pass ownership/order.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(out,indent=2)+'\n')
