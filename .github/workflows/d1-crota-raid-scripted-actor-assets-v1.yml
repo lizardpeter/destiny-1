@@ -8,6 +8,7 @@ on:
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_animation_motion_census.py'
+      - 'tools/d1_animation_family_retarget_census.py'
 
 permissions:
   contents: read
@@ -149,6 +150,29 @@ jobs:
           assert a['frontier_count']==0,a['frontiers'][:20]
           assert a['retarget_pair_failure_count']==0,a
           print('RAID_ACTOR_ANIMATION','CAPABLE',s['animation_capable_entity_count'],'CONTROLS',a['unique_control_count'],'SELECTED',a['unique_selector_selected_clip_count'],'BANK',a['unique_animation_list_clip_count'],'RETARGETS',a['retarget_pair_success_count'])
+          PY
+          python tools/d1_animation_family_retarget_census.py out/crota_raid_actor_animation_options_v3.json \
+            --out out/CROTA_RAID_ANIMATION_FAMILY_RETARGET_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RAID_ANIMATION_FAMILY_RETARGET_CENSUS.json'))
+          assert d['status']=='D1_ANIMATION_FAMILY_RETARGET_CENSUS_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['target_count']==11,d
+          assert d['total_clip_target_instances']==897,d
+          assert d['exact_dimension_clip_target_instances']==628,d
+          assert d['native_retarget_required_clip_target_instances']==269,d
+          c=d['crota_target']
+          assert c['selected_clip_count']==82,c
+          assert c['source_dimension_histogram']=={'(50, 44)':82},c
+          assert c['native_control_limit_histogram']=={'37':82},c
+          assert c['component_prefix_stop_reason_histogram']=={'component_hash_mismatch':82},c
+          reused={x['control']:x for x in d['control_reuse'] if x['target_count']>1}
+          assert reused['8108EBD6']['all_targets_use_identical_clip_set'] is True,reused
+          assert reused['81096662']['all_targets_use_identical_clip_set'] is True,reused
+          print('RAID_RETARGET_TOTAL',d['total_clip_target_instances'],'EXACT',d['exact_dimension_clip_target_instances'],'RETARGET',d['native_retarget_required_clip_target_instances'])
+          print('CROTA_RETARGET_BOUNDARY',c['native_control_limit_histogram'],c['component_prefix_stop_reason_histogram'])
+          print('REUSED_CONTROL_BANKS',reused)
           PY
           python tools/d1_animation_motion_census.py out/crota_raid_actor_animation_options_v3.json \
             --out out/CROTA_RAID_ACTOR_ANIMATION_MOTION_CENSUS.json
