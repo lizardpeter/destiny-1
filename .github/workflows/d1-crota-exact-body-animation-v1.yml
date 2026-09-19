@@ -10,6 +10,7 @@ on:
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
       - 'tools/d1_animation_motion_census.py'
+      - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
       - 'tools/d1_animation_control_state_map_v2.py'
@@ -169,6 +170,26 @@ jobs:
           print('CROTA_ANIMATION_SOURCE_CLOSED','CONTROLS',out['animation']['unique_control_count'],'SELECTED_CLIPS',out['animation']['unique_selector_selected_clip_count'],'BANK_CLIPS',out['animation']['unique_animation_list_clip_count'],'RETARGETS',out['animation']['retarget_pair_execution_count'])
           print('CONTROL_HASHES',out['animation']['control_hashes'])
           print('SELECTED_CLIP_HASHES',out['animation']['unique_selector_selected_clip_hashes'])
+          PY
+
+      - name: Prove exact Crota runtime-component retarget boundary
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_runtime_component_boundary.py \
+            --animation-options out/CROTA_ANIMATION_OPTIONS_V3.json \
+            --runtime-rig out/CROTA_RUNTIME_RIG_8108E4CB.json \
+            --out out/CROTA_RUNTIME_COMPONENT_BOUNDARY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RUNTIME_COMPONENT_BOUNDARY.json'))
+          assert d['status']=='D1_CROTA_RUNTIME_COMPONENT_BOUNDARY_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['shared_retargetable_control_prefix_count']==37,d
+          assert d['remaining_target_control_count']==7,d
+          assert d['source_component_family_count']==3,d
+          assert [x['clip_count'] for x in d['source_component_families']]==[68,13,1],d
+          print('CROTA_COMPONENT_TARGET',d['target_components'])
+          print('CROTA_COMPONENT_SOURCE_FAMILIES',d['source_component_families'])
           PY
 
       - name: Census exact retargeted Crota motion variation
