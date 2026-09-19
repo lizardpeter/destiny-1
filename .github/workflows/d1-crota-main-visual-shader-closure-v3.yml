@@ -9,7 +9,7 @@ on:
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gnm_vs_ps_linkage.py'
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
-      - 'tools/d1_gcn_image_usage_analyze.py'\n      - 'tools/d1_gcn_cbuffer_usage_analyze.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'\n      - 'tools/d1_gcn_cbuffer_usage_analyze.py'\n      - 'tools/d1_gcn_terminal_alpha_slice.py'
       - 'tools/d1_gcn_paired_shader_differential.py'
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_material_decode.py'
@@ -234,6 +234,41 @@ jobs:
           print('CROTA_API0_DWORDS_959',by['8108E959']['api_slot_read_dwords']['0'])
           PY
 
+      - name: Backward-slice exact terminal attenuation alpha
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_alpha_slice.py \
+            --usage out/CROTA_VISUAL_GCN_IMAGE_USAGE.json \
+            --cbuffer-usage out/CROTA_GCN_CBUFFER_USAGE.json \
+            --disasm-dir disasm --shader 8108E958 --shader 8108E959 \
+            --out out/CROTA_TERMINAL_ALPHA_SLICE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_TERMINAL_ALPHA_SLICE.json'))
+          assert d['status']=='D1_GCN_TERMINAL_ALPHA_SLICE_EXACT',d
+          assert not d['violations'],d['violations']
+          by={x['shader']:x for x in d['shaders']}
+          a=by['8108E958']['value_slice']
+          assert a['cbuffer_dwords']['0']==[11,12,13,16,17,23,27,48],a
+          assert a['cbuffer_dwords']['12']==[28,29,30],a
+          assert a['texture_sample_channels']==[
+              {'texture_index':'0','channel':'x'},
+              {'texture_index':'1','channel':'w'},
+              {'texture_index':'2','channel':'w'},
+              {'texture_index':'4','channel':'w'},
+          ],a
+          assert a['unknown_registers']==[],a
+          b=by['8108E959']['value_slice']
+          assert b['cbuffer_dwords']['0']==[8,9,15,19],b
+          assert b['cbuffer_dwords']['12']==[28,29,30],b
+          assert b['texture_sample_channels']==[{'texture_index':'0','channel':'w'}],b
+          assert b['unknown_registers']==[],b
+          print('ALPHA_VALUE_SLICE_958',a)
+          print('ALPHA_VALUE_SLICE_959',b)
+          print('ALPHA_COORDINATE_SUPERSET_958',by['8108E958']['coordinate_expanded_slice'])
+          print('ALPHA_COORDINATE_SUPERSET_959',by['8108E959']['coordinate_expanded_slice'])
+          PY
+
       - name: Differential-close exact paired visual programs
         run: |
           set -euo pipefail
@@ -288,6 +323,7 @@ jobs:
           python tools/d1_crota_attenuation_constant_reduce.py \
             --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
             --cbuffer-usage out/CROTA_GCN_CBUFFER_USAGE.json \
+            --alpha-slice out/CROTA_TERMINAL_ALPHA_SLICE.json \
             --out out/CROTA_ATTENUATION_CONSTANT_REDUCTION.json
           python - <<'PY'
           import json
