@@ -10,7 +10,7 @@ on:
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
       - 'tools/d1_animation_motion_census.py'\n      - 'tools/d1_animation_motion_bone_map.py'\n      - 'tools/d1_crota_skeleton_usage_union.py'\n      - 'tools/d1_crota_skin_bone_map.py'\n      - 'tools/d1_world_articulated_skin_census.py'\n      - 'tools/d1_remote_crota_skin_census.py'\n      - 'tools/d1_animation_frame_event_pointer_census.py'
-      - 'tools/d1_crota_runtime_component_boundary.py'
+      - 'tools/d1_crota_runtime_component_boundary.py'\n      - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
       - 'tools/d1_animation_control_state_map_v2.py'
@@ -210,6 +210,29 @@ jobs:
           assert [x['clip_count'] for x in d['source_component_families']]==[68,13,1],d
           print('CROTA_COMPONENT_TARGET',d['target_components'])
           print('CROTA_COMPONENT_SOURCE_FAMILIES',d['source_component_families'])
+          PY
+
+      - name: Map runtime-rig controls onto exact skeleton nodes
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_runtime_control_skeleton_map.py \
+            --runtime-rig out/CROTA_RUNTIME_RIG_8108E4CB.json \
+            --s-entity out/CROTA_EXACT_S_ENTITY_8108E484.json \
+            --component-boundary out/CROTA_RUNTIME_COMPONENT_BOUNDARY.json \
+            --skeleton-resource 8108E4BB \
+            --out out/CROTA_RUNTIME_CONTROL_SKELETON_MAP.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RUNTIME_CONTROL_SKELETON_MAP.json'))
+          assert d['status']=='D1_CROTA_RUNTIME_CONTROL_SKELETON_MAP_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['control_count']==44,d
+          assert d['shared_prefix_control_count']==37,d
+          assert d['target_only_suffix_control_count']==7,d
+          assert not d['inverse_mapping_mismatches'],d
+          assert d['semantic_boundary']['target_only_suffix_behavior']=='WITHHELD',d
+          print('CROTA_CONTROLLED_SKELETON_NODES',d['controlled_skeleton_node_count'])
+          print('CROTA_TARGET_ONLY_CONTROL_SUFFIX',[(x['control_index'],x['bone_index'],x['node_hash'],x['parent_node_index']) for x in d['target_only_suffix_controls']])
           PY
 
       - name: Census exact retargeted Crota motion variation
