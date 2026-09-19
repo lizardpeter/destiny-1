@@ -136,7 +136,63 @@ source.
 Therefore the strongest source-safe description is:
 
 > `api13[6]` and `api13[7]` are shared PS4 runtime scalar inputs whose product
-> scales final RGB in at least two independent Tower shader families.
+> scales final RGB in at least two independent Tower shader families.  The Crota
+> expansion below raises the observed cross-family count without resolving the producer.
+
+## Crota high-detail expansion — 2026-09-19
+
+The source-closed Crota high-detail material reversal adds three more native PS4
+pixel-shader programs with the same terminal-RGB dependency:
+
+```text
+8108E953  gcn a5fe9ef18b14e9f204aedd5f0d8cf34021bf5812f445521cd9b9fec18dfd9552
+8108E955  gcn 2bb9b4e27b0aa204e5d0b47ce8d85746853da1187d8b0ce2700b94009810795f
+8108E956  gcn b2b8147deb1b5ed70ee9306784d8760eb82b7aef6cb07cf308e3ed64645d9e69
+```
+
+For each program, exact Sony input-usage provenance plus terminal-RGB backward
+slicing proves that **R, G, and B all depend on api13 dwords 6 and 7**.  Material
+specialization leaves the same factor in every selected Crota high-detail color
+material:
+
+```text
+8108E953  RGB = local_color_term * api13[6] * api13[7]
+8108E955  RGB = local_color_term * api13[6] * api13[7]
+8108E956  RGB = local_color_term * api13[6] * api13[7]
+```
+
+The paired Crota computed-alpha programs provide a useful negative control:
+
+```text
+8108E958  terminal MRT0.A has no api13 dependency
+8108E959  terminal MRT0.A has no api13 dependency
+```
+
+For the selected retail materials, the attenuation branch can be specialized much
+further (including exact BC1 alpha-one substitutions), yet api13 remains absent
+from terminal alpha.  This independently reinforces the earlier Tower conclusion
+that this pair belongs on the **RGB scale path**, not the opacity path.
+
+Reusable Crota proofs:
+
+```text
+tools/d1_gcn_cbuffer_usage_analyze.py
+tools/d1_gcn_terminal_rgb_slice.py
+tools/d1_gcn_terminal_alpha_slice.py
+tools/d1_crota_api13_family_boundary.py
+tools/d1_crota_color_material_specialize.py
+.github/workflows/d1-crota-main-visual-shader-closure-v3.yml
+```
+
+The strongest source-safe description is therefore now:
+
+> `api13[6]` and `api13[7]` are shared PS4 runtime scalar inputs whose product
+> scales terminal RGB across at least five independently structured retail pixel
+> shader programs/families observed in Tower and Crota evidence.  The exact engine
+> producer/name and live values remain unresolved.
+
+This expansion does **not** promote the Charm `Frame scope` label or its preview
+fallback values into retail proof.
 
 ## Frame-scope lineage lead — not yet retail proof
 
