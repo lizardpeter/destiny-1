@@ -529,8 +529,8 @@ jobs:
           assert d['semantic_boundary']['BC4_encoded_blocks']=='EXACT_ENDPOINT_AND_INDEX_BYTES',d
           assert d['semantic_boundary']['BC4_gpu_sample_numeric_values']=='WITHHELD',d
           assert (b['preview_decoder_u8_min'],b['preview_decoder_u8_max'],b['preview_decoder_u8_unique_value_count'])==(0,255,246),b
-          print('CROTA_BC4_EXACT_DOMAIN','MIN',b['decoded_u8_min'],'MAX',b['decoded_u8_max'],
-                'UNIQUE',b['decoded_u8_unique_value_count'],'ZERO',b['decoded_u8_zero_count'],'FULL',b['decoded_u8_255_count'])
+          print('CROTA_BC4_EXACT_DOMAIN','MIN',b['preview_decoder_u8_min'],'MAX',b['preview_decoder_u8_max'],
+                'UNIQUE',b['preview_decoder_u8_unique_value_count'],'ZERO',b['preview_decoder_u8_zero_count'],'FULL',b['preview_decoder_u8_255_count'])
           PY
 
           python tools/d1_crota_attenuation_material_specialize.py \
