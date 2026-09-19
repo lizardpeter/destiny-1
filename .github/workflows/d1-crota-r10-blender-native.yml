@@ -122,7 +122,22 @@ jobs:
               nn={n.name for n in m.node_tree.nodes}
               for required in ('D1_NATIVE_OUTPUT','D1_DESTINATION_ATTENUATION','D1_ADDITIVE_COLOR','D1_NATIVE_SOURCE_PLUS_DESTINATION'):
                   assert required in nn,(name,required,nn)
-              assert m.get('d1_r10_native_contract')=='Source + Destination*(1-SourceAlpha)'
+              assert m.get('d1_r10_blend_equation_exact')=='Source + Destination*(1-SourceAlpha)'
+              assert m.get('d1_r10_partner_alpha_input')=='SOURCE_CLOSED_FOR_SELECTED_RETAIL_MATERIAL'
+              assert m.get('d1_r10_native_pass_order')=='WITHHELD'
+              assert str(m.get('d1_r10_blender_closure','')).startswith('PORTABLE_INSPECTION_ASSUMPTION:')
+          for name in ('D1_8108E7A9','D1_8108E7B2'):
+              nn={n.name for n in bpy.data.materials[name].node_tree.nodes}
+              assert 'D1_EXACT_958_SPECIALIZED_ALPHA' in nn,(name,nn)
+              assert 'D1_PROXY_ATTENUATION_SCALE' not in nn,(name,nn)
+              assert 'D1_PROXY_ATTENUATION_BIAS' not in nn,(name,nn)
+          for name in ('D1_8108E7AA','D1_8108E7B3'):
+              nn={n.name for n in bpy.data.materials[name].node_tree.nodes}
+              assert 'D1_EXACT_8108E959_PARTNER_ALPHA_ONE' in nn,(name,nn)
+              assert 'D1_PROXY_8108E959_RUNTIME_ATTENUATION' not in nn,(name,nn)
+          nn={n.name for n in bpy.data.materials['D1_8108E7B1'].node_tree.nodes}
+          assert 'D1_EXACT_80AAE1CD_PARTNER_ALPHA_ONE' in nn,nn
+          assert 'D1_PROXY_80AAE1CD_ATTENUATION' not in nn,nn
           arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
           assert all(o.hide_get() and o.hide_render for o in arms),[(o.name,o.hide_get(),o.hide_render) for o in arms]
           meshes=[o for o in bpy.context.scene.objects if o.type=='MESH' and not o.hide_get()]
