@@ -238,7 +238,7 @@ def build_native_material(mat):
         mat['d1_r10_color_shader']='8108E955'
         mat['d1_r10_color_exact_normalized_gain']=list(PROC_EXACT_NORMALIZED_GAIN[:3])
         mat['d1_r10_color_exact_material_scalar']=55.0
-        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] scale'
+        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] shared PS4 runtime RGB-scale pair; producer/live values WITHHELD'
         mat['d1_r10_color_preview_proxy']='D1_PROXY_955_PROC_COLOR_RAMP + emission strength 1.65'
     elif tag in MAT_ATLAS:
         t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-780,190)
