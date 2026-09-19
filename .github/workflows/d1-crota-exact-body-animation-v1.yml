@@ -14,6 +14,7 @@ on:
       - 'tools/d1_animation_motion_bone_map.py'
       - 'tools/d1_crota_skeleton_usage_union.py'
       - 'tools/d1_crota_skeleton_usage_matrix.py'
+      - 'tools/d1_crota_named_skeleton_usage.py'
       - 'tools/d1_crota_skin_bone_map.py'
       - 'tools/d1_world_articulated_skin_census.py'
       - 'tools/d1_remote_crota_skin_census.py'
@@ -465,6 +466,30 @@ jobs:
               if x['has_target_only_suffix_control'] or (x['has_skin_influence'] and not x['has_runtime_control']) or (x['has_dynamic_motion'] and not x['has_runtime_control']):
                   print('CROTA_SKELETON_MATRIX_NODE',x['index'],x['node_hash'],x['parent_node_index'],
                         x['structural_pattern'],x['runtime_controls'])
+          PY
+
+      - name: Annotate exact Crota skeleton usage with lineage names
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_named_skeleton_usage.py \
+            --usage-matrix out/CROTA_SKELETON_USAGE_MATRIX.json \
+            --lineage-names out/CROTA_SKELETON_LINEAGE_NAMES.json \
+            --out out/CROTA_NAMED_SKELETON_USAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_NAMED_SKELETON_USAGE.json'))
+          assert d['status']=='D1_CROTA_NAMED_SKELETON_USAGE_EXACT_JOIN',d
+          assert not d['violations'],d['violations']
+          assert d['node_count']==50,d
+          assert d['lineage_named_node_count']==46,d
+          assert d['unresolved_name_node_count']==4,d
+          assert d['evidence_classes']['bungie_name_string']=='PINNED_COMMUNITY_PARSER_LINEAGE_TABLE',d
+          print('CROTA_NAMED_TARGET_ONLY_SUFFIX',
+                [(x['index'],x['display_identity'],x['runtime_controls']) for x in d['target_only_suffix_nodes']])
+          print('CROTA_NAMED_SKIN_WITHOUT_CONTROL',
+                [(x['index'],x['display_identity']) for x in d['skin_nodes_without_direct_runtime_control']])
+          print('CROTA_NAMED_DYNAMIC_WITHOUT_CONTROL',
+                [(x['index'],x['display_identity']) for x in d['dynamic_nodes_without_direct_runtime_control']])
           PY
 
       - name: Prove exact control-scalar to frame timing ratio
