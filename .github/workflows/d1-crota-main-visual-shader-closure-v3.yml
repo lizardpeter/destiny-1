@@ -12,6 +12,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_alpha_slice.py'
+      - 'tools/d1_gcn_terminal_rgb_slice.py'
       - 'tests/test_d1_gcn_provenance_analysis.py'
       - 'tools/d1_gcn_paired_shader_differential.py'
       - 'tools/d1_material_stage_state_resolve.py'
@@ -59,6 +60,7 @@ jobs:
           python -m py_compile \
             tools/d1_gcn_cbuffer_usage_analyze.py \
             tools/d1_gcn_terminal_alpha_slice.py \
+            tools/d1_gcn_terminal_rgb_slice.py \
             tools/d1_crota_attenuation_constant_reduce.py \
             tools/d1_crota_attenuation_symbolic_reduce.py \
             tools/d1_bc1_alpha_domain_proof.py \
@@ -301,6 +303,48 @@ jobs:
           print('ALPHA_VALUE_SLICE_959',b)
           print('ALPHA_COORDINATE_SUPERSET_958',by['8108E958']['coordinate_expanded_slice'])
           print('ALPHA_COORDINATE_SUPERSET_959',by['8108E959']['coordinate_expanded_slice'])
+          PY
+
+      - name: Backward-slice exact terminal color RGB
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_rgb_slice.py \
+            --usage out/CROTA_VISUAL_GCN_IMAGE_USAGE.json \
+            --cbuffer-usage out/CROTA_GCN_CBUFFER_USAGE.json \
+            --disasm-dir disasm \
+            --shader 8108E953 --shader 8108E955 --shader 8108E956 \
+            --out out/CROTA_TERMINAL_RGB_SLICE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_TERMINAL_RGB_SLICE.json'))
+          assert d['status']=='D1_GCN_TERMINAL_RGB_SLICE_EXACT',d
+          assert not d['violations'],d['violations']
+          by={x['shader']:x for x in d['shaders']}
+          expected={
+            '8108E953':{
+              'R':({'0':[8,9,12,16,20,24],'12':[28,29,30],'13':[6,7]},[('0','x')]),
+              'G':({'0':[8,9,13,17,21,24],'12':[28,29,30],'13':[6,7]},[('0','y')]),
+              'B':({'0':[8,9,14,18,22,24],'12':[28,29,30],'13':[6,7]},[('0','z')]),
+            },
+            '8108E956':{
+              'R':({'0':[8,9,12,15,16,19,20,24],'12':[28,29,30],'13':[6,7]},[('0','w'),('0','x')]),
+              'G':({'0':[8,9,13,15,17,19,21,24],'12':[28,29,30],'13':[6,7]},[('0','w'),('0','y')]),
+              'B':({'0':[8,9,14,15,18,19,22,24],'12':[28,29,30],'13':[6,7]},[('0','w'),('0','z')]),
+            },
+            '8108E955':{
+              'R':({'0':[8,11,12,13,16,17,20,23,24,27,48,52,56],'12':[28,29,30],'13':[6,7]},[('0','x'),('1','w'),('1','x'),('2','w'),('2','x'),('4','w'),('4','x')]),
+              'G':({'0':[9,11,12,13,16,17,21,23,25,27,48,53,56],'12':[28,29,30],'13':[6,7]},[('0','x'),('1','w'),('1','y'),('2','w'),('2','y'),('4','w'),('4','y')]),
+              'B':({'0':[10,11,12,13,16,17,22,23,26,27,48,54,56],'12':[28,29,30],'13':[6,7]},[('0','x'),('1','w'),('1','z'),('2','w'),('2','z'),('4','w'),('4','z')]),
+            },
+          }
+          for sh,chs in expected.items():
+              r=by[sh]
+              for ch,(cb,tx) in chs.items():
+                  s=r['channels'][ch]['value_slice']
+                  assert s['cbuffer_dwords']==cb,(sh,ch,s['cbuffer_dwords'],cb)
+                  assert [(x['texture_index'],x['channel']) for x in s['texture_sample_channels']]==tx,(sh,ch,s['texture_sample_channels'])
+                  assert s['unknown_registers']==[],(sh,ch,s['unknown_registers'])
+              print('RGB_SLICE',sh,r['rgb_value_union'])
           PY
 
       - name: Differential-close exact paired visual programs
