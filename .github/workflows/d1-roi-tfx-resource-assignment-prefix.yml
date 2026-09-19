@@ -3,7 +3,7 @@ name: D1 ROI TFX resource assignment prefix proof
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, d1-crota-source-semantics-v1]
     paths:
       - 'tools/d1_roi_tfx_resource_assignment_prefix_proof.py'
       - '.github/workflows/d1-roi-tfx-resource-assignment-prefix.yml'
@@ -55,7 +55,10 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('reports/D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX.json'))
+          assert d['schema_version']==2,d.get('schema_version')
           assert d['status']=='D1_ROI_TFX_RESOURCE_ASSIGNMENT_PREFIX_EXACT',d['violations']
+          assert d['evidence_classes']['runtime_default_resource_values']=='WITHHELD',d['evidence_classes']
+          assert d['evidence_classes']['retail_structural_promotions']['ps_texture_assignment_prefix']['bytes']=='49 <texture_index> 47 <destination_code>',d['evidence_classes']
           assert d['all_serialized_ps_texture_entries_covered'] is True,d
           assert d['runtime_default_hole_count']==6,d
           assert d['gates']['runtime_default_resource_values_closed'] is False,d
