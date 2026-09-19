@@ -54,6 +54,9 @@ def parse_disasm(path:Path):
                 'line':ln,'address':rec['address'],'target':em.group(1),
                 'operands':operands,
                 'live_lanes':[i for i,x in enumerate(operands) if x.lower()!='off'],
+                'compressed':bool(re.search(r'\\bcompr\\b',tail)),
+                'done':bool(re.search(r'\\bdone\\b',tail)),
+                'valid_mask':bool(re.search(r'\\bvm\\b',tail)),
                 'assembly':line.strip(),
             })
     mn=collections.Counter(x['mnemonic'] for x in rows)
@@ -73,13 +76,28 @@ def usage_row(by,h):
     if r is None: raise ValueError(f'{h}: missing exact image-usage row')
     if int(r.get('unmatched_image_instruction_count',-1)) != 0:
         raise ValueError(f'{h}: unresolved image resource provenance')
+    inst=r.get('instructions',[])
+    signatures=[]
+    for x in inst:
+        resources=x.get('resources') or []
+        samplers=x.get('samplers') or []
+        signatures.append({
+            'address':x.get('address'),
+            'opcode':x.get('opcode'),
+            'texture_indices':[int(y['texture_index']) for y in resources if y.get('texture_index') is not None],
+            'sampler_indices':[int(y['sampler_index']) for y in samplers if y.get('sampler_index') is not None],
+            'dmask':int(x.get('dmask',0)),
+            'dmask_channels':x.get('dmask_channels'),
+            'assembly':x.get('assembly'),
+        })
     return {
         'image_instruction_count':int(r.get('image_instruction_count',0)),
         'used_texture_indices':[int(x) for x in r.get('used_texture_indices',[])],
         'texture_instruction_counts':r.get('texture_instruction_counts',{}),
         'sampler_instruction_counts':r.get('sampler_instruction_counts',{}),
         'image_opcodes':r.get('image_opcodes',{}),
-        'instructions':r.get('instructions',[]),
+        'image_instruction_signatures':signatures,
+        'instructions':inst,
     }
 
 def pair_row(a,b,ua,ub,da,db):
