@@ -30,6 +30,7 @@ on:
       - 'tools/d1_crota_material_pair_invariants.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
       - 'tools/d1_crota_vs_signed_cross_export.py'
+      - 'tools/d1_crota_angular_varying_lineage.py'
 
 permissions:
   contents: read
@@ -207,6 +208,29 @@ jobs:
               print('GNM_LINK',r['vertex_shader'],r['pixel_shader'],
                     'CONSUMED',[(x['attr_index'],x['semantic'],x['vs_param_index']) for x in r['consumed_linkage']],
                     'ALL',[(x['attr_index'],x['semantic'],x['vs_param_index'],x['ps_default_value']) for x in r['linkage']])
+          PY
+
+      - name: Trace angular pixel inputs to exact vertex exports
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_angular_varying_lineage.py \
+            --linkage out/CROTA_GNM_VS_PS_LINKAGE.json \
+            --signed-cross out/CROTA_VS_SIGNED_CROSS_EXPORT.json \
+            --out out/CROTA_ANGULAR_VARYING_LINEAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANGULAR_VARYING_LINEAGE.json'))
+          assert d['status']=='D1_CROTA_ANGULAR_VARYING_LINEAGE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['link_count']==9,d
+          assert d['semantic_boundary']['normal_tangent_bitangent_position_labels']=='WITHHELD',d
+          assert d['semantic_boundary']['API12_vector_semantic']=='WITHHELD',d
+          for r in d['links']:
+              assert [x['ps_attr_index'] for x in r['angular_inputs']]==[0,2],r
+              assert all(x['vs_param_index'] is not None for x in r['angular_inputs']),r
+              print('ANGULAR_VARYING_LINK',r['vertex_shader'],r['pixel_shader'],
+                    [(x['ps_attr_index'],x['raw_gnm_semantic_id'],x['vs_param_index'],
+                      x['is_signed_cross_export_param2']) for x in r['angular_inputs']])
           PY
 
       - name: Prove exact terminal MRT0 channel classes
