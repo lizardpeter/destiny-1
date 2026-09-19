@@ -7,7 +7,7 @@ on:
       - '.github/workflows/d1-crota-main-visual-shader-closure-v3.yml'
       - 'tools/d1_crota_visual_shader_v3_trigger.py'
       - 'tools/d1_world_shader_extract.py'
-      - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'\n      - 'tools/d1_gcn_paired_shader_differential.py'
 
 permissions:
   contents: read
@@ -108,6 +108,36 @@ jobs:
           for h in ('8108E7B7','8108E7B8','8108E953','80AAE1CD','8108E955','8108E958','8108E956','8108E959'):
               r=by[h]
               print('PIXEL',h,'IMAGE_OPS',r['image_instruction_count'],'USED_T',r['used_texture_indices'],'OPS',r['image_opcodes'])
+          PY
+
+      - name: Differential-close exact paired visual programs
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_paired_shader_differential.py \
+            --usage out/CROTA_VISUAL_GCN_IMAGE_USAGE.json --disasm-dir disasm \
+            --pair 8108E7B7:8108E7B8 \
+            --pair 8108E953:80AAE1CD \
+            --pair 8108E955:8108E958 \
+            --pair 8108E956:8108E959 \
+            --out out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json'))
+          assert d['status']=='D1_GCN_PAIRED_SHADER_DIFFERENTIAL_EXACT',d
+          assert d['pair_count']==4,d
+          assert not d['violations'],d['violations']
+          expected={('8108E7B7','8108E7B8'),('8108E953','80AAE1CD'),('8108E955','8108E958'),('8108E956','8108E959')}
+          assert {(x['a'],x['b']) for x in d['pairs']}==expected,d['pairs']
+          for x in d['pairs']:
+              assert x['semantic_boundary']=='STRUCTURAL_DIFFERENTIAL_ONLY',x
+              print('PAIR',x['a'],x['b'],
+                    'SHARED_T',x['resource_usage']['shared_texture_indices'],
+                    'A_ONLY_T',x['resource_usage']['a_only_texture_indices'],
+                    'B_ONLY_T',x['resource_usage']['b_only_texture_indices'])
+              print('  A_EXPORTS',x['native_structure']['a']['exports'])
+              print('  B_EXPORTS',x['native_structure']['b']['exports'])
+              print('  A_EXCESS',x['native_structure']['a_excess_mnemonics'])
+              print('  B_EXCESS',x['native_structure']['b_excess_mnemonics'])
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
