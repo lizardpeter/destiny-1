@@ -22,6 +22,7 @@ on:
       - 'tools/d1_animation_event_prefix_structure.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_crota_animation_component_state_census.py'
+      - 'tools/d1_crota_component_motion_profile.py'
       - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
@@ -384,6 +385,49 @@ jobs:
                   assert int(ac['scale_stream_count']) >= 0 and int(ac['rotation_stream_count']) >= 0 and int(ac['translation_stream_count']) >= 0,ac
           print('BONE0_END_DISPLACEMENT_RANGE',d['bone0_translation_end_displacement_range'])
           print('BONE0_PEAK_DISPLACEMENT_RANGE',d['bone0_translation_peak_displacement_range'])
+          PY
+
+      - name: Profile exact runtime-component families by retargeted motion
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_component_motion_profile.py \
+            --component-state out/CROTA_ANIMATION_COMPONENT_STATE_CENSUS.json \
+            --motion out/CROTA_ANIMATION_MOTION_CENSUS.json \
+            --lineage-names out/CROTA_SKELETON_LINEAGE_NAMES.json \
+            --out out/CROTA_COMPONENT_MOTION_PROFILE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_COMPONENT_MOTION_PROFILE.json'))
+          assert d['status']=='D1_CROTA_COMPONENT_MOTION_PROFILE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['component_family_count']==3 and d['selected_clip_count']==82,d
+          by={x['family_index']:x for x in d['families']}
+          assert [by[i]['selected_clip_count'] for i in range(3)]==[68,13,1],d
+          expected={
+            0:{'7':1,'11':2,'16':3,'21':2,'22':6,'25':2,'26':1,'30':1,'31':3,'32':1,'34':1,'35':1,'37':1,'41':2,'44':2,'45':1,'46':2,'47':3,'49':5,'50':4,'51':1,'53':2,'56':2,'58':2,'60':2,'61':4,'65':1,'81':1,'98':1,'127':2,'141':4,'143':1,'160':1},
+            1:{'36':1,'41':3,'42':1,'45':1,'46':4,'48':1,'60':1,'73':1},
+            2:{'41':1},
+          }
+          for i in range(3):
+              q=by[i]
+              assert q['frame_count_histogram']==expected[i],(i,q['frame_count_histogram'])
+              assert q['source_dimension_exact_count']==0,q
+              assert q['native_retarget_required_count']==q['selected_clip_count'],q
+              assert len(q['node_motion_incidence'])==50,q
+              assert sum(q['frame_count_histogram'].values())==q['selected_clip_count'],q
+              top=sorted(q['node_motion_incidence'],
+                         key=lambda x:(-x['dynamic_any_clip_instances'],x['index']))[:12]
+              print('CROTA_COMPONENT_MOTION_FAMILY',i,
+                    'CLIPS',q['selected_clip_count'],
+                    'FRAME_RANGE',q['frame_count_range'],
+                    'DYNAMIC_ANY_HIST',q['dynamic_any_track_count_histogram'],
+                    'DYNAMIC_TRANSLATION_HIST',q['dynamic_translation_track_count_histogram'],
+                    'BONE0_END_RANGE',q['bone0_translation_end_displacement_range'])
+              print('CROTA_COMPONENT_MOTION_TOP_NODES',i,
+                    [(x['index'],x['bungie_name'] or x['node_hash'],x['dynamic_any_clip_instances'],
+                      x['dynamic_translation_clip_instances']) for x in top])
+          assert d['semantic_boundary']['component_family_behavior']=='WITHHELD',d
+          assert d['semantic_boundary']['clip_behavior']=='WITHHELD',d
           PY
 
       - name: Map dynamic tracks onto exact Crota skeleton hierarchy
