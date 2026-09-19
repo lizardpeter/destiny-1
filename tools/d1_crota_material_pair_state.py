@@ -64,6 +64,8 @@ def main():
             violations.append(f'{cps}:{pps}: paired GCN differential missing')
         cs=compact_stage(cm['ps']); ps=compact_stage(pm['ps'])
         def without_shader(s): return {k:v for k,v in s.items() if k!='shader'}
+        cbuf_prefix=cs['cbuffers'][:len(ps['cbuffers'])]==ps['cbuffers']
+        cbuf_suffix=cs['cbuffers'][len(ps['cbuffers']):] if cbuf_prefix else []
         equality={
           'material_state4_equal':cm.get('material_state4_hex')==pm.get('material_state4_hex'),
           'texture_bindings_equal':cs['textures']==ps['textures'],
@@ -72,6 +74,10 @@ def main():
           'tfx_bytes_equal':cs['tfx_bytecode_hex']==ps['tfx_bytecode_hex'],
           'private_constants_equal':cs['private_constants']==ps['private_constants'],
           'cbuffers_equal':cs['cbuffers']==ps['cbuffers'],
+          'partner_cbuffers_exact_prefix_of_color':cbuf_prefix,
+          'partner_cbuffer_count':len(ps['cbuffers']),
+          'color_cbuffer_count':len(cs['cbuffers']),
+          'color_only_cbuffer_suffix_count':len(cbuf_suffix),
           'all_serialized_ps_inputs_equal_except_shader':without_shader(cs)==without_shader(ps),
         }
         rows.append({
@@ -83,6 +89,7 @@ def main():
           'partner_material_state4_u8':pm.get('material_state4_u8'),
           'state4_equal':equality['material_state4_equal'],
           'serialized_ps_input_equality':equality,
+          'color_only_cbuffer_suffix':cbuf_suffix,
           'color_ps_state':cs,
           'partner_ps_state':ps,
           'paired_gcn_differential':diff,
@@ -92,6 +99,7 @@ def main():
       'status':'D1_CROTA_MATERIAL_PAIR_STATE_EXACT' if len(rows)==len(PAIRS) and not violations else 'D1_CROTA_MATERIAL_PAIR_STATE_PARTIAL',
       'pair_count':len(rows),
       'pairs_with_all_serialized_ps_inputs_equal_except_shader':sum(x['serialized_ps_input_equality']['all_serialized_ps_inputs_equal_except_shader'] for x in rows),
+      'pairs_with_partner_cbuffers_exact_prefix_of_color':sum(x['serialized_ps_input_equality']['partner_cbuffers_exact_prefix_of_color'] for x in rows),
       'pairs':rows,'violations':violations,
       'semantic_boundary':{
           'serialized_pair_identity':'EXACT',
