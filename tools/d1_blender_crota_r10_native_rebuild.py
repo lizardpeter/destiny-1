@@ -2,15 +2,23 @@
 """Blender-native Crota R10 material rebuild.
 
 The carrier GLB preserves exact D1 resources. This Blender-targeted adapter selects
-only the six source-closed color surfaces and reconstructs Crota's paired 0x88
-composition as one Blender material closure:
+only the six source-closed color surfaces and builds a portable inspection closure
+from Crota's paired 0x88 evidence:
 
-    Destination * (1 - attenuation) + emissive RGB
+    Destination * (1 - partner_alpha) + color_RGB
+
+The blend equation and paired shader outputs are exact. Native draw/pass order is
+still WITHHELD, so the combined Blender closure is explicitly an inspection
+reconstruction rather than a source-closed claim about framebuffer ordering.
 
 Native evidence:
 * PS 8108E953/955/956 export RGB contribution with A=0;
 * PS 80AAE1CD/8108E958/959 export RGB=0 with alpha;
-* material state 0x88 = Source + Destination*(1-SourceAlpha).
+* material state 0x88 = Source + Destination*(1-SourceAlpha);
+* for current PS8108E959 partner materials, exact retail BC1 blocks + exact
+  material coefficients reduce terminal alpha to 1.0;
+* for current PS8108E958 partner materials, BC1 alpha inputs are exact 1.0 and
+  m27=m48=0, reducing terminal alpha to the BC4 t0.x scalar only.
 
 The three serialized prepass mesh objects using materials 8108E667/8108E66B are
 preserved in the carrier artifact but deliberately removed from the Blender scene.
@@ -138,6 +146,61 @@ def add_value(nodes, value, name, x, y):
     n.outputs[0].default_value=float(value); return n
 
 
+def add_math(nodes, operation, name, x, y, *, a=None, b=None, clamp=False):
+    n=nodes.new('ShaderNodeMath'); n.operation=operation; n.name=name; n.label=name; n.location=(x,y)
+    if a is not None: n.inputs[0].default_value=float(a)
+    if b is not None: n.inputs[1].default_value=float(b)
+    if hasattr(n,'use_clamp'): n.use_clamp=bool(clamp)
+    return n
+
+
+def build_proc_partner_alpha(nodes, links, scalar_socket):
+    """Portable replay of the exact material-specialized PS8108E958 alpha equation.
+
+    Exact source closure established before this adapter:
+      t1.w=t2.w=t4.w=1 from retail BC1 block alpha domains;
+      m11=1, m12=6, m13=-4.499999523162842,
+      m23=1, m27=0, m48=0.
+    Thus API12/dot input is dead and only BC4 t0.x remains varying.
+
+    Blender Math nodes evaluate in Blender's numeric domain, so the node network is
+    source-equation faithful but is not claimed bit-identical to PS4 GCN rounding.
+    """
+    one_minus=add_math(nodes,'SUBTRACT','D1_EXACT_958_ONE_MINUS_T0X',-520,-230,a=1.0)
+    links.new(scalar_socket,one_minus.inputs[1])
+    gmul=add_math(nodes,'MULTIPLY','D1_EXACT_958_M12_X',-330,-230,b=6.0)
+    links.new(one_minus.outputs[0],gmul.inputs[0])
+    gadd=add_math(nodes,'ADD','D1_EXACT_958_PLUS_M13',-150,-230,b=-4.499999523162842)
+    links.new(gmul.outputs[0],gadd.inputs[0])
+    gclamp=add_math(nodes,'MULTIPLY','D1_EXACT_958_G_CLAMP',30,-230,b=1.0,clamp=True)
+    links.new(gadd.outputs[0],gclamp.inputs[0])
+
+    # F after exact substitutions: both multiplicative 0.6+9.4 terms receive 1.
+    f0=add_value(nodes,0.6000000238418579,'D1_958_LITERAL_0P6',-520,-410)
+    f1=add_value(nodes,9.399999618530273,'D1_958_LITERAL_9P4',-520,-460)
+    fsum=add_math(nodes,'ADD','D1_EXACT_958_FACTOR_TEN',-330,-430)
+    links.new(f0.outputs[0],fsum.inputs[0]); links.new(f1.outputs[0],fsum.inputs[1])
+    fsq=add_math(nodes,'MULTIPLY','D1_EXACT_958_FACTOR_PRODUCT',-150,-430)
+    links.new(fsum.outputs[0],fsq.inputs[0]); links.new(fsum.outputs[0],fsq.inputs[1])
+    fscale=add_math(nodes,'MULTIPLY','D1_EXACT_958_SCALE_0P0103',30,-430,b=0.010300000198185444)
+    links.new(fsq.outputs[0],fscale.inputs[0])
+    fbias=add_math(nodes,'ADD','D1_EXACT_958_BIAS_MINUS_0P06',210,-430,b=-0.05999999865889549,clamp=True)
+    links.new(fscale.outputs[0],fbias.inputs[0])
+
+    gf=add_math(nodes,'MULTIPLY','D1_EXACT_958_G_TIMES_F',210,-230)
+    links.new(gclamp.outputs[0],gf.inputs[0]); links.new(fbias.outputs[0],gf.inputs[1])
+    gfclamp=add_math(nodes,'MULTIPLY','D1_EXACT_958_GF_CLAMP',390,-230,b=1.0,clamp=True)
+    links.new(gf.outputs[0],gfclamp.inputs[0])
+
+    # H = 0.08 exactly at the specialized symbolic level because m48=0,t4.w=1.
+    h=add_value(nodes,0.07999999821186066,'D1_EXACT_958_H',210,-570)
+    hsq=add_math(nodes,'MULTIPLY','D1_EXACT_958_H_SQUARED',390,-570)
+    links.new(h.outputs[0],hsq.inputs[0]); links.new(h.outputs[0],hsq.inputs[1])
+    alpha=add_math(nodes,'ADD','D1_EXACT_958_SPECIALIZED_ALPHA',580,-300,clamp=True)
+    links.new(gfclamp.outputs[0],alpha.inputs[0]); links.new(hsq.outputs[0],alpha.inputs[1])
+    return alpha.outputs[0]
+
+
 def build_native_material(mat):
     set_blend_compat(mat)
     nodes = mat.node_tree.nodes; links = mat.node_tree.links
@@ -167,32 +230,33 @@ def build_native_material(mat):
         links.new(t.outputs['Color'],ramp.inputs['Fac'])
         links.new(ramp.outputs['Color'],emission.inputs['Color'])
         emission.inputs['Strength'].default_value=1.65
-        alpha_mul=nodes.new('ShaderNodeMath'); alpha_mul.operation='MULTIPLY'; alpha_mul.name='D1_PROXY_ATTENUATION_SCALE'; alpha_mul.location=(-220,-190); alpha_mul.inputs[1].default_value=0.58
-        alpha_bias=nodes.new('ShaderNodeMath'); alpha_bias.operation='ADD'; alpha_bias.name='D1_PROXY_ATTENUATION_BIAS'; alpha_bias.location=(10,-190); alpha_bias.inputs[1].default_value=0.08
-        links.new(t.outputs['Color'],alpha_mul.inputs[0]); links.new(alpha_mul.outputs[0],alpha_bias.inputs[0]); links.new(alpha_bias.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E955_COLOR + PS8108E958_ATTENUATION_PROXY_FROM_SCALAR_EQUIVALENT_BC4'
+        partner_alpha=build_proc_partner_alpha(nodes,links,t.outputs['Color'])
+        links.new(partner_alpha,mix.inputs['Fac'])
+        proxy='PS8108E955_COLOR + PS8108E958_EXACT_MATERIAL_SPECIALIZED_BC4_ALPHA'
     elif tag in MAT_ATLAS:
         t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-780,190)
         mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_ATLAS_GREEN_GAIN'; mult.location=(-430,190)
         tint=add_rgb(nodes,(0.72,1.0,0.86,1.0),'D1_SOURCE_GREEN_TINT',-700,20)
         links.new(t.outputs['Color'],mult.inputs[0]); links.new(tint.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
         emission.inputs['Strength'].default_value=2.2
-        a=add_value(nodes,0.34,'D1_PROXY_8108E959_RUNTIME_ATTENUATION',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E956_EXACT_ATLAS_COLOR + PS8108E959_RUNTIME_ALPHA_PROXY'
+        a=add_value(nodes,1.0,'D1_EXACT_8108E959_PARTNER_ALPHA_ONE',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
+        proxy='PS8108E956_EXACT_ATLAS_COLOR + PS8108E959_EXACT_CURRENT_MATERIAL_ALPHA_ONE'
     elif tag in MAT_DETAIL:
         t=add_tex(nodes,tex_detail,'D1_EXACT_8108E952_DETAIL_COLOR',-780,190)
         tint=add_rgb(nodes,DETAIL_COLOR,'D1_EXACT_DETAIL_TINT',-690,20)
         mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_DETAIL_COLOR_MULT'; mult.location=(-430,190)
         links.new(t.outputs['Color'],mult.inputs[0]); links.new(tint.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
         emission.inputs['Strength'].default_value=2.0
-        a=add_value(nodes,0.78,'D1_PROXY_80AAE1CD_ATTENUATION',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E953_EXACT_DETAIL_COLOR + 80AAE1CD_BLACK_ATTENUATION'
+        a=add_value(nodes,1.0,'D1_EXACT_80AAE1CD_PARTNER_ALPHA_ONE',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
+        proxy='PS8108E953_EXACT_DETAIL_COLOR + 80AAE1CD_EXACT_BLACK_ALPHA_ONE'
     else:
         raise RuntimeError(tag)
 
     mat.diffuse_color = (0.04,0.65,0.45,0.35)
-    mat['d1_r10_native_contract']='Source + Destination*(1-SourceAlpha)'
-    mat['d1_r10_blender_closure']='AddShader(attenuated destination, emissive color)'
+    mat['d1_r10_blend_equation_exact']='Source + Destination*(1-SourceAlpha)'
+    mat['d1_r10_partner_alpha_input']='SOURCE_CLOSED_FOR_SELECTED_RETAIL_MATERIAL'
+    mat['d1_r10_native_pass_order']='WITHHELD'
+    mat['d1_r10_blender_closure']='PORTABLE_INSPECTION_ASSUMPTION: attenuation then color'
     mat['d1_r10_proxy']=proxy
 
 
@@ -258,8 +322,10 @@ def main():
         'input':str(a.input),'output':str(a.output),'preview':str(a.preview),'mode':a.mode,
         'visible_crota_meshes':6,
         'materials':sorted(ACTIVE),
-        'native_contract':'Source + Destination*(1-SourceAlpha)',
-        'implementation':'single Blender closure = attenuated destination + emission',
+        'blend_equation_exact':'Source + Destination*(1-SourceAlpha)',
+        'partner_alpha_specialization':'SOURCE_CLOSED_FOR_SELECTED_RETAIL_MATERIALS',
+        'native_pass_order':'WITHHELD',
+        'implementation':'portable inspection closure assumes attenuation then color; partner alpha inputs are exact',
         'frame_range':[bpy.context.scene.frame_start,bpy.context.scene.frame_end],
     },indent=2))
 
