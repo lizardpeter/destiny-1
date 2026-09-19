@@ -20,7 +20,7 @@ on:
       - 'tools/d1_crota_material_pair_census.py'
       - 'tools/d1_crota_attenuation_constant_reduce.py'
       - 'tools/d1_crota_attenuation_symbolic_reduce.py'
-      - 'tools/d1_bc1_alpha_domain_proof.py'
+      - 'tools/d1_bc1_alpha_domain_proof.py'\n      - 'tools/d1_crota_texture_channel_proof.py'
       - 'tools/d1_crota_attenuation_material_specialize.py'
       - 'tools/d1_crota_serialized_pair_order.py'
       - 'tools/d1_crota_material_pair_state.py'
@@ -61,6 +61,7 @@ jobs:
             tools/d1_crota_attenuation_constant_reduce.py \
             tools/d1_crota_attenuation_symbolic_reduce.py \
             tools/d1_bc1_alpha_domain_proof.py \
+            tools/d1_crota_texture_channel_proof.py \
             tools/d1_crota_attenuation_material_specialize.py \
             tools/d1_crota_serialized_pair_order.py
           python -m unittest tests.test_d1_gcn_provenance_analysis -v
@@ -82,6 +83,7 @@ jobs:
           test -f input/actor/texture_export/textures/8108E951_2048x2048_BC1.dds
           test -f input/actor/texture_export/textures/8108E952_64x64_BC1.dds
           test -f input/actor/texture_export/textures/80AACF2A_512x512_BC1.dds
+          test -f input/actor/texture_export/textures/8108E7B6_2048x2048_BC4.dds
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -421,11 +423,29 @@ jobs:
                     'TRANSPARENT_BLOCKS',r['three_color_transparent_index_block_count'])
           PY
 
+          python tools/d1_crota_texture_channel_proof.py \
+            --texture-manifest input/actor/texture_export/texture_export_manifest.json \
+            --texture-root input/actor/texture_export \
+            --out out/CROTA_TEXTURE_CHANNEL_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_TEXTURE_CHANNEL_PROOF.json'))
+          assert d['status']=='D1_CROTA_TEXTURE_CHANNEL_PROOF_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['bc1_sample_alpha_constant_one_textures']==['80AACF2A','8108E951','8108E952'],d
+          b=d['textures']['8108E7B6']
+          assert b['format']=='BC4',b
+          assert (b['decoded_u8_min'],b['decoded_u8_max'],b['decoded_u8_unique_value_count'])==(0,255,246),b
+          print('CROTA_BC4_EXACT_DOMAIN','MIN',b['decoded_u8_min'],'MAX',b['decoded_u8_max'],
+                'UNIQUE',b['decoded_u8_unique_value_count'],'ZERO',b['decoded_u8_zero_count'],'FULL',b['decoded_u8_255_count'])
+          PY
+
           python tools/d1_crota_attenuation_material_specialize.py \
             --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
             --alpha-slice out/CROTA_TERMINAL_ALPHA_SLICE.json \
             --symbolic out/CROTA_ATTENUATION_SYMBOLIC_REDUCTION.json \
             --bc1-alpha out/CROTA_BC1_ALPHA_DOMAIN_PROOF.json \
+            --texture-channels out/CROTA_TEXTURE_CHANNEL_PROOF.json \
             --out out/CROTA_ATTENUATION_MATERIAL_SPECIALIZATION.json
           python - <<'PY'
           import json
@@ -447,6 +467,8 @@ jobs:
               assert r['terminal_alpha_class']=='BC4_SCALAR_ONLY_AFTER_EXACT_MATERIAL_SPECIALIZATION',r
               assert r['remaining_direct_varying_texture_lanes']==['t0.x'],r
               assert r['remaining_direct_texture']=='8108E7B6',r
+              e=r['remaining_direct_texture_channel_evidence']
+              assert (e['format'],e['decoded_u8_min'],e['decoded_u8_max'],e['decoded_u8_unique_value_count'])==('BC4',0,255,246),e
               assert r['api12_affects_terminal_alpha'] is False,r
               assert r['serialized_coefficients']['m27']==0.0,r
           print('CROTA_ATTENUATION_MATERIAL_SPECIALIZED',
