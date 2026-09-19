@@ -24,6 +24,7 @@ on:
       - 'tools/d1_bc1_alpha_domain_proof.py'
       - 'tools/d1_crota_texture_channel_proof.py'
       - 'tools/d1_crota_attenuation_material_specialize.py'
+      - 'tools/d1_crota_color_material_specialize.py'
       - 'tools/d1_crota_serialized_pair_order.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_crota_material_pair_invariants.py'
@@ -66,6 +67,7 @@ jobs:
             tools/d1_bc1_alpha_domain_proof.py \
             tools/d1_crota_texture_channel_proof.py \
             tools/d1_crota_attenuation_material_specialize.py \
+            tools/d1_crota_color_material_specialize.py \
             tools/d1_crota_serialized_pair_order.py
           python -m unittest tests.test_d1_gcn_provenance_analysis -v
 
@@ -345,6 +347,50 @@ jobs:
                   assert [(x['texture_index'],x['channel']) for x in s['texture_sample_channels']]==tx,(sh,ch,s['texture_sample_channels'])
                   assert s['unknown_registers']==[],(sh,ch,s['unknown_registers'])
               print('RGB_SLICE',sh,r['rgb_value_union'])
+          PY
+
+      - name: Material-specialize exact Crota terminal RGB
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_color_material_specialize.py \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --rgb-slice out/CROTA_TERMINAL_RGB_SLICE.json \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
+            --texture-channels out/CROTA_TEXTURE_CHANNEL_PROOF.json \
+            --out out/CROTA_COLOR_MATERIAL_SPECIALIZATION.json
+          python - <<'PY'
+          import json,math
+          d=json.load(open('out/CROTA_COLOR_MATERIAL_SPECIALIZATION.json'))
+          assert d['status']=='D1_CROTA_COLOR_MATERIAL_SPECIALIZATION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['family_counts']=={'8108E953':1,'8108E955':2,'8108E956':2},d
+          by={x['material']:x for x in d['rows']}
+          q=by['8108E7B1']
+          assert q['pixel_shader']=='8108E953',q
+          assert q['exact_material_rgb_vector']==[0.22183096408843994,1.0,0.9177990555763245],q
+          assert q['exact_material_scalar']==9.0,q
+          assert q['remaining_runtime_dwords']=={'12':[28,29,30],'13':[6,7]},q
+          for h in ('8108E7AA','8108E7B3'):
+              q=by[h]
+              assert q['pixel_shader']=='8108E956',q
+              assert q['texture_alpha_substitution']=='t0.w = 1.0 exact from DXT1 blocks',q
+              assert q['angular_rgb_bias']==[0.0003782951971516013,0.008264296688139439,0.0054319994524121284],q
+              assert q['angular_rgb_slope']==[0.9996216893196106,0.9917356967926025,0.9945679903030396],q
+              assert q['exact_static_rgb_vector']==[0.3931313157081604,0.6766623854637146,0.6658802032470703],q
+              assert q['exact_material_scalar']==18.0,q
+          for h in ('8108E7A9','8108E7B2'):
+              q=by[h]
+              assert q['pixel_shader']=='8108E955',q
+              assert q['channel_gain_vector']==[0.3732393980026245,2.0,1.7401760816574097],q
+              assert q['normalized_channel_gain_by_green']==[0.18661969900131226,1.0,0.8700880408287048],q
+              assert q['exact_material_scalar']==55.0,q
+              assert q['specialized_constants']['m27']==0.0 and q['specialized_constants']['m48']==0.0,q
+          assert d['semantic_boundary']['API12_API13_engine_names']=='WITHHELD',d
+          assert d['semantic_boundary']['lighting_albedo_emissive_labels']=='WITHHELD',d
+          print('CROTA_COLOR_MATERIAL_SPECIALIZATION',[(h,by[h]['pixel_shader']) for h in sorted(by)])
+          print('DETAIL_EXACT_VECTOR',by['8108E7B1']['exact_material_rgb_vector'])
+          print('ATLAS_EXACT_STATIC_VECTOR',by['8108E7AA']['exact_static_rgb_vector'])
+          print('PROC_EXACT_NORMALIZED_GAIN',by['8108E7A9']['normalized_channel_gain_by_green'])
           PY
 
       - name: Differential-close exact paired visual programs
