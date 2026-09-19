@@ -16,7 +16,7 @@ on:
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_crota_material_pair_census.py'
       - 'tools/d1_crota_attenuation_constant_reduce.py'
-      - 'tools/d1_crota_material_pair_state.py'
+      - 'tools/d1_crota_material_pair_state.py'\n      - 'tools/d1_crota_material_pair_invariants.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
       - 'tools/d1_crota_vs_signed_cross_export.py'
 
@@ -365,6 +365,31 @@ jobs:
                     'SAME_SAMPLERS',r['ps_sampler_records']['identical'],
                     'SAME_TFX',r['ps_tfx']['identical'],
                     'SAME_CBUFFERS',r['ps_cbuffers']['identical'])
+          PY
+          python tools/d1_crota_material_pair_invariants.py \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --paired-gcn out/CROTA_VISUAL_PAIRED_GCN_DIFFERENTIAL.json \
+            --mrt0-proof out/CROTA_TERMINAL_MRT0_EXPORT_PROOF.json \
+            --attenuation out/CROTA_ATTENUATION_CONSTANT_REDUCTION.json \
+            --out out/CROTA_MATERIAL_PAIR_INVARIANTS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_MATERIAL_PAIR_INVARIANTS.json'))
+          assert d['status']=='D1_CROTA_MATERIAL_PAIR_INVARIANTS_EXACT',d
+          assert d['pair_count']==5 and d['structural_family_count']==3,d
+          assert not d['violations'],d['violations']
+          fam={(x['color_pixel_shader'],x['partner_pixel_shader']):x for x in d['families']}
+          assert fam[('8108E955','8108E958')]['material_pair_count']==2,fam
+          assert fam[('8108E956','8108E959')]['material_pair_count']==2,fam
+          assert fam[('8108E953','80AAE1CD')]['material_pair_count']==1,fam
+          for key in (('8108E955','8108E958'),('8108E956','8108E959')):
+              x=fam[key]
+              assert x['all_textures_equal'] and x['all_samplers_equal'] and x['all_tfx_equal'],x
+              assert x['all_partner_cbuffers_prefix'],x
+          q=fam[('8108E953','80AAE1CD')]
+          assert q['structural_family']=='RESOURCE_BEARING_COLOR_PARTNER_RESOURCE_EMPTY_CONSTANT_OUTPUT',q
+          assert d['semantic_boundary']['native_pass_order']=='WITHHELD',d
+          print('CROTA_STRUCTURAL_FAMILIES',d['families'])
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
