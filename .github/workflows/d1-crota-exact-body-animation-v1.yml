@@ -10,6 +10,7 @@ on:
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
       - 'tools/d1_animation_motion_census.py'
+      - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_control_state_map_v2.py'
       - 'tools/d1_tiger_animation_safe_offsets.py'
 
@@ -195,6 +196,34 @@ jobs:
           print('DYNAMIC_SCALE_TRACK_HISTOGRAM',d['dynamic_scale_track_count_histogram'])
           print('BONE0_END_DISPLACEMENT_RANGE',d['bone0_translation_end_displacement_range'])
           print('BONE0_PEAK_DISPLACEMENT_RANGE',d['bone0_translation_peak_displacement_range'])
+          PY
+
+      - name: Prove exact control-scalar to frame timing ratio
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_state_scalar_timing_proof.py \
+            --options out/CROTA_ANIMATION_OPTIONS_V3.json \
+            --motion out/CROTA_ANIMATION_MOTION_CENSUS.json \
+            --out out/CROTA_ANIMATION_STATE_SCALAR_TIMING_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_STATE_SCALAR_TIMING_PROOF.json'))
+          assert d['status']=='D1_ANIMATION_STATE_SCALAR_TIMING_RATIO_EXACT',d
+          assert d['ratio_frame_intervals_per_scalar_unit']==30.0,d
+          assert d['single_selection_record_count']==126,d
+          assert d['single_selection_matching_count']==126,d
+          assert d['single_selection_max_abs_error']<1e-5,d
+          assert d['multi_selection_record_count']==2,d
+          assert d['multi_selection_first_choice_matching_count']==2,d
+          assert d['semantic_boundary']['scalar_field_engine_name']=='WITHHELD',d
+          print('CROTA_TIMING_RATIO_EXACT',
+                d['single_selection_matching_count'],'OF',d['single_selection_record_count'],
+                'SINGLE_SELECTION_RECORDS',
+                'RATIO',d['ratio_frame_intervals_per_scalar_unit'],
+                'MAX_ERROR',d['single_selection_max_abs_error'])
+          for r in d['multi_selection_records']:
+              print('MULTI_SELECTION_TIMING',r['record_index'],r['state_hash'],r['scalar_f32'],
+                    [(x['clip'],x['frame_count'],x['matches_ratio_30']) for x in r['selected']])
           PY
 
       - name: Hash and upload
