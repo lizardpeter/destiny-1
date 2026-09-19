@@ -6,7 +6,9 @@ on:
     paths:
       - '.github/workflows/d1-crota-main-visual-shader-closure-v3.yml'
       - 'tools/d1_crota_visual_shader_v3_trigger.py'
-      - 'tools/d1_world_shader_extract.py'\n      - 'tools/d1_gnm_vs_ps_linkage.py'\n      - 'tools/d1_ps4_gnm_shader_header_semantics.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gnm_vs_ps_linkage.py'
+      - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_paired_shader_differential.py'
       - 'tools/d1_material_stage_state_resolve.py'
