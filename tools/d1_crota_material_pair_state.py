@@ -62,6 +62,18 @@ def main():
         diff=gpair.get((cps,pps))
         if not diff:
             violations.append(f'{cps}:{pps}: paired GCN differential missing')
+        cs=compact_stage(cm['ps']); ps=compact_stage(pm['ps'])
+        def without_shader(s): return {k:v for k,v in s.items() if k!='shader'}
+        equality={
+          'material_state4_equal':cm.get('material_state4_hex')==pm.get('material_state4_hex'),
+          'texture_bindings_equal':cs['textures']==ps['textures'],
+          'sampler_bindings_equal':cs['samplers']==ps['samplers'],
+          'tfx_program_equal':cs['tfx_program_sha256']==ps['tfx_program_sha256'],
+          'tfx_bytes_equal':cs['tfx_bytecode_hex']==ps['tfx_bytecode_hex'],
+          'private_constants_equal':cs['private_constants']==ps['private_constants'],
+          'cbuffers_equal':cs['cbuffers']==ps['cbuffers'],
+          'all_serialized_ps_inputs_equal_except_shader':without_shader(cs)==without_shader(ps),
+        }
         rows.append({
           'color_material':color,'partner_material':partner,
           'color_ps':cps,'partner_ps':pps,
@@ -69,15 +81,18 @@ def main():
           'partner_material_state4_hex':pm.get('material_state4_hex'),
           'color_material_state4_u8':cm.get('material_state4_u8'),
           'partner_material_state4_u8':pm.get('material_state4_u8'),
-          'state4_equal':cm.get('material_state4_hex')==pm.get('material_state4_hex'),
-          'color_ps_state':compact_stage(cm['ps']),
-          'partner_ps_state':compact_stage(pm['ps']),
+          'state4_equal':equality['material_state4_equal'],
+          'serialized_ps_input_equality':equality,
+          'color_ps_state':cs,
+          'partner_ps_state':ps,
           'paired_gcn_differential':diff,
         })
     out={
       'schema':'d1_crota_material_pair_state/v1',
       'status':'D1_CROTA_MATERIAL_PAIR_STATE_EXACT' if len(rows)==len(PAIRS) and not violations else 'D1_CROTA_MATERIAL_PAIR_STATE_PARTIAL',
-      'pair_count':len(rows),'pairs':rows,'violations':violations,
+      'pair_count':len(rows),
+      'pairs_with_all_serialized_ps_inputs_equal_except_shader':sum(x['serialized_ps_input_equality']['all_serialized_ps_inputs_equal_except_shader'] for x in rows),
+      'pairs':rows,'violations':violations,
       'semantic_boundary':{
           'serialized_pair_identity':'EXACT',
           'material_state_bytes':'EXACT_UNLESS_SEPARATELY_NAMED',
