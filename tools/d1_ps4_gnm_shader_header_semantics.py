@@ -16,21 +16,27 @@ from __future__ import annotations
 import argparse,json,struct
 from pathlib import Path
 
-VS_FIXED=0x28
+# D1 stage wrappers differ.  Pixel headers begin directly with GnmPsShader.
+# D1 vertex headers have a 0x14-byte Tiger prefix before GnmVsShader; this is
+# independently source-closed by d1_ps4_vertex_shader_header.py.
+VS_GNMX_BASE=0x14
+VS_FIXED=VS_GNMX_BASE+0x28
+VS_USAGE_BASE=VS_GNMX_BASE+0x28
 PS_FIXED=0x3C
 
 def align4(x:int)->int: return (x+3)&~3
 
-def common(b:bytes)->dict:
-    if len(b)<8: raise ValueError('shader header shorter than GnmShaderCommonData')
-    w=struct.unpack_from('<I',b,0)[0]
+def common(b:bytes,off:int=0)->dict:
+    if len(b)<off+8: raise ValueError('shader header shorter than GnmShaderCommonData')
+    w=struct.unpack_from('<I',b,off)[0]
     return {
         'shader_size_low23':w & 0x7FFFFF,
         'is_using_srt':bool((w>>23)&1),
         'num_input_usage_slots_common':(w>>24)&0xFF,
-        'embedded_constant_buffer_dqwords':struct.unpack_from('<H',b,4)[0],
-        'scratch_size_per_thread_dwords':struct.unpack_from('<H',b,6)[0],
-        'common_raw_hex':b[:8].hex(),
+        'embedded_constant_buffer_dqwords':struct.unpack_from('<H',b,off+4)[0],
+        'scratch_size_per_thread_dwords':struct.unpack_from('<H',b,off+6)[0],
+        'common_offset':off,
+        'common_raw_hex':b[off:off+8].hex(),
     }
 
 def usage_slots(b:bytes,off:int,n:int)->list[dict]:
@@ -75,7 +81,7 @@ def pixel_inputs(b:bytes,off:int,n:int)->list[dict]:
 
 def decode(header:bytes,stage:str,orb_usage_count:int)->dict:
     stage=str(stage)
-    c=common(header)
+    c=common(header, VS_GNMX_BASE if stage=='VertexShader' else 0)
     violations=[]
     if c['num_input_usage_slots_common'] != orb_usage_count:
         violations.append(
@@ -98,9 +104,10 @@ def decode(header:bytes,stage:str,orb_usage_count:int)->dict:
                 'trailing_padding_hex':header[soff+nsem*2:].hex(),'violations':violations,
                 'status':'D1_PS4_GNM_SHADER_HEADER_EXACT' if not violations else 'D1_PS4_GNM_SHADER_HEADER_PARTIAL'}
     if stage=='VertexShader':
-        if len(header)<VS_FIXED: raise ValueError('VS header shorter than 0x28')
-        nin=header[0x24];nout=header[0x25];gsmode=header[0x26];fetch=header[0x27]
-        uoff=VS_FIXED
+        if len(header)<VS_FIXED: raise ValueError('D1 VS header shorter than Tiger+Gnm 0x3c')
+        nin=header[VS_GNMX_BASE+0x24];nout=header[VS_GNMX_BASE+0x25]
+        gsmode=header[VS_GNMX_BASE+0x26];fetch=header[VS_GNMX_BASE+0x27]
+        uoff=VS_USAGE_BASE
         ioff=uoff+orb_usage_count*4
         eoff=ioff+nin*4
         expected=align4(eoff+nout*2)
@@ -115,6 +122,8 @@ def decode(header:bytes,stage:str,orb_usage_count:int)->dict:
         outs=[x['out_index'] for x in ve]
         if len(outs)!=len(set(outs)): violations.append('duplicate VS export out indices')
         return {'schema':'d1_ps4_gnm_shader_header/v1','stage':stage,'header_bytes':len(header),
+                'd1_tiger_prefix_hex':header[:VS_GNMX_BASE].hex(),
+                'gnm_base_offset':VS_GNMX_BASE,
                 'common':c,'num_input_semantics':nin,'num_export_semantics':nout,
                 'gs_mode_or_num_input_semantics_cs':gsmode,'fetch_control':fetch,
                 'input_usage_slots':us,'vertex_input_semantics':vi,'vertex_export_semantics':ve,
