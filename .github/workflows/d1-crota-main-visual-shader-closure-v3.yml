@@ -20,6 +20,8 @@ on:
       - 'tools/d1_crota_material_pair_census.py'
       - 'tools/d1_crota_attenuation_constant_reduce.py'
       - 'tools/d1_crota_attenuation_symbolic_reduce.py'
+      - 'tools/d1_bc1_alpha_domain_proof.py'
+      - 'tools/d1_crota_attenuation_material_specialize.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_crota_material_pair_invariants.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
@@ -34,6 +36,8 @@ env:
   CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
   CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
   CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+  ACTOR_ARTIFACT_ID: '10005225514'
+  ACTOR_ZIP_SHA256: '6687cb12dcc423152592bdaff9e7efd86c119fa5b4e5e11cd885cc05ee20491b'
 
 jobs:
   close:
@@ -59,12 +63,20 @@ jobs:
       - name: Recover exact Crota shader corpus
         run: |
           set -euo pipefail
-          mkdir -p input/catalog runtime corpus shader disasm out
+          mkdir -p input/catalog input/actor runtime corpus shader disasm out
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
           echo "$CATALOG_ZIP_SHA256  input/catalog.zip" | sha256sum --check --strict
           unzip -q input/catalog.zip -d input/catalog
           echo "$CATALOG_JSON_SHA256  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ACTOR_ARTIFACT_ID}/zip" -o input/actor.zip
+          echo "${ACTOR_ZIP_SHA256}  input/actor.zip" | sha256sum --check --strict
+          unzip -q input/actor.zip -d input/actor
+          test -f input/actor/texture_export/texture_export_manifest.json
+          test -f input/actor/texture_export/textures/8108E951_2048x2048_BC1.dds
+          test -f input/actor/texture_export/textures/8108E952_64x64_BC1.dds
+          test -f input/actor/texture_export/textures/80AACF2A_512x512_BC1.dds
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -380,6 +392,60 @@ jobs:
               print('ATTENUATION_EQUATION',r['material'],r['pixel_shader'],r['api0_coefficients'],r['definitions'])
           assert d['semantic_boundary']['API12']=='RUNTIME_OR_GLOBAL_CBUFFER_SEMANTIC_WITHHELD',d
           print('CROTA_ATTENUATION_SYMBOLIC_GREEN')
+          PY
+
+          python tools/d1_bc1_alpha_domain_proof.py \
+            --manifest input/actor/texture_export/texture_export_manifest.json \
+            --texture-root input/actor/texture_export \
+            --texture 8108E951 --texture 8108E952 --texture 80AACF2A \
+            --out out/CROTA_BC1_ALPHA_DOMAIN_PROOF.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_BC1_ALPHA_DOMAIN_PROOF.json'))
+          assert d['status']=='D1_BC1_ALPHA_DOMAIN_EXACT',d
+          assert not d['violations'],d['violations']
+          by={x['texture']:x for x in d['textures']}
+          for h in ('8108E951','8108E952','80AACF2A'):
+              r=by[h]
+              assert r['alpha_exact_one'],r
+              assert r['transparent_texel_count']==0,r
+              assert r['alpha_domain']==[1.0],r
+              print('BC1_ALPHA_EXACT_ONE',h,
+                    'BLOCKS',r['block_count'],
+                    'THREE_COLOR_BLOCKS',r['three_color_block_count'],
+                    'TRANSPARENT_BLOCKS',r['three_color_transparent_index_block_count'])
+          PY
+
+          python tools/d1_crota_attenuation_material_specialize.py \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --alpha-slice out/CROTA_TERMINAL_ALPHA_SLICE.json \
+            --symbolic out/CROTA_ATTENUATION_SYMBOLIC_REDUCTION.json \
+            --bc1-alpha out/CROTA_BC1_ALPHA_DOMAIN_PROOF.json \
+            --out out/CROTA_ATTENUATION_MATERIAL_SPECIALIZATION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ATTENUATION_MATERIAL_SPECIALIZATION.json'))
+          assert d['status']=='D1_CROTA_ATTENUATION_MATERIAL_SPECIALIZATION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['row_count']==4,d
+          by={x['partner_material']:x for x in d['rows']}
+          for h in ('8108E7AC','8108E7B5'):
+              r=by[h]
+              assert r['pixel_shader']=='8108E959',r
+              assert r['terminal_alpha_class']=='EXACT_ONE',r
+              assert r['remaining_direct_varying_texture_lanes']==[],r
+              assert r['api12_affects_terminal_alpha'] is False,r
+              assert r['serialized_coefficients']['m19']==0.0,r
+          for h in ('8108E7AB','8108E7B4'):
+              r=by[h]
+              assert r['pixel_shader']=='8108E958',r
+              assert r['terminal_alpha_class']=='BC4_SCALAR_ONLY_AFTER_EXACT_MATERIAL_SPECIALIZATION',r
+              assert r['remaining_direct_varying_texture_lanes']==['t0.x'],r
+              assert r['remaining_direct_texture']=='8108E7B6',r
+              assert r['api12_affects_terminal_alpha'] is False,r
+              assert r['serialized_coefficients']['m27']==0.0,r
+          print('CROTA_ATTENUATION_MATERIAL_SPECIALIZED',
+                [(h,by[h]['terminal_alpha_class'],by[h]['remaining_direct_varying_texture_lanes']) for h in sorted(by)])
           PY
           python - <<'PY'
           import json
