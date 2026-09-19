@@ -5,7 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-crota-exact-skin-census-v1.yml'
-      - 'tools/d1_world_articulated_skin_census.py'
+      - 'tools/d1_world_articulated_skin_census.py'\n      - 'tools/d1_remote_exact_s_entity_probe.py'\n      - 'tools/d1_crota_skin_bone_map.py'
 
 permissions:
   contents: read
@@ -88,6 +88,36 @@ jobs:
             print('MESH',m['mesh_index'],'V1',m['vertices1'],'PRIMARY_STRIDE',m.get('primary_stride'),'OLD_WEIGHTS',m['old_weights'],'STORAGE',s.get('storage'),'WEIGHT_STRIDE',s.get('stride'),'VERTICES',s.get('vertex_count'),'MODES',s.get('mode_counts'),'BONE_DOMAIN',s.get('bone_domain'),'SUMS',s.get('weight_sum_min'),s.get('weight_sum_max'))
           assert out['status']=='D1_CROTA_EXACT_SKIN_CENSUS_COMPLETE',out
           assert out['mesh_count']==3,out['mesh_count']
+          PY
+
+      - name: Recover exact Crota skeleton hierarchy and map skin joints
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_exact_s_entity_probe.py \
+            --tag-hash 0x8108E484 \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url "$BASE_URL" --part-count 10 --runtime runtime \
+            -o out/CROTA_EXACT_S_ENTITY_8108E484.json
+          python tools/d1_crota_skin_bone_map.py \
+            --skin-census out/CROTA_EXACT_SKIN_CENSUS.json \
+            --s-entity out/CROTA_EXACT_S_ENTITY_8108E484.json \
+            --skeleton-resource 8108E4BB \
+            --out out/CROTA_SKIN_BONE_MAP.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SKIN_BONE_MAP.json'))
+          assert d['status']=='D1_CROTA_SKIN_BONE_MAP_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['skeleton_node_count']==50 and d['mesh_count']==3,d
+          assert d['skin_referenced_joint_count']>0,d
+          assert all(x['weight_sum_min']==255 and x['weight_sum_max']==255 for x in d['meshes']),d['meshes']
+          assert d['semantic_boundary']['anatomical_names']=='WITHHELD',d
+          print('CROTA_SKIN_REFERENCED_JOINTS',d['skin_referenced_joint_count'],'OF',d['skeleton_node_count'])
+          print('CROTA_SKIN_TOTAL_NONZERO_INFLUENCES',d['total_nonzero_influence_references'])
+          print('CROTA_SKIN_MESH_JOINT_COUNTS',[(x['mesh_index'],x['referenced_joint_count'],x['mode_counts']) for x in d['meshes']])
+          top=sorted(d['nodes'],key=lambda x:(-x['skin_reference_count'],x['joint_index']))[:15]
+          print('CROTA_SKIN_TOP_NODE_HASHES',[(x['joint_index'],x['node_hash'],x['parent_node_index'],x['skin_reference_count']) for x in top])
           PY
           find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
