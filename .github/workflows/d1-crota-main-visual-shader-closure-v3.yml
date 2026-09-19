@@ -9,7 +9,7 @@ on:
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gnm_vs_ps_linkage.py'
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
-      - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'\n      - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_paired_shader_differential.py'
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_material_decode.py'
@@ -216,6 +216,24 @@ jobs:
               print('PIXEL',h,'IMAGE_OPS',r['image_instruction_count'],'USED_T',r['used_texture_indices'],'OPS',r['image_opcodes'])
           PY
 
+      - name: Recover exact GCN constant-buffer dword provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cbuffer_usage_analyze.py \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
+            --disasm-dir disasm --out out/CROTA_GCN_CBUFFER_USAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_GCN_CBUFFER_USAGE.json'))
+          assert d['status']=='D1_GCN_CBUFFER_USAGE_EXACT',d
+          assert not d['missing_usage'],d['missing_usage']
+          by={x['shader']:x for x in d['shaders']}
+          assert by['8108E958']['api_slot_read_dwords']['0']==[11,12,13,16,17,23,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48],by['8108E958']
+          assert by['8108E959']['api_slot_read_dwords']['0']==[8,9,15,19],by['8108E959']
+          print('CROTA_API0_DWORDS_958',by['8108E958']['api_slot_read_dwords']['0'])
+          print('CROTA_API0_DWORDS_959',by['8108E959']['api_slot_read_dwords']['0'])
+          PY
+
       - name: Differential-close exact paired visual programs
         run: |
           set -euo pipefail
@@ -269,6 +287,7 @@ jobs:
             --out out/CROTA_PAIRED_MATERIAL_CENSUS.json
           python tools/d1_crota_attenuation_constant_reduce.py \
             --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --cbuffer-usage out/CROTA_GCN_CBUFFER_USAGE.json \
             --out out/CROTA_ATTENUATION_CONSTANT_REDUCTION.json
           python - <<'PY'
           import json
