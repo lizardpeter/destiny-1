@@ -1,4 +1,4 @@
-name: D1 Crota R10 Blender native material
+name: D1 Crota R10 Blender native material exact R8 carrier
 # Trigger after scalar-equivalent BC4 control binding update.
 
 on:
@@ -7,14 +7,15 @@ on:
     paths:
       - '.github/workflows/d1-crota-r10-blender-native.yml'
       - 'tools/d1_blender_crota_r10_native_rebuild.py'
+      - 'tools/d1_gltf_mirror_normal_topology_probe.py'
 
 permissions:
   contents: read
   actions: read
 
 env:
-  R9_ARTIFACT_ID: '10034027803'
-  R9_ZIP_SHA256: 'a2c4c934f15aeca02a69d5695507f6fb61a23f1d198c58580ba51313e0b63a2f'
+  R8_ARTIFACT_ID: '10033385248'
+  R8_ZIP_SHA256: '57a1ed385753a121fb33335f090e9af19964d1ae2baa831432370d9ffb03812e'
   LIBGL_ALWAYS_SOFTWARE: '1'
 
 jobs:
@@ -36,22 +37,49 @@ jobs:
             "import sys,numpy,bpy; print('BLENDER_PYTHON',sys.version); print('BLENDER_NUMPY',numpy.__version__); print('BLENDER_ENGINE',bpy.context.scene.render.engine)" \
             | tee blender-python.txt
           grep -q 'BLENDER_NUMPY' blender-python.txt
-      - name: Recover exact R9 carrier files
+      - name: Recover exact pre-proxy R8 carrier files
         run: |
           set -euo pipefail
-          mkdir -p input/r9 out
+          mkdir -p input/r8 out
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${R9_ARTIFACT_ID}/zip" -o input/r9.zip
-          echo "${R9_ZIP_SHA256}  input/r9.zip" | sha256sum --check --strict
-          unzip -q input/r9.zip -d input/r9
-          test -f input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb
-          test -f input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb
-          test -f input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_FULL_82.glb
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${R8_ARTIFACT_ID}/zip" -o input/r8.zip
+          echo "${R8_ZIP_SHA256}  input/r8.zip" | sha256sum --check --strict
+          unzip -q input/r8.zip -d input/r8
+          test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb
+          test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb
+          test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb
+      - name: Prove exact mirrored source normals before Blender
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy
+          python tools/d1_gltf_mirror_normal_topology_probe.py \
+            input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb \
+            --node 8108E5B7_mesh2_range45583_4904 --axis 1 \
+            --out out/CROTA_R8_MIRROR_NORMAL_TOPOLOGY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_R8_MIRROR_NORMAL_TOPOLOGY.json'))
+          assert d['status']=='D1_GLTF_MIRROR_NORMAL_TOPOLOGY_EXACT',d
+          assert d['connected_component_count']==101,d
+          assert d['mirror_pair_count']==49,d
+          assert d['mirror_paired_component_count']==98,d
+          assert d['mirror_paired_triangle_count']==2778,d
+          assert d['triangle_count']==2856,d
+          assert d['mirror_paired_triangle_fraction']>0.97,d
+          assert d['minimum_mirrored_normal_dot']>0.9999,d
+          assert d['semantic_boundary']['normal_recompute_authority']=='REJECTED_AS_SOURCE_REPLACEMENT',d
+          print('CROTA_R8_SOURCE_NORMALS_MIRROR_EXACT',
+                'PAIRS',d['mirror_pair_count'],
+                'PAIRED_TRIANGLES',d['mirror_paired_triangle_count'],
+                'TOTAL_TRIANGLES',d['triangle_count'],
+                'OPPOSITE_FACE_AGREEMENT_PAIRS',d['mirror_pair_opposite_face_agreement_count'])
+          PY
+
       - name: Build Blender-native bind scene and render
         run: |
           set -euo pipefail
           xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
-            --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_BIND_POSE_NO_ARMATURE.glb \
+            --input input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb \
             --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_BIND.blend \
             --preview out/CROTA_R10_BIND_PREVIEW.png \
             --mode bind | tee out/bind-build.txt
@@ -62,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
-            --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_ANIM_809D9D19.glb \
+            --input input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb \
             --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_ANIM_809D9D19.blend \
             --preview out/CROTA_R10_ANIM_FRAME1_PREVIEW.png \
             --mode anim | tee out/anim-build.txt
@@ -73,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           xvfb-run -a -s '-screen 0 1280x1280x24' blender --background --python tools/d1_blender_crota_r10_native_rebuild.py -- \
-            --input input/r9/CROTA_SON_OF_ORYX_R9_ETHEREAL_FULL_82.glb \
+            --input input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb \
             --output out/CROTA_SON_OF_ORYX_R10_BLENDER_NATIVE_FULL_82.blend \
             --preview out/CROTA_R10_FULL_FRAME1_PREVIEW.png \
             --mode anim | tee out/full-build.txt
