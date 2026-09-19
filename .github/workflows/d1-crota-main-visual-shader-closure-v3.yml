@@ -25,6 +25,7 @@ on:
       - 'tools/d1_crota_texture_channel_proof.py'
       - 'tools/d1_crota_attenuation_material_specialize.py'
       - 'tools/d1_crota_color_material_specialize.py'
+      - 'tools/d1_crota_api13_family_boundary.py'
       - 'tools/d1_crota_serialized_pair_order.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_crota_material_pair_invariants.py'
@@ -415,6 +416,31 @@ jobs:
           print('DETAIL_EXACT_VECTOR',by['8108E7B1']['exact_material_rgb_vector'])
           print('ATLAS_EXACT_STATIC_VECTOR',by['8108E7AA']['exact_static_rgb_vector'])
           print('PROC_EXACT_NORMALIZED_GAIN',by['8108E7A9']['normalized_channel_gain_by_green'])
+          PY
+
+      - name: Prove shared API13 color runtime boundary
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_api13_family_boundary.py \
+            --cbuffer-usage out/CROTA_GCN_CBUFFER_USAGE.json \
+            --rgb-slice out/CROTA_TERMINAL_RGB_SLICE.json \
+            --alpha-slice out/CROTA_TERMINAL_ALPHA_SLICE.json \
+            --out out/CROTA_API13_FAMILY_BOUNDARY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_API13_FAMILY_BOUNDARY.json'))
+          assert d['status']=='D1_CROTA_API13_FAMILY_BOUNDARY_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['shared_color_terminal_dwords']==[6,7],d
+          by={x['shader']:x for x in d['rows']}
+          for h in ('8108E953','8108E955','8108E956'):
+              assert by[h]['terminal_api13_required'] is True,by[h]
+              assert by[h]['terminal_channels_api13_dwords']=={'R':[6,7],'G':[6,7],'B':[6,7]},by[h]
+          for h in ('8108E958','8108E959'):
+              assert by[h]['terminal_api13_required'] is False,by[h]
+              assert by[h]['terminal_alpha_api13_dwords']==[],by[h]
+          assert d['semantic_boundary']['API13_engine_semantic']=='WITHHELD',d
+          print('CROTA_API13_COLOR_BOUNDARY',d['observed_boundary'])
           PY
 
       - name: Differential-close exact paired visual programs
