@@ -15,7 +15,7 @@ on:
       - 'tools/d1_material_decode.py'
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_crota_material_pair_census.py'
-      - 'tools/d1_crota_attenuation_constant_reduce.py'
+      - 'tools/d1_crota_attenuation_constant_reduce.py'\n      - 'tools/d1_crota_attenuation_symbolic_reduce.py'
       - 'tools/d1_crota_material_pair_state.py'\n      - 'tools/d1_crota_material_pair_invariants.py'
       - 'tools/d1_gcn_terminal_mrt0_export_proof.py'
       - 'tools/d1_crota_vs_signed_cross_export.py'
@@ -348,6 +348,33 @@ jobs:
               if r['attenuation_shader']=='8108E959':
                   q=r['exact_symbolic_coefficients']
                   print('ATLAS_COEFFICIENTS',q,'ALPHA_INTERVAL',r['coefficient_only_alpha_interval_before_render_target_clamp'])
+          PY
+          python tools/d1_crota_attenuation_symbolic_reduce.py \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
+            --alpha-slice out/CROTA_TERMINAL_ALPHA_SLICE.json \
+            --disasm-dir disasm \
+            --out out/CROTA_ATTENUATION_SYMBOLIC_REDUCTION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ATTENUATION_SYMBOLIC_REDUCTION.json'))
+          assert d['status']=='D1_CROTA_ATTENUATION_SYMBOLIC_REDUCTION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert len(d['rows'])==4,d
+          by={}
+          for r in d['rows']:
+              by.setdefault(r['pixel_shader'],[]).append(r)
+          assert len(by['8108E958'])==2 and len(by['8108E959'])==2,by
+          for r in d['rows']:
+              if r['pixel_shader']=='8108E958':
+                  assert r['direct_texture_lanes']==['t0.x','t1.w','t2.w','t4.w'],r
+                  assert set(r['api0_coefficients'])=={'m11','m12','m13','m16','m17','m23','m27','m48'},r
+              else:
+                  assert r['direct_texture_lanes']==['t0.w'],r
+                  assert set(r['api0_coefficients'])=={'m8','m9','m15','m19'},r
+              print('ATTENUATION_EQUATION',r['material'],r['pixel_shader'],r['api0_coefficients'],r['definitions'])
+          assert d['semantic_boundary']['API12']=='RUNTIME_OR_GLOBAL_CBUFFER_SEMANTIC_WITHHELD',d
+          print('CROTA_ATTENUATION_SYMBOLIC_GREEN')
           PY
           python - <<'PY'
           import json
