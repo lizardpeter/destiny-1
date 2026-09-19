@@ -147,11 +147,11 @@ def main()->int:
               'remaining_direct_texture':'8108E7B6',
               'remaining_direct_texture_channel_evidence':None if not bc4 else {
                 'format':bc4.get('format'),
-                'decoded_u8_min':bc4.get('decoded_u8_min'),
-                'decoded_u8_max':bc4.get('decoded_u8_max'),
-                'decoded_u8_unique_value_count':bc4.get('decoded_u8_unique_value_count'),
-                'decoded_u8_zero_count':bc4.get('decoded_u8_zero_count'),
-                'decoded_u8_255_count':bc4.get('decoded_u8_255_count'),
+                'preview_decoder_u8_min':bc4.get('preview_decoder_u8_min'),
+                'preview_decoder_u8_max':bc4.get('preview_decoder_u8_max'),
+                'preview_decoder_u8_unique_value_count':bc4.get('preview_decoder_u8_unique_value_count'),
+                'preview_decoder_u8_zero_count':bc4.get('preview_decoder_u8_zero_count'),
+                'preview_decoder_u8_255_count':bc4.get('preview_decoder_u8_255_count'),
                 'linear_sha256':bc4.get('linear_sha256'),
               },
               'specialized_equation':[
@@ -199,13 +199,13 @@ def main()->int:
       },
       'semantic_boundary':{
         'terminal_alpha_numerical_dependency':'EXACT_FOR_THE_FOUR_SELECTED_RETAIL_PARTNER_MATERIALS',
-        'surviving_8108E958_texture_channel':'EXACT_BC4_8108E7B6_T0_X',
+        'surviving_8108E958_texture_channel':'EXACT_BC4_8108E7B6_T0_X_IDENTITY_AND_ENCODED_BYTES',
         'generic_shader_capability':'NOT_REDUCED_GLOBALLY',
         'API12_semantic_name':'WITHHELD',
         'native_pass_order':'WITHHELD',
         'portable_material_role':'WITHHELD',
       },
-      'policy':'Specialization applies only to exact selected partner material payloads. BC1 alpha substitutions are cross-checked by two exact block-byte proofs; the surviving 8108E7B6 BC4 lane carries its exact retail channel census but remains semantically unnamed. A dead dependency for these constants is not promoted as a generic shader invariant, and numerical alpha does not establish engine pass ownership/order.',
+      'policy':'Specialization applies only to exact selected partner material payloads. BC1 alpha substitutions are cross-checked by two exact block-byte proofs; the surviving 8108E7B6 BC4 lane carries exact retail encoded-block identity plus a clearly labeled exporter-equivalent preview census; PS4 sampler numeric values and material meaning remain withheld. A dead dependency for these constants is not promoted as a generic shader invariant, and numerical alpha does not establish engine pass ownership/order.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(out,indent=2)+'\n')
