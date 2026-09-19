@@ -16,7 +16,7 @@ on:
       - 'tools/d1_crota_skin_bone_map.py'
       - 'tools/d1_world_articulated_skin_census.py'
       - 'tools/d1_remote_crota_skin_census.py'
-      - 'tools/d1_animation_frame_event_pointer_census.py'
+      - 'tools/d1_animation_frame_event_pointer_census.py'\n      - 'tools/d1_animation_event_prefix_structure.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
@@ -199,6 +199,32 @@ jobs:
           print('CROTA_CLIPS_WITH_FRAME_EVENT_POINTERS',d['clips_with_nonzero_frame_event_pointer_count'])
           print('CROTA_EVENT_POINTER_TOTAL',d['total_frame_event_pointer_count'])
           print('CROTA_EVENT_PREFIX_GROUPS',[(x['occurrence_count'],x['target_prefix_byte_count'],x['target_prefix_sha256']) for x in d['target_prefix_groups'][:16]])
+          PY
+
+      - name: Census bounded frame-event target prefix structure
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_event_prefix_structure.py \
+            --events out/CROTA_ANIMATION_FRAME_EVENT_POINTER_CENSUS.json \
+            --out out/CROTA_ANIMATION_EVENT_PREFIX_STRUCTURE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_EVENT_PREFIX_STRUCTURE.json'))
+          assert d['status']=='D1_ANIMATION_EVENT_PREFIX_STRUCTURE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['sample_count']>0,d
+          assert d['semantic_boundary']['record_size']=='WITHHELD',d
+          assert d['semantic_boundary']['frame_field']=='WITHHELD',d
+          assert d['semantic_boundary']['event_type']=='WITHHELD',d
+          print('CROTA_EVENT_PREFIX_SAMPLES',d['sample_count'])
+          print('CROTA_EVENT_PREFIX_UNIQUE',d['unique_32byte_prefix_count'])
+          print('CROTA_EVENT_FRAME_BOUNDED_CANDIDATE_LANES',d['frame_bounded_candidate_lanes'])
+          for k in d['frame_bounded_candidate_lanes']:
+              r=d['lanes'][k]
+              print('EVENT_PREFIX_CANDIDATE',k,'DISTINCT',r['distinct_value_count'],
+                    'RANGE',(r['min'],r['max']),
+                    'LT_FRAME_FRAC',r['value_lt_frame_count_fraction'],
+                    'MONOTONIC',r['monotonic_nondecreasing_clip_count'],'OF',r['multi_pointer_clip_count'])
           PY
 
       - name: Prove exact Crota runtime-component retarget boundary
