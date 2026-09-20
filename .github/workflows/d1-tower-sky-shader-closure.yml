@@ -10,6 +10,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -34,18 +35,21 @@ jobs:
 
           sky_run="$(gh run list --workflow d1-tower-full-sky-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$sky_run"
-          sky_artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${sky_run}/artifacts" --jq '.artifacts[] | select(.name=="D1-TOWER-ALL-SKY-MODELS-EXACT-TEXTURES" and .expired==false) | .id' | head -1)"
-          test -n "$sky_artifact_id"
-          echo "SKY_SOURCE_RUN=$sky_run SKY_ARTIFACT_ID=$sky_artifact_id"
-          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${sky_artifact_id}/zip" -o input/sky.zip
-          unzip -q input/sky.zip -d input/sky
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$sky_run" \
+            --artifact-name D1-TOWER-ALL-SKY-MODELS-EXACT-TEXTURES \
+            --out-dir input/sky --clean \
+            --report reports/ARTIFACT_PULL_SKY_MODELS.json
           test -f input/sky/reports/material_texture_manifest.json
           cp input/sky/reports/material_texture_manifest.json reports/tower_sky_material_texture_manifest.json
 
           idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$idx_run"
-          gh run download "$idx_run" -n d1-global-activity-index -D input/index
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$idx_run" \
+            --artifact-name d1-global-activity-index \
+            --out-dir input/index --clean \
+            --report reports/ARTIFACT_PULL_GLOBAL_INDEX.json
           cp "$(find input/index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
           cp "$(find input/index -name packages.txt -print -quit)" reports/packages.txt
 
