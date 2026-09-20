@@ -22,6 +22,7 @@ ADDR=re.compile(r'/\*([0-9A-Fa-f]+):[^*]*\*/\s*(\w+)\s+(.*)$')
 REG=re.compile(r'\b([vs]\d+)\b')
 VRANGE=re.compile(r'^v\[(\d+):(\d+)\]$')
 CHANNELS=('R','G','B','A')
+SPECIAL_REGS={'vcc','scc','exec'}
 
 def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
 def splitops(rest):return [x.strip() for x in rest.split(',')]
@@ -39,7 +40,7 @@ class Graph:
     def src(self,tok):
         tok=firsttok(tok)
         if tok.lower()=='off':return self.node('disabled_export_lane',value='off')
-        if re.fullmatch(r'[vs]\d+',tok):
+        if re.fullmatch(r'[vs]\d+',tok) or tok in SPECIAL_REGS:
             if tok in self.current:return self.current[tok]
             if tok not in self.implicit:self.implicit[tok]=self.node('unknown_register',register=tok)
             return self.implicit[tok]
@@ -64,7 +65,7 @@ def summary(g,root,stop_at_texture=True):
         elif k=='unknown_register':unknown.add(n['register'])
         elif k=='literal':literals.add(str(n['value']))
         elif k=='disabled_export_lane':disabled=True
-        elif k in ('vector_op','scalar_mov'):
+        elif k in ('vector_op','scalar_mov','predicate_op'):
             ops.append({'address':n.get('address'),'mnemonic':n.get('mnemonic'),'register':n.get('register')})
     return {
         'reachable_node_count':len(reach),
@@ -122,6 +123,21 @@ def analyze(shader,path,image_row,cbuffer_row):
             if re.fullmatch(r'v\d+',d):g.define(d,'interpolant',attribute=attr,address=addr)
             continue
 
+        # Preserve explicit vector-predicate dataflow. This is required for
+        # v_cmp_* -> v_cndmask_b32 chains that gate terminal colour.
+        if mn.startswith('v_cmp') and ops:
+            d=firsttok(ops[0])
+            if d in SPECIAL_REGS:
+                src=[]
+                for op in ops[1:]:
+                    rr=REG.findall(op)
+                    if rr:src.extend(g.src(x) for x in rr)
+                    else:
+                        tok=firsttok(op)
+                        if tok:src.append(g.src(tok))
+                g.define(d,'predicate_op',src,mnemonic=mn,address=addr,assembly=line.strip())
+                continue
+
         if mn.startswith('v_') and ops:
             d=firsttok(ops[0]);dests=expand_v(d)
             if dests:
@@ -132,7 +148,9 @@ def analyze(shader,path,image_row,cbuffer_row):
                     if rr:src.extend(g.src(x) for x in rr)
                     else:
                         t=firsttok(op)
-                        if t and (t[0].isdigit() or t[0] in '+-' or t.startswith('0x')):
+                        if t in SPECIAL_REGS:
+                            src.append(g.src(t))
+                        elif t and (t[0].isdigit() or t[0] in '+-' or t.startswith('0x')):
                             src.append(g.src(t))
                 prepack=None
                 if mn=='v_cvt_pkrtz_f16_f32' and len(ops)>=3:
@@ -218,6 +236,7 @@ def main():
             'terminal_export_dataflow':'EXACT_NATIVE_GCN',
             'image_resources':'EXACT_SONY_USER_DATA_PROVENANCE',
             'constant_buffer_dwords':'EXACT_IMMCONSTBUFFER_PROVENANCE',
+            'predicate_dependencies':'EXACT_FOR_EXPLICIT_VCC_SCC_EXEC_DATAFLOW',
             'human_material_or_lighting_roles':'WITHHELD',
         },
         'policy':'Reports exact terminal MRT0 numerical dependency leaves for both compressed and ordinary exports. It does not assign PBR/material/lighting semantics and does not claim coordinate-expanded image lanes are all consumed by hardware.',
