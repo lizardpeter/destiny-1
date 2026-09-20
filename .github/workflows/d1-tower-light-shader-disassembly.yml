@@ -12,6 +12,8 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+      - 'tools/d1_tower_light_shader_family_cluster.py'
+      - 'tools/d1_tfx_program_inventory.py'
 
 permissions:
   contents: read
@@ -32,7 +34,7 @@ jobs:
       - name: Recover exact bounded light GCN corpus
         run: |
           set -euo pipefail
-          mkdir -p upstream shader disasm reports
+          mkdir -p upstream upstream_material shader disasm reports
           if [ "${{ github.event_name }}" = workflow_run ]; then
             run_id='${{ github.event.workflow_run.id }}'
           else
@@ -42,6 +44,11 @@ jobs:
           gh run download "$run_id" -n d1-tower-light-shader-census -D upstream
           cp upstream/tower_light_shader_report.json reports/tower_light_shader_report.json
           cp upstream/light_gcn/PS_*_gcn.bin shader/
+
+          material_run="$(gh run list --workflow d1-tower-light-material-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$material_run"
+          gh run download "$material_run" -n d1-tower-light-material-census -D upstream_material
+          cp upstream_material/tower_light_material_manifest.json reports/tower_light_material_manifest.json
           python - <<'PY'
           import json,glob
           d=json.load(open('reports/tower_light_shader_report.json'))
@@ -147,6 +154,32 @@ jobs:
                   print('  LIGHT_CHANNEL',ch,row['value_slice'])
           PY
 
+      - name: Cluster exact Tower light shader families by source structure
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_shader_family_cluster.py \
+            --material-manifest reports/tower_light_material_manifest.json \
+            --shader-report reports/tower_light_shader_report.json \
+            --image-usage reports/tower_light_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
+            --terminal-mrt0 reports/tower_light_top8_mrt0_dependencies.json \
+            --out reports/TOWER_LIGHT_SHADER_FAMILY_CLUSTER.json \
+            | tee reports/TOWER_LIGHT_SHADER_FAMILY_CLUSTER_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_LIGHT_SHADER_FAMILY_CLUSTER.json'))
+          assert d['status']=='D1_TOWER_LIGHT_SHADER_FAMILY_CLUSTER_EXACT',d
+          assert (d['light_instance_count'],d['unique_light_material_count'],d['pixel_shader_family_count'])==(737,497,32),d
+          assert d['top8_instance_count']==575,d
+          assert abs(d['top8_instance_fraction']-(575/737))<1e-12,d
+          top={x['shader']:x for x in d['shaders']}
+          assert top['80AAE153']['instance_count']==195,top['80AAE153']
+          assert top['80AAE153']['renderer_resource_status']=='NO_SERIALIZED_PS_TEXTURE_BINDINGS',top['80AAE153']
+          print('TOWER_LIGHT_TOP8_COVERAGE',d['top8_shaders'],d['top8_instance_count'],d['top8_instance_fraction'])
+          for q in d['renderer_resource_clusters']:
+              print('TOWER_LIGHT_STRUCTURAL_CLUSTER',q)
+          PY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -154,5 +187,5 @@ jobs:
           path: |
             reports/
             disasm/
-          retention-days: 14
+          retention-days: 90
           compression-level: 6
