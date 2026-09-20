@@ -1,0 +1,89 @@
+name: D1 Tower renderer global cbuffer overlap
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - 'D1 Tower common-layer pixel-shader disassembly'
+      - 'D1 Tower light shader disassembly'
+      - 'D1 Tower sky shader closure'
+    types: [completed]
+  push:
+    paths:
+      - '.github/workflows/d1-tower-renderer-global-cbuffer-overlap.yml'
+      - 'tools/d1_shader_global_cbuffer_overlap.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  overlap:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover latest exact common, light, and sky shader reports
+        run: |
+          set -euo pipefail
+          mkdir -p input/common input/light input/sky reports
+
+          common_run="$(gh run list --workflow d1-tower-common-layer-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          light_run="$(gh run list --workflow d1-tower-light-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          sky_run="$(gh run list --workflow d1-tower-sky-shader-closure.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$common_run" -a -n "$light_run" -a -n "$sky_run"
+
+          gh run download "$common_run" -n d1-tower-common65-pixel-shader-disassembly -D input/common
+          gh run download "$light_run" -n d1-tower-light-shader-disassembly -D input/light
+          gh run download "$sky_run" -n d1-tower-sky-shader-closure -D input/sky
+
+          test -f input/common/common65_shader_extract.json
+          test -f input/common/common65_gcn_cbuffer_usage.json
+          test -f input/light/tower_light_shader_report.json
+          test -f input/light/tower_light_gcn_cbuffer_usage_v2.json
+          test -f input/sky/tower_sky_shader_report.json
+          test -f input/sky/tower_sky_gcn_cbuffer_usage.json
+
+      - name: Prove exact cross-domain ImmConstBuffer recurrence
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_global_cbuffer_overlap.py \
+            --extract common=input/common/common65_shader_extract.json \
+            --cbuffer common=input/common/common65_gcn_cbuffer_usage.json \
+            --extract light=input/light/tower_light_shader_report.json \
+            --cbuffer light=input/light/tower_light_gcn_cbuffer_usage_v2.json \
+            --extract sky=input/sky/tower_sky_shader_report.json \
+            --cbuffer sky=input/sky/tower_sky_gcn_cbuffer_usage.json \
+            --out reports/TOWER_RENDERER_GLOBAL_CBUFFER_OVERLAP.json \
+            | tee reports/TOWER_RENDERER_GLOBAL_CBUFFER_OVERLAP_stdout.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_RENDERER_GLOBAL_CBUFFER_OVERLAP.json'))
+          assert d['status']=='D1_SHADER_GLOBAL_CBUFFER_OVERLAP_EXACT',d
+          assert d['domain_count']==3,d
+          assert set(d['domains'])=={'common','light','sky'},d
+          assert d['semantic_boundary']['producer_objects']=='WITHHELD',d
+          assert d['semantic_boundary']['live_runtime_values']=='WITHHELD',d
+          print('TOWER_RENDERER_ALL_DOMAIN_SHARED_API_DWORDS',d['all_domain_shared_api_dwords'])
+          for r in d['recurrence_rows'][:80]:
+              if r['domain_count']>=2:
+                  print('TOWER_RENDERER_RECURRENT_CBUFFER',
+                        'API',r['api_slot'],'DWORD',r['dword'],
+                        'DOMAINS',r['domains'],'STATS',r['domain_stats'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-RENDERER-GLOBAL-CBUFFER-OVERLAP
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
