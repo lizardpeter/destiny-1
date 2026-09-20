@@ -3,7 +3,7 @@ name: D1 Tower light material census
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ['D1 Tower original lighting and sky census']
+    workflows: ['D1 Tower original lighting and sky census', 'D1 global Activity index']
     types: [completed]
   push:
     paths:
@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p upstream index packages runtime reports
-          if [ "${{ github.event_name }}" = workflow_run ]; then
+          if [ "${{ github.event_name }}" = workflow_run ] && [ "${{ github.event.workflow_run.name }}" = "D1 Tower original lighting and sky census" ]; then
             run_id='${{ github.event.workflow_run.id }}'
           else
             run_id="$(gh run list --workflow d1-tower-original-lighting-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
@@ -59,7 +59,11 @@ jobs:
       - name: Recover current global package index and exact Oodle runtime
         run: |
           set -euo pipefail
-          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ "${{ github.event_name }}" = workflow_run ] && [ "${{ github.event.workflow_run.name }}" = "D1 global Activity index" ]; then
+            idx_run='${{ github.event.workflow_run.id }}'
+          else
+            idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
           test -n "$idx_run"
           python tools/d1_github_actions_artifact_pull.py \
             --repo "$GITHUB_REPOSITORY" --run-id "$idx_run" \
