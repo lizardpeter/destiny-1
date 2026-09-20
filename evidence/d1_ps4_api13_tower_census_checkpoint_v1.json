@@ -1,0 +1,57 @@
+{
+  "schema": "d1_ps4_api13_tower_census_checkpoint/v1",
+  "source": {
+    "workflow_run_id": 34053028846,
+    "workflow_head_sha": "2444074df7395d1692b1c3cba93a903f1063358c",
+    "artifact_id": 9995124965,
+    "artifact_name": "d1-ps4-api13-cross-corpus-census",
+    "artifact_digest": "sha256:d52c83dc5a7a86fb81f5869ca62626a4d178df770b305f48fe7afc37f151a4c3",
+    "artifact_created_at": "2026-09-06T18:51:28Z",
+    "census_status": "D1_PS4_API13_CENSUS_COMPLETE"
+  },
+  "census": {
+    "corpora": [
+      "top40",
+      "common65",
+      "light32"
+    ],
+    "corpus_shader_row_count": 137,
+    "unique_shader_count": 135,
+    "constant_buffer_api_slot_load_histogram": {
+      "0": 86,
+      "9": 12,
+      "12": 13,
+      "13": 1
+    },
+    "api13_shader_count": 1,
+    "api13_shaders": [
+      "80CA0BE9"
+    ],
+    "api13_dword_load_histogram": {
+      "6": 1,
+      "7": 1
+    },
+    "api13_shaders_covering_both_6_and_7": [
+      "80CA0BE9"
+    ],
+    "exact_load_assembly": "s_buffer_load_dwordx2 s[10:11], s[12:15], 0x6"
+  },
+  "tower_peer_terminal_dataflow": {
+    "validator_commit": "ce24e5227d84bfb683b1e70ba0c6729cfe7bc4e9",
+    "validator_tool": "tools/d1_ps4_api13_peer_validate.py",
+    "shader": "80CA0BE9",
+    "native_shader": "80CA0BF7",
+    "gcn_bytes": 480,
+    "gcn_sha256": "86282025ea6bbe21ca42153702d14fbf443b5f2d605cf96f5f15d11663170b70",
+    "terminal_relation": "RGB *= api13[6] * api13[7] * local_scalar; separately carried alpha is not multiplied by api13[6:7]",
+    "producer_name_resolved": false,
+    "runtime_values_resolved": false
+  },
+  "evidence_classes": {
+    "census": "FROZEN_EXACT_ACTIONS_ARTIFACT_DERIVED",
+    "terminal_dataflow": "PINNED_EXACT_NATIVE_VALIDATOR_RESULT",
+    "engine_producer": "WITHHELD",
+    "live_runtime_values": "WITHHELD"
+  },
+  "policy": "This checkpoint preserves exact derived census and native-validator facts after the transient Actions artifact expires. It is not a live PS4 constant-buffer capture and does not assign an engine semantic to API13."
+}
