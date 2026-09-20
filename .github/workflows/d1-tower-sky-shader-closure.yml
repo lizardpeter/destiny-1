@@ -2,6 +2,9 @@ name: D1 Tower sky shader closure
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 global Activity index']
+    types: [completed]
   push:
     paths:
       - '.github/workflows/d1-tower-sky-shader-closure.yml'
@@ -18,6 +21,7 @@ permissions:
 
 jobs:
   shaders:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
