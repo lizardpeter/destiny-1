@@ -2,6 +2,12 @@ name: D1 Tower common-layer model export
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-common-layer-model-export.yml'
+      - 'tools/d1_world_table_scoped_decal_census.py'
+      - 'tools/d1_world_common_model_plan.py'
+      - 'tools/d1_entity_model_corpus_export.py'
   workflow_run:
     workflows: ["D1 Tower activity map-root census"]
     types: [completed]
@@ -179,5 +185,5 @@ jobs:
             reports/
             models/
             validation/source_driven/
-          retention-days: 14
+          retention-days: 90
           compression-level: 6
