@@ -8,6 +8,7 @@ on:
       - 'tools/d1_crota_visual_shader_v3_trigger.py'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gnm_vs_ps_linkage.py'
+      - 'tools/d1_crota_vs_param_vertex_input_lineage.py'
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_image_coordinate_slice.py'
@@ -66,6 +67,7 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             tools/d1_gcn_cbuffer_usage_analyze.py \
+            tools/d1_crota_vs_param_vertex_input_lineage.py \
             tools/d1_gcn_image_coordinate_slice.py \
             tools/d1_crota_955_coordinate_specialize.py \
             tools/d1_gcn_terminal_alpha_slice.py \
@@ -216,6 +218,41 @@ jobs:
               print('GNM_LINK',r['vertex_shader'],r['pixel_shader'],
                     'CONSUMED',[(x['attr_index'],x['semantic'],x['vs_param_index']) for x in r['consumed_linkage']],
                     'ALL',[(x['attr_index'],x['semantic'],x['vs_param_index'],x['ps_default_value']) for x in r['linkage']])
+          PY
+
+      - name: Trace surviving procedural attr1 coordinates to raw vertex inputs
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_vs_param_vertex_input_lineage.py \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
+            --linkage out/CROTA_GNM_VS_PS_LINKAGE.json \
+            --disasm-dir disasm \
+            --vertex-shader 809DE9AB --vertex-shader 809DF743 \
+            --pixel-shader 8108E955 --attr-index 1 \
+            --out out/CROTA_955_ATTR1_VERTEX_INPUT_LINEAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_955_ATTR1_VERTEX_INPUT_LINEAGE.json'))
+          assert d['status']=='D1_CROTA_VS_PARAM_VERTEX_INPUT_LINEAGE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert len(d['rows'])==2,d
+          for r in d['rows']:
+              assert r['pixel_shader']=='8108E955' and r['pixel_attr_index']==1,r
+              assert r['vs_param_index_from_linkage']==1,r
+              assert r['target_param_index']==1,r
+              assert r['x']['vertex_input_leaves'],r
+              assert r['y']['vertex_input_leaves'],r
+              assert not r['x']['unknown_vgpr_leaves'],r
+              assert not r['y']['unknown_vgpr_leaves'],r
+              assert r['xy_vertex_input_lineage_complete'] is True,r
+              print('CROTA_955_ATTR1_VERTEX_INPUT',
+                    r['vertex_shader'],
+                    'RAW_LINK_SEMANTIC',r['raw_link_semantic_id'],
+                    'EXPORT',r['target_export_assembly'],
+                    'X_INPUTS',r['x']['vertex_input_leaves'],
+                    'Y_INPUTS',r['y']['vertex_input_leaves'])
+          assert d['semantic_boundary']['TEXCOORD_UV_position_normal_names']=='WITHHELD',d
+          assert d['semantic_boundary']['vertex_stream_or_fetch_descriptor_identity']=='WITHHELD',d
           PY
 
       - name: Trace angular pixel inputs to exact vertex exports
