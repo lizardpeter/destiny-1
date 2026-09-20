@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-crota-main-visual-shader-closure-v3.yml'
       - 'tools/d1_crota_visual_shader_v3_trigger.py'
       - 'tools/d1_remote_crota_shader_vertex_layout.py'
+      - 'tools/d1_remote_crota_tangent_storage_audit.py'
       - 'tools/d1_crota_visual_union_export.py'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gnm_vs_ps_linkage.py'
@@ -139,6 +140,37 @@ jobs:
               print('PAIR_MATERIAL',h,'VS',r['vs']['shader'],'PS',r['ps']['shader'],'STATE4',r['material_state4_hex'],
                     'PS_TEX',[(x['texture_index'],x['texture']) for x in r['ps']['textures']['items']],
                     'PS_SAMPLERS',[x['sampler_taghash'] for x in r['ps']['sampler_references']])
+          PY
+
+      - name: Audit exact Crota full tangent storage
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_crota_tangent_storage_audit.py \
+            --material-bindings input/actor/crota_raid_actor_material_bindings.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --model 0x8108E5B7 --parent 0x8108E4BA \
+            --out out/CROTA_TANGENT_STORAGE_AUDIT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_TANGENT_STORAGE_AUDIT.json'))
+          assert d['status']=='D1_CROTA_TANGENT_STORAGE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['mesh_count']==3,d
+          assert d['all_raw_tangent_w_exact_sign_domain'] is True,d
+          assert d['selected_range_raw_tangent_w_exact_sign_domain'] is True,d
+          assert d['semantic_boundary']['raw_w_equals_native_VS_handedness']=='WITHHELD_PENDING_FETCH_LAYOUT',d
+          assert d['semantic_boundary']['raw_w_equals_standard_gltf_tangent_w']=='WITHHELD_PENDING_NATIVE_TO_GLTF_BASIS_PROOF',d
+          for r in d['rows']:
+              assert r['tangent_storage_type']=='SNORM16x4',r
+              assert r['xyz_decoder_max_abs_error']==0.0,r
+              print('CROTA_TANGENT_STORAGE',r['mesh_index'],
+                    'PAIR',(r['primary_stride'],r['secondary_stride']),
+                    'OFFSET',r['tangent_storage_byte_offset'],
+                    'RAW_W',r['raw_tangent_w_counts'],
+                    'SELECTED_W',r['selected_range_raw_tangent_w_counts'])
+          print('CROTA_TANGENT_W_GLOBAL',d['raw_tangent_w_counts'],
+                'MIXED_TRIANGLES',d['mixed_raw_tangent_w_triangle_count'])
           PY
 
       - name: Join exact retail Crota vertex layouts to color shader families
