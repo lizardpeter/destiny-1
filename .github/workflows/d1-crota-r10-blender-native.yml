@@ -130,11 +130,22 @@ jobs:
               m=bpy.data.materials[name]
               nn={n.name for n in m.node_tree.nodes}
               assert 'D1_EXACT_958_SPECIALIZED_ALPHA' in nn,(name,nn)
-              assert 'D1_PROXY_955_PROC_COLOR_RAMP' in nn,(name,nn)
+              assert 'D1_PROXY_955_PROC_COLOR_RAMP' not in nn,(name,nn)
+              assert 'D1_PORTABLE_955_REPEATED_BC1_SAMPLE_AT_ZERO' in nn,(name,nn)
+              assert 'D1_EXACT_955_ZERO_COORDINATE' in nn,(name,nn)
+              assert 'D1_PROXY_955_ANGULAR_U' in nn,(name,nn)
+              assert 'D1_PROXY_API13_RGB_SCALE' in nn,(name,nn)
+              assert 'D1_EXACT_955_RGB_COMBINE' in nn,(name,nn)
+              assert all(f'D1_EXACT_955_{ch}_X_API13' in nn for ch in ('R','G','B')),(name,nn)
               assert m.get('d1_r10_color_shader')=='8108E955',m.items()
               assert list(m.get('d1_r10_color_exact_normalized_gain'))==[0.18661969900131226,1.0,0.8700880408287048],m.items()
               assert m.get('d1_r10_color_exact_material_scalar')==55.0,m.items()
+              assert m.get('d1_r10_color_repeated_sample_relation')=='t1=t2=t4=S from texture 80AACF2A, same sampler, first two encoded coordinate lanes (0,0)',m.items()
+              assert m.get('d1_r10_color_t3_coordinate_effect')=='DEAD_FOR_T4_COORDINATE_AFTER_EXACT_ZERO_MULTIPLIERS',m.items()
+              assert 'ramp and 1.65 gain removed' in m.get('d1_r10_color_preview_proxy',''),m.items()
+              assert 'not claimed PS4 bit-identical' in m.get('d1_r10_portable_filter_boundary',''),m.items()
               assert 'API12[28:30]' in m.get('d1_r10_color_remaining_runtime',''),m.items()
+              assert m.node_tree.nodes['D1_ADDITIVE_COLOR'].inputs['Strength'].default_value==1.0,(name,'unexpected procedural emission strength')
               assert 'D1_PROXY_ATTENUATION_SCALE' not in nn,(name,nn)
               assert 'D1_PROXY_ATTENUATION_BIAS' not in nn,(name,nn)
           for name in ('D1_8108E7AA','D1_8108E7B3'):
