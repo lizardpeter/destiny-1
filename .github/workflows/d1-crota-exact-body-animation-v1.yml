@@ -29,6 +29,7 @@ on:
       - 'tools/d1_crota_runtime_control_skeleton_map.py'
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
+      - 'tools/d1_animation_selector_curve_alias_join.py'
       - 'tools/d1_animation_event_timing_correlation.py'
       - 'tools/d1_animation_event_prefix_timing_candidates.py'
       - 'tools/d1_animation_control_state_map_v2.py'
@@ -724,6 +725,34 @@ jobs:
                 'ALIASED_RECORDS',d['state_records_in_alias_groups'])
           for x in d['selected_sequence_groups'][:8]:
               print('SELECTOR_GROUP',x['state_record_count'],x['selected_clip_sequence'],x['state_hashes'],x['scalar_values'])
+          PY
+
+      - name: Join selector aliases to complete decoded Crota curves
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_selector_curve_alias_join.py \
+            --aliases out/CROTA_ANIMATION_SELECTOR_ALIAS_CENSUS.json \
+            --motion-signatures out/CROTA_ANIMATION_MOTION_SIGNATURE_CENSUS.json \
+            --out out/CROTA_ANIMATION_SELECTOR_CURVE_ALIAS_JOIN.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_SELECTOR_CURVE_ALIAS_JOIN.json'))
+          assert d['status']=='D1_ANIMATION_SELECTOR_CURVE_ALIAS_JOIN_EXACT',d
+          assert not d['violations'],d['violations']
+          assert not d['ambiguous_control_clip_keys'],d['ambiguous_control_clip_keys']
+          assert not d['unresolved_selector_curve_refs'],d['unresolved_selector_curve_refs']
+          assert d['selector_state_record_count']==128,d
+          assert d['semantic_boundary']['different_filehash_same_curve']=='BYTE_EQUAL_DECODED_LOCAL_ARRAYS_NOT_SOURCE_PAYLOAD_EQUALITY',d
+          assert d['semantic_boundary']['state_or_clip_behavior']=='WITHHELD',d
+          print('CROTA_SELECTOR_CURVE_SEQUENCE_GROUPS',d['decoded_curve_sequence_group_count'])
+          print('CROTA_CROSS_FILEHASH_CURVE_SEQUENCE_ALIAS_GROUPS',
+                d['cross_filehash_curve_sequence_alias_group_count'])
+          print('CROTA_DIFFERENT_CLIP_HASH_SAME_DECODED_CURVE_GROUPS',
+                d['different_clip_hash_same_decoded_curve_group_count'])
+          for x in d['different_clip_hash_same_decoded_curve_groups']:
+              print('DECODED_CURVE_ALIAS',x['decoded_local_curve_sha256'],x['clips'],x['controls'])
+          for x in d['cross_filehash_curve_sequence_alias_groups']:
+              print('SELECTOR_CURVE_ALIAS',x['decoded_curve_sequence'],x['selected_clip_sequences'],x['state_hashes'])
           PY
 
       - name: Correlate exact frame-event pointers with timing and selector reuse
