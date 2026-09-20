@@ -15,6 +15,7 @@ on:
       - 'tools/d1_tower_light_shader_family_cluster.py'
       - 'tools/d1_tower_light_80aae153_mrt0_factorization.py'
       - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -42,13 +43,21 @@ jobs:
             run_id="$(gh run list --workflow d1-tower-light-shader-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           fi
           test -n "$run_id"
-          gh run download "$run_id" -n d1-tower-light-shader-census -D upstream
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$run_id" \
+            --artifact-name d1-tower-light-shader-census \
+            --out-dir upstream --clean \
+            --report reports/ARTIFACT_PULL_LIGHT_SHADER_CENSUS.json
           cp upstream/tower_light_shader_report.json reports/tower_light_shader_report.json
           cp upstream/light_gcn/PS_*_gcn.bin shader/
 
           material_run="$(gh run list --workflow d1-tower-light-material-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$material_run"
-          gh run download "$material_run" -n d1-tower-light-material-census -D upstream_material
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$material_run" \
+            --artifact-name d1-tower-light-material-census \
+            --out-dir upstream_material --clean \
+            --report reports/ARTIFACT_PULL_LIGHT_MATERIALS.json
           cp upstream_material/tower_light_material_manifest.json reports/tower_light_material_manifest.json
           python - <<'PY'
           import json,glob
