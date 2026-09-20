@@ -38,7 +38,13 @@ ACTIVE = MAT_PROC | MAT_ATLAS | MAT_DETAIL
 PROC_EXACT_NORMALIZED_GAIN = (0.18661969900131226, 1.0, 0.8700880408287048, 1.0)
 DETAIL_EXACT_RGB_VECTOR = (0.22183096408843994, 1.0, 0.9177990555763245, 1.0)
 ATLAS_EXACT_STATIC_RGB_VECTOR = (0.3931313157081604, 0.6766623854637146, 0.6658802032470703, 1.0)
-ATLAS_PREVIEW_TINT = (0.72, 1.0, 0.86, 1.0)
+ATLAS_EXACT_ANGULAR_BIAS = (0.0003782951971516013, 0.008264296688139439, 0.0054319994524121284)
+ATLAS_EXACT_ANGULAR_SLOPE = (0.9996216893196106, 0.9917356967926025, 0.9945679903030396)
+# These defaults exist only so a source-closed carrier can be inspected in Blender
+# without a live D1 renderer.  Their node names and material metadata keep the
+# unresolved API12/API13 inputs explicit rather than baking them into a tint/gain.
+PREVIEW_UNRESOLVED_ANGULAR_DEFAULT = 1.0
+PREVIEW_UNRESOLVED_API13_PRODUCT_DEFAULT = 1.0
 
 
 def args_after_double_dash():
@@ -156,6 +162,32 @@ def add_math(nodes, operation, name, x, y, *, a=None, b=None, clamp=False):
     return n
 
 
+def add_unresolved_runtime_value(nodes, value, name, x, y):
+    n=add_value(nodes,value,name,x,y)
+    n.label=name + ' (PREVIEW DEFAULT; D1 LIVE VALUE WITHHELD)'
+    return n
+
+
+def build_rgb_affine_scalar(nodes, links, scalar_socket, bias, slope, prefix, x, y):
+    """Build exact per-channel bias + slope*scalar using stable Blender Math/RGB nodes."""
+    comb=nodes.new('ShaderNodeCombineRGB'); comb.name=prefix+'_COMBINE'; comb.label=prefix+'_COMBINE'; comb.location=(x+360,y)
+    for lane,(b,m) in enumerate(zip(bias,slope)):
+        mul=add_math(nodes,'MULTIPLY',f'{prefix}_SLOPE_{lane}',x,y-110*lane,b=float(m))
+        links.new(scalar_socket,mul.inputs[0])
+        add=add_math(nodes,'ADD',f'{prefix}_BIAS_{lane}',x+180,y-110*lane,b=float(b))
+        links.new(mul.outputs[0],add.inputs[0])
+        links.new(add.outputs[0],comb.inputs[lane])
+    return comb.outputs[0]
+
+
+def build_exact_runtime_scaled_strength(nodes, links, material_scalar, angular_socket, api13_socket, prefix, x, y):
+    mul0=add_math(nodes,'MULTIPLY',prefix+'_MATERIAL_X_ANGULAR',x,y,b=float(material_scalar))
+    links.new(angular_socket,mul0.inputs[0])
+    mul1=add_math(nodes,'MULTIPLY',prefix+'_X_API13',x+180,y)
+    links.new(mul0.outputs[0],mul1.inputs[0]); links.new(api13_socket,mul1.inputs[1])
+    return mul1.outputs[0]
+
+
 def build_proc_partner_alpha(nodes, links, scalar_socket):
     """Portable replay of the exact material-specialized PS8108E958 alpha equation.
 
@@ -241,33 +273,49 @@ def build_native_material(mat):
         mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] shared PS4 runtime RGB-scale pair; producer/live values WITHHELD'
         mat['d1_r10_color_preview_proxy']='D1_PROXY_955_PROC_COLOR_RAMP + emission strength 1.65'
     elif tag in MAT_ATLAS:
-        t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-780,190)
-        mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_ATLAS_GREEN_GAIN'; mult.location=(-430,190)
-        tint=add_rgb(nodes,ATLAS_PREVIEW_TINT,'D1_PROXY_956_ATLAS_TINT',-700,20)
-        links.new(t.outputs['Color'],mult.inputs[0]); links.new(tint.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
-        emission.inputs['Strength'].default_value=2.2
-        a=add_value(nodes,1.0,'D1_EXACT_8108E959_PARTNER_ALPHA_ONE',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E956_RGB_DEPENDENCIES_SOURCE_CLOSED_BUT_ANGULAR_AND_RUNTIME_SCALE_NOT_PORTABLY_REPLAYED + PS8108E959_EXACT_CURRENT_MATERIAL_ALPHA_ONE'
+        t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-920,230)
+        angular=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_ANGULAR_DEFAULT,'D1_PROXY_956_ANGULAR_V',-920,-40)
+        api13=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_API13_PRODUCT_DEFAULT,'D1_PROXY_API13_RGB_SCALE',-920,-120)
+        angular_rgb=build_rgb_affine_scalar(
+            nodes,links,angular.outputs[0],
+            ATLAS_EXACT_ANGULAR_BIAS,ATLAS_EXACT_ANGULAR_SLOPE,
+            'D1_EXACT_956_ANGULAR_RGB',-700,40)
+        mult0=nodes.new('ShaderNodeVectorMath'); mult0.operation='MULTIPLY'; mult0.name='D1_EXACT_956_TEXTURE_X_ANGULAR'; mult0.location=(-120,230)
+        links.new(t.outputs['Color'],mult0.inputs[0]); links.new(angular_rgb,mult0.inputs[1])
+        static=add_rgb(nodes,ATLAS_EXACT_STATIC_RGB_VECTOR,'D1_EXACT_956_STATIC_RGB_VECTOR',-120,60)
+        mult1=nodes.new('ShaderNodeVectorMath'); mult1.operation='MULTIPLY'; mult1.name='D1_EXACT_956_X_STATIC_RGB'; mult1.location=(70,230)
+        links.new(mult0.outputs['Vector'],mult1.inputs[0]); links.new(static.outputs['Color'],mult1.inputs[1])
+        links.new(mult1.outputs['Vector'],emission.inputs['Color'])
+        one=add_value(nodes,1.0,'D1_EXACT_956_ANGULAR_STRENGTH_ONE',-300,-70)
+        strength=build_exact_runtime_scaled_strength(nodes,links,18.0,one.outputs[0],api13.outputs[0],'D1_EXACT_956_RGB_SCALE',-80,-80)
+        links.new(strength,emission.inputs['Strength'])
+        a=add_value(nodes,1.0,'D1_EXACT_8108E959_PARTNER_ALPHA_ONE',-120,-220); links.new(a.outputs[0],mix.inputs['Fac'])
+        proxy='PS8108E956_EXACT_MATERIAL_SPECIALIZED_RGB_WITH_EXPLICIT_API12_ANGULAR_AND_API13_PREVIEW_INPUTS + PS8108E959_EXACT_CURRENT_MATERIAL_ALPHA_ONE'
         mat['d1_r10_color_shader']='8108E956'
         mat['d1_r10_color_exact_static_rgb_vector']=list(ATLAS_EXACT_STATIC_RGB_VECTOR[:3])
-        mat['d1_r10_color_exact_angular_bias']=[0.0003782951971516013,0.008264296688139439,0.0054319994524121284]
-        mat['d1_r10_color_exact_angular_slope']=[0.9996216893196106,0.9917356967926025,0.9945679903030396]
+        mat['d1_r10_color_exact_angular_bias']=list(ATLAS_EXACT_ANGULAR_BIAS)
+        mat['d1_r10_color_exact_angular_slope']=list(ATLAS_EXACT_ANGULAR_SLOPE)
         mat['d1_r10_color_exact_material_scalar']=18.0
-        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] scale'
-        mat['d1_r10_color_preview_proxy']='D1_PROXY_956_ATLAS_TINT + emission strength 2.2'
+        mat['d1_r10_color_remaining_runtime']='D1_PROXY_956_ANGULAR_V := native V from API12[28:30]+attr0/attr2; D1_PROXY_API13_RGB_SCALE := API13[6]*API13[7]; both live values WITHHELD'
+        mat['d1_r10_color_preview_proxy']='ONLY D1_PROXY_956_ANGULAR_V=1 and D1_PROXY_API13_RGB_SCALE=1; tint and 2.2 gain removed'
+        mat['d1_r10_color_equation_replay']='t0.rgb * (bias+slope*V) * staticRGB * 18 * API13[6]*API13[7]'
     elif tag in MAT_DETAIL:
-        t=add_tex(nodes,tex_detail,'D1_EXACT_8108E952_DETAIL_COLOR',-780,190)
-        tint=add_rgb(nodes,DETAIL_EXACT_RGB_VECTOR,'D1_EXACT_953_MATERIAL_RGB_VECTOR',-690,20)
-        mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_DETAIL_COLOR_MULT'; mult.location=(-430,190)
-        links.new(t.outputs['Color'],mult.inputs[0]); links.new(tint.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
-        emission.inputs['Strength'].default_value=2.0
-        a=add_value(nodes,1.0,'D1_EXACT_80AAE1CD_PARTNER_ALPHA_ONE',-120,-160); links.new(a.outputs[0],mix.inputs['Fac'])
-        proxy='PS8108E953_RGB_DEPENDENCIES_SOURCE_CLOSED_BUT_ANGULAR_AND_RUNTIME_SCALE_NOT_PORTABLY_REPLAYED + 80AAE1CD_EXACT_BLACK_ALPHA_ONE'
+        t=add_tex(nodes,tex_detail,'D1_EXACT_8108E952_DETAIL_COLOR',-920,220)
+        exact_rgb=add_rgb(nodes,DETAIL_EXACT_RGB_VECTOR,'D1_EXACT_953_MATERIAL_RGB_VECTOR',-720,40)
+        mult=nodes.new('ShaderNodeVectorMath'); mult.operation='MULTIPLY'; mult.name='D1_EXACT_953_TEXTURE_X_MATERIAL_RGB'; mult.location=(-430,210)
+        links.new(t.outputs['Color'],mult.inputs[0]); links.new(exact_rgb.outputs['Color'],mult.inputs[1]); links.new(mult.outputs['Vector'],emission.inputs['Color'])
+        angular=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_ANGULAR_DEFAULT,'D1_PROXY_953_ANGULAR_U',-720,-110)
+        api13=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_API13_PRODUCT_DEFAULT,'D1_PROXY_API13_RGB_SCALE',-720,-190)
+        strength=build_exact_runtime_scaled_strength(nodes,links,9.0,angular.outputs[0],api13.outputs[0],'D1_EXACT_953_RGB_SCALE',-390,-100)
+        links.new(strength,emission.inputs['Strength'])
+        a=add_value(nodes,1.0,'D1_EXACT_80AAE1CD_PARTNER_ALPHA_ONE',-120,-220); links.new(a.outputs[0],mix.inputs['Fac'])
+        proxy='PS8108E953_EXACT_MATERIAL_SPECIALIZED_RGB_WITH_EXPLICIT_API12_ANGULAR_AND_API13_PREVIEW_INPUTS + 80AAE1CD_EXACT_BLACK_ALPHA_ONE'
         mat['d1_r10_color_shader']='8108E953'
         mat['d1_r10_color_exact_material_rgb_vector']=list(DETAIL_EXACT_RGB_VECTOR[:3])
         mat['d1_r10_color_exact_material_scalar']=9.0
-        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] scale'
-        mat['d1_r10_color_preview_proxy']='emission strength 2.0; angular/runtime scale not replayed'
+        mat['d1_r10_color_remaining_runtime']='D1_PROXY_953_ANGULAR_U := clamp(d*d), d depends on API12[28:30]+attr0/attr2; D1_PROXY_API13_RGB_SCALE := API13[6]*API13[7]; live values WITHHELD'
+        mat['d1_r10_color_preview_proxy']='ONLY D1_PROXY_953_ANGULAR_U=1 and D1_PROXY_API13_RGB_SCALE=1; arbitrary emission strength 2.0 removed'
+        mat['d1_r10_color_equation_replay']='t0.rgb * materialRGB * U * 9 * API13[6]*API13[7]'
     else:
         raise RuntimeError(tag)
 
