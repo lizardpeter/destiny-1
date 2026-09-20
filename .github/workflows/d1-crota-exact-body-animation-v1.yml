@@ -15,6 +15,7 @@ on:
       - 'tools/d1_crota_skeleton_usage_union.py'
       - 'tools/d1_crota_skeleton_usage_matrix.py'
       - 'tools/d1_crota_named_skeleton_usage.py'
+      - 'tools/d1_crota_unresolved_skeleton_context.py'
       - 'tools/d1_crota_skin_bone_map.py'
       - 'tools/d1_world_articulated_skin_census.py'
       - 'tools/d1_remote_crota_skin_census.py'
@@ -534,6 +535,30 @@ jobs:
                 [(x['index'],x['display_identity']) for x in d['skin_nodes_without_direct_runtime_control']])
           print('CROTA_NAMED_DYNAMIC_WITHOUT_CONTROL',
                 [(x['index'],x['display_identity']) for x in d['dynamic_nodes_without_direct_runtime_control']])
+          PY
+
+      - name: Isolate exact unresolved Crota skeleton-node context
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_unresolved_skeleton_context.py \
+            --named-usage out/CROTA_NAMED_SKELETON_USAGE.json \
+            --out out/CROTA_UNRESOLVED_SKELETON_CONTEXT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_UNRESOLVED_SKELETON_CONTEXT.json'))
+          assert d['status']=='D1_CROTA_UNRESOLVED_SKELETON_CONTEXT_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['unresolved_node_count']==4,d
+          assert {x['node_hash'] for x in d['nodes']}=={'0E355AA8','A485F9B8','A91E97AF','57F11E8A'},d
+          for x in d['nodes']:
+              assert x['fnv1_name_status']=='UNRESOLVED_IN_PINNED_LINEAGE_TABLE',x
+              print('CROTA_UNRESOLVED_NODE',x['index'],x['node_hash'],
+                    'PARENT',x['parent'],
+                    'CHILDREN',x['children'],
+                    'PATTERN',x['structural_pattern'],
+                    'SKIN',x['skin_reference_count'],
+                    'MOTION',x['dynamic_any_clip_instances'],
+                    'CONTROLS',x['runtime_controls'])
           PY
 
       - name: Prove exact control-scalar to frame timing ratio
