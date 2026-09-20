@@ -21,6 +21,7 @@ on:
       - 'tools/d1_world_articulated_skin_census.py'
       - 'tools/d1_remote_crota_skin_census.py'
       - 'tools/d1_animation_frame_event_pointer_census.py'
+      - 'tools/d1_animation_header_unnamed_vector_census.py'
       - 'tools/d1_animation_event_prefix_structure.py'
       - 'tools/d1_animation_event_target_layout.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
@@ -240,6 +241,38 @@ jobs:
           print('CROTA_CLIPS_WITH_FRAME_EVENT_POINTERS',d['clips_with_nonzero_frame_event_pointer_count'])
           print('CROTA_EVENT_POINTER_TOTAL',d['total_frame_event_pointer_count'])
           print('CROTA_EVENT_PREFIX_GROUPS',[(x['occurrence_count'],x['target_prefix_byte_count'],x['target_prefix_sha256']) for x in d['target_prefix_groups'][:16]])
+          PY
+
+      - name: Census discarded D1 ROI header vector beside frame events
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_header_unnamed_vector_census.py \
+            --options out/CROTA_ANIMATION_OPTIONS_V3.json \
+            --out out/CROTA_ANIMATION_HEADER_UNNAMED_VECTOR_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_HEADER_UNNAMED_VECTOR_CENSUS.json'))
+          assert d['status']=='D1_ANIMATION_HEADER_UNNAMED_VECTOR_CENSUS_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['clip_count']==82,d
+          assert d['semantic_boundary']['unnamed_vector_element_stride']=='WITHHELD',d
+          assert d['semantic_boundary']['unnamed_vector_element_type']=='WITHHELD',d
+          print('CROTA_UNNAMED_HEADER_VECTOR_LENGTH_HIST',d['unnamed_length_histogram'])
+          print('CROTA_UNNAMED_HEADER_VECTOR_EVENT_COUNT_PAIRS',d['unnamed_length_frame_event_count_pair_histogram'])
+          print('CROTA_UNNAMED_HEADER_VECTOR_EQUAL_EVENT_COUNT',d['unnamed_length_equals_frame_event_count_clip_count'])
+          print('CROTA_UNNAMED_HEADER_VECTOR_TARGET_REGIONS',d['target_region_histogram'])
+          print('CROTA_UNNAMED_HEADER_VECTOR_DISTANCE_CANDIDATES',d['integral_distance_per_element_candidate_histogram'])
+          for x in d['rows']:
+              if x['unnamed_length'] or x['frame_event_pointer_count']:
+                  print('CROTA_UNNAMED_HEADER_VECTOR_CLIP',x['clip'],
+                        'FRAMES',x['frame_count'],
+                        'UNNAMED_LEN',x['unnamed_length'],
+                        'EVENT_PTRS',x['frame_event_pointer_count'],
+                        'UNNAMED_TARGET',x['unnamed_target_offset'],
+                        'EVENT_ARRAY',x['frame_pointer_array_target_offset'],
+                        'DIST',x['unnamed_to_frame_pointer_array_distance'],
+                        'CANDIDATE',x['distance_divided_by_unnamed_length_if_integral'],
+                        'EVENT_TARGET_REL',x['unknown_target_event_target_relation'])
           PY
 
       - name: Census exact frame-event target layout
