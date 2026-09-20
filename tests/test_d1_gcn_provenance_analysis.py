@@ -26,7 +26,7 @@ class TestGCNProvenance(unittest.TestCase):
             '/*000000000008: 00000000 */ s_load_dwordx4  s[12:15], s[2:3], 0x4',
             '/*00000000000c: 00000000 */ s_buffer_load_dword s16, s[12:15], 0x1c',
         ])
-        d=cb.analyze_shader('DEADBEEF',text,usage)
+        d=cb.analyze('DEADBEEF',text,usage)
         self.assertEqual(d['api_slot_read_dwords']['0'],[8,9])
         self.assertEqual(d['api_slot_read_dwords']['12'],[28])
         self.assertEqual(d['unresolved_load_count'],0)
