@@ -23,26 +23,11 @@ from d1_split_tar_extract import SplitHttpTar
 from d1_remote_activity_placements import RemoteCorpus
 from d1_entity_model_probe import parse_model
 from d1_entity_model_corpus_export import linked,norm
-from d1_entity_model_export import hdr_stride,index_is32,decode_indices,primitive_faces,snorm16
+from d1_entity_model_export import hdr_stride,index_is32,decode_indices,primitive_faces
 from d1_crota_visual_union_export import (
-    CROTA_MODEL,ENTITY_MODEL_CLASS,CROTA_STRIDE_PAIRS,visual_union_ranges,decode_crota_mesh_pair,
+    CROTA_MODEL,ENTITY_MODEL_CLASS,visual_union_ranges,decode_crota_mesh_pair,
+    decode_crota_full_tangent_storage,
 )
-
-def full_tangent_storage(mesh_index:int,data:bytes,stride:int,primary_uv:bool)->tuple[np.ndarray,np.ndarray,int]:
-    if mesh_index in (0,1):
-        if stride!=0x14 or primary_uv:
-            raise ValueError(f'mesh{mesh_index}: expected secondary 0x14 with no primary UV, got {stride:#x}/{primary_uv}')
-        off=0x0C
-    elif mesh_index==2:
-        if stride!=0x10 or not primary_uv:
-            raise ValueError(f'mesh2: expected secondary 0x10 with primary UV, got {stride:#x}/{primary_uv}')
-        off=0x08
-    else: raise ValueError(mesh_index)
-    if len(data)%stride:raise ValueError('secondary backing not stride-aligned')
-    raw=np.frombuffer(data,dtype=np.uint8).reshape((-1,stride))
-    raw4=np.frombuffer(raw[:,off:off+8].copy().tobytes(),dtype='<i2').reshape((-1,4))
-    dec4=snorm16(raw4)
-    return raw4,dec4,off
 
 def main():
  ap=argparse.ArgumentParser()
@@ -76,7 +61,7 @@ def main():
    lr0,h0,_,d0=linked(c,mesh['vertices1']);s0=hdr_stride(h0)
    lr1,h1,_,d1=linked(c,mesh['vertices2']);s1=hdr_stride(h1)
    pos,uv,nrm,tan3,col,layout=decode_crota_mesh_pair(mi,mesh,d0,s0,d1,s1)
-   raw4,dec4,off=full_tangent_storage(mi,d1,s1,bool(layout['primary_uv']))
+   raw4,dec4,off=decode_crota_full_tangent_storage(mi,d1,s1,bool(layout['primary_uv']))
    if tan3 is None or tan3.shape!=(len(dec4),3):raise ValueError(f'tangent xyz shape {None if tan3 is None else tan3.shape}')
    err=float(np.max(np.abs(tan3-dec4[:,:3]))) if len(dec4) else 0.0
    if err!=0.0:v.append(f'mesh{mi}: full tangent xyz != existing decoder, maxerr={err}')
