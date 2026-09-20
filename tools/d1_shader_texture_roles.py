@@ -166,6 +166,19 @@ PROVEN_PIXEL_SHADER_ROLES: dict[str, dict[int, str]] = {
         0: 'surface_rgb_alpha_intensity_control',
     },
 
+    # Tower common three-texture RGB compositor. Exact native GCN proves
+    #   P = t2.rgb * (t1.rgb * api0[20:22] * api0[24:26] *
+    #                 api0[28:30] * api0[32:34])
+    #       + t0.rgb * api0[8:10] * api0[12:14]
+    # followed by one shared per-channel API0/API13 scale. t1 uses an authored
+    # affine UV transform; MRT0 alpha is literal zero. These are algebraic roles,
+    # not PBR labels, and none is safe as a direct portable base-color binding.
+    '80CA0F50': {
+        0: 'surface_rgb_additive_branch_pre_global_scale',
+        1: 'surface_rgb_affine_uv_multiplicative_modulation_of_t2',
+        2: 'surface_rgb_multiplicative_branch_with_t1',
+    },
+
     # Final common-layer family, native PS 80A3D3AE. The shader samples t0.xyzw,
     # derives w = saturate(t0.a * material_scalar), then emits
     #     MRT0.rgb = 1 + w * (t0.rgb - 1)
