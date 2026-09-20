@@ -13,6 +13,7 @@ on:
       - 'tools/d1_gnm_vs_ps_linkage.py'
       - 'tools/d1_crota_vs_param_vertex_input_lineage.py'
       - 'tools/d1_crota_vs_semantic_reuse.py'
+      - 'tools/d1_crota_955_coordinate_semantic_join.py'
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_image_coordinate_slice.py'
@@ -308,6 +309,25 @@ jobs:
           assert s['fetch_shader_source_offsets_formats']=='WITHHELD',s
           print('CROTA_VS_SEMANTIC_REUSE_PROCEDURAL',p)
           print('CROTA_VS_SEMANTIC_REUSE_ANGULAR',d['angular_basis_rows'])
+          PY
+
+      - name: Join procedural coordinate arithmetic to exact VS tangent semantics
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_955_coordinate_semantic_join.py \
+            --coordinate-specialization out/CROTA_955_COORDINATE_SPECIALIZATION.json \
+            --vs-semantics out/CROTA_VS_SEMANTIC_REUSE.json \
+            --out out/CROTA_955_COORDINATE_SEMANTIC_JOIN.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_955_COORDINATE_SEMANTIC_JOIN.json'))
+          assert d['status']=='D1_CROTA_955_COORDINATE_SEMANTIC_JOIN_EXACT',d
+          assert not d['violations'],d['violations']
+          assert {x['material'] for x in d['rows']}=={'8108E7A9','8108E7B2'},d
+          assert all(x['t0_first_two_coordinate_lanes']=='TRANSFORMED_TANGENT_XY' for x in d['rows']),d
+          assert d['semantic_boundary']['source_tangent_fetch_offsets_formats']=='WITHHELD',d
+          assert d['semantic_boundary']['portable_Blender_tangent_coordinate_replay']=='NOT_CLOSED_BY_THIS_JOIN',d
+          print('CROTA_955_T0_COORDINATE_EXACT',d['rows'])
           PY
 
       - name: Trace surviving procedural attr1 coordinates to raw vertex inputs
