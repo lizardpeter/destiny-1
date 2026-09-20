@@ -1,0 +1,190 @@
+name: D1 Tower sky shader closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-sky-shader-closure.yml'
+      - 'tools/d1_close_world_shader_dependencies.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_gcn_cbuffer_usage_analyze.py'
+      - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  shaders:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Tower sky material manifest and current activity index
+        run: |
+          set -euo pipefail
+          mkdir -p input/sky input/index runtime packages work shader disasm reports
+
+          sky_run="$(gh run list --workflow d1-tower-full-sky-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$sky_run"
+          gh run download "$sky_run" -n D1-TOWER-ALL-SKY-MODELS-EXACT-TEXTURES -D input/sky
+          test -f input/sky/reports/material_texture_manifest.json
+          cp input/sky/reports/material_texture_manifest.json reports/tower_sky_material_texture_manifest.json
+
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D input/index
+          cp "$(find input/index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find input/index -name packages.txt -print -quit)" reports/packages.txt
+
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_sky_material_texture_manifest.json'))
+          assert d['material_decode_errors']==0,d
+          assert d['texture_errors']==0,d
+          assert d['decoded_texture_tags']==d['unique_texture_tags'],d
+          freq={str(k).upper():int(v) for k,v in d.get('pixel_shader_frequency',{}).items()}
+          assert freq,'sky pixel shader frequency is empty'
+          print('TOWER_SKY_SHADER_SOURCE',
+                'MATERIALS',d['visible_material_count'],
+                'TEXTURES',d['unique_texture_tags'],
+                'PIXEL_SHADER_FAMILIES',len(freq),
+                'TOP',sorted(freq.items(),key=lambda x:(-x[1],x[0]))[:20])
+          PY
+
+      - name: Recursively close exact sky pixel shader dependencies
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_shader_dependencies.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --manifest reports/tower_sky_material_texture_manifest.json \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir work \
+            --out-dir shader \
+            --report reports/tower_sky_shader_dependency_closure.json
+          cp shader/shader_report.json reports/tower_sky_shader_report.json
+          python - <<'PY'
+          import json
+          m=json.load(open('reports/tower_sky_material_texture_manifest.json'))
+          c=json.load(open('reports/tower_sky_shader_dependency_closure.json'))
+          s=json.load(open('reports/tower_sky_shader_report.json'))
+          n=len(m.get('pixel_shader_frequency',{}))
+          assert c['status']=='D1_WORLD_PIXEL_SHADER_DEPENDENCY_CLOSURE_COMPLETE',c
+          assert s['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT',s
+          assert s['selected_count']==n and s['error_count']==0,(n,s)
+          print('TOWER_SKY_SHADER_CORPUS_EXACT',n,'FAMILIES',
+                'GCN_BYTES',sum(int(x.get('gcn_bytes',0)) for x in s['shaders']))
+          PY
+
+      - name: Build pinned CLRX and disassemble every sky pixel shader
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF
+          cmake --build clrx/build --target clrxdisasm -j2
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          n=0
+          shopt -s nullglob
+          for f in shader/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"
+            test ! -s "disasm/${b}.stderr"
+            grep -q 's_endpgm' "disasm/${b}.s"
+            n=$((n+1))
+          done
+          expected="$(python - <<'PY'
+          import json
+          print(len(json.load(open('reports/tower_sky_material_texture_manifest.json')).get('pixel_shader_frequency',{})))
+          PY
+          )"
+          test "$n" -eq "$expected"
+
+      - name: Recover exact sky image and constant-buffer provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report reports/tower_sky_shader_report.json \
+            --disasm-dir disasm \
+            --out reports/tower_sky_gcn_image_usage.json \
+            | tee reports/tower_sky_gcn_image_usage_stdout.txt
+
+          python tools/d1_gcn_cbuffer_usage_analyze.py \
+            --extract-report reports/tower_sky_shader_report.json \
+            --disasm-dir disasm \
+            --out reports/tower_sky_gcn_cbuffer_usage.json \
+            | tee reports/tower_sky_gcn_cbuffer_usage_stdout.txt
+
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/tower_sky_shader_report.json'))
+          i=json.load(open('reports/tower_sky_gcn_image_usage.json'))
+          c=json.load(open('reports/tower_sky_gcn_cbuffer_usage.json'))
+          n=e['selected_count']
+          assert i['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT' and i['shader_count']==n,i
+          assert c['status']=='D1_GCN_CBUFFER_USAGE_EXACT' and c['shader_count']==n,c
+          print('TOWER_SKY_PROVENANCE_EXACT',n,'SHADERS',
+                'IMAGE_INSTRUCTIONS',sum(x['image_instruction_count'] for x in i['shaders']),
+                'UNRESOLVED_SBUF',c['unresolved_scalar_buffer_load_count'])
+          PY
+
+      - name: Slice terminal MRT0 dependencies for highest-frequency sky shaders
+        run: |
+          set -euo pipefail
+          mapfile -t top < <(python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_sky_shader_report.json'))
+          rows=sorted([x for x in d['shaders'] if not x.get('error')],
+                      key=lambda x:(-int(x.get('visible_material_count',0)),x['shader']))
+          for r in rows[:min(12,len(rows))]:print(r['shader'])
+          PY
+          )
+          test "${#top[@]}" -gt 0
+          args=(); for h in "${top[@]}"; do args+=(--shader "$h"); done
+          python tools/d1_gcn_terminal_mrt0_dependency_census.py \
+            --usage reports/tower_sky_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
+            --disasm-dir disasm "${args[@]}" \
+            --out reports/tower_sky_top_mrt0_dependencies.json \
+            | tee reports/tower_sky_top_mrt0_dependencies_stdout.txt
+
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/tower_sky_shader_report.json'))
+          d=json.load(open('reports/tower_sky_top_mrt0_dependencies.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT0_DEPENDENCY_CENSUS_EXACT',d
+          freq={x['shader']:int(x.get('visible_material_count',0)) for x in e['shaders']}
+          for r in sorted(d['shaders'],key=lambda x:(-freq.get(x['shader'],0),x['shader'])):
+              print('TOWER_SKY_TOP_MRT0',r['shader'],
+                    'MATERIALS',freq.get(r['shader'],0),
+                    'COMPRESSED',r['terminal_mrt0_compressed'],
+                    'OPERANDS',r['terminal_mrt0_operands'],
+                    'UNION',r['mrt0_value_union'])
+              for ch,row in r['channels'].items():
+                  print('  SKY_CHANNEL',ch,row['value_slice'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-sky-shader-closure
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
