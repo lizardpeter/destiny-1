@@ -10,6 +10,14 @@ sys.path.insert(0,str(ROOT/'tools'))
 import d1_remote_spawned_actor_animation_options_v2 as anim
 
 
+class FakeRel:
+    def __init__(self,offset_address,offset=0):
+        self.offset_address=offset_address
+        self.offset=offset
+    def get_address(self):
+        return self.offset_address+self.offset
+
+
 class FakeVec:
     def __init__(self,length_address,offset_address,length,offset):
         self.length_address=length_address
@@ -18,6 +26,24 @@ class FakeVec:
         self.offset=offset
     def get_address(self):
         return self.offset_address+self.offset
+
+
+def fake_header(frame_length_address=0x140):
+    q={
+        'frame_events_array_pointer':FakeVec(frame_length_address,0x148,2,0x190-0x148),
+        'rig_components_array_pointer':FakeVec(0x150,0x158,4,0x1A0-0x158),
+    }
+    rel_names=['static_bone_data_pointer','animated_bone_data_pointer']+[f'extra_data_{i}_pointer' for i in range(8)]
+    for i,name in enumerate(rel_names):
+        q[name]=FakeRel(0x10+i*8,0)
+    vec_names=[
+        'static_scale_control_map_pointer','static_rotation_control_map_pointer',
+        'static_translation_control_map_pointer','animated_scale_control_map_pointer',
+        'animated_rotation_control_map_pointer','animated_translation_control_map_pointer',
+    ]
+    for i,name in enumerate(vec_names):
+        q[name]=FakeVec(0x98+i*16,0xA0+i*16,0,0)
+    return SimpleNamespace(**q)
 
 
 class TestD1AnimationHeaderVectors(unittest.TestCase):
@@ -34,10 +60,7 @@ class TestD1AnimationHeaderVectors(unittest.TestCase):
         struct.pack_into('<Q',b,0x158,0x1A0-0x158)
         for i in range(64):
             b[0x180+i]=(0xA0+i)&0xff
-        hd=SimpleNamespace(
-            frame_events_array_pointer=FakeVec(0x140,0x148,2,0x190-0x148),
-            rig_components_array_pointer=FakeVec(0x150,0x158,4,0x1A0-0x158),
-        )
+        hd=fake_header()
         d=anim._d1_roi_adjacent_header_vectors(hd,bytes(b))
         self.assertEqual(d['unnamed_vector']['length_u64'],3)
         self.assertEqual(d['unnamed_vector']['target_offset'],0x180)
@@ -60,10 +83,7 @@ class TestD1AnimationHeaderVectors(unittest.TestCase):
         struct.pack_into('<Q',b,0x148,0x190-0x148)
         struct.pack_into('<Q',b,0x150,4)
         struct.pack_into('<Q',b,0x158,0x1A0-0x158)
-        hd=SimpleNamespace(
-            frame_events_array_pointer=FakeVec(0x141,0x148,2,0x190-0x148),
-            rig_components_array_pointer=FakeVec(0x150,0x158,4,0x1A0-0x158),
-        )
+        hd=fake_header(frame_length_address=0x141)
         with self.assertRaisesRegex(ValueError,'cross-check failed'):
             anim._d1_roi_adjacent_header_vectors(hd,bytes(b))
 
