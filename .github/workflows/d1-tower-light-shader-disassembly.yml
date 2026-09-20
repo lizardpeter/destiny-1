@@ -9,6 +9,9 @@ on:
     paths:
       - '.github/workflows/d1-tower-light-shader-disassembly.yml'
       - 'tools/d1_gcn_constant_buffer_usage_analyze.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_gcn_cbuffer_usage_analyze.py'
+      - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
 
 permissions:
   contents: read
@@ -90,6 +93,58 @@ jobs:
               out.append({'shader':sh,'imm_constant_buffers':row['imm_constant_buffers'],'windows':windows})
           Path('reports/tower_light_gcn_constant_windows.json').write_text(json.dumps({'status':'D1_TOWER_LIGHT_GCN_CONSTANT_WINDOWS','shaders':out},indent=2)+'\n')
           print('LIGHT_GCN_CONSTANT_USAGE',json.dumps({k:d[k] for k in ('total_scalar_buffer_load_count','mapped_constant_buffer_load_count','unmatched_scalar_buffer_load_count','constant_buffer_api_slot_histogram','constant_buffer_static_offset_histograms')},indent=2))
+          PY
+
+      - name: Slice exact image/cbuffer/terminal output dependencies for highest-impact light shaders
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py \
+            --extract-report reports/tower_light_shader_report.json \
+            --disasm-dir disasm \
+            --out reports/tower_light_gcn_image_usage.json \
+            | tee reports/tower_light_gcn_image_usage_stdout.txt
+
+          python tools/d1_gcn_cbuffer_usage_analyze.py \
+            --extract-report reports/tower_light_shader_report.json \
+            --disasm-dir disasm \
+            --out reports/tower_light_gcn_cbuffer_usage_v2.json \
+            | tee reports/tower_light_gcn_cbuffer_usage_v2_stdout.txt
+
+          mapfile -t top < <(python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_light_shader_report.json'))
+          rows=sorted(
+              [x for x in d['shaders'] if not x.get('error')],
+              key=lambda x:(-int(x.get('visible_material_count',0)),x['shader'])
+          )[:8]
+          for r in rows: print(r['shader'])
+          PY
+          )
+          test "${#top[@]}" -eq 8
+          args=(); for h in "${top[@]}"; do args+=(--shader "$h"); done
+          python tools/d1_gcn_terminal_mrt0_dependency_census.py \
+            --usage reports/tower_light_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
+            --disasm-dir disasm "${args[@]}" \
+            --out reports/tower_light_top8_mrt0_dependencies.json \
+            | tee reports/tower_light_top8_mrt0_dependencies_stdout.txt
+
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/tower_light_shader_report.json'))
+          d=json.load(open('reports/tower_light_top8_mrt0_dependencies.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT0_DEPENDENCY_CENSUS_EXACT',d
+          freq={x['shader']:int(x.get('visible_material_count',0)) for x in e['shaders']}
+          assert len(d['shaders'])==8,d
+          ordered=sorted(d['shaders'],key=lambda x:(-freq.get(x['shader'],0),x['shader']))
+          for r in ordered:
+              print('TOWER_LIGHT_TOP_MRT0',r['shader'],
+                    'INSTANCES',freq.get(r['shader'],0),
+                    'COMPRESSED',r['terminal_mrt0_compressed'],
+                    'OPERANDS',r['terminal_mrt0_operands'],
+                    'UNION',r['mrt0_value_union'])
+              for ch,row in r['channels'].items():
+                  print('  LIGHT_CHANNEL',ch,row['value_slice'])
           PY
 
       - uses: actions/upload-artifact@v4
