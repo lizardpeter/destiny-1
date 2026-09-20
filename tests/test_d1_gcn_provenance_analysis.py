@@ -96,6 +96,45 @@ class TestGCNProvenance(unittest.TestCase):
         finally:
             if p.exists():p.unlink()
 
+    def test_image_coordinate_snapshot_precedes_sample_destination_overwrite(self):
+        text='\n'.join([
+            '/*000000000000: 00000000 */ v_interp_p2_f32 v2, v1, attr1.x',
+            '/*000000000004: 00000000 */ v_mov_b32       v3, 0',
+            '/*000000000008: 00000000 */ image_sample    v[2:3], v[2:5], s[4:11], s[12:15] dmask:3',
+            '/*00000000000c: 00000000 */ v_mul_f32       v4, v2, 2.0',
+            '/*000000000010: 00000000 */ image_sample    v5, v[4:7], s[16:23], s[24:27] dmask:1',
+        ])
+        p=ROOT/'tests'/'_tmp_image_coordinate_test.s'
+        try:
+            p.write_text(text+'\n')
+            image={
+                'image_instruction_count':2,
+                'instructions':[
+                    {
+                        'address':'000000000008','dmask_channels':'xy',
+                        'resources':[{'texture_index':0}],
+                        'samplers':[{'sampler_index':1}],
+                    },
+                    {
+                        'address':'000000000010','dmask_channels':'x',
+                        'resources':[{'texture_index':2}],
+                        'samplers':[{'sampler_index':3}],
+                    },
+                ],
+            }
+            d=coord.analyze('DEADBEEF',p,image,{'loads':[]})
+            self.assertEqual(d['sample_count'],2)
+            first,second=d['samples']
+            self.assertEqual(first['encoded_coordinate_registers'],['v2','v3','v4','v5'])
+            self.assertIn('attr1.x',first['coordinate_sources']['interpolants'])
+            self.assertEqual(
+                second['coordinate_sources']['prior_texture_sample_channels'],
+                [{'texture_index':0,'channel':'x','sample_address':'000000000008'}]
+            )
+            self.assertEqual((second['texture_index'],second['sampler_index']),(2,3))
+        finally:
+            if p.exists():p.unlink()
+
 
 if __name__=='__main__':
     unittest.main()
