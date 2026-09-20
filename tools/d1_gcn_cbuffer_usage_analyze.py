@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse, collections, json, re
 from pathlib import Path
 
-SHADER_RE=re.compile(r'PS_([0-9A-Fa-f]{8})(?:_GFX700)?\\.s
+SHADER_RE=re.compile(r'PS_([0-9A-Fa-f]{8})(?:_GFX700)?\.s$')
 SMEM_RE=re.compile(
     r'\bs_load_dword(?:(x)(2|4|8|16))?\s+'
     r'(s\[\d+:\d+\]|s\d+),\s+(s\[\d+:\d+\]|s\d+),\s+'
