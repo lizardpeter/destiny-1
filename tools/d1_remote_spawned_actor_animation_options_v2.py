@@ -204,11 +204,46 @@ def _d1_roi_adjacent_header_vectors(hd, payload: bytes) -> dict:
     }
     if not all(checks.values()):
         raise ValueError(f'D1 ROI adjacent-header Vec_Pointer cross-check failed: {checks}')
+    def rel_row(name,p):
+        off_addr=int(p.offset_address); rel=int(p.offset)
+        target=None if rel==0 else int(p.get_address())
+        return {'name':name,'relative_word_offset':off_addr,'relative_u64':rel,
+                'relative_hex':f'{rel:016X}','target_offset':target}
+
+    def parser_vec_row(name,p):
+        return {'name':name,'length_word_offset':int(p.length_address),
+                'relative_word_offset':int(p.offset_address),'length_u64':int(p.length),
+                'relative_u64':int(p.offset),'relative_hex':f'{int(p.offset):016X}',
+                'target_offset':None if int(p.offset)==0 else int(p.get_address())}
+
+    known_rel=[
+        rel_row('static_bone_data_pointer',hd.static_bone_data_pointer),
+        rel_row('animated_bone_data_pointer',hd.animated_bone_data_pointer),
+        *[rel_row(f'extra_data_{i}_pointer',getattr(hd,f'extra_data_{i}_pointer')) for i in range(8)],
+    ]
+    known_vec=[
+        parser_vec_row('static_scale_control_map_pointer',hd.static_scale_control_map_pointer),
+        parser_vec_row('static_rotation_control_map_pointer',hd.static_rotation_control_map_pointer),
+        parser_vec_row('static_translation_control_map_pointer',hd.static_translation_control_map_pointer),
+        parser_vec_row('animated_scale_control_map_pointer',hd.animated_scale_control_map_pointer),
+        parser_vec_row('animated_rotation_control_map_pointer',hd.animated_rotation_control_map_pointer),
+        parser_vec_row('animated_translation_control_map_pointer',hd.animated_translation_control_map_pointer),
+        events,rig,
+    ]
+    known_targets={}
+    for q in [*known_rel,*known_vec]:
+        t=q.get('target_offset')
+        if t is not None:known_targets.setdefault(str(t),[]).append(q['name'])
+
     return {
         'd1_roi_header_bytes_minimum':0x160,
         'unnamed_vector':unknown,
         'frame_events_vector':events,
         'rig_components_vector':rig,
+        'known_rel_pointers':known_rel,
+        'known_vec_pointers':known_vec,
+        'known_target_aliases':known_targets,
+        'unnamed_target_aliases_to_known_fields':[] if unknown['target_offset'] is None else known_targets.get(str(unknown['target_offset']),[]),
         'parser_crosschecks':checks,
         'semantic_boundary':'RAW_D1_ROI_HEADER_VEC_POINTERS_UNNAMED_0X130_ELEMENT_SCHEMA_WITHHELD',
     }
