@@ -2,6 +2,9 @@ name: D1 Tower common-layer material texture census
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 Tower common-layer model export']
+    types: [completed]
   push:
     paths:
       - '.github/workflows/d1-tower-common-layer-texture-census.yml'
@@ -16,6 +19,7 @@ permissions:
 
 jobs:
   census:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -38,7 +42,14 @@ jobs:
       - name: Recover exact common-model material selection
         run: |
           set -euo pipefail
-          gh run download 33993891559 -n d1-tower-common-layer-model-export -D source_models
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            model_run='${{ github.event.workflow_run.id }}'
+          else
+            model_run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$model_run"
+          echo "COMMON_MODEL_SOURCE_RUN=$model_run"
+          gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
           test -f source_models/reports/common_layer_model_export.json
           python - <<'PY'
           import json
@@ -126,5 +137,5 @@ jobs:
             reports/common_material_hashes.json
             reports/common_texture_export_stdout.txt
             reports/texture_family_recovery.json
-          retention-days: 14
+          retention-days: 90
           compression-level: 6
