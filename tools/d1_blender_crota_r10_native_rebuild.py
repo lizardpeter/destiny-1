@@ -188,6 +188,90 @@ def build_exact_runtime_scaled_strength(nodes, links, material_scalar, angular_s
     return mul1.outputs[0]
 
 
+def build_proc_color_rgb(nodes, links, scalar_socket, repeated_sample_socket, partner_alpha_socket, angular_u_socket, api13_socket):
+    """Portable equation replay of material-specialized PS8108E955 terminal RGB.
+
+    Exact source facts:
+      t1 == t2 == t4 == S for selected Crota materials because all three use
+      texture 80AACF2A, the same native sampler, and first two coordinate lanes
+      (0,0); t3 is dead for the t4 coordinate after exact zero multipliers.
+      t1.w=t2.w=t4.w=1; m8..m10=(0.373239398,2,1.740176082),
+      m11=1,m12=6,m13=-4.499999523,m24..26=1,m52..54=1,m56=55.
+
+    Blender's image filtering is used to evaluate S at the source-proven coordinate
+    and wrap/bilinear mode.  That filtered numeric value is a portable replay, not
+    claimed bit-identical to PS4 texture-unit rounding.
+    """
+    # Shared G = clamp(-4.499999523 + 6*(1-t0.x)).
+    one_minus=add_math(nodes,'SUBTRACT','D1_EXACT_955_ONE_MINUS_T0X',-520,-250,a=1.0)
+    links.new(scalar_socket,one_minus.inputs[1])
+    gmul=add_math(nodes,'MULTIPLY','D1_EXACT_955_M12_X',-350,-250,b=6.0)
+    links.new(one_minus.outputs[0],gmul.inputs[0])
+    gadd=add_math(nodes,'ADD','D1_EXACT_955_PLUS_M13',-180,-250,b=-4.499999523162842)
+    links.new(gmul.outputs[0],gadd.inputs[0])
+    g=add_math(nodes,'MULTIPLY','D1_EXACT_955_G_CLAMP',-10,-250,b=1.0,clamp=True)
+    links.new(gadd.outputs[0],g.inputs[0])
+
+    # R = 0.6 + 9.4*U.
+    rscale=add_math(nodes,'MULTIPLY','D1_EXACT_955_R_9P4U',-520,-390,b=9.399999618530273)
+    links.new(angular_u_socket,rscale.inputs[0])
+    radd=add_math(nodes,'ADD','D1_EXACT_955_R_PLUS_0P6',-350,-390,b=0.6000000238418579)
+    links.new(rscale.outputs[0],radd.inputs[0])
+
+    sep=nodes.new('ShaderNodeSeparateRGB'); sep.name='D1_PORTABLE_955_REPEAT_SAMPLE_SEPARATE'; sep.label=sep.name; sep.location=(-520,120)
+    links.new(repeated_sample_socket,sep.inputs['Image'])
+    combine=nodes.new('ShaderNodeCombineRGB'); combine.name='D1_EXACT_955_RGB_COMBINE'; combine.label=combine.name; combine.location=(930,150)
+
+    gains=(0.3732393980026245,2.0,1.7401760816574097)
+    lanes=('R','G','B')
+    for i,(lane,gain) in enumerate(zip(lanes,gains)):
+        y=190-170*i
+        s=sep.outputs[lane]
+        p=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_S_SQUARED',-330,y,clamp=True)
+        links.new(s,p.inputs[0]); links.new(s,p.inputs[1])
+        qmul=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_Q_9P4P',-160,y,b=9.399999618530273)
+        links.new(p.outputs[0],qmul.inputs[0])
+        q=add_math(nodes,'ADD',f'D1_EXACT_955_{lane}_Q_PLUS_0P6',10,y,b=0.6000000238418579)
+        links.new(qmul.outputs[0],q.inputs[0])
+        qr=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_Q_X_R',180,y)
+        links.new(q.outputs[0],qr.inputs[0]); links.new(radd.outputs[0],qr.inputs[1])
+        fs=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_F_SCALE',350,y,b=0.010300000198185444)
+        links.new(qr.outputs[0],fs.inputs[0])
+        f=add_math(nodes,'ADD',f'D1_EXACT_955_{lane}_F_BIAS_CLAMP',520,y,b=-0.05999999865889549,clamp=True)
+        links.new(fs.outputs[0],f.inputs[0])
+
+        oms=add_math(nodes,'SUBTRACT',f'D1_EXACT_955_{lane}_ONE_MINUS_S',-330,y-85,a=1.0)
+        links.new(s,oms.inputs[1])
+        sq=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_ONE_MINUS_S_SQ',-160,y-85)
+        links.new(oms.outputs[0],sq.inputs[0]); links.new(oms.outputs[0],sq.inputs[1])
+        hs=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_H_NEG_0P4',10,y-85,b=-0.4000000059604645)
+        links.new(sq.outputs[0],hs.inputs[0])
+        h=add_math(nodes,'ADD',f'D1_EXACT_955_{lane}_H_PLUS_0P08',180,y-85,b=0.07999999821186066)
+        links.new(hs.outputs[0],h.inputs[0])
+        hc=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_H_CLAMP',350,y-85,b=1.0,clamp=True)
+        links.new(h.outputs[0],hc.inputs[0])
+        hterm=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_HCLAMP_X_H',520,y-85)
+        links.new(hc.outputs[0],hterm.inputs[0]); links.new(h.outputs[0],hterm.inputs[1])
+
+        gf=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_G_X_F',690,y)
+        links.new(g.outputs[0],gf.inputs[0]); links.new(f.outputs[0],gf.inputs[1])
+        gfc=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_GF_CLAMP',860,y,b=1.0,clamp=True)
+        links.new(gf.outputs[0],gfc.inputs[0])
+        csum=add_math(nodes,'ADD',f'D1_EXACT_955_{lane}_C',1030,y)
+        links.new(gfc.outputs[0],csum.inputs[0]); links.new(hterm.outputs[0],csum.inputs[1])
+
+        gainn=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_GAIN',1200,y,b=gain)
+        links.new(csum.outputs[0],gainn.inputs[0])
+        abase=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_X_A_BASE',1370,y)
+        links.new(gainn.outputs[0],abase.inputs[0]); links.new(partner_alpha_socket,abase.inputs[1])
+        m56=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_X_M56',1540,y,b=55.0)
+        links.new(abase.outputs[0],m56.inputs[0])
+        runtime=add_math(nodes,'MULTIPLY',f'D1_EXACT_955_{lane}_X_API13',1710,y)
+        links.new(m56.outputs[0],runtime.inputs[0]); links.new(api13_socket,runtime.inputs[1])
+        links.new(runtime.outputs[0],combine.inputs[lane])
+    return combine.outputs['Image']
+
+
 def build_proc_partner_alpha(nodes, links, scalar_socket):
     """Portable replay of the exact material-specialized PS8108E958 alpha equation.
 
@@ -257,21 +341,31 @@ def build_native_material(mat):
     tex_detail = find_exact_image('8108E952')
 
     if tag in MAT_PROC:
-        t = add_tex(nodes, tex_control, 'D1_SCALAR_EQUIVALENT_8108E7B6_CONTROL', -820,170)
-        ramp = nodes.new('ShaderNodeValToRGB'); ramp.name='D1_PROXY_955_PROC_COLOR_RAMP'; ramp.label='D1_PROXY_955_PROC_COLOR_RAMP'; ramp.location=(-500,190)
-        ramp.color_ramp.elements[0].position=0.05; ramp.color_ramp.elements[0].color=(0.005,0.025,0.02,1)
-        ramp.color_ramp.elements[1].position=0.72; ramp.color_ramp.elements[1].color=PROC_EXACT_NORMALIZED_GAIN
-        links.new(t.outputs['Color'],ramp.inputs['Fac'])
-        links.new(ramp.outputs['Color'],emission.inputs['Color'])
-        emission.inputs['Strength'].default_value=1.65
+        t = add_tex(nodes, tex_control, 'D1_SCALAR_EQUIVALENT_8108E7B6_CONTROL', -1180,260)
+        tex_repeat=find_exact_image('80AACF2A')
+        s=add_tex(nodes,tex_repeat,'D1_PORTABLE_955_REPEATED_BC1_SAMPLE_AT_ZERO',-1180,80)
+        s.interpolation='Linear'
+        if hasattr(s,'extension'): s.extension='REPEAT'
+        zero=nodes.new('ShaderNodeCombineXYZ'); zero.name='D1_EXACT_955_ZERO_COORDINATE'; zero.label=zero.name; zero.location=(-1360,20)
+        zero.inputs['X'].default_value=0.0; zero.inputs['Y'].default_value=0.0; zero.inputs['Z'].default_value=0.0
+        links.new(zero.outputs['Vector'],s.inputs['Vector'])
+        angular=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_ANGULAR_DEFAULT,'D1_PROXY_955_ANGULAR_U',-1180,-120)
+        api13=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_API13_PRODUCT_DEFAULT,'D1_PROXY_API13_RGB_SCALE',-1180,-200)
         partner_alpha=build_proc_partner_alpha(nodes,links,t.outputs['Color'])
         links.new(partner_alpha,mix.inputs['Fac'])
-        proxy='PS8108E955_RGB_DEPENDENCIES_SOURCE_CLOSED_BUT_RUNTIME_SCALE_AND_FULL_PORTABLE_REPLAY_WITHHELD + PS8108E958_EXACT_MATERIAL_SPECIALIZED_BC4_ALPHA'
+        proc_rgb=build_proc_color_rgb(nodes,links,t.outputs['Color'],s.outputs['Color'],partner_alpha,angular.outputs[0],api13.outputs[0])
+        links.new(proc_rgb,emission.inputs['Color'])
+        emission.inputs['Strength'].default_value=1.0
+        proxy='PS8108E955_EXACT_MATERIAL_SPECIALIZED_EQUATION_WITH_PORTABLE_BILINEAR_REPEAT_SAMPLE_AND_EXPLICIT_API12_API13_PREVIEW_INPUTS + PS8108E958_EXACT_MATERIAL_SPECIALIZED_BC4_ALPHA'
         mat['d1_r10_color_shader']='8108E955'
         mat['d1_r10_color_exact_normalized_gain']=list(PROC_EXACT_NORMALIZED_GAIN[:3])
         mat['d1_r10_color_exact_material_scalar']=55.0
-        mat['d1_r10_color_remaining_runtime']='API12[28:30] angular input + API13[6]*API13[7] shared PS4 runtime RGB-scale pair; producer/live values WITHHELD'
-        mat['d1_r10_color_preview_proxy']='D1_PROXY_955_PROC_COLOR_RAMP + emission strength 1.65'
+        mat['d1_r10_color_repeated_sample_relation']='t1=t2=t4=S from texture 80AACF2A, same sampler, first two encoded coordinate lanes (0,0)'
+        mat['d1_r10_color_t3_coordinate_effect']='DEAD_FOR_T4_COORDINATE_AFTER_EXACT_ZERO_MULTIPLIERS'
+        mat['d1_r10_color_remaining_runtime']='D1_PROXY_955_ANGULAR_U := clamp(-1.25*d*d+1.25), d depends on API12[28:30]+attr0/attr2; D1_PROXY_API13_RGB_SCALE := API13[6]*API13[7]; live values WITHHELD'
+        mat['d1_r10_color_preview_proxy']='ONLY D1_PROXY_955_ANGULAR_U=1 and D1_PROXY_API13_RGB_SCALE=1 plus Blender portable bilinear-repeat evaluation of exact S at (0,0); ramp and 1.65 gain removed'
+        mat['d1_r10_color_equation_replay']='per-channel native specialized PS8108E955 equation; exact material constants; repeated S sample; m56=55; API13 product explicit'
+        mat['d1_r10_portable_filter_boundary']='S coordinate/sampler state is exact; Blender Linear+REPEAT filtered numeric result is not claimed PS4 bit-identical'
     elif tag in MAT_ATLAS:
         t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-920,230)
         angular=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_ANGULAR_DEFAULT,'D1_PROXY_956_ANGULAR_V',-920,-40)
