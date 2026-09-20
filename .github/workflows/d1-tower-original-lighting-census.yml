@@ -174,5 +174,5 @@ jobs:
         with:
           name: d1-tower-original-lighting-census
           path: reports/
-          retention-days: 14
+          retention-days: 90
           compression-level: 6
