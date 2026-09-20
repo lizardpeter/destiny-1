@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse, collections, hashlib, json, re
 from pathlib import Path
 
-SHADER_RE=re.compile(r'PS_([0-9A-Fa-f]{8})(?:_GFX700)?\\.s
+SHADER_RE=re.compile(r'PS_([0-9A-Fa-f]{8})(?:_GFX700)?\.s$')
 INST_RE=re.compile(r'/\*[0-9A-Fa-f]+:[^*]*\*/\s*([A-Za-z0-9_]+)\b')
 EXP_RE=re.compile(r'\bexp\s+(mrt\d+|pos\d+|param\d+)\s+(.+)$')
 ADDR_RE=re.compile(r'/\*([0-9A-Fa-f]+):')
