@@ -13,11 +13,29 @@ Designed for source-closure workflows that must not silently fall back to an exp
 historical artifact or a same-named artifact from another run.
 """
 from __future__ import annotations
-import argparse,hashlib,json,os,shutil,sys,tempfile,urllib.error,urllib.request,zipfile
+import argparse,hashlib,json,os,shutil,sys,tempfile,urllib.error,urllib.parse,urllib.request,zipfile
 from pathlib import Path
 
 API='https://api.github.com'
 UA='d1-source-closure-artifact-pull/1'
+
+class StripCrossOriginAuthorization(urllib.request.HTTPRedirectHandler):
+    """Follow GitHub's signed blob redirect without leaking GitHub auth to Azure."""
+    def redirect_request(self,req,fp,code,msg,headers,newurl):
+        nxt=super().redirect_request(req,fp,code,msg,headers,newurl)
+        if nxt is None:return None
+        old=urllib.parse.urlsplit(req.full_url)
+        new=urllib.parse.urlsplit(newurl)
+        if (old.scheme.lower(),old.netloc.lower()) != (new.scheme.lower(),new.netloc.lower()):
+            # urllib copies request headers onto redirects. The Actions artifact API
+            # returns a signed Azure URL; forwarding "Authorization: Bearer ..." to
+            # that host causes InvalidAuthenticationInfo and is also unnecessary.
+            nxt.remove_header('Authorization')
+            nxt.headers.pop('Authorization',None)
+            nxt.unredirected_hdrs.pop('Authorization',None)
+        return nxt
+
+OPENER=urllib.request.build_opener(StripCrossOriginAuthorization())
 
 def request(url,token):
     headers={'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':UA}
@@ -25,7 +43,7 @@ def request(url,token):
     return urllib.request.Request(url,headers=headers)
 
 def get_json(url,token):
-    with urllib.request.urlopen(request(url,token),timeout=60) as r:
+    with OPENER.open(request(url,token),timeout=60) as r:
         return json.load(r)
 
 def safe_extract(zf:zipfile.ZipFile,dst:Path):
@@ -78,7 +96,7 @@ def main():
         zp=Path(td)/'artifact.zip'
         h=hashlib.sha256();size=0
         try:
-            with urllib.request.urlopen(request(archive_url,token),timeout=180) as r,zp.open('wb') as f:
+            with OPENER.open(request(archive_url,token),timeout=180) as r,zp.open('wb') as f:
                 while True:
                     b=r.read(1024*1024)
                     if not b:break
