@@ -28,6 +28,7 @@ def main():
     len_hist=collections.Counter();pair_hist=collections.Counter();region_hist=collections.Counter()
     prefix_hist=collections.Counter();stride_candidates=collections.Counter()
     equal_event_count=0;nonzero_unknown=0
+    count_relation_matches=collections.Counter();known_target_alias_hist=collections.Counter()
 
     for h in selected:
         cp=clips.get(h)
@@ -50,6 +51,24 @@ def main():
         len_hist[ul]+=1;pair_hist[(ul,ec)]+=1
         if ul==ec:equal_event_count+=1
         if ul>0:nonzero_unknown+=1
+
+        fc=int(cp['frame_count']);fi=max(0,fc-1)
+        nc=int(cp.get('node_count',-1));rc=int(cp.get('rig_control_count',-1))
+        cm={str(k):int(v0) for k,v0 in (cp.get('control_map_counts') or {}).items()}
+        cm_total=sum(cm.values())
+        relations={
+            'frame_count':ul==fc,
+            'frame_intervals':ul==fi,
+            'node_count':ul==nc,
+            'rig_control_count':ul==rc,
+            'frame_event_pointer_count':ul==ec,
+            'control_map_total_entries':ul==cm_total,
+        }
+        for name,ok in relations.items():
+            if ok:count_relation_matches[name]+=1
+        aliases=list(adj.get('unnamed_target_aliases_to_known_fields') or [])
+        for name in aliases:known_target_alias_hist[name]+=1
+
         ut=u.get('target_offset');ft=fe.get('target_offset')
         event_targets=sorted({int(x['target_offset']) for x in ev.get('pointers',[]) if x.get('target_offset') is not None})
         if ut is None:region='NULL'
@@ -84,8 +103,12 @@ def main():
         u32=[struct.unpack_from('<I',raw,o)[0] for o in range(0,len(raw)-3,4)]
         u64=[struct.unpack_from('<Q',raw,o)[0] for o in range(0,len(raw)-7,8)]
         rows.append({
-            'clip':h,'frame_count':int(cp['frame_count']),
+            'clip':h,'frame_count':fc,'frame_intervals':fi,
+            'node_count':nc,'rig_control_count':rc,
+            'control_map_counts':cm,'control_map_total_entries':cm_total,
             'unnamed_length':ul,'frame_event_pointer_count':ec,
+            'unnamed_length_relation_matches':relations,
+            'unnamed_target_aliases_to_known_fields':aliases,
             'rig_component_count':rcl,
             'unnamed_target_offset':ut,
             'frame_pointer_array_target_offset':ft,
@@ -110,6 +133,8 @@ def main():
             for (a0,b),n in sorted(pair_hist.items())
         ],
         'unnamed_length_equals_frame_event_count_clip_count':equal_event_count,
+        'unnamed_length_relation_match_counts':dict(sorted(count_relation_matches.items())),
+        'unnamed_target_known_field_alias_histogram':dict(sorted(known_target_alias_hist.items())),
         'target_region_histogram':dict(sorted(region_hist.items())),
         'integral_distance_per_element_candidate_histogram':{str(k):n for k,n in sorted(stride_candidates.items())},
         'unique_nonnull_prefix_count':len(prefix_hist),
@@ -122,6 +147,7 @@ def main():
             'header_offsets_and_vec_pointer_words':'EXACT_D1_ROI_LAYOUT',
             'bounded_target_prefix':'EXACT_BYTES',
             'count_and_address_correlations':'EXACT_ARITHMETIC',
+            'known_header_target_aliases':'EXACT_POINTER_TARGET_EQUALITY',
             'integral_distance_per_element_candidate':'STRUCTURAL_DIAGNOSTIC_ONLY',
             'unnamed_vector_element_stride':'WITHHELD',
             'unnamed_vector_element_type':'WITHHELD',
@@ -134,7 +160,10 @@ def main():
         'status':out['status'],'clip_count':len(rows),
         'nonzero':nonzero_unknown,'length_hist':out['unnamed_length_histogram'],
         'pairs':out['unnamed_length_frame_event_count_pair_histogram'],
-        'equal_event_count':equal_event_count,'regions':out['target_region_histogram'],
+        'equal_event_count':equal_event_count,
+        'relation_matches':out['unnamed_length_relation_match_counts'],
+        'known_target_aliases':out['unnamed_target_known_field_alias_histogram'],
+        'regions':out['target_region_histogram'],
         'distance_candidates':out['integral_distance_per_element_candidate_histogram'],
         'violations':v,
     },indent=2))
