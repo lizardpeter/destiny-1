@@ -503,6 +503,31 @@ jobs:
             --s-entity out/CROTA_EXACT_S_ENTITY_8108E484.json \
             --skeleton-resource 8108E4BB \
             --out out/CROTA_SKIN_BONE_MAP.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_SKIN_BONE_MAP.json'))
+          assert d['status']=='D1_CROTA_SKIN_BONE_MAP_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['skeleton_node_count']==50 and d['mesh_count']==3,d
+          assert d['skin_referenced_joint_count']==40,d
+          assert d['unreferenced_skeleton_joint_count']==10,d
+          assert d['total_nonzero_influence_references']==54859,d
+          by={x['mesh_index']:x for x in d['meshes']}
+          expected={
+            0:('inline_primary',16,21105,{'inline4':21105},40),
+            1:('inline_primary',12,4555,{'inline2':4555},21),
+            2:('inline_primary',12,18350,{'rigid_lane3':18350},12),
+          }
+          for mi,(storage,stride,verts,modes,joints) in expected.items():
+              x=by[mi]
+              assert (x['storage'],x['stride'],x['vertex_count'],x['mode_counts'],x['referenced_joint_count'])==(storage,stride,verts,modes,joints),x
+              assert x['weight_sum_min']==x['weight_sum_max']==255,x
+              print('CROTA_SKIN_MESH_EXACT',mi,'STORAGE',storage,'STRIDE',stride,
+                    'VERTICES',verts,'MODES',modes,'JOINTS',joints)
+          unused=[x['joint_index'] for x in d['nodes'] if not x['referenced_by_skin']]
+          assert unused==[0,1,21,24,25,26,27,30,44,47],unused
+          print('CROTA_SKIN_UNREFERENCED_SKELETON_INDICES',unused)
+          PY
           python tools/d1_crota_skeleton_usage_union.py \
             --skin-bone-map out/CROTA_SKIN_BONE_MAP.json \
             --motion-bone-map out/CROTA_ANIMATION_MOTION_BONE_MAP.json \
