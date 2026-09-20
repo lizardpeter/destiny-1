@@ -21,6 +21,7 @@ No state name, idle/default action, or visual choice is inferred.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import struct
@@ -45,6 +46,36 @@ from d1_split_tar_extract import SplitHttpTar
 NULLS = {'00000000', 'FFFFFFFF'}
 
 MOTION_EPS = 1e-6
+
+def _canonical_curve_hash(tracks: list) -> str:
+    """Hash complete decoded local transform arrays in one deterministic format.
+
+    The hash is over canonical little-endian float64 array bytes plus explicit
+    track/lane/shape framing.  It establishes equality of decoded local arrays
+    under this pinned parser/retarget/localize path; it is not a hash of the
+    original compressed clip bytes.
+    """
+    h=hashlib.sha256()
+    h.update(b'D1_DECODED_LOCAL_CURVE_V1\0')
+    lanes=(('scales',1),('rotations',2),('translations',3))
+    h.update(struct.pack('<I',len(tracks)))
+    for ti,t in enumerate(tracks):
+        h.update(struct.pack('<I',ti))
+        for name,lane_id in lanes:
+            h.update(struct.pack('<I',lane_id))
+            arr=getattr(t,name,None)
+            if arr is None:
+                h.update(struct.pack('<I',0xFFFFFFFF))
+                continue
+            a=np.asarray(arr,dtype=np.float64)
+            a=np.ascontiguousarray(a.astype('<f8',copy=False))
+            h.update(struct.pack('<I',a.ndim))
+            for dim in a.shape:
+                h.update(struct.pack('<Q',int(dim)))
+            h.update(struct.pack('<Q',int(a.size)))
+            h.update(a.tobytes(order='C'))
+    return h.hexdigest()
+
 
 def _track_motion_summary(tracks: list) -> dict:
     """Summarize exact decoded local-space variation without naming behavior."""
@@ -98,6 +129,9 @@ def _track_motion_summary(tracks: list) -> dict:
         'dynamic_rotation_track_indices':dyn_rot,
         'dynamic_translation_track_indices':dyn_tr,
         'dynamic_any_track_indices':any_dyn,
+        'decoded_local_curve_sha256':_canonical_curve_hash(tracks),
+        'decoded_local_curve_hash_basis':'D1_DECODED_LOCAL_CURVE_V1_CANONICAL_LE_FLOAT64_ARRAY_BYTES',
+        'decoded_local_curve_hash_semantic':'EQUAL_HASH_MEANS_EQUAL_CANONICAL_DECODED_LOCAL_ARRAYS_UNDER_PINNED_PIPELINE',
         'bone0_translation_syntax':bone0,
         'semantic_boundary':'LOCAL_SPACE_VARIATION_ONLY_BONE0_NOT_NAMED_ROOT_MOTION',
     }
