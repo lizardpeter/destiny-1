@@ -10,6 +10,7 @@ on:
       - 'tools/d1_gnm_vs_ps_linkage.py'
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_gcn_image_coordinate_slice.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_alpha_slice.py'
       - 'tools/d1_gcn_terminal_rgb_slice.py'
@@ -62,6 +63,7 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             tools/d1_gcn_cbuffer_usage_analyze.py \
+            tools/d1_gcn_image_coordinate_slice.py \
             tools/d1_gcn_terminal_alpha_slice.py \
             tools/d1_gcn_terminal_rgb_slice.py \
             tools/d1_crota_attenuation_constant_reduce.py \
@@ -295,6 +297,45 @@ jobs:
           assert by['8108E959']['api_slot_read_dwords']['0']==[8,9,15,19],by['8108E959']
           print('CROTA_API0_DWORDS_958',by['8108E958']['api_slot_read_dwords']['0'])
           print('CROTA_API0_DWORDS_959',by['8108E959']['api_slot_read_dwords']['0'])
+          PY
+
+      - name: Trace exact Crota image-sample coordinate producers
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_coordinate_slice.py \
+            --usage out/CROTA_VISUAL_GCN_IMAGE_USAGE.json \
+            --cbuffer-usage out/CROTA_GCN_CBUFFER_USAGE.json \
+            --disasm-dir disasm \
+            --shader 8108E953 --shader 8108E955 --shader 8108E956 \
+            --out out/CROTA_IMAGE_COORDINATE_SLICES.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_IMAGE_COORDINATE_SLICES.json'))
+          assert d['status']=='D1_GCN_IMAGE_COORDINATE_SLICE_EXACT',d
+          assert not d['violations'],d['violations']
+          by={x['shader']:x for x in d['shaders']}
+          q=by['8108E955']
+          assert q['sample_count']==5,q
+          got=[(x['address'],x['texture_index'],x['sampler_index'],x['encoded_coordinate_registers']) for x in q['samples']]
+          expected=[
+            ('00000000004C',3,4,['v4','v5','v6','v7']),
+            ('0000000000D8',4,5,['v4','v5','v6','v7']),
+            ('0000000000E0',1,2,['v8','v9','v10','v11']),
+            ('0000000000E8',2,3,['v16','v17','v18','v19']),
+            ('0000000000F4',0,1,['v2','v3','v4','v5']),
+          ]
+          assert got==expected,(got,expected)
+          t4=q['samples'][1]['coordinate_sources']['prior_texture_sample_channels']
+          assert any(x['texture_index']==3 and x['sample_address']=='00000000004C' for x in t4),t4
+          assert len({(x['texture_index'],x['sampler_index']) for x in q['samples']})==5,q['samples']
+          assert d['semantic_boundary']['UV_or_vector_semantics']=='WITHHELD',d
+          print('CROTA_955_IMAGE_COORDINATE_CHAIN',got)
+          print('CROTA_955_T4_PRIOR_SAMPLE_COORD_SOURCE',t4)
+          for sh in ('8108E953','8108E956'):
+              print('CROTA_IMAGE_COORDINATES',sh,[
+                (x['texture_index'],x['sampler_index'],x['encoded_coordinate_registers'],x['coordinate_sources'])
+                for x in by[sh]['samples']
+              ])
           PY
 
       - name: Backward-slice exact terminal attenuation alpha
