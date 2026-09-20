@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/d1-crota-main-visual-shader-closure-v3.yml'
       - 'tools/d1_crota_visual_shader_v3_trigger.py'
+      - 'tools/d1_remote_crota_shader_vertex_layout.py'
+      - 'tools/d1_crota_visual_union_export.py'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gnm_vs_ps_linkage.py'
       - 'tools/d1_crota_vs_param_vertex_input_lineage.py'
@@ -135,6 +137,35 @@ jobs:
               print('PAIR_MATERIAL',h,'VS',r['vs']['shader'],'PS',r['ps']['shader'],'STATE4',r['material_state4_hex'],
                     'PS_TEX',[(x['texture_index'],x['texture']) for x in r['ps']['textures']['items']],
                     'PS_SAMPLERS',[x['sampler_taghash'] for x in r['ps']['sampler_references']])
+          PY
+
+      - name: Join exact retail Crota vertex layouts to color shader families
+        run: |
+          set -euo pipefail
+          test -f input/actor/crota_raid_actor_material_bindings.json
+          python tools/d1_remote_crota_shader_vertex_layout.py \
+            --material-bindings input/actor/crota_raid_actor_material_bindings.json \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime --model 0x8108E5B7 --parent 0x8108E4BA \
+            --out out/CROTA_RETAIL_SHADER_VERTEX_LAYOUT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_RETAIL_SHADER_VERTEX_LAYOUT.json'))
+          assert d['status']=='D1_CROTA_RETAIL_SHADER_VERTEX_LAYOUT_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['color_range_count']==6,d
+          fam=d['procedural_8108E955_source_layout_families']
+          assert fam==[
+            {'material':'8108E7A9','vertex_shader':'809DE9AB','source_mesh_index':0,
+             'exported_uv_source':'SECONDARY_STREAM','primary_stride':16,'secondary_stride':20},
+            {'material':'8108E7B2','vertex_shader':'809DF743','source_mesh_index':2,
+             'exported_uv_source':'PRIMARY_STREAM','primary_stride':12,'secondary_stride':16},
+          ],fam
+          assert d['semantic_boundary']['GNM_vertex_input_semantic_to_Tiger_stream_element']=='WITHHELD_PENDING_FETCH_LAYOUT',d
+          print('CROTA_RETAIL_955_VERTEX_LAYOUT_FAMILIES',fam)
+          print('CROTA_RETAIL_MESH_LAYOUTS',d['mesh_layouts'])
           PY
 
       - name: Extract exact complete Crota highest-detail shader variants
