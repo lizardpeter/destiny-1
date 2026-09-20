@@ -8,6 +8,7 @@ on:
       - 'tools/d1_world_table_scoped_decal_census.py'
       - 'tools/d1_world_common_model_plan.py'
       - 'tools/d1_entity_model_corpus_export.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
   workflow_run:
     workflows: ["D1 Tower activity map-root census"]
     types: [completed]
@@ -48,7 +49,11 @@ jobs:
           fi
           test -n "$root_run"
           echo "ACTIVITY_ROOT_RUN=$root_run"
-          gh run download "$root_run" -n d1-tower-activity-map-root-census -D root_evidence
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$root_run" \
+            --artifact-name d1-tower-activity-map-root-census \
+            --out-dir root_evidence --clean \
+            --report reports/ARTIFACT_PULL_ACTIVITY_ROOT.json
           root_json="$(find root_evidence -type f -name tower_activity_map_root_census.json -print -quit)"
           manifest_plan="$(find root_evidence -type f -name tower_activity_manifest_dependency_plan.json -print -quit)"
           test -n "$root_json" -a -f "$root_json"
