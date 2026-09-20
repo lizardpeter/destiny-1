@@ -51,9 +51,14 @@ def main():
         if m.get('decoded_local_curve_hash_basis')!='D1_DECODED_LOCAL_CURVE_V1_CANONICAL_LE_FLOAT64_ARRAY_BYTES':
             v.append(f"{r.get('clip')}: decoded curve hash basis drift")
             continue
+        payload=str(r.get('source_clip_payload_sha256') or '')
+        if len(payload)!=64 or payload.lower()!=payload or any(ch not in '0123456789abcdef' for ch in payload):
+            v.append(f"{r.get('clip')}: invalid source clip payload sha256 {payload!r}")
+            continue
         row={
             'target_id':r.get('target_id'),'control':r.get('control'),'clip':r.get('clip'),
             'frame_count':sig['frame_count'],'source_dimensions_exact':bool(r.get('source_dimensions_exact')),
+            'source_clip_payload_sha256':payload,
             'motion_signature_sha256':sh,'occupancy_signature_sha256':oh,
             'decoded_local_curve_sha256':curve,
             'signature':sig,
@@ -114,10 +119,11 @@ def main():
             'equal_signature':'EQUAL_CHANNEL_OCCUPANCY_STRUCTURE_ONLY',
             'decoded_curve_hash':'SHA256_OF_CANONICAL_COMPLETE_LOCAL_SCALE_ROTATION_TRANSLATION_ARRAYS',
             'equal_decoded_curve_hash':'BYTE_EQUAL_CANONICAL_DECODED_LOCAL_ARRAYS_UNDER_PINNED_PIPELINE',
-            'source_compressed_clip_byte_equality':'NOT_PROVEN',
+            'source_clip_payload_sha256':'EXACT_RETAIL_PAYLOAD_BYTES',
+            'source_compressed_clip_byte_equality':'PROVEN_ONLY_WHEN_SOURCE_PAYLOAD_SHA256_MATCHES',
             'behavioral_clip_label':'WITHHELD',
         },
-        'policy':'Structural signatures are intentionally weaker than decoded-curve equality. A shared decoded curve hash means the canonical decoded local arrays are byte-identical under the pinned pipeline; it does not prove the original compressed clip payloads are identical or that the clips have the same behavioral meaning.',
+        'policy':'Structural signatures are intentionally weaker than decoded-curve equality. A shared decoded curve hash means the canonical decoded local arrays are byte-identical under the pinned pipeline. Exact source-payload equality is tracked separately by SHA256, so different compressed resources that converge to the same decoded motion remain distinguishable. No grouping establishes behavioral meaning.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
     print(json.dumps({
