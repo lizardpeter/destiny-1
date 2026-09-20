@@ -17,6 +17,7 @@ on:
       - 'tools/d1_tower_light_809dce96_mrt0_factorization.py'
       - 'tools/d1_tower_light_80ca0451_gated_mrt0_factorization.py'
       - 'tools/d1_tower_light_80ca0ed3_mrt0_factorization.py'
+      - 'tools/d1_tower_light_80ca109b_mrt0_factorization.py'
       - 'tests/test_d1_gcn_provenance_analysis.py'
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_github_actions_artifact_pull.py'
@@ -219,6 +220,28 @@ jobs:
           assert d['exact_terminal_equation']['vector_form']=='MRT0.rgb = API0[60:63].rgb * Q^2 * H * API0[64] * L * t2.y',d
           assert all(v is False for v in d['negative_proof'].values()),d
           print('TOWER_LIGHT_809DCE96_MRT0_EXACT',d['exact_terminal_equation'])
+          PY
+
+      - name: Prove 80CA109B terminal light equation
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_80ca109b_mrt0_factorization.py \
+            --material-manifest reports/tower_light_material_manifest.json \
+            --shader-report reports/tower_light_shader_report.json \
+            --image-usage reports/tower_light_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
+            --terminal-mrt0 reports/tower_light_top8_mrt0_dependencies.json \
+            --disasm disasm/PS_80CA109B.s \
+            --out reports/TOWER_LIGHT_80CA109B_MRT0_FACTORIZATION.json \
+            | tee reports/TOWER_LIGHT_80CA109B_MRT0_FACTORIZATION_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_LIGHT_80CA109B_MRT0_FACTORIZATION.json'))
+          assert d['status']=='D1_TOWER_LIGHT_80CA109B_MRT0_FACTORIZATION_EXACT',d
+          assert d['instance_count']==49 and d['unique_material_count']==32,d
+          assert d['exact_terminal_equation']['mrt0_a']=='0',d
+          assert all(v is False for v in d['negative_proof'].values()),d
+          print('TOWER_LIGHT_80CA109B_MRT0_EXACT',d['exact_terminal_equation'])
           PY
 
       - name: Prove 80CA0ED3 mixed-vector terminal light equation
