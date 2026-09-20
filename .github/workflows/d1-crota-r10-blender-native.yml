@@ -141,19 +141,34 @@ jobs:
               m=bpy.data.materials[name]
               nn={n.name for n in m.node_tree.nodes}
               assert 'D1_EXACT_8108E959_PARTNER_ALPHA_ONE' in nn,(name,nn)
-              assert 'D1_PROXY_956_ATLAS_TINT' in nn,(name,nn)
+              assert 'D1_PROXY_956_ANGULAR_V' in nn,(name,nn)
+              assert 'D1_PROXY_API13_RGB_SCALE' in nn,(name,nn)
+              assert 'D1_EXACT_956_STATIC_RGB_VECTOR' in nn,(name,nn)
+              assert 'D1_EXACT_956_ANGULAR_RGB_COMBINE' in nn,(name,nn)
+              assert 'D1_PROXY_956_ATLAS_TINT' not in nn,(name,nn)
               assert 'D1_SOURCE_GREEN_TINT' not in nn,(name,nn)
               assert m.get('d1_r10_color_shader')=='8108E956',m.items()
               assert list(m.get('d1_r10_color_exact_static_rgb_vector'))==[0.3931313157081604,0.6766623854637146,0.6658802032470703],m.items()
+              assert list(m.get('d1_r10_color_exact_angular_bias'))==[0.0003782951971516013,0.008264296688139439,0.0054319994524121284],m.items()
+              assert list(m.get('d1_r10_color_exact_angular_slope'))==[0.9996216893196106,0.9917356967926025,0.9945679903030396],m.items()
               assert m.get('d1_r10_color_exact_material_scalar')==18.0,m.items()
+              assert m.get('d1_r10_color_equation_replay')=='t0.rgb * (bias+slope*V) * staticRGB * 18 * API13[6]*API13[7]',m.items()
+              assert 'tint and 2.2 gain removed' in m.get('d1_r10_color_preview_proxy',''),m.items()
+              emission=m.node_tree.nodes['D1_ADDITIVE_COLOR']
+              assert emission.inputs['Strength'].is_linked,(name,'strength not equation-linked')
               assert 'D1_PROXY_8108E959_RUNTIME_ATTENUATION' not in nn,(name,nn)
           dm=bpy.data.materials['D1_8108E7B1']
           nn={n.name for n in dm.node_tree.nodes}
           assert 'D1_EXACT_80AAE1CD_PARTNER_ALPHA_ONE' in nn,nn
           assert 'D1_EXACT_953_MATERIAL_RGB_VECTOR' in nn,nn
+          assert 'D1_PROXY_953_ANGULAR_U' in nn,nn
+          assert 'D1_PROXY_API13_RGB_SCALE' in nn,nn
           assert dm.get('d1_r10_color_shader')=='8108E953',dm.items()
           assert list(dm.get('d1_r10_color_exact_material_rgb_vector'))==[0.22183096408843994,1.0,0.9177990555763245],dm.items()
           assert dm.get('d1_r10_color_exact_material_scalar')==9.0,dm.items()
+          assert dm.get('d1_r10_color_equation_replay')=='t0.rgb * materialRGB * U * 9 * API13[6]*API13[7]',dm.items()
+          assert 'arbitrary emission strength 2.0 removed' in dm.get('d1_r10_color_preview_proxy',''),dm.items()
+          assert dm.node_tree.nodes['D1_ADDITIVE_COLOR'].inputs['Strength'].is_linked,'detail strength not equation-linked'
           assert 'D1_PROXY_80AAE1CD_ATTENUATION' not in nn,nn
           arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
           assert all(o.hide_get() and o.hide_render for o in arms),[(o.name,o.hide_get(),o.hide_render) for o in arms]
