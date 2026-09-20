@@ -58,25 +58,59 @@ jobs:
           manifest_plan="$(find root_evidence -type f -name tower_activity_manifest_dependency_plan.json -print -quit)"
           test -n "$root_json" -a -f "$root_json"
           test -n "$manifest_plan" -a -f "$manifest_plan"
-          cp "$root_json" reports/common_layer_activity_map_roots.json
+          cp "$root_json" reports/tower_activity_map_roots_full.json
           cp "$manifest_plan" reports/common_layer_activity_manifest_dependency_plan.json
           python - <<'PY'
           import json
-          r=json.load(open('reports/common_layer_activity_map_roots.json'))
+          from pathlib import Path
+          r=json.load(open('reports/tower_activity_map_roots_full.json'))
           m=json.load(open('reports/common_layer_activity_manifest_dependency_plan.json'))
-          expected=sorted([
+          expected=[
             '80C98028','80C984A0','80C9895C','80C989F7','80C997DF',
             '80C99956','80CA0B0E','80CA0B11','80CA0C4E',
-          ])
+          ]
           if r.get('status')!='D1_WORLD_ACTIVITY_MAP_ROOT_CENSUS_COMPLETE':
               raise SystemExit('upstream Activity-root artifact not complete')
-          if r.get('selected_activities')!=['80C98019'] or sorted(r.get('map_data_tables',[]))!=expected or r.get('total_reachable_map_entries')!=337:
-              raise SystemExit('upstream Tower Activity-root fixture changed: '+json.dumps(r,indent=2))
+          if r.get('selected_activities')!=['80C98019']:
+              raise SystemExit('upstream Tower Activity identity changed: '+json.dumps(r.get('selected_activities')))
+          available=set(r.get('map_data_tables') or [])
+          missing=[h for h in expected if h not in available]
+          if missing:
+              raise SystemExit('proven common-layer table(s) disappeared from full Activity ownership: '+json.dumps(missing))
+          counts=r.get('map_data_table_entry_counts') or {}
+          scoped_counts={h:int(counts.get(h,-1)) for h in expected}
+          if any(v<0 for v in scoped_counts.values()) or sum(scoped_counts.values())!=337:
+              raise SystemExit('common-layer 9-table entry fixture changed: '+json.dumps(scoped_counts,sort_keys=True))
+          owners=r.get('table_activity_owners') or {}
+          scoped_owners={h:owners.get(h) for h in expected}
+          bad_owners={h:v for h,v in scoped_owners.items() if v!=['80C98019']}
+          if bad_owners:
+              raise SystemExit('common-layer table ownership changed: '+json.dumps(bad_owners,sort_keys=True))
           if m.get('status')!='D1_WORLD_ACTIVITY_MANIFEST_DEPENDENCY_PLAN_COMPLETE' or m.get('manifest_package_ids')!=['0430','0431']:
               raise SystemExit('upstream Activity manifest dependencies changed: '+json.dumps(m,indent=2))
-          print('CONSUMING_PROVEN_ACTIVITY_ROOTS',json.dumps({
+
+          scoped={
+            'schema_version':1,
+            'status':'D1_TOWER_COMMON_LAYER_ACTIVITY_ROOT_SCOPE_EXACT',
+            'selection_mode':'source_closed_common_layer_9_table_subset_of_full_tower_activity',
+            'selected_activities':['80C98019'],
+            'map_data_tables':expected,
+            'map_data_table_entry_counts':scoped_counts,
+            'total_reachable_map_entries':sum(scoped_counts.values()),
+            'table_activity_owners':scoped_owners,
+            'source_full_activity_status':r['status'],
+            'source_full_activity_map_data_table_count':len(r.get('map_data_tables') or []),
+            'source_full_activity_total_reachable_map_entries':r.get('total_reachable_map_entries'),
+            'bubble_definitions':[],
+            'map_containers':[],
+            'policy':'The full current Tower Activity ownership census is preserved separately. This document narrows it to the nine historically proven common/decal carrier tables only; every selected table remains singly owned by Activity 80C98019. No claim is made that the Tower itself has only nine map-data tables.'
+          }
+          Path('reports/common_layer_activity_map_roots.json').write_text(json.dumps(scoped,indent=2)+'\n')
+          print('CONSUMING_SCOPED_COMMON_ACTIVITY_ROOTS',json.dumps({
               'activity':'80C98019','manifest_packages':m['manifest_package_ids'],
-              'tables':len(expected),'entries':337},sort_keys=True))
+              'full_tables':len(r.get('map_data_tables') or []),
+              'full_entries':r.get('total_reachable_map_entries'),
+              'scoped_tables':len(expected),'scoped_entries':337},sort_keys=True))
           PY
 
       - name: Recover common geometry and material dependency corpus
