@@ -113,7 +113,10 @@ def main():
    tex={(int(x['texture_index']),x['channel'],x['sample_address']) for x in q.get('texture_sample_channels',[])}
    if tex!=family:v.append(f'{ch}: terminal texture leaf drift {sorted(tex)}')
    cb={str(k):set(z) for k,z in q.get('cbuffer_dwords',{}).items()}
-   required={32,33,56,57,60,61,62,64,72,73,74,75,colordw}
+   # A single terminal RGB slice reaches only its own C component:
+   # R->API0[60], G->API0[61], B->API0[62]. Requiring all three in
+   # each per-channel slice is incorrect and masks an otherwise exact factorization.
+   required={32,33,56,57,64,72,73,74,75,colordw}
    if not required.issubset(cb.get('0',set())):v.append(f'{ch}: gate/tail coefficient leaves missing {sorted(required-cb.get("0",set()))}')
    if 63 in cb.get('0',set()) or 69 in cb.get('0',set()):v.append(f'{ch}: MRT1-only coefficient leaked into MRT0 {cb}')
    ops={(x.get('address'),x.get('mnemonic')) for x in q.get('native_ops',[])}
