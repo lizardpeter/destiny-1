@@ -8,6 +8,7 @@ on:
       - '.github/workflows/d1-crota-r10-blender-native.yml'
       - 'tools/d1_blender_crota_r10_native_rebuild.py'
       - 'tools/d1_gltf_mirror_normal_topology_probe.py'
+      - 'tools/d1_crota_glb_material_vertex_layout.py'
 
 permissions:
   contents: read
@@ -48,6 +49,29 @@ jobs:
           test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb
           test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_ANIM_809D9D19.glb
           test -f input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_FULL_82.glb
+      - name: Preserve exact material to source vertex-layout provenance
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_glb_material_vertex_layout.py \
+            input/r8/CROTA_SON_OF_ORYX_R8_CLEAN_COLOR_BIND_POSE.glb \
+            --out out/CROTA_R8_MATERIAL_VERTEX_LAYOUT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_R8_MATERIAL_VERTEX_LAYOUT.json'))
+          assert d['status']=='D1_CROTA_GLB_MATERIAL_VERTEX_LAYOUT_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['active_color_surface_count']==6,d
+          fam=d['procedural_8108E955_source_layout_families']
+          assert fam==[
+            {'material':'8108E7A9','vertex_shader':'809DE9AB','source_mesh_index':0,
+             'exported_texcoord0_source':'SECONDARY_STREAM','primary_stride':16,'secondary_stride':20},
+            {'material':'8108E7B2','vertex_shader':'809DF743','source_mesh_index':2,
+             'exported_texcoord0_source':'PRIMARY_STREAM','primary_stride':12,'secondary_stride':16},
+          ],fam
+          assert d['semantic_boundary']['PS_attr1_or_VS_raw_semantic_equals_TEXCOORD_0']=='WITHHELD_PENDING_SHADER_LINEAGE_JOIN',d
+          print('CROTA_955_SOURCE_LAYOUT_FAMILIES',fam)
+          PY
+
       - name: Prove exact mirrored source normals before Blender
         run: |
           set -euo pipefail
