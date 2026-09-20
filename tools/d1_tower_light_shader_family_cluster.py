@@ -60,7 +60,7 @@ def main():
     if int(m.get('unique_light_material_count',-1))!=497:violations.append('unique material count drift')
     if int(m.get('pixel_shader_count',-1))!=32:violations.append('pixel shader count drift')
     if top_instances!=575:violations.append(f'top8 instance coverage drift {top_instances} != 575')
-    if set(top)!=set(terminal_rows):violations.append(f'terminal top8 scope drift top={top} terminal={sorted(terminal_rows)}')
+    terminal_scope=sorted(terminal_rows)\n    missing_top=sorted(set(top)-set(terminal_rows))\n    extra_unknown=sorted(set(terminal_rows)-set(freq))\n    if missing_top:violations.append(f'terminal scope missing top8 shaders {missing_top}')\n    if extra_unknown:violations.append(f'terminal scope contains unknown shaders {extra_unknown}')
 
     rows=[]
     for sh in sorted(freq,key=lambda x:(-freq[x],x)):
@@ -155,7 +155,7 @@ def main():
             'instance_count':sum(x['instance_count'] for x in members),
             'shaders':[x['shader'] for x in members],
             'all_no_serialized_ps_texture_bindings':all(x['serialized_ps_texture_binding_edge_count']==0 for x in members),
-            'exact_equality_basis':'image opcode/resource/sampler/dmask sequence + exact API cbuffer dword sets + terminal top8 dependency signature when available',
+            'exact_equality_basis':'image opcode/resource/sampler/dmask sequence + exact API cbuffer dword sets + terminal dependency signature when available',
         })
     for r in rows:
         r['renderer_resource_cluster_id']=next(x['cluster_id'] for x in clusters if r['shader'] in x['shaders'])
@@ -167,7 +167,7 @@ def main():
         'light_instance_count':int(m.get('light_instance_count',0)),
         'unique_light_material_count':int(m.get('unique_light_material_count',0)),
         'pixel_shader_family_count':len(rows),
-        'top8_shaders':top,'top8_instance_count':top_instances,
+        'top8_shaders':top,'top8_instance_count':top_instances,\n        'terminal_dependency_shader_count':len(terminal_scope),\n        'terminal_dependency_shaders':terminal_scope,
         'top8_instance_fraction':top_instances/int(m.get('light_instance_count',1)),
         'renderer_resource_clusters':clusters,'shaders':rows,'violations':violations,
         'semantic_boundary':{
@@ -175,7 +175,7 @@ def main():
             'native_shader_identity':'EXACT',
             'image_and_cbuffer_usage':'EXACT_NATIVE_GCN_PROVENANCE',
             'tfx_opcode_framing':'PINNED_D1_SCHEMA',
-            'terminal_mrt0_dataflow':'EXACT_FOR_TOP8_SCOPE',
+            'terminal_mrt0_dataflow':'EXACT_FOR_DECLARED_TERMINAL_SCOPE',
             'renderer_resource_human_semantics':'WITHHELD',
             'light_type_identity':'WITHHELD',
             'live_runtime_values':'WITHHELD',
