@@ -11,6 +11,7 @@ on:
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_world_map_data_layer_census.py'
       - 'tools/d1_world_activity_root_dependency_closure.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -33,7 +34,11 @@ jobs:
           mkdir -p index reports packages runtime reports/root_closure reports/lighting_closure
           idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$idx_run"
-          gh run download "$idx_run" -n d1-global-activity-index -D index
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$idx_run" \
+            --artifact-name d1-global-activity-index \
+            --out-dir index --clean \
+            --report reports/ARTIFACT_PULL_GLOBAL_INDEX.json
           idx="$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
           plist="$(find index -name packages.txt -print -quit)"
           test -n "$idx" -a -f "$idx"
