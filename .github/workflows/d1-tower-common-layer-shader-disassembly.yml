@@ -9,6 +9,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
+      - 'tools/d1_tower_common_shader_semantic_coverage.py'
       - 'tools/d1_split_tar_extract.py'
 
 permissions:
@@ -143,6 +144,33 @@ jobs:
             --manifest prior/compact/common_material_texture_manifest.json \
             --out reports/common65_shader_texture_role_validation.json \
             | tee reports/common65_shader_texture_role_validation_stdout.txt
+
+      - name: Measure exact sampled-material semantic coverage
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_common_shader_semantic_coverage.py \
+            --extract-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --out reports/common65_semantic_coverage.json \
+            | tee reports/common65_semantic_coverage_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common65_semantic_coverage.json'))
+          assert d['status']=='D1_TOWER_COMMON_SHADER_SEMANTIC_COVERAGE_EXACT',d
+          assert d['exact_shader_family_count']==65,d
+          print('TOWER_COMMON_SEMANTIC_COVERAGE',
+                'FAMILIES_ANY_ROLE',d['families_with_any_proven_roles'],
+                'FAMILIES_FULL_TEXTURE_ROLE',d['families_with_full_sampled_material_texture_role_coverage'],
+                'VISIBLE_FREQ_ANY_ROLE',d['visible_material_frequency_any_role_fraction'],
+                'VISIBLE_FREQ_FULL_ROLE',d['visible_material_frequency_full_material_texture_role_fraction'],
+                'SAMPLED_BINDING_ROLE',d['sampled_material_texture_register_role_fraction'])
+          for r in d['highest_priority_unresolved_families'][:20]:
+              print('TOWER_COMMON_UNRESOLVED',r['shader'],
+                    'VISIBLE_MATERIALS',r['visible_material_count'],
+                    'MISSING_T',r['unproven_sampled_material_texture_indices'],
+                    'USED_T',r['native_used_texture_indices'])
+          PY
 
       - uses: actions/upload-artifact@v4
         if: always()
