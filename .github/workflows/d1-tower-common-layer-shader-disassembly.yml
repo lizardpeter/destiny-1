@@ -15,6 +15,7 @@ on:
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
       - 'tools/d1_tower_common_shader_semantic_coverage.py'
+      - 'tools/d1_tower_common_ps_80ca0f50_semantic_proof.py'
       - 'tools/d1_split_tar_extract.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -185,6 +186,27 @@ jobs:
                   print('  CHANNEL',ch,row['value_slice'])
           PY
 
+      - name: Prove exact 80CA0F50 algebraic texture roles
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_common_ps_80ca0f50_semantic_proof.py \
+            --extract-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --mrt0-deps reports/common_top_unresolved_mrt0_dependencies.json \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --disassembly disasm/PS_80CA0F50.s \
+            --out reports/common_ps_80ca0f50_semantic_proof.json \
+            | tee reports/common_ps_80ca0f50_semantic_proof_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_ps_80ca0f50_semantic_proof.json'))
+          assert d['status']=='D1_TOWER_COMMON_PS_80CA0F50_SEMANTICS_EXACT',d
+          assert d['alpha_exact_zero'] is True,d
+          assert set(d['promoted_texture_roles'])=={'0','1','2'},d
+          print('TOWER_COMMON_80CA0F50_CLOSED',d['instruction_level_equation'])
+          PY
+
       - name: Validate already-proven roles against common shader corpus
         run: |
           set -euo pipefail
@@ -229,6 +251,6 @@ jobs:
             reports/
             shader/
             disasm/
-          retention-days: 14
+          retention-days: 30
           if-no-files-found: warn
           compression-level: 6
