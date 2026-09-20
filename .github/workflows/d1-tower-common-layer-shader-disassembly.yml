@@ -7,6 +7,8 @@ on:
       - '.github/workflows/d1-tower-common-layer-shader-disassembly.yml'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_gcn_cbuffer_usage_analyze.py'
+      - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
       - 'tools/d1_tower_common_shader_semantic_coverage.py'
@@ -134,6 +136,37 @@ jobs:
           open('reports/common_shader_semantic_priority.json','w').write(json.dumps(pr,indent=2)+'\n')
           if len(pr)!=65: raise SystemExit(f'expected 65 usage rows, got {len(pr)}')
           print(json.dumps(pr[:15],indent=2))
+          PY
+
+      - name: Recover cbuffer provenance and terminal MRT0 dependencies for top unresolved families
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_cbuffer_usage_analyze.py \
+            --extract-report reports/common65_shader_extract.json \
+            --disasm-dir disasm \
+            --out reports/common65_gcn_cbuffer_usage.json \
+            | tee reports/common65_gcn_cbuffer_usage_stdout.txt
+
+          python tools/d1_gcn_terminal_mrt0_dependency_census.py \
+            --usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm-dir disasm \
+            --shader 8093E8A2 --shader 80CA0F50 \
+            --out reports/common_top_unresolved_mrt0_dependencies.json \
+            | tee reports/common_top_unresolved_mrt0_dependencies_stdout.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_top_unresolved_mrt0_dependencies.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT0_DEPENDENCY_CENSUS_EXACT',d
+          assert {x['shader'] for x in d['shaders']}=={'8093E8A2','80CA0F50'},d
+          for r in d['shaders']:
+              print('TOWER_COMMON_TOP_UNRESOLVED_MRT0',r['shader'],
+                    'COMPRESSED',r['terminal_mrt0_compressed'],
+                    'OPERANDS',r['terminal_mrt0_operands'],
+                    'UNION',r['mrt0_value_union'])
+              for ch,row in r['channels'].items():
+                  print('  CHANNEL',ch,row['value_slice'])
           PY
 
       - name: Validate already-proven roles against common shader corpus
