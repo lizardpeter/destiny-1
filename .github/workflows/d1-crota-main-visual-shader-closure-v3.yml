@@ -11,6 +11,7 @@ on:
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_image_coordinate_slice.py'
+      - 'tools/d1_crota_955_coordinate_specialize.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_alpha_slice.py'
       - 'tools/d1_gcn_terminal_rgb_slice.py'
@@ -64,6 +65,7 @@ jobs:
           python -m py_compile \
             tools/d1_gcn_cbuffer_usage_analyze.py \
             tools/d1_gcn_image_coordinate_slice.py \
+            tools/d1_crota_955_coordinate_specialize.py \
             tools/d1_gcn_terminal_alpha_slice.py \
             tools/d1_gcn_terminal_rgb_slice.py \
             tools/d1_crota_attenuation_constant_reduce.py \
@@ -338,6 +340,36 @@ jobs:
               ])
           PY
 
+      - name: Material-specialize Crota 8108E955 coordinates
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_955_coordinate_specialize.py \
+            --stage-state out/CROTA_PAIRED_MATERIAL_STAGE_STATE.json \
+            --coordinate-slices out/CROTA_IMAGE_COORDINATE_SLICES.json \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
+            --disasm disasm/PS_8108E955_GFX700.s \
+            --out out/CROTA_955_COORDINATE_SPECIALIZATION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_955_COORDINATE_SPECIALIZATION.json'))
+          assert d['status']=='D1_CROTA_955_COORDINATE_SPECIALIZATION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert len(d['rows'])==2,d
+          for r in d['rows']:
+              q=r['same_sample_equivalence']
+              assert q['texture_indices']==[1,2,4],q
+              assert q['texture']=='80AACF2A' and q['same_sampler'],q
+              assert q['same_first_two_encoded_coordinate_lanes']==[0.0,0.0],q
+              assert r['t3_terminal_value_effect']=='DEAD_FOR_T4_COORDINATE_AFTER_EXACT_ZERO_MULTIPLIERS',r
+              assert r['coordinate_specialization']['t0']=='first two encoded coordinate lanes = attr1.x, attr1.y',r
+              print('CROTA_955_COORD_SPECIALIZED',r['material'],
+                    'SAMPLER',r['sampler_taghash'],
+                    'COORDS',r['coordinate_specialization'],
+                    'REPEATED_SAMPLE',q)
+          assert d['semantic_boundary']['attr1_semantic_name']=='WITHHELD',d
+          assert d['semantic_boundary']['filtered_sample_numeric_value_at_zero']=='NOT_EVALUATED_HERE',d
+          PY
+
       - name: Backward-slice exact terminal attenuation alpha
         run: |
           set -euo pipefail
@@ -423,6 +455,7 @@ jobs:
             --rgb-slice out/CROTA_TERMINAL_RGB_SLICE.json \
             --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
             --texture-channels out/CROTA_TEXTURE_CHANNEL_PROOF.json \
+            --coordinate-specialization out/CROTA_955_COORDINATE_SPECIALIZATION.json \
             --out out/CROTA_COLOR_MATERIAL_SPECIALIZATION.json
           python - <<'PY'
           import json,math
@@ -451,6 +484,10 @@ jobs:
               assert q['normalized_channel_gain_by_green']==[0.18661969900131226,1.0,0.8700880408287048],q
               assert q['exact_material_scalar']==55.0,q
               assert q['specialized_constants']['m27']==0.0 and q['specialized_constants']['m48']==0.0,q
+              s=q['repeated_bc1_sample']
+              assert s['native_relation']=='t1.rgba == t2.rgba == t4.rgba == S',s
+              assert s['texture']=='80AACF2A' and s['first_two_encoded_coordinate_lanes']==[0.0,0.0],s
+              assert q['t3_terminal_value_effect']=='DEAD_FOR_T4_COORDINATE_AFTER_EXACT_ZERO_MULTIPLIERS',q
           assert d['semantic_boundary']['API12_API13_engine_names']=='WITHHELD',d
           assert d['semantic_boundary']['lighting_albedo_emissive_labels']=='WITHHELD',d
           print('CROTA_COLOR_MATERIAL_SPECIALIZATION',[(h,by[h]['pixel_shader']) for h in sorted(by)])
