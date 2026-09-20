@@ -28,6 +28,8 @@ on:
       - 'tools/d1_crota_attenuation_material_specialize.py'
       - 'tools/d1_crota_color_material_specialize.py'
       - 'tools/d1_crota_api13_family_boundary.py'
+      - 'tools/d1_api13_cross_family_boundary.py'
+      - 'evidence/d1_ps4_api13_tower_census_checkpoint_v1.json'
       - 'tools/d1_crota_serialized_pair_order.py'
       - 'tools/d1_crota_material_pair_state.py'
       - 'tools/d1_crota_material_pair_invariants.py'
@@ -74,6 +76,7 @@ jobs:
             tools/d1_crota_texture_channel_proof.py \
             tools/d1_crota_attenuation_material_specialize.py \
             tools/d1_crota_color_material_specialize.py \
+            tools/d1_api13_cross_family_boundary.py \
             tools/d1_crota_serialized_pair_order.py
           python -m unittest tests.test_d1_gcn_provenance_analysis -v
 
@@ -519,6 +522,32 @@ jobs:
               assert by[h]['terminal_alpha_api13_dwords']==[],by[h]
           assert d['semantic_boundary']['API13_engine_semantic']=='WITHHELD',d
           print('CROTA_API13_COLOR_BOUNDARY',d['observed_boundary'])
+          PY
+
+      - name: Join frozen Tower and Crota API13 RGB boundaries
+        run: |
+          set -euo pipefail
+          python tools/d1_api13_cross_family_boundary.py \
+            --tower-checkpoint evidence/d1_ps4_api13_tower_census_checkpoint_v1.json \
+            --crota-boundary out/CROTA_API13_FAMILY_BOUNDARY.json \
+            --out out/D1_API13_CROSS_FAMILY_BOUNDARY.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_API13_CROSS_FAMILY_BOUNDARY.json'))
+          assert d['status']=='D1_API13_CROSS_FAMILY_BOUNDARY_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['program_count']==4,d
+          assert d['shared_dwords']==[6,7],d
+          assert d['tower_census_context']=={
+              'unique_pixel_shader_count':135,
+              'api13_consumer_count':1,
+              'api13_consumers':['80CA0BE9'],
+          },d
+          assert d['crota_partner_boundary']['terminal_alpha_api13_dependency'] is False,d
+          assert d['semantic_boundary']['engine_producer_name']=='WITHHELD',d
+          assert d['semantic_boundary']['live_ps4_values']=='WITHHELD',d
+          print('D1_API13_CROSS_FAMILY',d['observed_boundary'])
+          print('D1_API13_PROGRAMS',d['programs'])
           PY
 
       - name: Differential-close exact paired visual programs
