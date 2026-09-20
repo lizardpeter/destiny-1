@@ -156,6 +156,64 @@ def _tag_array_len(a) -> int:
         return int(a.length)
     return int(len(a))
 
+def _d1_roi_adjacent_header_vectors(hd, payload: bytes) -> dict:
+    """Preserve the three exact D1 ROI Vec_Pointer words at header 0x130..0x15F.
+
+    read_animation_header currently discards the first vector (unk_arr_1_pointer).
+    The next two are frame_events_array_pointer and rig_components_array_pointer.
+    We preserve raw words and bounded target prefixes without assigning an element
+    type or stride to the unnamed vector.
+    """
+    if len(payload) < 0x160:
+        raise ValueError(f'D1 ROI animation payload shorter than 0x160 header: {len(payload):#x}')
+
+    def vec(name, length_off, relative_off, prefix_bytes=64):
+        length=struct.unpack_from('<Q',payload,length_off)[0]
+        rel=struct.unpack_from('<Q',payload,relative_off)[0]
+        target=None if rel==0 else relative_off+rel
+        if target is not None and not (0 <= target < len(payload)):
+            raise ValueError(f'{name}: target OOB {target:#x}/{len(payload):#x}')
+        prefix=b'' if target is None else payload[target:min(len(payload),target+prefix_bytes)]
+        return {
+            'name':name,
+            'length_word_offset':length_off,
+            'relative_word_offset':relative_off,
+            'length_u64':length,
+            'relative_u64':rel,
+            'relative_hex':f'{rel:016X}',
+            'target_offset':target,
+            'target_prefix_byte_count':len(prefix),
+            'target_prefix_hex':prefix.hex(),
+        }
+
+    unknown=vec('header_vec_0x130_UNNAMED',0x130,0x138)
+    events=vec('frame_events_array_pointer',0x140,0x148)
+    rig=vec('rig_components_array_pointer',0x150,0x158)
+
+    hp=hd.frame_events_array_pointer
+    rp=hd.rig_components_array_pointer
+    checks={
+        'frame_events_length_matches_parser':int(events['length_u64'])==int(hp.length),
+        'frame_events_length_address_matches_parser':int(hp.length_address)==0x140,
+        'frame_events_relative_address_matches_parser':int(hp.offset_address)==0x148,
+        'frame_events_target_matches_parser':events['target_offset']==(None if int(hp.offset)==0 else int(hp.get_address())),
+        'rig_components_length_matches_parser':int(rig['length_u64'])==int(rp.length),
+        'rig_components_length_address_matches_parser':int(rp.length_address)==0x150,
+        'rig_components_relative_address_matches_parser':int(rp.offset_address)==0x158,
+        'rig_components_target_matches_parser':rig['target_offset']==(None if int(rp.offset)==0 else int(rp.get_address())),
+    }
+    if not all(checks.values()):
+        raise ValueError(f'D1 ROI adjacent-header Vec_Pointer cross-check failed: {checks}')
+    return {
+        'd1_roi_header_bytes_minimum':0x160,
+        'unnamed_vector':unknown,
+        'frame_events_vector':events,
+        'rig_components_vector':rig,
+        'parser_crosschecks':checks,
+        'semantic_boundary':'RAW_D1_ROI_HEADER_VEC_POINTERS_UNNAMED_0X130_ELEMENT_SCHEMA_WITHHELD',
+    }
+
+
 def _frame_event_pointer_summary(hd, payload: bytes) -> dict:
     """Preserve the exact D1 ROI frame-event pointer array without decoding records."""
     p=hd.frame_events_array_pointer
@@ -350,6 +408,7 @@ def main() -> int:
                     'animated_translation':_tag_array_len(cm.animated_translation_control_map),
                 },
                 'frame_event_pointers': _frame_event_pointer_summary(hd,b),
+                'adjacent_header_vectors': _d1_roi_adjacent_header_vectors(hd,b),
                 'runtime_components': component_rows(anim.runtime_rig_components),
                 '_animation': anim,
             }
