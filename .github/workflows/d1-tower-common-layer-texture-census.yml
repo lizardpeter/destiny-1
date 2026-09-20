@@ -12,6 +12,7 @@ on:
       - 'tools/d1_world_texture_role_inventory.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'evidence/d1_tower_texture_dependency_member_catalog.json'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -49,7 +50,11 @@ jobs:
           fi
           test -n "$model_run"
           echo "COMMON_MODEL_SOURCE_RUN=$model_run"
-          gh run download "$model_run" -n d1-tower-common-layer-model-export -D source_models
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$model_run" \
+            --artifact-name d1-tower-common-layer-model-export \
+            --out-dir source_models --clean \
+            --report reports/ARTIFACT_PULL_COMMON_MODEL.json
           test -f source_models/reports/common_layer_model_export.json
           python - <<'PY'
           import json
