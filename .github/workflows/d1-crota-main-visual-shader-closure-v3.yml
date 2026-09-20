@@ -11,6 +11,7 @@ on:
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gnm_vs_ps_linkage.py'
       - 'tools/d1_crota_vs_param_vertex_input_lineage.py'
+      - 'tools/d1_crota_vs_semantic_reuse.py'
       - 'tools/d1_ps4_gnm_shader_header_semantics.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_image_coordinate_slice.py'
@@ -70,6 +71,7 @@ jobs:
           python -m py_compile \
             tools/d1_gcn_cbuffer_usage_analyze.py \
             tools/d1_crota_vs_param_vertex_input_lineage.py \
+            tools/d1_crota_vs_semantic_reuse.py \
             tools/d1_gcn_image_coordinate_slice.py \
             tools/d1_crota_955_coordinate_specialize.py \
             tools/d1_gcn_terminal_alpha_slice.py \
@@ -249,6 +251,31 @@ jobs:
               print('GNM_LINK',r['vertex_shader'],r['pixel_shader'],
                     'CONSUMED',[(x['attr_index'],x['semantic'],x['vs_param_index']) for x in r['consumed_linkage']],
                     'ALL',[(x['attr_index'],x['semantic'],x['vs_param_index'],x['ps_default_value']) for x in r['linkage']])
+          PY
+
+      - name: Reuse exact registered VS interface semantics for Crota
+        run: |
+          set -euo pipefail
+          python tools/d1_crota_vs_semantic_reuse.py \
+            --extract-report out/CROTA_VISUAL_SHADER_EXTRACT.json \
+            --linkage out/CROTA_GNM_VS_PS_LINKAGE.json \
+            --registry evidence/d1_native_shader_semantic_registry_v1.json \
+            --out out/CROTA_VS_SEMANTIC_REUSE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_VS_SEMANTIC_REUSE.json'))
+          assert d['status']=='D1_CROTA_VS_SEMANTIC_REUSE_EXACT',d
+          assert not d['violations'],d['violations']
+          p=d['procedural_8108E955_attr1_coordinate']
+          assert {x['vertex_shader'] for x in p}=={'809DE9AB','809DF743'},p
+          assert all(x['coordinate_source']=='TRANSFORMED_TANGENT_XY' for x in p),p
+          s=d['semantic_boundary']
+          assert s['8108E955_t0_coordinate_first_two_lanes']=='TRANSFORMED_TANGENT_XY',s
+          assert s['angular_attr0']=='TRANSFORMED_NORMAL_XYZ',s
+          assert s['angular_attr2']=='HANDED_TRANSFORMED_BITANGENT_XYZ',s
+          assert s['fetch_shader_source_offsets_formats']=='WITHHELD',s
+          print('CROTA_VS_SEMANTIC_REUSE_PROCEDURAL',p)
+          print('CROTA_VS_SEMANTIC_REUSE_ANGULAR',d['angular_basis_rows'])
           PY
 
       - name: Trace surviving procedural attr1 coordinates to raw vertex inputs
