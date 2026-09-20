@@ -9,6 +9,7 @@ sys.path.insert(0,str(ROOT/'tools'))
 import d1_gcn_cbuffer_usage_analyze as cb
 import d1_gcn_terminal_alpha_slice as al
 import d1_gcn_terminal_rgb_slice as rgb
+import d1_gcn_terminal_mrt0_dependency_census as mrt0
 import d1_gcn_image_coordinate_slice as coord
 import d1_crota_vs_param_vertex_input_lineage as vsin
 
@@ -96,6 +97,39 @@ class TestGCNProvenance(unittest.TestCase):
                 ])
                 self.assertEqual(s['cbuffer_dwords'],{'0':[dw]})
                 self.assertEqual(s['unknown_registers'],[])
+        finally:
+            if p.exists():p.unlink()
+
+    def test_terminal_mrt0_preserves_vcc_cndmask_predicate_dependencies(self):
+        text='\n'.join([
+            '/*000000000000: 00000000 */ s_buffer_load_dword s4, s[0:3], 0x48',
+            '/*000000000004: 00000000 */ v_mov_b32       v1, 1.0',
+            '/*000000000008: 00000000 */ v_cmp_ge_f32    vcc, 0, s4',
+            '/*00000000000c: 00000000 */ v_cndmask_b32   v2, v1, 0, vcc',
+            '/*000000000010: 00000000 */ v_mov_b32       v3, 0',
+            '/*000000000014: 00000000 */ v_cvt_pkrtz_f16_f32 v4, v2, v3',
+            '/*000000000018: 00000000 */ v_cvt_pkrtz_f16_f32 v5, v3, v3',
+            '/*00000000001c: 00000000 */ exp             mrt0, v4, v4, v5, v5 done compr vm',
+        ])
+        p=ROOT/'tests'/'_tmp_terminal_mrt0_vcc_test.s'
+        try:
+            p.write_text(text+'\n')
+            cbuf={'loads':[{
+                'address':'000000000000','destination':[4],
+                'api_slot':0,'dword_indices':[72],
+            }]}
+            d=mrt0.analyze('DEADBEEF',p,{'instructions':[]},cbuf)
+            r=d['channels']['R']['value_slice']
+            self.assertEqual(r['cbuffer_dwords'],{'0':[72]})
+            self.assertTrue(any(
+                x['mnemonic']=='v_cmp_ge_f32' and x['register']=='vcc'
+                for x in r['native_ops']
+            ))
+            self.assertTrue(any(
+                x['mnemonic']=='v_cndmask_b32' and x['register']=='v2'
+                for x in r['native_ops']
+            ))
+            self.assertNotIn('vcc',r['unknown_registers'])
         finally:
             if p.exists():p.unlink()
 
