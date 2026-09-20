@@ -10,6 +10,7 @@ on:
       - '.github/workflows/d1-tower-light-shader-census.yml'
       - 'tools/d1_close_world_shader_dependencies.py'
       - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -38,7 +39,11 @@ jobs:
             run_id="$(gh run list --workflow d1-tower-light-material-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           fi
           test -n "$run_id"
-          gh run download "$run_id" -n d1-tower-light-material-census -D upstream
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$run_id" \
+            --artifact-name d1-tower-light-material-census \
+            --out-dir upstream --clean \
+            --report reports/ARTIFACT_PULL_LIGHT_MATERIALS.json
           cp upstream/tower_light_material_manifest.json reports/tower_light_material_manifest.json
           python - <<'PY'
           import json
@@ -53,7 +58,11 @@ jobs:
           set -euo pipefail
           idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$idx_run"
-          gh run download "$idx_run" -n d1-global-activity-index -D index
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$idx_run" \
+            --artifact-name d1-global-activity-index \
+            --out-dir index --clean \
+            --report reports/ARTIFACT_PULL_GLOBAL_INDEX.json
           cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
           cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
