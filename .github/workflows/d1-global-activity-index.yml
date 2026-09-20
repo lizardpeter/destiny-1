@@ -86,7 +86,8 @@ jobs:
           fi
           gh release upload "$tag" \
             reports/D1_CURRENT_ACTIVITY_INDEX.json \
-            reports/D1_CURRENT_ACTIVITY_INDEX.tsv --clobber
+            reports/D1_CURRENT_ACTIVITY_INDEX.tsv \
+            reports/packages.txt --clobber
 
       - uses: actions/upload-artifact@v4
         if: always()
