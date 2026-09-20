@@ -21,6 +21,7 @@ on:
       - 'tools/d1_remote_crota_skin_census.py'
       - 'tools/d1_animation_frame_event_pointer_census.py'
       - 'tools/d1_animation_event_prefix_structure.py'
+      - 'tools/d1_animation_event_target_layout.py'
       - 'tools/d1_crota_runtime_component_boundary.py'
       - 'tools/d1_crota_animation_component_state_census.py'
       - 'tools/d1_crota_component_motion_profile.py'
@@ -237,6 +238,33 @@ jobs:
           print('CROTA_CLIPS_WITH_FRAME_EVENT_POINTERS',d['clips_with_nonzero_frame_event_pointer_count'])
           print('CROTA_EVENT_POINTER_TOTAL',d['total_frame_event_pointer_count'])
           print('CROTA_EVENT_PREFIX_GROUPS',[(x['occurrence_count'],x['target_prefix_byte_count'],x['target_prefix_sha256']) for x in d['target_prefix_groups'][:16]])
+          PY
+
+      - name: Census exact frame-event target layout
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_event_target_layout.py \
+            --events out/CROTA_ANIMATION_FRAME_EVENT_POINTER_CENSUS.json \
+            --out out/CROTA_ANIMATION_EVENT_TARGET_LAYOUT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_EVENT_TARGET_LAYOUT.json'))
+          assert d['status']=='D1_ANIMATION_EVENT_TARGET_LAYOUT_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['semantic_boundary']['record_size']=='WITHHELD',d
+          assert d['semantic_boundary']['candidate_stride_from_gcd']=='STRUCTURAL_DIAGNOSTIC_ONLY',d
+          print('CROTA_EVENT_TARGET_DELTA_GCD',d['global_positive_target_delta_gcd'])
+          print('CROTA_EVENT_TARGET_MIN_DELTA',d['global_minimum_positive_target_delta'])
+          print('CROTA_EVENT_TARGET_REGIONS',d['target_region_histogram'])
+          print('CROTA_EVENT_TARGET_ALIGNMENTS',d['target_alignment_remainders'])
+          print('CROTA_EVENT_TARGET_PREFIX_OVERLAPS',d['overlapping_32byte_prefix_window_pair_count'])
+          for x in d['rows']:
+              if x['nonnull_pointer_count']:
+                  print('EVENT_TARGET_LAYOUT',x['clip'],
+                        'ARRAY',(x['pointer_array_offset'],x['pointer_array_end']),
+                        'TARGETS',x['unique_target_offsets'],
+                        'DELTAS',x['adjacent_positive_target_deltas'],
+                        'DUPREF',x['duplicate_target_reference_count'])
           PY
 
       - name: Census bounded frame-event target prefix structure
