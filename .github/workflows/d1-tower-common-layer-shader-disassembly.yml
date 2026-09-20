@@ -16,6 +16,7 @@ on:
       - 'tools/d1_validate_shader_texture_roles.py'
       - 'tools/d1_tower_common_shader_semantic_coverage.py'
       - 'tools/d1_split_tar_extract.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -48,7 +49,11 @@ jobs:
           fi
           test -n "$texture_run"
           echo "COMMON_TEXTURE_SOURCE_RUN=$texture_run"
-          gh run download "$texture_run" -n d1-tower-common-layer-texture-census -D prior
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$texture_run" \
+            --artifact-name d1-tower-common-layer-texture-census \
+            --out-dir prior --clean \
+            --report reports/ARTIFACT_PULL_COMMON_TEXTURE_CENSUS.json
           test -f prior/compact/common_material_texture_manifest.json
 
       - name: Recover Tower plus global shader dependency corpus
