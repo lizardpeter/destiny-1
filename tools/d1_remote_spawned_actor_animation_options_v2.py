@@ -334,6 +334,7 @@ def main() -> int:
                 'entry_index': int(m['index']),
                 'size': int(m['file_size']),
                 'source': src,
+                'payload_sha256': hashlib.sha256(b).hexdigest(),
                 'animation_hash': f'{int(hd.animation_hash):08X}',
                 'frame_count': int(hd.frame_count),
                 'node_count': int(hd.node_count),
@@ -403,6 +404,7 @@ def main() -> int:
             rr = {
                 'clip': cliph,
                 'source_animation_hash': cp['animation_hash'],
+                'source_clip_payload_sha256': cp['payload_sha256'],
                 'frame_count': cp['frame_count'],
                 'source_node_count': cp['node_count'],
                 'source_rig_control_count': cp['rig_control_count'],
