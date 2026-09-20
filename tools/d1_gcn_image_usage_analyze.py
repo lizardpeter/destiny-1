@@ -19,7 +19,7 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
-SHADER_RE=re.compile(r'PS_([0-9A-Fa-f]{8})(?:_GFX700)?\\.s
+SHADER_RE=re.compile(r'PS_([0-9A-Fa-f]{8})(?:_GFX700)?\.s$')
 IMAGE_RE=re.compile(r'\b(image_[A-Za-z0-9_]+)\b')
 SGPR_RANGE_RE=re.compile(r'\bs\[(\d+)\s*:\s*(\d+)\]')
 DMASK_RE=re.compile(r'\bdmask:(0x[0-9A-Fa-f]+|\d+)\b')
