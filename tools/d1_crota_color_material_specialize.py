@@ -116,9 +116,17 @@ def specialize_956(mh,v,tc):
   'remaining_runtime_dwords':{'12':[28,29,30],'13':[6,7]},
  }
 
-def specialize_955(mh,v,tc):
+def specialize_955(mh,v,tc,coord):
  # Current Crota constants remove the V angular branch from F_alpha and all m48 terms,
  # but U remains in each RGB F_j through m24..26 == 1.
+ if not coord:raise ValueError(f'{mh}: exact 955 coordinate specialization missing')
+ eq=(coord.get('same_sample_equivalence') or {})
+ if eq.get('texture_indices')!=[1,2,4] or eq.get('texture')!='80AACF2A' or not eq.get('same_sampler'):
+  raise ValueError(f'{mh}: t1/t2/t4 same-sample proof drift {eq}')
+ if eq.get('same_first_two_encoded_coordinate_lanes')!=[0.0,0.0]:
+  raise ValueError(f'{mh}: repeated sample coordinate drift {eq}')
+ if coord.get('t3_terminal_value_effect')!='DEAD_FOR_T4_COORDINATE_AFTER_EXACT_ZERO_MULTIPLIERS':
+  raise ValueError(f'{mh}: t3 coordinate-side deadness drift')
  expect={11:1.0,12:6.0,16:-1.25,17:1.25,23:1.0,27:0.0,48:0.0,
          24:1.0,25:1.0,26:1.0,52:1.0,53:1.0,54:1.0,56:55.0}
  for i,x in expect.items():
@@ -140,6 +148,16 @@ def specialize_955(mh,v,tc):
    't4':'80AACF2A BC1 rgba',
   },
   'exact_alpha_substitutions':['t1.w = 1.0','t2.w = 1.0','t4.w = 1.0'],
+  'repeated_bc1_sample':{
+    'symbol':'S',
+    'texture':'80AACF2A',
+    'native_relation':'t1.rgba == t2.rgba == t4.rgba == S',
+    'first_two_encoded_coordinate_lanes':[0.0,0.0],
+    'sampler_taghash':coord.get('sampler_taghash'),
+    'filtered_numeric_value':'WITHHELD_FROM_THIS_PROOF',
+  },
+  'coordinate_specialization':coord.get('coordinate_specialization'),
+  't3_terminal_value_effect':coord.get('t3_terminal_value_effect'),
   'channel_gain_vector':[exact(v,8),exact(v,9),exact(v,10)],
   'normalized_channel_gain_by_green':[exact(v,8)/exact(v,9),1.0,exact(v,10)/exact(v,9)],
   'exact_material_scalar':exact(v,56),
@@ -151,11 +169,12 @@ def specialize_955(mh,v,tc):
     'A_base = clamp(G*F_alpha) + clamp(H_alpha)*H_alpha',
   ],
   'per_channel_definition':[
-    'P_j = clamp(t1.j * t2.j)',
+    'S = native sample of texture 80AACF2A using the exact shared sampler with first two encoded coordinate lanes (0,0); t1=t2=t4=S',
+    'P_j = clamp(S.j * S.j)',
     'Q_j = 0.6000000238418579 + 9.399999618530273 * P_j',
     'R = 0.6000000238418579 + 9.399999618530273 * U',
     'F_j = clamp(0.010300000198185444 * Q_j * R - 0.05999999865889549)',
-    'H_j = 0.07999999821186066 - 0.4000000059604645 * (1 - t4.j)^2',
+    'H_j = 0.07999999821186066 - 0.4000000059604645 * (1 - S.j)^2',
     'C_j = clamp(G*F_j) + clamp(H_j)*H_j',
     'RGB_j = m(8+j) * C_j * A_base * m(52+j) * m56 * API13[6] * API13[7]',
   ],
@@ -179,18 +198,21 @@ def main():
  ap.add_argument('--rgb-slice',type=Path,required=True)
  ap.add_argument('--extract-report',type=Path,required=True)
  ap.add_argument('--texture-channels',type=Path,required=True)
+ ap.add_argument('--coordinate-specialization',type=Path,required=True)
  ap.add_argument('--out',type=Path,required=True)
  a=ap.parse_args()
  st=json.loads(a.stage_state.read_text());sl=json.loads(a.rgb_slice.read_text())
- ex=json.loads(a.extract_report.read_text());tc=json.loads(a.texture_channels.read_text())
+ ex=json.loads(a.extract_report.read_text());tc=json.loads(a.texture_channels.read_text());co=json.loads(a.coordinate_specialization.read_text())
  violations=[];rows=[]
  if st.get('status')!='D1_MATERIAL_STAGE_STATE_EXACT' or st.get('violations'):violations.append('stage state not exact')
  if sl.get('status')!='D1_GCN_TERMINAL_RGB_SLICE_EXACT' or sl.get('violations'):violations.append('RGB slice not exact')
  if ex.get('status')!='D1_WORLD_PIXEL_SHADER_GCN_EXACT' or ex.get('error_count'):violations.append('shader extract not exact')
  if tc.get('status')!='D1_CROTA_TEXTURE_CHANNEL_PROOF_EXACT' or tc.get('violations'):violations.append('texture channel proof not exact')
+ if co.get('status')!='D1_CROTA_955_COORDINATE_SPECIALIZATION_EXACT' or co.get('violations'):violations.append('955 coordinate specialization not exact')
  mats={norm(k):v for k,v in (st.get('materials') or {}).items()}
  slices={norm(x['shader']):x for x in sl.get('shaders',[])}
  extract={norm(x['shader']):x for x in ex.get('shaders',[])}
+ coord_by_material={norm(x['material']):x for x in co.get('rows',[])}
  for sh in ('8108E953','8108E955','8108E956'):
   try:
    e=extract.get(sh)
@@ -209,7 +231,7 @@ def main():
    v=flat(m['ps'])
    if sh=='8108E953':sp=specialize_953(mh,v)
    elif sh=='8108E956':sp=specialize_956(mh,v,tc)
-   else:sp=specialize_955(mh,v,tc)
+   else:sp=specialize_955(mh,v,tc,coord_by_material.get(mh))
    rows.append({'material':mh,'pixel_shader':sh,'gcn_sha256':SHAS[sh],**sp})
   except Exception as err:violations.append(str(err))
  out={
@@ -219,6 +241,7 @@ def main():
   'family_counts':{sh:sum(x['pixel_shader']==sh for x in rows) for sh in ('8108E953','8108E955','8108E956')},
   'semantic_boundary':{
    'terminal_rgb_numerical_dependencies':'EXACT_FOR_SELECTED_RETAIL_MATERIALS',
+   'PS8108E955_repeated_sample_equivalence':'EXACT_FOR_SELECTED_RETAIL_MATERIALS',
    'API12_API13_engine_names':'WITHHELD',
    'interpolant_semantics':'WITHHELD',
    'lighting_albedo_emissive_labels':'WITHHELD',
