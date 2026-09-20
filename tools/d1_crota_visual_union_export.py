@@ -25,7 +25,8 @@ For exact model 8108E5B7 the source-closed pairs are:
 Any other pair is fatal in this Crota-specific exporter.
 
 Unlike the generic forensic model exporter, this Blender-facing adapter explicitly
-preserves exact decoded UV0 as custom glTF attribute ``_D1_UV0``. Trimesh normally
+preserves exact decoded UV0 as custom glTF attribute ``_D1_UV0`` and exact
+decoded source tangent SNORM16x4 as custom ``_D1_TANGENT``. Trimesh normally
 creates TEXCOORD_0 when TextureVisuals carries UVs even when no image is assigned;
 that creates a duplicate accessor alongside our protected source accessor.  Therefore
 the forensic geometry layer deliberately gives TextureVisuals no UV and carries the
@@ -53,6 +54,7 @@ from d1_entity_model_export import (
     decode_vb0,
     decode_vb0_uv,
     decode_vb1,
+    snorm16,
     hdr_stride,
     index_is32,
     primitive_faces,
@@ -127,6 +129,33 @@ def visual_union_ranges(model: dict, binding: dict):
     return selected, mesh_summaries
 
 
+def decode_crota_full_tangent_storage(mesh_index: int, d1: bytes, s1: int, primary_uv_exists: bool):
+    """Decode Crota's exact secondary-stream tangent SNORM16x4 storage.
+
+    The generic D1 decoder intentionally exposes tangent xyz only. Exact Crota
+    retail stride pairs leave a fourth adjacent int16 lane which this forensic
+    exporter now preserves losslessly as custom _D1_TANGENT VEC4. Its portable
+    handedness semantic remains separately gated.
+    """
+    if mesh_index in (0, 1):
+        if s1 != 0x14 or primary_uv_exists:
+            raise ValueError(f'Crota mesh {mesh_index}: expected secondary 0x14 and no primary UV for tangent storage')
+        off = 0x0C
+    elif mesh_index == 2:
+        if s1 != 0x10 or not primary_uv_exists:
+            raise ValueError('Crota mesh 2: expected secondary 0x10 and primary UV for tangent storage')
+        off = 0x08
+    else:
+        raise ValueError(f'Crota mesh {mesh_index}: unsupported full-tangent layout')
+    if len(d1) % s1:
+        raise ValueError(f'Crota mesh {mesh_index}: secondary bytes not divisible by stride')
+    n=len(d1)//s1
+    lanes=np.empty((n,4),dtype=np.int16)
+    for i in range(n):
+        lanes[i]=np.frombuffer(d1,dtype='<i2',count=4,offset=i*s1+off)
+    return lanes, snorm16(lanes), off
+
+
 def decode_crota_mesh_pair(mesh_index: int, mesh: dict, d0: bytes, s0: int,
                            d1: bytes | None, s1: int | None):
     """Decode one exact 8108E5B7 D1 ROI dynamic stream pair like Charm."""
@@ -155,6 +184,16 @@ def decode_crota_mesh_pair(mesh_index: int, mesh: dict, d0: bytes, s0: int,
     if uv is None:
         raise ValueError(f'Crota mesh {mesh_index}: pinned D1 stride-pair decode produced no UV0')
 
+    raw_tangent4, tangent4, tangent_storage_offset = decode_crota_full_tangent_storage(
+        mesh_index, d1, s1, uv0 is not None
+    )
+    if tangent is None or tangent.shape != (n0,3):
+        raise ValueError(f'Crota mesh {mesh_index}: existing tangent xyz unavailable/shape drift')
+    if not np.array_equal(tangent, tangent4[:,:3]):
+        err=float(np.max(np.abs(tangent-tangent4[:,:3])))
+        raise ValueError(f'Crota mesh {mesh_index}: full tangent xyz differs from existing decoder ({err})')
+    tangent=tangent4
+
     row_mode = None
     if s0 == 0x0C:
         raw16 = np.frombuffer(d0, dtype='<i2').reshape((-1, 6))
@@ -182,6 +221,10 @@ def decode_crota_mesh_pair(mesh_index: int, mesh: dict, d0: bytes, s0: int,
         'primary_uv': uv0 is not None,
         'secondary_uv': uv1 is not None,
         'row_mode': row_mode,
+        'tangent_storage_byte_offset': tangent_storage_offset,
+        'tangent_storage_type': 'SNORM16x4',
+        'raw_tangent_w_domain': sorted({int(x) for x in raw_tangent4[:,3].tolist()}),
+        'tangent_w_semantic': 'WITHHELD_PENDING_FETCH_LAYOUT_AND_PORTABLE_HANDEDNESS_PROOF',
     }
     return pos, uv, normal, tangent, color, layout
 
