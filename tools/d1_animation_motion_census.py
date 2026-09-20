@@ -58,6 +58,7 @@ def main():
                 'target_rig_control_count':int(clip['target_rig_control_count']),
                 'source_dimensions_exact':bool(clip.get('source_dimensions_exact')),
                 'source_animation_hash':clip.get('source_animation_hash'),
+                'source_clip_payload_sha256':clip.get('source_clip_payload_sha256'),
                 'source_static_codec':sc,
                 'source_animated_codec':ac,
                 'source_control_map_counts':maps,
