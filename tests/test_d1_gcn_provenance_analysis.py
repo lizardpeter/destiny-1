@@ -7,7 +7,10 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 
 import d1_gcn_cbuffer_usage_analyze as cb
-import d1_gcn_terminal_alpha_slice as al\nimport d1_gcn_terminal_rgb_slice as rgb
+import d1_gcn_terminal_alpha_slice as al
+import d1_gcn_terminal_rgb_slice as rgb
+import d1_gcn_image_coordinate_slice as coord
+import d1_crota_vs_param_vertex_input_lineage as vsin
 
 
 class TestGCNProvenance(unittest.TestCase):
@@ -132,6 +135,31 @@ class TestGCNProvenance(unittest.TestCase):
                 [{'texture_index':0,'channel':'x','sample_address':'000000000008'}]
             )
             self.assertEqual((second['texture_index'],second['sampler_index']),(2,3))
+        finally:
+            if p.exists():p.unlink()
+
+    def test_vs_param_slice_preserves_initial_gnm_vertex_input_vgprs(self):
+        text='\n'.join([
+            '/*000000000000: 00000000 */ v_mul_f32       v8, v2, 2.0',
+            '/*000000000004: 00000000 */ v_add_f32       v9, v3, 1.0',
+            '/*000000000008: 00000000 */ exp             param1, v8, v9, v9, v9',
+        ])
+        p=ROOT/'tests'/'_tmp_vs_param_input_test.s'
+        header={
+            'vertex_input_semantics':[
+                {'index':0,'semantic':17,'vgpr':2,'size_in_elements':2,'raw_hex':'11020200'},
+            ],
+        }
+        try:
+            p.write_text(text+'\n')
+            d=vsin.analyze('DEADBEEF',p,header,1)
+            self.assertEqual(d['x']['vertex_input_semantic_ids'],[17])
+            self.assertEqual(d['y']['vertex_input_semantic_ids'],[17])
+            self.assertEqual(
+                [(x['register'],x['element_index']) for x in d['xy']['vertex_input_leaves']],
+                [('v2',0),('v3',1)]
+            )
+            self.assertEqual(d['xy']['unknown_vgpr_leaves'],[])
         finally:
             if p.exists():p.unlink()
 
