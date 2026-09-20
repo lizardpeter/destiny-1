@@ -28,6 +28,7 @@ on:
       - 'tools/d1_animation_state_scalar_timing_proof.py'
       - 'tools/d1_animation_selector_alias_census.py'
       - 'tools/d1_animation_event_timing_correlation.py'
+      - 'tools/d1_animation_event_prefix_timing_candidates.py'
       - 'tools/d1_animation_control_state_map_v2.py'
       - 'tools/d1_tiger_animation_safe_offsets.py'
 
@@ -587,6 +588,27 @@ jobs:
           for r in d['multi_selection_records']:
               print('MULTI_SELECTION_TIMING',r['record_index'],r['state_hash'],r['scalar_f32'],
                     [(x['clip'],x['frame_count'],x['matches_ratio_30']) for x in r['selected']])
+          PY
+
+      - name: Correlate frame-event prefix lanes with exact 30Hz timing
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_event_prefix_timing_candidates.py \
+            --events out/CROTA_ANIMATION_FRAME_EVENT_POINTER_CENSUS.json \
+            --timing out/CROTA_ANIMATION_STATE_SCALAR_TIMING_PROOF.json \
+            --out out/CROTA_ANIMATION_EVENT_PREFIX_TIMING_CANDIDATES.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_EVENT_PREFIX_TIMING_CANDIDATES.json'))
+          assert d['status']=='D1_ANIMATION_EVENT_PREFIX_TIMING_CANDIDATES_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['ratio_frame_intervals_per_scalar_unit']==30.0,d
+          assert d['semantic_boundary']['frame_or_time_field_identity']=='WITHHELD',d
+          assert d['semantic_boundary']['record_size']=='WITHHELD',d
+          print('CROTA_EVENT_U32_TIMING_CANDIDATES',d['u32_frame_bounded_monotonic_candidate_offsets'])
+          print('CROTA_EVENT_F32_TIMING_CANDIDATES',d['f32_30hz_grid_bounded_monotonic_candidate_offsets'])
+          for k in sorted(set(d['u32_frame_bounded_monotonic_candidate_offsets']+d['f32_30hz_grid_bounded_monotonic_candidate_offsets'])):
+              print('CROTA_EVENT_TIMING_LANE',k,d['lanes'][k])
           PY
 
       - name: Census exact selector aliases and clip reuse
