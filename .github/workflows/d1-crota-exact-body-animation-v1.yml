@@ -262,6 +262,8 @@ jobs:
           print('CROTA_UNNAMED_HEADER_VECTOR_LENGTH_HIST',d['unnamed_length_histogram'])
           print('CROTA_UNNAMED_HEADER_VECTOR_EVENT_COUNT_PAIRS',d['unnamed_length_frame_event_count_pair_histogram'])
           print('CROTA_UNNAMED_HEADER_VECTOR_EQUAL_EVENT_COUNT',d['unnamed_length_equals_frame_event_count_clip_count'])
+          print('CROTA_UNNAMED_HEADER_VECTOR_RELATION_MATCHES',d['unnamed_length_relation_match_counts'])
+          print('CROTA_UNNAMED_HEADER_VECTOR_KNOWN_TARGET_ALIASES',d['unnamed_target_known_field_alias_histogram'])
           print('CROTA_UNNAMED_HEADER_VECTOR_TARGET_REGIONS',d['target_region_histogram'])
           print('CROTA_UNNAMED_HEADER_VECTOR_DISTANCE_CANDIDATES',d['integral_distance_per_element_candidate_histogram'])
           for x in d['rows']:
@@ -269,6 +271,8 @@ jobs:
                   print('CROTA_UNNAMED_HEADER_VECTOR_CLIP',x['clip'],
                         'FRAMES',x['frame_count'],
                         'UNNAMED_LEN',x['unnamed_length'],
+                        'COUNT_MATCHES',x['unnamed_length_relation_matches'],
+                        'KNOWN_TARGET_ALIASES',x['unnamed_target_aliases_to_known_fields'],
                         'EVENT_PTRS',x['frame_event_pointer_count'],
                         'UNNAMED_TARGET',x['unnamed_target_offset'],
                         'EVENT_ARRAY',x['frame_pointer_array_target_offset'],
