@@ -342,6 +342,20 @@ def build_native_material(mat):
 
     if tag in MAT_PROC:
         t = add_tex(nodes, tex_control, 'D1_SCALAR_EQUIVALENT_8108E7B6_CONTROL', -1180,260)
+        # Native PS8108E955 samples t0 on PS attr1.xy. Exact registered Crota VS
+        # programs prove attr1=param1=transformed tangent T, so using Blender's
+        # default UV here is incorrect. Until native DQ-transformed tangent is
+        # available per fragment in this portable material, expose the coordinate
+        # as an explicit preview proxy rather than silently substituting UV.
+        tangent_coord=nodes.new('ShaderNodeCombineXYZ')
+        tangent_coord.name='D1_PROXY_955_TRANSFORMED_TANGENT_XY'
+        tangent_coord.label='D1_PROXY_955_TRANSFORMED_TANGENT_XY (LIVE PER-VERTEX VALUE WITHHELD)'
+        tangent_coord.location=(-1400,300)
+        tangent_coord.inputs['X'].default_value=0.0
+        tangent_coord.inputs['Y'].default_value=0.0
+        tangent_coord.inputs['Z'].default_value=0.0
+        links.new(tangent_coord.outputs['Vector'],t.inputs['Vector'])
+        if hasattr(t,'extension'): t.extension='REPEAT'
         tex_repeat=find_exact_image('80AACF2A')
         s=add_tex(nodes,tex_repeat,'D1_PORTABLE_955_REPEATED_BC1_SAMPLE_AT_ZERO',-1180,80)
         s.interpolation='Linear'
@@ -362,10 +376,12 @@ def build_native_material(mat):
         mat['d1_r10_color_exact_material_scalar']=55.0
         mat['d1_r10_color_repeated_sample_relation']='t1=t2=t4=S from texture 80AACF2A, same sampler, first two encoded coordinate lanes (0,0)'
         mat['d1_r10_color_t3_coordinate_effect']='DEAD_FOR_T4_COORDINATE_AFTER_EXACT_ZERO_MULTIPLIERS'
-        mat['d1_r10_color_remaining_runtime']='D1_PROXY_955_ANGULAR_U := clamp(-1.25*d*d+1.25), d depends on API12[28:30]+attr0/attr2; D1_PROXY_API13_RGB_SCALE := API13[6]*API13[7]; live values WITHHELD'
-        mat['d1_r10_color_preview_proxy']='ONLY D1_PROXY_955_ANGULAR_U=1 and D1_PROXY_API13_RGB_SCALE=1 plus Blender portable bilinear-repeat evaluation of exact S at (0,0); ramp and 1.65 gain removed'
+        mat['d1_r10_color_remaining_runtime']='D1_PROXY_955_TRANSFORMED_TANGENT_XY := native DQ-transformed tangent XY for t0 BC4 coordinate; D1_PROXY_955_ANGULAR_U := clamp(-1.25*d*d+1.25), d depends on API12[28:30]+N/B; D1_PROXY_API13_RGB_SCALE := API13[6]*API13[7]; live values WITHHELD'
+        mat['d1_r10_color_coordinate_semantic']='PS8108E955 t0 first two coordinate lanes = TRANSFORMED_TANGENT_XY (exact post-fetch VS interface proof)'
+        mat['d1_r10_color_preview_proxy']='D1_PROXY_955_TRANSFORMED_TANGENT_XY defaults to (0,0), D1_PROXY_955_ANGULAR_U=1, D1_PROXY_API13_RGB_SCALE=1; no false UV substitution; ramp and 1.65 gain removed'
         mat['d1_r10_color_equation_replay']='per-channel native specialized PS8108E955 equation; exact material constants; repeated S sample; m56=55; API13 product explicit'
         mat['d1_r10_portable_filter_boundary']='S coordinate/sampler state is exact; Blender Linear+REPEAT filtered numeric result is not claimed PS4 bit-identical'
+        mat['d1_r10_t0_coordinate_portable_replay']='WITHHELD_NATIVE_DQ_TRANSFORMED_TANGENT_NOT_AVAILABLE_TO_CURRENT_BLENDER_MATERIAL'
     elif tag in MAT_ATLAS:
         t=add_tex(nodes,tex_atlas,'D1_EXACT_8108E951_COLOR_ATLAS',-920,230)
         angular=add_unresolved_runtime_value(nodes,PREVIEW_UNRESOLVED_ANGULAR_DEFAULT,'D1_PROXY_956_ANGULAR_V',-920,-40)
