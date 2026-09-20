@@ -8,6 +8,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-common-layer-texture-census.yml'
+      - '.github/workflows/d1-tower-common-layer-model-export.yml'
       - 'tools/d1_world_material_texture_export.py'
       - 'tools/d1_world_texture_role_inventory.py'
       - 'tools/d1_shader_texture_roles.py'
