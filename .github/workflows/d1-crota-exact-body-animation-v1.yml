@@ -11,6 +11,7 @@ on:
       - 'tools/d1_remote_spawned_actor_animation_options_v3.py'
       - 'tools/d1_remote_spawned_actor_animation_options_v2.py'
       - 'tools/d1_animation_motion_census.py'
+      - 'tools/d1_animation_motion_signature_census.py'
       - 'tools/d1_animation_motion_bone_map.py'
       - 'tools/d1_crota_skeleton_usage_union.py'
       - 'tools/d1_crota_skeleton_usage_matrix.py'
@@ -395,6 +396,9 @@ jobs:
               m=r['local_motion_summary']
               assert m['track_count']==50,m
               assert m['semantic_boundary']=='LOCAL_SPACE_VARIATION_ONLY_BONE0_NOT_NAMED_ROOT_MOTION',m
+              assert m['decoded_local_curve_hash_basis']=='D1_DECODED_LOCAL_CURVE_V1_CANONICAL_LE_FLOAT64_ARRAY_BYTES',m
+              h=m['decoded_local_curve_sha256']
+              assert len(h)==64 and h==h.lower() and all(x in '0123456789abcdef' for x in h),m
           print('CROTA_MOTION_CLIPS',d['successful_clip_instance_count'])
           print('FRAME_HISTOGRAM',d['frame_count_histogram'])
           print('DYNAMIC_ANY_TRACK_HISTOGRAM',d['dynamic_any_track_count_histogram'])
@@ -415,6 +419,35 @@ jobs:
                   assert int(ac['scale_stream_count']) >= 0 and int(ac['rotation_stream_count']) >= 0 and int(ac['translation_stream_count']) >= 0,ac
           print('BONE0_END_DISPLACEMENT_RANGE',d['bone0_translation_end_displacement_range'])
           print('BONE0_PEAK_DISPLACEMENT_RANGE',d['bone0_translation_peak_displacement_range'])
+          PY
+
+      - name: Census Crota structural and decoded-curve motion equivalence
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_motion_signature_census.py \
+            --motion-census out/CROTA_ANIMATION_MOTION_CENSUS.json \
+            --out out/CROTA_ANIMATION_MOTION_SIGNATURE_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/CROTA_ANIMATION_MOTION_SIGNATURE_CENSUS.json'))
+          assert d['status']=='D1_ANIMATION_MOTION_SIGNATURE_CENSUS_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['clip_instance_count']>0 and d['unique_clip_count']>0,d
+          assert d['decoded_curve_group_count']>0,d
+          for r in d['rows']:
+              h=r['decoded_local_curve_sha256']
+              assert len(h)==64 and h==h.lower() and all(x in '0123456789abcdef' for x in h),r
+          assert d['semantic_boundary']['equal_decoded_curve_hash']=='BYTE_EQUAL_CANONICAL_DECODED_LOCAL_ARRAYS_UNDER_PINNED_PIPELINE',d
+          assert d['semantic_boundary']['source_compressed_clip_byte_equality']=='NOT_PROVEN',d
+          assert d['semantic_boundary']['behavioral_clip_label']=='WITHHELD',d
+          print('CROTA_MOTION_STRUCTURAL_GROUPS',d['exact_signature_group_count'])
+          print('CROTA_MOTION_OCCUPANCY_GROUPS',d['occupancy_signature_group_count'])
+          print('CROTA_MOTION_DECODED_CURVE_GROUPS',d['decoded_curve_group_count'])
+          print('CROTA_MULTI_CLIP_STRUCTURAL_GROUPS',
+                [(x['clips'],x['signature']['frame_count']) for x in d['multi_clip_exact_signature_groups']])
+          print('CROTA_MULTI_CLIP_DECODED_CURVE_GROUPS',
+                [(x['clips'],x['frame_counts'],x['decoded_local_curve_sha256'])
+                 for x in d['multi_clip_decoded_curve_groups']])
           PY
 
       - name: Profile exact runtime-component families by retargeted motion
