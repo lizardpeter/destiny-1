@@ -116,6 +116,8 @@ def analyze(shader,path,image_row,cbuffer_row):
             cmpmap={
                 'v_cmp_gt_f32':'gt','v_cmp_ge_f32':'ge','v_cmp_lt_f32':'lt',
                 'v_cmp_le_f32':'le','v_cmp_eq_f32':'eq','v_cmp_neq_f32':'ne',
+                # GCN "LG" is the less-or-greater relation: integer not-equal.
+                'v_cmp_lg_i32':'ne_i32','v_cmp_gt_i32':'gt_i32',
             }
             op=cmpmap.get(mn)
             if op is None:
@@ -145,7 +147,8 @@ def analyze(shader,path,image_row,cbuffer_row):
             e=source(ops[1],V,S)
             if mn=='v_cvt_i32_f32':e=f'i32({e})'
         elif mn in ('v_mul_f32','v_mul_legacy_f32'):
-            e=op2('mul',source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
+            opname='mul_legacy' if mn=='v_mul_legacy_f32' else 'mul'
+            e=op2(opname,source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
         elif mn=='v_add_f32':
             e=op2('add',source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
         elif mn=='v_sub_f32':
@@ -157,12 +160,21 @@ def analyze(shader,path,image_row,cbuffer_row):
         elif mn=='v_min_f32':
             e=op2('min',source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
         elif mn in ('v_mac_f32','v_mac_legacy_f32'):
-            old=V.get(dests[0],f'UNKNOWN({dests[0]}_OLD)')
-            e=f'mac({old},{source(ops[1],V,S)},{source(ops[2],V,S)})'
+            old=V.get(dests[0],f'INPUT_VGPR({dests[0]})')
+            opname='mac_legacy' if mn=='v_mac_legacy_f32' else 'mac'
+            e=f'{opname}({old},{source(ops[1],V,S)},{source(ops[2],V,S)})'
             if clamp:e=f'clamp({e})'
-        elif mn in ('v_mad_f32','v_madak_f32'):
-            e=f'mad({source(ops[1],V,S)},{source(ops[2],V,S)},{source(ops[3],V,S)})'
+        elif mn in ('v_mad_f32','v_madak_f32','v_mad_legacy_f32'):
+            opname='mad_legacy' if mn=='v_mad_legacy_f32' else 'mad'
+            e=f'{opname}({source(ops[1],V,S)},{source(ops[2],V,S)},{source(ops[3],V,S)})'
             if clamp:e=f'clamp({e})'
+        elif mn=='v_madmk_f32':
+            # GCN V_MADMK_F32: D = S0*K + S1, where K is the literal operand.
+            e=f'madmk({source(ops[1],V,S)},{source(ops[2],V,S)},{source(ops[3],V,S)})'
+        elif mn=='v_fract_f32':
+            e=f'fract({source(ops[1],V,S)})'
+        elif mn=='v_rndne_f32':
+            e=f'rndne({source(ops[1],V,S)})'
         elif mn=='v_rcp_f32':
             e=f'rcp({source(ops[1],V,S)})'
         elif mn=='v_rsq_clamp_f32':
@@ -240,6 +252,7 @@ def main():
             'texture_leaves':'EXACT_IMAGE_RESOURCE_PROVENANCE',
             'cbuffer_leaves':'EXACT_IMMCONSTBUFFER_PROVENANCE',
             'interpolant_leaves':'EXACT_ATTR_REGISTER_IDENTITY',
+            'initial_vgpr_leaves':'EXACT_HARDWARE_INPUT_REGISTER_IDENTITY_SEMANTIC_WITHHELD',
             'human_semantics':'WITHHELD',
             'off_path_unsupported_operations':'AUDITED_BUT_DO_NOT_INVALIDATE_TERMINAL_EXPRESSION',
             'floating_point_reassociation':'NOT_PERFORMED',
