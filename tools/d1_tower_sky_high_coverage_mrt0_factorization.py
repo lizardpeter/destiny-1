@@ -65,7 +65,7 @@ CFG={
 },
 '80B9F776':{
  'freq':2,'native':'80B9F777','native_sha':'e411edf5bf6f696b1484d6840a2d4883906647411a15251029d27632adfe8144',
- 'gcn_sha':'cb79a91e0a8924eaa7fe8b35ded81c6c7d64d1f1b54a4e9afbe2f4718d32fe','gcn_bytes':100,
+ 'gcn_sha':'cb79a91e0a8924eaa7fe8b35ded81c6c7d7d64d1f1b54a4e9afbe2f4718d32fe','gcn_bytes':100,
  'mode':'ALPHA_SINGLE_T1X','terminal':'000000000058','bindings':[0,1],
  'anchors':['image_sample    v0, v[0:3], s[4:11], s[12:15]','v_mul_f32       v0, s0, v0'],
 },
