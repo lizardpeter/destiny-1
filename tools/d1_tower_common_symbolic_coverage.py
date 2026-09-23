@@ -19,12 +19,14 @@ def main():
     ap.add_argument('--manifest',type=Path,required=True)
     ap.add_argument('--shader-report',type=Path,required=True)
     ap.add_argument('--symbolic',type=Path,required=True)
+    ap.add_argument('--controlflow-audit',type=Path,required=True)
     ap.add_argument('--out',type=Path,required=True)
     a=ap.parse_args()
 
     m=json.loads(a.manifest.read_text())
     sr=json.loads(a.shader_report.read_text())
     sy=json.loads(a.symbolic.read_text())
+    cf=json.loads(a.controlflow_audit.read_text())
     violations=[]
 
     if m.get('status')!='D1_WORLD_VISIBLE_MATERIAL_TEXTURE_EXPORT' or m.get('material_decode_errors') or m.get('texture_errors'):
@@ -33,10 +35,13 @@ def main():
         violations.append('common shader report not exact')
     if sy.get('schema')!='d1_gcn_terminal_symbolic_reducer/v1':
         violations.append(f"unexpected symbolic schema {sy.get('schema')!r}")
+    if cf.get('status')!='D1_GCN_STRAIGHTLINE_CONTROLFLOW_AUDIT_EXACT' or cf.get('violations'):
+        violations.append('control-flow audit not exact')
 
     freq={norm(k):int(v) for k,v in (m.get('pixel_shader_frequency') or {}).items()}
     sby={norm(x['shader']):x for x in sr.get('shaders',[]) if not x.get('error')}
     yby={norm(x['shader']):x for x in sy.get('shaders',[])}
+    cfby={norm(x['shader']):x for x in (cf.get('safe_rows') or [])+(cf.get('cfg_required_rows') or [])}
 
     if len(freq)!=65:
         violations.append(f'common manifest family count {len(freq)} != 65')
@@ -49,8 +54,8 @@ def main():
 
     exact=[];unresolved=[]
     for sh in sorted(freq,key=lambda x:(-freq[x],x)):
-        s=sby.get(sh);y=yby.get(sh)
-        if not s or not y:
+        s=sby.get(sh);y=yby.get(sh);q=cfby.get(sh)
+        if not s or not y or not q:
             continue
         row={
             'shader':sh,
@@ -68,10 +73,18 @@ def main():
             'unsupported_operations':y.get('unsupported_operations') or [],
             'off_path_unsupported_operation_count':y.get('off_path_unsupported_operation_count'),
             'exact_terminal_expression':bool(y.get('exact_terminal_expression')),
+            'straightline_symbolic_safe':bool(q.get('straightline_symbolic_safe')),
+            'path_selecting_operations':q.get('path_selecting_operations') or [],
         }
-        if row['exact_terminal_expression'] and not any((row['terminal_unresolved_markers'] or {}).values()):
+        symbolic_clean=row['exact_terminal_expression'] and not any((row['terminal_unresolved_markers'] or {}).values())
+        if symbolic_clean and row['straightline_symbolic_safe']:
+            row['coverage_basis']='STRAIGHTLINE_SYMBOLIC_EXACT_AND_CFG_AUDIT_SAFE'
             exact.append(row)
         else:
+            reasons=[]
+            if not symbolic_clean: reasons.append('SYMBOLIC_TERMINAL_UNRESOLVED')
+            if not row['straightline_symbolic_safe']: reasons.append('CFG_AWARE_PROOF_REQUIRED')
+            row['coverage_blockers']=reasons
             unresolved.append(row)
 
     ew=sum(x['visible_material_count'] for x in exact)
@@ -95,14 +108,15 @@ def main():
         ),
         'violations':violations,
         'semantic_boundary':{
-            'terminal_equation_exactness':'INHERITED_FROM_OPERATION_PRESERVING_NATIVE_GCN_REDUCER',
+            'terminal_equation_exactness':'REQUIRES_OPERATION_PRESERVING_NATIVE_GCN_REDUCER_AND_CFG_AUDIT_SAFE',
+            'control_flow_filter':'EXACT_NATIVE_BRANCH_EXEC_STRUCTURE',
             'shader_identity':'EXACT_RETAIL_GCN_IDENTITY',
             'coverage_weight':'EXACT_VISIBLE_MATERIAL_FREQUENCY',
             'human_material_roles':'WITHHELD',
             'runtime_global_producers':'WITHHELD',
             'portable_renderer_equivalence':'NOT_IMPLIED',
         },
-        'policy':'An exact row means every terminal MRT0 channel is expressible using the audited native GCN subset with exact texture/cbuffer/interpolant provenance. It does not name the pass or imply Blender/runtime equivalence.',
+        'policy':'An exact row requires both marker-free native symbolic reduction and a control-flow audit proving no path-selecting EXEC/branch construct requires a CFG merge. CFG-required shaders remain unresolved until dedicated lane/path-aware proof exists. No pass meaning or Blender/runtime equivalence is implied.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(out,indent=2)+'\n')
@@ -119,6 +133,8 @@ def main():
             'bad_channels':x['terminal_bad_channels'],
             'unresolved':x['terminal_unresolved_markers'],
             'unsupported':x['unsupported_operations'][:8],
+            'coverage_blockers':x.get('coverage_blockers'),
+            'path_selecting_ops':[(q.get('address'),q.get('mnemonic'),q.get('reason')) for q in x.get('path_selecting_operations',[])[:12]],
         } for x in out['highest_priority_unresolved_rows'][:30]],
         'violations':violations,
     },indent=2))
