@@ -280,6 +280,54 @@ def scalar_rgb(mat, texture_node, channel="Red", invert=False, name="D1_SCALAR",
         mat.node_tree.links.new(source, comb.inputs[socket])
     return comb
 
+def math_binary(mat, op, a, b=None, value_b=None, name="D1_MATH", x=0, y=0):
+    n=mat.node_tree.nodes.new("ShaderNodeMath")
+    n.operation=op; n.name=name; n.label=name; n.location=(x,y)
+    mat.node_tree.links.new(a,n.inputs[0])
+    if b is not None: mat.node_tree.links.new(b,n.inputs[1])
+    elif value_b is not None: n.inputs[1].default_value=float(value_b)
+    return n
+
+def enable_cutout(mat, bsdf, alpha_socket, name, threshold=1e-6):
+    # All current source-closed cutout families below use a native kill/discard
+    # decision. Convert their proved surviving coverage into a binary Blender alpha.
+    cut=math_binary(mat,"GREATER_THAN",alpha_socket,value_b=threshold,name=name+"_CUTOUT",x=300,y=-300)
+    mat.node_tree.links.new(cut.outputs[0],bsdf.inputs["Alpha"])
+    if hasattr(mat,"surface_render_method"):
+        try: mat.surface_render_method="DITHERED"
+        except Exception: pass
+    if hasattr(mat,"blend_method"):
+        for mode in ("HASHED","CLIP","BLEND"):
+            try:
+                mat.blend_method=mode
+                break
+            except Exception: pass
+    if hasattr(mat,"alpha_threshold"):
+        try: mat.alpha_threshold=0.5
+        except Exception: pass
+    mat["d1_native_alpha_test_applied"]=True
+    mat["d1_native_alpha_test_threshold_proxy"]=float(threshold)
+    return cut
+
+def palette_control_coverage(mat, n0, n1, n5, name):
+    # q0=.2375+r*(r-.2375); q1=q0+g*(g-q0); q2=q1+b*(b-q1);
+    # coverage=t1.a*q2. This is exact current-state arithmetic for
+    # 808762E1/80876577; the eventual binary kill is coverage > current threshold 0.
+    r=channel_socket(mat,n0,"Red",name+"_R",-900,520)
+    g=channel_socket(mat,n0,"Green",name+"_G",-900,450)
+    b=channel_socket(mat,n5,"Blue",name+"_B",-900,-650)
+    rp=math_binary(mat,"SUBTRACT",r,value_b=0.23750001192092896,name=name+"_R_MINUS_P",-650,520)
+    rr=math_binary(mat,"MULTIPLY",r,rp.outputs[0],name=name+"_R_TERM",-470,520)
+    q0=mat.node_tree.nodes.new("ShaderNodeMath"); q0.operation="ADD"; q0.name=name+"_Q0"; q0.location=(-290,520); q0.inputs[0].default_value=0.23750001192092896; mat.node_tree.links.new(rr.outputs[0],q0.inputs[1])
+    gq=math_binary(mat,"SUBTRACT",g,q0.outputs[0],name=name+"_G_MINUS_Q0",-110,460)
+    gt=math_binary(mat,"MULTIPLY",g,gq.outputs[0],name=name+"_G_TERM",(70),460)
+    q1=mat.node_tree.nodes.new("ShaderNodeMath"); q1.operation="ADD"; q1.name=name+"_Q1"; q1.location=(250,460); mat.node_tree.links.new(q0.outputs[0],q1.inputs[0]); mat.node_tree.links.new(gt.outputs[0],q1.inputs[1])
+    bq=math_binary(mat,"SUBTRACT",b,q1.outputs[0],name=name+"_B_MINUS_Q1",-110,360)
+    bt=math_binary(mat,"MULTIPLY",b,bq.outputs[0],name=name+"_B_TERM",70,360)
+    q2=mat.node_tree.nodes.new("ShaderNodeMath"); q2.operation="ADD"; q2.name=name+"_Q2"; q2.location=(250,360); mat.node_tree.links.new(q1.outputs[0],q2.inputs[0]); mat.node_tree.links.new(bt.outputs[0],q2.inputs[1])
+    cov=mat.node_tree.nodes.new("ShaderNodeMath"); cov.operation="MULTIPLY"; cov.name=name+"_COVERAGE"; cov.location=(430,320); mat.node_tree.links.new(n1.outputs["Alpha"],cov.inputs[0]); mat.node_tree.links.new(q2.outputs[0],cov.inputs[1])
+    return cov.outputs[0]
+
 def neutralize_imported_animation(arms):
     active=[]
     muted_tracks=0
@@ -314,6 +362,13 @@ def build_material(meta:dict, mat):
             links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
             visible_tag=f"native_palette({t0},{t1},{t2},{t3},{t4},{t5})"
             status="SOURCE_CLOSED_CURRENT_RGB_EXACT" if ps=="808762E1" else "SOURCE_CLOSED_PALETTE_SURFACE_PROXY"
+            # Reuse the exact control/surface nodes already present in the graph.
+            n0=mat.node_tree.nodes.get("D1_NATIVE_PALETTE_CONTROL_T0")
+            n1=mat.node_tree.nodes.get("D1_NATIVE_PALETTE_SURFACE_T1")
+            n5=mat.node_tree.nodes.get("D1_NATIVE_PALETTE_CONTROL_T5")
+            if n0 and n1 and n5:
+                cov=palette_control_coverage(mat,n0,n1,n5,"D1_NATIVE_PALETTE")
+                enable_cutout(mat,bsdf,cov,"D1_NATIVE_PALETTE",0.0)
         if t6:
             nn=normal_node(mat,t6)
             if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
@@ -339,6 +394,9 @@ def build_material(meta:dict, mat):
             links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
             visible_tag=f"{t0}*4P"
             status="SOURCE_CLOSED_SURVIVING_RGB_EXACT"
+            if t1:
+                mask=tex_node(mat,t1,"D1_NATIVE_80876537_COVERAGE_T1",-700,-80,noncolor=True)
+                if mask: enable_cutout(mat,bsdf,mask.outputs["Alpha"],"D1_NATIVE_80876537",0.0)
         if t2:
             nn=normal_node(mat,t2)
             if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
@@ -368,6 +426,11 @@ def build_material(meta:dict, mat):
             links.new(n0.outputs["Color"],bsdf.inputs["Base Color"])
             visible_tag=t0
             status="SOURCE_CLOSED_SURFACE_INPUT_PROXY"
+            # Exact current proofs for these families kill lanes from t0 alpha with
+            # current threshold 0. Carry the cutout into Blender; reflection remains
+            # separately proxied.
+            if ps in {"8087645C","8087656A"}:
+                enable_cutout(mat,bsdf,n0.outputs["Alpha"],"D1_NATIVE_"+ps,0.0)
         normal_tag=t1
         if normal_tag:
             nn=normal_node(mat,normal_tag)
@@ -381,6 +444,8 @@ def build_material(meta:dict, mat):
             links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
             visible_tag=f"{t0}*{t1}"
             status="SOURCE_CLOSED_SURFACE_PRODUCT_PROXY"
+            if ps=="8087656A":
+                enable_cutout(mat,bsdf,a.outputs["Alpha"],"D1_NATIVE_8087656A",0.0)
         # These families use dual/detail normals; use the first exact normal contributor
         # only when a derived portable normal exists and mark this as incomplete.
         normal_tag=t2
@@ -421,6 +486,10 @@ def build_material(meta:dict, mat):
             links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
             visible_tag=f"{t0}*(1-{t1}.r)"
             status="SOURCE_CLOSED_SUBTRACTIVE_MASK_PROXY"
+            # Native 809D836C uses t0.a in its pre-color rejection path. The exact
+            # view-dependent 0.23 threshold remains pending, but zero-alpha texels
+            # are unambiguously discarded and must not become opaque cards.
+            enable_cutout(mat,bsdf,n0.outputs["Alpha"],"D1_NATIVE_809D836C_ZERO_ALPHA",0.0)
 
     elif ps in CONSTANT_BLACK:
         bsdf.inputs["Base Color"].default_value=(0.0,0.0,0.0,1.0)
