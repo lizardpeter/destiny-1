@@ -56,18 +56,30 @@ jobs:
             --out-dir input/sky --clean \
             --report reports/ARTIFACT_PULL_SKY_SHADER.json
 
-          test -f input/common/common65_shader_extract.json
-          test -f input/common/common65_gcn_cbuffer_usage.json
-          test -f input/light/tower_light_shader_report.json
-          test -f input/light/tower_light_gcn_cbuffer_usage_v2.json
-          test -f input/sky/tower_sky_shader_report.json
-          test -f input/sky/tower_sky_gcn_cbuffer_usage.json
+          mkdir -p input/canonical
+          find_one() {
+            root="$1"; name="$2"; out="$3"
+            mapfile -t hits < <(find "$root" -type f -name "$name" -print | sort)
+            if [ "${#hits[@]}" -ne 1 ]; then
+              echo "expected exactly one $name under $root, got ${#hits[@]}" >&2
+              printf '%s\n' "${hits[@]}" >&2
+              exit 1
+            fi
+            cp "${hits[0]}" "$out"
+            printf 'CANONICAL_ARTIFACT_FILE %s <- %s\n' "$out" "${hits[0]}"
+          }
+          find_one input/common common65_shader_extract.json input/canonical/common_shader_extract.json
+          find_one input/common common65_gcn_cbuffer_usage.json input/canonical/common_cbuffer_usage.json
+          find_one input/light tower_light_shader_report.json input/canonical/light_shader_report.json
+          find_one input/light tower_light_gcn_cbuffer_usage_v2.json input/canonical/light_cbuffer_usage.json
+          find_one input/sky tower_sky_shader_report.json input/canonical/sky_shader_report.json
+          find_one input/sky tower_sky_gcn_cbuffer_usage.json input/canonical/sky_cbuffer_usage.json
 
           python - <<'PY'
           import json
-          common=json.load(open('input/common/common65_shader_extract.json'))
-          light=json.load(open('input/light/tower_light_shader_report.json'))
-          sky=json.load(open('input/sky/tower_sky_shader_report.json'))
+          common=json.load(open('input/canonical/common_shader_extract.json'))
+          light=json.load(open('input/canonical/light_shader_report.json'))
+          sky=json.load(open('input/canonical/sky_shader_report.json'))
           assert common['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and common['selected_count']==65 and common['error_count']==0,common
           assert light['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and light['selected_count']==32 and light['error_count']==0,light
           assert sky['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and sky['selected_count']==43 and sky['error_count']==0,sky
@@ -78,12 +90,12 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_shader_global_cbuffer_overlap.py \
-            --extract common=input/common/common65_shader_extract.json \
-            --cbuffer common=input/common/common65_gcn_cbuffer_usage.json \
-            --extract light=input/light/tower_light_shader_report.json \
-            --cbuffer light=input/light/tower_light_gcn_cbuffer_usage_v2.json \
-            --extract sky=input/sky/tower_sky_shader_report.json \
-            --cbuffer sky=input/sky/tower_sky_gcn_cbuffer_usage.json \
+            --extract common=input/canonical/common_shader_extract.json \
+            --cbuffer common=input/canonical/common_cbuffer_usage.json \
+            --extract light=input/canonical/light_shader_report.json \
+            --cbuffer light=input/canonical/light_cbuffer_usage.json \
+            --extract sky=input/canonical/sky_shader_report.json \
+            --cbuffer sky=input/canonical/sky_cbuffer_usage.json \
             --out reports/TOWER_RENDERER_GLOBAL_CBUFFER_OVERLAP.json \
             | tee reports/TOWER_RENDERER_GLOBAL_CBUFFER_OVERLAP_stdout.txt
 
