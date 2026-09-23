@@ -20,6 +20,8 @@ on:
       - 'tools/d1_tower_sky_high_coverage_mrt0_factorization.py'
       - 'tools/d1_tower_sky_alpha_mrt0_factorization.py'
       - 'tools/d1_tower_sky_rgb_sibling_mrt0_factorization.py'
+      - 'tools/d1_gcn_terminal_symbolic_reducer.py'
+      - 'tools/d1_tower_sky_complex_pair_symbolic_proof.py'
       - 'tools/d1_tower_sky_factorization_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
@@ -305,6 +307,40 @@ jobs:
               print('TOWER_SKY_RGB_BATCH_FACTORIZED',q['shader'],q['exact_terminal_equation'])
           PY
 
+      - name: Symbolically close highest-weight Tower sky pair
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_symbolic_reducer.py \
+            --usage reports/tower_sky_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
+            --disasm-dir disasm \
+            --shader 80B9F726 --shader 80B9F727 \
+            --out reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC.json \
+            | tee reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_stdout.txt
+          python tools/d1_tower_sky_complex_pair_symbolic_proof.py \
+            --material-manifest reports/tower_sky_material_texture_manifest.json \
+            --shader-report reports/tower_sky_shader_report.json \
+            --symbolic reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC.json \
+            --out reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_PROOF.json \
+            | tee reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_PROOF_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_PROOF.json'))
+          assert d['status']=='D1_TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_PROOF_EXACT',d
+          assert d['shader_family_count']==2 and d['visible_material_count']==6,d
+          assert d['shared_alpha_gate_relation_exact'] is True,d
+          by={x['shader']:x for x in d['rows']}
+          assert set(by)=={'80B9F726','80B9F727'},d
+          assert by['80B9F727']['exact_terminal_equation']['R']=='0',by['80B9F727']
+          assert by['80B9F727']['exact_terminal_equation']['G']=='0',by['80B9F727']
+          assert by['80B9F727']['exact_terminal_equation']['B']=='0',by['80B9F727']
+          print('TOWER_SKY_COMPLEX_PAIR_EXACT',
+                d['visible_material_count'],'MATERIALS',
+                'SHARED_ALPHA_GATE',d['shared_alpha_gate_factorization'])
+          print('TOWER_SKY_726_EXPR_SHA',by['80B9F726']['terminal_expression_sha256'])
+          print('TOWER_SKY_727_EXPR_SHA',by['80B9F727']['terminal_expression_sha256'])
+          PY
+
       - name: Account exact Tower sky equation coverage
         run: |
           set -euo pipefail
@@ -313,18 +349,19 @@ jobs:
             --proof reports/TOWER_SKY_HIGH_COVERAGE_MRT0_FACTORIZATION.json \
             --proof reports/TOWER_SKY_ALPHA_MRT0_FACTORIZATION.json \
             --proof reports/TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION.json \
+            --proof reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_PROOF.json \
             --out reports/TOWER_SKY_FACTORIZATION_COVERAGE.json \
             | tee reports/TOWER_SKY_FACTORIZATION_COVERAGE_stdout.txt
           python - <<'PY'
           import json
           d=json.load(open('reports/TOWER_SKY_FACTORIZATION_COVERAGE.json'))
           assert d['status']=='D1_TOWER_SKY_FACTORIZATION_COVERAGE_EXACT',d
-          assert d['covered_shader_family_count']==27,d
-          assert d['covered_visible_material_count']==54,d
-          assert d['missing_shader_family_count']==16,d
-          assert d['missing_visible_material_count']==20,d
-          assert abs(d['shader_family_coverage_fraction']-(27/43))<1e-12,d
-          assert abs(d['visible_material_coverage_fraction']-(54/74))<1e-12,d
+          assert d['covered_shader_family_count']==29,d
+          assert d['covered_visible_material_count']==60,d
+          assert d['missing_shader_family_count']==14,d
+          assert d['missing_visible_material_count']==14,d
+          assert abs(d['shader_family_coverage_fraction']-(29/43))<1e-12,d
+          assert abs(d['visible_material_coverage_fraction']-(60/74))<1e-12,d
           print('TOWER_SKY_EQUATION_COVERAGE',
                 d['covered_shader_family_count'],'OF',d['total_shader_family_count'],
                 'FAMILIES',d['covered_visible_material_count'],'OF',d['total_visible_material_count'],'MATERIALS')
