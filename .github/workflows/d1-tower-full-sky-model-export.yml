@@ -2,6 +2,9 @@ name: D1 Tower full sky model and texture export
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ['D1 Tower original lighting and sky census']
+    types: [completed]
   push:
     paths:
       - '.github/workflows/d1-tower-full-sky-model-export.yml'
@@ -11,6 +14,7 @@ on:
       - 'tools/d1_world_texture_role_inventory.py'
       - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
       - 'tools/d1_world_map_lighting_census.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
       - 'tools/d1_material_render_state.py'
       - 'tools/d1_material_render_state_census.py'
       - 'tests/test_d1_material_render_state.py'
@@ -26,6 +30,7 @@ env:
 
 jobs:
   export-sky:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
@@ -42,9 +47,17 @@ jobs:
           python -m pip install --disable-pip-version-check -q numpy pillow texture2ddecoder trimesh pygltflib
           mkdir -p input/lighting input/catalog runtime recovered texture_expanded texture_work textures roles reports models textured out
 
-          light_run="$(gh run list --workflow d1-tower-original-lighting-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ "${{ github.event_name }}" = workflow_run ]; then
+            light_run='${{ github.event.workflow_run.id }}'
+          else
+            light_run="$(gh run list --workflow d1-tower-original-lighting-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
           test -n "$light_run"
-          gh run download "$light_run" -n d1-tower-original-lighting-census -D input/lighting
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$light_run" \
+            --artifact-name d1-tower-original-lighting-census \
+            --out-dir input/lighting --clean \
+            --report reports/ARTIFACT_PULL_ORIGINAL_LIGHTING.json
           test -f input/lighting/tower_map_lighting_census.json
 
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
