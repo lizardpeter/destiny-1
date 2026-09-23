@@ -190,14 +190,21 @@ def analyze(shader,path,image_row,cbuffer_row):
         roots={ch:source(tok,V,S) for ch,tok in zip(CHANNELS,terminal['ops'])}
 
     unresolved={ch:[m for m in BAD_MARKERS if m in e] for ch,e in roots.items()}
-    exact=(not unsupported and all(not x for x in unresolved.values()))
+    # Unsupported instructions elsewhere in the shader do not invalidate an exact
+    # terminal equation when their results are overwritten/dead before MRT0.  Keep
+    # the full unsupported census for auditing, but fail exactness only when a bad
+    # marker survives into a terminal channel expression.
+    terminal_bad_channels=sorted(ch for ch,x in unresolved.items() if x)
+    exact=(not terminal_bad_channels)
     return {
         'shader':shader,'terminal_mrt0_export_address':terminal['address'],
         'terminal_mrt0_compressed':terminal['compressed'],
         'terminal_expressions':roots,
         'terminal_expression_sha256':{ch:expr_sha(e) for ch,e in roots.items()},
         'terminal_unresolved_markers':unresolved,
+        'terminal_bad_channels':terminal_bad_channels,
         'unsupported_operations':unsupported,
+        'off_path_unsupported_operation_count':len(unsupported) if exact else None,
         'exact_terminal_expression':exact,
     }
 
@@ -234,9 +241,10 @@ def main():
             'cbuffer_leaves':'EXACT_IMMCONSTBUFFER_PROVENANCE',
             'interpolant_leaves':'EXACT_ATTR_REGISTER_IDENTITY',
             'human_semantics':'WITHHELD',
+            'off_path_unsupported_operations':'AUDITED_BUT_DO_NOT_INVALIDATE_TERMINAL_EXPRESSION',
             'floating_point_reassociation':'NOT_PERFORMED',
         },
-        'policy':'Expression strings preserve native operation nesting. No algebraic reassociation is performed. Exact status requires every terminal channel to avoid unsupported/unknown/partial/opaque leaves.',
+        'policy':'Expression strings preserve native operation nesting. No algebraic reassociation is performed. Exact status requires every terminal channel to avoid unsupported/unknown/partial/opaque leaves. Unsupported operations proven off the terminal dependency path are retained for audit but do not invalidate terminal-equation exactness.',
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
     print(json.dumps({'status':out['status'],'rows':[{
