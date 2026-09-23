@@ -19,6 +19,10 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+HERE=Path(__file__).resolve().parent
+sys.path.insert(0,str(HERE))
+from d1_gltf_layer_merge import read_glb as read_glb_exact
+
 DIRECT_T0 = {
     "8087688C", "80AADCB3", "80AAE1C7", "80876EDF", "808764AA",
     "808768B7", "80A08C16",
@@ -86,48 +90,43 @@ def glb_json(path: Path) -> dict:
     if t != 0x4E4F534A: raise RuntimeError("GLB missing JSON chunk")
     return json.loads(raw[20:20+n].decode("utf-8").rstrip(" \t\r\n\0"))
 
-def hydrate_embedded_native_images(path: Path, doc: dict) -> int:
-    """Load exact embedded D1 PNGs that Blender's glTF importer leaves unreferenced.
-
-    The carrier intentionally preserves native shader resources even when they are not
-    wired to generic glTF PBR slots. Blender imports only the portable reachable image
-    subset, so source-closed shader recreation must explicitly hydrate the rest.
-    """
-    with path.open("rb") as f:
-        f.seek(12)
-        json_len,json_type=struct.unpack("<II",f.read(8))
-        if json_type!=0x4E4F534A: raise RuntimeError("GLB JSON chunk missing")
-        bin_header=20+json_len
-        f.seek(bin_header)
-        bin_len,bin_type=struct.unpack("<II",f.read(8))
-        if bin_type!=0x004E4942: raise RuntimeError("GLB BIN chunk missing")
-        bin_offset=bin_header+8
-
-        loaded=0
-        with tempfile.TemporaryDirectory(prefix="xur_native_images_") as td:
-            td=Path(td)
-            for ii,img in enumerate(doc.get("images") or []):
-                name=str(img.get("name") or "")
-                if not (name.startswith("D1_TEXTURE_") or name.startswith("D1_DERIVED_NORMAL_")):
-                    continue
-                if bpy.data.images.get(name) is not None or any(x.name.startswith(name+".") for x in bpy.data.images):
-                    continue
-                if img.get("mimeType")!="image/png" or "bufferView" not in img:
-                    continue
-                bv=(doc.get("bufferViews") or [])[int(img["bufferView"])]
-                off=bin_offset+int(bv.get("byteOffset",0))
-                size=int(bv["byteLength"])
-                if off+size>bin_offset+bin_len:
-                    raise RuntimeError(f"{name}: embedded image range outside BIN")
-                f.seek(off); payload=f.read(size)
-                if len(payload)!=size or not payload.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
-                    raise RuntimeError(f"{name}: embedded payload is not the expected PNG")
-                tmp=td/f"{ii:04d}.png"; tmp.write_bytes(payload)
-                im=bpy.data.images.load(str(tmp),check_existing=False)
-                im.name=name
-                im.pack()
-                loaded+=1
-    return loaded
+def hydrate_embedded_native_images(path: Path, doc: dict) -> tuple[int,int]:
+    """Hydrate exact binder-owned PNG resources omitted by Blender's glTF import."""
+    parsed,bin_data=read_glb_exact(path)
+    if len(parsed.get("images") or [])!=len(doc.get("images") or []):
+        raise RuntimeError("GLB image count changed between parsers")
+    loaded=0
+    skipped_unmarked=0
+    with tempfile.TemporaryDirectory(prefix="xur_native_images_") as td:
+        td=Path(td)
+        for ii,img in enumerate(doc.get("images") or []):
+            name=str(img.get("name") or "")
+            ex=img.get("extras") or {}
+            exact_native=ex.get("d1_native_texture_resource") is True
+            derived_normal=ex.get("d1_derived_portable_normal") is True
+            if not (exact_native or derived_normal):
+                skipped_unmarked+=1
+                continue
+            if bpy.data.images.get(name) is not None or any(x.name.startswith(name+".") for x in bpy.data.images):
+                continue
+            if img.get("mimeType")!="image/png" or "bufferView" not in img:
+                raise RuntimeError(f"{name}: binder-owned image is not embedded image/png")
+            bv=(doc.get("bufferViews") or [])[int(img["bufferView"])]
+            off=int(bv.get("byteOffset",0)); size=int(bv["byteLength"])
+            payload=bin_data[off:off+size]
+            if len(payload)!=size or not payload.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                raise RuntimeError(f"{name}: binder-owned payload is not PNG at BIN {off}+{size}; first16={payload[:16].hex()}")
+            expected=ex.get("d1_embedded_png_sha256") or ex.get("d1_png_sha256")
+            got=hashlib.sha256(payload).hexdigest()
+            if expected and got!=expected:
+                raise RuntimeError(f"{name}: embedded PNG SHA mismatch {got} != {expected}")
+            tmp=td/f"{ii:04d}.png"; tmp.write_bytes(payload)
+            im=bpy.data.images.load(str(tmp),check_existing=False)
+            im.name=name
+            im.pack()
+            loaded+=1
+    del bin_data
+    return loaded,skipped_unmarked
 
 def mat_meta(doc: dict) -> dict[str,dict]:
     out={}
@@ -385,7 +384,7 @@ def main():
     before=set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(a.input.resolve()), import_pack_images=True)
     imported=[o for o in bpy.data.objects if o not in before]
-    hydrated_native_images=hydrate_embedded_native_images(a.input,doc)
+    hydrated_native_images,unmarked_image_count=hydrate_embedded_native_images(a.input,doc)
     arms=[o for o in imported if o.type=="ARMATURE"]
     if len(arms)!=1: raise RuntimeError(f"expected one Xur armature, got {len(arms)}")
     root=upright_root(imported,source_basis_fixed)
@@ -444,6 +443,7 @@ def main():
         "material_count":len(metadata),"action_count":len(actions),"armature_count":len(arms),
         "material_status_counts":counts,"materials":rows,
         "hydrated_native_image_count":hydrated_native_images,
+        "unmarked_image_count":unmarked_image_count,
         "packed_image_count":sum(1 for im in bpy.data.images if im.packed_file is not None),
         "imported_active_actions_cleared":imported_active_actions,
         "muted_nla_track_count":muted_nla_tracks,
