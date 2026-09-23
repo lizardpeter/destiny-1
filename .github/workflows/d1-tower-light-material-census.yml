@@ -131,11 +131,23 @@ jobs:
           d=json.load(open('reports/tower_light_material_render_state.json'))
           assert d['status']=='D1_MATERIAL_RENDER_STATE_CENSUS_COMPLETE',d
           assert d['selected_material_count']==497 and d['resolved_material_count']==497,d
+          assert d['opaque_material_count']==497,d
+          assert d['transparent_material_count']==0,d
+          assert d['known_0x88_blend_material_count']==0,d
+          assert d['unk20_raw_counts']=={'0x0000':497},d
+          assert {x['state4_hex'] for x in d['materials']}=={'00000000'},d
+          for x in d['materials']:
+              assert x['state4_lanes_u8']==[0,0,0,0],x
+              assert [q['selected_low7_if_highbit_set'] for q in x['state4_selector_syntax']]==[None,None,None,None],x
           print('TOWER_LIGHT_RENDER_STATE_EXACT',
                 'OPAQUE',d['opaque_material_count'],
                 'TRANSPARENT',d['transparent_material_count'],
                 'KNOWN_0X88',d['known_0x88_blend_material_count'],
-                'RAW',d['unk20_raw_counts'])
+                'RAW',d['unk20_raw_counts'],
+                'STATE4_ALL_ZERO',True)
+          print('TOWER_LIGHT_MATERIAL_PIPELINE_OVERRIDE_FRONTIER',
+                'ZERO_FOR_ALL_497_MATERIALS',
+                'PIPELINE_STATE_MUST_BE_RESOLVED_OUTSIDE_MATERIAL_STATE4')
           PY
 
       - uses: actions/upload-artifact@v4
