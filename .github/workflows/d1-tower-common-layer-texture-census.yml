@@ -14,6 +14,9 @@ on:
       - 'tools/d1_shader_texture_roles.py'
       - 'evidence/d1_tower_texture_dependency_member_catalog.json'
       - 'tools/d1_github_actions_artifact_pull.py'
+      - 'tools/d1_material_render_state.py'
+      - 'tools/d1_material_render_state_census.py'
+      - 'tests/test_d1_material_render_state.py'
 
 permissions:
   contents: read
@@ -102,6 +105,22 @@ jobs:
           python tools/d1_world_texture_role_inventory.py reports/common_material_texture_manifest.json \
             -o reports/common_texture_role_inventory.json
 
+          python -m unittest tests.test_d1_material_render_state -v
+          python tools/d1_material_render_state_census.py "${args[@]}" \
+            --runtime runtime --visual-json selector/common_material_selector.json \
+            -o reports/common_material_render_state.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_material_render_state.json'))
+          assert d['status']=='D1_MATERIAL_RENDER_STATE_CENSUS_COMPLETE',d
+          assert d['selected_material_count']==99 and d['resolved_material_count']==99,d
+          print('TOWER_COMMON_RENDER_STATE_EXACT',
+                'OPAQUE',d['opaque_material_count'],
+                'TRANSPARENT',d['transparent_material_count'],
+                'KNOWN_0X88',d['known_0x88_blend_material_count'],
+                'RAW',d['unk20_raw_counts'])
+          PY
+
       - name: Summarize dependency closure and portable preview coverage
         run: |
           set -euo pipefail
@@ -142,6 +161,7 @@ jobs:
             compact/
             reports/common_material_hashes.json
             reports/common_texture_export_stdout.txt
+            reports/common_material_render_state.json
             reports/texture_family_recovery.json
           retention-days: 90
           compression-level: 6
