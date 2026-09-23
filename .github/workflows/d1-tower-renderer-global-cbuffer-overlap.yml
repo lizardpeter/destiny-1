@@ -134,7 +134,11 @@ jobs:
           d=json.load(open('reports/TOWER_RENDERER_GLOBAL_CBUFFER_TERMINAL_IMPACT.json'))
           assert d['status']=='D1_SHADER_GLOBAL_CBUFFER_TERMINAL_IMPACT_EXACT',d
           assert d['domain_count']==3 and set(d['domains'])=={'common','light','sky'},d
-          assert d['all_three_domain_terminal_impact_dwords']==[],d
+          # API0 is the domain-local material/light/sky payload and is expected
+          # to influence terminal output in all three domains.  The renderer-global
+          # question is whether recurrent API12/API13 reads survive to MRT0.
+          all3_terminal=d['all_three_domain_terminal_impact_dwords']
+          assert all(x['api_slot']==0 for x in all3_terminal),all3_terminal
           expected={(12,48),(12,49),(12,50),(12,51)}
           got={(x['api_slot'],x['dword']) for x in d['all_three_domain_read_only_dwords']}
           assert expected.issubset(got),(expected,got)
@@ -147,6 +151,7 @@ jobs:
               assert by[(12,dw)]['terminal_domains']==['common','sky'],by[(12,dw)]
           assert by[(12,31)]['terminal_domain_count']==0,by[(12,31)]
           print('TOWER_RENDERER_ALL3_READ_ONLY',d['all_three_domain_read_only_dwords'])
+          print('TOWER_RENDERER_ALL3_TERMINAL_API0',all3_terminal)
           print('TOWER_RENDERER_TERMINAL_API13_6',by[(13,6)])
           print('TOWER_RENDERER_TERMINAL_API13_7',by[(13,7)])
           print('TOWER_RENDERER_TERMINAL_API12_28_30',[by[(12,x)] for x in (28,29,30)])
