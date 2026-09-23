@@ -14,6 +14,7 @@ on:
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
       - 'tools/d1_gcn_terminal_symbolic_reducer.py'
       - 'tools/d1_tower_common_symbolic_coverage.py'
+      - 'tools/d1_tower_common_terminal_symbolic_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
@@ -256,7 +257,12 @@ jobs:
           d=json.load(open('reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json'))
           assert d['status']=='D1_TOWER_COMMON_SYMBOLIC_COVERAGE_EXACT',d
           assert d['total_shader_family_count']==65,d
-          assert d['exact_terminal_equation_family_count']+d['unresolved_terminal_equation_family_count']==65,d
+          assert d['exact_terminal_equation_family_count']==65,d
+          assert d['unresolved_terminal_equation_family_count']==0,d
+          assert d['exact_terminal_equation_visible_material_count']==99,d
+          assert d['total_visible_material_count']==99,d
+          assert d['family_coverage_fraction']==1.0,d
+          assert d['visible_material_coverage_fraction']==1.0,d
           print('TOWER_COMMON_SYMBOLIC_COVERAGE',
                 'EXACT_FAMILIES',d['exact_terminal_equation_family_count'],
                 'OF',d['total_shader_family_count'],
@@ -271,6 +277,29 @@ jobs:
                     'BAD_CHANNELS',r['terminal_bad_channels'],
                     'UNRESOLVED',r['terminal_unresolved_markers'],
                     'UNSUPPORTED',[(x['address'],x['mnemonic']) for x in r['unsupported_operations'][:12]])
+          PY
+
+      - name: Pin complete common terminal equation corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_common_terminal_symbolic_coverage.py \
+            --shader-report reports/common65_shader_extract.json \
+            --symbolic reports/TOWER_COMMON65_SYMBOLIC_TERMINAL.json \
+            --out reports/TOWER_COMMON65_TERMINAL_SYMBOLIC_PIN.json \
+            | tee reports/TOWER_COMMON65_TERMINAL_SYMBOLIC_PIN_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON65_TERMINAL_SYMBOLIC_PIN.json'))
+          assert d['status']=='D1_TOWER_COMMON_TERMINAL_SYMBOLIC_COVERAGE_EXACT',d
+          assert d['shader_family_count']==65,d
+          assert d['visible_material_count']==99,d
+          assert d['shader_family_coverage_fraction']==1.0,d
+          assert d['visible_material_coverage_fraction']==1.0,d
+          assert d['canonical_projection_sha256']=='8dd0014b2b95c50c89f301b7d59898bc1ebba590b7965d09a1d96e4a2c7abbb0',d
+          assert d['initial_vgpr_leaf_shaders']==['80AADBB4','80AAE1F5'],d
+          print('TOWER_COMMON_TERMINAL_EQUATION_FRONTIER','CLOSED_65_OF_65_FAMILIES_99_OF_99_MATERIALS')
+          print('TOWER_COMMON_TERMINAL_CANONICAL_SHA256',d['canonical_projection_sha256'])
+          print('TOWER_COMMON_INITIAL_VGPR_LEAVES',d['initial_vgpr_leaf_shaders'])
           PY
 
       - name: Cluster exact common shader structural families
