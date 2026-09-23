@@ -43,7 +43,7 @@ CFG={
   'mrt0_g':'clamp(t0.g * t1.g * API0[17]) * API0[21] * P',
   'mrt0_b':'clamp(t0.b * t1.b * API0[18]) * API0[22] * P','mrt0_a':'0'},
  'anchors':['v_mul_f32       v0, v0, v4','v_mul_f32       v0, v0, s4 clamp',
-            'v_mul_f32       v3, v3, s7 clamp','v_mul_f32       v0, v0, v3','exp             mrt0']},
+            'v_mul_f32       v3, v3, s7 clamp','v_mul_f32       v0, v3, v0','exp             mrt0']},
 '80B9EA21':{
  'freq':1,'native':'80B9EA3A','native_sha':'5fe9e8ac69203ebf5d41b67626dc9a44b84e18eea310dcd5e7ffb197679e3606',
  'gcn_sha':'fffe112b656bc87afcde9ba3e773845ffc1a7a5782a5f45bd2b6ff2ddd87d695','gcn_bytes':260,
@@ -114,7 +114,7 @@ CFG={
   'mrt0_g':'clamp(t0.g * t1.g * t2.g * API0[21] * t3.g) * API0[25] * P',
   'mrt0_b':'clamp(t0.b * t1.b * t2.b * API0[22] * t3.b) * API0[26] * P','mrt0_a':'0'},
  'anchors':['v_mul_f32       v0, v8, v12','v_mul_f32       v0, v0, v3',
-            'v_mul_f32       v0, v0, s4','v_mul_f32       v0, v0, v16 clamp',
+            'v_mul_f32       v0, s4, v0','v_mul_f32       v0, v0, v16 clamp',
             'v_mul_f32       v3, v3, v19 clamp','exp             mrt0']},
 '80B9F71A':{
  'freq':1,'native':'80B9F734','native_sha':'6e56fe8ccc817eab868694467d4693d7a22eee137b3f86d819d1d1aa7fd7a0c1',
