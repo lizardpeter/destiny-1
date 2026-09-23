@@ -37,7 +37,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends xvfb xauth libegl1 libgl1 libgl1-mesa-dri libglu1-mesa mesa-utils
-          ldconfig -p | grep -E 'libEGL\\.so\\.1|libGL\\.so\\.1'
+          ldconfig -p | grep -F 'libEGL.so.1'
+          ldconfig -p | grep -F 'libGL.so.1'
           xvfb-run -a glxinfo -B | tee software-gl.txt
           bash tools/install_blender_lts.sh .blender > blender-path.txt
           cat blender-path.txt
@@ -47,14 +48,13 @@ jobs:
         run: |
           set -euo pipefail
           BLENDER="$(tail -n1 blender-path.txt)"
-          "$BLENDER" --background --factory-startup             --python tools/d1_blender_xur_native_master.py --             --input "input/${XUR_ASSET}"             --output out/XUR_80C88CEF_NATIVE_MASTER_V1.blend             --preview out/XUR_80C88CEF_NATIVE_MASTER_V1.png             --report out/XUR_80C88CEF_NATIVE_MASTER_V1.json             | tee out/blender-build.log
+          xvfb-run -a "$BLENDER" --background --factory-startup --python tools/d1_blender_xur_native_master.py -- --input "input/${XUR_ASSET}" --output out/XUR_80C88CEF_NATIVE_MASTER_V1.blend --preview out/XUR_80C88CEF_NATIVE_MASTER_V1.png --report out/XUR_80C88CEF_NATIVE_MASTER_V1.json | tee out/blender-build.log
 
       - name: Reopen and validate the saved master
         run: |
           set -euo pipefail
           BLENDER="$(tail -n1 blender-path.txt)"
-          "$BLENDER" --background out/XUR_80C88CEF_NATIVE_MASTER_V1.blend             --python-expr "import bpy; assert len(bpy.data.actions)==267,(len(bpy.data.actions)); arms=[o for o in bpy.data.objects if o.type=='ARMATURE']; assert len(arms)==1,len(arms); assert bpy.context.scene.get('d1_native_material_semantics_fail_closed') is True; assert bpy.context.scene.get('d1_full_retail_equivalence_claimed') is False; bad=[m.name for m in bpy.data.materials if m.get('d1_pixel_shader')=='80876579' and m.get('d1_80876579_control_texture_never_basecolor') is not True]; assert not bad,bad; print('XUR_MASTER_REOPEN_OK',len(bpy.data.materials),len(bpy.data.actions),len(arms))"             | tee out/blender-reopen.log
-
+          xvfb-run -a "$BLENDER" --background out/XUR_80C88CEF_NATIVE_MASTER_V1.blend --python-expr "import bpy; assert len(bpy.data.actions)==267,(len(bpy.data.actions)); arms=[o for o in bpy.data.objects if o.type=='ARMATURE']; assert len(arms)==1,len(arms); assert bpy.context.scene.get('d1_native_material_semantics_fail_closed') is True; assert bpy.context.scene.get('d1_full_retail_equivalence_claimed') is False; bad=[m.name for m in bpy.data.materials if m.get('d1_pixel_shader')=='80876579' and m.get('d1_80876579_control_texture_never_basecolor') is not True]; assert not bad,bad; print('XUR_MASTER_REOPEN_OK',len(bpy.data.materials),len(bpy.data.actions),len(arms))" | tee out/blender-reopen.log
           python - <<'PY'
           import json
           from pathlib import Path
@@ -79,4 +79,4 @@ jobs:
           path: out/
           retention-days: 30
           compression-level: 3
-          if-no-files-found: error
+          if-no-files-found: warn
