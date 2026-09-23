@@ -19,6 +19,7 @@ on:
       - 'tools/d1_tower_sky_terminal_output_modes.py'
       - 'tools/d1_tower_sky_high_coverage_mrt0_factorization.py'
       - 'tools/d1_tower_sky_alpha_mrt0_factorization.py'
+      - 'tools/d1_tower_sky_factorization_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -276,6 +277,32 @@ jobs:
           print('TOWER_SKY_ALPHA_BATCH_EXACT',d['shader_family_count'],d['visible_material_count'],d['visible_material_fraction'])
           for q in d['rows']:
               print('TOWER_SKY_ALPHA_FACTORIZED',q['shader'],q['visible_material_count'],q['exact_terminal_equation'])
+          PY
+
+      - name: Account exact Tower sky equation coverage
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_sky_factorization_coverage.py \
+            --manifest reports/tower_sky_material_texture_manifest.json \
+            --proof reports/TOWER_SKY_HIGH_COVERAGE_MRT0_FACTORIZATION.json \
+            --proof reports/TOWER_SKY_ALPHA_MRT0_FACTORIZATION.json \
+            --out reports/TOWER_SKY_FACTORIZATION_COVERAGE.json \
+            | tee reports/TOWER_SKY_FACTORIZATION_COVERAGE_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_FACTORIZATION_COVERAGE.json'))
+          assert d['status']=='D1_TOWER_SKY_FACTORIZATION_COVERAGE_EXACT',d
+          assert d['covered_shader_family_count']==20,d
+          assert d['covered_visible_material_count']==47,d
+          assert d['missing_shader_family_count']==23,d
+          assert d['missing_visible_material_count']==27,d
+          assert abs(d['shader_family_coverage_fraction']-(20/43))<1e-12,d
+          assert abs(d['visible_material_coverage_fraction']-(47/74))<1e-12,d
+          print('TOWER_SKY_EQUATION_COVERAGE',
+                d['covered_shader_family_count'],'OF',d['total_shader_family_count'],
+                'FAMILIES',d['covered_visible_material_count'],'OF',d['total_visible_material_count'],'MATERIALS')
+          for r in d['highest_priority_missing_shaders']:
+              print('TOWER_SKY_EQUATION_MISSING',r['shader'],'MATERIALS',r['visible_material_count'])
           PY
 
       - name: Classify exact Tower sky terminal output modes
