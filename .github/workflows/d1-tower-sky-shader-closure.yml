@@ -13,6 +13,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+      - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
@@ -194,6 +195,32 @@ jobs:
                     'UNION',r['mrt0_value_union'])
               for ch,row in r['channels'].items():
                   print('  SKY_CHANNEL',ch,row['value_slice'])
+          PY
+
+      - name: Cluster exact Tower sky shader structural families
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_structural_family_cluster.py \
+            --extract-report reports/tower_sky_shader_report.json \
+            --image-usage reports/tower_sky_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
+            --terminal-mrt0 reports/tower_sky_all_mrt0_dependencies.json \
+            --out reports/TOWER_SKY_STRUCTURAL_SHADER_CLUSTERS.json \
+            | tee reports/TOWER_SKY_STRUCTURAL_SHADER_CLUSTERS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_STRUCTURAL_SHADER_CLUSTERS.json'))
+          assert d['status']=='D1_SHADER_STRUCTURAL_FAMILY_CLUSTER_EXACT',d
+          assert d['shader_family_count']>0,d
+          assert not d['violations'],d['violations']
+          print('TOWER_SKY_STRUCTURAL_CLUSTERS',
+                'SHADERS',d['shader_family_count'],
+                'CLUSTERS',d['cluster_count'],
+                'MULTI_SHADER_CLUSTERS',d['multi_shader_cluster_count'])
+          for r in d['clusters'][:20]:
+              print('SKY_CLUSTER',r['cluster_index'],
+                    'WEIGHT',r['visible_material_count_sum'],
+                    'SHADERS',r['shaders'])
           PY
 
       - uses: actions/upload-artifact@v4
