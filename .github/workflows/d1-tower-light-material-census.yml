@@ -12,6 +12,7 @@ on:
       - 'tools/d1_github_actions_artifact_pull.py'
       - 'tools/d1_material_render_state.py'
       - 'tools/d1_material_render_state_census.py'
+      - 'tools/d1_tower_light_pass_state_frontier.py'
       - 'tests/test_d1_material_render_state.py'
 
 permissions:
