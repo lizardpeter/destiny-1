@@ -63,6 +63,17 @@ jobs:
           test -f input/sky/tower_sky_shader_report.json
           test -f input/sky/tower_sky_gcn_cbuffer_usage.json
 
+          python - <<'PY'
+          import json
+          common=json.load(open('input/common/common65_shader_extract.json'))
+          light=json.load(open('input/light/tower_light_shader_report.json'))
+          sky=json.load(open('input/sky/tower_sky_shader_report.json'))
+          assert common['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and common['selected_count']==65 and common['error_count']==0,common
+          assert light['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and light['selected_count']==32 and light['error_count']==0,light
+          assert sky['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and sky['selected_count']==43 and sky['error_count']==0,sky
+          print('TOWER_RENDERER_DOMAIN_SHADER_COUNTS',65,32,43)
+          PY
+
       - name: Prove exact cross-domain ImmConstBuffer recurrence
         run: |
           set -euo pipefail
