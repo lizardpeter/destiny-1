@@ -347,32 +347,47 @@ def upright_root(imported, source_basis_fixed: bool):
     return root
 
 def stage_camera(arm):
-    # Frame the source skeleton rather than mesh bounds. A malformed/deformed mesh
-    # must not silently push the camera away and hide the actor during validation.
+    # The basis-fixed carrier has coherent mesh and joint domains, so frame the
+    # union of visible geometry and the skeleton. The skeleton alone under-framed
+    # Xur's hood/backpack and clipped the first native-master preview.
     pts=[]
     for b in arm.data.bones:
         pts.append(arm.matrix_world @ b.head_local)
         pts.append(arm.matrix_world @ b.tail_local)
-    if not pts: raise RuntimeError("no Xur skeleton points")
+    for obj in bpy.context.scene.objects:
+        if obj.type=="MESH" and not obj.hide_render:
+            pts.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+    if not pts: raise RuntimeError("no Xur framing points")
     mn=Vector((min(p.x for p in pts),min(p.y for p in pts),min(p.z for p in pts)))
     mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
-    c=(mn+mx)*0.5; e=max((mx-mn).length,1.0)
+    c=(mn+mx)*0.5
+    size=mx-mn
+    e=max(size.x,size.y,size.z,1.0)
+
     world=bpy.data.worlds.new("XUR_PREVIEW_WORLD"); world.use_nodes=True
-    bg=world.node_tree.nodes.get("Background"); bg.inputs["Color"].default_value=(0.018,0.021,0.027,1); bg.inputs["Strength"].default_value=0.22
+    bg=world.node_tree.nodes.get("Background"); bg.inputs["Color"].default_value=(0.018,0.021,0.027,1); bg.inputs["Strength"].default_value=0.18
     bpy.context.scene.world=world
-    for name,off,energy,size in [
-        ("XUR_KEY",(-0.6,-0.7,0.8),950,0.45),
-        ("XUR_FILL",(0.7,-0.2,0.2),500,0.35),
-        ("XUR_RIM",(0.2,0.7,0.6),1100,0.30),
+    for name,off,energy,size_factor in [
+        ("XUR_KEY",(-0.75,-0.85,0.85),750,0.48),
+        ("XUR_FILL",(0.65,-0.25,0.30),320,0.40),
+        ("XUR_RIM",(0.30,0.75,0.65),850,0.34),
     ]:
-        ld=bpy.data.lights.new(name,"AREA"); ld.energy=energy; ld.shape="DISK"; ld.size=e*size
+        ld=bpy.data.lights.new(name,"AREA"); ld.energy=energy; ld.shape="DISK"; ld.size=e*size_factor
         lo=bpy.data.objects.new(name,ld); lo.location=c+Vector(off)*e
         lo.rotation_euler=(c-lo.location).to_track_quat("-Z","Y").to_euler()
         bpy.context.scene.collection.objects.link(lo)
-    cd=bpy.data.cameras.new("XUR_PREVIEW_CAMERA"); cam=bpy.data.objects.new("XUR_PREVIEW_CAMERA",cd)
-    bpy.context.scene.collection.objects.link(cam); cam.location=c+Vector((0,-1.35,0.10))*e
-    cam.rotation_euler=(c-cam.location).to_track_quat("-Z","Y").to_euler(); cd.lens=62
+
+    # The prior -Y camera produced a near profile. A diagonal -X/-Y view exposes
+    # the face/hood and front garment while retaining depth cues from the backpack.
+    cd=bpy.data.cameras.new("XUR_PREVIEW_CAMERA")
+    cam=bpy.data.objects.new("XUR_PREVIEW_CAMERA",cd)
+    bpy.context.scene.collection.objects.link(cam)
+    view=Vector((-1.0,-0.62,0.06)).normalized()
+    cam.location=c+view*(e*2.05)
+    cam.rotation_euler=(c-cam.location).to_track_quat("-Z","Y").to_euler()
+    cd.lens=52
     bpy.context.scene.camera=cam
+    bpy.context.scene["d1PreviewCameraPolicy"]="MESH_PLUS_SKELETON_THREE_QUARTER"
 
 def main():
     a=cli(); doc=glb_json(a.input); metadata=mat_meta(doc)
