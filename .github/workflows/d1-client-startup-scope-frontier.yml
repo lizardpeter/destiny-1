@@ -13,9 +13,6 @@ permissions: {contents: read, actions: read}
 env:
   GH_TOKEN: '${{ github.token }}'
   LINOODLE_SKIP_DLLMAIN: '1'
-  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
-  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
-  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
 
 jobs:
   probe:
@@ -25,15 +22,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Recover pinned catalog and Oodle runtime
+      - name: Recover current exact global activity index and Oodle runtime
         run: |
           set -euo pipefail
-          mkdir -p input/catalog runtime out/payloads
-          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
-          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
-          unzip -q input/catalog.zip -d input/catalog
-          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          mkdir -p input/index input/catalog runtime out/payloads
+          index_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId,headSha --jq '.[0].databaseId')"
+          test -n "$index_run"
+          gh run download "$index_run" -n d1-global-activity-index -D input/index
+          test -f input/index/D1_CURRENT_ACTIVITY_INDEX.json
+          python - <<'PY'
+          import hashlib,json
+          src=json.load(open('input/index/D1_CURRENT_ACTIVITY_INDEX.json'))
+          assert src['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',src.get('violations')
+          assert src['physical_member_count']==1275,src
+          assert src['package_family_count']==337==src['current_package_count'],src
+          assert not src['violations'],src['violations']
+          rows=sum(len(v) for v in src['package_families'].values())
+          assert rows==1275,(rows,src['physical_member_count'])
+          out={'schema_version':1,'families':src['package_families'],
+               'source_activity_index_sha256':hashlib.sha256(open('input/index/D1_CURRENT_ACTIVITY_INDEX.json','rb').read()).hexdigest(),
+               'source_package_list_sha256':src['source']['package_list_sha256']}
+          json.dump(out,open('input/catalog/D1_CURRENT_MEMBER_CATALOG.json','w'),indent=2)
+          print('CURRENT_MEMBER_CATALOG_EXACT','FAMILIES',len(out['families']),'MEMBERS',rows,
+                'INDEX_SHA',out['source_activity_index_sha256'])
+          PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -43,7 +55,7 @@ jobs:
           set -euo pipefail
           python -m py_compile tools/d1_remote_client_startup_globals_probe.py
           python tools/d1_remote_client_startup_globals_probe.py \
-            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --member-catalog input/catalog/D1_CURRENT_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --runtime runtime --max-depth 3 --max-nodes 512 --dump-dir out/payloads \
             -o out/D1_CLIENT_STARTUP_GLOBALS_SCOPE_FRONTIER.json | tee out/stdout.txt
