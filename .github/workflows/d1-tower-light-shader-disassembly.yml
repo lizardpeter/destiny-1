@@ -986,6 +986,28 @@ jobs:
           print('TOWER_LIGHT_80C99CBD_GATED_MRT0_EXACT',d['exact_terminal_equation'])
           PY
 
+      - name: Prove all 32 Tower light families have exact terminal MRT0 factorizations
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_factorization_coverage.py \
+            --material-manifest reports/tower_light_material_manifest.json \
+            --reports-dir reports \
+            --out reports/TOWER_LIGHT_ALL32_MRT0_FACTORIZATION_COVERAGE.json \
+            | tee reports/TOWER_LIGHT_ALL32_MRT0_FACTORIZATION_COVERAGE_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_LIGHT_ALL32_MRT0_FACTORIZATION_COVERAGE.json'))
+          assert d['status']=='D1_TOWER_LIGHT_TERMINAL_MRT0_FACTORIZATION_COVERAGE_EXACT',d
+          assert d['factorized_shader_family_count']==32,d
+          assert d['factorized_light_instance_count']==737,d
+          assert d['family_coverage_fraction']==1.0,d
+          assert d['instance_coverage_fraction']==1.0,d
+          assert d['missing_shader_families']==[],d
+          assert not d['violations'],d['violations']
+          print('TOWER_LIGHT_ALL32_MRT0_FACTORIZATION_COVERAGE_EXACT',
+                d['factorized_shader_family_count'],d['factorized_light_instance_count'])
+          PY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
