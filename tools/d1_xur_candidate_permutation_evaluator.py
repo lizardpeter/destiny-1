@@ -20,7 +20,7 @@ The tool requires uniqueness across every VariantShaderIndex group and reports t
 E6/E7/E8 consequences, while leaving all three live-selection gates false.
 """
 from __future__ import annotations
-import argparse,json
+import argparse,json,math
 from pathlib import Path
 
 INVALID='871AC0EA'
@@ -83,6 +83,39 @@ def main():
   evaluations.append({'variant_shader_index':vi,'member_count':len(rows),'satisfied_member_count':len(sats),'max_specificity':maxspec,'unique_candidate':len(winners)==1,'candidate_members':winners,'members':rows})
  if unique!=len(evaluations):violations.append(f'candidate_not_unique_for_all_groups:{unique}/{len(evaluations)}')
 
+ # Test a stronger retail-style invariant independently of the per-group rule:
+ # does one global permutation index reproduce every unique local winner via
+ #     local_member = global_index % MaterialCount
+ # as used by the later MIDA/Charm-family consumer?
+ residue_sets={}
+ for ev in evaluations:
+  if not ev['unique_candidate']:
+   continue
+  n=int(ev['member_count']); w=int(ev['candidate_members'][0]['member_index'])
+  residue_sets.setdefault(n,set()).add(w)
+ residue_rows={str(n):sorted(v) for n,v in sorted(residue_sets.items())}
+ residue_consistent=all(len(v)==1 for v in residue_sets.values())
+ period=1
+ for n in residue_sets: period=math.lcm(period,n)
+ compatible_mod=[]
+ if residue_consistent:
+  wanted={n:next(iter(v)) for n,v in residue_sets.items()}
+  compatible_mod=[i for i in range(period) if all(i % n == r for n,r in wanted.items())]
+ descriptor_bound=len(descriptors)
+ compatible_descriptor_range=[i for i in compatible_mod if i < descriptor_bound]
+ global_index_analysis={
+  'rule':'local_member_index == global_permutation_index % material_count',
+  'material_count_to_candidate_local_index_set':residue_rows,
+  'material_count_residue_consistent':residue_consistent,
+  'modulus_lcm':period,
+  'compatible_global_indices_mod_lcm':compatible_mod,
+  'compatible_global_indices_below_descriptor_count':compatible_descriptor_range,
+  'descriptor_count_bound':descriptor_bound,
+  'unique_global_residue_mod_lcm':len(compatible_mod)==1,
+  'unique_global_index_below_descriptor_count':len(compatible_descriptor_range)==1,
+  'later_strategy_structural_analogy_only':True,
+  'D1_retail_consumer_execution_path_proven':False,
+ }
  consequences={}
  for label,target in TARGETS.items():
   occurrences=[]
@@ -92,7 +125,7 @@ def main():
     occurrences.append({'variant_shader_index':ev['variant_shader_index'],'target_member':tr,'candidate_members':ev['candidate_members'],'target_is_candidate':any(x['material_tag_hash']==target for x in ev['candidate_members'])})
   consequences[label]={'target_material':target,'occurrences':occurrences}
 
- out={'schema':'d1_xur_candidate_permutation_evaluator/v1','status':'D1_XUR_CANDIDATE_PERMUTATION_EVALUATION_UNIQUE' if not violations else 'D1_XUR_CANDIDATE_PERMUTATION_EVALUATION_VIOLATIONS','raw_source_decoded_placement_pairs':[list(x) for x in sorted(raw_config)],'model_switch_configuration_pairs':[list(x) for x in sorted(model_config)],'placement_pairs_not_in_model_switch_bank':[list(x) for x in sorted(non_model_placement_pairs)],'descriptor_B_companion_invariant':{'descriptor_count':len(b_invariant),'same_keys_all_B_invalid_count':sum(x['same_keys_and_all_B_invalid'] for x in b_invariant),'invalid_value':INVALID,'rows':b_invariant},'variant_group_count':len(evaluations),'unique_candidate_group_count':unique,'evaluations':evaluations,'E6_E7_E8_candidate_consequences':consequences,'proof':{'placement_configuration_source_decoded':True,'placement_pair_to_own_model_switch_bank_correspondence_proven':True,'descriptor_B_same_keys_invalid_companion_structural_invariant':all(x['same_keys_and_all_B_invalid'] for x in b_invariant),'candidate_list_A_max_specificity_evaluator_unique_across_all_groups':unique==len(evaluations),'D1_retail_consumer_execution_path_proven':False,'descriptor_evaluation_algorithm_source_closed':False},'gates':{'E6_80C885E6_live_selection_proven':False,'E7_80C885E7_live_selection_proven':False,'E8_80C885E8_live_selection_proven':False},'violations':violations,'policy':'Candidate uniqueness is not promoted to D1 retail execution semantics. E6/E7/E8 remain fail-closed until the D1 consumer/evaluator path itself is independently closed.'}
+ out={'schema':'d1_xur_candidate_permutation_evaluator/v1','status':'D1_XUR_CANDIDATE_PERMUTATION_EVALUATION_UNIQUE' if not violations else 'D1_XUR_CANDIDATE_PERMUTATION_EVALUATION_VIOLATIONS','raw_source_decoded_placement_pairs':[list(x) for x in sorted(raw_config)],'model_switch_configuration_pairs':[list(x) for x in sorted(model_config)],'placement_pairs_not_in_model_switch_bank':[list(x) for x in sorted(non_model_placement_pairs)],'descriptor_B_companion_invariant':{'descriptor_count':len(b_invariant),'same_keys_all_B_invalid_count':sum(x['same_keys_and_all_B_invalid'] for x in b_invariant),'invalid_value':INVALID,'rows':b_invariant},'variant_group_count':len(evaluations),'unique_candidate_group_count':unique,'evaluations':evaluations,'global_permutation_index_analysis':global_index_analysis,'E6_E7_E8_candidate_consequences':consequences,'proof':{'placement_configuration_source_decoded':True,'placement_pair_to_own_model_switch_bank_correspondence_proven':True,'descriptor_B_same_keys_invalid_companion_structural_invariant':all(x['same_keys_and_all_B_invalid'] for x in b_invariant),'candidate_list_A_max_specificity_evaluator_unique_across_all_groups':unique==len(evaluations),'single_global_modulo_index_consistent':global_index_analysis['unique_global_residue_mod_lcm'],'D1_retail_consumer_execution_path_proven':False,'descriptor_evaluation_algorithm_source_closed':False},'gates':{'E6_80C885E6_live_selection_proven':False,'E7_80C885E7_live_selection_proven':False,'E8_80C885E8_live_selection_proven':False},'violations':violations,'policy':'Candidate uniqueness is not promoted to D1 retail execution semantics. E6/E7/E8 remain fail-closed until the D1 consumer/evaluator path itself is independently closed.'}
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
- print(json.dumps({'status':out['status'],'raw_config':out['raw_source_decoded_placement_pairs'],'model_config':out['model_switch_configuration_pairs'],'descriptor_B_invariant':out['descriptor_B_companion_invariant']['same_keys_all_B_invalid_count'],'variant_groups':out['variant_group_count'],'unique_candidates':out['unique_candidate_group_count'],'E6_E7_E8':out['E6_E7_E8_candidate_consequences'],'proof':out['proof'],'gates':out['gates'],'violations':violations},indent=2));return 0 if not violations else 2
+ print(json.dumps({'status':out['status'],'raw_config':out['raw_source_decoded_placement_pairs'],'model_config':out['model_switch_configuration_pairs'],'descriptor_B_invariant':out['descriptor_B_companion_invariant']['same_keys_all_B_invalid_count'],'variant_groups':out['variant_group_count'],'unique_candidates':out['unique_candidate_group_count'],'E6_E7_E8':out['E6_E7_E8_candidate_consequences'],'global_permutation_index_analysis':out['global_permutation_index_analysis'],'proof':out['proof'],'gates':out['gates'],'violations':violations},indent=2));return 0 if not violations else 2
 if __name__=='__main__':raise SystemExit(main())
