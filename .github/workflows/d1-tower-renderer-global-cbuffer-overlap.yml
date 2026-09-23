@@ -13,6 +13,9 @@ on:
       - '.github/workflows/d1-tower-renderer-global-cbuffer-overlap.yml'
       - 'tools/d1_shader_global_cbuffer_overlap.py'
       - 'tools/d1_shader_global_cbuffer_terminal_impact.py'
+      - 'tools/d1_ps4_cbuffer_scope_name_proof.py'
+      - 'tools/d1_tower_renderer_scope_terminal_contract.py'
+      - 'evidence/d1_vex_09a_native_state_closure_2026-09-18.json'
       - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
@@ -155,6 +158,54 @@ jobs:
           print('TOWER_RENDERER_TERMINAL_API13_6',by[(13,6)])
           print('TOWER_RENDERER_TERMINAL_API13_7',by[(13,7)])
           print('TOWER_RENDERER_TERMINAL_API12_28_30',[by[(12,x)] for x in (28,29,30)])
+          PY
+
+      - name: Join exact View Frame scope names to Tower terminal impact
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          curl -fsSL --retry 4 \
+            'https://raw.githubusercontent.com/MontagueM/Charm/50d36ee1f9ecadad7522504c20b1f3f9c97e30af/Tiger/Schema/Shaders/TFX%20Bytecode/Externs.cs' \
+            -o source/Externs.cs
+          test "$(git hash-object source/Externs.cs)" = '7311688c71ab3a9e9d6eacd5393d07254688bace'
+
+          python -m py_compile \
+            tools/d1_ps4_cbuffer_scope_name_proof.py \
+            tools/d1_tower_renderer_scope_terminal_contract.py
+
+          python tools/d1_ps4_cbuffer_scope_name_proof.py \
+            --charm-externs source/Externs.cs \
+            --vex-proof evidence/d1_vex_09a_native_state_closure_2026-09-18.json \
+            -o reports/D1_PS4_CBUFFER_SCOPE_NAME_PROOF.json
+
+          python tools/d1_tower_renderer_scope_terminal_contract.py \
+            --scope-proof reports/D1_PS4_CBUFFER_SCOPE_NAME_PROOF.json \
+            --terminal-impact reports/TOWER_RENDERER_GLOBAL_CBUFFER_TERMINAL_IMPACT.json \
+            --out reports/TOWER_RENDERER_SCOPE_TERMINAL_CONTRACT.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_RENDERER_SCOPE_TERMINAL_CONTRACT.json'))
+          assert d['status']=='D1_TOWER_RENDERER_SCOPE_TERMINAL_CONTRACT_EXACT',d
+          assert not d['violations'],d['violations']
+          by={x['api_slot']:x for x in d['scopes']}
+          assert by[12]['source_scope_name']=='View',by[12]
+          assert by[13]['source_scope_name']=='Frame',by[13]
+          assert [(x['dword'],x['terminal_domains']) for x in by[12]['terminal_dwords']]==[
+              (28,['common','sky']),(29,['common','sky']),(30,['common','sky'])],by[12]
+          assert [(x['dword'],x['terminal_domains']) for x in by[13]['terminal_dwords']]==[
+              (6,['common','sky']),(7,['common','sky'])],by[13]
+          assert d['negative_boundaries']=={
+              'api12_28_30_light_terminal_impact':False,
+              'api13_6_7_light_terminal_impact':False,
+              'api12_31_terminal_impact':False,
+          },d
+          assert d['semantic_boundary']['runtime_writer']=='WITHHELD',d
+          assert d['semantic_boundary']['live_values']=='WITHHELD',d
+          print('TOWER_RENDERER_SCOPE_TERMINAL_CONTRACT_EXACT',
+                [(x['api_slot'],x['source_scope_name'],
+                  [(q['dword'],q['terminal_domains']) for q in x['terminal_dwords']])
+                 for x in d['scopes']])
           PY
 
       - uses: actions/upload-artifact@v4
