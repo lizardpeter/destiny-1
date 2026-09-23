@@ -19,9 +19,20 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-DIRECT_T0 = {"8087688C", "80AADCB3", "80AAE1C7", "80876EDF", "808764AA", "808768B7", "80A08C16"}
-PRODUCT_T0_T1 = {"80876575", "808768C0", "80876952"}
-PALETTE_T1 = {"80876579"}
+DIRECT_T0 = {
+    "8087688C", "80AADCB3", "80AAE1C7", "80876EDF", "808764AA",
+    "808768B7", "80A08C16",
+    # Later three-NPC native/current-state proofs reused by exact shader header.
+    "8087645C", "80876566", "8087656E", "80AA8E93", "808768AF",
+}
+PRODUCT_T0_T1 = {
+    "80876575", "808768C0", "80876952",
+    "8087656A", "80876537", "809D8351",
+}
+PALETTE_T1 = {"80876579", "808762E1", "80876577"}
+SCALAR_MOD_T0_T2 = {"8087630D", "809D8370"}
+SUBTRACT_MASK_T0_T1 = {"809D836C"}
+CONSTANT_BLACK = {"80AAE185", "8087688E"}
 
 SEMANTIC_CLASS = {
     "8087688C": "direct_rgb_bc5_normal",
@@ -35,6 +46,21 @@ SEMANTIC_CLASS = {
     "808768C0": "dual_normal_reflected_cube_fresnel_detail",
     "80876952": "detail_normal_reflection_cube_surface",
     "80876579": "control_palette_surface_reflection",
+    "808762E1": "control_palette_surface",
+    "8087645C": "surface_reflection_detail",
+    "80876566": "constant_tinted_surface",
+    "80876577": "three_branch_palette_surface_reflection",
+    "8087656A": "product_surface_reflection_dual_normal",
+    "8087656E": "constant_tinted_masked_surface",
+    "80876537": "product_surface_dual_normal",
+    "80AAE185": "constant_rgb_exact",
+    "8087688E": "constant_rgb_exact_current_black",
+    "80AA8E93": "surface_plus_cube",
+    "808768AF": "direct_texture_rgb_exact",
+    "8087630D": "surface_scalar_view_tint",
+    "809D8370": "surface_scalar_view_tint",
+    "809D836C": "subtractive_mask_surface_view_tint",
+    "809D8351": "product_surface_palette_mask",
 }
 
 def cli():
@@ -137,6 +163,42 @@ def multiply_rgb(mat, a, b, name, x=120, y=120):
     mat.node_tree.links.new(b.outputs["Color"],n.inputs[2])
     return n
 
+def scalar_rgb(mat, texture_node, channel="Red", invert=False, name="D1_SCALAR", x=-120, y=-80):
+    sep=mat.node_tree.nodes.new("ShaderNodeSeparateColor")
+    sep.name=name+"_SEPARATE"; sep.label=sep.name; sep.location=(x,y)
+    mat.node_tree.links.new(texture_node.outputs["Color"], sep.inputs["Color"])
+    source=sep.outputs[channel]
+    if invert:
+        inv=mat.node_tree.nodes.new("ShaderNodeMath")
+        inv.operation="SUBTRACT"; inv.name=name+"_ONE_MINUS"; inv.label=inv.name; inv.location=(x+180,y)
+        inv.inputs[0].default_value=1.0
+        mat.node_tree.links.new(source, inv.inputs[1])
+        source=inv.outputs[0]
+    comb=mat.node_tree.nodes.new("ShaderNodeCombineColor")
+    comb.name=name+"_RGB"; comb.label=comb.name; comb.location=(x+360,y)
+    for socket in ("Red","Green","Blue"):
+        mat.node_tree.links.new(source, comb.inputs[socket])
+    return comb
+
+def neutralize_imported_animation(arms):
+    active=[]
+    muted_tracks=0
+    for arm in arms:
+        ad=arm.animation_data
+        if ad is not None:
+            if ad.action is not None:
+                active.append(ad.action.name)
+            ad.action=None
+            for tr in ad.nla_tracks:
+                tr.mute=True
+                muted_tracks += 1
+        arm.data.pose_position="POSE"
+        for pb in arm.pose.bones:
+            pb.matrix_basis.identity()
+    bpy.context.scene.frame_set(0)
+    bpy.context.view_layer.update()
+    return active, muted_tracks
+
 def build_material(meta:dict, mat):
     ps=meta["ps"]; bsdf=clear_nodes(mat); links=mat.node_tree.links
     t0=ps_binding(meta,0); t1=ps_binding(meta,1); t2=ps_binding(meta,2); t3=ps_binding(meta,3)
@@ -170,16 +232,43 @@ def build_material(meta:dict, mat):
             if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
 
     elif ps in PALETTE_T1 and t1:
-        # Native proof: t0 is RGB control/palette data, never direct visible color.
-        # Full palette reconstruction needs material/runtime constants not preserved in
-        # this carrier, so use only the proven surface atlas and fail closed on palette.
+        # These families prove t1 as the RGB surface multiplier/atlas while t0 is
+        # selector/control data. Reconstructing the full palette/reflection equation
+        # is a separate gate, but exposing t1 is strictly safer than a guessed PBR map.
         n1=tex_node(mat,t1,"D1_PROVEN_SURFACE_ATLAS_T1",-650,180)
         if n1:
             links.new(n1.outputs["Color"],bsdf.inputs["Base Color"])
             visible_tag=t1
-            status="PROVEN_SURFACE_ATLAS_PALETTE_CONSTANTS_PENDING"
+            status="PROVEN_SURFACE_ATLAS_PALETTE_PENDING"
         mat["d1_forbidden_visible_texture_t0"]=t0 or ""
-        mat["d1_80876579_control_texture_never_basecolor"]=True
+        mat["d1_control_texture_t0_never_basecolor"]=True
+        if ps=="80876579":
+            mat["d1_80876579_control_texture_never_basecolor"]=True
+
+    elif ps in SCALAR_MOD_T0_T2 and t0 and t2:
+        n0=tex_node(mat,t0,"D1_PROVEN_SURFACE_T0",-700,180)
+        n2=tex_node(mat,t2,"D1_PROVEN_SURFACE_SCALAR_T2",-700,-40,noncolor=True)
+        if n0 and n2:
+            s=scalar_rgb(mat,n2,"Red",False,"D1_T2_SURFACE_SCALAR",-340,-40)
+            mul=multiply_rgb(mat,n0,s,"D1_NATIVE_T0_TIMES_T2R",140,140)
+            links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
+            visible_tag=f"{t0}*{t2}.r"
+            status="SOURCE_CLOSED_SURFACE_SCALAR_PROXY"
+
+    elif ps in SUBTRACT_MASK_T0_T1 and t0 and t1:
+        n0=tex_node(mat,t0,"D1_PROVEN_SURFACE_T0",-700,180)
+        n1=tex_node(mat,t1,"D1_PROVEN_SUBTRACTIVE_MASK_T1",-700,-40,noncolor=True)
+        if n0 and n1:
+            s=scalar_rgb(mat,n1,"Red",True,"D1_ONE_MINUS_T1R",-340,-40)
+            mul=multiply_rgb(mat,n0,s,"D1_NATIVE_T0_TIMES_ONE_MINUS_T1R",140,140)
+            links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
+            visible_tag=f"{t0}*(1-{t1}.r)"
+            status="SOURCE_CLOSED_SUBTRACTIVE_MASK_PROXY"
+
+    elif ps in CONSTANT_BLACK:
+        bsdf.inputs["Base Color"].default_value=(0.0,0.0,0.0,1.0)
+        visible_tag="CURRENT_NATIVE_CONSTANT_BLACK"
+        status="SOURCE_CLOSED_CONSTANT_RGB_EXACT"
 
     else:
         bsdf.inputs["Base Color"].default_value=(0.18,0.18,0.18,1.0)
@@ -205,10 +294,14 @@ def upright_root(imported):
     root["d1_basis_adapter"]="GLTF_IMPORT_PLUS_90X_THEN_ROOT_NEG_90X"
     return root
 
-def stage_camera():
-    meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
-    pts=[o.matrix_world@Vector(c) for o in meshes for c in o.bound_box]
-    if not pts: raise RuntimeError("no Xur meshes")
+def stage_camera(arm):
+    # Frame the source skeleton rather than mesh bounds. A malformed/deformed mesh
+    # must not silently push the camera away and hide the actor during validation.
+    pts=[]
+    for b in arm.data.bones:
+        pts.append(arm.matrix_world @ b.head_local)
+        pts.append(arm.matrix_world @ b.tail_local)
+    if not pts: raise RuntimeError("no Xur skeleton points")
     mn=Vector((min(p.x for p in pts),min(p.y for p in pts),min(p.z for p in pts)))
     mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
     c=(mn+mx)*0.5; e=max((mx-mn).length,1.0)
@@ -250,9 +343,13 @@ def main():
         counts[st]=counts.get(st,0)+1
         rows.append({"material":tag,"vs":meta["vs"],"ps":meta["ps"],"semantic_class":SEMANTIC_CLASS.get(meta["ps"],"UNRESOLVED"),"status":st})
 
-    # Preserve all imported selector-owned actions. Do not invent retail idle/default.
+    # Preserve all imported selector-owned actions, but deliberately clear the
+    # importer's active action/NLA state. The carrier proves the action population,
+    # not which clip should be live at startup. This also gives a clean bind/rest
+    # preview instead of accidentally rendering an arbitrary imported clip.
     actions=list(bpy.data.actions)
     for act in actions: act.use_fake_user=True
+    imported_active_actions, muted_nla_tracks = neutralize_imported_animation(arms)
     bpy.context.scene["d1_selector_owned_action_count"]=len(actions)
     bpy.context.scene["d1_runtime_default_action_selected"]=False
     bpy.context.scene["d1_native_material_semantics_fail_closed"]=True
@@ -266,7 +363,7 @@ def main():
     readme.write("Full reflection/palette/runtime-global equations remain marked pending where inputs are not carrier-resident.\n")
     readme.write("The corpus-calibrated external-material choice is an adapter; E6/E7/E8 retail live selection is still unproven.\n")
 
-    stage_camera()
+    stage_camera(arms[0])
     sc=bpy.context.scene
     try: sc.render.engine="BLENDER_EEVEE_NEXT"
     except Exception: pass
@@ -289,6 +386,9 @@ def main():
         "preview":str(a.preview),"preview_sha256":sha256(a.preview),
         "material_count":len(metadata),"action_count":len(actions),"armature_count":len(arms),
         "material_status_counts":counts,"materials":rows,
+        "imported_active_actions_cleared":imported_active_actions,
+        "muted_nla_track_count":muted_nla_tracks,
+        "startup_pose":"BIND_REST_NO_ACTIVE_ACTION",
         "basis_adapter":"native D1 Z-up payload -> Blender glTF import -> root -90deg X",
         "runtime_material_selection_proven":False,
         "runtime_default_action_selected":False,
