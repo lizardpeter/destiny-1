@@ -59,7 +59,7 @@ jobs:
               off=int(bv.get('byteOffset',0)); n=int(bv['byteLength']); payload=blob[off:off+n]
               exp=ex.get('d1_embedded_png_sha256') or ex.get('d1_png_sha256')
               got=hashlib.sha256(payload).hexdigest()
-              ok=len(payload)==n and payload.startswith(b'\\x89PNG\\r\\n\\x1a\\n') and (not exp or got==exp)
+              ok=len(payload)==n and payload.startswith(bytes.fromhex('89504e470d0a1a0a')) and (not exp or got==exp)
               row={'i':i,'name':img.get('name'),'bufferView':img['bufferView'],'off':off,'n':n,'first16':payload[:16].hex(),'expected':exp,'got':got,'ok':ok}
               rows.append(row)
               if not ok: bad.append(row)
@@ -120,13 +120,13 @@ jobs:
         run: |
           set -euo pipefail
           BLENDER="$(tail -n1 blender-path.txt)"
-          xvfb-run -a "$BLENDER" --background --factory-startup             --python tools/d1_blender_xur_native_master.py --             --input work/XUR_80C88CEF_BASIS_FIXED.glb             --output out/XUR_80C88CEF_NATIVE_MASTER_V2.blend             --preview out/XUR_80C88CEF_NATIVE_MASTER_V2.png             --report out/XUR_80C88CEF_NATIVE_MASTER_V2.json             | tee out/blender-build.log
+          xvfb-run -a "$BLENDER" --background --factory-startup --python-exit-code 1             --python tools/d1_blender_xur_native_master.py --             --input work/XUR_80C88CEF_BASIS_FIXED.glb             --output out/XUR_80C88CEF_NATIVE_MASTER_V2.blend             --preview out/XUR_80C88CEF_NATIVE_MASTER_V2.png             --report out/XUR_80C88CEF_NATIVE_MASTER_V2.json             | tee out/blender-build.log
 
       - name: Reopen and validate the saved master
         run: |
           set -euo pipefail
           BLENDER="$(tail -n1 blender-path.txt)"
-          xvfb-run -a "$BLENDER" --background out/XUR_80C88CEF_NATIVE_MASTER_V2.blend             --python-expr "import bpy; arms=[o for o in bpy.data.objects if o.type=='ARMATURE']; assert len(bpy.data.actions)==267,len(bpy.data.actions); assert len(arms)==1,len(arms); ad=arms[0].animation_data; assert ad is None or ad.action is None; assert ad is None or all(t.mute for t in ad.nla_tracks); assert bpy.context.scene.get('d1_native_material_semantics_fail_closed') is True; assert bpy.context.scene.get('d1_full_retail_equivalence_claimed') is False; bad=[m.name for m in bpy.data.materials if m.get('d1_pixel_shader')=='80876579' and m.get('d1_80876579_control_texture_never_basecolor') is not True]; assert not bad,bad; print('XUR_MASTER_REOPEN_OK',len(bpy.data.materials),len(bpy.data.actions),len(arms))"             | tee out/blender-reopen.log
+          xvfb-run -a "$BLENDER" --background --python-exit-code 1 out/XUR_80C88CEF_NATIVE_MASTER_V2.blend             --python-expr "import bpy; arms=[o for o in bpy.data.objects if o.type=='ARMATURE']; assert len(bpy.data.actions)==267,len(bpy.data.actions); assert len(arms)==1,len(arms); ad=arms[0].animation_data; assert ad is None or ad.action is None; assert ad is None or all(t.mute for t in ad.nla_tracks); assert bpy.context.scene.get('d1_native_material_semantics_fail_closed') is True; assert bpy.context.scene.get('d1_full_retail_equivalence_claimed') is False; bad=[m.name for m in bpy.data.materials if m.get('d1_pixel_shader')=='80876579' and m.get('d1_80876579_control_texture_never_basecolor') is not True]; assert not bad,bad; print('XUR_MASTER_REOPEN_OK',len(bpy.data.materials),len(bpy.data.actions),len(arms))"             | tee out/blender-reopen.log
 
           python - <<'PY'
           import json
