@@ -35,9 +35,10 @@ def decode_material_render_state(payload: bytes) -> dict:
     if len(payload) < 0x2AC:
         raise ValueError(f'D1 material payload too short for render state: {len(payload)}')
 
-    raw16 = struct.unpack_from('<H', payload, 0x20)[0]
-    lo = payload[0x20]
-    hi = payload[0x21]
+    state4 = bytes(payload[0x20:0x24])
+    raw16 = struct.unpack_from('<H', state4, 0)[0]
+    lo = state4[0]
+    hi = state4[1]
     transparent = raw16 != 0
     known = lo == KNOWN_BLEND_SELECTOR
 
@@ -47,6 +48,19 @@ def decode_material_render_state(payload: bytes) -> dict:
         'unk08_u32': struct.unpack_from('<I', payload, 0x08)[0],
         'unk0c_u32': struct.unpack_from('<I', payload, 0x0C)[0],
         'unk10_hex': f"{struct.unpack_from('<I', payload, 0x10)[0]:08X}",
+        'state4_offset': '0x20',
+        'state4_hex': state4.hex().upper(),
+        'state4_u32_le': int.from_bytes(state4, 'little'),
+        'state4_lanes_u8': list(state4),
+        'state4_lanes_hex': [f'0x{x:02X}' for x in state4],
+        'state4_selector_syntax': [
+            {
+                'raw_u8': x,
+                'high_bit_set': bool(x & 0x80),
+                'selected_low7_if_highbit_set': (x & 0x7F) if (x & 0x80) else None,
+            }
+            for x in state4
+        ],
         'unk20_raw_u16': raw16,
         'unk20_hex': f'0x{raw16:04X}',
         'unk20_low_u8': lo,
@@ -63,5 +77,7 @@ def decode_material_render_state(payload: bytes) -> dict:
             'unk20_nonzero_transparent_population_source_closed': True,
             'blend_selector_0x88_state8_equation_source_closed': True,
             'other_nonzero_blend_equations_source_closed': False,
+            'full_state4_bytes_preserved_exactly': True,
+            'state4_lanes_1_3_semantics_promoted_here': False,
         },
     }
