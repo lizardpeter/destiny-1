@@ -40,6 +40,7 @@ on:
       - 'tools/d1_tower_light_80c98336_dual_gated_mrt0_factorization.py'
       - 'tools/d1_tower_light_80c98697_mrt0_factorization.py'
       - 'tools/d1_tower_light_80c99ba6_gated_mrt0_factorization.py'
+      - 'tools/d1_tower_light_80c99cbb_mrt0_factorization.py'
       - 'tools/d1_tower_light_80aadb46_mrt0_factorization.py'
       - 'tools/d1_tower_light_80ca0ed2_gated_mrt0_factorization.py'
       - 'tests/test_d1_gcn_provenance_analysis.py'
@@ -884,6 +885,29 @@ jobs:
           assert d['renderer_texture_value_frontier']==['t0.rgb','t1.x','t2.y'],d
           assert all(v is False for v in d['negative_proof'].values()),d
           print('TOWER_LIGHT_80C99BA6_GATED_MRT0_EXACT',d['exact_terminal_equation'])
+          PY
+
+      - name: Prove singleton 80C99CBB terminal light equation
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_80c99cbb_mrt0_factorization.py \
+            --material-manifest reports/tower_light_material_manifest.json \
+            --shader-report reports/tower_light_shader_report.json \
+            --image-usage reports/tower_light_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
+            --terminal-mrt0 reports/tower_light_all32_mrt0_dependencies.json \
+            --disasm disasm/PS_80C99CBB.s \
+            --out reports/TOWER_LIGHT_80C99CBB_MRT0_FACTORIZATION.json \
+            | tee reports/TOWER_LIGHT_80C99CBB_MRT0_FACTORIZATION_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_LIGHT_80C99CBB_MRT0_FACTORIZATION.json'))
+          assert d['status']=='D1_TOWER_LIGHT_80C99CBB_MRT0_FACTORIZATION_EXACT',d
+          assert d['instance_count']==1 and d['unique_material_count']==1,d
+          assert d['exact_terminal_equation']['mrt0_a']=='0',d
+          assert d['renderer_texture_value_frontier']==['t0.rgb','t1.x','t2.y'],d
+          assert all(v is False for v in d['negative_proof'].values()),d
+          print('TOWER_LIGHT_80C99CBB_MRT0_EXACT',d['exact_terminal_equation'])
           PY
 
       - uses: actions/upload-artifact@v4
