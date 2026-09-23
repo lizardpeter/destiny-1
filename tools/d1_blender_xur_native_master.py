@@ -284,14 +284,24 @@ def build_material(meta:dict, mat):
     mat["d1_runtime_permutation_selection_claimed"]=False
     return status
 
-def upright_root(imported):
+def upright_root(imported, source_basis_fixed: bool):
     root=bpy.data.objects.new("XUR_D1_TO_BLENDER_ROOT",None)
     bpy.context.scene.collection.objects.link(root)
     roots=[o for o in imported if o.parent not in set(imported)]
     for o in roots:
         mw=o.matrix_world.copy(); o.parent=root; o.matrix_world=mw
-    root.rotation_mode="XYZ"; root.rotation_euler.x=-math.pi/2
-    root["d1_basis_adapter"]="GLTF_IMPORT_PLUS_90X_THEN_ROOT_NEG_90X"
+    root.rotation_mode="XYZ"
+    if source_basis_fixed:
+        # The source GLB already undoes the parser [y,z,x] articulated domain and
+        # carries the native D1 Z-up -> glTF Y-up wrapper. Blender's glTF importer
+        # then performs the normal glTF->Blender basis conversion. Do not rotate twice.
+        root.rotation_euler.x=0.0
+        root["d1_basis_adapter"]="SOURCE_GLB_STANDALONE_ARTICULATED_BASIS_FIXED"
+    else:
+        # Legacy fallback retained only for diagnostics; this fixes display orientation
+        # but cannot repair parser-space joints/IBMs.
+        root.rotation_euler.x=-math.pi/2
+        root["d1_basis_adapter"]="LEGACY_DISPLAY_ONLY_ROT_X_NEG_90"
     return root
 
 def stage_camera(arm):
@@ -324,6 +334,9 @@ def stage_camera(arm):
 
 def main():
     a=cli(); doc=glb_json(a.input); metadata=mat_meta(doc)
+    source_basis_fixed=bool(((doc.get("asset") or {}).get("extras") or {}).get("d1_standalone_articulated_basis_fix"))
+    if not source_basis_fixed:
+        raise RuntimeError("Xur input is missing the proven standalone articulated basis repair")
     if len(metadata)!=54: raise RuntimeError(f"expected 54 exact Xur materials, got {len(metadata)}")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     before=set(bpy.data.objects)
@@ -331,7 +344,7 @@ def main():
     imported=[o for o in bpy.data.objects if o not in before]
     arms=[o for o in imported if o.type=="ARMATURE"]
     if len(arms)!=1: raise RuntimeError(f"expected one Xur armature, got {len(arms)}")
-    root=upright_root(imported)
+    root=upright_root(imported,source_basis_fixed)
     root["d1_identity"]="Xur/46C55854/80C88CEF"
     root["d1_material_selection"]="CORPUS_CALIBRATED_VISUAL_ADAPTER"
     root["d1_E6_E7_E8_live_selection_proven"]=False
@@ -389,7 +402,8 @@ def main():
         "imported_active_actions_cleared":imported_active_actions,
         "muted_nla_track_count":muted_nla_tracks,
         "startup_pose":"BIND_REST_NO_ACTIVE_ACTION",
-        "basis_adapter":"native D1 Z-up payload -> Blender glTF import -> root -90deg X",
+        "basis_adapter":"source GLB parser-basis repair + native D1 Z-up -> glTF Y-up wrapper -> Blender glTF import",
+        "source_basis_fix_proven":source_basis_fixed,
         "runtime_material_selection_proven":False,
         "runtime_default_action_selected":False,
         "full_native_equation_claimed":False,
