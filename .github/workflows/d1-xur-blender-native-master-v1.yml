@@ -40,6 +40,34 @@ jobs:
           echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
           test "$(stat -c %s input/${XUR_ASSET})" -eq 283675508
 
+      - name: Audit embedded Xur image payloads before basis repair
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,struct
+          p='input/D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb'
+          raw=open(p,'rb').read()
+          jl,jt=struct.unpack_from('<II',raw,12); assert jt==0x4E4F534A
+          d=json.loads(raw[20:20+jl].decode().rstrip(' \\t\\r\\n\\0'))
+          bo=20+jl; bl,bt=struct.unpack_from('<II',raw,bo); assert bt==0x004E4942
+          blob=raw[bo+8:bo+8+bl]
+          rows=[]; bad=[]
+          for i,img in enumerate(d.get('images') or []):
+              ex=img.get('extras') or {}
+              if not (ex.get('d1_native_texture_resource') is True or ex.get('d1_derived_portable_normal') is True): continue
+              bv=d['bufferViews'][int(img['bufferView'])]
+              off=int(bv.get('byteOffset',0)); n=int(bv['byteLength']); payload=blob[off:off+n]
+              exp=ex.get('d1_embedded_png_sha256') or ex.get('d1_png_sha256')
+              got=hashlib.sha256(payload).hexdigest()
+              ok=len(payload)==n and payload.startswith(b'\\x89PNG\\r\\n\\x1a\\n') and (not exp or got==exp)
+              row={'i':i,'name':img.get('name'),'bufferView':img['bufferView'],'off':off,'n':n,'first16':payload[:16].hex(),'expected':exp,'got':got,'ok':ok}
+              rows.append(row)
+              if not ok: bad.append(row)
+          print('XUR_EMBEDDED_IMAGE_AUDIT',json.dumps({'count':len(rows),'bad_count':len(bad),'bad':bad[:20]},sort_keys=True))
+          open('out/reports/XUR_EMBEDDED_IMAGE_AUDIT_BEFORE.json','w').write(json.dumps({'rows':rows,'bad':bad},indent=2)+'\\n')
+          assert not bad,bad[:3]
+          PY
+
       - name: Prove and repair the Xur articulated basis
         run: |
           set -euo pipefail
