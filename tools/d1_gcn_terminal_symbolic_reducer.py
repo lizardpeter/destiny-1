@@ -51,7 +51,7 @@ def source(tok,V,S):
     tok=first(tok)
     if tok in V:e=V[tok]
     elif tok in S:e=S[tok]
-    elif re.fullmatch(r'v\d+',tok):e=f'UNKNOWN({tok})'
+    elif re.fullmatch(r'v\d+',tok):e=f'INPUT_VGPR({tok})'
     elif re.fullmatch(r's\d+',tok):e=f'UNKNOWN({tok})'
     elif tok.startswith('0x'):e=literal_hex_float(tok)
     else:e=tok
