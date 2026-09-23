@@ -13,6 +13,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+      - 'tools/d1_tower_sky_shader_family_cluster.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -221,6 +222,30 @@ jobs:
               print('SKY_CLUSTER',r['cluster_index'],
                     'WEIGHT',r['visible_material_count_sum'],
                     'SHADERS',r['shaders'])
+          PY
+
+      - name: Cluster all 43 exact Tower sky shader families
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_sky_shader_family_cluster.py \
+            --material-manifest reports/tower_sky_material_texture_manifest.json \
+            --shader-report reports/tower_sky_shader_report.json \
+            --image-usage reports/tower_sky_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
+            --terminal-mrt0 reports/tower_sky_all_mrt0_dependencies.json \
+            --out reports/TOWER_SKY_SHADER_FAMILY_CLUSTER.json \
+            | tee reports/TOWER_SKY_SHADER_FAMILY_CLUSTER_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_SHADER_FAMILY_CLUSTER.json'))
+          assert d['status']=='D1_TOWER_SKY_SHADER_FAMILY_CLUSTER_EXACT',d
+          assert (d['visible_material_count'],d['exact_texture_count'],d['pixel_shader_family_count'])==(74,44,43),d
+          assert not d['violations'],d['violations']
+          print('TOWER_SKY_STRUCTURAL_CLUSTERS',d['structural_cluster_count'])
+          print('TOWER_SKY_TOP10_MATERIAL_COVERAGE',d['top10_material_count'],d['top10_material_fraction'])
+          print('TOWER_SKY_TOP10_SHADERS',d['top10_shaders'])
+          for q in d['structural_clusters']:
+              print('TOWER_SKY_CLUSTER',q)
           PY
 
       - uses: actions/upload-artifact@v4
