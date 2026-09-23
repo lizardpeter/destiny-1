@@ -45,10 +45,11 @@ New 2026-09-20 work:
 - the 65-family workflow now emits the highest-impact unresolved shader families;
 - `tools/d1_gcn_terminal_mrt0_dependency_census.py` supports ordinary and compressed
   MRT0 exports;
-- the two top unresolved common families `8093E8A2` and `80CA0F50` are now queued for
-  exact image/cbuffer/terminal-output slicing.
+- the two former top unresolved common families are no longer blockers:
+  - `80CA0F50` has exact native algebraic texture-role proof, promoted into the role table and workflow-gated;
+  - `8093E8A2` has an exact runtime alpha-only output contract and workflow gate.
 
-Remaining gate: promote sampled resources and terminal arithmetic family-by-family,
+Remaining gate: continue the 65-family semantic-coverage queue below those closed leaders,
 then replace preview PBR bindings with exact or explicitly bounded portable equations.
 
 ## Original Tower lights
@@ -61,14 +62,22 @@ Exact source structure already exists:
 - 32 exact native light pixel-shader families;
 - all 32 native GCN programs were recoverable/disassemblable.
 
-New 2026-09-20 work upgrades the light disassembly workflow to:
+2026-09-23 closeout:
 
-- exact image-resource provenance;
-- exact ImmConstBuffer dword provenance;
-- terminal MRT0 dependency slices for the eight highest-frequency light shader families.
+- exact image-resource provenance is closed for all 32 families;
+- exact ImmConstBuffer dword provenance is closed for all 32 families;
+- exact terminal MRT0 dependency slices cover all 32 families;
+- every one of the 32 native light pixel-shader families now has a fail-closed exact
+  terminal MRT0 factorization;
+- the all-family coverage gate asserts **32/32 shader families**, **737/737 light
+  instances**, family coverage **1.0**, instance coverage **1.0**, and zero missing families;
+- simple, gated, dual-gated, textured, and singleton tail variants are all represented
+  explicitly rather than collapsed by appearance.
 
-Remaining gate: identify exact light-output equations and renderer/global inputs, then
-replay them instead of using generic Blender lights/emissive approximations.
+The original-light *terminal arithmetic* frontier is therefore closed for the bounded
+Tower corpus.  Remaining light work is no longer "what equation does each light shader
+write?"  It is renderer-input interpretation / producer recovery, live values, and
+portable replay of those already-proven equations.
 
 ## Sky / environment
 
@@ -83,12 +92,20 @@ Exact Activity ownership is already closed:
 New 2026-09-20 workflow:
 `.github/workflows/d1-tower-sky-shader-closure.yml`
 
-It will:
+Current 2026-09-23 source census:
 
-- recover every exact sky pixel shader;
-- disassemble the complete sky shader corpus;
-- map exact image and constant-buffer provenance;
-- slice terminal MRT0 dependencies for the highest-frequency sky shader families.
+- 74 visible sky materials;
+- 44 exact source textures;
+- 43 distinct sky pixel-shader families.
+
+The live closure now:
+
+- recovers every exact sky pixel shader;
+- disassembles the complete 43-family sky shader corpus;
+- maps exact image and constant-buffer provenance;
+- slices terminal MRT0 dependencies for **every** sky shader family, not only the top set;
+- structurally clusters all 43 families by exact resource/cbuffer/MRT0 signature to
+  prioritize equation reversal by visible-material coverage.
 
 Remaining gates:
 
@@ -128,7 +145,8 @@ These remain the difference between an exact asset reconstruction and a near-pix
 faithful Tower:
 
 1. full material arithmetic for unresolved static/common families;
-2. original light shader equations and global inputs;
+2. original-light renderer input producers/live values and portable replay
+   (**32/32 terminal light equations themselves are closed**);
 3. sky shader equations and active sky selection;
 4. runtime/global constant-buffer producers (including unresolved renderer scope data);
 5. transparency / framebuffer ordering where material state alone is insufficient;
@@ -158,12 +176,18 @@ semantics rather than missing Tower geometry.
 
 ## Highest-value next work
 
-1. close `8093E8A2` and `80CA0F50` terminal material semantics;
-2. inspect and promote the top-eight light shader output equations;
-3. inspect and promote the top sky shader equations;
-4. build renderer-scope/API12/API13/global-buffer producer correlations across Tower
-   common/light/sky shader families;
-5. replace generic preview material/light/sky adapters with exact equation-driven
+1. finish the 43-family sky terminal-equation queue from the all-family structural census;
+2. run and interpret the common/light/sky cross-domain ImmConstBuffer overlap to narrow
+   renderer-global producer boundaries without naming fields by coincidence;
+3. continue the 65-family common-surface semantic queue below already-closed
+   `80CA0F50` / `8093E8A2`;
+4. replace generic preview material/light/sky adapters with exact equation-driven
    Blender nodes where portable reproduction is defensible;
+5. recover active sky collection / record selection only from source/runtime evidence;
 6. resume runtime actor/scenario selection only with primary/runtime evidence; never
    pick one alternative because it "looks right".
+
+
+## 2026-09-23 continuation note
+
+Tower original-light terminal arithmetic is now a completed bounded corpus rather than an open estimate.  The active renderer-fidelity frontier has moved to the 43-family sky corpus and the cross-domain renderer-global constant-buffer producer problem.
