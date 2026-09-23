@@ -29,6 +29,7 @@ on:
       - 'tools/d1_tower_light_80c98958_mrt0_factorization.py'
       - 'tools/d1_tower_light_80ca0962_gated_mrt0_factorization.py'
       - 'tools/d1_tower_light_80c98c27_mrt0_factorization.py'
+      - 'tools/d1_tower_light_80ca0637_gated_mrt0_factorization.py'
       - 'tools/d1_tower_light_80ca0ed2_gated_mrt0_factorization.py'
       - 'tests/test_d1_gcn_provenance_analysis.py'
       - 'tools/d1_tfx_program_inventory.py'
@@ -129,7 +130,7 @@ jobs:
           print('LIGHT_GCN_CONSTANT_USAGE',json.dumps({k:d[k] for k in ('total_scalar_buffer_load_count','mapped_constant_buffer_load_count','unmatched_scalar_buffer_load_count','constant_buffer_api_slot_histogram','constant_buffer_static_offset_histograms')},indent=2))
           PY
 
-      - name: Slice exact image/cbuffer/terminal output dependencies for top-seventeen light shaders
+      - name: Slice exact image/cbuffer/terminal output dependencies for top-eighteen light shaders
         run: |
           set -euo pipefail
           python tools/d1_gcn_image_usage_analyze.py \
@@ -150,26 +151,26 @@ jobs:
           rows=sorted(
               [x for x in d['shaders'] if not x.get('error')],
               key=lambda x:(-int(x.get('visible_material_count',0)),x['shader'])
-          )[:17]
+          )[:18]
           for r in rows: print(r['shader'])
           PY
           )
-          test "${#top[@]}" -eq 17
+          test "${#top[@]}" -eq 18
           args=(); for h in "${top[@]}"; do args+=(--shader "$h"); done
           python tools/d1_gcn_terminal_mrt0_dependency_census.py \
             --usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
             --disasm-dir disasm "${args[@]}" \
-            --out reports/tower_light_top17_mrt0_dependencies.json \
-            | tee reports/tower_light_top17_mrt0_dependencies_stdout.txt
+            --out reports/tower_light_top18_mrt0_dependencies.json \
+            | tee reports/tower_light_top18_mrt0_dependencies_stdout.txt
 
           python - <<'PY'
           import json
           e=json.load(open('reports/tower_light_shader_report.json'))
-          d=json.load(open('reports/tower_light_top17_mrt0_dependencies.json'))
+          d=json.load(open('reports/tower_light_top18_mrt0_dependencies.json'))
           assert d['status']=='D1_GCN_TERMINAL_MRT0_DEPENDENCY_CENSUS_EXACT',d
           freq={x['shader']:int(x.get('visible_material_count',0)) for x in e['shaders']}
-          assert len(d['shaders'])==17,d
+          assert len(d['shaders'])==18,d
           ordered=sorted(d['shaders'],key=lambda x:(-freq.get(x['shader'],0),x['shader']))
           for r in ordered:
               print('TOWER_LIGHT_TOP_MRT0',r['shader'],
@@ -189,7 +190,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --out reports/TOWER_LIGHT_SHADER_FAMILY_CLUSTER.json \
             | tee reports/TOWER_LIGHT_SHADER_FAMILY_CLUSTER_stdout.txt
           python - <<'PY'
@@ -220,7 +221,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80AAE1BE.s \
             --out reports/TOWER_LIGHT_80AAE1BE_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80AAE1BE_MRT0_FACTORIZATION_stdout.txt
@@ -242,7 +243,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80C998E6.s \
             --out reports/TOWER_LIGHT_80C998E6_GATED_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80C998E6_GATED_MRT0_FACTORIZATION_stdout.txt
@@ -264,7 +265,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_809DCE96.s \
             --out reports/TOWER_LIGHT_809DCE96_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_809DCE96_MRT0_FACTORIZATION_stdout.txt
@@ -286,7 +287,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0636.s \
             --out reports/TOWER_LIGHT_80CA0636_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0636_MRT0_FACTORIZATION_stdout.txt
@@ -308,7 +309,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA10A0.s \
             --out reports/TOWER_LIGHT_80CA10A0_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA10A0_MRT0_FACTORIZATION_stdout.txt
@@ -330,7 +331,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0AD8.s \
             --out reports/TOWER_LIGHT_80CA0AD8_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0AD8_MRT0_FACTORIZATION_stdout.txt
@@ -352,7 +353,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA109B.s \
             --out reports/TOWER_LIGHT_80CA109B_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA109B_MRT0_FACTORIZATION_stdout.txt
@@ -374,7 +375,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0ED3.s \
             --out reports/TOWER_LIGHT_80CA0ED3_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0ED3_MRT0_FACTORIZATION_stdout.txt
@@ -396,7 +397,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0451.s \
             --out reports/TOWER_LIGHT_80CA0451_GATED_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0451_GATED_MRT0_FACTORIZATION_stdout.txt
@@ -418,7 +419,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80AAE153.s \
             --out reports/TOWER_LIGHT_80AAE153_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80AAE153_MRT0_FACTORIZATION_stdout.txt
@@ -441,7 +442,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0D1A.s \
             --out reports/TOWER_LIGHT_80CA0D1A_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0D1A_MRT0_FACTORIZATION_stdout.txt
@@ -464,7 +465,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0296.s \
             --out reports/TOWER_LIGHT_80CA0296_GATED_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0296_GATED_MRT0_FACTORIZATION_stdout.txt
@@ -488,7 +489,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0ED2.s \
             --out reports/TOWER_LIGHT_80CA0ED2_GATED_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0ED2_GATED_MRT0_FACTORIZATION_stdout.txt
@@ -512,7 +513,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0ED2.s \
             --out reports/TOWER_LIGHT_80CA0ED2_GATED_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0ED2_GATED_MRT0_FACTORIZATION_stdout.txt
@@ -536,7 +537,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80C98958.s \
             --out reports/TOWER_LIGHT_80C98958_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80C98958_MRT0_FACTORIZATION_stdout.txt
@@ -560,7 +561,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80CA0962.s \
             --out reports/TOWER_LIGHT_80CA0962_GATED_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80CA0962_GATED_MRT0_FACTORIZATION_stdout.txt
@@ -584,7 +585,7 @@ jobs:
             --shader-report reports/tower_light_shader_report.json \
             --image-usage reports/tower_light_gcn_image_usage.json \
             --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
-            --terminal-mrt0 reports/tower_light_top17_mrt0_dependencies.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
             --disasm disasm/PS_80C98C27.s \
             --out reports/TOWER_LIGHT_80C98C27_MRT0_FACTORIZATION.json \
             | tee reports/TOWER_LIGHT_80C98C27_MRT0_FACTORIZATION_stdout.txt
@@ -597,6 +598,29 @@ jobs:
           assert d['exact_terminal_equation']['mrt0_a']=='0',d
           assert all(v is False for v in d['negative_proof'].values()),d
           print('TOWER_LIGHT_80C98C27_MRT0_EXACT',d['exact_terminal_equation'])
+          PY
+
+      - name: Prove gated 80CA0637 terminal light equation
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_80ca0637_gated_mrt0_factorization.py \
+            --material-manifest reports/tower_light_material_manifest.json \
+            --shader-report reports/tower_light_shader_report.json \
+            --image-usage reports/tower_light_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_light_gcn_cbuffer_usage_v2.json \
+            --terminal-mrt0 reports/tower_light_top18_mrt0_dependencies.json \
+            --disasm disasm/PS_80CA0637.s \
+            --out reports/TOWER_LIGHT_80CA0637_GATED_MRT0_FACTORIZATION.json \
+            | tee reports/TOWER_LIGHT_80CA0637_GATED_MRT0_FACTORIZATION_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_LIGHT_80CA0637_GATED_MRT0_FACTORIZATION.json'))
+          assert d['status']=='D1_TOWER_LIGHT_80CA0637_GATED_MRT0_FACTORIZATION_EXACT',d
+          assert d['instance_count']==6 and d['unique_material_count']==6,d
+          assert d['exact_terminal_equation']['gate']=='G > 0',d
+          assert d['exact_terminal_equation']['mrt0_a']=='0',d
+          assert all(v is False for v in d['negative_proof'].values()),d
+          print('TOWER_LIGHT_80CA0637_GATED_MRT0_EXACT',d['exact_terminal_equation'])
           PY
 
       - uses: actions/upload-artifact@v4
