@@ -3,7 +3,7 @@ name: D1 client startup scope frontier
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, d1-crota-source-semantics-v1]
     paths:
       - 'tools/d1_remote_client_startup_globals_probe.py'
       - '.github/workflows/d1-client-startup-scope-frontier.yml'
@@ -52,7 +52,16 @@ jobs:
           d=json.load(open('out/D1_CLIENT_STARTUP_GLOBALS_SCOPE_FRONTIER.json'))
           assert d['status']=='D1_CLIENT_STARTUP_GLOBALS_SCOPE_FRONTIER_EXACT',d['violations']
           assert d['gates']['client_startup_root_recovered'] is True,d['gates']
-          print('CLIENT_STARTUP_SCOPE_FRONTIER_GREEN',d['walk'],'SCOPES',d['scope_hashes'])
+          assert d['gates']['d1_scope_class_reached'] is True,d['gates']
+          universe={f'80AE40{x:02X}' for x in range(0x0E,0x25)}
+          reached=set(d['scope_hashes'])
+          assert reached,reached
+          assert reached <= universe,(sorted(reached),sorted(universe))
+          print('CLIENT_STARTUP_SCOPE_FRONTIER_GREEN',d['walk'],
+                'REACHED_SCOPES',sorted(reached),
+                'GLOBAL_SCOPE_UNIVERSE_MATCH_COUNT',len(reached),
+                'UNIVERSE_SIZE',len(universe))
+          print('CLIENT_STARTUP_SCOPE_API13_BINDING','WITHHELD_NO_SHADER_BINDING_EDGE_YET')
           PY
       - name: Persist hashes
         if: always()
