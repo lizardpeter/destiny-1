@@ -15,6 +15,8 @@ on:
       - 'tools/d1_gcn_terminal_symbolic_reducer.py'
       - 'tools/d1_gcn_straightline_controlflow_audit.py'
       - 'tools/d1_tower_common_symbolic_coverage.py'
+      - 'tools/d1_tower_common_alpha_branch_cfg_proof.py'
+      - 'tests/test_d1_gcn_terminal_symbolic_reducer.py'
       - 'tools/d1_tower_common_terminal_symbolic_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_shader_texture_roles.py'
@@ -326,6 +328,38 @@ jobs:
           print('TOWER_COMMON_TERMINAL_EQUATION_FRONTIER','CLOSED_65_OF_65_FAMILIES_99_OF_99_MATERIALS')
           print('TOWER_COMMON_TERMINAL_CANONICAL_SHA256',d['canonical_projection_sha256'])
           print('TOWER_COMMON_INITIAL_VGPR_LEAVES',d['initial_vgpr_leaf_shaders'])
+          PY
+
+      - name: Regression-test symbolic reducer and CFG-close alpha branch siblings
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_d1_gcn_terminal_symbolic_reducer -v
+
+          python tools/d1_tower_common_alpha_branch_cfg_proof.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm-dir disasm \
+            --out reports/TOWER_COMMON_ALPHA_BRANCH_CFG_PROOF.json \
+            | tee reports/TOWER_COMMON_ALPHA_BRANCH_CFG_PROOF_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON_ALPHA_BRANCH_CFG_PROOF.json'))
+          assert d['status']=='D1_TOWER_COMMON_ALPHA_BRANCH_CFG_PROOF_EXACT',d
+          assert d['shader_family_count']==3 and d['visible_material_count']==3,d
+          assert {x['shader'] for x in d['rows']}=={'80C991D5','8093EA57','80CA12E0'},d
+          assert not d['violations'],d['violations']
+          by={x['shader']:x for x in d['rows']}
+          assert by['80C991D5']['exact_cfg_equation']['MRT0.a']=='0',by['80C991D5']
+          assert 'API0[5]' in by['80C991D5']['exact_cfg_equation']['K'],by['80C991D5']
+          assert 'post_merge_gate_value' in by['8093EA57']['exact_cfg_equation'],by['8093EA57']
+          assert by['80CA12E0']['exact_cfg_equation']['MRT0.a'].startswith('mad('),by['80CA12E0']
+          for r in d['rows']:
+              print('TOWER_COMMON_CFG_ALPHA_EXACT',r['shader'],
+                    'MATERIAL',r['material'],
+                    'EQUATION',r['exact_cfg_equation'],
+                    'EXPORT_GATE',r['exact_export_lane_gate'])
           PY
 
       - name: Cluster exact common shader structural families
