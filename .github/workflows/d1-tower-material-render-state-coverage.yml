@@ -112,6 +112,34 @@ jobs:
               print('TOWER_RENDER_STATE_UNRESOLVED',r)
           PY
 
+      - name: Source-correlate exact four-byte PipelineState lanes
+        if: steps.inputs.outputs.READY == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          curl -fsSL --retry 4 \
+            'https://raw.githubusercontent.com/cohaereo/alkahest/c632a562e88b5b805098152658b915d1c59f0f9a/crates/data/tfx/technique.rs' \
+            -o source/technique.rs
+          test "$(git hash-object source/technique.rs)" = '008cacbd3db09b66f903943e1fd1b7a6ce9140a9'
+          python -m py_compile tools/d1_tower_material_state4_source_correlation.py
+          python tools/d1_tower_material_state4_source_correlation.py \
+            --coverage reports/TOWER_MATERIAL_RENDER_STATE_COVERAGE.json \
+            --technique-source source/technique.rs \
+            --out reports/TOWER_MATERIAL_STATE4_SOURCE_CORRELATION.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_MATERIAL_STATE4_SOURCE_CORRELATION.json'))
+          assert d['status']=='D1_TOWER_MATERIAL_STATE4_SOURCE_CORRELATION_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['source']['lane_order']==['blend_state','depth_stencil_state','rasterizer_state','depth_bias_state'],d
+          assert d['semantic_boundary']['lane1_depth_stencil_d1_behavior']=='WITHHELD',d
+          assert d['semantic_boundary']['lane2_rasterizer_d1_behavior']=='WITHHELD',d
+          assert d['semantic_boundary']['lane3_depth_bias_d1_behavior']=='WITHHELD',d
+          for domain,row in d['domains'].items():
+              print('TOWER_STATE4_SOURCE_DOMAIN',domain,
+                    [(x['lane_index'],x['source_field_name'],x['selected_low7_index_counts']) for x in row['lanes']])
+          PY
+
       - uses: actions/upload-artifact@v4
         if: steps.inputs.outputs.READY == 'true'
         with:
