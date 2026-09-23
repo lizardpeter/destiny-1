@@ -13,6 +13,7 @@ on:
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
       - 'tools/d1_gcn_terminal_symbolic_reducer.py'
+      - 'tools/d1_gcn_straightline_controlflow_audit.py'
       - 'tools/d1_tower_common_symbolic_coverage.py'
       - 'tools/d1_tower_common_terminal_symbolic_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
@@ -220,6 +221,30 @@ jobs:
           print('TOWER_COMMON_ALL65_MRT0_COVERAGE',d['shader_count'])
           PY
 
+      - name: Audit common shaders for CFG-safe symbolic promotion
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_straightline_controlflow_audit.py \
+            --extract-report reports/common65_shader_extract.json \
+            --disasm-dir disasm \
+            --out reports/TOWER_COMMON65_CONTROLFLOW_AUDIT.json \
+            | tee reports/TOWER_COMMON65_CONTROLFLOW_AUDIT_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON65_CONTROLFLOW_AUDIT.json'))
+          assert d['status']=='D1_GCN_STRAIGHTLINE_CONTROLFLOW_AUDIT_EXACT',d
+          assert d['shader_family_count']==65,d
+          print('TOWER_COMMON_CFG_AUDIT',
+                'SAFE',d['straightline_safe_shader_family_count'],
+                'SAFE_MATERIALS',d['straightline_safe_visible_material_count'],
+                'CFG_REQUIRED',d['cfg_required_shader_family_count'],
+                'CFG_MATERIALS',d['cfg_required_visible_material_count'])
+          for r in d['cfg_required_rows']:
+              print('TOWER_COMMON_CFG_REQUIRED',r['shader'],
+                    'WEIGHT',r['visible_material_count'],
+                    'OPS',[(x['address'],x['mnemonic'],x['reason']) for x in r['path_selecting_operations']])
+          PY
+
       - name: Symbolically reduce all 65 common terminal equations
         run: |
           set -euo pipefail
@@ -249,6 +274,7 @@ jobs:
             --manifest prior/compact/common_material_texture_manifest.json \
             --shader-report reports/common65_shader_extract.json \
             --symbolic reports/TOWER_COMMON65_SYMBOLIC_TERMINAL.json \
+            --controlflow-audit reports/TOWER_COMMON65_CONTROLFLOW_AUDIT.json \
             --out reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json \
             | tee reports/TOWER_COMMON65_SYMBOLIC_COVERAGE_stdout.txt
 
