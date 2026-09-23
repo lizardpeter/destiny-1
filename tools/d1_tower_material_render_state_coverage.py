@@ -66,6 +66,7 @@ def main():
         instance_counts=collections.Counter()
         for r in rows:
             cls=classify(r);counts[cls]+=1;combined_class[cls]+=1
+            mh=str(r.get('material','')).upper()
             rawv=str(r.get('unk20_hex'));lowv=str(r.get('unk20_low_hex'))
             raw[rawv]+=1;low[lowv]+=1
             s4=str(r.get('state4_hex') or '')
@@ -78,7 +79,6 @@ def main():
                     lane_raw[li][f'0x{int(x):02X}']+=1
                     idx=(int(x)&0x7F) if (int(x)&0x80) else None
                     lane_selected[li]['NONE' if idx is None else str(idx)]+=1
-            mh=str(r.get('material','')).upper()
             weight=light_freq.get(mh,0) if label=='light' and light_freq else 0
             if label=='light' and light_freq:
                 instance_counts[cls]+=weight
