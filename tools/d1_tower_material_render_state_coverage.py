@@ -59,12 +59,25 @@ def main():
         if int(d.get('selected_material_count',-1))!=EXPECTED[label] or int(d.get('resolved_material_count',-1))!=EXPECTED[label]:
             v.append(f'{label}: material count drift {d.get("selected_material_count")}/{d.get("resolved_material_count")}')
         rows=d.get('materials') or []
-        counts=collections.Counter();raw=collections.Counter();low=collections.Counter();unknown_rows=[]
+        counts=collections.Counter();raw=collections.Counter();low=collections.Counter();state4=collections.Counter()
+        lane_raw=[collections.Counter() for _ in range(4)]
+        lane_selected=[collections.Counter() for _ in range(4)]
+        unknown_rows=[]
         instance_counts=collections.Counter()
         for r in rows:
             cls=classify(r);counts[cls]+=1;combined_class[cls]+=1
             rawv=str(r.get('unk20_hex'));lowv=str(r.get('unk20_low_hex'))
             raw[rawv]+=1;low[lowv]+=1
+            s4=str(r.get('state4_hex') or '')
+            lanes=list(r.get('state4_lanes_u8') or [])
+            if len(lanes)!=4:
+                v.append(f'{label}:{mh}: state4 lanes missing/drift {lanes}')
+            else:
+                state4[s4]+=1
+                for li,x in enumerate(lanes):
+                    lane_raw[li][f'0x{int(x):02X}']+=1
+                    idx=(int(x)&0x7F) if (int(x)&0x80) else None
+                    lane_selected[li]['NONE' if idx is None else str(idx)]+=1
             mh=str(r.get('material','')).upper()
             weight=light_freq.get(mh,0) if label=='light' and light_freq else 0
             if label=='light' and light_freq:
@@ -91,6 +104,9 @@ def main():
             'all_material_blend_selector_resolution_fraction':((len(rows)-counts['TRANSPARENT_BLEND_EQUATION_UNRESOLVED'])/len(rows) if rows else None),
             'unk20_raw_counts':dict(sorted(raw.items())),
             'unk20_low_byte_counts':dict(sorted(low.items())),
+            'state4_hex_counts':dict(sorted(state4.items())),
+            'state4_lane_raw_counts':{str(i):dict(sorted(x.items())) for i,x in enumerate(lane_raw)},
+            'state4_lane_selected_low7_counts':{str(i):dict(sorted(x.items())) for i,x in enumerate(lane_selected)},
             'unresolved_rows':sorted(unknown_rows,key=lambda x:(-(x.get('light_instance_count') or 0),x['unk20_hex'],x['material'])),
             'light_instance_class_counts':dict(instance_counts) if label=='light' and light_freq else None,
             'light_instance_blend_selector_resolution_fraction':(
@@ -131,6 +147,8 @@ def main():
             'blend_state_8_equation':'Source + Destination*(1-SourceAlpha)',
             'other_nonzero_blend_equations':'WITHHELD',
             'depth_stencil_state':'WITHHELD_BY_THIS_CENSUS',
+            'state4_lane_1_3_names':'WITHHELD_BY_THIS_CENSUS',
+            'state4_highbit_low7_selector_decomposition':'EXACT_MECHANICAL_SYNTAX_ONLY',
             'rasterizer_state':'WITHHELD_BY_THIS_CENSUS',
             'pass_order_and_framebuffer_ownership':'WITHHELD',
         },
