@@ -60,7 +60,11 @@ def main():
     if int(m.get('unique_light_material_count',-1))!=497:violations.append('unique material count drift')
     if int(m.get('pixel_shader_count',-1))!=32:violations.append('pixel shader count drift')
     if top_instances!=575:violations.append(f'top8 instance coverage drift {top_instances} != 575')
-    terminal_scope=sorted(terminal_rows)\n    missing_top=sorted(set(top)-set(terminal_rows))\n    extra_unknown=sorted(set(terminal_rows)-set(freq))\n    if missing_top:violations.append(f'terminal scope missing top8 shaders {missing_top}')\n    if extra_unknown:violations.append(f'terminal scope contains unknown shaders {extra_unknown}')
+    terminal_scope=sorted(terminal_rows)
+    missing_top=sorted(set(top)-set(terminal_rows))
+    extra_unknown=sorted(set(terminal_rows)-set(freq))
+    if missing_top:violations.append(f'terminal scope missing top8 shaders {missing_top}')
+    if extra_unknown:violations.append(f'terminal scope contains unknown shaders {extra_unknown}')
 
     rows=[]
     for sh in sorted(freq,key=lambda x:(-freq[x],x)):
@@ -167,7 +171,9 @@ def main():
         'light_instance_count':int(m.get('light_instance_count',0)),
         'unique_light_material_count':int(m.get('unique_light_material_count',0)),
         'pixel_shader_family_count':len(rows),
-        'top8_shaders':top,'top8_instance_count':top_instances,\n        'terminal_dependency_shader_count':len(terminal_scope),\n        'terminal_dependency_shaders':terminal_scope,
+        'top8_shaders':top,'top8_instance_count':top_instances,
+        'terminal_dependency_shader_count':len(terminal_scope),
+        'terminal_dependency_shaders':terminal_scope,
         'top8_instance_fraction':top_instances/int(m.get('light_instance_count',1)),
         'renderer_resource_clusters':clusters,'shaders':rows,'violations':violations,
         'semantic_boundary':{
