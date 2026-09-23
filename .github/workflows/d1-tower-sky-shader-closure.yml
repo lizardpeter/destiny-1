@@ -157,34 +157,37 @@ jobs:
                 'UNRESOLVED_SBUF',c['unresolved_scalar_buffer_load_count'])
           PY
 
-      - name: Slice terminal MRT0 dependencies for highest-frequency sky shaders
+      - name: Slice terminal MRT0 dependencies for every sky shader family
         run: |
           set -euo pipefail
-          mapfile -t top < <(python - <<'PY'
+          mapfile -t all_sky < <(python - <<'PY'
           import json
           d=json.load(open('reports/tower_sky_shader_report.json'))
           rows=sorted([x for x in d['shaders'] if not x.get('error')],
                       key=lambda x:(-int(x.get('visible_material_count',0)),x['shader']))
-          for r in rows[:min(12,len(rows))]:print(r['shader'])
+          for r in rows:print(r['shader'])
           PY
           )
-          test "${#top[@]}" -gt 0
-          args=(); for h in "${top[@]}"; do args+=(--shader "$h"); done
+          test "${#all_sky[@]}" -gt 0
+          args=(); for h in "${all_sky[@]}"; do args+=(--shader "$h"); done
           python tools/d1_gcn_terminal_mrt0_dependency_census.py \
             --usage reports/tower_sky_gcn_image_usage.json \
             --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
             --disasm-dir disasm "${args[@]}" \
-            --out reports/tower_sky_top_mrt0_dependencies.json \
-            | tee reports/tower_sky_top_mrt0_dependencies_stdout.txt
+            --out reports/tower_sky_all_mrt0_dependencies.json \
+            | tee reports/tower_sky_all_mrt0_dependencies_stdout.txt
 
           python - <<'PY'
           import json
           e=json.load(open('reports/tower_sky_shader_report.json'))
-          d=json.load(open('reports/tower_sky_top_mrt0_dependencies.json'))
+          d=json.load(open('reports/tower_sky_all_mrt0_dependencies.json'))
           assert d['status']=='D1_GCN_TERMINAL_MRT0_DEPENDENCY_CENSUS_EXACT',d
+          assert d['shader_count']==e['selected_count'],(d['shader_count'],e['selected_count'])
           freq={x['shader']:int(x.get('visible_material_count',0)) for x in e['shaders']}
+          assert {x['shader'] for x in d['shaders']}==set(freq),(len(d['shaders']),len(freq))
+          print('TOWER_SKY_ALL_MRT0_COVERAGE',d['shader_count'],'OF',e['selected_count'])
           for r in sorted(d['shaders'],key=lambda x:(-freq.get(x['shader'],0),x['shader'])):
-              print('TOWER_SKY_TOP_MRT0',r['shader'],
+              print('TOWER_SKY_MRT0',r['shader'],
                     'MATERIALS',freq.get(r['shader'],0),
                     'COMPRESSED',r['terminal_mrt0_compressed'],
                     'OPERANDS',r['terminal_mrt0_operands'],
