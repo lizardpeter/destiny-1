@@ -16,6 +16,13 @@ on:
       - 'tools/d1_gcn_straightline_controlflow_audit.py'
       - 'tools/d1_tower_common_symbolic_coverage.py'
       - 'tools/d1_tower_common_alpha_branch_cfg_proof.py'
+      - 'tools/d1_tower_common_terminal_closure.py'
+      - 'tools/d1_tower_common_ps_8093e501_cfg_program_proof.py'
+      - 'tools/d1_tower_common_ps_80ca1427_cfg_proof.py'
+      - 'tools/d1_tower_common_ps_80ca0bfa_cfg_proof.py'
+      - 'tools/d1_tower_common_ps_80c997a7_cfg_proof.py'
+      - 'tools/d1_tower_common_80ca0be9_80ca0bea_cfg_proof.py'
+      - 'tools/d1_gcn_cfg_extract.py'
       - 'tests/test_d1_gcn_terminal_symbolic_reducer.py'
       - 'tools/d1_tower_common_terminal_symbolic_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
@@ -307,7 +314,7 @@ jobs:
                     'UNSUPPORTED',[(x['address'],x['mnemonic']) for x in r['unsupported_operations'][:12]])
           PY
 
-      - name: Pin complete common terminal equation corpus
+      - name: Pin raw register-linear common symbolic projection
         run: |
           set -euo pipefail
           python tools/d1_tower_common_terminal_symbolic_coverage.py \
@@ -325,7 +332,7 @@ jobs:
           assert d['visible_material_coverage_fraction']==1.0,d
           assert d['canonical_projection_sha256']=='8dd0014b2b95c50c89f301b7d59898bc1ebba590b7965d09a1d96e4a2c7abbb0',d
           assert d['initial_vgpr_leaf_shaders']==['80AADBB4','80AAE1F5'],d
-          print('TOWER_COMMON_TERMINAL_EQUATION_FRONTIER','CLOSED_65_OF_65_FAMILIES_99_OF_99_MATERIALS')
+          print('TOWER_COMMON_REGISTER_LINEAR_SYMBOLIC_PROJECTION','65_OF_65_FAMILIES_99_OF_99_MATERIALS_CFG_NOT_IMPLIED')
           print('TOWER_COMMON_TERMINAL_CANONICAL_SHA256',d['canonical_projection_sha256'])
           print('TOWER_COMMON_INITIAL_VGPR_LEAVES',d['initial_vgpr_leaf_shaders'])
           PY
@@ -360,6 +367,120 @@ jobs:
                     'MATERIAL',r['material'],
                     'EQUATION',r['exact_cfg_equation'],
                     'EXPORT_GATE',r['exact_export_lane_gate'])
+          PY
+
+      - name: CFG-close remaining common shader families and aggregate terminal behavior
+        run: |
+          set -euo pipefail
+
+          python tools/d1_tower_common_80ca0be9_80ca0bea_cfg_proof.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm-dir disasm \
+            --out reports/TOWER_COMMON_80CA0BE9_80CA0BEA_CFG_PROOF.json
+
+          python tools/d1_tower_common_ps_80c997a7_cfg_proof.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm disasm/PS_80C997A7.s \
+            --out reports/TOWER_COMMON_80C997A7_CFG_PROOF.json
+
+          python tools/d1_tower_common_ps_80ca0bfa_cfg_proof.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm disasm/PS_80CA0BFA.s \
+            --out reports/TOWER_COMMON_80CA0BFA_CFG_PROOF.json
+
+          python tools/d1_tower_common_ps_80ca1427_cfg_proof.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm disasm/PS_80CA1427.s \
+            --out reports/TOWER_COMMON_80CA1427_CFG_PROOF.json
+
+          python tools/d1_gcn_cfg_extract.py \
+            --disasm disasm/PS_8093E501.s \
+            --shader 8093E501 \
+            --out reports/TOWER_COMMON_8093E501_CFG.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON_8093E501_CFG.json'))
+          assert d['status']=='D1_GCN_STRUCTURAL_CFG_EXACT',d
+          assert d['instruction_count']==429,d
+          assert d['basic_block_count']==20,d
+          assert d['branch_count']==10,d
+          assert d['backedge_count']==1,d
+          b=d['backedges'][0]
+          assert (b['source_block_start_hex'],b['source_end_hex'],b['target_hex'])==(
+              '0000000002F8','000000000308','000000000284'),b
+          assert d['normalized_instruction_sha256']=='a25fd49788225bae20b9e131c404b2184a209f48c40ec5c71d2ea347d5667620',d
+          print('TOWER_COMMON_8093E501_CFG_EXACT',
+                d['instruction_count'],'INSTRUCTIONS',
+                d['basic_block_count'],'BLOCKS',
+                d['branch_count'],'BRANCHES',
+                d['backedges'])
+          PY
+
+          python tools/d1_tower_common_ps_8093e501_cfg_program_proof.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --cfg reports/TOWER_COMMON_8093E501_CFG.json \
+            --disasm disasm/PS_8093E501.s \
+            --out reports/TOWER_COMMON_8093E501_CFG_PROGRAM_PROOF.json
+
+          python - <<'PY'
+          import json
+          paths=[
+            ('TOWER_COMMON_80CA0BE9_80CA0BEA_CFG_PROOF.json','D1_TOWER_COMMON_80CA0BE9_80CA0BEA_CFG_PROOF_EXACT'),
+            ('TOWER_COMMON_80C997A7_CFG_PROOF.json','D1_TOWER_COMMON_PS_80C997A7_CFG_PROOF_EXACT'),
+            ('TOWER_COMMON_80CA0BFA_CFG_PROOF.json','D1_TOWER_COMMON_PS_80CA0BFA_CFG_PROOF_EXACT'),
+            ('TOWER_COMMON_80CA1427_CFG_PROOF.json','D1_TOWER_COMMON_PS_80CA1427_CFG_PROOF_EXACT'),
+            ('TOWER_COMMON_8093E501_CFG_PROGRAM_PROOF.json','D1_TOWER_COMMON_PS_8093E501_CFG_PROGRAM_PROOF_EXACT'),
+          ]
+          for fn,status in paths:
+              d=json.load(open('reports/'+fn))
+              assert d['status']==status,(fn,d)
+              assert not d.get('violations'),(fn,d.get('violations'))
+              print('TOWER_COMMON_DEDICATED_CFG_EXACT',fn,status)
+          PY
+
+          python tools/d1_tower_common_terminal_closure.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --symbolic-coverage reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json \
+            --alpha-cfg reports/TOWER_COMMON_ALPHA_BRANCH_CFG_PROOF.json \
+            --be9-bea-cfg reports/TOWER_COMMON_80CA0BE9_80CA0BEA_CFG_PROOF.json \
+            --ps-80c997a7 reports/TOWER_COMMON_80C997A7_CFG_PROOF.json \
+            --ps-80ca0bfa reports/TOWER_COMMON_80CA0BFA_CFG_PROOF.json \
+            --ps-80ca1427 reports/TOWER_COMMON_80CA1427_CFG_PROOF.json \
+            --ps-8093e501 reports/TOWER_COMMON_8093E501_CFG_PROGRAM_PROOF.json \
+            --out reports/TOWER_COMMON_TERMINAL_CLOSURE.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON_TERMINAL_CLOSURE.json'))
+          assert d['status']=='D1_TOWER_COMMON_TERMINAL_BEHAVIOR_CLOSED',d
+          assert d['total_shader_family_count']==65,d
+          assert d['total_visible_material_count']==99,d
+          assert d['flattened_terminal_equation_family_count']==64,d
+          assert d['flattened_terminal_equation_visible_material_count']==98,d
+          assert d['exact_cfg_program_family_count']==1,d
+          assert d['exact_cfg_program_visible_material_count']==1,d
+          assert d['terminal_behavior_closed_family_count']==65,d
+          assert d['terminal_behavior_closed_visible_material_count']==99,d
+          assert d['missing_families']==[],d
+          print('TOWER_COMMON_TERMINAL_BEHAVIOR_FRONTIER',
+                'CLOSED_65_OF_65_FAMILIES_99_OF_99_MATERIALS',
+                'FLATTENED',d['flattened_terminal_equation_family_count'],
+                'CFG_PROGRAM',d['exact_cfg_program_family_count'])
           PY
 
       - name: Cluster exact common shader structural families
