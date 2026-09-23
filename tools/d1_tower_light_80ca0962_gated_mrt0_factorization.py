@@ -119,7 +119,7 @@ def main()->int:
    if tex!=expected_tex:v.append(f'{ch}: terminal texture leaf drift {sorted(tex)}')
    cbq={str(k):set(z) for k,z in (q.get('cbuffer_dwords') or {}).items()}
    if set(cbq)-{'0'}:v.append(f'{ch}: unexpected non-API0 MRT0 cbuffer leaves {cbq}')
-   required={40,41,42,44,45,80,81,82,84,92,93,94,95}
+   required={base,mod,44,45,84,92,93,94,95}
    if not required.issubset(cbq.get('0',set())):
     v.append(f'{ch}: terminal coefficient leaves missing {sorted(required-cbq.get("0",set()))}')
   aq=tr['channels']['A']['value_slice']
