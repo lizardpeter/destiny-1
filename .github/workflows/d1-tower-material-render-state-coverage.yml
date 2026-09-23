@@ -1,0 +1,122 @@
+name: D1 Tower cross-domain material render-state closure
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - 'D1 Tower common-layer material texture census'
+      - 'D1 Tower light material census'
+      - 'D1 Tower full sky model and texture export'
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  coverage:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover latest common sky and light material-state artifacts
+        id: inputs
+        run: |
+          set -euo pipefail
+          mkdir -p input/common input/sky input/light reports
+
+          common_run="$(gh run list --workflow d1-tower-common-layer-texture-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          light_run="$(gh run list --workflow d1-tower-light-material-census.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          sky_run="$(gh run list --workflow d1-tower-full-sky-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$common_run" -a -n "$light_run" -a -n "$sky_run"
+
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$common_run" \
+            --artifact-name d1-tower-common-layer-texture-census \
+            --out-dir input/common --clean \
+            --report reports/ARTIFACT_PULL_COMMON_RENDER_STATE.json
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$light_run" \
+            --artifact-name d1-tower-light-material-census \
+            --out-dir input/light --clean \
+            --report reports/ARTIFACT_PULL_LIGHT_RENDER_STATE.json
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$sky_run" \
+            --artifact-name D1-TOWER-ALL-SKY-MODELS-EXACT-TEXTURES \
+            --out-dir input/sky --clean \
+            --report reports/ARTIFACT_PULL_SKY_RENDER_STATE.json
+
+          find_one_optional() {
+            root="$1"; name="$2"
+            mapfile -t hits < <(find "$root" -type f -name "$name" -print | sort)
+            if [ "${#hits[@]}" -eq 1 ]; then printf '%s' "${hits[0]}"; return 0; fi
+            return 1
+          }
+
+          common_state="$(find_one_optional input/common common_material_render_state.json || true)"
+          light_state="$(find_one_optional input/light tower_light_material_render_state.json || true)"
+          light_manifest="$(find_one_optional input/light tower_light_material_manifest.json || true)"
+          sky_state="$(find_one_optional input/sky tower_sky_material_render_state.json || true)"
+
+          if [ -z "$common_state" ] || [ -z "$light_state" ] || [ -z "$light_manifest" ] || [ -z "$sky_state" ]; then
+            echo "READY=false" >> "$GITHUB_OUTPUT"
+            printf 'WAITING_FOR_STATE_ARTIFACTS common=%q light=%q light_manifest=%q sky=%q\n' \
+              "$common_state" "$light_state" "$light_manifest" "$sky_state"
+            exit 0
+          fi
+
+          cp "$common_state" reports/common_material_render_state.json
+          cp "$light_state" reports/tower_light_material_render_state.json
+          cp "$light_manifest" reports/tower_light_material_manifest.json
+          cp "$sky_state" reports/tower_sky_material_render_state.json
+          echo "READY=true" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_RUNS common=$common_run light=$light_run sky=$sky_run"
+
+      - name: Aggregate exact Tower material render-state closure
+        if: steps.inputs.outputs.READY == 'true'
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_tower_material_render_state_coverage.py
+          python tools/d1_tower_material_render_state_coverage.py \
+            --state common=reports/common_material_render_state.json \
+            --state sky=reports/tower_sky_material_render_state.json \
+            --state light=reports/tower_light_material_render_state.json \
+            --light-manifest reports/tower_light_material_manifest.json \
+            --out reports/TOWER_MATERIAL_RENDER_STATE_COVERAGE.json \
+            | tee reports/TOWER_MATERIAL_RENDER_STATE_COVERAGE_stdout.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_MATERIAL_RENDER_STATE_COVERAGE.json'))
+          assert d['status']=='D1_TOWER_MATERIAL_RENDER_STATE_COVERAGE_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['domain_material_counts']=={'common':99,'sky':74,'light':497},d
+          assert d['domain_scoped_material_row_count']==670,d
+          print('TOWER_RENDER_STATE_COVERAGE_EXACT',
+                'COMBINED_RESOLUTION',d['combined_material_blend_selector_resolution_fraction'])
+          for name,row in d['domains'].items():
+              print('TOWER_RENDER_STATE_DOMAIN',name,
+                    'OPAQUE',row['opaque_material_count'],
+                    'TRANSPARENT',row['transparent_material_count'],
+                    'STATE8',row['exact_state8_material_count'],
+                    'UNRESOLVED_TRANSPARENT',row['unresolved_transparent_material_count'],
+                    'MATERIAL_RESOLUTION',row['all_material_blend_selector_resolution_fraction'],
+                    'LIGHT_INSTANCE_RESOLUTION',row['light_instance_blend_selector_resolution_fraction'])
+          for r in d['highest_priority_unresolved_render_states'][:30]:
+              print('TOWER_RENDER_STATE_UNRESOLVED',r)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: steps.inputs.outputs.READY == 'true'
+        with:
+          name: D1-TOWER-MATERIAL-RENDER-STATE-COVERAGE
+          path: reports/
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
