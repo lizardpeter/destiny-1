@@ -11,7 +11,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-renderer-global-cbuffer-overlap.yml'
-      - 'tools/d1_shader_global_cbuffer_overlap.py'
+      - 'tools/d1_shader_global_cbuffer_overlap.py'\n      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
@@ -39,9 +39,21 @@ jobs:
           sky_run="$(gh run list --workflow d1-tower-sky-shader-closure.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$common_run" -a -n "$light_run" -a -n "$sky_run"
 
-          gh run download "$common_run" -n d1-tower-common65-pixel-shader-disassembly -D input/common
-          gh run download "$light_run" -n d1-tower-light-shader-disassembly -D input/light
-          gh run download "$sky_run" -n d1-tower-sky-shader-closure -D input/sky
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$common_run" \
+            --artifact-name d1-tower-common65-pixel-shader-disassembly \
+            --out-dir input/common --clean \
+            --report reports/ARTIFACT_PULL_COMMON_SHADER.json
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$light_run" \
+            --artifact-name d1-tower-light-shader-disassembly \
+            --out-dir input/light --clean \
+            --report reports/ARTIFACT_PULL_LIGHT_SHADER.json
+          python tools/d1_github_actions_artifact_pull.py \
+            --repo "$GITHUB_REPOSITORY" --run-id "$sky_run" \
+            --artifact-name d1-tower-sky-shader-closure \
+            --out-dir input/sky --clean \
+            --report reports/ARTIFACT_PULL_SKY_SHADER.json
 
           test -f input/common/common65_shader_extract.json
           test -f input/common/common65_gcn_cbuffer_usage.json
