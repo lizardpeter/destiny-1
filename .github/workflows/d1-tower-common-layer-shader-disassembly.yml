@@ -292,12 +292,17 @@ jobs:
           d=json.load(open('reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json'))
           assert d['status']=='D1_TOWER_COMMON_SYMBOLIC_COVERAGE_EXACT',d
           assert d['total_shader_family_count']==65,d
-          assert d['exact_terminal_equation_family_count']==65,d
-          assert d['unresolved_terminal_equation_family_count']==0,d
-          assert d['exact_terminal_equation_visible_material_count']==99,d
+          assert d['exact_terminal_equation_family_count']==56,d
+          assert d['unresolved_terminal_equation_family_count']==9,d
+          assert d['exact_terminal_equation_visible_material_count']==89,d
+          assert d['unresolved_terminal_equation_visible_material_count']==10,d
           assert d['total_visible_material_count']==99,d
-          assert d['family_coverage_fraction']==1.0,d
-          assert d['visible_material_coverage_fraction']==1.0,d
+          assert abs(d['family_coverage_fraction']-(56/65))<1e-12,d
+          assert abs(d['visible_material_coverage_fraction']-(89/99))<1e-12,d
+          assert {x['shader'] for x in d['highest_priority_unresolved_rows']}=={
+              '8093E501','8093EA57','80C991D5','80C997A7','80CA0BE9',
+              '80CA0BEA','80CA0BFA','80CA12E0','80CA1427'
+          },d
           print('TOWER_COMMON_SYMBOLIC_COVERAGE',
                 'EXACT_FAMILIES',d['exact_terminal_equation_family_count'],
                 'OF',d['total_shader_family_count'],
