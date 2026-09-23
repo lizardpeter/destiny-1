@@ -16,6 +16,7 @@ on:
       - 'tools/d1_tower_sky_shader_family_cluster.py'
       - 'tools/d1_tower_sky_source_material_siblings.py'
       - 'tools/d1_shader_pair_provenance_differential.py'
+      - 'tools/d1_tower_sky_terminal_output_modes.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -216,6 +217,26 @@ jobs:
                     'UNION',r['mrt0_value_union'])
               for ch,row in r['channels'].items():
                   print('  SKY_CHANNEL',ch,row['value_slice'])
+          PY
+
+      - name: Classify exact Tower sky terminal output modes
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_sky_terminal_output_modes.py \
+            --shader-report reports/tower_sky_shader_report.json \
+            --terminal-mrt0 reports/tower_sky_all_mrt0_dependencies.json \
+            --out reports/TOWER_SKY_TERMINAL_OUTPUT_MODES.json \
+            | tee reports/TOWER_SKY_TERMINAL_OUTPUT_MODES_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_TERMINAL_OUTPUT_MODES.json'))
+          assert d['status']=='D1_TOWER_SKY_TERMINAL_OUTPUT_MODES_EXACT',d
+          assert (d['shader_family_count'],d['visible_material_count'])==(43,74),d
+          assert d['modes']['RGB_ONLY']=={'shader_family_count':13,'visible_material_count':25,'visible_material_fraction':25/74},d
+          assert d['modes']['ALPHA_ONLY']=={'shader_family_count':20,'visible_material_count':37,'visible_material_fraction':37/74},d
+          assert d['modes']['RGBA']=={'shader_family_count':10,'visible_material_count':12,'visible_material_fraction':12/74},d
+          assert not d['violations'],d['violations']
+          print('TOWER_SKY_OUTPUT_MODES',d['modes'])
           PY
 
       - name: Cluster exact Tower sky shader structural families
