@@ -68,6 +68,18 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
+      - name: Preflight compile Tower light reversal tools
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_gcn_image_usage_analyze.py \
+            tools/d1_gcn_cbuffer_usage_analyze.py \
+            tools/d1_gcn_terminal_mrt0_dependency_census.py \
+            tools/d1_tower_light_shader_family_cluster.py \
+            tools/d1_tower_light_factorization_coverage.py \
+            tools/d1_tower_light_*mrt0_factorization.py
+          python -m unittest tests.test_d1_gcn_provenance_analysis -v
+
       - name: Recover exact bounded light GCN corpus
         run: |
           set -euo pipefail
