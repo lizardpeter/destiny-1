@@ -12,6 +12,7 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+      - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
       - 'tools/d1_tower_common_shader_semantic_coverage.py'
@@ -185,6 +186,60 @@ jobs:
                     'UNION',r['mrt0_value_union'])
               for ch,row in r['channels'].items():
                   print('  CHANNEL',ch,row['value_slice'])
+          PY
+
+      - name: Slice terminal MRT0 dependencies for all 65 common shader families
+        run: |
+          set -euo pipefail
+          mapfile -t all_common < <(python - <<'PY'
+          import json
+          d=json.load(open('reports/common65_shader_extract.json'))
+          for r in sorted([x for x in d['shaders'] if not x.get('error')],
+                          key=lambda x:(-int(x.get('visible_material_count',0)),x['shader'])):
+              print(r['shader'])
+          PY
+          )
+          test "${#all_common[@]}" -eq 65
+          args=(); for h in "${all_common[@]}"; do args+=(--shader "$h"); done
+          python tools/d1_gcn_terminal_mrt0_dependency_census.py \
+            --usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm-dir disasm "${args[@]}" \
+            --out reports/common65_all_mrt0_dependencies.json \
+            | tee reports/common65_all_mrt0_dependencies_stdout.txt
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/common65_shader_extract.json'))
+          d=json.load(open('reports/common65_all_mrt0_dependencies.json'))
+          assert d['status']=='D1_GCN_TERMINAL_MRT0_DEPENDENCY_CENSUS_EXACT',d
+          assert d['shader_count']==65,d
+          assert {x['shader'] for x in d['shaders']}=={x['shader'] for x in e['shaders'] if not x.get('error')},d
+          print('TOWER_COMMON_ALL65_MRT0_COVERAGE',d['shader_count'])
+          PY
+
+      - name: Cluster exact common shader structural families
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_structural_family_cluster.py \
+            --extract-report reports/common65_shader_extract.json \
+            --image-usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --terminal-mrt0 reports/common65_all_mrt0_dependencies.json \
+            --out reports/TOWER_COMMON65_STRUCTURAL_SHADER_CLUSTERS.json \
+            | tee reports/TOWER_COMMON65_STRUCTURAL_SHADER_CLUSTERS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON65_STRUCTURAL_SHADER_CLUSTERS.json'))
+          assert d['status']=='D1_SHADER_STRUCTURAL_FAMILY_CLUSTER_EXACT',d
+          assert d['shader_family_count']==65,d
+          assert not d['violations'],d['violations']
+          print('TOWER_COMMON65_STRUCTURAL_CLUSTERS',
+                'CLUSTERS',d['cluster_count'],
+                'MULTI_SHADER',d['multi_shader_cluster_count'])
+          for r in d['clusters'][:20]:
+              print('COMMON_CLUSTER',r['cluster_index'],
+                    'WEIGHT',r['visible_material_count_sum'],
+                    'SHADERS',r['shaders'])
           PY
 
       - name: Prove exact 8093E8A2 runtime alpha-only output contract
