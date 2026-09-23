@@ -20,7 +20,7 @@ ADDR=re.compile(r'/\*([0-9A-Fa-f]+):[^*]*\*/\s*(\w+)\s+(.*)$')
 VRANGE=re.compile(r'^v\[(\d+):(\d+)\]$')
 SRANGE=re.compile(r'^s\[(\d+):(\d+)\]$')
 CHANNELS=('R','G','B','A')
-BAD_MARKERS=('UNKNOWN(','PARTIAL(','OPAQUE_SLOAD(','UNSUPPORTED(')
+BAD_MARKERS=('UNKNOWN(','UNKNOWN_PREDICATE(','PARTIAL(','OPAQUE_SLOAD(','UNSUPPORTED(')
 
 def norm(x): return str(x).upper().removeprefix('0X').zfill(8)
 def splitops(s): return [x.strip() for x in s.split(',')]
@@ -70,7 +70,7 @@ def expr_sha(e):return hashlib.sha256(e.encode()).hexdigest()
 def analyze(shader,path,image_row,cbuffer_row):
     image_by={str(x.get('address')).upper():x for x in image_row.get('instructions',[]) if x.get('address')}
     cbuf_by={str(x.get('address')).upper():x for x in cbuffer_row.get('loads',[]) if x.get('address')}
-    V={};S={};packs={};terminal=None;unsupported=[]
+    V={};S={};P={};packs={};terminal=None;unsupported=[]
 
     for raw in path.read_text(errors='replace').splitlines():
         m=ADDR.search(raw)
@@ -111,6 +111,20 @@ def analyze(shader,path,image_row,cbuffer_row):
             if re.fullmatch(r'v\d+',d):V[d]=attr or f'UNKNOWN_INTERP({addr})'
             continue
 
+        if mn.startswith('v_cmp_') and len(ops)>=3:
+            pred=first(ops[0]);a0=source(ops[1],V,S);a1=source(ops[2],V,S)
+            cmpmap={
+                'v_cmp_gt_f32':'gt','v_cmp_ge_f32':'ge','v_cmp_lt_f32':'lt',
+                'v_cmp_le_f32':'le','v_cmp_eq_f32':'eq','v_cmp_neq_f32':'ne',
+            }
+            op=cmpmap.get(mn)
+            if op is None:
+                P[pred]=f'UNSUPPORTED({mn}@{addr})'
+                unsupported.append({'address':addr,'mnemonic':mn,'assembly':raw.strip()})
+            else:
+                P[pred]=f'{op}({a0},{a1})'
+            continue
+
         if mn=='v_cvt_pkrtz_f16_f32':
             d=first(ops[0]);lo=source(ops[1],V,S);hi=source(ops[2],V,S)
             packs[d]=(lo,hi);V[d]=f'pack({lo},{hi})'
@@ -136,6 +150,8 @@ def analyze(shader,path,image_row,cbuffer_row):
             e=op2('add',source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
         elif mn=='v_sub_f32':
             e=op2('sub',source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
+        elif mn=='v_subrev_f32':
+            e=op2('sub',source(ops[2],V,S),source(ops[1],V,S),clamp,omod)
         elif mn=='v_max_f32':
             e=op2('max',source(ops[1],V,S),source(ops[2],V,S),clamp,omod)
         elif mn=='v_min_f32':
@@ -151,6 +167,14 @@ def analyze(shader,path,image_row,cbuffer_row):
             e=f'rcp({source(ops[1],V,S)})'
         elif mn=='v_rsq_clamp_f32':
             e=f'rsq_clamp({source(ops[1],V,S)})'
+        elif mn=='v_sqrt_f32':
+            e=f'sqrt({source(ops[1],V,S)})'
+        elif mn=='v_exp_f32':
+            e=f'exp2({source(ops[1],V,S)})'
+        elif mn=='v_cndmask_b32':
+            pred=first(ops[3]) if len(ops)>=4 else ''
+            pe=P.get(pred,f'UNKNOWN_PREDICATE({pred})')
+            e=f'select({pe},{source(ops[2],V,S)},{source(ops[1],V,S)})'
         else:
             e=f'UNSUPPORTED({mn}@{addr})'
             unsupported.append({'address':addr,'mnemonic':mn,'assembly':raw.strip()})
