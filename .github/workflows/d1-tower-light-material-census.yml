@@ -3,7 +3,7 @@ name: D1 Tower light material census
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ['D1 Tower original lighting and sky census', 'D1 global Activity index']
+    workflows: ['D1 Tower original lighting and sky census']
     types: [completed]
   push:
     paths:
