@@ -114,7 +114,7 @@ def hydrate_embedded_native_images(path: Path, doc: dict) -> tuple[int,int]:
             bv=(doc.get("bufferViews") or [])[int(img["bufferView"])]
             off=int(bv.get("byteOffset",0)); size=int(bv["byteLength"])
             payload=bin_data[off:off+size]
-            if len(payload)!=size or not payload.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+            if len(payload)!=size or not payload.startswith(bytes.fromhex("89504e470d0a1a0a")):
                 raise RuntimeError(f"{name}: binder-owned payload is not PNG at BIN {off}+{size}; first16={payload[:16].hex()}")
             expected=ex.get("d1_embedded_png_sha256") or ex.get("d1_png_sha256")
             got=hashlib.sha256(payload).hexdigest()
