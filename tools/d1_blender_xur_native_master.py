@@ -205,6 +205,64 @@ def multiply_rgb(mat, a, b, name, x=120, y=120):
     mat.node_tree.links.new(b.outputs["Color"],n.inputs[2])
     return n
 
+def rgb_const(mat, rgb, name, x=-500, y=0):
+    n=mat.node_tree.nodes.new("ShaderNodeRGB")
+    n.name=name; n.label=name; n.location=(x,y)
+    n.outputs["Color"].default_value=(float(rgb[0]),float(rgb[1]),float(rgb[2]),1.0)
+    return n
+
+def multiply_color_sockets(mat, a, b, name, x=0, y=0):
+    n=mat.node_tree.nodes.new("ShaderNodeMixRGB")
+    n.blend_type="MULTIPLY"; n.inputs[0].default_value=1.0
+    n.name=name; n.label=name; n.location=(x,y)
+    mat.node_tree.links.new(a,n.inputs[1]); mat.node_tree.links.new(b,n.inputs[2])
+    return n
+
+def mix_color_sockets(mat, fac, a, b, name, x=0, y=0):
+    n=mat.node_tree.nodes.new("ShaderNodeMixRGB")
+    n.blend_type="MIX"; n.name=name; n.label=name; n.location=(x,y)
+    mat.node_tree.links.new(fac,n.inputs[0]); mat.node_tree.links.new(a,n.inputs[1]); mat.node_tree.links.new(b,n.inputs[2])
+    return n
+
+def channel_socket(mat, texture_node, channel, name, x=-180, y=0):
+    sep=mat.node_tree.nodes.new("ShaderNodeSeparateColor")
+    sep.name=name; sep.label=name; sep.location=(x,y)
+    mat.node_tree.links.new(texture_node.outputs["Color"],sep.inputs["Color"])
+    return sep.outputs[channel]
+
+def scaled_color(mat, color_socket, rgb, name, x=0, y=0):
+    k=rgb_const(mat,rgb,name+"_K",x-220,y-80)
+    return multiply_color_sockets(mat,color_socket,k.outputs["Color"],name,x,y)
+
+def build_three_branch_palette_surface(mat, tags, palette_a, palette_b, palette_c, scale, name_prefix):
+    # Native current-state form used by 808762E1 / 80876577:
+    # A=t2*4*Pa, B=t3*4*Pb, C=t4*4*Pc (all current P<0.25);
+    # P1=lerp(1,A,t0.r); P2=lerp(P1,B,t0.g); P3=lerp(P2,C,t5.b);
+    # Cs=scale*t1.rgb*P3.
+    t0,t1,t2,t3,t4,t5=tags
+    ns=[
+        tex_node(mat,t0,name_prefix+"_CONTROL_T0",-1100,300,noncolor=True),
+        tex_node(mat,t1,name_prefix+"_SURFACE_T1",-1100,100),
+        tex_node(mat,t2,name_prefix+"_PALETTE_A_T2",-1100,-100),
+        tex_node(mat,t3,name_prefix+"_PALETTE_B_T3",-1100,-300),
+        tex_node(mat,t4,name_prefix+"_PALETTE_C_T4",-1100,-500),
+        tex_node(mat,t5,name_prefix+"_CONTROL_T5",-1100,-700,noncolor=True),
+    ]
+    if any(x is None for x in ns): return None
+    n0,n1,n2,n3,n4,n5=ns
+    A=scaled_color(mat,n2.outputs["Color"],tuple(4*x for x in palette_a),name_prefix+"_A",-700,-100)
+    B=scaled_color(mat,n3.outputs["Color"],tuple(4*x for x in palette_b),name_prefix+"_B",-700,-300)
+    C=scaled_color(mat,n4.outputs["Color"],tuple(4*x for x in palette_c),name_prefix+"_C",-700,-500)
+    white=rgb_const(mat,(1,1,1),name_prefix+"_WHITE",-700,300)
+    r=channel_socket(mat,n0,"Red",name_prefix+"_T0_R",-850,420)
+    g=channel_socket(mat,n0,"Green",name_prefix+"_T0_G",-850,340)
+    b=channel_socket(mat,n5,"Blue",name_prefix+"_T5_B",-850,-680)
+    p1=mix_color_sockets(mat,r,white.outputs["Color"],A.outputs["Color"],name_prefix+"_P1",-390,220)
+    p2=mix_color_sockets(mat,g,p1.outputs["Color"],B.outputs["Color"],name_prefix+"_P2",-150,120)
+    p3=mix_color_sockets(mat,b,p2.outputs["Color"],C.outputs["Color"],name_prefix+"_P3",90,20)
+    surf=multiply_color_sockets(mat,n1.outputs["Color"],p3.outputs["Color"],name_prefix+"_SURFACE",300,120)
+    return scaled_color(mat,surf.outputs["Color"],(scale,scale,scale),name_prefix+"_SCALED",500,120)
+
 def scalar_rgb(mat, texture_node, channel="Red", invert=False, name="D1_SCALAR", x=-120, y=-80):
     sep=mat.node_tree.nodes.new("ShaderNodeSeparateColor")
     sep.name=name+"_SEPARATE"; sep.label=sep.name; sep.location=(x,y)
@@ -244,10 +302,67 @@ def neutralize_imported_animation(arms):
 def build_material(meta:dict, mat):
     ps=meta["ps"]; bsdf=clear_nodes(mat); links=mat.node_tree.links
     t0=ps_binding(meta,0); t1=ps_binding(meta,1); t2=ps_binding(meta,2); t3=ps_binding(meta,3)
+    t4=ps_binding(meta,4); t5=ps_binding(meta,5); t6=ps_binding(meta,6); t7=ps_binding(meta,7)
     status="UNRESOLVED_FAIL_CLOSED"
     visible_tag=None
 
-    if ps in DIRECT_T0 and t0:
+    if ps in {"808762E1","80876577"} and all((t0,t1,t2,t3,t4,t5)):
+        pa=(0.03551533818244934,0.03768035024404526,0.04031895846128464)
+        pc=(0.020570652559399605,0.021824637427926064,0.023352932184934616)
+        out=build_three_branch_palette_surface(mat,(t0,t1,t2,t3,t4,t5),pa,pa,pc,4.594789981842041,"D1_NATIVE_PALETTE")
+        if out:
+            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            visible_tag=f"native_palette({t0},{t1},{t2},{t3},{t4},{t5})"
+            status="SOURCE_CLOSED_CURRENT_RGB_EXACT" if ps=="808762E1" else "SOURCE_CLOSED_PALETTE_SURFACE_PROXY"
+        if t6:
+            nn=normal_node(mat,t6)
+            if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
+        mat["d1_control_texture_t0_never_basecolor"]=True
+
+    elif ps=="80876566" and t0:
+        n0=tex_node(mat,t0,"D1_NATIVE_80876566_T0",-700,180)
+        if n0:
+            P=(0.02038198709487915,0.024305766448378563,0.029087860137224197)
+            out=scaled_color(mat,n0.outputs["Color"],tuple(4*x for x in P),"D1_NATIVE_80876566_PALETTE",50,160)
+            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            visible_tag=f"{t0}*4P"
+            status="SOURCE_CLOSED_CURRENT_RGB_EXACT"
+        if t1:
+            nn=normal_node(mat,t1)
+            if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
+
+    elif ps=="80876537" and t0:
+        n0=tex_node(mat,t0,"D1_NATIVE_80876537_T0",-700,180)
+        if n0:
+            P=(0.04633677378296852,0.0552571602165699,0.06612884998321533)
+            out=scaled_color(mat,n0.outputs["Color"],tuple(4*x for x in P),"D1_NATIVE_80876537_PALETTE",50,160)
+            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            visible_tag=f"{t0}*4P"
+            status="SOURCE_CLOSED_SURVIVING_RGB_EXACT"
+        if t2:
+            nn=normal_node(mat,t2)
+            if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
+
+    elif ps=="809D8351" and all((t0,t1,t4)):
+        n0=tex_node(mat,t0,"D1_NATIVE_809D8351_T0",-900,220)
+        n1=tex_node(mat,t1,"D1_NATIVE_809D8351_T1",-900,40)
+        n4=tex_node(mat,t4,"D1_NATIVE_809D8351_T4",-900,-180,noncolor=True)
+        if n0 and n1 and n4:
+            prod=multiply_color_sockets(mat,n0.outputs["Color"],n1.outputs["Color"],"D1_NATIVE_809D8351_C",-520,150)
+            K=4.594789981842041
+            cs=scaled_color(mat,prod.outputs["Color"],(K,K,K),"D1_NATIVE_809D8351_CS",-260,150)
+            P=(0.03551533818244934,0.03768035024404526,0.04031895846128464)
+            branch=scaled_color(mat,cs.outputs["Color"],tuple(4*x for x in P),"D1_NATIVE_809D8351_BRANCH",-20,-10)
+            fac=channel_socket(mat,n4,"Red","D1_NATIVE_809D8351_T4R",-500,-230)
+            out=mix_color_sockets(mat,fac,cs.outputs["Color"],branch.outputs["Color"],"D1_NATIVE_809D8351_LERP",250,120)
+            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            visible_tag=f"lerp({K}*{t0}*{t1},palette,{t4}.r)"
+            status="SOURCE_CLOSED_CURRENT_RGB_EXACT"
+        if t2:
+            nn=normal_node(mat,t2)
+            if nn: links.new(nn.outputs["Normal"],bsdf.inputs["Normal"])
+
+    elif ps in DIRECT_T0 and t0:
         n0=tex_node(mat,t0,"D1_INSTRUCTION_PROVEN_SURFACE_T0",-650,180)
         if n0:
             links.new(n0.outputs["Color"],bsdf.inputs["Base Color"])
