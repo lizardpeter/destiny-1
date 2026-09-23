@@ -15,6 +15,7 @@ on:
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
       - 'tools/d1_tower_sky_shader_family_cluster.py'
       - 'tools/d1_tower_sky_source_material_siblings.py'
+      - 'tools/d1_shader_pair_provenance_differential.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -265,6 +266,45 @@ jobs:
           print('TOWER_SKY_TOP10_SHADERS',d['top10_shaders'])
           for q in d['structural_clusters']:
               print('TOWER_SKY_CLUSTER',q)
+          PY
+
+      - name: Differential-close all exact source-material sibling sky pairs
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_pair_provenance_differential.py \
+            --image-usage reports/tower_sky_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
+            --terminal-mrt0 reports/tower_sky_all_mrt0_dependencies.json \
+            --disasm-dir disasm \
+            --pair 80B9F981:80B9F982 \
+            --pair 80B9F3E3:80BA231C \
+            --pair 80AADBAA:80AAE110 \
+            --pair 80B9E853:80B9E854 \
+            --pair 80B9EA21:80B9EA22 \
+            --pair 80B9EA28:80B9EA2D \
+            --pair 80B9F724:80B9F725 \
+            --pair 80B9F983:80B9F984 \
+            --pair 80B9F985:80B9F986 \
+            --out reports/TOWER_SKY_SOURCE_SIBLING_NATIVE_DIFFERENTIAL.json \
+            | tee reports/TOWER_SKY_SOURCE_SIBLING_NATIVE_DIFFERENTIAL_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_SOURCE_SIBLING_NATIVE_DIFFERENTIAL.json'))
+          assert d['status']=='D1_SHADER_PAIR_PROVENANCE_DIFFERENTIAL_EXACT',d
+          assert d['pair_count']==9,d
+          assert not d['violations'],d['violations']
+          for q in d['pairs']:
+              assert q['semantic_boundary']=='STRUCTURAL_DIFFERENTIAL_ONLY',q
+              print('TOWER_SKY_SOURCE_PAIR_NATIVE_DIFF',q['a'],q['b'],
+                    'RELATION',q['exact_structural_relation'],
+                    'INST',q['native_instruction_count'],
+                    'PREFIX',q['common_mnemonic_prefix_count'],
+                    'SUFFIX',q['common_mnemonic_suffix_count'],
+                    'IMAGE_SAME',q['image_usage']['identical'],
+                    'CBUFFER_SAME',q['cbuffer_usage']['identical'],
+                    'TERMINAL_SAME',q['terminal_mrt0']['identical'],
+                    'A_EXCESS',q['a_excess_mnemonics'],
+                    'B_EXCESS',q['b_excess_mnemonics'])
           PY
 
       - uses: actions/upload-artifact@v4
