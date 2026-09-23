@@ -48,10 +48,27 @@ jobs:
           assert d['descriptor_B_companion_invariant']['same_keys_all_B_invalid_count']==108,d
           assert d['variant_group_count']==81,d
           assert d['unique_candidate_group_count']==81,d
+          q=d['descriptor_order_decision_table_analysis']
+          assert q['exhaustive_configuration_count']==1440,q
+          assert q['exhaustive_group_configuration_case_count']==116640,q
+          assert q['list_A_descriptor_count_containing_invalid_sentinel']==0,q
+          assert q['every_group_has_single_final_empty_fallback'] is True,q
+          assert q['every_group_specificity_nonincreasing_in_serialized_order'] is True,q
+          assert q['gap_count']==0 and q['ambiguity_count']==0,q
+          assert q['first_match_vs_max_specificity_mismatch_count']==0,q
+          assert q['complete_unique_decision_table'] is True,q
+          assert q['serialized_first_match_equivalent_to_unique_max_specificity'] is True,q
+          gi=d['global_permutation_index_analysis']
+          assert gi['material_count_residue_consistent'] is True,gi
+          assert gi['compatible_global_indices_mod_lcm']==[],gi
+          assert gi['unique_global_residue_mod_lcm'] is False,gi
           c=d['E6_E7_E8_candidate_consequences']
           assert c['E6']['occurrences'][0]['candidate_members'][0]['material_tag_hash']=='80C8864B',c['E6']
           assert c['E7']['occurrences'][0]['candidate_members'][0]['material_tag_hash']=='80C88650',c['E7']
           assert all(x['candidate_members'][0]['material_tag_hash']=='80C885E8' for x in c['E8']['occurrences']),c['E8']
+          assert d['proof']['descriptor_order_complete_unique_decision_table'] is True,d['proof']
+          assert d['proof']['serialized_first_match_equivalent_to_unique_max_specificity'] is True,d['proof']
+          assert d['proof']['single_global_modulo_index_consistent'] is False,d['proof']
           assert d['proof']['D1_retail_consumer_execution_path_proven'] is False,d['proof']
           assert d['proof']['descriptor_evaluation_algorithm_source_closed'] is False,d['proof']
           assert all(v is False for v in d['gates'].values()),d['gates']
