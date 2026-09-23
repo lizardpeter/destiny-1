@@ -48,6 +48,8 @@ jobs:
             --report reports/ARTIFACT_PULL_LIGHTING_CENSUS.json
           test -f upstream/tower_map_light_semantic_probe.json
           cp upstream/tower_map_light_semantic_probe.json reports/tower_map_light_semantic_probe.json
+          printf '%s\n' "$run_id" > reports/ORIGINAL_LIGHTING_SOURCE_RUN_ID.txt
+          echo "LIGHT_MATERIAL_SOURCE_ORIGINAL_LIGHTING_RUN=$run_id"
           python - <<'PY'
           import json
           d=json.load(open('reports/tower_map_light_semantic_probe.json'))
