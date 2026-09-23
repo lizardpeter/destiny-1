@@ -10,6 +10,9 @@ on:
       - '.github/workflows/d1-tower-light-material-census.yml'
       - 'tools/d1_world_light_material_manifest.py'
       - 'tools/d1_github_actions_artifact_pull.py'
+      - 'tools/d1_material_render_state.py'
+      - 'tools/d1_material_render_state_census.py'
+      - 'tests/test_d1_material_render_state.py'
 
 permissions:
   contents: read
@@ -106,6 +109,31 @@ jobs:
           assert sum(d['pixel_shader_frequency'].values())==737,d
           print('LIGHT_MATERIAL_COUNTS',json.dumps({k:d[k] for k in ('light_instance_count','unique_light_material_count','pixel_shader_count','vertex_shader_count','unique_constant_container_count')},indent=2))
           print('TOP_PIXEL_SHADERS',json.dumps(list(d['pixel_shader_frequency'].items())[:50],indent=2))
+          PY
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('reports/tower_light_material_manifest.json'))
+          mats=d.get('materials') or {}
+          assert len(mats)==497,len(mats)
+          Path('reports/tower_light_material_selector.json').write_text(
+              json.dumps({'materials':{str(h).upper():{'visual':True} for h in sorted(mats)}},indent=2)+'\n')
+          PY
+          python -m unittest tests.test_d1_material_render_state -v
+          python tools/d1_material_render_state_census.py "${args[@]}" \
+            --runtime runtime --visual-json reports/tower_light_material_selector.json \
+            -o reports/tower_light_material_render_state.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_light_material_render_state.json'))
+          assert d['status']=='D1_MATERIAL_RENDER_STATE_CENSUS_COMPLETE',d
+          assert d['selected_material_count']==497 and d['resolved_material_count']==497,d
+          print('TOWER_LIGHT_RENDER_STATE_EXACT',
+                'OPAQUE',d['opaque_material_count'],
+                'TRANSPARENT',d['transparent_material_count'],
+                'KNOWN_0X88',d['known_0x88_blend_material_count'],
+                'RAW',d['unk20_raw_counts'])
           PY
 
       - uses: actions/upload-artifact@v4
