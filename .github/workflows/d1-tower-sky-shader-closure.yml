@@ -23,6 +23,7 @@ on:
       - 'tools/d1_gcn_terminal_symbolic_reducer.py'
       - 'tools/d1_tower_sky_complex_pair_symbolic_proof.py'
       - 'tools/d1_tower_sky_symbolic_tail_proof.py'
+      - 'tools/d1_tower_sky_final_symbolic_proof.py'
       - 'tools/d1_tower_sky_factorization_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
@@ -373,6 +374,34 @@ jobs:
               print('TOWER_SKY_SYMBOLIC_TAIL_ROW',r['shader'],r['terminal_expression_sha256'])
           PY
 
+      - name: Symbolically close final four Tower sky families
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_terminal_symbolic_reducer.py \
+            --usage reports/tower_sky_gcn_image_usage.json \
+            --cbuffer-usage reports/tower_sky_gcn_cbuffer_usage.json \
+            --disasm-dir disasm \
+            --shader 80B9EA17 --shader 80B9EA1A --shader 80B9EA23 --shader 80B9EA25 \
+            --out reports/TOWER_SKY_FINAL_SYMBOLIC.json \
+            | tee reports/TOWER_SKY_FINAL_SYMBOLIC_stdout.txt
+          python tools/d1_tower_sky_final_symbolic_proof.py \
+            --material-manifest reports/tower_sky_material_texture_manifest.json \
+            --shader-report reports/tower_sky_shader_report.json \
+            --symbolic reports/TOWER_SKY_FINAL_SYMBOLIC.json \
+            --out reports/TOWER_SKY_FINAL_SYMBOLIC_PROOF.json \
+            | tee reports/TOWER_SKY_FINAL_SYMBOLIC_PROOF_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_FINAL_SYMBOLIC_PROOF.json'))
+          assert d['status']=='D1_TOWER_SKY_FINAL_SYMBOLIC_PROOF_EXACT',d
+          assert d['shader_family_count']==4 and d['visible_material_count']==4,d
+          assert not d['violations'],d['violations']
+          assert {x['shader'] for x in d['rows']}=={'80B9EA17','80B9EA1A','80B9EA23','80B9EA25'},d
+          print('TOWER_SKY_FINAL_SYMBOLIC_EXACT',d['shader_family_count'],d['visible_material_count'])
+          for r in d['rows']:
+              print('TOWER_SKY_FINAL_SYMBOLIC_ROW',r['shader'],r['terminal_expression_sha256'])
+          PY
+
       - name: Account exact Tower sky equation coverage
         run: |
           set -euo pipefail
@@ -383,23 +412,24 @@ jobs:
             --proof reports/TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION.json \
             --proof reports/TOWER_SKY_COMPLEX_PAIR_SYMBOLIC_PROOF.json \
             --proof reports/TOWER_SKY_SYMBOLIC_TAIL_PROOF.json \
+            --proof reports/TOWER_SKY_FINAL_SYMBOLIC_PROOF.json \
             --out reports/TOWER_SKY_FACTORIZATION_COVERAGE.json \
             | tee reports/TOWER_SKY_FACTORIZATION_COVERAGE_stdout.txt
           python - <<'PY'
           import json
           d=json.load(open('reports/TOWER_SKY_FACTORIZATION_COVERAGE.json'))
           assert d['status']=='D1_TOWER_SKY_FACTORIZATION_COVERAGE_EXACT',d
-          assert d['covered_shader_family_count']==39,d
-          assert d['covered_visible_material_count']==70,d
-          assert d['missing_shader_family_count']==4,d
-          assert d['missing_visible_material_count']==4,d
-          assert abs(d['shader_family_coverage_fraction']-(39/43))<1e-12,d
-          assert abs(d['visible_material_coverage_fraction']-(70/74))<1e-12,d
+          assert d['covered_shader_family_count']==43,d
+          assert d['covered_visible_material_count']==74,d
+          assert d['missing_shader_family_count']==0,d
+          assert d['missing_visible_material_count']==0,d
+          assert d['shader_family_coverage_fraction']==1.0,d
+          assert d['visible_material_coverage_fraction']==1.0,d
           print('TOWER_SKY_EQUATION_COVERAGE',
                 d['covered_shader_family_count'],'OF',d['total_shader_family_count'],
                 'FAMILIES',d['covered_visible_material_count'],'OF',d['total_visible_material_count'],'MATERIALS')
-          for r in d['highest_priority_missing_shaders']:
-              print('TOWER_SKY_EQUATION_MISSING',r['shader'],'MATERIALS',r['visible_material_count'])
+          assert d['highest_priority_missing_shaders']==[],d
+          print('TOWER_SKY_TERMINAL_EQUATION_FRONTIER','CLOSED_43_OF_43_FAMILIES_74_OF_74_MATERIALS')
           PY
 
       - name: Classify exact Tower sky terminal output modes
