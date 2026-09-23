@@ -105,7 +105,7 @@ jobs:
           from pathlib import Path
           p=Path('out/XUR_80C88CEF_NATIVE_MASTER_V2.json')
           d=json.loads(p.read_text())
-          assert d['status']=='D1_XUR_BLENDER_NATIVE_MASTER_V1_COMPLETE',d
+          assert d['status']=='D1_XUR_BLENDER_NATIVE_MASTER_V2_COMPLETE',d
           assert (d['material_count'],d['action_count'],d['armature_count'])==(54,267,1),d
           assert d['source_basis_fix_proven'] is True,d
           assert d['startup_pose']=='BIND_REST_NO_ACTIVE_ACTION',d
@@ -117,7 +117,7 @@ jobs:
           assert Path(d['output']).is_file() and Path(d['preview']).is_file()
           print('XUR_NATIVE_MASTER_REPORT_OK',json.dumps(d['material_status_counts'],sort_keys=True))
           PY
-          sha256sum out/* out/reports/* > out/SHA256SUMS.txt
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
