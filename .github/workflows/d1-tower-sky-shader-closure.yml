@@ -18,6 +18,7 @@ on:
       - 'tools/d1_shader_pair_provenance_differential.py'
       - 'tools/d1_tower_sky_terminal_output_modes.py'
       - 'tools/d1_tower_sky_high_coverage_mrt0_factorization.py'
+      - 'tools/d1_tower_sky_alpha_mrt0_factorization.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -248,6 +249,33 @@ jobs:
           print('TOWER_SKY_HIGH_COVERAGE_MRT0_EXACT',d['shader_family_count'],d['visible_material_count'],d['visible_material_fraction'])
           for q in d['rows']:
               print('TOWER_SKY_FACTORIZED',q['shader'],q['mode'],q['visible_material_count'],q['exact_terminal_equation'])
+          PY
+
+      - name: Prove next exact Tower sky alpha-only equations
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_sky_alpha_mrt0_factorization.py \
+            --material-manifest reports/tower_sky_material_texture_manifest.json \
+            --shader-report reports/tower_sky_shader_report.json \
+            --terminal-mrt0 reports/tower_sky_all_mrt0_dependencies.json \
+            --disasm-dir disasm \
+            --out reports/TOWER_SKY_ALPHA_MRT0_FACTORIZATION.json \
+            | tee reports/TOWER_SKY_ALPHA_MRT0_FACTORIZATION_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_ALPHA_MRT0_FACTORIZATION.json'))
+          assert d['status']=='D1_TOWER_SKY_ALPHA_MRT0_FACTORIZATION_EXACT',d
+          assert d['shader_family_count']==11,d
+          assert d['visible_material_count']==12,d
+          assert abs(d['visible_material_fraction']-(12/74))<1e-12,d
+          assert not d['violations'],d['violations']
+          by={x['shader']:x for x in d['rows']}
+          assert by['80B9F729']['exact_terminal_equation']['mrt0_a']=='t0.x * t1.x * t2.x',by['80B9F729']
+          assert by['80AAE110']['exact_terminal_equation']['mrt0_a']=='t0.a',by['80AAE110']
+          assert by['80B9F986']['exact_terminal_equation']['mrt0_a']=='clamp(API0[23] * t0.a * t1.a * t2.a * t3.a)',by['80B9F986']
+          print('TOWER_SKY_ALPHA_BATCH_EXACT',d['shader_family_count'],d['visible_material_count'],d['visible_material_fraction'])
+          for q in d['rows']:
+              print('TOWER_SKY_ALPHA_FACTORIZED',q['shader'],q['visible_material_count'],q['exact_terminal_equation'])
           PY
 
       - name: Classify exact Tower sky terminal output modes
