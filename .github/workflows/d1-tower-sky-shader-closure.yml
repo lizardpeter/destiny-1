@@ -19,6 +19,7 @@ on:
       - 'tools/d1_tower_sky_terminal_output_modes.py'
       - 'tools/d1_tower_sky_high_coverage_mrt0_factorization.py'
       - 'tools/d1_tower_sky_alpha_mrt0_factorization.py'
+      - 'tools/d1_tower_sky_rgb_sibling_mrt0_factorization.py'
       - 'tools/d1_tower_sky_factorization_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
@@ -279,6 +280,31 @@ jobs:
               print('TOWER_SKY_ALPHA_FACTORIZED',q['shader'],q['visible_material_count'],q['exact_terminal_equation'])
           PY
 
+      - name: Prove next exact Tower sky RGB sibling equations
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_sky_rgb_sibling_mrt0_factorization.py \
+            --material-manifest reports/tower_sky_material_texture_manifest.json \
+            --shader-report reports/tower_sky_shader_report.json \
+            --terminal-mrt0 reports/tower_sky_all_mrt0_dependencies.json \
+            --disasm-dir disasm \
+            --out reports/TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION.json \
+            | tee reports/TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION.json'))
+          assert d['status']=='D1_TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION_EXACT',d
+          assert d['shader_family_count']==7,d
+          assert d['visible_material_count']==7,d
+          assert abs(d['visible_material_fraction']-(7/74))<1e-12,d
+          assert not d['violations'],d['violations']
+          expected={'80AADBAA','80B9E853','80B9EA21','80B9EA28','80B9F724','80B9F985','80B9F71A'}
+          assert {x['shader'] for x in d['rows']}==expected,d
+          for q in d['rows']:
+              assert q['exact_terminal_equation']['mrt0_a']=='0',q
+              print('TOWER_SKY_RGB_BATCH_FACTORIZED',q['shader'],q['exact_terminal_equation'])
+          PY
+
       - name: Account exact Tower sky equation coverage
         run: |
           set -euo pipefail
@@ -286,18 +312,19 @@ jobs:
             --manifest reports/tower_sky_material_texture_manifest.json \
             --proof reports/TOWER_SKY_HIGH_COVERAGE_MRT0_FACTORIZATION.json \
             --proof reports/TOWER_SKY_ALPHA_MRT0_FACTORIZATION.json \
+            --proof reports/TOWER_SKY_RGB_SIBLING_MRT0_FACTORIZATION.json \
             --out reports/TOWER_SKY_FACTORIZATION_COVERAGE.json \
             | tee reports/TOWER_SKY_FACTORIZATION_COVERAGE_stdout.txt
           python - <<'PY'
           import json
           d=json.load(open('reports/TOWER_SKY_FACTORIZATION_COVERAGE.json'))
           assert d['status']=='D1_TOWER_SKY_FACTORIZATION_COVERAGE_EXACT',d
-          assert d['covered_shader_family_count']==20,d
-          assert d['covered_visible_material_count']==47,d
-          assert d['missing_shader_family_count']==23,d
-          assert d['missing_visible_material_count']==27,d
-          assert abs(d['shader_family_coverage_fraction']-(20/43))<1e-12,d
-          assert abs(d['visible_material_coverage_fraction']-(47/74))<1e-12,d
+          assert d['covered_shader_family_count']==27,d
+          assert d['covered_visible_material_count']==54,d
+          assert d['missing_shader_family_count']==16,d
+          assert d['missing_visible_material_count']==20,d
+          assert abs(d['shader_family_coverage_fraction']-(27/43))<1e-12,d
+          assert abs(d['visible_material_coverage_fraction']-(54/74))<1e-12,d
           print('TOWER_SKY_EQUATION_COVERAGE',
                 d['covered_shader_family_count'],'OF',d['total_shader_family_count'],
                 'FAMILIES',d['covered_visible_material_count'],'OF',d['total_visible_material_count'],'MATERIALS')
