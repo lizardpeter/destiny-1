@@ -14,6 +14,7 @@ on:
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
       - 'tools/d1_tower_sky_shader_family_cluster.py'
+      - 'tools/d1_tower_sky_source_material_siblings.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
@@ -77,6 +78,24 @@ jobs:
                 'TEXTURES',d['unique_texture_tags'],
                 'PIXEL_SHADER_FAMILIES',len(freq),
                 'TOP',sorted(freq.items(),key=lambda x:(-x[1],x[0]))[:20])
+          PY
+
+      - name: Prove exact source-material sibling shader groups
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_sky_source_material_siblings.py \
+            --manifest reports/tower_sky_material_texture_manifest.json \
+            --out reports/TOWER_SKY_SOURCE_MATERIAL_SIBLINGS.json \
+            | tee reports/TOWER_SKY_SOURCE_MATERIAL_SIBLINGS_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_SKY_SOURCE_MATERIAL_SIBLINGS.json'))
+          assert d['status']=='D1_TOWER_SKY_SOURCE_MATERIAL_SIBLINGS_EXACT',d
+          assert d['shader_family_count']==43,d
+          assert not d['violations'],d['violations']
+          print('TOWER_SKY_SOURCE_SIBLING_GROUPS',d['sibling_group_count'])
+          for q in d['groups']:
+              print('TOWER_SKY_SOURCE_SIBLINGS',q)
           PY
 
       - name: Recursively close exact sky pixel shader dependencies
