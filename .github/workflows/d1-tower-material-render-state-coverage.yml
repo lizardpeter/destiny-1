@@ -140,6 +140,41 @@ jobs:
                     [(x['lane_index'],x['source_field_name'],x['selected_low7_index_counts']) for x in row['lanes']])
           PY
 
+      - name: Decode pinned source descriptors for Tower-selected state indices
+        if: steps.inputs.outputs.READY == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          base='https://raw.githubusercontent.com/cohaereo/alkahest/c632a562e88b5b805098152658b915d1c59f0f9a'
+          curl -fsSL --retry 4 "$base/crates/render/builtin/gpu/blend_states.txt" -o source/blend_states.txt
+          curl -fsSL --retry 4 "$base/crates/render/builtin/gpu/depth_states.txt" -o source/depth_states.txt
+          curl -fsSL --retry 4 "$base/crates/render/builtin/gpu/rasterizer_states.bin" -o source/rasterizer_states.bin
+          curl -fsSL --retry 4 "$base/crates/render/builtin/gpu/depth_biases.bin" -o source/depth_biases.bin
+          test "$(git hash-object source/blend_states.txt)" = 'be7b8c764048781599541d95baead2740a210435'
+          test "$(git hash-object source/depth_states.txt)" = 'f5fb04631013402f910b5732fa251caa62b59efb'
+          test "$(git hash-object source/rasterizer_states.bin)" = '840ba91ea1d9e851c78b2f6d69195c2c025897ef'
+          test "$(git hash-object source/depth_biases.bin)" = '7e4661c066f659e0adaa477038cad883efd965c8'
+
+          python -m py_compile tools/d1_tower_pipeline_state_source_tables.py
+          python tools/d1_tower_pipeline_state_source_tables.py \
+            --correlation reports/TOWER_MATERIAL_STATE4_SOURCE_CORRELATION.json \
+            --blend-text source/blend_states.txt \
+            --depth-text source/depth_states.txt \
+            --rasterizer-bin source/rasterizer_states.bin \
+            --depth-bias-bin source/depth_biases.bin \
+            --out reports/TOWER_PIPELINE_STATE_SOURCE_TABLES.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_PIPELINE_STATE_SOURCE_TABLES.json'))
+          assert d['status']=='D1_TOWER_PIPELINE_STATE_SOURCE_TABLES_EXACT',d
+          assert not d['violations'],d['violations']
+          assert d['promotion']=='SOURCE_CORRELATED_ONLY_EXCEPT_SEPARATELY_PROMOTED_D1_BLEND_FIXTURES',d
+          print('TOWER_PIPELINE_STATE_SELECTED_INDICES',d['selected_indices'])
+          for name,rows in d['source_tables'].items():
+              print('TOWER_PIPELINE_SOURCE_TABLE',name,rows)
+          PY
+
       - uses: actions/upload-artifact@v4
         if: steps.inputs.outputs.READY == 'true'
         with:
