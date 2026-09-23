@@ -3,8 +3,15 @@ name: D1 Tower common-layer textured preview
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["D1 Tower common-layer model export"]
+    workflows:
+      - "D1 Tower common-layer model export"
+      - "D1 Tower common-layer pixel-shader disassembly"
     types: [completed]
+  push:
+    branches: [d1-crota-source-semantics-v1]
+    paths:
+      - '.github/workflows/d1-tower-common-layer-textured-preview.yml'
+      - 'tools/d1_gltf_attach_tower_common_native_contract.py'
 
 permissions:
   contents: write
@@ -26,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
-          mkdir -p runtime recovered texture_deps source_models selector common textures reports combined
+          mkdir -p runtime recovered texture_deps source_models selector common textures reports combined native_contract
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
@@ -35,7 +42,7 @@ jobs:
       - name: Recover source-driven common model and placement artifact
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = workflow_run ]; then
+          if [ "${{ github.event_name }}" = workflow_run ] && [ "${{ github.event.workflow_run.name }}" = "D1 Tower common-layer model export" ]; then
             model_run='${{ github.event.workflow_run.id }}'
           else
             model_run="$(gh run list --workflow d1-tower-common-layer-model-export.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
@@ -132,6 +139,43 @@ jobs:
           print('COMMON_TEXTURED_PREVIEW_OK',d['textured_material_count'],d['textured_geometry_count'],d['normal_mapped_geometry_count'])
           PY
 
+      - name: Attach exact native contracts to all common materials
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = workflow_run ] && [ "${{ github.event.workflow_run.name }}" = "D1 Tower common-layer pixel-shader disassembly" ]; then
+            shader_run='${{ github.event.workflow_run.id }}'
+          else
+            shader_run="$(gh run list --workflow d1-tower-common-layer-shader-disassembly.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          test -n "$shader_run"
+          echo "COMMON_SHADER_RUN=$shader_run"
+          gh run download "$shader_run" -n d1-tower-common65-pixel-shader-disassembly -D native_contract
+          test -f native_contract/TOWER_COMMON_NATIVE_MATERIAL_CONTRACT.json
+
+          python tools/d1_gltf_attach_tower_common_native_contract.py \
+            --input-glb common/D1_TOWER_COMMON_LAYER_TEXTURED_SOURCE_DRIVEN.glb \
+            --contract native_contract/TOWER_COMMON_NATIVE_MATERIAL_CONTRACT.json \
+            --out common/D1_TOWER_COMMON_LAYER_TEXTURED_NATIVE_CONTRACT.glb \
+            --report reports/common_layer_native_contract_attach.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/common_layer_native_contract_attach.json'))
+          assert d['status']=='D1_GLTF_TOWER_COMMON_NATIVE_CONTRACT_ATTACHED_EXACT',d
+          assert d['shader_registry_family_count']==65,d
+          assert d['glb_material_count']==99,d
+          assert d['native_contract_link_count']==99,d
+          assert d['unique_native_contract_material_hash_count']==99,d
+          assert d['bin_payload_unchanged'] is True,d
+          assert d['portable_material_fields_unchanged'] is True,d
+          assert d['unmatched_d1_materials']==[],d
+          print('COMMON_NATIVE_CONTRACT_GLB_EXACT',
+                'FAMILIES',d['shader_registry_family_count'],
+                'MATERIALS',d['native_contract_link_count'],
+                'BIN_UNCHANGED',d['bin_payload_unchanged'],
+                'PBR_FIELDS_UNCHANGED',d['portable_material_fields_unchanged'])
+          PY
+
       - name: Merge source-driven textured common layer onto exact textured baked Tower
         run: |
           set -euo pipefail
@@ -141,7 +185,7 @@ jobs:
           echo 'dc8a4f20e3b17f06720fe128e59ee1bd1c9e1492d7823f961c6df9adee6340aa  combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb' | sha256sum --check --strict
           python tools/d1_gltf_layer_merge.py \
             --base combined/D1_TOWER_TEN_CELL_TEXTURED_BROAD_BASE_NORMAL.glb \
-            --layer common_decal=common/D1_TOWER_COMMON_LAYER_TEXTURED_SOURCE_DRIVEN.glb \
+            --layer common_decal=common/D1_TOWER_COMMON_LAYER_TEXTURED_NATIVE_CONTRACT.glb \
             --out combined/D1_TOWER_BAKED_PLUS_COMMON_TEXTURED_SOURCE_DRIVEN.glb \
             --report reports/combined_textured_gltf.json
           python - <<'PY'
@@ -159,12 +203,13 @@ jobs:
                'common_rendered_nodes':709,'common_geometry_parts':163,
                'common_textured_materials':p['textured_material_count'],'common_textured_geometry_parts':p['textured_geometry_count'],
                'common_normal_mapped_geometry_parts':p['normal_mapped_geometry_count'],
+               'common_native_contract_shader_families':65,'common_native_contract_materials':99,
                'base_images':b['images'],'combined_images':f['images'],'base_textures':b['textures'],'combined_textures':f['textures'],
                'combined_meshes':f['meshes'],'combined_materials':f['materials'],'combined_nodes':f.get('nodes'),
                'bytes':g['output_bytes'],'sha256':g['output_sha256'],
                'common_placement_provenance':'Activity-owned SMapDataTable -> DataEntries[0] -> BA048080 census; no pinned decal validation artifact.',
                'common_model_provenance':'69 EntityModels derived from the 327 source-driven table-scoped records; no literal model hash list.',
-               'scope':'Visual preview: exact baked resources are preserved; common-layer base/normal bindings use current instruction-proven roles plus explicitly labeled strong/medium preview candidates. Exact D1 shader/register manifest remains canonical.'}
+               'scope':'Visual preview plus exact native material contracts: baked resources are preserved; common base/normal slots remain evidence-scoped preview adapters, while all 99 common materials carry exact native shader/resource/runtime-boundary metadata in glTF extras.'}
           json.dump(out,open('reports/FINAL_COMMON_TEXTURED_SOURCE_DRIVEN.json','w'),indent=2)
           print(json.dumps(out,indent=2))
           PY
