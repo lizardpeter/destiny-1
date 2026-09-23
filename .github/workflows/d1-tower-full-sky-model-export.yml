@@ -59,6 +59,8 @@ jobs:
             --out-dir input/lighting --clean \
             --report reports/ARTIFACT_PULL_ORIGINAL_LIGHTING.json
           test -f input/lighting/tower_map_lighting_census.json
+          printf '%s\n' "$light_run" > reports/ORIGINAL_LIGHTING_SOURCE_RUN_ID.txt
+          echo "SKY_SOURCE_ORIGINAL_LIGHTING_RUN=$light_run"
 
           curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
@@ -255,6 +257,8 @@ jobs:
           cp roles/tower_sky_texture_roles.json out/reports/
           cp textures/material_texture_manifest.json out/reports/
           cp input/lighting/tower_map_lighting_census.json out/reports/
+          cp reports/ARTIFACT_PULL_ORIGINAL_LIGHTING.json out/reports/
+          cp reports/ORIGINAL_LIGHTING_SOURCE_RUN_ID.txt out/reports/
           cp -a textures/textures/. out/textures/
           sha256sum out/models/* out/reports/* out/textures/* > out/SHA256SUMS.txt
 
@@ -263,5 +267,5 @@ jobs:
         with:
           name: D1-TOWER-ALL-SKY-MODELS-EXACT-TEXTURES
           path: out/
-          retention-days: 30
+          retention-days: 90
           if-no-files-found: error
