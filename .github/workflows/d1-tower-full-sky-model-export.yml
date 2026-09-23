@@ -11,6 +11,9 @@ on:
       - 'tools/d1_world_texture_role_inventory.py'
       - 'tools/d1_gltf_bind_exact_shader_textures_v3.py'
       - 'tools/d1_world_map_lighting_census.py'
+      - 'tools/d1_material_render_state.py'
+      - 'tools/d1_material_render_state_census.py'
+      - 'tests/test_d1_material_render_state.py'
 
 permissions:
   contents: read
@@ -156,8 +159,21 @@ jobs:
             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --expansion-dir texture_expanded --work-dir texture_work --out textures \
             --report reports/tower_sky_texture_dependency_closure.json
+          python -m unittest tests.test_d1_material_render_state -v
+          python tools/d1_material_render_state_census.py "${args[@]}" \
+            --runtime runtime --visual-json reports/sky_material_selector.json \
+            -o reports/tower_sky_material_render_state.json
+
           python - <<'PY'
           import json
+          s=json.load(open('reports/tower_sky_material_render_state.json'))
+          assert s['status']=='D1_MATERIAL_RENDER_STATE_CENSUS_COMPLETE',s
+          assert s['selected_material_count']==74 and s['resolved_material_count']==74,s
+          print('TOWER_SKY_RENDER_STATE_EXACT',
+                'OPAQUE',s['opaque_material_count'],
+                'TRANSPARENT',s['transparent_material_count'],
+                'KNOWN_0X88',s['known_0x88_blend_material_count'],
+                'RAW',s['unk20_raw_counts'])
           c=json.load(open('reports/tower_sky_texture_dependency_closure.json'))
           m=json.load(open('textures/material_texture_manifest.json'))
           assert c['status']=='D1_WORLD_TEXTURE_DEPENDENCY_CLOSURE_COMPLETE',c
@@ -222,6 +238,7 @@ jobs:
           cp reports/tower_sky_visual_closure.json out/reports/
           cp reports/tower_sky_texture_dependency_closure.json out/reports/
           cp reports/TOWER_SKY_TEXTURED_MODEL_SET.json out/reports/
+          cp reports/tower_sky_material_render_state.json out/reports/
           cp roles/tower_sky_texture_roles.json out/reports/
           cp textures/material_texture_manifest.json out/reports/
           cp input/lighting/tower_map_lighting_census.json out/reports/
