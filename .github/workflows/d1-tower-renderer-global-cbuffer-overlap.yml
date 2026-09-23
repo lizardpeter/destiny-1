@@ -11,7 +11,8 @@ on:
   push:
     paths:
       - '.github/workflows/d1-tower-renderer-global-cbuffer-overlap.yml'
-      - 'tools/d1_shader_global_cbuffer_overlap.py'\n      - 'tools/d1_github_actions_artifact_pull.py'
+      - 'tools/d1_shader_global_cbuffer_overlap.py'
+      - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
   contents: read
