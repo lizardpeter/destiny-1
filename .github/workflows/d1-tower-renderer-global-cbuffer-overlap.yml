@@ -12,6 +12,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-renderer-global-cbuffer-overlap.yml'
       - 'tools/d1_shader_global_cbuffer_overlap.py'
+      - 'tools/d1_shader_global_cbuffer_terminal_impact.py'
       - 'tools/d1_github_actions_artifact_pull.py'
 
 permissions:
@@ -74,6 +75,9 @@ jobs:
           find_one input/light tower_light_gcn_cbuffer_usage_v2.json input/canonical/light_cbuffer_usage.json
           find_one input/sky tower_sky_shader_report.json input/canonical/sky_shader_report.json
           find_one input/sky tower_sky_gcn_cbuffer_usage.json input/canonical/sky_cbuffer_usage.json
+          find_one input/common common65_all_mrt0_dependencies.json input/canonical/common_terminal_mrt0.json
+          find_one input/light tower_light_all32_mrt0_dependencies.json input/canonical/light_terminal_mrt0.json
+          find_one input/sky tower_sky_all_mrt0_dependencies.json input/canonical/sky_terminal_mrt0.json
 
           python - <<'PY'
           import json
@@ -113,6 +117,39 @@ jobs:
                   print('TOWER_RENDERER_RECURRENT_CBUFFER',
                         'API',r['api_slot'],'DWORD',r['dword'],
                         'DOMAINS',r['domains'],'STATS',r['domain_stats'])
+          PY
+
+      - name: Separate recurrent reads from terminal MRT0 impact
+        run: |
+          set -euo pipefail
+          python tools/d1_shader_global_cbuffer_terminal_impact.py \
+            --overlap reports/TOWER_RENDERER_GLOBAL_CBUFFER_OVERLAP.json \
+            --terminal common=input/canonical/common_terminal_mrt0.json \
+            --terminal light=input/canonical/light_terminal_mrt0.json \
+            --terminal sky=input/canonical/sky_terminal_mrt0.json \
+            --out reports/TOWER_RENDERER_GLOBAL_CBUFFER_TERMINAL_IMPACT.json \
+            | tee reports/TOWER_RENDERER_GLOBAL_CBUFFER_TERMINAL_IMPACT_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_RENDERER_GLOBAL_CBUFFER_TERMINAL_IMPACT.json'))
+          assert d['status']=='D1_SHADER_GLOBAL_CBUFFER_TERMINAL_IMPACT_EXACT',d
+          assert d['domain_count']==3 and set(d['domains'])=={'common','light','sky'},d
+          assert d['all_three_domain_terminal_impact_dwords']==[],d
+          expected={(12,48),(12,49),(12,50),(12,51)}
+          got={(x['api_slot'],x['dword']) for x in d['all_three_domain_read_only_dwords']}
+          assert expected.issubset(got),(expected,got)
+          by={(x['api_slot'],x['dword']):x for x in d['rows']}
+          for dw in (48,49,50,51):
+              assert by[(12,dw)]['impact_class']=='READ_ONLY_NO_TERMINAL_IMPACT',by[(12,dw)]
+          assert by[(13,6)]['terminal_domains']==['common','sky'],by[(13,6)]
+          assert by[(13,7)]['terminal_domains']==['common','sky'],by[(13,7)]
+          for dw in (28,29,30):
+              assert by[(12,dw)]['terminal_domains']==['common','sky'],by[(12,dw)]
+          assert by[(12,31)]['terminal_domain_count']==0,by[(12,31)]
+          print('TOWER_RENDERER_ALL3_READ_ONLY',d['all_three_domain_read_only_dwords'])
+          print('TOWER_RENDERER_TERMINAL_API13_6',by[(13,6)])
+          print('TOWER_RENDERER_TERMINAL_API13_7',by[(13,7)])
+          print('TOWER_RENDERER_TERMINAL_API12_28_30',[by[(12,x)] for x in (28,29,30)])
           PY
 
       - uses: actions/upload-artifact@v4
