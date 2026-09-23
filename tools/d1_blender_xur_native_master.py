@@ -462,19 +462,16 @@ def upright_root(imported, source_basis_fixed: bool):
     return root
 
 def stage_camera(arm):
-    # The basis-fixed carrier has coherent mesh and joint domains, so frame the
-    # union of visible geometry and the skeleton. The skeleton alone under-framed
-    # Xur's hood/backpack and clipped the first native-master preview.
-    pts=[]
+    # Use the skeleton for the optical center because it is the stable actor domain.
+    # The prior mesh-union framing admitted long/hidden mesh bounds and made Xur too
+    # small in frame. A 24% skeleton margin is enough for hood, coat and feet.
+    skel=[]
     for b in arm.data.bones:
-        pts.append(arm.matrix_world @ b.head_local)
-        pts.append(arm.matrix_world @ b.tail_local)
-    for obj in bpy.context.scene.objects:
-        if obj.type=="MESH" and not obj.hide_render:
-            pts.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
-    if not pts: raise RuntimeError("no Xur framing points")
-    mn=Vector((min(p.x for p in pts),min(p.y for p in pts),min(p.z for p in pts)))
-    mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
+        skel.append(arm.matrix_world @ b.head_local)
+        skel.append(arm.matrix_world @ b.tail_local)
+    if not skel: raise RuntimeError("no Xur skeleton points")
+    mn=Vector((min(p.x for p in skel),min(p.y for p in skel),min(p.z for p in skel)))
+    mx=Vector((max(p.x for p in skel),max(p.y for p in skel),max(p.z for p in skel)))
     c=(mn+mx)*0.5
     size=mx-mn
     e=max(size.x,size.y,size.z,1.0)
@@ -483,26 +480,26 @@ def stage_camera(arm):
     bg=world.node_tree.nodes.get("Background"); bg.inputs["Color"].default_value=(0.018,0.021,0.027,1); bg.inputs["Strength"].default_value=0.18
     bpy.context.scene.world=world
     for name,off,energy,size_factor in [
-        ("XUR_KEY",(-0.75,-0.85,0.85),750,0.48),
-        ("XUR_FILL",(0.65,-0.25,0.30),320,0.40),
-        ("XUR_RIM",(0.30,0.75,0.65),850,0.34),
+        ("XUR_KEY",(0.75,0.85,0.85),750,0.48),
+        ("XUR_FILL",(-0.65,0.25,0.30),320,0.40),
+        ("XUR_RIM",(-0.30,-0.75,0.65),850,0.34),
     ]:
         ld=bpy.data.lights.new(name,"AREA"); ld.energy=energy; ld.shape="DISK"; ld.size=e*size_factor
         lo=bpy.data.objects.new(name,ld); lo.location=c+Vector(off)*e
         lo.rotation_euler=(c-lo.location).to_track_quat("-Z","Y").to_euler()
         bpy.context.scene.collection.objects.link(lo)
 
-    # The prior -Y camera produced a near profile. A diagonal -X/-Y view exposes
-    # the face/hood and front garment while retaining depth cues from the backpack.
+    # The previous diagonal was confirmed by render to be Xur's rear three-quarter.
+    # Flip the horizontal direction to expose the face/hood/front garment.
     cd=bpy.data.cameras.new("XUR_PREVIEW_CAMERA")
     cam=bpy.data.objects.new("XUR_PREVIEW_CAMERA",cd)
     bpy.context.scene.collection.objects.link(cam)
-    view=Vector((-1.0,-0.62,0.06)).normalized()
-    cam.location=c+view*(e*2.05)
+    view=Vector((1.0,0.62,0.045)).normalized()
+    cam.location=c+view*(e*1.62)
     cam.rotation_euler=(c-cam.location).to_track_quat("-Z","Y").to_euler()
-    cd.lens=52
+    cd.lens=55
     bpy.context.scene.camera=cam
-    bpy.context.scene["d1PreviewCameraPolicy"]="MESH_PLUS_SKELETON_THREE_QUARTER"
+    bpy.context.scene["d1PreviewCameraPolicy"]="SKELETON_CENTERED_FRONT_THREE_QUARTER_V2"
 
 def main():
     a=cli(); doc=glb_json(a.input); metadata=mat_meta(doc)
