@@ -17,6 +17,7 @@ on:
       - 'tools/d1_tower_common_symbolic_coverage.py'
       - 'tools/d1_tower_common_alpha_branch_cfg_proof.py'
       - 'tools/d1_tower_common_terminal_closure.py'
+      - 'tools/d1_tower_common_native_material_contract.py'
       - 'tools/d1_tower_common_ps_8093e501_cfg_program_proof.py'
       - 'tools/d1_tower_common_ps_80ca1427_cfg_proof.py'
       - 'tools/d1_tower_common_ps_80ca0bfa_cfg_proof.py'
@@ -486,6 +487,50 @@ jobs:
                 'CLOSED_65_OF_65_FAMILIES_99_OF_99_MATERIALS',
                 'FLATTENED',d['flattened_terminal_equation_family_count'],
                 'CFG_PROGRAM',d['exact_cfg_program_family_count'])
+          PY
+
+      - name: Build exact 99-material native render contract
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_common_native_material_contract.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --terminal-closure reports/TOWER_COMMON_TERMINAL_CLOSURE.json \
+            --symbolic-coverage reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json \
+            --alpha-cfg reports/TOWER_COMMON_ALPHA_BRANCH_CFG_PROOF.json \
+            --be9-bea-cfg reports/TOWER_COMMON_80CA0BE9_80CA0BEA_CFG_PROOF.json \
+            --ps-80c997a7 reports/TOWER_COMMON_80C997A7_CFG_PROOF.json \
+            --ps-80ca0bfa reports/TOWER_COMMON_80CA0BFA_CFG_PROOF.json \
+            --ps-80ca1427 reports/TOWER_COMMON_80CA1427_CFG_PROOF.json \
+            --ps-8093e501 reports/TOWER_COMMON_8093E501_CFG_PROGRAM_PROOF.json \
+            --out reports/TOWER_COMMON_NATIVE_MATERIAL_CONTRACT.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON_NATIVE_MATERIAL_CONTRACT.json'))
+          assert d['status']=='D1_TOWER_COMMON_NATIVE_MATERIAL_CONTRACT_EXACT',d
+          assert d['shader_family_count']==65,d
+          assert d['material_count']==99,d
+          assert d['flattened_equation_family_count']==64,d
+          assert d['cfg_program_family_count']==1,d
+          assert not d['violations'],d['violations']
+          assert len(d['shader_families'])==65,d
+          assert len(d['materials'])==99,d
+          print('TOWER_COMMON_NATIVE_MATERIAL_CONTRACT',
+                'FAMILIES',d['shader_family_count'],
+                'MATERIALS',d['material_count'],
+                'FLATTENED',d['flattened_equation_family_count'],
+                'CFG_PROGRAM',d['cfg_program_family_count'],
+                'RUNTIME_INPUT_MATERIALS',d['materials_with_nonmaterial_runtime_inputs'],
+                'INITIAL_VGPR_MATERIALS',d['materials_with_initial_vgpr_inputs'])
+          for sh,r in sorted(d['shader_families'].items(),
+                             key=lambda kv:(-kv[1]['visible_material_count'],kv[0]))[:20]:
+              print('TOWER_COMMON_NATIVE_FAMILY',sh,
+                    'WEIGHT',r['visible_material_count'],
+                    'LEVEL',r['terminal_contract']['closure_level'],
+                    'NONMATERIAL',r['nonmaterial_api_dword_reads'],
+                    'VGPR_INPUTS',r['initial_vgpr_inputs'])
           PY
 
       - name: Cluster exact common shader structural families
