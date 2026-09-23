@@ -12,6 +12,8 @@ on:
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_gcn_cbuffer_usage_analyze.py'
       - 'tools/d1_gcn_terminal_mrt0_dependency_census.py'
+      - 'tools/d1_gcn_terminal_symbolic_reducer.py'
+      - 'tools/d1_tower_common_symbolic_coverage.py'
       - 'tools/d1_shader_structural_family_cluster.py'
       - 'tools/d1_shader_texture_roles.py'
       - 'tools/d1_validate_shader_texture_roles.py'
@@ -215,6 +217,60 @@ jobs:
           assert d['shader_count']==65,d
           assert {x['shader'] for x in d['shaders']}=={x['shader'] for x in e['shaders'] if not x.get('error')},d
           print('TOWER_COMMON_ALL65_MRT0_COVERAGE',d['shader_count'])
+          PY
+
+      - name: Symbolically reduce all 65 common terminal equations
+        run: |
+          set -euo pipefail
+          mapfile -t all_common < <(python - <<'PY'
+          import json
+          d=json.load(open('reports/common65_shader_extract.json'))
+          for r in sorted([x for x in d['shaders'] if not x.get('error')],
+                          key=lambda x:(-int(x.get('visible_material_count',0)),x['shader'])):
+              print(r['shader'])
+          PY
+          )
+          test "${#all_common[@]}" -eq 65
+          args=(); for h in "${all_common[@]}"; do args+=(--shader "$h"); done
+
+          set +e
+          python tools/d1_gcn_terminal_symbolic_reducer.py \
+            --usage reports/common65_gcn_image_usage.json \
+            --cbuffer-usage reports/common65_gcn_cbuffer_usage.json \
+            --disasm-dir disasm "${args[@]}" \
+            --out reports/TOWER_COMMON65_SYMBOLIC_TERMINAL.json \
+            | tee reports/TOWER_COMMON65_SYMBOLIC_TERMINAL_stdout.txt
+          rc=$?
+          set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+
+          python tools/d1_tower_common_symbolic_coverage.py \
+            --manifest prior/compact/common_material_texture_manifest.json \
+            --shader-report reports/common65_shader_extract.json \
+            --symbolic reports/TOWER_COMMON65_SYMBOLIC_TERMINAL.json \
+            --out reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json \
+            | tee reports/TOWER_COMMON65_SYMBOLIC_COVERAGE_stdout.txt
+
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_COMMON65_SYMBOLIC_COVERAGE.json'))
+          assert d['status']=='D1_TOWER_COMMON_SYMBOLIC_COVERAGE_EXACT',d
+          assert d['total_shader_family_count']==65,d
+          assert d['exact_terminal_equation_family_count']+d['unresolved_terminal_equation_family_count']==65,d
+          print('TOWER_COMMON_SYMBOLIC_COVERAGE',
+                'EXACT_FAMILIES',d['exact_terminal_equation_family_count'],
+                'OF',d['total_shader_family_count'],
+                'EXACT_VISIBLE_MATERIALS',d['exact_terminal_equation_visible_material_count'],
+                'OF',d['total_visible_material_count'],
+                'FAMILY_FRACTION',d['family_coverage_fraction'],
+                'MATERIAL_FRACTION',d['visible_material_coverage_fraction'])
+          for r in d['highest_priority_unresolved_rows'][:30]:
+              print('TOWER_COMMON_SYMBOLIC_BLOCKER',r['shader'],
+                    'WEIGHT',r['visible_material_count'],
+                    'BYTES',r['gcn_bytes'],
+                    'BAD_CHANNELS',r['terminal_bad_channels'],
+                    'UNRESOLVED',r['terminal_unresolved_markers'],
+                    'UNSUPPORTED',[(x['address'],x['mnemonic']) for x in r['unsupported_operations'][:12]])
           PY
 
       - name: Cluster exact common shader structural families
