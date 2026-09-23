@@ -13,7 +13,7 @@ D1 runtime external-material evaluator (E6/E7/E8) has been source-closed.
 """
 from __future__ import annotations
 
-import argparse, hashlib, json, math, struct, sys
+import argparse, hashlib, json, math, struct, sys, tempfile
 from pathlib import Path
 
 import bpy
@@ -85,6 +85,49 @@ def glb_json(path: Path) -> dict:
     n,t=struct.unpack_from("<II", raw, 12)
     if t != 0x4E4F534A: raise RuntimeError("GLB missing JSON chunk")
     return json.loads(raw[20:20+n].decode("utf-8").rstrip(" \t\r\n\0"))
+
+def hydrate_embedded_native_images(path: Path, doc: dict) -> int:
+    """Load exact embedded D1 PNGs that Blender's glTF importer leaves unreferenced.
+
+    The carrier intentionally preserves native shader resources even when they are not
+    wired to generic glTF PBR slots. Blender imports only the portable reachable image
+    subset, so source-closed shader recreation must explicitly hydrate the rest.
+    """
+    with path.open("rb") as f:
+        f.seek(12)
+        json_len,json_type=struct.unpack("<II",f.read(8))
+        if json_type!=0x4E4F534A: raise RuntimeError("GLB JSON chunk missing")
+        bin_header=20+json_len
+        f.seek(bin_header)
+        bin_len,bin_type=struct.unpack("<II",f.read(8))
+        if bin_type!=0x004E4942: raise RuntimeError("GLB BIN chunk missing")
+        bin_offset=bin_header+8
+
+        loaded=0
+        with tempfile.TemporaryDirectory(prefix="xur_native_images_") as td:
+            td=Path(td)
+            for ii,img in enumerate(doc.get("images") or []):
+                name=str(img.get("name") or "")
+                if not (name.startswith("D1_TEXTURE_") or name.startswith("D1_DERIVED_NORMAL_")):
+                    continue
+                if bpy.data.images.get(name) is not None or any(x.name.startswith(name+".") for x in bpy.data.images):
+                    continue
+                if img.get("mimeType")!="image/png" or "bufferView" not in img:
+                    continue
+                bv=(doc.get("bufferViews") or [])[int(img["bufferView"])]
+                off=bin_offset+int(bv.get("byteOffset",0))
+                size=int(bv["byteLength"])
+                if off+size>bin_offset+bin_len:
+                    raise RuntimeError(f"{name}: embedded image range outside BIN")
+                f.seek(off); payload=f.read(size)
+                if len(payload)!=size or not payload.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                    raise RuntimeError(f"{name}: embedded payload is not the expected PNG")
+                tmp=td/f"{ii:04d}.png"; tmp.write_bytes(payload)
+                im=bpy.data.images.load(str(tmp),check_existing=False)
+                im.name=name
+                im.pack()
+                loaded+=1
+    return loaded
 
 def mat_meta(doc: dict) -> dict[str,dict]:
     out={}
@@ -342,6 +385,7 @@ def main():
     before=set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(a.input.resolve()), import_pack_images=True)
     imported=[o for o in bpy.data.objects if o not in before]
+    hydrated_native_images=hydrate_embedded_native_images(a.input,doc)
     arms=[o for o in imported if o.type=="ARMATURE"]
     if len(arms)!=1: raise RuntimeError(f"expected one Xur armature, got {len(arms)}")
     root=upright_root(imported,source_basis_fixed)
@@ -399,6 +443,8 @@ def main():
         "preview":str(a.preview),"preview_sha256":sha256(a.preview),
         "material_count":len(metadata),"action_count":len(actions),"armature_count":len(arms),
         "material_status_counts":counts,"materials":rows,
+        "hydrated_native_image_count":hydrated_native_images,
+        "packed_image_count":sum(1 for im in bpy.data.images if im.packed_file is not None),
         "imported_active_actions_cleared":imported_active_actions,
         "muted_nla_track_count":muted_nla_tracks,
         "startup_pose":"BIND_REST_NO_ACTIVE_ACTION",
@@ -410,6 +456,6 @@ def main():
         "policy":"Fail-closed Blender reconstruction. Source-closed shader semantics choose visible inputs; unresolved runtime/global/palette/reflection portions are labeled rather than guessed."
     }
     a.report.parent.mkdir(parents=True,exist_ok=True); a.report.write_text(json.dumps(rep,indent=2)+"\n")
-    print(json.dumps({k:rep[k] for k in ["status","material_count","action_count","material_status_counts","output_sha256","preview_sha256"]},indent=2))
+    print(json.dumps({k:rep[k] for k in ["status","material_count","action_count","hydrated_native_image_count","material_status_counts","output_sha256","preview_sha256"]},indent=2))
 
 if __name__=="__main__": main()
