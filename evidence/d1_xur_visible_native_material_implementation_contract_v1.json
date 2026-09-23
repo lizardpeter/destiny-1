@@ -1,0 +1,445 @@
+{
+  "schema_version": 1,
+  "status": "D1_XUR_VISIBLE_NATIVE_MATERIAL_IMPLEMENTATION_CONTRACT_V1",
+  "target": {
+    "identity_string_hash": "46C55854",
+    "entity_model": "80C88CEF",
+    "model_parent": "80C88CE2",
+    "visible_material_count": 54,
+    "visible_pixel_shader_family_count": 25,
+    "skeleton": "809D80C9",
+    "control_state": "809D80FC"
+  },
+  "scope": "Current corpus-calibrated stage-0/highest-detail Xur visible material set. This contract consolidates source-closed current native MRT0 color equations and explicit remaining runtime gates. It is an implementation contract, not a claim that external material selection or every dynamic TFX/global input is retail-closed.",
+  "universal_dependencies": {
+    "camera_position": {
+      "source": "api12[28:30]",
+      "semantic": "camera/view position",
+      "status": "SOURCE_CLOSED_WHERE_REFERENCED"
+    },
+    "runtime_external_material_selection": {
+      "status": "OPEN",
+      "current_adapter": "descriptor list-A subset + unique greatest-specificity winner against source-decoded Xur configuration",
+      "source_decoded_configuration": [
+        [
+          "26170C92",
+          "4AC210DE"
+        ]
+      ],
+      "corpus_calibration": "70281/70281 placement×group evaluations unique",
+      "D1_retail_consumer_execution_path_proven": false
+    },
+    "retail_default_animation": {
+      "status": "OPEN",
+      "selected_action_population": 267,
+      "policy": "No idle/default/startup action is invented."
+    }
+  },
+  "families": [
+    {
+      "ps": "808762E1",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave7_tail_semantic_proof.py",
+      "class": "palette_surface_no_reflection_current",
+      "current_mrt0": "K*t1.rgb*C2; K=4.594789981842041; C2 is three-branch palette selected by t0.r,t0.g,t5.b from t2/t3/t4",
+      "normal": "t6/t7 combined signed XY",
+      "reflection": "none in current MRT0 proof",
+      "alpha": "control chain contributes deferred packing; no visible-RGB role",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "runtime TFX invariance",
+        "deferred framebuffer equivalence"
+      ]
+    },
+    {
+      "ps": "80876575",
+      "material_count": 2,
+      "proof": "tools/d1_xur_ps_80876575_semantic_proof.py",
+      "class": "masked_product_surface_reflection",
+      "current_mrt0": "Cs=K*t0.rgb*t1.rgb; M=lerp(Cs,B,t5.r); mrt0=lerp(M,Q,S) with exact current cube/fresnel constants",
+      "normal": "t2/t3 combined XY",
+      "reflection": "t4 cubemap; exact LOD/fresnel/strength/cube branch proved",
+      "alpha": "t0.a modulates cube LOD/reflection/normal packing",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "TFX producer semantics",
+        "render/blend/depth/raster state"
+      ]
+    },
+    {
+      "ps": "808768C0",
+      "material_count": 5,
+      "proof": "tools/d1_xur_ps_808768c0_semantic_proof.py",
+      "class": "dual_normal_reflected_cube_fresnel_detail",
+      "current_mrt0": "K*C + (0.39+0.91*K*C)*t4.rgb*(t5.b*t6.r)*t4.a*(2-A)*0.4*F",
+      "normal": "t2/t3 combined XY",
+      "reflection": "t4 cubemap; exact current LOD and F=(1-dot(N,V))^5",
+      "alpha": "A=K*t0.a*t1.a",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "runtime texture-index 2 descriptor completion for two scoped materials",
+        "TFX producer semantics",
+        "render state"
+      ]
+    },
+    {
+      "ps": "8087688C",
+      "material_count": 4,
+      "proof": "tools/d1_xur_ps_direct_rgb_normal_families_proof.py",
+      "class": "direct_rgb_bc5_normal",
+      "current_mrt0": "t0.rgb",
+      "normal": "t1 signed BC5 XY",
+      "reflection": "none",
+      "alpha": "none for MRT0",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "render state",
+        "deferred target equivalence"
+      ]
+    },
+    {
+      "ps": "8087645C",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave7_tail_semantic_proof.py",
+      "class": "surface_reflection_detail",
+      "current_mrt0": "t0.rgb+(0.39+0.91*t0.rgb)*t3.rgb*S; S=t4.b*t5.r*(2-t0.a)*0.4*(1-dot(N,V))^5",
+      "normal": "t1/t2 combined XY",
+      "reflection": "t3 cubemap exact current LOD floor=1-saturate(2.3*t0.a-1.3)",
+      "alpha": "t0.a reflection/LOD control",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "runtime globals/render state"
+      ]
+    },
+    {
+      "ps": "808764AA",
+      "material_count": 4,
+      "proof": "tools/d1_xur_ps_808764aa_semantic_proof.py",
+      "class": "normal_reflected_cube_surface",
+      "current_mrt0": "t0.rgb+(1+t0.rgb)*t2.rgb*t2.a*0.025",
+      "normal": "t1 signed BC5 XY",
+      "reflection": "t2 cubemap exact; current LOD floor 1.5",
+      "alpha": "cube alpha reflection strength",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "TFX producer semantics",
+        "render target semantics",
+        "render state"
+      ]
+    },
+    {
+      "ps": "808768B7",
+      "material_count": 1,
+      "proof": "tools/d1_xur_ps_808768b7_semantic_proof.py",
+      "class": "masked_surface_reflection_normal",
+      "current_mrt0": "C=t0.rgb; M=lerp(C,B,t3.r); G=t4.r; mrt0=M+t2.rgb*(t2.a*G)*(M+1)",
+      "normal": "t1 XY",
+      "reflection": "t2 cubemap exact",
+      "alpha": "t4.r reflection/normal-pack control",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "TFX producer semantics",
+        "render state"
+      ]
+    },
+    {
+      "ps": "80876952",
+      "material_count": 3,
+      "proof": "tools/d1_xur_ps_80876952_semantic_proof.py",
+      "class": "detail_normal_reflection_cube_surface",
+      "current_mrt0": "K*(t0.rgb*t1.rgb)+M*J with exact native cube/detail/view equations",
+      "normal": "t2/t3 combined XY",
+      "reflection": "t4 cubemap; auxiliary E=t5.b*t6.r*t7.r; exact F/S/J proved",
+      "alpha": "A=K*t0.a*t1.a drives LOD/packing",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "TFX Frame/Wander producer semantics for c13/c14/c17",
+        "render state"
+      ]
+    },
+    {
+      "ps": "80AAE1C7",
+      "material_count": 3,
+      "proof": "tools/d1_xur_ps_direct_rgb_normal_families_proof.py",
+      "class": "direct_rgb_bc5_normal_native_w_pack",
+      "current_mrt0": "t0.rgb",
+      "normal": "t1 XY",
+      "reflection": "none",
+      "alpha": "t2.native_w controls normal packing only",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "render state",
+        "deferred target equivalence"
+      ]
+    },
+    {
+      "ps": "80876566",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave6_tail_semantic_proof.py",
+      "class": "constant_tinted_surface",
+      "current_mrt0": "saturate(c-.25)+t0.rgb*saturate(4c); current=t0.rgb*(4c), c=b0[8:11].rgb",
+      "normal": "t1 XY",
+      "reflection": "none",
+      "alpha": "none current RGB",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "runtime TFX-evaluated constants if dynamic"
+      ]
+    },
+    {
+      "ps": "80876577",
+      "material_count": 4,
+      "proof": "tools/d1_three_npc_ps_80876577_semantic_proof.py",
+      "class": "three_branch_palette_surface_reflection",
+      "current_mrt0": "Cs=K*t1.rgb*P3; mrt0=lerp(Cs,Q,S), with exact palette, coverage, normal, cubemap, fresnel and current constants",
+      "normal": "t6/t7 combined XY with native basis sign",
+      "reflection": "t8 cubemap exact; current LOD floor 6",
+      "alpha": "coverage=t1.a*q2; current kill threshold b0[40]=0",
+      "implementation": "PALETTE_RGB_AND_CUTOUT_ENCODED_REFLECTION_PENDING",
+      "gates": [
+        "portable reflection encoding",
+        "deferred framebuffer equivalence",
+        "external material permutation"
+      ]
+    },
+    {
+      "ps": "8087656A",
+      "material_count": 2,
+      "proof": "tools/d1_three_npc_ps_wave7_tail_semantic_proof.py",
+      "class": "product_surface_reflection_dual_normal",
+      "current_mrt0": "Cs=K*t0.rgb*t1.rgb; mrt0=lerp(Cs,Q,S), exact current S/Q",
+      "normal": "t2/t3 combined XY",
+      "reflection": "t4 cubemap; current LOD floor 6",
+      "alpha": "discard t0.a < 0 current threshold; t0.a also reflection/packing control",
+      "implementation": "PRODUCT_AND_CUTOUT_ENCODED_REFLECTION_PENDING",
+      "gates": [
+        "render state",
+        "runtime TFX invariance"
+      ]
+    },
+    {
+      "ps": "8087656E",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave6_tail_semantic_proof.py",
+      "class": "constant_tinted_masked_surface",
+      "current_mrt0": "surviving RGB=t0.rgb*(4*c), c=b0[20:23].rgb",
+      "normal": "t2 XY",
+      "reflection": "none",
+      "alpha": "discard t1.w < b0[24], current threshold 0",
+      "implementation": "CURRENT_RGB_PARTIAL_ALPHA_PENDING_CHANNEL_EXACTNESS",
+      "gates": [
+        "portable t1.w coverage representation",
+        "runtime TFX constants"
+      ]
+    },
+    {
+      "ps": "80876537",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave6_tail_semantic_proof.py",
+      "class": "product_surface_dual_normal",
+      "current_mrt0": "K*t0.rgb*t1.rgb",
+      "normal": "t2/t3 combined XY",
+      "reflection": "none",
+      "alpha": "t4.r deferred normal-pack scalar only",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "deferred normal target equivalence"
+      ]
+    },
+    {
+      "ps": "80876EDF",
+      "material_count": 6,
+      "proof": "tools/d1_xur_ps_80876edf_semantic_proof.py",
+      "class": "direct_rgb_bc5_normal_pack_modulated",
+      "current_mrt0": "t0.rgb",
+      "normal": "t1 XY",
+      "reflection": "none",
+      "alpha": "t2.r controls normal packing only",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "TFX semantics",
+        "render state",
+        "deferred target equivalence"
+      ]
+    },
+    {
+      "ps": "80AADCB3",
+      "material_count": 5,
+      "proof": "tools/d1_xur_ps_direct_rgb_normal_families_proof.py",
+      "class": "direct_rgb_bc5_normal_alpha_pack",
+      "current_mrt0": "t0.rgb",
+      "normal": "t1 XY",
+      "reflection": "none",
+      "alpha": "t0.a controls normal packing only",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "render state",
+        "deferred target equivalence"
+      ]
+    },
+    {
+      "ps": "80AAE185",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_simple_tail_semantic_proof.py",
+      "class": "constant_rgb_exact",
+      "current_mrt0": "material b0.rgb; Xur visible material 80876546=(0,0,0)",
+      "normal": "normalize(attr0.xyz) packed to MRT1",
+      "reflection": "none",
+      "alpha": "attr0.w",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "deferred target equivalence"
+      ]
+    },
+    {
+      "ps": "8087688E",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave6_tail_semantic_proof.py",
+      "class": "constant_rgb_exact_current_black",
+      "current_mrt0": "b0[0:3].rgb*b0[4:7].rgb; current second factor zero => black",
+      "normal": "native attribute path",
+      "reflection": "none",
+      "alpha": "native",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "runtime TFX constants if dynamic"
+      ]
+    },
+    {
+      "ps": "80AA8E93",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave6_tail_semantic_proof.py",
+      "class": "surface_plus_cube",
+      "current_mrt0": "t0.rgb+cube.rgb",
+      "normal": "t1 XY",
+      "reflection": "t2 cubemap; L=max(native_lod,b0[16]+t0.a*(b0[20]-b0[16]))",
+      "alpha": "t0.a cube LOD control",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "cubemap portable sampling/orientation",
+        "runtime globals"
+      ]
+    },
+    {
+      "ps": "808768AF",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_simple_tail_semantic_proof.py",
+      "class": "direct_texture_rgb_exact",
+      "current_mrt0": "sample(t0,attr1.xy).rgb",
+      "normal": "normalize(attr0.xyz) native packing",
+      "reflection": "none",
+      "alpha": "attr0.w",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "deferred target equivalence"
+      ]
+    },
+    {
+      "ps": "8087630D",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_shared_8087630d_809d8370_semantic_proof.py",
+      "class": "surface_scalar_view_tint",
+      "current_mrt0": "C=t0.rgb*t2.r; R=saturate(1.6592003107070923*(1-D)^2-0.49991703033447266); T=.2445542216+.7554457784*R; mrt0=C*T",
+      "normal": "current view/geometric-normal path; t3 packing, t4 indirect normal/view control",
+      "reflection": "none current RGB",
+      "alpha": "t1.r alpha-test against extended-user-data threshold",
+      "implementation": "SCALAR_BASE_ENCODED_VIEW_TINT_AND_ALPHA_PENDING",
+      "gates": [
+        "runtime TFX evaluated state",
+        "alpha-test runtime threshold",
+        "portable view path"
+      ]
+    },
+    {
+      "ps": "80A08C16",
+      "material_count": 1,
+      "proof": "tools/d1_xur_ps_808768b7_semantic_proof.py",
+      "class": "masked_surface_reflection_normal_shared_gcn",
+      "current_mrt0": "same exact bounded GCN as 808768B7: M+t2.rgb*(t2.a*t4.r)*(M+1)",
+      "normal": "t1 XY",
+      "reflection": "t2 cube",
+      "alpha": "t3/t4 control",
+      "implementation": "REFLECTION_PENDING_PORTABLE_ENCODING",
+      "gates": [
+        "asset-owned constants/resources revalidation",
+        "TFX producer semantics",
+        "render state"
+      ]
+    },
+    {
+      "ps": "809D836C",
+      "material_count": 2,
+      "proof": "tools/d1_three_npc_ps_809d836c_semantic_proof.py",
+      "class": "subtractive_mask_surface_view_tint",
+      "current_mrt0": "C=t0.rgb*(1-t1.r); R=saturate(1.6592003107070923*(1-D)^2-.49991703033447266); T=.2445542216+.7554457784*R; mrt0=C*T",
+      "normal": "t2 packing scalar; t3/t4 control branches zero-weighted current RGB",
+      "reflection": "none current RGB",
+      "alpha": "view/normal response*t0.a compared to b0[40]=0.23",
+      "implementation": "SUBTRACTIVE_BASE_ENCODED_VIEW_TINT_AND_ALPHA_PENDING",
+      "gates": [
+        "runtime TFX evaluated state",
+        "portable view-dependent alpha rejection"
+      ]
+    },
+    {
+      "ps": "809D8370",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_shared_8087630d_809d8370_semantic_proof.py",
+      "class": "surface_scalar_view_tint_shared_gcn",
+      "current_mrt0": "same current GCN equation as 8087630D: t0.rgb*t2.r*viewTint",
+      "normal": "t3 packing, t4 indirect control",
+      "reflection": "none current RGB",
+      "alpha": "t1.r alpha-test against runtime threshold",
+      "implementation": "SCALAR_BASE_ENCODED_VIEW_TINT_AND_ALPHA_PENDING",
+      "gates": [
+        "runtime TFX evaluated state",
+        "alpha-test runtime threshold"
+      ]
+    },
+    {
+      "ps": "809D8351",
+      "material_count": 1,
+      "proof": "tools/d1_three_npc_ps_wave6_tail_semantic_proof.py",
+      "class": "product_surface_palette_mask",
+      "current_mrt0": "C=t0.rgb*t1.rgb; B=saturate(c-.25)+saturate(4c)*(K*C); mrt0=lerp(K*C,B,t4.r), c=b0[28:31].rgb",
+      "normal": "t2/t3 combined XY",
+      "reflection": "none",
+      "alpha": "t4.r palette/mask selector only",
+      "implementation": "CURRENT_RGB_ENCODED",
+      "gates": [
+        "runtime TFX constants if dynamic"
+      ]
+    }
+  ],
+  "known_non_shader_gates": [
+    {
+      "id": "D1_EXTERNAL_MATERIAL_SELECTOR",
+      "status": "OPEN",
+      "facts": [
+        "Static D1 graph exact: 81 groups, 108 descriptors, 820 material bank entries.",
+        "Descriptor halves exact compact lists over switch-record bank.",
+        "List-B uses same keys as list-A and sentinel 871AC0EA for all 108 descriptors.",
+        "Xur source-decoded own-model configuration is 26170C92=4AC210DE.",
+        "List-A subset + greatest specificity selects a unique winner in all 81 Xur groups and calibrated 70281/70281 Tower placement×group evaluations."
+      ],
+      "newly_rejected_hypothesis": "A single later-MIDA-style global permutation index modulo each MaterialCount cannot reproduce the D1 Xur candidate winners.",
+      "retail_consumer_execution_path_proven": false
+    },
+    {
+      "id": "D1_DYNAMIC_TFX",
+      "status": "PARTIAL",
+      "meaning": "Several exact PS equations consume constants produced or plausibly mutated by TFX Frame/Wander/opcode paths. Current serialized equations are exact, but invariant-at-every-retail-frame values are not globally proven."
+    },
+    {
+      "id": "D1_RENDER_STATE_AND_DEFERRED_COMPOSITION",
+      "status": "PARTIAL",
+      "meaning": "MRT0/MRT1 native outputs are source-closed for the listed families to the stated scope; blend/depth/raster behavior and the downstream deferred-lighting composition are not globally equivalent to a Blender Principled material."
+    },
+    {
+      "id": "D1_RETAIL_DEFAULT_ANIMATION",
+      "status": "OPEN",
+      "meaning": "267 action identities selected by 809D80FC are source-owned; startup/default action selection is not source-closed."
+    }
+  ],
+  "policy": "Implementation may exactly reproduce a family only to the strongest closed layer stated here. Never silently replace an OPEN/PARTIAL gate with a generic PBR assumption. A custom/native-equation renderer is preferred when Blender nodes cannot express the native cube, deferred, coverage, or dynamic-input behavior without semantic loss."
+}
