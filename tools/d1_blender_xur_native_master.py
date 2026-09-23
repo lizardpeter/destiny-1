@@ -437,7 +437,7 @@ def main():
 
     rep={
         "schema_version":1,
-        "status":"D1_XUR_BLENDER_NATIVE_MASTER_V1_COMPLETE",
+        "status":"D1_XUR_BLENDER_NATIVE_MASTER_V2_COMPLETE",
         "input":str(a.input),"input_sha256":sha256(a.input),
         "output":str(a.output),"output_sha256":sha256(a.output),"output_bytes":a.output.stat().st_size,
         "preview":str(a.preview),"preview_sha256":sha256(a.preview),
