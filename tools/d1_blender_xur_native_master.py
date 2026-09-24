@@ -464,9 +464,18 @@ def build_material(meta:dict, mat):
         b=tex_node(mat,t1,"D1_INSTRUCTION_PROVEN_SURFACE_T1",-700,20)
         if a and b:
             mul=multiply_rgb(mat,a,b,"D1_NATIVE_SURFACE_PRODUCT")
-            connect_native_mrt0_rgb(mat,bsdf,mul.outputs["Color"])
-            visible_tag=f"{t0}*{t1}"
-            status="SOURCE_CLOSED_SURFACE_PRODUCT_PROXY"
+            if ps in {"80876575","808768C0","80876952"}:
+                # These exact native families all multiply the t0*t1 surface term by
+                # K before their separately view-dependent mask/reflection branches.
+                K=4.594789981842041
+                base=scaled_color(mat,mul.outputs["Color"],(K,K,K),"D1_NATIVE_SURFACE_PRODUCT_K",320,140)
+                connect_native_mrt0_rgb(mat,bsdf,base.outputs["Color"])
+                visible_tag=f"{K}*{t0}*{t1} + native_reflection_pending"
+                status="SOURCE_CLOSED_NATIVE_MRT0_BASE_TERM_REFLECTION_PENDING"
+            else:
+                connect_native_mrt0_rgb(mat,bsdf,mul.outputs["Color"])
+                visible_tag=f"{t0}*{t1}"
+                status="SOURCE_CLOSED_SURFACE_PRODUCT_PROXY"
             if ps=="8087656A":
                 enable_cutout(mat,bsdf,a.outputs["Alpha"],"D1_NATIVE_8087656A",0.0)
         # These families use dual/detail normals; use the first exact normal contributor
@@ -514,8 +523,23 @@ def build_material(meta:dict, mat):
             # are unambiguously discarded and must not become opaque cards.
             enable_cutout(mat,bsdf,n0.outputs["Alpha"],"D1_NATIVE_809D836C_ZERO_ALPHA",0.0)
 
+    elif ps=="8087688E":
+        # The old V2 build incorrectly promoted this textureless family to exact
+        # black. Exact material TFX is c1 = 8*U4A[4], and the native PS multiplies
+        # c0.rgb by c1.rgb, so U4A[4] is a visible runtime producer. Keep it black
+        # only as a fail-closed diagnostic placeholder and label the open gate.
+        bsdf.inputs["Base Color"].default_value=(0.0,0.0,0.0,1.0)
+        if "Emission Color" in bsdf.inputs:
+            bsdf.inputs["Emission Color"].default_value=(0.0,0.0,0.0,1.0)
+        visible_tag="OPEN_VISIBLE_TFX_U4A4_FAIL_CLOSED_BLACK_DIAGNOSTIC"
+        status="OPEN_VISIBLE_TFX_U4A4_FAIL_CLOSED"
+        mat["d1_u4a4_runtime_source_identity_proven"]=False
+        mat["d1_u4a4_exact_tfx_expression"]="c1 = 8 * U4A[4]"
+
     elif ps in CONSTANT_BLACK:
         bsdf.inputs["Base Color"].default_value=(0.0,0.0,0.0,1.0)
+        if "Emission Color" in bsdf.inputs:
+            bsdf.inputs["Emission Color"].default_value=(0.0,0.0,0.0,1.0)
         visible_tag="CURRENT_NATIVE_CONSTANT_BLACK"
         status="SOURCE_CLOSED_CONSTANT_RGB_EXACT"
 
@@ -708,13 +732,15 @@ def main():
     bpy.context.scene["d1_preview_action_policy"]=preview_pose["policy"]
     bpy.context.scene["d1_native_material_semantics_fail_closed"]=True
     bpy.context.scene["d1_full_retail_equivalence_claimed"]=False
+    bpy.context.scene["d1_portable_closure_mode"]="NATIVE_MRT0_RGB_DIAGNOSTIC_UNLIT"
 
     readme=bpy.data.texts.new("XUR_NATIVE_MASTER_README")
     readme.write("Xur native-semantic Blender master.\n")
     readme.write("Geometry/skin/actions come from the calibrated 80C88CEF carrier.\n")
-    readme.write("Material nodes use only instruction-proven visible surface inputs.\n")
+    readme.write("Material nodes visualize instruction-proven native MRT0 RGB without adding an unproven Blender PBR albedo/BRDF interpretation.\n")
     readme.write("80876579 t0 control data is explicitly forbidden from visible base color.\n")
     readme.write("Full reflection/palette/runtime-global equations remain marked pending where inputs are not carrier-resident.\n")
+    readme.write("PS 8087688E is NOT exact black: its visible c1 = 8*U4A[4] runtime producer remains open and is fail-closed black only for diagnostics.\n")
     readme.write("The corpus-calibrated external-material choice is an adapter; E6/E7/E8 retail live selection is still unproven.\n")
     readme.write("One low-motion selector-owned Action is assigned only as a sanity-gated diagnostic preview pose. It is NOT claimed to be Xur's retail idle/default.\n")
 
@@ -737,7 +763,7 @@ def main():
 
     rep={
         "schema_version":1,
-        "status":"D1_XUR_BLENDER_NATIVE_MASTER_V2_COMPLETE",
+        "status":"D1_XUR_BLENDER_NATIVE_MASTER_V3_DIAGNOSTIC_COMPLETE",
         "input":str(a.input),"input_sha256":sha256(a.input),
         "output":str(a.output),"output_sha256":sha256(a.output),"output_bytes":a.output.stat().st_size,
         "preview":str(a.preview),"preview_sha256":sha256(a.preview),
@@ -755,7 +781,9 @@ def main():
         "runtime_material_selection_proven":False,
         "runtime_default_action_selected":False,
         "full_native_equation_claimed":False,
-        "policy":"Fail-closed Blender reconstruction. Source-closed shader semantics choose visible inputs; unresolved runtime/global/palette/reflection portions are labeled rather than guessed."
+        "portable_closure_mode":"NATIVE_MRT0_RGB_DIAGNOSTIC_UNLIT",
+        "u4a4_visible_runtime_source_proven":False,
+        "policy":"Fail-closed V3 diagnostic. Instruction-proven native MRT0 RGB is visualized unlit instead of being mislabeled as generic Blender/PBR base color. Unresolved runtime/global/palette/reflection portions remain labeled rather than guessed."
     }
     a.report.parent.mkdir(parents=True,exist_ok=True); a.report.write_text(json.dumps(rep,indent=2)+"\n")
     print(json.dumps({k:rep[k] for k in ["status","material_count","action_count","hydrated_native_image_count","material_status_counts","output_sha256","preview_sha256"]},indent=2))
