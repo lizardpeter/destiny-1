@@ -51,8 +51,9 @@ def stage_tfx(p:dict,stage:str):
     b2=[x.get('value') for x in p[f'{stage}_cbuffers']['items']]
     q=disassemble_tfx(raw,b1,b2)
     if q.get('complete') is not True:raise ValueError(f'{stage}: incomplete TFX')
-    w=[];r=[]
+    w=[];r=[];oph=collections.Counter()
     for op in q.get('ops') or []:
+        oph[str(op.get('opcode') or op.get('name'))]+=1
         if op.get('name')=='Unk42':w.append(int(op['d1_unk42_u8']))
         elif op.get('name')=='Unk4a':r.append(int((op.get('operand_bytes') or [])[0]))
     cbn=len(b2)
@@ -66,6 +67,7 @@ def stage_tfx(p:dict,stage:str):
       'required_slot_count_from_serialized_and_tfx':required,
       'tfx_sha256':hashlib.sha256(raw).hexdigest(),
       'tfx_hex':raw.hex(),
+      'opcode_histogram':dict(oph),
     }
 
 def main():
@@ -102,6 +104,9 @@ def main():
                     hist[f'{stage}:{key}'][str(v)]+=1
                 rows.append({
                   'material':mh,'stage':stage,
+                  'texture_count':int(p[f'{stage}_textures']['count']),
+                  'sampler_count':int(p[f'{stage}_samplers']['count']),
+                  'private_constant_count':int(p[f'{stage}_tfx_bytecode_constants']['count']),
                   'shader':p['vertex_shader'] if stage=='vs' else p['pixel_shader'],
                   'vector4_container':norm(p[f'{stage}_vector4_container']),
                   **q,'gap_dwords':vals,
