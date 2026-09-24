@@ -76,13 +76,13 @@ def main():
      context_hist[f'{prev2}>{prev}|4A:04|{nxt}>{nxt2}']+=1
      if nxt=='42':
       no=ops[i+1];next_store_hist[str(no.get('d1_unk42_u8'))]+=1
-    row={'material':h,'package':f'{pkg:04X}','stage':stage,'shader':shader,'tfx_sha256':sha,
-         'bytecode_hex':raw.hex(),'cbuf_count':len(b2),'private_count':len(b1),'op_index':i,
-         'context':f'{prev2}>{prev}|4A:04|{nxt}>{nxt2}',
-         'next_store':ops[i+1].get('d1_unk42_u8') if nxt=='42' else None,
-         'gap_dwords':{f'0x{off:X}':struct.unpack_from('<I',mb,off)[0] for off in GAPS[stage]}}
-     if h==XUR_MATERIAL or sha==XUR_SHA:xur_rows.append(row)
-     if len(examples)<120:examples.append(row)
+     row={'material':h,'package':f'{pkg:04X}','stage':stage,'shader':shader,'tfx_sha256':sha,
+          'bytecode_hex':raw.hex(),'cbuf_count':len(b2),'private_count':len(b1),'op_index':i,
+          'context':f'{prev2}>{prev}|4A:04|{nxt}>{nxt2}',
+          'next_store':ops[i+1].get('d1_unk42_u8') if nxt=='42' else None,
+          'gap_dwords':{f'0x{off:X}':struct.unpack_from('<I',mb,off)[0] for off in GAPS[stage]}}
+      if h==XUR_MATERIAL or sha==XUR_SHA:xur_rows.append(row)
+      if len(examples)<120:examples.append(row)
   if n%25==0 or n==len(cats):print(f'OP4A4_PACKAGES {n}/{len(cats)} materials={materials} parsed={parsed} hit_occ={hit_occ} hit_programs={hit_programs}',flush=True)
  if parsed!=materials:viol.append(f'parsed:{parsed}!={materials}')
  out={'schema_version':1,'status':'D1_GLOBAL_TFX_0X4A4_FOCUSED_CENSUS_EXACT' if not viol else 'D1_GLOBAL_TFX_0X4A4_FOCUSED_CENSUS_VIOLATIONS',
