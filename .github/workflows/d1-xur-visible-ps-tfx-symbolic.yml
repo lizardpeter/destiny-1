@@ -1,0 +1,65 @@
+name: D1 Xur visible PS TFX symbolic contract
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-visible-ps-tfx-symbolic.yml'
+      - 'tools/d1_xur_ps_tfx_symbolic_contract.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: '${{ github.token }}'
+  STATE_ARTIFACT_ID: '10028092407'
+  STATE_ARTIFACT_ZIP_SHA256: '83c5b4af4590d986fb917ddc9da4098e2d1272ad30025db8395f53cac61e4407'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact Xur material stage state
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl --fail --location --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${STATE_ARTIFACT_ID}/zip" \
+            -o input/state.zip
+          echo "${STATE_ARTIFACT_ZIP_SHA256}  input/state.zip" | sha256sum --check --strict
+          unzip -q input/state.zip -d input/state
+          test -f input/state/xur_material_stage_state.json
+      - name: Replay every visible pixel-stage TFX store symbolically
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xur_ps_tfx_symbolic_contract.py
+          python tools/d1_xur_ps_tfx_symbolic_contract.py \
+            --material-state input/state/xur_material_stage_state.json \
+            -o out/D1_XUR_VISIBLE_PS_TFX_SYMBOLIC_CONTRACT.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_XUR_VISIBLE_PS_TFX_SYMBOLIC_CONTRACT.json'))
+          assert d['status']=='D1_XUR_VISIBLE_PS_TFX_SYMBOLIC_CONTRACT_EXACT',d
+          assert d['material_count']==54,d
+          assert d['pixel_stage_store_count']==21,d
+          assert d['fully_source_named_store_count']==17,d
+          assert d['unresolved_producer_dependent_store_count']==4,d
+          assert d['unresolved_producer_symbols']==['U4A[4]','U4B[53]'],d
+          q=d['critical_reduction']
+          assert q['remaining_exact_source_symbols']==['U4A[4]','U4B[53]'],q
+          assert q['remaining_shader_families']==['8087688E','8087630D','809D836C','809D8370'],q
+          assert not d['violations'],d
+          print('XUR_VISIBLE_PS_TFX_SYMBOLIC_GREEN',q)
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-VISIBLE-PS-TFX-SYMBOLIC
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
