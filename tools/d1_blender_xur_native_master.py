@@ -194,7 +194,7 @@ def connect_native_mrt0_rgb(mat, bsdf, color_socket):
         mat.node_tree.links.new(color_socket,bsdf.inputs["Emission"])
     else:
         # Compatibility fallback for older Blender node socket naming.
-        mat.node_tree.links.new(color_socket,bsdf.inputs["Base Color"])
+        mat.node_tree.connect_native_mrt0_rgb(mat,bsdf,color_socket)
         mat["d1_portable_closure_mode"]="NATIVE_MRT0_RGB_DIAGNOSTIC_FALLBACK_BASECOLOR"
     return color_socket
 
@@ -382,7 +382,7 @@ def build_material(meta:dict, mat):
         pc=(0.020570652559399605,0.021824637427926064,0.023352932184934616)
         out=build_three_branch_palette_surface(mat,(t0,t1,t2,t3,t4,t5),pa,pa,pc,4.594789981842041,"D1_NATIVE_PALETTE")
         if out:
-            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,out.outputs["Color"])
             visible_tag=f"native_palette({t0},{t1},{t2},{t3},{t4},{t5})"
             status="SOURCE_CLOSED_CURRENT_RGB_EXACT" if ps=="808762E1" else "SOURCE_CLOSED_PALETTE_SURFACE_PROXY"
             # Reuse the exact control/surface nodes already present in the graph.
@@ -402,7 +402,7 @@ def build_material(meta:dict, mat):
         if n0:
             P=(0.02038198709487915,0.024305766448378563,0.029087860137224197)
             out=scaled_color(mat,n0.outputs["Color"],tuple(4*x for x in P),"D1_NATIVE_80876566_PALETTE",50,160)
-            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,out.outputs["Color"])
             visible_tag=f"{t0}*4P"
             status="SOURCE_CLOSED_CURRENT_RGB_EXACT"
         if t1:
@@ -414,7 +414,7 @@ def build_material(meta:dict, mat):
         if n0:
             P=(0.04633677378296852,0.0552571602165699,0.06612884998321533)
             out=scaled_color(mat,n0.outputs["Color"],tuple(4*x for x in P),"D1_NATIVE_80876537_PALETTE",50,160)
-            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,out.outputs["Color"])
             visible_tag=f"{t0}*4P"
             status="SOURCE_CLOSED_SURVIVING_RGB_EXACT"
             if t1:
@@ -436,7 +436,7 @@ def build_material(meta:dict, mat):
             branch=scaled_color(mat,cs.outputs["Color"],tuple(4*x for x in P),"D1_NATIVE_809D8351_BRANCH",-20,-10)
             fac=channel_socket(mat,n4,"Red","D1_NATIVE_809D8351_T4R",-500,-230)
             out=mix_color_sockets(mat,fac,cs.outputs["Color"],branch.outputs["Color"],"D1_NATIVE_809D8351_LERP",250,120)
-            links.new(out.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,out.outputs["Color"])
             visible_tag=f"lerp({K}*{t0}*{t1},palette,{t4}.r)"
             status="SOURCE_CLOSED_CURRENT_RGB_EXACT"
         if t2:
@@ -446,7 +446,7 @@ def build_material(meta:dict, mat):
     elif ps in DIRECT_T0 and t0:
         n0=tex_node(mat,t0,"D1_INSTRUCTION_PROVEN_SURFACE_T0",-650,180)
         if n0:
-            links.new(n0.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,n0.outputs["Color"])
             visible_tag=t0
             status="SOURCE_CLOSED_SURFACE_INPUT_PROXY"
             # Exact current proofs for these families kill lanes from t0 alpha with
@@ -464,7 +464,7 @@ def build_material(meta:dict, mat):
         b=tex_node(mat,t1,"D1_INSTRUCTION_PROVEN_SURFACE_T1",-700,20)
         if a and b:
             mul=multiply_rgb(mat,a,b,"D1_NATIVE_SURFACE_PRODUCT")
-            links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,mul.outputs["Color"])
             visible_tag=f"{t0}*{t1}"
             status="SOURCE_CLOSED_SURFACE_PRODUCT_PROXY"
             if ps=="8087656A":
@@ -482,7 +482,7 @@ def build_material(meta:dict, mat):
         # is a separate gate, but exposing t1 is strictly safer than a guessed PBR map.
         n1=tex_node(mat,t1,"D1_PROVEN_SURFACE_ATLAS_T1",-650,180)
         if n1:
-            links.new(n1.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,n1.outputs["Color"])
             visible_tag=t1
             status="PROVEN_SURFACE_ATLAS_PALETTE_PENDING"
         mat["d1_forbidden_visible_texture_t0"]=t0 or ""
@@ -496,7 +496,7 @@ def build_material(meta:dict, mat):
         if n0 and n2:
             s=scalar_rgb(mat,n2,"Red",False,"D1_T2_SURFACE_SCALAR",-340,-40)
             mul=multiply_rgb(mat,n0,s,"D1_NATIVE_T0_TIMES_T2R",140,140)
-            links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,mul.outputs["Color"])
             visible_tag=f"{t0}*{t2}.r"
             status="SOURCE_CLOSED_SURFACE_SCALAR_PROXY"
 
@@ -506,7 +506,7 @@ def build_material(meta:dict, mat):
         if n0 and n1:
             s=scalar_rgb(mat,n1,"Red",True,"D1_ONE_MINUS_T1R",-340,-40)
             mul=multiply_rgb(mat,n0,s,"D1_NATIVE_T0_TIMES_ONE_MINUS_T1R",140,140)
-            links.new(mul.outputs["Color"],bsdf.inputs["Base Color"])
+            connect_native_mrt0_rgb(mat,bsdf,mul.outputs["Color"])
             visible_tag=f"{t0}*(1-{t1}.r)"
             status="SOURCE_CLOSED_SUBTRACTIVE_MASK_PROXY"
             # Native 809D836C uses t0.a in its pre-color rejection path. The exact
