@@ -365,9 +365,65 @@
         "runtime TFX constants if dynamic"
       ],
       "material_tfx_runtime": {
-        "status": "OPEN_VISIBLE_BLOCKER",
-        "exact_expression": "c1 = 8 * U4A[4]",
-        "detail": "Native PS multiplies b0/c0.rgb by b0/c1.rgb, so this producer can change visible MRT0 RGB. Material has no textures, samplers, external Vector4 container, or VS TFX; exact 0x4A producer identity/value is still required."
+        "status": "OPEN_VISIBLE_BLOCKER_NARROWED_TO_JAW_INLINE_MATERIAL",
+        "exact_expression": "c1 = 8 * U4A[4]; native MRT0.rgb = c0.rgb * c1.rgb",
+        "material": "80876865",
+        "source_part_proof": {
+          "workflow_run": 35996966189,
+          "tool": "tools/d1_xur_80876865_source_part_probe.py",
+          "parts": [
+            {
+              "mesh": 5,
+              "part": 93,
+              "index_offset": 61638,
+              "index_count": 106,
+              "lod": 1,
+              "external_identifier": 8,
+              "variant_shader_index": -1,
+              "flags_d1": 0,
+              "inline_material": "80876865"
+            },
+            {
+              "mesh": 5,
+              "part": 96,
+              "index_offset": 61864,
+              "index_count": 216,
+              "lod": 1,
+              "external_identifier": 4,
+              "variant_shader_index": -1,
+              "flags_d1": 0,
+              "inline_material": "80876865"
+            }
+          ],
+          "selector_path": "inline_material",
+          "external_material_selector_in_path": false
+        },
+        "skin_proof": {
+          "workflow_run": 35996189099,
+          "tool": "tools/d1_gltf_material_skin_influence_probe.py",
+          "joint_index": 29,
+          "joint_name": "b_jaw",
+          "joint_hash": "B2977AD2",
+          "nonzero_weight_vertex_count": 184,
+          "total_weight": 184,
+          "statement": "All 184 scoped vertices are rigidly weighted 1.0 to b_jaw; no other joint has nonzero weight."
+        },
+        "geometry_proof": {
+          "workflow_run": 35993186816,
+          "primitive_count": 2,
+          "total_vertices": 184,
+          "total_triangles": 206,
+          "bounds_summary": "two small head/jaw-space ranges around z=1.61..1.72 m"
+        },
+        "corpus_context": {
+          "global_material_count": 230706,
+          "global_Unk4a_occurrences": 219079,
+          "global_Unk4a_operand4_occurrences": 5852,
+          "exact_xur_program_sha256": "de39e4a77d2ac5c967dfa1b488259976c0f62177f3633a2ef142e770a173fda3",
+          "exact_xur_program_hex": "4a043400034201",
+          "exact_xur_program_is_unique_in_global_census": true
+        },
+        "detail": "The only visible material-TFX blocker is now a jaw-local, direct inline material. Its 0x4A producer identity/value remains open; no external-material selector or texture input can supply it."
       }
     },
     {
@@ -512,16 +568,22 @@
     },
     {
       "id": "D1_DYNAMIC_TFX",
-      "status": "NARROWED_TO_ONE_VISIBLE_PRODUCER",
-      "meaning": "All current Xur-visible PS material-TFX stores are symbolically closed. U4B[53] remains semantically unnamed but its only visible-scope writes target dead c32 and cannot affect native PS output. The sole remaining material-TFX value that can alter visible Xur RGB is U4A[4] in material 80876865 / PS 8087688E, where c1=8*U4A[4].",
+      "status": "SOLE_VISIBLE_BLOCKER_U4A4_JAW_INLINE",
+      "meaning": "U4B[53] is proven dead to the scoped native PS outputs. The only remaining material-TFX producer capable of changing current Xur visible RGB is U4A[4] in direct inline material 80876865 on two b_jaw-rigid mesh ranges.",
       "proofs": [
         "D1 Xur material TFX stack IO contract: 0x42=-1, 0x4A=+1, 0x4B=+1 is the unique stack-delta solution across all 108 stage programs.",
         "D1 Xur visible PS TFX symbolic contract: 21 PS stores; only U4A[4] and U4B[53] remain unnamed producers.",
         "D1 Xur U4B53 c32 native dead-write proof run 35992443700: all U4B[53] writes are c32 and native PS loads end at 0x8F."
       ],
       "visible_blockers": [
-        "U4A[4] -> material 80876865 -> PS 8087688E -> c1"
-      ]
+        "U4A[4] -> 80876865 -> PS 8087688E -> c1 -> MRT0.rgb"
+      ],
+      "disambiguations": {
+        "external_material_selector_in_path": false,
+        "textures_or_samplers_in_material": false,
+        "vertex_stage_tfx_present": false,
+        "scoped_geometry": "two LOD1 jaw ranges; 184 vertices / 206 triangles; 100% b_jaw weight"
+      }
     },
     {
       "id": "D1_RENDER_STATE_AND_DEFERRED_COMPOSITION",
