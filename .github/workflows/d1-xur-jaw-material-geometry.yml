@@ -1,0 +1,51 @@
+name: D1 Xur jaw material geometry extract
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-jaw-material-geometry.yml'
+      - 'tools/d1_gltf_selected_material_obj.py'
+
+permissions: {contents: read}
+
+env:
+  XUR_RELEASE_TAG: d1-tower-xur-corpus-calibrated-textured-actions-r3
+  XUR_ASSET: D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb
+  XUR_SHA256: 37b91b4979a309b31ee899c7c617e45aa6cc8d13b15d741357d84a6b225bb5dd
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned Xur carrier
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl --fail --location --retry 5 --retry-all-errors             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"             -o "input/${XUR_ASSET}"
+          echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
+      - name: Extract jaw material geometry
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_selected_material_obj.py
+          python tools/d1_gltf_selected_material_obj.py "input/${XUR_ASSET}"             --material 80876865 --material 80876548             --obj out/XUR_JAW_MATERIALS.obj             --report out/XUR_JAW_MATERIALS.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_JAW_MATERIALS.json'))
+          assert d['status']=='D1_GLTF_SELECTED_MATERIAL_OBJ_EXACT',d
+          assert sorted({r['material'] for r in d['rows']})==['80876548','80876865'],d
+          assert not d['violations'],d
+          print('XUR_JAW_GEOMETRY_EXTRACT_GREEN',[(r['material'],r['mesh_name'],r['vertex_count'],r['triangle_count']) for r in d['rows']])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-JAW-MATERIAL-GEOMETRY
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
