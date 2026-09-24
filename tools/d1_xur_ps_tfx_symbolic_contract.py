@@ -27,7 +27,7 @@ UNARY={'Saturate','Permute','Jitter','LerpConstant','VecRotCos','Frac','Wander',
 BINARY={'Multiply','Add','Cubic','Merge_1_3','Merge_2_2','Merge_3_1'}
 TERNARY={'MultiplyAdd','Lerp'}
 PUSH={'PushExternInputFloat','PushConstantVec4'}
-SRC_RX=re.compile(r'(?:U4A|U4B|Frame)\\[\\d+\\]')
+SRC_RX=re.compile(r'(?:U4A|U4B|Frame)\[\d+\]')
 
 def fnum(x):
     return format(float(x),'.9g')
