@@ -51,7 +51,7 @@ jobs:
           assert d['unresolved_producer_symbols']==['U4A[4]','U4B[53]'],d
           q=d['critical_reduction']
           assert q['remaining_exact_source_symbols']==['U4A[4]','U4B[53]'],q
-          assert q['remaining_shader_families']==['8087688E','8087630D','809D836C','809D8370'],q
+          assert sorted(q['remaining_shader_families'])==['8087630D','8087688E','809D836C','809D8370'],q
           assert not d['violations'],d
           print('XUR_VISIBLE_PS_TFX_SYMBOLIC_GREEN',q)
           PY
