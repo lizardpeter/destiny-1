@@ -1,0 +1,67 @@
+name: D1 global material TFX tail compact census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-material-tfx-tail-compact.yml'
+      - 'tools/d1_remote_global_material_tfx_tail_compact_census.py'
+
+permissions: {contents: read}
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env: {LINOODLE_SKIP_DLLMAIN: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Rebuild exact current catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o input/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  input/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          python tools/d1_universal_member_catalog.py             --activity-index input/D1_CURRENT_ACTIVITY_INDEX.json             --package-list input/packages.txt             --out input/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          assert d['schema']=='d1_remote_package_member_catalog/v1',d
+          print('CURRENT_CATALOG_GREEN',d['physical_member_count'],d['package_family_count'])
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Census all D1 material TFX tail opcodes compactly
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_remote_global_material_tfx_tail_compact_census.py
+          python tools/d1_remote_global_material_tfx_tail_compact_census.py             --member-catalog input/D1_UNIVERSAL_MEMBER_CATALOG.json             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest'             --part-count 10 --runtime runtime             -o out/D1_GLOBAL_MATERIAL_TFX_TAIL_COMPACT_CENSUS.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_GLOBAL_MATERIAL_TFX_TAIL_COMPACT_CENSUS.json'))
+          assert d['status']=='D1_ROI_GLOBAL_MATERIAL_TFX_TAIL_COMPACT_CENSUS_EXACT',d
+          assert d['material_entry_count']==230706,d
+          assert d['parsed_material_count']==230706,d
+          assert d['rows']['4A']['occurrence_count']==219079,d['rows']['4A']
+          assert d['rows']['4B']['occurrence_count']==77036,d['rows']['4B']
+          assert len(d['xur_80876865_exact_program_rows'])==1,d['xur_80876865_exact_program_rows']
+          assert d['proof_boundary']['D1_0x4A_runtime_source_identity_proven'] is False,d
+          assert not d['violations'],d
+          print('D1_TFX_TAIL_COMPACT_GREEN',{
+            k:{'count':v['occurrence_count'],'stages':v['stage_histogram']}
+            for k,v in d['rows'].items()
+          })
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-GLOBAL-MATERIAL-TFX-TAIL-COMPACT
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
