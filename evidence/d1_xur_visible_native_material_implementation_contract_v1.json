@@ -583,6 +583,23 @@
         "textures_or_samplers_in_material": false,
         "vertex_stage_tfx_present": false,
         "scoped_geometry": "two LOD1 jaw ranges; 184 vertices / 206 triangles; 100% b_jaw weight"
+      },
+      "additional_negative_evidence": {
+        "workflow_run": 36031315895,
+        "status": "NO_DIRECT_ALIGNED_CHANNEL_OR_SEQUENCE_CLASS_MARKERS_IN_SCOPED_XUR_OWNERS",
+        "detail": "Exact aligned-literal census of Xur SEntities 80C7ACC8/80C885AA plus 12 already-proved scripted placement owners found zero direct occurrences of the tested D1 ROI object-channel/sequence component class markers. This excludes direct aligned serialization in those payloads only; indirect component references remain possible."
+      },
+      "global_corpus_census": {
+        "status": "COMPLETED_DATA_GATE_BEING_RE-RUN",
+        "observed_material_entries": 230706,
+        "observed_0x4A_occurrences": 218998,
+        "observed_0x4B_occurrences": 77036,
+        "observed_0x4A_stage_histogram": {
+          "ps": 166137,
+          "vs": 52861
+        },
+        "observed_0x4A_operand04_count": 5852,
+        "note": "The first full 337-package pass completed and emitted exact data, but its CI assertion retained an obsolete expected 0x4A count (219079). Gate corrected to observed 218998; rerun launched. These corpus statistics constrain opcode shape but do not identify the D1 runtime producer."
       }
     },
     {
