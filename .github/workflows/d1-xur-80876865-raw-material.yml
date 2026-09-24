@@ -1,0 +1,57 @@
+name: D1 Xur 80876865 raw material ownership
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-80876865-raw-material.yml'
+      - 'tools/d1_xur_80876865_raw_material_probe.py'
+
+permissions: {contents: read}
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env: {LINOODLE_SKIP_DLLMAIN: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Rebuild current catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o input/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  input/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          python tools/d1_universal_member_catalog.py             --activity-index input/D1_CURRENT_ACTIVITY_INDEX.json             --package-list input/packages.txt             --out input/D1_UNIVERSAL_MEMBER_CATALOG.json
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+      - name: Decode raw 80876865 material
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xur_80876865_raw_material_probe.py
+          python tools/d1_xur_80876865_raw_material_probe.py             --member-catalog input/D1_UNIVERSAL_MEMBER_CATALOG.json             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10             --runtime runtime -o out/XUR_80876865_RAW_MATERIAL.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_80876865_RAW_MATERIAL.json'))
+          assert d['status']=='D1_XUR_80876865_RAW_MATERIAL_EXACT',d
+          p=d['proof']
+          assert p['ps_tfx_U4A4_program_exact'] is True,p
+          assert p['serialized_ps_cbuffer_vec4_count_is_4'] is True,p
+          assert p['serialized_slot4_absent'] is True,p
+          assert p['ps_vector4_container_is_null'] is True,p
+          assert p['textures_absent'] is True and p['samplers_absent'] is True,p
+          assert p['runtime_U4A4_value_proven'] is False,p
+          assert not d['violations'],d
+          print('XUR_80876865_RAW_MATERIAL_GREEN',d['ps_vector4_container'],d['ps_cbuffers']['count'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-80876865-RAW-MATERIAL
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
