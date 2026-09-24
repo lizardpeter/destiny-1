@@ -10,7 +10,7 @@
     "skeleton": "809D80C9",
     "control_state": "809D80FC"
   },
-  "scope": "Current corpus-calibrated stage-0/highest-detail Xur visible material set. This contract consolidates source-closed current native MRT0 color equations and explicit remaining runtime gates. It is an implementation contract, not a claim that external material selection or every dynamic TFX/global input is retail-closed.",
+  "scope": "Current corpus-calibrated stage-0/highest-detail Xur visible material set. This contract consolidates source-closed current native MRT0 color equations and explicit remaining runtime gates. It is an implementation contract, not a claim that external material selection or every dynamic TFX/global input is retail-closed. Material-TFX closure was subsequently narrowed: U4B[53] is proven dead to the scoped native pixel shaders; only U4A[4] remains capable of changing a visible Xur PS equation.",
   "universal_dependencies": {
     "camera_position": {
       "source": "api12[28:30]",
@@ -363,7 +363,12 @@
       "implementation": "CURRENT_RGB_ENCODED",
       "gates": [
         "runtime TFX constants if dynamic"
-      ]
+      ],
+      "material_tfx_runtime": {
+        "status": "OPEN_VISIBLE_BLOCKER",
+        "exact_expression": "c1 = 8 * U4A[4]",
+        "detail": "Native PS multiplies b0/c0.rgb by b0/c1.rgb, so this producer can change visible MRT0 RGB. Material has no textures, samplers, external Vector4 container, or VS TFX; exact 0x4A producer identity/value is still required."
+      }
     },
     {
       "ps": "80AA8E93",
@@ -405,10 +410,16 @@
       "alpha": "t1.r alpha-test against extended-user-data threshold",
       "implementation": "SCALAR_BASE_ENCODED_VIEW_TINT_AND_ALPHA_PENDING",
       "gates": [
-        "runtime TFX evaluated state",
         "alpha-test runtime threshold",
-        "portable view path"
-      ]
+        "portable view path",
+        "view/extended-user-data runtime inputs where stated"
+      ],
+      "material_tfx_runtime": {
+        "status": "CLOSED_FOR_NATIVE_PS_OUTPUT",
+        "proof": "tools/d1_xur_u4b53_c32_dead_gcn_proof.py",
+        "workflow_run": 35992443700,
+        "detail": "The only exact material-TFX mutation in the scoped Xur-visible materials is U4B[53] -> c32. c32 is bytes 0x200..0x20F, while every scalar buffer load in the native PS ends at or below 0x8F. The mutation is therefore dead to native PS output."
+      }
     },
     {
       "ps": "80A08C16",
@@ -437,9 +448,15 @@
       "alpha": "view/normal response*t0.a compared to b0[40]=0.23",
       "implementation": "SUBTRACTIVE_BASE_ENCODED_VIEW_TINT_AND_ALPHA_PENDING",
       "gates": [
-        "runtime TFX evaluated state",
-        "portable view-dependent alpha rejection"
-      ]
+        "portable view-dependent alpha rejection",
+        "view/extended-user-data runtime inputs where stated"
+      ],
+      "material_tfx_runtime": {
+        "status": "CLOSED_FOR_NATIVE_PS_OUTPUT",
+        "proof": "tools/d1_xur_u4b53_c32_dead_gcn_proof.py",
+        "workflow_run": 35992443700,
+        "detail": "The only exact material-TFX mutation in the scoped Xur-visible materials is U4B[53] -> c32. c32 is bytes 0x200..0x20F, while every scalar buffer load in the native PS ends at or below 0x8F. The mutation is therefore dead to native PS output."
+      }
     },
     {
       "ps": "809D8370",
@@ -452,9 +469,15 @@
       "alpha": "t1.r alpha-test against runtime threshold",
       "implementation": "SCALAR_BASE_ENCODED_VIEW_TINT_AND_ALPHA_PENDING",
       "gates": [
-        "runtime TFX evaluated state",
-        "alpha-test runtime threshold"
-      ]
+        "alpha-test runtime threshold",
+        "view/extended-user-data runtime inputs where stated"
+      ],
+      "material_tfx_runtime": {
+        "status": "CLOSED_FOR_NATIVE_PS_OUTPUT",
+        "proof": "tools/d1_xur_u4b53_c32_dead_gcn_proof.py",
+        "workflow_run": 35992443700,
+        "detail": "The only exact material-TFX mutation in the scoped Xur-visible materials is U4B[53] -> c32. c32 is bytes 0x200..0x20F, while every scalar buffer load in the native PS ends at or below 0x8F. The mutation is therefore dead to native PS output."
+      }
     },
     {
       "ps": "809D8351",
@@ -489,8 +512,16 @@
     },
     {
       "id": "D1_DYNAMIC_TFX",
-      "status": "PARTIAL_TWO_PRODUCERS_REMAIN",
-      "meaning": "All 21 visible pixel-stage runtime CBuffer stores are symbolically replayed from exact TFX. Sixteen stores are closed from known Frame[0]/Frame[4]/Frame[28] extern inputs plus exact private constants. Five stores depend on only two unresolved producer identities: U4A[4] and U4B[53]."
+      "status": "NARROWED_TO_ONE_VISIBLE_PRODUCER",
+      "meaning": "All current Xur-visible PS material-TFX stores are symbolically closed. U4B[53] remains semantically unnamed but its only visible-scope writes target dead c32 and cannot affect native PS output. The sole remaining material-TFX value that can alter visible Xur RGB is U4A[4] in material 80876865 / PS 8087688E, where c1=8*U4A[4].",
+      "proofs": [
+        "D1 Xur material TFX stack IO contract: 0x42=-1, 0x4A=+1, 0x4B=+1 is the unique stack-delta solution across all 108 stage programs.",
+        "D1 Xur visible PS TFX symbolic contract: 21 PS stores; only U4A[4] and U4B[53] remain unnamed producers.",
+        "D1 Xur U4B53 c32 native dead-write proof run 35992443700: all U4B[53] writes are c32 and native PS loads end at 0x8F."
+      ],
+      "visible_blockers": [
+        "U4A[4] -> material 80876865 -> PS 8087688E -> c1"
+      ]
     },
     {
       "id": "D1_RENDER_STATE_AND_DEFERRED_COMPOSITION",
