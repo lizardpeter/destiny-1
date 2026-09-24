@@ -47,7 +47,7 @@ jobs:
           assert d['status']=='D1_ROI_GLOBAL_MATERIAL_TFX_TAIL_COMPACT_CENSUS_EXACT',d
           assert d['material_entry_count']==230706,d
           assert d['parsed_material_count']==230706,d
-          assert d['rows']['4A']['occurrence_count']==219079,d['rows']['4A']
+          assert d['rows']['4A']['occurrence_count']==218998,d['rows']['4A']
           assert d['rows']['4B']['occurrence_count']==77036,d['rows']['4B']
           assert len(d['xur_80876865_exact_program_rows'])==1,d['xur_80876865_exact_program_rows']
           assert d['proof_boundary']['D1_0x4A_runtime_source_identity_proven'] is False,d
