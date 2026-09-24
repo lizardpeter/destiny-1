@@ -15,9 +15,6 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   LINOODLE_SKIP_DLLMAIN: '1'
-  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
-  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
-  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
   BASE_URL: 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
   XUR_RELEASE_TAG: 'd1-tower-xur-corpus-calibrated-textured-actions-r3'
   XUR_ASSET: 'D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb'
@@ -33,14 +30,26 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Recover pinned catalog runtime and calibrated Xur carrier
+      - name: Build live catalog and recover pinned Xur/runtime
         run: |
           set -euo pipefail
           mkdir -p input/catalog input/xur runtime source_ref out
-          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
-          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
-          unzip -q input/catalog.zip -d input/catalog
-          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 "$BASE_URL/packages.txt" -o input/catalog/packages.txt
+          test -s input/catalog/packages.txt
+          python tools/d1_remote_activity_index.py --package-list input/catalog/packages.txt --out input/catalog/D1_CURRENT_ACTIVITY_INDEX.json --tsv input/catalog/D1_CURRENT_ACTIVITY_INDEX.tsv
+          python tools/d1_universal_member_catalog.py --activity-index input/catalog/D1_CURRENT_ACTIVITY_INDEX.json --package-list input/catalog/packages.txt --out input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          psha=sha('input/catalog/packages.txt')
+          idx=json.load(open('input/catalog/D1_CURRENT_ACTIVITY_INDEX.json'))
+          cat=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          assert idx['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE' and not idx.get('violations'),idx
+          assert idx['source']['package_list_sha256']==psha,idx['source']
+          assert cat['schema']=='d1_remote_package_member_catalog/v1' and cat['packages_txt_sha256']==psha,cat
+          print('LIVE_CATALOG_GREEN',cat['physical_member_count'],cat['package_family_count'],psha)
+          PY
 
           curl --fail --location --retry 5 --retry-all-errors             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"             -o "input/xur/${XUR_ASSET}"
           echo "${XUR_SHA256}  input/xur/${XUR_ASSET}" | sha256sum --check --strict
