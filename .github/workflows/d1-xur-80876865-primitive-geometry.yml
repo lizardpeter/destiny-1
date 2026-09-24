@@ -1,0 +1,54 @@
+name: D1 Xur 80876865 primitive geometry
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-80876865-primitive-geometry.yml'
+      - 'tools/d1_gltf_material_primitive_geometry_probe.py'
+
+permissions: {contents: read}
+
+env:
+  XUR_RELEASE_TAG: d1-tower-xur-corpus-calibrated-textured-actions-r3
+  XUR_ASSET: D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb
+  XUR_SHA256: 37b91b4979a309b31ee899c7c617e45aa6cc8d13b15d741357d84a6b225bb5dd
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned Xur carrier
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"
+          curl --fail --location --retry 5 --retry-all-errors "$url" -o "input/${XUR_ASSET}"
+          echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
+      - name: Locate exact 80876865 primitives
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_material_primitive_geometry_probe.py
+          python tools/d1_gltf_material_primitive_geometry_probe.py "input/${XUR_ASSET}" \
+            --material 80876865 -o out/XUR_80876865_PRIMITIVE_GEOMETRY.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_80876865_PRIMITIVE_GEOMETRY.json'))
+          assert d['status']=='D1_GLTF_MATERIAL_PRIMITIVE_GEOMETRY_EXACT',d
+          assert d['material_taghash']=='80876865',d
+          assert d['primitive_count']==2,d
+          assert not d['violations'],d
+          print('XUR_80876865_PRIMITIVE_GEOMETRY_GREEN',d['total_vertex_reference_count'],d['total_triangle_count_if_triangles'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-80876865-PRIMITIVE-GEOMETRY
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
