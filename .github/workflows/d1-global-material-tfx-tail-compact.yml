@@ -59,6 +59,7 @@ jobs:
           PY
           sha256sum out/* > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: D1-GLOBAL-MATERIAL-TFX-TAIL-COMPACT
           path: out/
