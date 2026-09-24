@@ -1,0 +1,69 @@
+name: D1 Xur ROI material gap TFX correlation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-roi-material-gap-tfx-correlation.yml'
+      - 'tools/d1_xur_roi_material_gap_tfx_correlation.py'
+
+permissions: {contents: read}
+
+env:
+  XUR_RELEASE_TAG: d1-tower-xur-corpus-calibrated-textured-actions-r3
+  XUR_ASSET: D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb
+  XUR_SHA256: 37b91b4979a309b31ee899c7c617e45aa6cc8d13b15d741357d84a6b225bb5dd
+
+jobs:
+  correlate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env: {LINOODLE_SKIP_DLLMAIN: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current catalog runtime and pinned carrier
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime out
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o input/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  input/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          python tools/d1_universal_member_catalog.py             --activity-index input/D1_CURRENT_ACTIVITY_INDEX.json             --package-list input/packages.txt             --out input/D1_UNIVERSAL_MEMBER_CATALOG.json
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          curl --fail --location --retry 5 --retry-all-errors             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"             -o "input/${XUR_ASSET}"
+          echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
+
+      - name: Correlate exact ROI stage gaps with TFX slot requirements
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xur_roi_material_gap_tfx_correlation.py
+          python tools/d1_xur_roi_material_gap_tfx_correlation.py             --carrier "input/${XUR_ASSET}"             --member-catalog input/D1_UNIVERSAL_MEMBER_CATALOG.json             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10             --runtime runtime -o out/XUR_ROI_MATERIAL_GAP_TFX_CORRELATION.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_ROI_MATERIAL_GAP_TFX_CORRELATION.json'))
+          assert d['status']=='D1_XUR_ROI_MATERIAL_GAP_TFX_CORRELATION_EXACT',d
+          assert d['active_material_count']==54,d
+          assert d['stage_row_count']==108,d
+          j=d['jaw_80876865_ps']
+          assert j['cbuffer_vec4_count']==4,j
+          assert j['max_op4a_operand']==4,j
+          assert j['required_slot_count_from_serialized_and_tfx']==5,j
+          assert j['gap_dwords']['0x320']==5,j
+          assert j['gap_dwords']['0x324']==16,j
+          assert not d['violations'],d
+          print('XUR_ROI_MATERIAL_GAP_TFX_CORRELATION_GREEN')
+          print('TOP',json.dumps(d['correlations_ranked'][:12],sort_keys=True))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-ROI-MATERIAL-GAP-TFX-CORRELATION
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
