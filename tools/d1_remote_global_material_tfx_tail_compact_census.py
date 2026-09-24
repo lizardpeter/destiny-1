@@ -9,7 +9,7 @@ evidence useful for discriminating the remaining D1 tail opcodes.
 No semantic name is promoted from opcode number or later-game lineage.
 """
 from __future__ import annotations
-import argparse,collections,hashlib,json,sys
+import argparse,collections,hashlib,json,struct,sys
 from pathlib import Path
 
 HERE=Path(__file__).resolve().parent
@@ -59,7 +59,7 @@ def main():
     cats=load_catalogs(a.member_catalog)
     arc=SplitHttpTar([f"{a.base_url.rstrip('/')}/packages.tar.{i:03d}" for i in range(1,a.part_count+1)],retries=6,timeout=120)
 
-    violations=[];material_count=0;parsed_count=0;stage_count=0
+    violations=[];incomplete_programs=[];material_count=0;parsed_count=0;stage_count=0
     occ=collections.Counter(); stage_hist=collections.defaultdict(collections.Counter)
     operand_hist=collections.defaultdict(collections.Counter)
     prev_hist=collections.defaultdict(collections.Counter)
@@ -74,6 +74,13 @@ def main():
     program_count_by_tail_set=collections.Counter()
     package_material_counts=collections.Counter()
     xur_program_rows=[]
+    # D1 ROI stage-tail dwords immediately preceding each stage Vector4Container.
+    # Keep these syntactic until corpus relations + independent schema evidence agree.
+    gap_offsets={'vs':[0x90,0x94,0x98,0x9C,0xA0,0xA4,0xA8],
+                 'ps':[0x310,0x314,0x318,0x31C,0x320,0x324,0x328]}
+    gap_hist=collections.defaultdict(collections.Counter)
+    op4a_gap_relation=collections.defaultdict(collections.Counter)
+    op4a_operand_by_stage=collections.defaultdict(collections.Counter)
 
     for n,(pkg_text,members) in enumerate(sorted(cats.items()),1):
         pkg=int(pkg_text,16) if isinstance(pkg_text,str) else int(pkg_text)
@@ -86,7 +93,7 @@ def main():
         for e in mats:
             h=norm(e['tag_hash'])
             try:
-                p=parse_material(v.entry(int(e['index'])),'PS4');parsed_count+=1
+                mb=v.entry(int(e['index']));p=parse_material(mb,'PS4');parsed_count+=1
             except Exception as ex:
                 violations.append(f'{h}:material_parse:{ex!r}');continue
             for stage in ('vs','ps'):
@@ -95,8 +102,25 @@ def main():
                     violations.append(f'{h}:{stage}:tfx:{ex!r}');continue
                 stage_count+=1
                 if not sd['complete']:
-                    violations.append(f'{h}:{stage}:incomplete');continue
+                    incomplete_programs.append({'material':h,'stage':stage,'shader':sd['shader'],'tfx_sha256':sd['sha256'],'tfx_hex':sd['raw'].hex()})
+                    continue
                 ops=sd['ops']
+                has4a=any(ophex(o)=='4A' for o in ops)
+                for off in gap_offsets[stage]:
+                    val=struct.unpack_from('<I',mb,off)[0]
+                    key=f'{stage}:0x{off:X}'
+                    gap_hist[key][str(val)]+=1
+                    rel=op4a_gap_relation[key]
+                    rel['complete_rows']+=1
+                    rel['has_4A']+=int(has4a)
+                    rel['field_eq_5']+=int(val==5)
+                    rel['both']+=int(has4a and val==5)
+                    rel['false_positive_field5_without_4A']+=int((not has4a) and val==5)
+                    rel['false_negative_4A_without_field5']+=int(has4a and val!=5)
+                for o in ops:
+                    if ophex(o)=='4A':
+                        bb=o.get('operand_bytes') or []
+                        if len(bb)==1:op4a_operand_by_stage[stage][str(int(bb[0]))]+=1
                 tail_indices=[i for i,o in enumerate(ops) if ophex(o) in TARGET_HEX]
                 tail_set=tuple(sorted({ophex(ops[i]) for i in tail_indices}))
                 if tail_set: program_count_by_tail_set['+'.join(tail_set)]+=1
@@ -173,15 +197,22 @@ def main():
       'rows':rows,
       'program_tail_set_histogram':dict(program_count_by_tail_set.most_common()),
       'package_material_counts':dict(package_material_counts),
+      'incomplete_program_count':len(incomplete_programs),
+      'incomplete_programs':incomplete_programs,
+      'gap_field_histograms':{k:dict(v) for k,v in sorted(gap_hist.items())},
+      'op4a_gap_relations':{k:dict(v) for k,v in sorted(op4a_gap_relation.items())},
+      'op4a_operand_histogram_by_stage':{k:dict(v) for k,v in sorted(op4a_operand_by_stage.items())},
       'xur_80876865_exact_program_rows':xur_program_rows,
       'proof_boundary':{
         'semantic_names_promoted_from_census':False,
         'D1_0x4A_runtime_source_identity_proven':False,
         'D1_0x4B_runtime_source_identity_proven':False,
+        'incomplete_programs_are_reported_not_silently_dropped':True,
+        'gap_field_semantic_names_proven':False,
         'later_strategy_opcode_numbers_used_as_authority':False,
       },
       'violations':violations,
-      'policy':'Aggregate retail corpus structure only. Pinned D1 labels are preserved, but unknown tail opcodes remain unknown until runtime/source ownership is independently closed.'
+      'policy':'Aggregate retail corpus structure only. Pinned D1 labels are preserved, but unknown tail opcodes and unnamed ROI gap fields remain syntactic until runtime/source ownership is independently closed. Incomplete bytecode programs are explicitly reported and excluded only from opcode/gap relation tests that require complete framing.'
     }
     if parsed_count!=material_count: violations.append(f'parsed_material_count:{parsed_count}!={material_count}')
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n')
@@ -190,7 +221,10 @@ def main():
       'tail_opcode_occurrence_count':out['tail_opcode_occurrence_count'],
       'opcode_counts':{k:v['occurrence_count'] for k,v in rows.items()},
       'stage_histograms':{k:v['stage_histogram'] for k,v in rows.items()},
-      'xur_exact_program_row_count':len(xur_program_rows),'violations':violations[:20],
+      'xur_exact_program_row_count':len(xur_program_rows),
+      'incomplete_program_count':len(incomplete_programs),
+      'op4a_gap_key_relations':{k:dict(v) for k,v in op4a_gap_relation.items() if k in ('vs:0xA0','ps:0x320')},
+      'violations':violations[:20],
     },indent=2))
     return 0 if not violations else 2
 
