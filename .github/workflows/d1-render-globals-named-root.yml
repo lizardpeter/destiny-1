@@ -1,0 +1,63 @@
+name: D1 render globals named-root discovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-render-globals-named-root.yml'
+      - 'tools/d1_remote_named_tag_catalog.py'
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: '${{ github.token }}'
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned universal package catalog
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" \
+            -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+      - name: Discover exact current named roots
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_named_tag_catalog.py \
+            --catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --query render_globals --query client_startup_globals \
+            --out out/D1_RENDER_GLOBALS_NAMED_ROOTS.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_RENDER_GLOBALS_NAMED_ROOTS.json'))
+          assert d['status']=='D1_CURRENT_NAMED_TAG_CATALOG_EXACT',d['violations']
+          rg=d['queries']['render_globals']
+          cs=d['queries']['client_startup_globals']
+          assert len(rg)>=1,rg
+          assert len(cs)>=1,cs
+          print('RENDER_GLOBAL_ROOTS',json.dumps(rg,indent=2))
+          print('CLIENT_STARTUP_ROOTS',json.dumps(cs,indent=2))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-RENDER-GLOBALS-NAMED-ROOTS
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
