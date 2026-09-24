@@ -49,7 +49,8 @@ jobs:
           d=json.load(open('out/XUR_80876865_SOURCE_PART_NEIGHBORHOOD.json'))
           assert d['status']=='D1_XUR_80876865_SOURCE_PART_NEIGHBORHOOD_EXACT',d
           assert d['target_parts']==[93,96],d
-          assert d['proof']['calibrated_target_winner_is_80876865'] is True,d
+          assert d['proof']['target_parts_are_source_inline_80876865'] is True,d
+          assert d['proof']['external_material_selector_not_in_path_for_target_parts'] is True,d
           assert d['proof']['D1_retail_consumer_execution_path_proven'] is False,d
           assert not d['violations'],d
           print('XUR_80876865_SOURCE_PART_GREEN',json.dumps([
