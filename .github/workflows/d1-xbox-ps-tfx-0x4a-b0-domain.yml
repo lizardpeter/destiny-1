@@ -1,0 +1,54 @@
+name: D1 Xbox PS TFX 0x4A b0 domain census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xbox-ps-tfx-0x4a-b0-domain.yml'
+      - 'tools/d1_xbox_ps_tfx_0x4a_b0_domain_census.py'
+
+permissions: {contents: read}
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env: {LINOODLE_SKIP_DLLMAIN: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact Xbox retail package and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet gdown
+          mkdir -p retail runtime out
+          gdown '1ZlnqOedZoCBE1oUoiFfIUFKSsJZJZm6D' -O retail/xboxone_arch_cabal_0059_1.pkg
+          echo '8836546ecbbbf6ba31fd50035a180c80c7bcb6407780f4b61be7a8217d24fde8  retail/xboxone_arch_cabal_0059_1.pkg' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+      - name: Cross-check every resident PS 0x4A operand against DXBC b0
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xbox_ps_tfx_0x4a_b0_domain_census.py
+          python tools/d1_xbox_ps_tfx_0x4a_b0_domain_census.py             retail/xboxone_arch_cabal_0059_1.pkg --runtime runtime             -o out/D1_XBOX_PS_TFX_0X4A_B0_DOMAIN.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_XBOX_PS_TFX_0X4A_B0_DOMAIN.json'))
+          assert d['status']=='D1_XBOX_PS_TFX_0X4A_B0_DOMAIN_CENSUS_EXACT',d
+          assert d['resident_material_count']==411,d
+          assert d['dxbc_domain_compared_occurrence_count']>0,d
+          assert d['op4a_operand_outside_dxbc_b0_domain_count']==0,d
+          assert d['all_compared_0x4A_operands_in_dxbc_b0_domain'] is True,d
+          assert not d['violations'],d
+          print('XBOX_D1_TFX_0X4A_B0_DOMAIN_GREEN',d['material_rows_with_ps_0x4A'],d['op4a_occurrence_count'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-XBOX-PS-TFX-0X4A-B0-DOMAIN
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
