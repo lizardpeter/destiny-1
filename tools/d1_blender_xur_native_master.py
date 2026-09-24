@@ -194,7 +194,7 @@ def connect_native_mrt0_rgb(mat, bsdf, color_socket):
         mat.node_tree.links.new(color_socket,bsdf.inputs["Emission"])
     else:
         # Compatibility fallback for older Blender node socket naming.
-        mat.node_tree.connect_native_mrt0_rgb(mat,bsdf,color_socket)
+        mat.node_tree.links.new(color_socket,bsdf.inputs["Base Color"])
         mat["d1_portable_closure_mode"]="NATIVE_MRT0_RGB_DIAGNOSTIC_FALLBACK_BASECOLOR"
     return color_socket
 
