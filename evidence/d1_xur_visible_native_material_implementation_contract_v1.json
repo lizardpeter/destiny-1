@@ -27,12 +27,72 @@
         ]
       ],
       "corpus_calibration": "70281/70281 placement×group evaluations unique",
-      "D1_retail_consumer_execution_path_proven": false
+      "D1_retail_consumer_execution_path_proven": false,
+      "ordered_descriptor_decision_table": {
+        "exhaustive_partial_configuration_count": 1440,
+        "exhaustive_group_configuration_case_count": 116640,
+        "gaps": 0,
+        "ambiguities": 0,
+        "serialized_first_match_equals_unique_max_specificity": true,
+        "every_group_has_single_final_empty_fallback": true,
+        "every_group_specificity_nonincreasing": true,
+        "global_modulo_permutation_index_rejected": true
+      }
     },
     "retail_default_animation": {
       "status": "OPEN",
       "selected_action_population": 267,
       "policy": "No idle/default/startup action is invented."
+    },
+    "visible_pixel_tfx": {
+      "status": "PARTIAL_TWO_PRODUCER_IDENTITIES_REMAIN",
+      "proof_tool": "tools/d1_xur_ps_tfx_symbolic_contract.py",
+      "proof_workflow_run": 35983315170,
+      "visible_ps_runtime_store_count": 21,
+      "stores_symbolically_closed_from_known_frame_externs_and_private_constants": 16,
+      "producer_dependent_store_count": 5,
+      "known_frame_sources": [
+        "Frame[0]",
+        "Frame[4]",
+        "Frame[28]"
+      ],
+      "remaining_producer_symbols": [
+        "U4A[4]",
+        "U4B[53]"
+      ],
+      "remaining_shader_families": [
+        "8087688E",
+        "8087630D",
+        "809D836C",
+        "809D8370"
+      ],
+      "equations": {
+        "8087688E_c1": "c1 = U4A[4] * (8,8,8,8)",
+        "8087630D_809D836C_809D8370_c32": "c32 = lerp((0,1,0,1),(0,0,0,0),U4B[53])"
+      }
+    },
+    "current_material_pipeline_state": {
+      "status": "MATERIAL_LOCAL_STATE_CLOSED",
+      "material_count": 54,
+      "state4_histogram": {
+        "00000000": 43,
+        "00008100": 11
+      },
+      "material_local_blend_overrides": 0,
+      "material_local_depth_stencil_overrides": 0,
+      "material_local_depth_bias_overrides": 0,
+      "material_local_rasterizer_override_material_count": 11,
+      "rasterizer_state_1": {
+        "fill": "SOLID",
+        "cull": "NONE",
+        "front_counter_clockwise": true,
+        "depth_bias": 0,
+        "depth_clip_enable": true,
+        "scissor_enable": false,
+        "multisample_enable": true,
+        "antialiased_line_enable": false
+      },
+      "remaining_state_gate": "inherited/global pipeline state and downstream deferred composition"
     }
   },
   "families": [
@@ -420,20 +480,22 @@
         "Descriptor halves exact compact lists over switch-record bank.",
         "List-B uses same keys as list-A and sentinel 871AC0EA for all 108 descriptors.",
         "Xur source-decoded own-model configuration is 26170C92=4AC210DE.",
-        "List-A subset + greatest specificity selects a unique winner in all 81 Xur groups and calibrated 70281/70281 Tower placement×group evaluations."
+        "List-A subset + greatest specificity selects a unique winner in all 81 Xur groups and calibrated 70281/70281 Tower placement×group evaluations.",
+        "Across 1,440 exact-domain partial configurations x 81 groups = 116,640 cases, serialized first-match and unique greatest-specificity selection are identical with zero gaps/ambiguities.",
+        "Every group has exactly one final empty fallback and non-increasing descriptor specificity in serialized order."
       ],
       "newly_rejected_hypothesis": "A single later-MIDA-style global permutation index modulo each MaterialCount cannot reproduce the D1 Xur candidate winners.",
       "retail_consumer_execution_path_proven": false
     },
     {
       "id": "D1_DYNAMIC_TFX",
-      "status": "PARTIAL",
-      "meaning": "Several exact PS equations consume constants produced or plausibly mutated by TFX Frame/Wander/opcode paths. Current serialized equations are exact, but invariant-at-every-retail-frame values are not globally proven."
+      "status": "PARTIAL_TWO_PRODUCERS_REMAIN",
+      "meaning": "All 21 visible pixel-stage runtime CBuffer stores are symbolically replayed from exact TFX. Sixteen stores are closed from known Frame[0]/Frame[4]/Frame[28] extern inputs plus exact private constants. Five stores depend on only two unresolved producer identities: U4A[4] and U4B[53]."
     },
     {
       "id": "D1_RENDER_STATE_AND_DEFERRED_COMPOSITION",
       "status": "PARTIAL",
-      "meaning": "MRT0/MRT1 native outputs are source-closed for the listed families to the stated scope; blend/depth/raster behavior and the downstream deferred-lighting composition are not globally equivalent to a Blender Principled material."
+      "meaning": "Material-local pipeline state is closed: 43/54 materials have no local state4 override; 11/54 select exact rasterizer state 1 (solid, two-sided/no cull), and none override blend/depth-stencil/depth-bias. Remaining state is inherited/global plus downstream deferred composition."
     },
     {
       "id": "D1_RETAIL_DEFAULT_ANIMATION",
