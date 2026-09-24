@@ -11,9 +11,6 @@ permissions: {contents: read, actions: read}
 
 env:
   GH_TOKEN: '${{ github.token }}'
-  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
-  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
-  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
 
 jobs:
   discover:
@@ -23,21 +20,34 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - name: Recover pinned universal package catalog
+      - name: Rebuild exact current universal package catalog
         run: |
           set -euo pipefail
           mkdir -p input out
-          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" \
-            -o input/catalog.zip
-          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
-          unzip -q input/catalog.zip -d input/catalog
-          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o input/packages.txt
+          curl --fail --location --retry 4 \
+            'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' \
+            -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  input/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          python tools/d1_universal_member_catalog.py \
+            --activity-index input/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list input/packages.txt \
+            --out input/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python - <<'PY'
+          import hashlib,json
+          a=json.load(open('input/D1_CURRENT_ACTIVITY_INDEX.json'))
+          d=json.load(open('input/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          assert d['schema']=='d1_remote_package_member_catalog/v1'
+          assert d['physical_member_count']==a['physical_member_count']
+          assert d['package_family_count']==a['package_family_count']
+          assert d['packages_txt_sha256']==hashlib.sha256(open('input/packages.txt','rb').read()).hexdigest()
+          print('CURRENT_CATALOG_GREEN',d['physical_member_count'],d['package_family_count'])
+          PY
       - name: Discover exact current named roots
         run: |
           set -euo pipefail
           python tools/d1_remote_named_tag_catalog.py \
-            --catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --catalog input/D1_UNIVERSAL_MEMBER_CATALOG.json \
             --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
             --query render_globals --query client_startup_globals \
             --out out/D1_RENDER_GLOBALS_NAMED_ROOTS.json | tee out/stdout.txt
