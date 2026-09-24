@@ -1,0 +1,49 @@
+name: D1 Xur primitive material spatial census
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-primitive-material-spatial-census.yml'
+      - 'tools/d1_xur_gltf_primitive_material_spatial_census.py'
+permissions: {contents: read}
+env:
+  XUR_RELEASE_TAG: d1-tower-xur-corpus-calibrated-textured-actions-r3
+  XUR_ASSET: D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb
+  XUR_SHA256: 37b91b4979a309b31ee899c7c617e45aa6cc8d13b15d741357d84a6b225bb5dd
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact Xur carrier
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"
+          curl --fail --location --retry 5 --retry-all-errors "$url" -o "input/${XUR_ASSET}"
+          echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
+      - name: Census primitive material ownership and bounds
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xur_gltf_primitive_material_spatial_census.py
+          python tools/d1_xur_gltf_primitive_material_spatial_census.py "input/${XUR_ASSET}" --high-z 1.35 -o out/XUR_PRIMITIVE_MATERIAL_SPATIAL_CENSUS.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_PRIMITIVE_MATERIAL_SPATIAL_CENSUS.json'))
+          assert d['status']=='D1_XUR_GLTF_PRIMITIVE_MATERIAL_SPATIAL_CENSUS_EXACT',d
+          assert d['primitive_count']>0,d
+          assert d['high_z_primitive_count']>0,d
+          assert not d['violations'],d
+          print('D1_XUR_PRIMITIVE_MATERIAL_SPATIAL_CENSUS_GREEN',d['primitive_count'],d['high_z_primitive_count'])
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-XUR-PRIMITIVE-MATERIAL-SPATIAL-CENSUS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
