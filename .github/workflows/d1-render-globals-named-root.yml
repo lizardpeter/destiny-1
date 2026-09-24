@@ -57,8 +57,15 @@ jobs:
           assert d['status']=='D1_CURRENT_NAMED_TAG_CATALOG_EXACT',d['violations']
           rg=d['queries']['render_globals']
           cs=d['queries']['client_startup_globals']
-          assert len(rg)>=1,rg
-          assert len(cs)>=1,cs
+          # D1 ROI has no separately named render_globals tag in the exact current
+          # named-tag corpus.  That negative result is itself part of the proof:
+          # renderer-global state must be reached from client_startup_globals.
+          assert rg==[],rg
+          assert len(cs)==1,cs
+          assert cs[0]['tag_hash']=='80B1A000',cs
+          assert cs[0]['class_hash']=='80800341',cs
+          assert cs[0]['package_id']=='018D',cs
+          print('NO_SEPARATE_RENDER_GLOBALS_NAMED_ROOT_EXACT')
           print('RENDER_GLOBAL_ROOTS',json.dumps(rg,indent=2))
           print('CLIENT_STARTUP_ROOTS',json.dumps(cs,indent=2))
           PY
