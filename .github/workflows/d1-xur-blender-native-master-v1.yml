@@ -30,6 +30,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
+      - name: Syntax-check Xur Blender builder
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_blender_xur_native_master.py tools/d1_blender_build_tower_three_npc_test_v4.py
+
       - name: Recover pinned calibrated Xur carrier
         run: |
           set -euo pipefail
@@ -126,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           BLENDER="$(tail -n1 blender-path.txt)"
-          xvfb-run -a "$BLENDER" --background --python-exit-code 1 out/XUR_80C88CEF_NATIVE_MASTER_V2.blend             --python-expr "import bpy; arms=[o for o in bpy.data.objects if o.type=='ARMATURE']; assert len(bpy.data.actions)==267,len(bpy.data.actions); assert len(arms)==1,len(arms); ad=arms[0].animation_data; assert ad is None or ad.action is None; assert ad is None or all(t.mute for t in ad.nla_tracks); assert bpy.context.scene.get('d1_native_material_semantics_fail_closed') is True; assert bpy.context.scene.get('d1_full_retail_equivalence_claimed') is False; bad=[m.name for m in bpy.data.materials if m.get('d1_pixel_shader')=='80876579' and m.get('d1_80876579_control_texture_never_basecolor') is not True]; assert not bad,bad; print('XUR_MASTER_REOPEN_OK',len(bpy.data.materials),len(bpy.data.actions),len(arms))"             | tee out/blender-reopen.log
+          xvfb-run -a "$BLENDER" --background --python-exit-code 1 out/XUR_80C88CEF_NATIVE_MASTER_V2.blend             --python-expr "import bpy; arms=[o for o in bpy.data.objects if o.type=='ARMATURE']; assert len(bpy.data.actions)==267,len(bpy.data.actions); assert len(arms)==1,len(arms); ad=arms[0].animation_data; assert ad is not None and ad.action is not None; assert arms[0].get('d1PreviewAction')==ad.action.name,(arms[0].get('d1PreviewAction'),ad.action.name); assert arms[0].get('d1PreviewActionPolicy')=='LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE'; assert bpy.context.scene.get('d1_preview_action_selected') is True; assert bpy.context.scene.get('d1_preview_action_policy')=='LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE'; assert bpy.context.scene.get('d1_runtime_default_action_selected') is False; assert bpy.context.scene.get('d1_native_material_semantics_fail_closed') is True; assert bpy.context.scene.get('d1_full_retail_equivalence_claimed') is False; bad=[m.name for m in bpy.data.materials if m.get('d1_pixel_shader')=='80876579' and m.get('d1_80876579_control_texture_never_basecolor') is not True]; assert not bad,bad; print('XUR_MASTER_REOPEN_OK',len(bpy.data.materials),len(bpy.data.actions),len(arms),ad.action.name,bpy.context.scene.frame_current)"             | tee out/blender-reopen.log
 
           python - <<'PY'
           import json
@@ -136,7 +141,13 @@ jobs:
           assert d['status']=='D1_XUR_BLENDER_NATIVE_MASTER_V2_COMPLETE',d
           assert (d['material_count'],d['action_count'],d['armature_count'])==(54,267,1),d
           assert d['source_basis_fix_proven'] is True,d
-          assert d['startup_pose']=='BIND_REST_NO_ACTIVE_ACTION',d
+          assert d['startup_pose']=='LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE',d
+          p=d['diagnostic_preview_pose']
+          assert p['policy']=='LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE',p
+          assert p['score']['pose_sane'] is True,p
+          assert p['mesh_gate']['deformed_mesh_sane'] is True,p
+          assert p['pose_sane_action_count']>0 and p['tested_mesh_candidate_count']>0,p
+          assert d['runtime_default_action_selected'] is False,d
           assert d['runtime_material_selection_proven'] is False,d
           assert d['full_native_equation_claimed'] is False,d
           unresolved=d['material_status_counts'].get('UNRESOLVED_FAIL_CLOSED',0)
