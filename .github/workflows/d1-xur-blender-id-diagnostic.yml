@@ -1,0 +1,61 @@
+name: D1 Xur Blender ownership ID diagnostics
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-blender-id-diagnostic.yml'
+      - 'tools/d1_blender_xur_id_diagnostic.py'
+permissions:
+  contents: read
+  actions: read
+env:
+  GH_TOKEN: '${{ github.token }}'
+  SOURCE_RUN: '36072547054'
+  SOURCE_ARTIFACT: 'D1-XUR-BLENDER-NATIVE-MASTER-V3-DIAGNOSTIC'
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact successful V3 blend
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          gh run download "${SOURCE_RUN}" --repo "${GITHUB_REPOSITORY}" --name "${SOURCE_ARTIFACT}" --dir input
+          test -s input/XUR_80C88CEF_NATIVE_MASTER_V3_DIAGNOSTIC.blend
+          python -m py_compile tools/d1_blender_xur_id_diagnostic.py
+      - name: Install pinned Blender and software GL
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb xauth libegl1 libgl1 libgl1-mesa-dri libglu1-mesa mesa-utils
+          bash tools/install_blender_lts.sh .blender > blender-path.txt
+          test -x "$(tail -n1 blender-path.txt)"
+      - name: Render deterministic ownership passes
+        run: |
+          set -euo pipefail
+          BLENDER="$(tail -n1 blender-path.txt)"
+          xvfb-run -a "$BLENDER" --background input/XUR_80C88CEF_NATIVE_MASTER_V3_DIAGNOSTIC.blend --python-exit-code 1 \
+            --python tools/d1_blender_xur_id_diagnostic.py -- \
+            --material-output out/XUR_MATERIAL_ID.png \
+            --object-output out/XUR_OBJECT_ID.png \
+            --report out/XUR_ID_DIAGNOSTIC.json | tee out/blender-id.log
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_ID_DIAGNOSTIC.json'))
+          assert d['status']=='D1_XUR_BLENDER_ID_DIAGNOSTIC_EXACT',d
+          assert len(d['materials'])==54,len(d['materials'])
+          assert d['objects'],d
+          print('D1_XUR_BLENDER_ID_DIAGNOSTIC_CI_GREEN',len(d['materials']),len(d['objects']))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-XUR-BLENDER-ID-DIAGNOSTICS
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
