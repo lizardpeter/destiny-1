@@ -40,7 +40,7 @@ PRODUCT_T0_T1 = {
 PALETTE_T1 = {"80876579", "808762E1", "80876577"}
 SCALAR_MOD_T0_T2 = {"8087630D", "809D8370"}
 SUBTRACT_MASK_T0_T1 = {"809D836C"}
-CONSTANT_BLACK = {"80AAE185", "8087688E"}
+CONSTANT_BLACK = {"80AAE185"}
 
 SEMANTIC_CLASS = {
     "8087688C": "direct_rgb_bc5_normal",
@@ -62,7 +62,7 @@ SEMANTIC_CLASS = {
     "8087656E": "constant_tinted_masked_surface",
     "80876537": "product_surface_dual_normal",
     "80AAE185": "constant_rgb_exact",
-    "8087688E": "constant_rgb_exact_current_black",
+    "8087688E": "runtime_dynamic_rgb_u4a4_open",
     "80AA8E93": "surface_plus_cube",
     "808768AF": "direct_texture_rgb_exact",
     "8087630D": "surface_scalar_view_tint",
@@ -174,10 +174,29 @@ def clear_nodes(mat):
     nodes.clear()
     out=nodes.new("ShaderNodeOutputMaterial"); out.name="D1_NATIVE_OUTPUT"; out.location=(780,60)
     bsdf=nodes.new("ShaderNodeBsdfPrincipled"); bsdf.name="D1_NATIVE_PORTABLE_CLOSURE"; bsdf.location=(500,60)
+    # Native Xur PS proofs close MRT0 RGB, not a Blender/PBR albedo model.  Keep
+    # the diffuse lobe black and visualize the proved native RGB through emission
+    # so Blender lighting does not invent a second, unproven BRDF on top of it.
+    bsdf.inputs["Base Color"].default_value=(0.0,0.0,0.0,1.0)
     bsdf.inputs["Metallic"].default_value=0.0
-    bsdf.inputs["Roughness"].default_value=0.58
+    bsdf.inputs["Roughness"].default_value=1.0
+    if "Emission Strength" in bsdf.inputs:
+        bsdf.inputs["Emission Strength"].default_value=1.0
     mat.node_tree.links.new(bsdf.outputs["BSDF"],out.inputs["Surface"])
+    mat["d1_portable_closure_mode"]="NATIVE_MRT0_RGB_DIAGNOSTIC_UNLIT"
     return bsdf
+
+def connect_native_mrt0_rgb(mat, bsdf, color_socket):
+    """Visualize an instruction-proven native MRT0 RGB term without fake PBR light."""
+    if "Emission Color" in bsdf.inputs:
+        mat.node_tree.links.new(color_socket,bsdf.inputs["Emission Color"])
+    elif "Emission" in bsdf.inputs:
+        mat.node_tree.links.new(color_socket,bsdf.inputs["Emission"])
+    else:
+        # Compatibility fallback for older Blender node socket naming.
+        mat.node_tree.links.new(color_socket,bsdf.inputs["Base Color"])
+        mat["d1_portable_closure_mode"]="NATIVE_MRT0_RGB_DIAGNOSTIC_FALLBACK_BASECOLOR"
+    return color_socket
 
 def tex_node(mat, tag, name, x, y, noncolor=False):
     im=find_image(tag)
