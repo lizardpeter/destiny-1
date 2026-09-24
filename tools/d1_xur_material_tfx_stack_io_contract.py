@@ -15,7 +15,7 @@ The proof requires every one of the 108 Xur stage programs to execute without
 stack underflow and finish at depth zero under those effects.
 """
 from __future__ import annotations
-import argparse,json
+import argparse,json,itertools
 from pathlib import Path
 from collections import Counter
 
@@ -122,11 +122,45 @@ def main()->int:
     if not all(x['following_names']==['Unk4b','PushConstantVec4','PushConstantVec4','Lerp','Unk42'] for x in op4b):
         violations.append('op4b_lerp_store_pattern_changed')
 
+    # Prove the unknown stack deltas are uniquely forced by the entire 108-program corpus.
+    # Search a deliberately wider small-integer range than any plausible vec-stack opcode.
+    def simulate_with_unknown_deltas(ops,d42,d4a,d4b):
+        depth=0;p=0
+        while p<len(ops):
+            op=ops[p];name=op['name']
+            if name=='Unk49' and p+1<len(ops) and ops[p+1]['name']=='PopTemp':
+                p+=2;continue
+            if name in PUSH: delta=1
+            elif name=='Unk42': delta=d42
+            elif name=='Unk4a': delta=d4a
+            elif name=='Unk4b': delta=d4b
+            elif name in UNARY: delta=0
+            elif name in BINARY: delta=-1
+            elif name in TERNARY: delta=-2
+            else:return False
+            depth+=delta
+            if depth<0:return False
+            p+=1
+        return depth==0
+
+    programs=[]
+    for mh,m in sorted(mats.items()):
+        for stage in ('vs','ps'):
+            s=m.get(stage) or {}
+            programs.append((mh,stage,s.get('shader'),(s.get('tfx_disassembly') or {}).get('ops') or []))
+    delta_solutions=[]
+    for d42,d4a,d4b in itertools.product(range(-4,5),repeat=3):
+        if all(simulate_with_unknown_deltas(ops,d42,d4a,d4b) for _,_,_,ops in programs):
+            delta_solutions.append([d42,d4a,d4b])
+    if delta_solutions != [[-1,1,1]]:
+        violations.append(f'unknown_stack_delta_solution_set:{delta_solutions!r}')
+
     out={
       'schema_version':1,
       'status':'D1_XUR_MATERIAL_TFX_STACK_IO_CONTRACT_EXACT' if not violations else 'D1_XUR_MATERIAL_TFX_STACK_IO_CONTRACT_VIOLATIONS',
       'material_count':len(mats),'stage_program_count':len(stage_rows),
       'stage_program_histogram':dict(stage_hist),'shader_program_histogram':dict(sorted(shader_hist.items())),
+      'unknown_stack_delta_uniqueness':{'search_range':[-4,4],'solution_order':['0x42','0x4A','0x4B'],'solutions':delta_solutions,'unique_solution_is_minus1_plus1_plus1':delta_solutions==[[-1,1,1]]},
       'stack_model':{
         '0x42':'consume one expression value; one-u8 operand addresses a stage CBuffer/output vec4 in this corpus',
         '0x4A':'produce one vec4-like expression value; exact engine source/name remains open',
