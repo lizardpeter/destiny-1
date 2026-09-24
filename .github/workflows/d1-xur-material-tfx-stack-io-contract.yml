@@ -46,6 +46,8 @@ jobs:
           assert d['status']=='D1_XUR_MATERIAL_TFX_STACK_IO_CONTRACT_EXACT',d
           assert d['stage_program_count']==108,d
           assert d['all_108_programs_zero_final_depth'] is True,d
+          assert d['unknown_stack_delta_uniqueness']['solutions']==[[-1,1,1]],d['unknown_stack_delta_uniqueness']
+          assert d['unknown_stack_delta_uniqueness']['unique_solution_is_minus1_plus1_plus1'] is True,d['unknown_stack_delta_uniqueness']
           assert d['op42_count']==54,d
           assert d['op42_all_targets_valid_cbuffer_indices'] is True,d
           assert d['op42_all_serialized_targets_zero4'] is True,d
