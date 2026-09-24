@@ -600,6 +600,13 @@
         },
         "observed_0x4A_operand04_count": 5852,
         "note": "The first full 337-package pass completed and emitted exact data, but its CI assertion retained an obsolete expected 0x4A count (219079). Gate corrected to observed 218998; rerun launched. These corpus statistics constrain opcode shape but do not identify the D1 runtime producer."
+      },
+      "u4a4_focused_census": {
+        "workflow_run": 36052251658,
+        "commit": "1385380977df766146c45236c3a9df78d72151af",
+        "status": "RUNNING_FULL_337_PACKAGE_CORPUS",
+        "scope": "Exact opcode 0x4A operand 4 occurrences: stage/shader/program signatures, local contexts, immediate stores, CBuffer/private cardinalities, unnamed material stage-tail dwords, Xur program uniqueness.",
+        "semantic_boundary": "Structural corpus evidence only; D1 runtime producer identity remains unproven."
       }
     },
     {
