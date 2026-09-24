@@ -98,7 +98,12 @@ def main():
         if int(p.get("index_offset",-1)) not in (61638,61864):viol.append(f"part{x['part_index']}:unexpected offset")
         if int(p.get("gear_dye_change_color_index",-999))!=0:viol.append(f"part{x['part_index']}:dye not zero")
         if int(p.get("lod",-1))!=1:viol.append(f"part{x['part_index']}:lod not 1")
-        if cal is None or cal.get("winner_material")!="80876865":viol.append(f"part{x['part_index']}:winner drift")
+        bp=x["base_parent_binding"]
+        if int(p.get("variant_shader_index",-999))!=-1:viol.append(f"part{x['part_index']}:not inline variant")
+        if norm(p.get("material","FFFFFFFF"))!="80876865":viol.append(f"part{x['part_index']}:inline material drift")
+        if bp.get("selection")!="inline_material":viol.append(f"part{x['part_index']}:binding not inline")
+        if norm((bp.get("selected_material") or {}).get("hash","FFFFFFFF"))!="80876865":viol.append(f"part{x['part_index']}:bound material drift")
+        if cal is not None:viol.append(f"part{x['part_index']}:unexpected external calibrated selection")
 
     out={
       "schema_version":1,
@@ -117,11 +122,19 @@ def main():
       "proof":{
         "source_model_redecoded":True,
         "owning_parent_binding_redecoded":not binding.get("violations"),
-        "calibrated_target_winner_is_80876865":not viol and all((x["calibrated_selection"] or {}).get("winner_material")=="80876865" for x in targets),
+        "target_parts_are_source_inline_80876865":not viol and all(
+          int(x["source_part"].get("variant_shader_index",-999))==-1
+          and norm(x["source_part"].get("material","FFFFFFFF"))=="80876865"
+          and x["base_parent_binding"].get("selection")=="inline_material"
+          and norm((x["base_parent_binding"].get("selected_material") or {}).get("hash","FFFFFFFF"))=="80876865"
+          and x["calibrated_selection"] is None
+          for x in targets
+        ),
+        "external_material_selector_not_in_path_for_target_parts":not viol and all(int(x["source_part"].get("variant_shader_index",-999))==-1 for x in targets),
         "D1_retail_consumer_execution_path_proven":False,
       },
       "violations":viol,
-      "policy":"Exact source part/binding/descriptor bytes are re-decoded. The calibrated winner remains an implementation adapter until the retail descriptor consumer execution path is closed."
+      "policy":"Exact source part/binding bytes are re-decoded. Parts 93/96 are direct inline-material parts (variant_shader_index=-1), so their 80876865 binding does not pass through the external-material selector. Neighbor external variants remain diagnostic only."
     }
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+"\n")
     print(json.dumps({
