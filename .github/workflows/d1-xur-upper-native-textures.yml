@@ -1,0 +1,51 @@
+name: D1 Xur upper-region native texture extract
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-upper-native-textures.yml'
+      - 'tools/d1_xur_spatial_native_texture_extract.py'
+permissions: {contents: read}
+env:
+  XUR_RELEASE_TAG: d1-tower-xur-corpus-calibrated-textured-actions-r3
+  XUR_ASSET: D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb
+  XUR_SHA256: 37b91b4979a309b31ee899c7c617e45aa6cc8d13b15d741357d84a6b225bb5dd
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover carrier and Pillow
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q pillow
+          mkdir -p input out/textures
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"
+          curl --fail --location --retry 5 --retry-all-errors "$url" -o "input/${XUR_ASSET}"
+          echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
+      - name: Extract exact upper-region native PNGs
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_xur_spatial_native_texture_extract.py
+          python tools/d1_xur_spatial_native_texture_extract.py "input/${XUR_ASSET}" --min-z 1.80 --out-dir out/textures -o out/XUR_UPPER_NATIVE_TEXTURES.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_UPPER_NATIVE_TEXTURES.json'))
+          assert d['status']=='D1_XUR_SPATIAL_NATIVE_TEXTURE_EXTRACT_EXACT',d
+          assert d['selected_primitive_count']>0 and d['selected_material_count']>0,d
+          assert d['selected_texture_count']==d['extracted_texture_count'],d
+          assert not d['violations'],d
+          print('D1_XUR_UPPER_NATIVE_TEXTURES_GREEN',d['selected_primitive_count'],d['selected_material_count'],d['extracted_texture_count'])
+          PY
+          find out -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-XUR-UPPER-NATIVE-TEXTURES
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
