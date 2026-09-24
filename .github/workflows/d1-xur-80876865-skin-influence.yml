@@ -1,0 +1,52 @@
+name: D1 Xur 80876865 skin influence
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-xur-80876865-skin-influence.yml'
+      - 'tools/d1_gltf_material_skin_influence_probe.py'
+
+permissions: {contents: read}
+
+env:
+  XUR_RELEASE_TAG: d1-tower-xur-corpus-calibrated-textured-actions-r3
+  XUR_ASSET: D1_TOWER_XUR_80C88CEF_CORPUS_CALIBRATED_TEXTURED_ALL_ACTIONS.glb
+  XUR_SHA256: 37b91b4979a309b31ee899c7c617e45aa6cc8d13b15d741357d84a6b225bb5dd
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover pinned Xur carrier
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl --fail --location --retry 5 --retry-all-errors             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${XUR_RELEASE_TAG}/${XUR_ASSET}"             -o "input/${XUR_ASSET}"
+          echo "${XUR_SHA256}  input/${XUR_ASSET}" | sha256sum --check --strict
+      - name: Probe exact skin influences for 80876865
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/d1_gltf_material_skin_influence_probe.py
+          python tools/d1_gltf_material_skin_influence_probe.py "input/${XUR_ASSET}"             --material 80876865 -o out/XUR_80876865_SKIN_INFLUENCE.json | tee out/stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/XUR_80876865_SKIN_INFLUENCE.json'))
+          assert d['status']=='D1_GLTF_MATERIAL_SKIN_INFLUENCE_EXACT',d
+          assert d['primitive_count']==2,d
+          assert len(d['skin_indices'])==1,d
+          assert not d['violations'],d
+          print('XUR_80876865_SKIN_INFLUENCE_GREEN',json.dumps(d['global_joint_influences'][:12],sort_keys=True))
+          PY
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-XUR-80876865-SKIN-INFLUENCE
+          path: out/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
