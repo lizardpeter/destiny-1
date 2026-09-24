@@ -21,6 +21,10 @@ from mathutils import Vector
 
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
+import d1_blender_build_tower_three_npc_test_v4 as posev4
+
+HERE=Path(__file__).resolve().parent
+sys.path.insert(0,str(HERE))
 from d1_gltf_layer_merge import read_glb as read_glb_exact
 
 DIRECT_T0 = {
@@ -510,6 +514,78 @@ def build_material(meta:dict, mat):
     mat["d1_runtime_permutation_selection_claimed"]=False
     return status
 
+def select_diagnostic_preview_pose(scene, arm, imported, actions, candidate_limit=20):
+    """Choose one sane low-motion target-native Action for presentation only.
+
+    This reuses the already validated Tower V4 scorer:
+    1) score every exact imported Action on this exact Xur armature;
+    2) keep only finite/sane pose transforms;
+    3) run evaluated-deformed-mesh bounds gates on the lowest-motion candidates;
+    4) assign the first candidate that passes.
+
+    No action name/state semantic is inferred and no Action datablock is deleted.
+    """
+    scored=[]
+    for act in actions:
+        try:
+            scored.append(posev4.score_action(scene,arm,act))
+        except Exception as ex:
+            scored.append({'action':act.name,'pose_sane':False,'score':1e30,'error':repr(ex)})
+    sane=sorted((r for r in scored if r.get('pose_sane')),key=lambda r:(r['score'],r['action']))
+    if not sane:
+        raise RuntimeError("Xur: no pose-sane selector-owned Action")
+
+    byname={x.name:x for x in actions}
+    trials=[]
+    chosen=None
+    for row in sane[:candidate_limit]:
+        act=byname[row['action']]
+        try:
+            gate=posev4.bbox_gate(scene,arm,imported,act)
+        except Exception as ex:
+            gate={'action':act.name,'deformed_mesh_sane':False,'error':repr(ex)}
+        trials.append(gate)
+        if gate.get('deformed_mesh_sane'):
+            chosen=(row,gate,act)
+            break
+    if chosen is None:
+        raise RuntimeError(f"Xur: no deformed-mesh-sane Action among {min(candidate_limit,len(sane))} low-motion candidates")
+
+    score,gate,act=chosen
+    slot=posev4.assign_action(arm,act)
+    arm.data.pose_position='POSE'
+
+    # Pick the sampled frame with the smallest evaluated actor bounding-box volume.
+    # This avoids arbitrary start-frame extremes while remaining entirely within
+    # the exact target-native clip.
+    deps=bpy.context.evaluated_depsgraph_get()
+    samples=[]
+    for frame in posev4.sample_frames(act,7):
+        scene.frame_set(frame); bpy.context.view_layer.update()
+        bb=posev4.combined_bbox(imported,deps)
+        d=bb['dimensions']; volume=max(float(d[0]),1e-9)*max(float(d[1]),1e-9)*max(float(d[2]),1e-9)
+        samples.append({'frame':int(frame),'bbox':bb,'volume':volume})
+    chosen_sample=min(samples,key=lambda r:(r['volume'],abs(r['frame']-(sum(x['frame'] for x in samples)/len(samples)))))
+    scene.frame_set(chosen_sample['frame']); bpy.context.view_layer.update()
+
+    arm['d1PreviewAction']=act.name
+    arm['d1PreviewActionSlot']=slot
+    arm['d1PreviewActionPolicy']='LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE'
+    arm['d1PreviewFrame']=int(chosen_sample['frame'])
+    return {
+        'policy':'LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE',
+        'action':act.name,
+        'slot_identifier':slot,
+        'frame':int(chosen_sample['frame']),
+        'score':score,
+        'mesh_gate':gate,
+        'candidate_limit':candidate_limit,
+        'pose_sane_action_count':len(sane),
+        'tested_mesh_candidate_count':len(trials),
+        'mesh_gate_trials':trials,
+        'preview_frame_samples':samples,
+    }
+
 def upright_root(imported, source_basis_fixed: bool):
     root=bpy.data.objects.new("XUR_D1_TO_BLENDER_ROOT",None)
     bpy.context.scene.collection.objects.link(root)
@@ -535,9 +611,14 @@ def stage_camera(arm):
     # The prior mesh-union framing admitted long/hidden mesh bounds and made Xur too
     # small in frame. A 24% skeleton margin is enough for hood, coat and feet.
     skel=[]
-    for b in arm.data.bones:
-        skel.append(arm.matrix_world @ b.head_local)
-        skel.append(arm.matrix_world @ b.tail_local)
+    if arm.animation_data is not None and arm.animation_data.action is not None and arm.data.pose_position=='POSE':
+        for pb in arm.pose.bones:
+            skel.append(arm.matrix_world @ pb.head)
+            skel.append(arm.matrix_world @ pb.tail)
+    else:
+        for b in arm.data.bones:
+            skel.append(arm.matrix_world @ b.head_local)
+            skel.append(arm.matrix_world @ b.tail_local)
     if not skel: raise RuntimeError("no Xur skeleton points")
     mn=Vector((min(p.x for p in skel),min(p.y for p in skel),min(p.z for p in skel)))
     mx=Vector((max(p.x for p in skel),max(p.y for p in skel),max(p.z for p in skel)))
@@ -595,15 +676,17 @@ def main():
         counts[st]=counts.get(st,0)+1
         rows.append({"material":tag,"vs":meta["vs"],"ps":meta["ps"],"semantic_class":SEMANTIC_CLASS.get(meta["ps"],"UNRESOLVED"),"status":st})
 
-    # Preserve all imported selector-owned actions, but deliberately clear the
-    # importer's active action/NLA state. The carrier proves the action population,
-    # not which clip should be live at startup. This also gives a clean bind/rest
-    # preview instead of accidentally rendering an arbitrary imported clip.
+    # Preserve all 267 exact selector-owned Actions. Clear whatever arbitrary
+    # state the glTF importer selected, then deliberately choose one low-motion,
+    # target-native, evaluated-mesh-sane Action for presentation only.
     actions=list(bpy.data.actions)
     for act in actions: act.use_fake_user=True
     imported_active_actions, muted_nla_tracks = neutralize_imported_animation(arms)
+    preview_pose=select_diagnostic_preview_pose(bpy.context.scene,arms[0],imported,actions,candidate_limit=20)
     bpy.context.scene["d1_selector_owned_action_count"]=len(actions)
     bpy.context.scene["d1_runtime_default_action_selected"]=False
+    bpy.context.scene["d1_preview_action_selected"]=True
+    bpy.context.scene["d1_preview_action_policy"]=preview_pose["policy"]
     bpy.context.scene["d1_native_material_semantics_fail_closed"]=True
     bpy.context.scene["d1_full_retail_equivalence_claimed"]=False
 
@@ -614,6 +697,7 @@ def main():
     readme.write("80876579 t0 control data is explicitly forbidden from visible base color.\n")
     readme.write("Full reflection/palette/runtime-global equations remain marked pending where inputs are not carrier-resident.\n")
     readme.write("The corpus-calibrated external-material choice is an adapter; E6/E7/E8 retail live selection is still unproven.\n")
+    readme.write("One low-motion selector-owned Action is assigned only as a sanity-gated diagnostic preview pose. It is NOT claimed to be Xur's retail idle/default.\n")
 
     stage_camera(arms[0])
     sc=bpy.context.scene
@@ -621,7 +705,9 @@ def main():
     except Exception: pass
     sc.render.resolution_x=900; sc.render.resolution_y=1200; sc.render.resolution_percentage=100
     sc.render.image_settings.file_format="PNG"; sc.render.filepath=str(a.preview.resolve())
-    sc.frame_start=1; sc.frame_end=1; sc.frame_set(1)
+    sc.frame_start=int(math.floor(float(arms[0].animation_data.action.frame_range[0])))
+    sc.frame_end=max(sc.frame_start+1,int(math.ceil(float(arms[0].animation_data.action.frame_range[1]))))
+    sc.frame_set(int(preview_pose["frame"])); bpy.context.view_layer.update()
     for im in bpy.data.images:
         if im.source=="FILE" and im.packed_file is None:
             try: im.pack()
@@ -643,7 +729,8 @@ def main():
         "packed_image_count":sum(1 for im in bpy.data.images if im.packed_file is not None),
         "imported_active_actions_cleared":imported_active_actions,
         "muted_nla_track_count":muted_nla_tracks,
-        "startup_pose":"BIND_REST_NO_ACTIVE_ACTION",
+        "startup_pose":"LOW_MOTION_TARGET_NATIVE_DIAGNOSTIC_NOT_RETAIL_IDLE",
+        "diagnostic_preview_pose":preview_pose,
         "basis_adapter":"source GLB parser-basis repair + native D1 Z-up -> glTF Y-up wrapper -> Blender glTF import",
         "source_basis_fix_proven":source_basis_fixed,
         "runtime_material_selection_proven":False,
