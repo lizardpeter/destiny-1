@@ -352,6 +352,8 @@ struct CanonicalDecoder {
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
+    long_prefix: [i16; 1 << FAST_DECODE_BITS],
+    long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
     max_len: u8,
     one_char: Option<usize>,
 }
@@ -365,6 +367,8 @@ impl CanonicalDecoder {
                 first_symbol: [0; MAX_CODE_LEN as usize + 1],
                 symbols: Vec::new(),
                 fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
+                long_prefix: [-1; 1 << FAST_DECODE_BITS],
+                long_tables: Vec::new(),
                 max_len: 0,
                 one_char: Some(one_char),
             });
@@ -404,6 +408,10 @@ impl CanonicalDecoder {
         }
 
         let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
+        let mut long_prefix = [-1i16; 1 << FAST_DECODE_BITS];
+        let mut long_tables: Vec<
+            [FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]
+        > = Vec::new();
         let mut next_code = first_code;
         for (symbol, &len) in model.code_lengths.iter().enumerate() {
             if len == 0 {
@@ -411,15 +419,37 @@ impl CanonicalDecoder {
             }
             let code = next_code[usize::from(len)];
             next_code[usize::from(len)] += 1;
+            let entry = FastEntry {
+                symbol: symbol as u16,
+                len,
+            };
             if len <= FAST_DECODE_BITS {
                 let shift = usize::from(FAST_DECODE_BITS - len);
                 let start = (code as usize) << shift;
                 let end = start + (1usize << shift);
-                let entry = FastEntry {
-                    symbol: symbol as u16,
-                    len,
-                };
                 fast[start..end].fill(entry);
+            } else {
+                let suffix_bits = usize::from(len - FAST_DECODE_BITS);
+                let prefix = (code as usize) >> suffix_bits;
+                let table_index = if long_prefix[prefix] >= 0 {
+                    long_prefix[prefix] as usize
+                } else {
+                    let index = long_tables.len();
+                    if index > i16::MAX as usize {
+                        return Err(Error::NonCanonical);
+                    }
+                    long_tables.push(
+                        [FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]
+                    );
+                    long_prefix[prefix] = index as i16;
+                    index
+                };
+                let suffix_mask = (1usize << suffix_bits) - 1;
+                let suffix = (code as usize) & suffix_mask;
+                let fill_shift = usize::from(MAX_CODE_LEN - len);
+                let start = suffix << fill_shift;
+                let end = start + (1usize << fill_shift);
+                long_tables[table_index][start..end].fill(entry);
             }
         }
 
@@ -429,6 +459,8 @@ impl CanonicalDecoder {
             first_symbol,
             symbols,
             fast,
+            long_prefix,
+            long_tables,
             max_len: model.max_code_len,
             one_char: None,
         })
@@ -447,11 +479,25 @@ impl CanonicalDecoder {
                 bits.skip_bits(usize::from(entry.len))?;
                 return Ok(usize::from(entry.symbol));
             }
+
+            if bits.remaining_bits() >= usize::from(MAX_CODE_LEN) {
+                let table_index = self.long_prefix[prefix];
+                if table_index >= 0 {
+                    let window = bits.peek_bits(usize::from(MAX_CODE_LEN))? as usize;
+                    let suffix_mask =
+                        (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
+                    let long_entry =
+                        self.long_tables[table_index as usize][window & suffix_mask];
+                    if long_entry.len != 0 {
+                        bits.skip_bits(usize::from(long_entry.len))?;
+                        return Ok(usize::from(long_entry.symbol));
+                    }
+                }
+            }
         }
 
-        // Codes longer than the 10-bit table stay on the proven canonical
-        // fallback. They are uncommon in real D1 payloads, so retaining this
-        // path costs little while keeping the historical 16-bit edge cases exact.
+        // Only the final <16 payload bits should normally reach this proven
+        // canonical fallback.
         let mut code = 0u32;
         for len in 1..=usize::from(self.max_len) {
             code = (code << 1) | u32::from(bits.read_bit()?);
