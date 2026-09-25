@@ -1234,7 +1234,7 @@ fn decode_checked_tail(
     recent: &mut [usize; 4],
 ) -> Result<usize, Error> {
         while op < output_end {
-            let symbol = huffman.decode(&mut bits)?;
+            let symbol = huffman.decode(bits)?;
             if symbol < LITERAL_SYMBOLS {
                 #[cfg(feature = "profile")]
                 profile::literal();
@@ -1275,7 +1275,7 @@ fn decode_checked_tail(
                     _ => return Err(Error::InvalidRun),
                 };
                 let match_len = decode_length_parts(
-                    &mut bits,
+                    bits,
                     meta.length_base,
                     meta.length_info & !TOKEN_EXTENDED_FLAG,
                     (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
@@ -1303,7 +1303,7 @@ fn decode_checked_tail(
                 }
 
                 let match_len = decode_length_parts(
-                    &mut bits,
+                    bits,
                     meta.length_base,
                     meta.length_info & !TOKEN_EXTENDED_FLAG,
                     (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
