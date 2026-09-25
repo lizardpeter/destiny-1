@@ -745,7 +745,7 @@ impl FastEntry {
 
     #[inline(always)]
     const fn symbol(self) -> usize {
-        usize::from(self.0 & Self::SYMBOL_MASK)
+        (self.0 & Self::SYMBOL_MASK) as usize
     }
 
     #[inline(always)]
@@ -935,7 +935,7 @@ impl CanonicalDecoder {
                 .get_unchecked(table_index as usize)
                 .get_unchecked(window & suffix_mask)
         };
-        debug_assert!(long_!entry.is_empty());
+        debug_assert!(!long_entry.is_empty());
         #[cfg(feature = "profile")]
         profile::huffman_long();
         bits.consume_buffered(usize::from(long_entry.len()));
@@ -967,7 +967,7 @@ impl CanonicalDecoder {
                     let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
                     let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
                     let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
-                    if long_!entry.is_empty() {
+                    if !long_entry.is_empty() {
                         #[cfg(feature = "profile")]
                         profile::huffman_long();
                         bits.consume_buffered(usize::from(long_entry.len()));
