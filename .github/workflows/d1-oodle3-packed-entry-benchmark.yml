@@ -1,5 +1,5 @@
 name: D1 Oodle3 packed entry benchmark
-# rerun after packed-entry compile fix
+# reuse A-B harness: in-place decoder-state candidate
 
 on:
   workflow_dispatch:
