@@ -729,20 +729,19 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
             .min(crate::BLOCK_LEN - (output_pos % crate::BLOCK_LEN));
 
         if block.uncompressed {
-            let payload_end = input_pos
-                .checked_add(raw_len)
-                .ok_or(Error::Truncated)?;
-            let payload = input
-                .get(input_pos..payload_end)
-                .ok_or(Error::Truncated)?;
+            let payload_end = input_pos.checked_add(raw_len).ok_or(Error::Truncated)?;
+            let payload = input.get(input_pos..payload_end).ok_or(Error::Truncated)?;
             output[output_pos..output_pos + raw_len].copy_from_slice(payload);
             input_pos = payload_end;
             output_pos += raw_len;
             continue;
         }
 
-        let header =
-            crate::parse_quantum_header(input.get(input_pos..).ok_or(Error::Truncated)?, block, raw_len)?;
+        let header = crate::parse_quantum_header(
+            input.get(input_pos..).ok_or(Error::Truncated)?,
+            block,
+            raw_len,
+        )?;
         input_pos += header.header_len;
 
         match header.kind {
@@ -756,34 +755,24 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
                     }
                     .into());
                 }
-                let payload_end = input_pos
-                    .checked_add(stored_size)
-                    .ok_or(Error::Truncated)?;
-                let payload = input
-                    .get(input_pos..payload_end)
-                    .ok_or(crate::Error::StoredSizeExceedsInput {
+                let payload_end = input_pos.checked_add(stored_size).ok_or(Error::Truncated)?;
+                let payload = input.get(input_pos..payload_end).ok_or(
+                    crate::Error::StoredSizeExceedsInput {
                         stored: stored_size,
                         available: input.len().saturating_sub(input_pos),
-                    })?;
-                input_pos = payload_end;
-                decoder.decode_quantum_into(
-                    payload,
-                    output,
-                    &mut output_pos,
-                    raw_len,
-                    flag1,
+                    },
                 )?;
+                input_pos = payload_end;
+                decoder.decode_quantum_into(payload, output, &mut output_pos, raw_len, flag1)?;
             }
             crate::QuantumKind::Raw => {
-                let payload_end = input_pos
-                    .checked_add(raw_len)
-                    .ok_or(Error::Truncated)?;
-                let payload = input
-                    .get(input_pos..payload_end)
-                    .ok_or(crate::Error::StoredSizeExceedsInput {
+                let payload_end = input_pos.checked_add(raw_len).ok_or(Error::Truncated)?;
+                let payload = input.get(input_pos..payload_end).ok_or(
+                    crate::Error::StoredSizeExceedsInput {
                         stored: raw_len,
                         available: input.len().saturating_sub(input_pos),
-                    })?;
+                    },
+                )?;
                 output[output_pos..output_pos + raw_len].copy_from_slice(payload);
                 input_pos = payload_end;
                 output_pos += raw_len;
@@ -793,12 +782,13 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
                 output_pos += raw_len;
             }
             crate::QuantumKind::WholeMatch { distance } => {
-                let output_end = output_pos
-                    .checked_add(raw_len)
-                    .ok_or(Error::OutputOverrun {
-                        requested: raw_len,
-                        remaining: 0,
-                    })?;
+                let output_end =
+                    output_pos
+                        .checked_add(raw_len)
+                        .ok_or(Error::OutputOverrun {
+                            requested: raw_len,
+                            remaining: 0,
+                        })?;
                 copy_match_into(output, &mut output_pos, output_end, distance, raw_len)?;
             }
         }
