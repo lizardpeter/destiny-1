@@ -15,6 +15,121 @@ pub const EXPLICIT_DISTANCE_CLASS_COUNT: usize = 23;
 pub const TOKEN_SYMBOLS: usize =
     RECENT_TOKEN_COUNT + EXPLICIT_LENGTH_CLASS_COUNT * EXPLICIT_DISTANCE_CLASS_COUNT;
 
+#[cfg(feature = "profile")]
+mod profile {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct ProfileSnapshot {
+        pub models: u64,
+        pub model_symbols: u64,
+        pub quanta: u64,
+        pub huffman_fast: u64,
+        pub huffman_long: u64,
+        pub huffman_tail: u64,
+        pub literals: u64,
+        pub recent_matches: u64,
+        pub explicit_matches: u64,
+        pub distance_1: u64,
+        pub distance_2: u64,
+        pub distance_3: u64,
+        pub distance_4: u64,
+        pub distance_5_8: u64,
+        pub distance_9_16: u64,
+        pub distance_17_32: u64,
+        pub distance_33_plus: u64,
+        pub length_2_4: u64,
+        pub length_5_8: u64,
+        pub length_9_16: u64,
+        pub length_17_32: u64,
+        pub length_33_64: u64,
+        pub length_65_plus: u64,
+        pub refill_32: u64,
+        pub refill_8: u64,
+    }
+
+    static MODELS: AtomicU64 = AtomicU64::new(0);
+    static MODEL_SYMBOLS: AtomicU64 = AtomicU64::new(0);
+    static QUANTA: AtomicU64 = AtomicU64::new(0);
+    static HUFFMAN_FAST: AtomicU64 = AtomicU64::new(0);
+    static HUFFMAN_LONG: AtomicU64 = AtomicU64::new(0);
+    static HUFFMAN_TAIL: AtomicU64 = AtomicU64::new(0);
+    static LITERALS: AtomicU64 = AtomicU64::new(0);
+    static RECENT_MATCHES: AtomicU64 = AtomicU64::new(0);
+    static EXPLICIT_MATCHES: AtomicU64 = AtomicU64::new(0);
+    static DISTANCE: [AtomicU64; 8] = [
+        AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+        AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+    ];
+    static LENGTH: [AtomicU64; 6] = [
+        AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+        AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+    ];
+    static REFILL_32: AtomicU64 = AtomicU64::new(0);
+    static REFILL_8: AtomicU64 = AtomicU64::new(0);
+
+    #[inline(always)]
+    fn inc(a: &AtomicU64) { a.fetch_add(1, Ordering::Relaxed); }
+
+    pub(super) fn model(used: usize) {
+        inc(&MODELS);
+        MODEL_SYMBOLS.fetch_add(used as u64, Ordering::Relaxed);
+    }
+    pub(super) fn quantum() { inc(&QUANTA); }
+    pub(super) fn huffman_fast() { inc(&HUFFMAN_FAST); }
+    pub(super) fn huffman_long() { inc(&HUFFMAN_LONG); }
+    pub(super) fn huffman_tail() { inc(&HUFFMAN_TAIL); }
+    pub(super) fn literal() { inc(&LITERALS); }
+    pub(super) fn recent_match() { inc(&RECENT_MATCHES); }
+    pub(super) fn explicit_match() { inc(&EXPLICIT_MATCHES); }
+    pub(super) fn distance(v: usize) {
+        let i = match v {
+            1 => 0, 2 => 1, 3 => 2, 4 => 3,
+            5..=8 => 4, 9..=16 => 5, 17..=32 => 6, _ => 7,
+        };
+        inc(&DISTANCE[i]);
+    }
+    pub(super) fn length(v: usize) {
+        let i = match v {
+            0..=4 => 0, 5..=8 => 1, 9..=16 => 2,
+            17..=32 => 3, 33..=64 => 4, _ => 5,
+        };
+        inc(&LENGTH[i]);
+    }
+    pub(super) fn refill32() { inc(&REFILL_32); }
+    pub(super) fn refill8() { inc(&REFILL_8); }
+
+    pub fn reset() {
+        for a in [
+            &MODELS, &MODEL_SYMBOLS, &QUANTA, &HUFFMAN_FAST, &HUFFMAN_LONG, &HUFFMAN_TAIL,
+            &LITERALS, &RECENT_MATCHES, &EXPLICIT_MATCHES, &REFILL_32, &REFILL_8,
+        ] { a.store(0, Ordering::Relaxed); }
+        for a in &DISTANCE { a.store(0, Ordering::Relaxed); }
+        for a in &LENGTH { a.store(0, Ordering::Relaxed); }
+    }
+
+    pub fn snapshot() -> ProfileSnapshot {
+        let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
+        ProfileSnapshot {
+            models: g(&MODELS), model_symbols: g(&MODEL_SYMBOLS), quanta: g(&QUANTA),
+            huffman_fast: g(&HUFFMAN_FAST), huffman_long: g(&HUFFMAN_LONG),
+            huffman_tail: g(&HUFFMAN_TAIL), literals: g(&LITERALS),
+            recent_matches: g(&RECENT_MATCHES), explicit_matches: g(&EXPLICIT_MATCHES),
+            distance_1: g(&DISTANCE[0]), distance_2: g(&DISTANCE[1]),
+            distance_3: g(&DISTANCE[2]), distance_4: g(&DISTANCE[3]),
+            distance_5_8: g(&DISTANCE[4]), distance_9_16: g(&DISTANCE[5]),
+            distance_17_32: g(&DISTANCE[6]), distance_33_plus: g(&DISTANCE[7]),
+            length_2_4: g(&LENGTH[0]), length_5_8: g(&LENGTH[1]),
+            length_9_16: g(&LENGTH[2]), length_17_32: g(&LENGTH[3]),
+            length_33_64: g(&LENGTH[4]), length_65_plus: g(&LENGTH[5]),
+            refill_32: g(&REFILL_32), refill_8: g(&REFILL_8),
+        }
+    }
+}
+
+#[cfg(feature = "profile")]
+pub use profile::{reset as profile_reset, snapshot as profile_snapshot, ProfileSnapshot};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LengthCode {
     pub base: u16,
@@ -555,6 +670,8 @@ impl CanonicalDecoder {
             let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
             let entry = self.fast[prefix];
             if entry.len != 0 {
+                #[cfg(feature = "profile")]
+                profile::huffman_fast();
                 bits.consume_buffered(usize::from(entry.len));
                 return Ok(usize::from(entry.symbol));
             }
@@ -567,6 +684,8 @@ impl CanonicalDecoder {
                     let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
                     let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
                     if long_entry.len != 0 {
+                        #[cfg(feature = "profile")]
+                        profile::huffman_long();
                         bits.consume_buffered(usize::from(long_entry.len));
                         return Ok(usize::from(long_entry.symbol));
                     }
@@ -581,6 +700,8 @@ impl CanonicalDecoder {
             let count = u32::from(self.counts[len]);
             if code >= first && code - first < count {
                 let index = self.first_symbol[len] + (code - first) as usize;
+                #[cfg(feature = "profile")]
+                profile::huffman_tail();
                 return self
                     .symbols
                     .get(index)
@@ -619,6 +740,8 @@ impl Decoder {
         raw_len: usize,
         has_new_model: bool,
     ) -> Result<(), Error> {
+        #[cfg(feature = "profile")]
+        profile::quantum();
         let mut payload_offset = 0usize;
         if has_new_model {
             let model = HuffmanModel::parse_lzh(payload)?;
@@ -626,6 +749,8 @@ impl Decoder {
             if payload_offset > payload.len() {
                 return Err(Error::Truncated);
             }
+            #[cfg(feature = "profile")]
+            profile::model(model.used_symbols);
             if let Some(huffman) = self.huffman.as_mut() {
                 huffman.rebuild(&model)?;
             } else {
@@ -656,6 +781,8 @@ impl Decoder {
         while *output_pos < output_end {
             let symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
+                #[cfg(feature = "profile")]
+                profile::literal();
                 debug_assert!(*output_pos < output_end);
                 unsafe {
                     *output.get_unchecked_mut(*output_pos) = symbol as u8;
@@ -669,6 +796,8 @@ impl Decoder {
 
             let meta = TOKEN_META[symbol - LITERAL_SYMBOLS];
             if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
+                #[cfg(feature = "profile")]
+                profile::recent_match();
                 let selector_bits = meta.distance_info & !TOKEN_RECENT_FLAG;
                 let selector = bits.read_bits(usize::from(selector_bits))? as usize;
                 let distance = match selector {
@@ -696,8 +825,15 @@ impl Decoder {
                     meta.length_info & !TOKEN_EXTENDED_FLAG,
                     (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
                 )?;
+                #[cfg(feature = "profile")]
+                {
+                    profile::distance(distance);
+                    profile::length(match_len);
+                }
                 copy_match_into(output, output_pos, output_end, distance, match_len)?;
             } else {
+                #[cfg(feature = "profile")]
+                profile::explicit_match();
                 let match_distance = meta.distance_base as usize
                     + bits.read_bits(usize::from(meta.distance_info))? as usize
                     + 1;
@@ -717,6 +853,11 @@ impl Decoder {
                     meta.length_info & !TOKEN_EXTENDED_FLAG,
                     (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
                 )?;
+                #[cfg(feature = "profile")]
+                {
+                    profile::distance(match_distance);
+                    profile::length(match_len);
+                }
                 copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
             }
         }
@@ -1023,12 +1164,16 @@ impl<'a> MsbBitReader<'a> {
                 self.bit_buf |= u64::from(word) << shift;
                 self.bit_count += 32;
                 self.byte_pos += 4;
+                #[cfg(feature = "profile")]
+                profile::refill32();
             } else {
                 let byte = unsafe { *self.input.get_unchecked(self.byte_pos) };
                 let shift = 56 - usize::from(self.bit_count);
                 self.bit_buf |= u64::from(byte) << shift;
                 self.bit_count += 8;
                 self.byte_pos += 1;
+                #[cfg(feature = "profile")]
+                profile::refill8();
             }
         }
         Ok(())
