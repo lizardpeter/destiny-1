@@ -1,0 +1,160 @@
+name: D1 Oodle3 target-feature isolation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-exp-target-features.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover benchmark corpus and Oodle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(got)
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+
+      - name: Build feature variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          build () {
+            name="$1"; flags="$2"
+            CARGO_TARGET_DIR="rust/d1_oodle3/target-$name" RUSTFLAGS="$flags" \
+              cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+            cp "rust/d1_oodle3/target-$name/release/d1_oodle3.dll" "out/$name.dll"
+          }
+          build generic ""
+          build bmi2 "-C target-feature=+bmi2"
+          build bmi2_lzcnt "-C target-feature=+bmi2,+lzcnt"
+          build avx2 "-C target-feature=+avx2"
+          build bmi2_avx2 "-C target-feature=+bmi2,+avx2"
+          build v3 "-C target-cpu=x86-64-v3"
+
+      - name: Benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha')
+              cases.append((comp,0x40000))
+              if len(cases)==8: break
+
+          names=['oodle','generic','bmi2','bmi2_lzcnt','avx2','bmi2_avx2','v3']
+          paths={'oodle':'reference/oo2core_3_win64.dll'}
+          for n in names[1:]: paths[n]=f'out/{n}.dll'
+          fns={n:bind(paths[n]) for n in names}
+          bufs={n:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                   for c,raw in cases] for n in names}
+
+          def call(name,i):
+              fn=fns[name]; src,dst,cl,raw=bufs[name][i]
+              got=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                     1,0,0,None,None,None,None,None,None,3)
+              if got!=raw: raise RuntimeError((name,got,raw))
+              return dst.raw[:raw]
+
+          for i in range(len(cases)):
+              outs={n:call(n,i) for n in names}
+              if len(set(outs.values()))!=1: raise RuntimeError(f'mismatch {i}')
+
+          for _ in range(12):
+              for n in names:
+                  for i in range(len(cases)): call(n,i)
+
+          iterations=45; rounds=9
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          def once(name):
+              t=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for i in range(len(cases)): call(name,i)
+              return raw_bytes/((time.perf_counter_ns()-t)/1e9)/(1024*1024)
+
+          samples={n:[] for n in names}
+          paired={n:[] for n in names if n not in ('oodle','generic')}
+          orders=[
+              names,
+              list(reversed(names)),
+              ['generic','bmi2','bmi2_lzcnt','bmi2_avx2','avx2','v3','oodle'],
+              ['oodle','v3','avx2','bmi2_avx2','bmi2_lzcnt','bmi2','generic'],
+          ]
+          for r in range(rounds):
+              vals={}
+              for n in orders[r%len(orders)]:
+                  vals[n]=once(n); samples[n].append(vals[n])
+              for n in paired: paired[n].append(vals[n]/vals['generic'])
+
+          med={n:statistics.median(v) for n,v in samples.items()}
+          report={
+              'base_commit':'ad42564c1958780289a6af01f2cbb2568c7cb695',
+              'median_mib_s':med,
+              'paired_over_generic':{n:statistics.median(v) for n,v in paired.items()},
+              'ratio_to_oodle':{n:med[n]/med['oodle'] for n in names if n!='oodle'},
+              'samples':samples,
+              'correctness':'8/8 byte-identical across all variants'
+          }
+          Path('out/target_features.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Commit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/benchmarks
+          cp out/target_features.json evidence/benchmarks/oodle3_target_features.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add evidence/benchmarks/oodle3_target_features.json
+          git commit -m "Record Oodle3 target-feature isolation" || exit 0
+          git push
