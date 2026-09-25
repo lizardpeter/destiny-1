@@ -764,8 +764,6 @@ struct CanonicalDecoder {
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
-    long_prefix: [i16; 1 << FAST_DECODE_BITS],
-    long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
     max_len: u8,
     one_char: Option<usize>,
 }
@@ -778,8 +776,6 @@ impl CanonicalDecoder {
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
             symbols: Vec::new(),
             fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
-            long_prefix: [-1; 1 << FAST_DECODE_BITS],
-            long_tables: Vec::new(),
             max_len: 0,
             one_char: None,
         }
@@ -848,9 +844,6 @@ impl CanonicalDecoder {
         // FAST_DECODE_BITS prefix is overwritten by either a short-code fill
         // or an explicit long-prefix sentinel below; zeroing the full 8 KiB
         // table here is redundant memory traffic.
-        self.long_prefix.fill(-1);
-        self.long_tables.clear();
-
         if one_char.is_some() {
             return Ok(());
         }
@@ -914,26 +907,10 @@ impl CanonicalDecoder {
                 } else {
                     let suffix_bits = usize::from(len - FAST_DECODE_BITS);
                     let prefix = (code as usize) >> suffix_bits;
+                    // Long codes are rare in D1. Mark the shared fast prefix as
+                    // a canonical fallback instead of constructing a secondary
+                    // table for it.
                     self.fast[prefix] = FastEntry::default();
-                    let table_index = if self.long_prefix[prefix] >= 0 {
-                        self.long_prefix[prefix] as usize
-                    } else {
-                        let index = self.long_tables.len();
-                        if index > i16::MAX as usize {
-                            return Err(Error::NonCanonical);
-                        }
-                        self.long_tables.push(
-                            [FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)],
-                        );
-                        self.long_prefix[prefix] = index as i16;
-                        index
-                    };
-                    let suffix_mask = (1usize << suffix_bits) - 1;
-                    let suffix = (code as usize) & suffix_mask;
-                    let fill_shift = usize::from(MAX_CODE_LEN - len);
-                    let start = suffix << fill_shift;
-                    let end = start + (1usize << fill_shift);
-                    self.long_tables[table_index][start..end].fill(entry);
                 }
             }};
         }
@@ -971,21 +948,22 @@ impl CanonicalDecoder {
         }
 
         bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));
-        let table_index = unsafe { *self.long_prefix.get_unchecked(prefix) };
-        debug_assert!(table_index >= 0);
-        let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
-        let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-        let long_entry = unsafe {
-            *self
-                .long_tables
-                .get_unchecked(table_index as usize)
-                .get_unchecked(window & suffix_mask)
-        };
-        debug_assert!(long_entry.len != 0);
-        #[cfg(feature = "profile")]
-        profile::huffman_long();
-        bits.consume_buffered(usize::from(long_entry.len));
-        usize::from(long_entry.symbol)
+        let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as u32;
+        for len in (usize::from(FAST_DECODE_BITS) + 1)..=usize::from(self.max_len) {
+            let code = window >> (usize::from(MAX_CODE_LEN) - len);
+            let first = self.first_code[len];
+            let count = u32::from(self.counts[len]);
+            if code >= first && code - first < count {
+                let index = self.first_symbol[len] + (code - first) as usize;
+                let symbol = unsafe { *self.symbols.get_unchecked(index) };
+                #[cfg(feature = "profile")]
+                profile::huffman_long();
+                bits.consume_buffered(len);
+                return usize::from(symbol);
+            }
+        }
+        debug_assert!(false, "invalid canonical long code");
+        0
     }
 
     #[inline(always)]
@@ -1006,21 +984,7 @@ impl CanonicalDecoder {
                 return Ok(usize::from(entry.symbol));
             }
 
-            if remaining_bits >= usize::from(MAX_CODE_LEN) {
-                let table_index = self.long_prefix[prefix];
-                if table_index >= 0 {
-                    bits.ensure_bits(usize::from(MAX_CODE_LEN))?;
-                    let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
-                    let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-                    let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
-                    if long_entry.len != 0 {
-                        #[cfg(feature = "profile")]
-                        profile::huffman_long();
-                        bits.consume_buffered(usize::from(long_entry.len));
-                        return Ok(usize::from(long_entry.symbol));
-                    }
-                }
-            }
+
         }
 
         let mut code = 0u32;
