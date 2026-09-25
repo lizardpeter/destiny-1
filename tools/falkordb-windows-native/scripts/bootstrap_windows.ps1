@@ -66,6 +66,7 @@ if (-not $SkipNativeDeps) {
         -DGRAPHBLAS_BUILD_STATIC_LIBS=ON `
         -DGRAPHBLAS_COMPACT=ON `
         -DGRAPHBLAS_USE_OPENMP=OFF `
+        -DGRAPHBLAS_USE_JIT=OFF `
         -DBUILD_TESTING=OFF
     cmake --build $GBBuild --config Release --target GraphBLAS_static
     cmake --install $GBBuild --config Release
