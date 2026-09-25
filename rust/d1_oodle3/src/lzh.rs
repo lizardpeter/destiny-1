@@ -595,6 +595,7 @@ impl HuffmanModel {
 
 struct FixedLzhModel {
     code_lengths: [u8; SYMBOL_COUNT],
+    used_list: [u16; SYMBOL_COUNT],
     counts: [u16; MAX_CODE_LEN as usize + 1],
     used_symbols: usize,
     max_code_len: u8,
@@ -609,6 +610,7 @@ impl FixedLzhModel {
         let mut bits = MsbBitReader::new(input);
         let method = bits.read_bit()?;
         let mut lengths = [0u8; SYMBOL_COUNT];
+        let mut used_list = [0u16; SYMBOL_COUNT];
         let mut counts = [0u16; MAX_CODE_LEN as usize + 1];
         let mut used_symbols = 0usize;
         let mut max_seen = 0u8;
@@ -622,6 +624,7 @@ impl FixedLzhModel {
             if used == 0 {
                 return Ok(Self {
                     code_lengths: lengths,
+                    used_list,
                     counts,
                     used_symbols: 0,
                     max_code_len: 0,
@@ -635,8 +638,10 @@ impl FixedLzhModel {
                     return Err(Error::InvalidSymbol(symbol));
                 }
                 one_char = Some(symbol);
+                used_list[0] = symbol as u16;
                 return Ok(Self {
                     code_lengths: lengths,
+                    used_list,
                     counts,
                     used_symbols: 1,
                     max_code_len: 0,
@@ -666,6 +671,7 @@ impl FixedLzhModel {
                     return Err(Error::InvalidCodeLength(code_len));
                 }
                 lengths[symbol] = code_len;
+                used_list[used_symbols] = symbol as u16;
                 counts[usize::from(code_len)] += 1;
                 used_symbols += 1;
                 max_seen = max_seen.max(code_len);
@@ -704,6 +710,7 @@ impl FixedLzhModel {
                     }
                     let code_len = code_len_i32 as u8;
                     lengths[symbol] = code_len;
+                    used_list[used_symbols] = symbol as u16;
                     counts[usize::from(code_len)] += 1;
                     used_symbols += 1;
                     max_seen = max_seen.max(code_len);
@@ -734,6 +741,7 @@ impl FixedLzhModel {
 
         Ok(Self {
             code_lengths: lengths,
+            used_list,
             counts,
             used_symbols,
             max_code_len: max_seen,
@@ -800,6 +808,7 @@ impl CanonicalDecoder {
             model.max_code_len,
             model.one_char,
             Some(&model.counts),
+            Some(&model.used_list[..model.used_symbols]),
         )
     }
 
@@ -816,6 +825,7 @@ impl CanonicalDecoder {
             max_code_len,
             one_char,
             None,
+            None,
         )
     }
 
@@ -826,6 +836,7 @@ impl CanonicalDecoder {
         max_code_len: u8,
         one_char: Option<usize>,
         precomputed_counts: Option<&[u16; MAX_CODE_LEN as usize + 1]>,
+        used_list: Option<&[u16]>,
     ) -> Result<(), Error> {
         self.one_char = one_char;
         self.max_len = max_code_len;
@@ -871,59 +882,74 @@ impl CanonicalDecoder {
         }
         self.symbols.resize(used_symbols, 0);
 
-        // Build canonical symbol order and decode tables in one pass. The old
-        // code scanned all 713 symbols once for every code length and then
-        // scanned them again for table generation.
+        // Build canonical symbol order and decode tables. Fixed D1 models
+        // provide the already-collected nonzero symbol list, avoiding a scan
+        // across all 713 possible symbols on every model rebuild.
         let mut next_symbol = self.first_symbol;
         let mut next_code = self.first_code;
-        for (symbol, &len) in code_lengths.iter().enumerate() {
-            if len == 0 {
-                continue;
-            }
-            let len_index = usize::from(len);
-            let symbol_index = next_symbol[len_index];
-            if symbol_index >= used_symbols {
-                return Err(Error::NonCanonical);
-            }
-            self.symbols[symbol_index] = symbol as u16;
-            next_symbol[len_index] += 1;
 
-            let code = next_code[len_index];
-            next_code[len_index] += 1;
-            let entry = FastEntry {
-                symbol: symbol as u16,
-                len,
-            };
-            if len <= FAST_DECODE_BITS {
-                let shift = usize::from(FAST_DECODE_BITS - len);
-                let start = (code as usize) << shift;
-                let end = start + (1usize << shift);
-                self.fast[start..end].fill(entry);
-            } else {
-                let suffix_bits = usize::from(len - FAST_DECODE_BITS);
-                let prefix = (code as usize) >> suffix_bits;
-                // Long-code prefixes must clear any short entry left by the
-                // previous model. Kraft completeness guarantees every other
-                // prefix is overwritten by a short-code range fill.
-                self.fast[prefix] = FastEntry::default();
-                let table_index = if self.long_prefix[prefix] >= 0 {
-                    self.long_prefix[prefix] as usize
-                } else {
-                    let index = self.long_tables.len();
-                    if index > i16::MAX as usize {
-                        return Err(Error::NonCanonical);
-                    }
-                    self.long_tables
-                        .push([FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
-                    self.long_prefix[prefix] = index as i16;
-                    index
+        macro_rules! install_symbol {
+            ($symbol:expr, $len:expr) => {{
+                let symbol = $symbol;
+                let len = $len;
+                let len_index = usize::from(len);
+                let symbol_index = next_symbol[len_index];
+                if symbol_index >= used_symbols {
+                    return Err(Error::NonCanonical);
+                }
+                self.symbols[symbol_index] = symbol as u16;
+                next_symbol[len_index] += 1;
+
+                let code = next_code[len_index];
+                next_code[len_index] += 1;
+                let entry = FastEntry {
+                    symbol: symbol as u16,
+                    len,
                 };
-                let suffix_mask = (1usize << suffix_bits) - 1;
-                let suffix = (code as usize) & suffix_mask;
-                let fill_shift = usize::from(MAX_CODE_LEN - len);
-                let start = suffix << fill_shift;
-                let end = start + (1usize << fill_shift);
-                self.long_tables[table_index][start..end].fill(entry);
+                if len <= FAST_DECODE_BITS {
+                    let shift = usize::from(FAST_DECODE_BITS - len);
+                    let start = (code as usize) << shift;
+                    let end = start + (1usize << shift);
+                    self.fast[start..end].fill(entry);
+                } else {
+                    let suffix_bits = usize::from(len - FAST_DECODE_BITS);
+                    let prefix = (code as usize) >> suffix_bits;
+                    self.fast[prefix] = FastEntry::default();
+                    let table_index = if self.long_prefix[prefix] >= 0 {
+                        self.long_prefix[prefix] as usize
+                    } else {
+                        let index = self.long_tables.len();
+                        if index > i16::MAX as usize {
+                            return Err(Error::NonCanonical);
+                        }
+                        self.long_tables.push(
+                            [FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)],
+                        );
+                        self.long_prefix[prefix] = index as i16;
+                        index
+                    };
+                    let suffix_mask = (1usize << suffix_bits) - 1;
+                    let suffix = (code as usize) & suffix_mask;
+                    let fill_shift = usize::from(MAX_CODE_LEN - len);
+                    let start = suffix << fill_shift;
+                    let end = start + (1usize << fill_shift);
+                    self.long_tables[table_index][start..end].fill(entry);
+                }
+            }};
+        }
+
+        if let Some(symbols) = used_list {
+            for &symbol in symbols {
+                let symbol = usize::from(symbol);
+                let len = unsafe { *code_lengths.get_unchecked(symbol) };
+                debug_assert!(len != 0);
+                install_symbol!(symbol, len);
+            }
+        } else {
+            for (symbol, &len) in code_lengths.iter().enumerate() {
+                if len != 0 {
+                    install_symbol!(symbol, len);
+                }
             }
         }
 
