@@ -742,7 +742,7 @@ struct CanonicalDecoder {
     counts: [u16; MAX_CODE_LEN as usize + 1],
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
-    symbols: Vec<u16>,
+    symbols: [u16; SYMBOL_COUNT],
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
     long_prefix: [i16; 1 << FAST_DECODE_BITS],
     long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
@@ -756,7 +756,7 @@ impl CanonicalDecoder {
             counts: [0; MAX_CODE_LEN as usize + 1],
             first_code: [0; MAX_CODE_LEN as usize + 1],
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
-            symbols: Vec::new(),
+            symbols: [0; SYMBOL_COUNT],
             fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
             long_prefix: [-1; 1 << FAST_DECODE_BITS],
             long_tables: Vec::new(),
@@ -828,11 +828,6 @@ impl CanonicalDecoder {
             self.first_symbol[len] = symbol_index;
             symbol_index += usize::from(self.counts[len]);
         }
-
-        if self.symbols.capacity() < used_symbols {
-            self.symbols.reserve(used_symbols - self.symbols.capacity());
-        }
-        self.symbols.resize(used_symbols, 0);
 
         // Build canonical symbol order and decode tables in one pass. The old
         // code scanned all 713 symbols once for every code length and then
