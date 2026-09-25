@@ -1,0 +1,21 @@
+name: D1 native Oodle LZH Rust
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'native/oodle-lzh/**'
+      - '.github/workflows/d1-oodle-native-rust.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test clean-room LZH crate
+        working-directory: native/oodle-lzh
+        run: cargo test --all-targets --verbose
