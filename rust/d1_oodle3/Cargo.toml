@@ -8,5 +8,3 @@ description = "Clean-room Oodle 2.3 framing compatibility work for Destiny 1"
 [lib]
 path = "src/lib.rs"
 
-[dependencies]
-oozextract = "0.5.5"
