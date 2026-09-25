@@ -214,9 +214,7 @@ pub fn parse_quantum_header(
         | DecoderType::Lza
         | DecoderType::Lzna
         | DecoderType::Lzh
-        | DecoderType::BitKnit => {
-            parse_legacy_quantum_header(input, block.use_checksums, raw_len)
-        }
+        | DecoderType::BitKnit => parse_legacy_quantum_header(input, block.use_checksums, raw_len),
     }
 }
 
