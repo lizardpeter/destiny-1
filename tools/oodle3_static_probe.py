@@ -297,6 +297,55 @@ def main() -> int:
                         "text": s,
                     })
 
+    runtime_functions = []
+    if hasattr(pe, "DIRECTORY_ENTRY_EXCEPTION"):
+        for ent in pe.DIRECTORY_ENTRY_EXCEPTION:
+            begin = int(ent.struct.BeginAddress)
+            end = int(ent.struct.EndAddress)
+            runtime_functions.append((begin, end))
+        runtime_functions.sort()
+
+    def containing_runtime_function(rva: int):
+        # x64 .pdata ranges are non-overlapping and sorted by BeginAddress.
+        lo, hi = 0, len(runtime_functions)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if runtime_functions[mid][0] <= rva:
+                lo = mid + 1
+            else:
+                hi = mid
+        if lo == 0:
+            return None
+        begin, end = runtime_functions[lo - 1]
+        return begin if begin <= rva < end else None
+
+    whole_text_string_xrefs = []
+    md_all = Cs(CS_ARCH_X86, CS_MODE_64)
+    md_all.detail = True
+    md_all.skipdata = True
+    for ins in md_all.disasm(text_bytes, text_va):
+        if ins.id == 0:
+            continue
+        try:
+            targets = [
+                int(ins.address + ins.size + op.mem.disp)
+                for op in ins.operands
+                if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP
+            ]
+        except Exception:
+            continue
+        for target_va in targets:
+            s = ascii_at_va(target_va)
+            if not s:
+                continue
+            irva = int(ins.address - image_base)
+            whole_text_string_xrefs.append({
+                "function_rva": containing_runtime_function(irva),
+                "instruction_rva": irva,
+                "target_rva": target_va - image_base,
+                "text": s,
+            })
+
     report = {
         "schema": "d1_oodle3_static_probe_v1",
         "dll": args.dll.name,
@@ -326,6 +375,8 @@ def main() -> int:
         ],
         "interesting_strings": interesting_strings(data),
         "string_xrefs": string_xrefs,
+        "whole_text_string_xrefs": whole_text_string_xrefs,
+        "runtime_function_count": len(runtime_functions),
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
