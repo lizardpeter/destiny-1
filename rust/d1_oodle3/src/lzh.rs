@@ -752,11 +752,12 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
                         requested: span.raw_len,
                         remaining: 0,
                     })?;
+                let remaining = output.len().saturating_sub(output_pos);
                 output
                     .get_mut(output_pos..end)
                     .ok_or(Error::OutputOverrun {
                         requested: span.raw_len,
-                        remaining: output.len().saturating_sub(output_pos),
+                        remaining,
                     })?
                     .copy_from_slice(payload);
                 output_pos = end;
@@ -768,11 +769,12 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
                         requested: span.raw_len,
                         remaining: 0,
                     })?;
+                let remaining = output.len().saturating_sub(output_pos);
                 output
                     .get_mut(output_pos..end)
                     .ok_or(Error::OutputOverrun {
                         requested: span.raw_len,
-                        remaining: output.len().saturating_sub(output_pos),
+                        remaining,
                     })?
                     .fill(value);
                 output_pos = end;
