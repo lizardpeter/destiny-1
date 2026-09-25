@@ -279,7 +279,7 @@ pub fn scan_frame(input: &[u8], expected_raw_len: usize) -> Result<Vec<QuantumSp
     let mut current = None;
 
     while op < expected_raw_len {
-        if op % BLOCK_LEN == 0 {
+        if op.is_multiple_of(BLOCK_LEN) {
             let (header, used) = parse_block_header(input.get(ip..).ok_or(Error::Truncated)?)?;
             ip += used;
             current = Some(header);
