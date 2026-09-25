@@ -1,0 +1,154 @@
+name: D1 Oodle3 parent-current paired benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-parent-paired.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact benchmark package and reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered/ps4_city_tower_destination_024c_5.pkg'))
+          if got.lower()!=expected: raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+
+      - name: Build parent and current
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent=$(git rev-parse HEAD^)
+          echo "PARENT_SHA=$parent" >> "$GITHUB_ENV"
+          git worktree add ../parent "$parent"
+          (cd ../parent/rust/d1_oodle3 && CARGO_TARGET_DIR=target-pair cargo build --release)
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-pair cargo build --release)
+          cp ../parent/rust/d1_oodle3/target-pair/release/d1_oodle3.dll out/parent.dll
+          cp rust/d1_oodle3/target-pair/release/d1_oodle3.dll out/current.dll
+
+      - name: Paired benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time,os
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha mismatch')
+              cases.append((comp,0x40000))
+              if len(cases)>=8: break
+
+          fns={'reference':bind('reference/oo2core_3_win64.dll'),
+               'parent':bind('out/parent.dll'),'current':bind('out/current.dll')}
+          bufs={k:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                   for c,raw in cases] for k in fns}
+
+          for i in range(len(cases)):
+              outs={}
+              for name,fn in fns.items():
+                  src,dst,cl,raw=bufs[name][i]
+                  n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                       1,0,0,None,None,None,None,None,None,3)
+                  if n!=raw: raise RuntimeError(f'{name} decode {n}')
+                  outs[name]=dst.raw[:raw]
+              if len(set(outs.values()))!=1: raise RuntimeError(f'correctness mismatch {i}')
+
+          for _ in range(15):
+              for name,fn in fns.items():
+                  for src,dst,cl,raw in bufs[name]:
+                      fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                         1,0,0,None,None,None,None,None,None,3)
+
+          iterations=90; rounds=11
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          def once(name):
+              fn=fns[name]; t0=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for src,dst,cl,raw in bufs[name]:
+                      n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                           1,0,0,None,None,None,None,None,None,3)
+                      if n!=raw: raise RuntimeError(n)
+              return raw_bytes/((time.perf_counter_ns()-t0)/1e9)/(1024*1024)
+
+          orders=[['parent','current','reference'],['current','parent','reference'],
+                  ['reference','parent','current'],['reference','current','parent']]
+          samples={k:[] for k in fns}; ratios=[]; oodle_ratios=[]
+          for r in range(rounds):
+              vals={}
+              for name in orders[r%len(orders)]:
+                  vals[name]=once(name); samples[name].append(vals[name])
+              ratios.append(vals['current']/vals['parent'])
+              oodle_ratios.append(vals['current']/vals['reference'])
+
+          med={k:statistics.median(v) for k,v in samples.items()}
+          report={
+              'parent_sha':os.environ.get('PARENT_SHA'),
+              'median_mib_s':med,
+              'current_over_parent_samples':ratios,
+              'current_over_parent':statistics.median(ratios),
+              'current_over_oodle':statistics.median(oodle_ratios),
+          }
+          Path('out/parent_pair.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('PARENTPAIR_PARENT_SHA',report['parent_sha'])
+          print('PARENTPAIR_REFERENCE',med['reference'])
+          print('PARENTPAIR_PARENT',med['parent'])
+          print('PARENTPAIR_CURRENT',med['current'])
+          print('PARENTPAIR_CURRENT_OVER_PARENT',report['current_over_parent'])
+          print('PARENTPAIR_CURRENT_OVER_OODLE',report['current_over_oodle'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-parent-pair
+          path: out/parent_pair.json
+          retention-days: 30
+          if-no-files-found: error
