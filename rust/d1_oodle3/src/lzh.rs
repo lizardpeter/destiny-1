@@ -41,6 +41,7 @@ pub enum SymbolCode {
     },
 }
 
+#[rustfmt::skip]
 const RECENT_LENGTHS: [LengthCode; RECENT_TOKEN_COUNT] = [
     LengthCode { base: 2, extra_bits: 0, extended: false },
     LengthCode { base: 3, extra_bits: 0, extended: false },
@@ -64,6 +65,7 @@ const RECENT_LENGTHS: [LengthCode; RECENT_TOKEN_COUNT] = [
     LengthCode { base: 157, extra_bits: 6, extended: true },
 ];
 
+#[rustfmt::skip]
 const EXPLICIT_LENGTHS: [LengthCode; EXPLICIT_LENGTH_CLASS_COUNT] = [
     LengthCode { base: 3, extra_bits: 0, extended: false },
     LengthCode { base: 4, extra_bits: 0, extended: false },
@@ -86,6 +88,7 @@ const EXPLICIT_LENGTHS: [LengthCode; EXPLICIT_LENGTH_CLASS_COUNT] = [
     LengthCode { base: 157, extra_bits: 7, extended: true },
 ];
 
+#[rustfmt::skip]
 const EXPLICIT_DISTANCES: [DistanceCode; EXPLICIT_DISTANCE_CLASS_COUNT] = [
     DistanceCode { base: 0, extra_bits: 4 },
     DistanceCode { base: 16, extra_bits: 4 },
@@ -137,7 +140,6 @@ pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
         length: EXPLICIT_LENGTHS[length_index],
     })
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -335,7 +337,6 @@ impl HuffmanModel {
         })
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct CanonicalDecoder {
@@ -587,9 +588,7 @@ pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, E
 
         match span.kind {
             crate::QuantumKind::Compressed {
-                stored_size,
-                flag1,
-                ..
+                stored_size, flag1, ..
             } => {
                 let header = crate::parse_quantum_header(
                     &input[span.input_offset..],
@@ -598,7 +597,9 @@ pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, E
                 )?;
                 let payload_start = span.input_offset + header.header_len;
                 let payload_end = payload_start + stored_size;
-                let payload = input.get(payload_start..payload_end).ok_or(Error::Truncated)?;
+                let payload = input
+                    .get(payload_start..payload_end)
+                    .ok_or(Error::Truncated)?;
                 decoder.decode_quantum(payload, &mut output, span.raw_len, flag1)?;
             }
             crate::QuantumKind::Raw => {
@@ -616,16 +617,22 @@ pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, E
                         span.raw_len,
                     )?;
                     let start = span.input_offset + header.header_len;
-                    (start, start.checked_add(span.raw_len).ok_or(Error::Truncated)?)
+                    (
+                        start,
+                        start.checked_add(span.raw_len).ok_or(Error::Truncated)?,
+                    )
                 };
-                let payload = input.get(payload_start..payload_end).ok_or(Error::Truncated)?;
+                let payload = input
+                    .get(payload_start..payload_end)
+                    .ok_or(Error::Truncated)?;
                 output.extend_from_slice(payload);
             }
             crate::QuantumKind::Memset { value } => {
                 output.resize(output.len() + span.raw_len, value);
             }
             crate::QuantumKind::WholeMatch { distance } => {
-                copy_match(&mut output, output.len() + span.raw_len, distance, span.raw_len)?;
+                let output_end = output.len() + span.raw_len;
+                copy_match(&mut output, output_end, distance, span.raw_len)?;
             }
         }
     }
@@ -681,7 +688,10 @@ impl<'a> MsbBitReader<'a> {
     }
 
     fn remaining_bits(&self) -> usize {
-        self.input.len().saturating_mul(8).saturating_sub(self.bit_pos)
+        self.input
+            .len()
+            .saturating_mul(8)
+            .saturating_sub(self.bit_pos)
     }
 
     fn read_bit(&mut self) -> Result<bool, Error> {
