@@ -366,12 +366,12 @@ const fn pack_fast_entry(symbol: usize, len: u8) -> u16 {
 
 #[inline(always)]
 const fn fast_entry_symbol(entry: u16) -> usize {
-    usize::from(entry & FAST_SYMBOL_MASK)
+    (entry & FAST_SYMBOL_MASK) as usize
 }
 
 #[inline(always)]
 const fn fast_entry_len(entry: u16) -> usize {
-    usize::from(entry >> FAST_DECODE_BITS)
+    (entry >> FAST_DECODE_BITS) as usize
 }
 
 #[derive(Debug, Clone)]
@@ -436,7 +436,7 @@ impl CanonicalDecoder {
             return Err(Error::NonCanonical);
         }
 
-        let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
+        let mut fast = [0u16; 1 << FAST_DECODE_BITS];
         let mut long_prefix = [-1i16; 1 << FAST_DECODE_BITS];
         let mut long_tables: Vec<[u16; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]> = Vec::new();
         let mut next_code = first_code;
@@ -462,8 +462,7 @@ impl CanonicalDecoder {
                     if index > i16::MAX as usize {
                         return Err(Error::NonCanonical);
                     }
-                    long_tables
-                        .push([0; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
+                    long_tables.push([0; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
                     long_prefix[prefix] = index as i16;
                     index
                 };
