@@ -1120,7 +1120,7 @@ impl Decoder {
                     profile::distance(distance);
                     profile::length(match_len);
                 }
-                copy_match_into_hot(output, output_pos, output_end, distance, match_len)?;
+                copy_match_into(output, output_pos, output_end, distance, match_len)?;
             } else {
                 #[cfg(feature = "profile")]
                 profile::explicit_match();
@@ -1145,7 +1145,7 @@ impl Decoder {
                     profile::distance(match_distance);
                     profile::length(match_len);
                 }
-                copy_match_into_hot(output, output_pos, output_end, match_distance, match_len)?;
+                copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
             }
         }
 
@@ -1309,56 +1309,6 @@ fn decode_length_parts(
         return Ok(605 + bits.read_bits(10)? as usize);
     }
     Ok(1629 + bits.read_bits(14)? as usize)
-}
-
-#[inline(always)]
-fn copy_match_into_hot(
-    output: &mut [u8],
-    output_pos: &mut usize,
-    output_end: usize,
-    distance: usize,
-    length: usize,
-) -> Result<(), Error> {
-    let match_start = *output_pos;
-    let remaining = output_end - match_start;
-
-    // Distance is always >= 1 by construction for decoded LZH tokens.
-    // Collapse malformed-distance and output-overrun handling into one cold
-    // branch so the valid D1 path falls straight through.
-    if distance > match_start || length > remaining {
-        return Err(Error::InvalidRun);
-    }
-
-    let source_start = match_start - distance;
-    let physical_remaining = output.len() - match_start;
-
-    // Roughly 70% of real D1 matches are 2..=8 bytes and overwhelmingly use
-    // distances >= 8. One fixed-width move is overlap-safe and avoids the
-    // general copy machinery entirely.
-    if length <= 8 && distance >= 8 && physical_remaining >= 8 {
-        unsafe {
-            let base = output.as_mut_ptr();
-            let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
-        }
-        *output_pos = match_start + length;
-        return Ok(());
-    }
-
-    if length <= 16 && distance >= 8 && physical_remaining >= 16 {
-        unsafe {
-            let base = output.as_mut_ptr();
-            let first = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), first);
-            let second = core::ptr::read_unaligned(base.add(source_start + 8).cast::<u64>());
-            core::ptr::write_unaligned(base.add(match_start + 8).cast::<u64>(), second);
-        }
-        *output_pos = match_start + length;
-        return Ok(());
-    }
-
-    // Rare cases retain the fully checked general copier.
-    copy_match_into(output, output_pos, output_end, distance, length)
 }
 
 #[inline(always)]
