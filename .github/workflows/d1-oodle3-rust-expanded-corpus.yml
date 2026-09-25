@@ -1,0 +1,266 @@
+name: D1 Oodle3 Rust expanded cross-family corpus
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-rust-expanded-corpus.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  expanded-corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Select and recover diverse current D1 packages
+        run: |
+          set -euo pipefail
+          mkdir -p recovered runtime out
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python - <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+
+          names={Path(x.strip()).name for x in Path('out/packages.txt').read_text(errors='replace').splitlines() if x.strip()}
+          specs=[
+            ('ui_social_003b', r'^ps4_ui_social_003b_(\d+)\.pkg$'),
+            ('arch_human_earth_city_009f', r'^ps4_arch_human_earth_city_009f_(\d+)\.pkg$'),
+            ('investment_assets_013a', r'^ps4_investment_assets_013a_(\d+)\.pkg$'),
+            ('globals_0154', r'^ps4_globals_0154_(\d+)\.pkg$'),
+            ('globals_0156', r'^ps4_globals_0156_(\d+)\.pkg$'),
+            ('globals_0157', r'^ps4_globals_0157_(\d+)\.pkg$'),
+            ('globals_0158', r'^ps4_globals_0158_(\d+)\.pkg$'),
+            ('globals_pvp_0169', r'^ps4_globals_pvp_0169_(\d+)\.pkg$'),
+            ('env_natural_01c5', r'^ps4_env_natural_01c5_(\d+)\.pkg$'),
+            ('env_skies_01cf', r'^ps4_env_skies_01cf_(\d+)\.pkg$'),
+            ('env_skies_01d1', r'^ps4_env_skies_01d1_(\d+)\.pkg$'),
+            ('globals_cinematic_01e3', r'^ps4_globals_cinematic_01e3_(\d+)\.pkg$'),
+            ('tower_activities_023d', r'^ps4_city_tower_activities_act_023d_(\d+)\.pkg$'),
+            ('tower_ambient_0244', r'^ps4_city_tower_ambient_activi_0244_(\d+)\.pkg$'),
+            ('tower_destination_0250', r'^ps4_city_tower_destination_0250_(\d+)\.pkg$'),
+            ('shared_manifest_0432', r'^ps4_shared_manifest_0432_(\d+)\.pkg$'),
+          ]
+
+          selected=[]
+          missing=[]
+          for label,rx in specs:
+              pat=re.compile(rx,re.I)
+              hits=[]
+              for n in names:
+                  m=pat.match(n)
+                  if m:
+                      hits.append((int(m.group(1)),n))
+              if not hits:
+                  missing.append(label)
+                  continue
+              patch,name=max(hits)
+              selected.append({'family':label,'patch':patch,'name':name})
+
+          if len(selected)<10:
+              raise SystemExit(f'only {len(selected)} target families resolved; missing={missing}')
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          wanted={r['name'] for r in selected}
+          found,headers=arc.find(wanted)
+          unresolved=sorted(wanted-set(found))
+          if unresolved:
+              raise SystemExit(f'unresolved selected members: {unresolved}')
+
+          max_size=48*1024*1024
+          recovered=[]
+          skipped=[]
+          for row in selected:
+              meta=found[row['name']]
+              row.update({
+                  'data_offset':meta['data_offset'],
+                  'size':meta['size'],
+              })
+              if meta['size']>max_size:
+                  row['reason']='member_too_large_for_expanded_sweep'
+                  skipped.append(row)
+                  continue
+              dst=Path('recovered')/row['name']
+              row['sha256']=arc.copy_to(meta['data_offset'],meta['size'],dst)
+              recovered.append(row)
+              print('RECOVERED',row['family'],row['name'],row['size'],row['sha256'])
+
+          if len(recovered)<8:
+              raise SystemExit(f'only {len(recovered)} packages recovered; skipped={skipped}')
+
+          report={
+              'selected':selected,
+              'recovered':recovered,
+              'skipped':skipped,
+              'missing_family_patterns':missing,
+              'tar_headers_scanned':headers,
+          }
+          Path('out/recovery.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('RECOVERED_PACKAGE_COUNT',len(recovered))
+          PY
+
+      - name: Fetch verified Oodle 2.3 reference runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build native Rust decoder
+        working-directory: rust/d1_oodle3
+        run: cargo build --release --bin native_decode
+
+      - name: Differential-test every resident compressed block
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,subprocess,sys
+          from collections import Counter,defaultdict
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+          from d1_oodle_probe import Oodle3
+
+          reference=Oodle3(Path('runtime/liblinoodle3.so'))
+          exe=Path('rust/d1_oodle3/target/release/native_decode')
+          report={
+              'status':'D1_OODLE23_RUST_EXPANDED_CORPUS',
+              'packages':[],
+              'rows':[],
+              'failures':[],
+              'first_byte_census':{},
+          }
+          first_bytes=Counter()
+          raw_sizes=Counter()
+          family_ok=defaultdict(int)
+          tmp_comp=Path('out/current.comp')
+          tmp_raw=Path('out/current.rust')
+
+          for pkg in sorted(Path('recovered').glob('*.pkg')):
+              with pkg.open('rb') as f:
+                  h=parse_header(f)
+                  bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+              blocks=parse_blocks(bt)
+              patch=int(h['patch_id'])
+              resident=[b for b in blocks if b['compressed'] and int(b['patch_id'])==patch]
+              prow={
+                  'package':pkg.name,
+                  'package_id':f"{int(h['pkg_id']):04X}",
+                  'patch_id':patch,
+                  'resident_compressed':len(resident),
+                  'tested_ok':0,
+              }
+              report['packages'].append(prow)
+              print('PACKAGE',prow)
+
+              for b in resident:
+                  with pkg.open('rb') as f:
+                      f.seek(int(b['offset']))
+                      comp=f.read(int(b['size']))
+                  got_sha1=hashlib.sha1(comp).hexdigest()
+                  if got_sha1.lower()!=str(b['sha1']).lower():
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'stored_sha1',
+                          'expected':str(b['sha1']),'actual':got_sha1,
+                      })
+                      continue
+
+                  prefix=comp[:16].hex()
+                  if comp:
+                      first_bytes[f'{comp[0]:02x}']+=1
+
+                  try:
+                      expected=reference.decompress_block(comp)
+                  except Exception as ex:
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'reference',
+                          'stored_size':len(comp),'prefix':prefix,'error':repr(ex),
+                      })
+                      continue
+
+                  raw_sizes[len(expected)]+=1
+                  tmp_comp.write_bytes(comp)
+                  p=subprocess.run(
+                      [str(exe),str(tmp_comp),str(len(expected)),str(tmp_raw)],
+                      text=True,capture_output=True,
+                  )
+                  if p.returncode!=0:
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'rust',
+                          'stored_size':len(comp),'raw_size':len(expected),'prefix':prefix,
+                          'stderr':p.stderr[-3000:],
+                      })
+                      continue
+
+                  actual=tmp_raw.read_bytes()
+                  if actual!=expected:
+                      first=next((i for i,(a,e) in enumerate(zip(actual,expected)) if a!=e),None)
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'compare',
+                          'stored_size':len(comp),'raw_size':len(expected),'prefix':prefix,
+                          'first_mismatch':first,
+                          'rust_sha256':hashlib.sha256(actual).hexdigest(),
+                          'reference_sha256':hashlib.sha256(expected).hexdigest(),
+                      })
+                      continue
+
+                  row={
+                      'package':pkg.name,
+                      'block':int(b['index']),
+                      'stored_size':len(comp),
+                      'raw_size':len(actual),
+                      'prefix':prefix,
+                      'sha256':hashlib.sha256(actual).hexdigest(),
+                  }
+                  report['rows'].append(row)
+                  prow['tested_ok']+=1
+                  family_ok[pkg.name]+=1
+                  print('EXPANDED_BYTE_IDENTICAL',row)
+
+          report['first_byte_census']=dict(first_bytes)
+          report['raw_size_census']={str(k):v for k,v in sorted(raw_sizes.items())}
+          report['tested_ok']=len(report['rows'])
+          report['packages_with_compressed_blocks']=sum(1 for p in report['packages'] if p['resident_compressed'])
+          Path('out/expanded_corpus.json').write_text(json.dumps(report,indent=2)+'\n')
+
+          print('FIRST_BYTE_CENSUS',dict(first_bytes))
+          print('RAW_SIZE_CENSUS',dict(raw_sizes))
+          print('PACKAGES_WITH_COMPRESSED',report['packages_with_compressed_blocks'])
+          print('EXPANDED_OK',len(report['rows']))
+          if report['failures']:
+              print(json.dumps(report['failures'],indent=2))
+              raise SystemExit(f"{len(report['failures'])} expanded-corpus failures")
+          if report['packages_with_compressed_blocks']<5:
+              raise SystemExit('fewer than five recovered package families contained resident compressed blocks')
+          if len(report['rows'])<10:
+              raise SystemExit(f"only {len(report['rows'])} compressed blocks tested")
+          print('D1_OODLE23_RUST_EXPANDED_CORPUS_GREEN',len(report['rows']))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle23-rust-expanded-corpus
+          path: |
+            out/recovery.json
+            out/expanded_corpus.json
+          retention-days: 30
+          if-no-files-found: error
