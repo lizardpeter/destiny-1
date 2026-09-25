@@ -5,7 +5,7 @@
 //! and permits code lengths through 16 bits.
 
 pub const SYMBOL_COUNT: usize = 713;
-pub const FAST_DECODE_BITS: u8 = 11;
+pub const FAST_DECODE_BITS: u8 = 10;
 pub const MAX_CODE_LEN: u8 = 16;
 
 pub const LITERAL_SYMBOLS: usize = 256;
@@ -973,6 +973,7 @@ impl CanonicalDecoder {
             }};
         }
 
+        try_long!(11);
         try_long!(12);
         try_long!(13);
         try_long!(14);
