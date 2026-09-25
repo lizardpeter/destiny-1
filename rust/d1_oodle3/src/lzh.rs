@@ -1716,7 +1716,7 @@ struct MsbBitReader<'a> {
     ptr: *const u8,
     end: *const u8,
     fast_limit: usize,
-    bit_buf: u64,
+    bit_buf: u128,
     bit_count: u8,
     marker: core::marker::PhantomData<&'a [u8]>,
 }
@@ -1768,15 +1768,18 @@ impl<'a> MsbBitReader<'a> {
     fn ensure_bits_fast(&mut self, count: usize) {
         debug_assert!(count <= 32);
         while usize::from(self.bit_count) < count {
-            debug_assert!(self.bytes_remaining() >= 4);
-            debug_assert!(self.bit_count <= 32);
-            let word = unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
-            self.ptr = unsafe { self.ptr.add(4) };
-            let shift = 32 - usize::from(self.bit_count);
-            self.bit_buf |= u64::from(word) << shift;
-            self.bit_count += 32;
+            debug_assert!(self.bytes_remaining() >= 8);
+            debug_assert!(self.bit_count <= 64);
+            let word = unsafe { u64::from_be(core::ptr::read_unaligned(self.ptr.cast::<u64>())) };
+            self.ptr = unsafe { self.ptr.add(8) };
+            let shift = 64 - usize::from(self.bit_count);
+            self.bit_buf |= u128::from(word) << shift;
+            self.bit_count += 64;
             #[cfg(feature = "profile")]
-            profile::refill32();
+            {
+                profile::refill32();
+                profile::refill32();
+            }
         }
     }
 
@@ -1786,7 +1789,7 @@ impl<'a> MsbBitReader<'a> {
             return 0;
         }
         self.ensure_bits_fast(count);
-        let value = self.bit_buf >> (64 - count);
+        let value = (self.bit_buf >> (128 - count)) as u64;
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
         value
@@ -1805,23 +1808,26 @@ impl<'a> MsbBitReader<'a> {
         }
 
         while usize::from(self.bit_count) < count {
-            if self.bytes_remaining() >= 4 && self.bit_count <= 32 {
+            if self.bytes_remaining() >= 8 && self.bit_count <= 64 {
                 let word =
-                    unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
-                self.ptr = unsafe { self.ptr.add(4) };
-                let shift = 32 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(word) << shift;
-                self.bit_count += 32;
+                    unsafe { u64::from_be(core::ptr::read_unaligned(self.ptr.cast::<u64>())) };
+                self.ptr = unsafe { self.ptr.add(8) };
+                let shift = 64 - usize::from(self.bit_count);
+                self.bit_buf |= u128::from(word) << shift;
+                self.bit_count += 64;
                 #[cfg(feature = "profile")]
-                profile::refill32();
+                {
+                    profile::refill32();
+                    profile::refill32();
+                }
             } else {
                 if self.ptr == self.end {
                     return Err(Error::Truncated);
                 }
                 let byte = unsafe { *self.ptr };
                 self.ptr = unsafe { self.ptr.add(1) };
-                let shift = 56 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(byte) << shift;
+                let shift = 120 - usize::from(self.bit_count);
+                self.bit_buf |= u128::from(byte) << shift;
                 self.bit_count += 8;
                 #[cfg(feature = "profile")]
                 profile::refill8();
@@ -1833,7 +1839,7 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn peek_buffered(&self, count: usize) -> u64 {
         debug_assert!(count <= usize::from(self.bit_count));
-        self.bit_buf >> (64 - count)
+        (self.bit_buf >> (128 - count)) as u64
     }
 
     #[inline(always)]
