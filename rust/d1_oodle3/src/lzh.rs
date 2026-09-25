@@ -531,10 +531,11 @@ impl Decoder {
         self.huffman = None;
     }
 
-    pub fn decode_quantum(
+    pub fn decode_quantum_into(
         &mut self,
         payload: &[u8],
-        output: &mut Vec<u8>,
+        output: &mut [u8],
+        output_pos: &mut usize,
         raw_len: usize,
         has_new_model: bool,
     ) -> Result<(), Error> {
@@ -552,19 +553,27 @@ impl Decoder {
 
         let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
         let mut bits = MsbBitReader::new(&payload[payload_offset..]);
-        let output_end = output
-            .len()
+        let output_end = output_pos
             .checked_add(raw_len)
             .ok_or(Error::OutputOverrun {
                 requested: raw_len,
                 remaining: 0,
             })?;
+        if output_end > output.len() {
+            return Err(Error::OutputOverrun {
+                requested: raw_len,
+                remaining: output.len().saturating_sub(*output_pos),
+            });
+        }
         let mut recent = [20usize, 24, 28, 32];
 
-        while output.len() < output_end {
+        while *output_pos < output_end {
             let symbol = huffman.decode(&mut bits)?;
             match classify_symbol(symbol)? {
-                SymbolCode::Literal(byte) => output.push(byte),
+                SymbolCode::Literal(byte) => {
+                    output[*output_pos] = byte;
+                    *output_pos += 1;
+                }
                 SymbolCode::Recent {
                     selector_bits,
                     length,
@@ -576,7 +585,7 @@ impl Decoder {
                     let distance = recent[selector];
                     recent[..=selector].rotate_right(1);
                     let match_len = decode_length(&mut bits, length)?;
-                    copy_match(output, output_end, distance, match_len)?;
+                    copy_match_into(output, output_pos, output_end, distance, match_len)?;
                 }
                 SymbolCode::Explicit { distance, length } => {
                     let match_distance = usize::try_from(distance.base)
@@ -594,7 +603,7 @@ impl Decoder {
                     }
 
                     let match_len = decode_length(&mut bits, length)?;
-                    copy_match(output, output_end, match_distance, match_len)?;
+                    copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
                 }
             }
         }
@@ -636,19 +645,20 @@ fn decode_length(bits: &mut MsbBitReader<'_>, code: LengthCode) -> Result<usize,
 }
 
 #[inline(always)]
-fn copy_match(
-    output: &mut Vec<u8>,
+fn copy_match_into(
+    output: &mut [u8],
+    output_pos: &mut usize,
     output_end: usize,
     distance: usize,
     length: usize,
 ) -> Result<(), Error> {
-    if distance == 0 || distance > output.len() {
+    if distance == 0 || distance > *output_pos {
         return Err(Error::InvalidMatchDistance {
             distance,
-            produced: output.len(),
+            produced: *output_pos,
         });
     }
-    let remaining = output_end - output.len();
+    let remaining = output_end - *output_pos;
     if length > remaining {
         return Err(Error::OutputOverrun {
             requested: length,
@@ -659,27 +669,29 @@ fn copy_match(
         return Ok(());
     }
 
-    let match_start = output.len();
+    let match_start = *output_pos;
     let source_start = match_start - distance;
     let seed = length.min(distance);
-    output.extend_from_within(source_start..source_start + seed);
+    output.copy_within(source_start..source_start + seed, match_start);
+    *output_pos += seed;
 
-    // Once one seed exists in the output, copy from the newly-produced match
-    // itself. This preserves LZ overlap semantics while growing geometrically
-    // instead of pushing one byte at a time for short-distance matches.
+    // Preserve LZ overlap semantics by doubling from already-produced output.
+    // This takes O(log(length)) bulk copies for tiny match distances.
     let mut produced = seed;
     while produced < length {
         let chunk = (length - produced).min(produced);
-        output.extend_from_within(match_start..match_start + chunk);
+        output.copy_within(match_start..match_start + chunk, match_start + produced);
         produced += chunk;
+        *output_pos += chunk;
     }
     Ok(())
 }
 
-pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, Error> {
+pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    let expected_raw_len = output.len();
     let spans = crate::scan_frame(input, expected_raw_len)?;
     let mut decoder = Decoder::new();
-    let mut output = Vec::with_capacity(expected_raw_len);
+    let mut output_pos = 0usize;
 
     for span in spans {
         if span.block.decoder_type != crate::DecoderType::Lzh {
@@ -703,7 +715,13 @@ pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, E
                 let payload = input
                     .get(payload_start..payload_end)
                     .ok_or(Error::Truncated)?;
-                decoder.decode_quantum(payload, &mut output, span.raw_len, flag1)?;
+                decoder.decode_quantum_into(
+                    payload,
+                    output,
+                    &mut output_pos,
+                    span.raw_len,
+                    flag1,
+                )?;
             }
             crate::QuantumKind::Raw => {
                 let (payload_start, payload_end) = if span.block.uncompressed {
@@ -728,24 +746,68 @@ pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, E
                 let payload = input
                     .get(payload_start..payload_end)
                     .ok_or(Error::Truncated)?;
-                output.extend_from_slice(payload);
+                let end = output_pos
+                    .checked_add(span.raw_len)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining: 0,
+                    })?;
+                output
+                    .get_mut(output_pos..end)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining: output.len().saturating_sub(output_pos),
+                    })?
+                    .copy_from_slice(payload);
+                output_pos = end;
             }
             crate::QuantumKind::Memset { value } => {
-                output.resize(output.len() + span.raw_len, value);
+                let end = output_pos
+                    .checked_add(span.raw_len)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining: 0,
+                    })?;
+                output
+                    .get_mut(output_pos..end)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining: output.len().saturating_sub(output_pos),
+                    })?
+                    .fill(value);
+                output_pos = end;
             }
             crate::QuantumKind::WholeMatch { distance } => {
-                let output_end = output.len() + span.raw_len;
-                copy_match(&mut output, output_end, distance, span.raw_len)?;
+                let output_end =
+                    output_pos
+                        .checked_add(span.raw_len)
+                        .ok_or(Error::OutputOverrun {
+                            requested: span.raw_len,
+                            remaining: 0,
+                        })?;
+                copy_match_into(
+                    output,
+                    &mut output_pos,
+                    output_end,
+                    distance,
+                    span.raw_len,
+                )?;
             }
         }
     }
 
-    if output.len() != expected_raw_len {
+    if output_pos != expected_raw_len {
         return Err(Error::OutputOverrun {
             requested: expected_raw_len,
-            remaining: expected_raw_len.saturating_sub(output.len()),
+            remaining: expected_raw_len.saturating_sub(output_pos),
         });
     }
+    Ok(())
+}
+
+pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, Error> {
+    let mut output = vec![0u8; expected_raw_len];
+    decode_stream_into(input, &mut output)?;
     Ok(output)
 }
 
