@@ -85,7 +85,9 @@ jobs:
                   'raw_size':len(dec),
                   'wire_type':wire_type,
                   'stored_sha1':hashlib.sha1(comp).hexdigest(),
+                  'stored_prefix_hex':comp[:64].hex(),
                   'reference_sha256':hashlib.sha256(dec).hexdigest(),
+                  'reference_prefix_hex':dec[:64].hex(),
                   'stem':stem,
               })
               if len(rows)>=8:
@@ -112,24 +114,35 @@ jobs:
               comp=Path('vectors')/(row['stem']+'.comp')
               ref=Path('vectors')/(row['stem']+'.ref')
               out=Path('vectors')/(row['stem']+'.rust')
-              subprocess.run([str(exe),str(comp),str(row['raw_size']),str(out)],check=True)
+              p=subprocess.run([str(exe),str(comp),str(row['raw_size']),str(out)],text=True,capture_output=True)
+              row['native_returncode']=p.returncode
+              row['native_stdout']=p.stdout[-2000:]
+              row['native_stderr']=p.stderr[-2000:]
+              if p.returncode != 0:
+                  row['native_status']='rejected'
+                  print('NATIVE_REJECT',row['block_index'],p.stderr.strip())
+                  continue
               a=ref.read_bytes(); b=out.read_bytes()
               if a!=b:
-                  for i,(x,y) in enumerate(zip(a,b)):
-                      if x!=y:
-                          raise SystemExit(f"block {row['block_index']} mismatch at {i:#x}: ref={x:02x} rust={y:02x}")
-                  raise SystemExit(f"block {row['block_index']} length mismatch {len(a)} != {len(b)}")
+                  row['native_status']='mismatch'
+                  row['native_sha256']=hashlib.sha256(b).hexdigest()
+                  print('NATIVE_MISMATCH',row['block_index'])
+                  continue
               got=hashlib.sha256(b).hexdigest()
-              if got!=row['reference_sha256']:
-                  raise SystemExit(f"block {row['block_index']} SHA mismatch")
+              row['native_status']='byte_identical'
+              row['native_sha256']=got
               print('BYTE_IDENTICAL',row['block_index'],'wire',row['wire_type'],'raw',hex(row['raw_size']),got)
-          print('D1_OODLE3_NATIVE_RUST_DIFFERENTIAL_GREEN',len(rows))
+          Path('vectors/manifest.json').write_text(json.dumps(rows,indent=2)+'\n')
+          green=sum(r.get('native_status')=='byte_identical' for r in rows)
+          print('D1_OODLE3_NATIVE_RUST_DIFFERENTIAL_RESULT',green,'/',len(rows))
+          if green != len(rows):
+              raise SystemExit(2)
           PY
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: d1-oodle3-native-differential
-          path: vectors/manifest.json
-          retention-days: 30
+          path: vectors/
+          retention-days: 1
           if-no-files-found: error
