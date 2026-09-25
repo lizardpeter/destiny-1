@@ -1004,6 +1004,41 @@ impl Decoder {
         self.has_model = false;
     }
 
+    #[inline(never)]
+    fn install_model(&mut self, payload: &[u8]) -> Result<usize, Error> {
+        #[cfg(feature = "stage_profile")]
+        let parse_started = std::time::Instant::now();
+        let model = FixedLzhModel::parse(payload)?;
+        #[cfg(feature = "stage_profile")]
+        stage_profile::model_parse(
+            parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+        );
+
+        let payload_offset = model.consumed_bits.div_ceil(8);
+        if payload_offset > payload.len() {
+            return Err(Error::Truncated);
+        }
+        #[cfg(feature = "profile")]
+        profile::model(model.used_symbols);
+
+        #[cfg(feature = "stage_profile")]
+        let table_started = std::time::Instant::now();
+        if let Some(huffman) = self.huffman.as_mut() {
+            huffman.rebuild_fixed(&model)?;
+        } else {
+            let mut huffman = CanonicalDecoder::empty();
+            huffman.rebuild_fixed(&model)?;
+            self.huffman = Some(huffman);
+        }
+        #[cfg(feature = "stage_profile")]
+        stage_profile::table_build(
+            table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+        );
+
+        self.has_model = true;
+        Ok(payload_offset)
+    }
+
     pub fn decode_quantum_into(
         &mut self,
         payload: &[u8],
@@ -1014,39 +1049,11 @@ impl Decoder {
     ) -> Result<(), Error> {
         #[cfg(feature = "profile")]
         profile::quantum();
-        let mut payload_offset = 0usize;
-        if has_new_model {
-            #[cfg(feature = "stage_profile")]
-            let parse_started = std::time::Instant::now();
-            let model = FixedLzhModel::parse(payload)?;
-            #[cfg(feature = "stage_profile")]
-            stage_profile::model_parse(
-                parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-            );
-
-            payload_offset = model.consumed_bits.div_ceil(8);
-            if payload_offset > payload.len() {
-                return Err(Error::Truncated);
-            }
-            #[cfg(feature = "profile")]
-            profile::model(model.used_symbols);
-
-            #[cfg(feature = "stage_profile")]
-            let table_started = std::time::Instant::now();
-            if let Some(huffman) = self.huffman.as_mut() {
-                huffman.rebuild_fixed(&model)?;
-            } else {
-                let mut huffman = CanonicalDecoder::empty();
-                huffman.rebuild_fixed(&model)?;
-                self.huffman = Some(huffman);
-            }
-            #[cfg(feature = "stage_profile")]
-            stage_profile::table_build(
-                table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-            );
-
-            self.has_model = true;
-        }
+        let payload_offset = if has_new_model {
+            self.install_model(payload)?
+        } else {
+            0
+        };
 
         if !self.has_model {
             return Err(Error::MissingModel);
