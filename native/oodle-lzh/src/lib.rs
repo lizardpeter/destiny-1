@@ -42,7 +42,10 @@ pub enum Error {
     HuffmanCodeLengthWidthOutOfRange(u8),
     HuffmanCodeLengthOutOfRange(u8),
     HuffmanDuplicateSymbol(usize),
-    HuffmanComplexCodebookNotImplemented,
+    HuffmanRunOutOfRange(usize),
+    HuffmanPackedRunOutOfRange(usize),
+    HuffmanComplexCodeLengthOutOfRange(i32),
+    HuffmanFinalCodeLengthOutOfRange(u8),
     HuffmanCodebookNotImplemented,
 }
 
@@ -199,10 +202,11 @@ impl HuffmanCodebook {
     /// bits used to serialize (code_length - 1), followed by that many
     /// (symbol, code_length) pairs.
     pub fn read(bits: &mut BitReader<'_>, alphabet_size: usize) -> Result<Self, Error> {
-        if bits.read_bit()? != 0 {
-            return Err(Error::HuffmanComplexCodebookNotImplemented);
+        if bits.read_bit()? == 0 {
+            Self::read_sparse_after_mode(bits, alphabet_size)
+        } else {
+            Self::read_complex_after_mode(bits, alphabet_size)
         }
-        Self::read_sparse_after_mode(bits, alphabet_size)
     }
 
     pub fn read_sparse_after_mode(
@@ -266,6 +270,69 @@ impl HuffmanCodebook {
         })
     }
 
+
+    /// Read the packed/run-coded rrHuffman serialization used when the
+    /// leading mode bit is one.
+    ///
+    /// The stream alternates zero runs and nonzero runs. Run lengths use the
+    /// same order-1 exponential-Golomb-like code seen in the DLL. Each
+    /// nonzero code length is an adaptive prediction plus a ZigZag signed
+    /// delta whose unsigned magnitude is Rice-coded with the 2-bit parameter
+    /// stored immediately after the mode bit.
+    pub fn read_complex_after_mode(
+        bits: &mut BitReader<'_>,
+        alphabet_size: usize,
+    ) -> Result<Self, Error> {
+        let rice_k = bits.read_bits(2)? as u8;
+        let mut predictor = (4 * ceil_log2(alphabet_size)) as i32;
+        let mut code_lengths = vec![0u8; alphabet_size];
+        let mut pos = 0usize;
+        let mut used = 0usize;
+
+        while pos < alphabet_size {
+            let zero_run = read_packed_run_len(bits)?;
+            if zero_run > alphabet_size - pos {
+                return Err(Error::HuffmanRunOutOfRange(zero_run));
+            }
+            pos += zero_run;
+            if pos == alphabet_size {
+                break;
+            }
+
+            let packed = read_packed_run_len(bits)?;
+            if packed > alphabet_size - pos {
+                return Err(Error::HuffmanPackedRunOutOfRange(packed));
+            }
+
+            for _ in 0..packed {
+                let unsigned_delta = read_rice_unsigned(bits, rice_k)?;
+                let delta = zigzag_decode(unsigned_delta);
+                let predicted = (predictor + 2) >> 2;
+                let cur = predicted + delta;
+                if !(1..=30).contains(&cur) {
+                    return Err(Error::HuffmanComplexCodeLengthOutOfRange(cur));
+                }
+
+                code_lengths[pos] = cur as u8;
+                used += 1;
+                predictor = ((3 * predictor + 2) >> 2) + cur;
+                pos += 1;
+            }
+        }
+
+        if let Some(max_len) = code_lengths.iter().copied().max().filter(|&x| x != 0) {
+            if max_len > 16 {
+                return Err(Error::HuffmanFinalCodeLengthOutOfRange(max_len));
+            }
+        }
+
+        Ok(Self {
+            code_lengths,
+            used_symbols: used,
+            one_symbol: None,
+        })
+    }
+
     pub fn min_code_len(&self) -> Option<u8> {
         self.code_lengths.iter().copied().filter(|&x| x != 0).min()
     }
@@ -273,6 +340,35 @@ impl HuffmanCodebook {
     pub fn max_code_len(&self) -> Option<u8> {
         self.code_lengths.iter().copied().max().filter(|&x| x != 0)
     }
+}
+
+
+fn read_packed_run_len(bits: &mut BitReader<'_>) -> Result<usize, Error> {
+    // The DLL consumes 0^z, a one bit, and then (z+1) payload bits.
+    // If the resulting (z+2)-bit value is V, RunLen = V - 1.
+    let mut zeros = 0u8;
+    while bits.read_bit()? == 0 {
+        zeros = zeros.checked_add(1).ok_or(Error::UnexpectedEof)?;
+    }
+    let suffix_bits = zeros.checked_add(1).ok_or(Error::UnexpectedEof)?;
+    let suffix = bits.read_bits(suffix_bits)? as usize;
+    Ok((1usize << suffix_bits) + suffix - 1)
+}
+
+fn read_rice_unsigned(bits: &mut BitReader<'_>, k: u8) -> Result<u32, Error> {
+    let mut quotient = 0u32;
+    while bits.read_bit()? == 0 {
+        quotient = quotient.checked_add(1).ok_or(Error::UnexpectedEof)?;
+    }
+    let remainder = bits.read_bits(k)?;
+    quotient
+        .checked_shl(k as u32)
+        .and_then(|x| x.checked_add(remainder))
+        .ok_or(Error::UnexpectedEof)
+}
+
+fn zigzag_decode(value: u32) -> i32 {
+    ((value >> 1) as i32) ^ -((value & 1) as i32)
 }
 
 fn ceil_log2(n: usize) -> u32 {
@@ -434,6 +530,55 @@ mod tests {
         assert_eq!(br.read_bits(4).unwrap(), 0b1011);
         assert_eq!(br.read_bits(5).unwrap(), 0b00100);
         assert_eq!(br.bit_pos(), 9);
+    }
+
+    #[test]
+    fn packed_run_length_ranges_match_dll_encoding() {
+        // 10 -> 1, 11 -> 2, 0100 -> 3, 0110 -> 5.
+        for (byte, expected) in [
+            (0b1000_0000u8, 1usize),
+            (0b1100_0000u8, 2usize),
+            (0b0100_0000u8, 3usize),
+            (0b0110_0000u8, 5usize),
+        ] {
+            let mut br = BitReader::new(&[byte], 0);
+            assert_eq!(read_packed_run_len(&mut br).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn rice_zigzag_delta_matches_reversed_inner_loop() {
+        // k=1: 1|0 => u=0 => 0; 1|1 => u=1 => -1;
+        // 01|0 => q=1,r=0 => u=2 => +1.
+        let mut a = BitReader::new(&[0b1000_0000], 0);
+        assert_eq!(zigzag_decode(read_rice_unsigned(&mut a, 1).unwrap()), 0);
+        let mut b = BitReader::new(&[0b1100_0000], 0);
+        assert_eq!(zigzag_decode(read_rice_unsigned(&mut b, 1).unwrap()), -1);
+        let mut c = BitReader::new(&[0b0100_0000], 0);
+        assert_eq!(zigzag_decode(read_rice_unsigned(&mut c, 1).unwrap()), 1);
+    }
+
+    #[test]
+    fn complex_huffman_run_and_predictor_path() {
+        // alphabet=8 => initial predictor=12, predicted length=3.
+        // mode=1, rice k=0; zero run=1; packed run=2;
+        // two zero deltas => lengths 3,3; final zero run=5.
+        let bits = [
+            1, 0,0, // complex mode, rice k=0
+            1,0, // zero run 1
+            1,1, // packed run 2
+            1, // Rice u=0
+            1, // Rice u=0
+            0,1,1,0, // zero run 5
+        ];
+        let mut packed = vec![0u8; (bits.len()+7)/8];
+        for (i,&b) in bits.iter().enumerate() {
+            packed[i/8] |= b << (7-(i&7));
+        }
+        let mut br = BitReader::new(&packed,0);
+        let h = HuffmanCodebook::read(&mut br,8).unwrap();
+        assert_eq!(h.used_symbols,2);
+        assert_eq!(h.code_lengths, vec![0,3,3,0,0,0,0,0]);
     }
 
     #[test]
