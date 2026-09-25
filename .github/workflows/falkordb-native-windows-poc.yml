@@ -30,12 +30,23 @@ jobs:
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Cache native GraphBLAS/LAGraph
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: tools/falkordb-windows-native/build/native-prefix
+          key: falkordb-native-win-gb10.5-lagraph1.3-compact-nojit-noomp-v1
+
       - name: Bootstrap native dependencies
         shell: pwsh
         working-directory: tools/falkordb-windows-native
         run: |
           Set-ExecutionPolicy -Scope Process Bypass
-          .\scripts\bootstrap_windows.ps1
+          if ("${{ steps.native-cache.outputs.cache-hit }}" -eq "true") {
+            .\scripts\bootstrap_windows.ps1 -SkipNativeDeps
+          } else {
+            .\scripts\bootstrap_windows.ps1
+          }
 
       - name: Compile link and execute smoke
         shell: pwsh
