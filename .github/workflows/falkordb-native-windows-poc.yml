@@ -1,0 +1,46 @@
+name: FalkorDB native Windows POC
+
+on:
+  push:
+    branches:
+      - 'ci/falkordb-native-windows-poc'
+  workflow_dispatch:
+
+jobs:
+  windows-native:
+    runs-on: windows-2025
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install LLVM
+        shell: pwsh
+        run: |
+          choco install llvm -y --no-progress
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Bootstrap native dependencies
+        shell: pwsh
+        working-directory: tools/falkordb-windows-native
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass
+          .\scripts\bootstrap_windows.ps1
+
+      - name: Compile link and execute smoke
+        shell: pwsh
+        working-directory: tools/falkordb-windows-native
+        run: .\scripts\diagnose.ps1
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-diagnostics
+          path: tools/falkordb-windows-native/build/logs
