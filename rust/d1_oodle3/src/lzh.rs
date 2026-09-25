@@ -449,24 +449,9 @@ impl CanonicalDecoder {
             }
         }
 
-        // Slow path is only needed for codes longer than the 10-bit prefix
-        // table (or for the final few payload bits).
-        if bits.remaining_bits() >= usize::from(self.max_len) {
-            let window = bits.peek_bits(usize::from(self.max_len))? as u32;
-            for len in (usize::from(FAST_DECODE_BITS) + 1)..=usize::from(self.max_len) {
-                let code = window >> (usize::from(self.max_len) - len);
-                let first = self.first_code[len];
-                let count = u32::from(self.counts[len]);
-                if code >= first && code - first < count {
-                    let index = self.first_symbol[len] + (code - first) as usize;
-                    let symbol = *self.symbols.get(index).ok_or(Error::InvalidHuffmanCode)?;
-                    bits.skip_bits(len)?;
-                    return Ok(usize::from(symbol));
-                }
-            }
-            return Err(Error::InvalidHuffmanCode);
-        }
-
+        // Codes longer than the 10-bit table stay on the proven canonical
+        // fallback. They are uncommon in real D1 payloads, so retaining this
+        // path costs little while keeping the historical 16-bit edge cases exact.
         let mut code = 0u32;
         for len in 1..=usize::from(self.max_len) {
             code = (code << 1) | u32::from(bits.read_bit()?);
