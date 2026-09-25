@@ -12,7 +12,7 @@ import hashlib
 import json
 import math
 import re
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path
 
 import pefile
@@ -76,12 +76,20 @@ def walk_function(md: Cs, image: bytes, text_va: int, text_end: int, start: int,
                 break
             ins = decoded[0]
             seen_ins.add(pc)
+            imm_values = []
+            try:
+                imm_values = [
+                    int(op.imm) for op in ins.operands if op.type == X86_OP_IMM
+                ]
+            except Exception:
+                pass
             rows.append({
                 "address": pc,
                 "size": ins.size,
                 "mnemonic": ins.mnemonic,
                 "op_str": ins.op_str,
                 "bytes": ins.bytes.hex(),
+                "immediates": imm_values,
             })
             nxt = pc + ins.size
 
@@ -113,6 +121,20 @@ def walk_function(md: Cs, image: bytes, text_va: int, text_end: int, start: int,
         truncated = True
 
     rows.sort(key=lambda x: x["address"])
+    mnemonic_counts = Counter(row["mnemonic"] for row in rows)
+    small_immediates = Counter()
+    compare_immediates = Counter()
+    mask_immediates = Counter()
+    for row in rows:
+        for imm in row["immediates"]:
+            if -0x10000 <= imm <= 0x10000:
+                small_immediates[imm] += 1
+            if row["mnemonic"] in ("cmp", "test") and -0x100000 <= imm <= 0x100000:
+                compare_immediates[imm] += 1
+            if row["mnemonic"] in ("and", "or", "xor", "test") and -0x100000 <= imm <= 0x100000:
+                mask_immediates[imm] += 1
+
+    body = b"".join(bytes.fromhex(row["bytes"]) for row in rows)
     return {
         "start": start,
         "instruction_count": len(rows),
@@ -120,6 +142,13 @@ def walk_function(md: Cs, image: bytes, text_va: int, text_end: int, start: int,
         "direct_calls": sorted(calls),
         "edges": edges,
         "truncated": truncated,
+        "semantic_signature": {
+            "body_sha256": sha256(body),
+            "mnemonic_histogram": dict(sorted(mnemonic_counts.items())),
+            "small_immediates": {str(k): v for k, v in sorted(small_immediates.items())},
+            "compare_immediates": {str(k): v for k, v in sorted(compare_immediates.items())},
+            "mask_immediates": {str(k): v for k, v in sorted(mask_immediates.items())},
+        },
         "instructions": rows,
     }
 
@@ -244,7 +273,15 @@ def main() -> int:
         "text": {"va": text_va, "end_va": text_end, "size": len(text_bytes)},
         "reachable_function_count": len(funcs),
         "reachable_functions": [
-            {k: v for k, v in funcs[a].items() if k != "instructions"}
+            {
+                **{k: v for k, v in funcs[a].items() if k != "instructions"},
+                "rva": a - image_base,
+                "export_name": next(
+                    (e["name"] for e in exports if e["va"] == a and e["name"]),
+                    None,
+                ),
+                "direct_call_rvas": [x - image_base for x in funcs[a]["direct_calls"]],
+            }
             for a in sorted(funcs)
         ],
         "interesting_strings": interesting_strings(data),
