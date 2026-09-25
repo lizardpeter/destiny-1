@@ -1,4 +1,5 @@
 name: D1 Oodle3 combined-baseline paired benchmark
+# candidate: fused-entry-v2
 
 on:
   workflow_dispatch:
