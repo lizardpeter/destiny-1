@@ -751,19 +751,14 @@ impl FixedLzhModel {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct FastEntry {
-    symbol: u16,
-    len: u8,
-}
-
 #[derive(Debug, Clone)]
 struct CanonicalDecoder {
     counts: [u16; MAX_CODE_LEN as usize + 1],
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
-    fast: [FastEntry; 1 << FAST_DECODE_BITS],
+    fast_symbol: [u16; 1 << FAST_DECODE_BITS],
+    fast_len: [u8; 1 << FAST_DECODE_BITS],
     max_len: u8,
     one_char: Option<usize>,
 }
@@ -775,7 +770,8 @@ impl CanonicalDecoder {
             first_code: [0; MAX_CODE_LEN as usize + 1],
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
             symbols: Vec::new(),
-            fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
+            fast_symbol: [0; 1 << FAST_DECODE_BITS],
+            fast_len: [0; 1 << FAST_DECODE_BITS],
             max_len: 0,
             one_char: None,
         }
@@ -895,22 +891,18 @@ impl CanonicalDecoder {
 
                 let code = next_code[len_index];
                 next_code[len_index] += 1;
-                let entry = FastEntry {
-                    symbol: symbol as u16,
-                    len,
-                };
                 if len <= FAST_DECODE_BITS {
                     let shift = usize::from(FAST_DECODE_BITS - len);
                     let start = (code as usize) << shift;
                     let end = start + (1usize << shift);
-                    self.fast[start..end].fill(entry);
+                    self.fast_symbol[start..end].fill(symbol as u16);
+                    self.fast_len[start..end].fill(len);
                 } else {
                     let suffix_bits = usize::from(len - FAST_DECODE_BITS);
                     let prefix = (code as usize) >> suffix_bits;
-                    // Long codes are rare in D1. Mark the shared fast prefix as
-                    // a canonical fallback instead of constructing a secondary
-                    // table for it.
-                    self.fast[prefix] = FastEntry::default();
+                    // Long codes are rare in D1. A zero length is the fallback
+                    // sentinel; the symbol table need not be touched here.
+                    self.fast_len[prefix] = 0;
                 }
             }};
         }
@@ -939,12 +931,13 @@ impl CanonicalDecoder {
 
         bits.ensure_bits_fast(usize::from(FAST_DECODE_BITS));
         let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
-        let entry = unsafe { *self.fast.get_unchecked(prefix) };
-        if entry.len != 0 {
+        let len = unsafe { *self.fast_len.get_unchecked(prefix) };
+        if len != 0 {
+            let symbol = unsafe { *self.fast_symbol.get_unchecked(prefix) };
             #[cfg(feature = "profile")]
             profile::huffman_fast();
-            bits.consume_buffered(usize::from(entry.len));
-            return usize::from(entry.symbol);
+            bits.consume_buffered(usize::from(len));
+            return usize::from(symbol);
         }
 
         bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));
@@ -976,12 +969,13 @@ impl CanonicalDecoder {
         if remaining_bits >= usize::from(FAST_DECODE_BITS) {
             bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
             let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
-            let entry = self.fast[prefix];
-            if entry.len != 0 {
+            let len = self.fast_len[prefix];
+            if len != 0 {
+                let symbol = self.fast_symbol[prefix];
                 #[cfg(feature = "profile")]
                 profile::huffman_fast();
-                bits.consume_buffered(usize::from(entry.len));
-                return Ok(usize::from(entry.symbol));
+                bits.consume_buffered(usize::from(len));
+                return Ok(usize::from(symbol));
             }
 
 
