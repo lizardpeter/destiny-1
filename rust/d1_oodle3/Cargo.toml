@@ -13,8 +13,15 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 profile = []
+stage_profile = []
 
 [[bin]]
 name = "profile_decode"
 path = "src/bin/profile_decode.rs"
 required-features = ["profile"]
+
+
+[[bin]]
+name = "stage_profile_decode"
+path = "src/bin/stage_profile_decode.rs"
+required-features = ["stage_profile"]
