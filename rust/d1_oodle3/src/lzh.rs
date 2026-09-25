@@ -1571,68 +1571,49 @@ fn decode_stream_into_generic(input: &[u8], output: &mut [u8]) -> Result<(), Err
 }
 
 #[inline]
-fn is_b7_all_compressed(input: &[u8], expected_raw_len: usize) -> bool {
-    if expected_raw_len == 0
-        || expected_raw_len > crate::BLOCK_LEN
-        || input.first().copied() != Some(0xb7)
-    {
-        return false;
+fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    let output_len = output.len();
+    if output_len == 0 || output_len > crate::BLOCK_LEN || input.first().copied() != Some(0xb7) {
+        return decode_stream_into_generic(input, output);
     }
-
-    let mut input_pos = 1usize;
-    let mut output_pos = 0usize;
-    while output_pos < expected_raw_len {
-        if input_pos + 2 > input.len() {
-            return false;
-        }
-        let header =
-            u16::from_be_bytes([input[input_pos], input[input_pos + 1]]) as usize;
-        let size_field = header & 0x3fff;
-        if size_field == 0x3fff {
-            return false;
-        }
-        let stored_size = size_field + 1;
-        let raw_len = crate::LEGACY_QUANTUM_LEN.min(expected_raw_len - output_pos);
-        if stored_size > raw_len {
-            return false;
-        }
-        input_pos += 2;
-        let Some(next_input) = input_pos.checked_add(stored_size) else {
-            return false;
-        };
-        if next_input > input.len() {
-            return false;
-        }
-        input_pos = next_input;
-        output_pos += raw_len;
-    }
-
-    input_pos == input.len()
-}
-
-#[inline]
-fn decode_stream_into_b7_compressed(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
-    debug_assert!(is_b7_all_compressed(input, output.len()));
 
     let mut decoder = Decoder::new();
     decoder.reset();
     let mut input_pos = 1usize;
     let mut output_pos = 0usize;
-    let output_len = output.len();
 
     while output_pos < output_len {
-        let header = unsafe {
-            u16::from_be_bytes([
-                *input.get_unchecked(input_pos),
-                *input.get_unchecked(input_pos + 1),
-            ])
-        } as usize;
-        input_pos += 2;
+        let header_bytes = input
+            .get(input_pos..input_pos + 2)
+            .ok_or(Error::Truncated)?;
+        let header = u16::from_be_bytes([header_bytes[0], header_bytes[1]]) as usize;
 
+        // Rare legacy special quanta (raw/memset/whole-match) stay on the
+        // fully general path. Restarting from the beginning is correct and
+        // costs nothing for the overwhelmingly common all-compressed D1 case.
+        if (header & 0x3fff) == 0x3fff {
+            return decode_stream_into_generic(input, output);
+        }
+
+        input_pos += 2;
         let stored_size = (header & 0x3fff) + 1;
         let raw_len = crate::LEGACY_QUANTUM_LEN.min(output_len - output_pos);
-        let payload_end = input_pos + stored_size;
-        let payload = unsafe { input.get_unchecked(input_pos..payload_end) };
+        if stored_size > raw_len {
+            return Err(Error::StoredSizeExceedsRaw {
+                stored: stored_size,
+                raw: raw_len,
+            });
+        }
+
+        let payload_end = input_pos
+            .checked_add(stored_size)
+            .ok_or(Error::Truncated)?;
+        let payload = input
+            .get(input_pos..payload_end)
+            .ok_or(Error::StoredSizeExceedsInput {
+                stored: stored_size,
+                available: input.len().saturating_sub(input_pos),
+            })?;
 
         decoder.decode_quantum_into(
             payload,
@@ -1644,12 +1625,17 @@ fn decode_stream_into_b7_compressed(input: &[u8], output: &mut [u8]) -> Result<(
         input_pos = payload_end;
     }
 
+    if input_pos != input.len() {
+        return Err(Error::TrailingInput {
+            remaining: input.len() - input_pos,
+        });
+    }
     Ok(())
 }
 
 pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
-    if is_b7_all_compressed(input, output.len()) {
-        decode_stream_into_b7_compressed(input, output)
+    if input.first().copied() == Some(0xb7) {
+        decode_stream_into_b7_common(input, output)
     } else {
         decode_stream_into_generic(input, output)
     }
