@@ -134,9 +134,8 @@ const fn build_token_codes() -> [SymbolCode; TOKEN_SYMBOLS] {
     while length_index < EXPLICIT_LENGTH_CLASS_COUNT {
         let mut distance_index = 0usize;
         while distance_index < EXPLICIT_DISTANCE_CLASS_COUNT {
-            let token = RECENT_TOKEN_COUNT
-                + length_index * EXPLICIT_DISTANCE_CLASS_COUNT
-                + distance_index;
+            let token =
+                RECENT_TOKEN_COUNT + length_index * EXPLICIT_DISTANCE_CLASS_COUNT + distance_index;
             codes[token] = SymbolCode::Explicit {
                 distance: EXPLICIT_DISTANCES[distance_index],
                 length: EXPLICIT_LENGTHS[length_index],
@@ -149,7 +148,6 @@ const fn build_token_codes() -> [SymbolCode; TOKEN_SYMBOLS] {
 }
 
 const TOKEN_CODES: [SymbolCode; TOKEN_SYMBOLS] = build_token_codes();
-
 
 #[inline(always)]
 pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
