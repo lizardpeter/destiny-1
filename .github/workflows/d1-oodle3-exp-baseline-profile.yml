@@ -1,4 +1,5 @@
 name: D1 Oodle3 baseline profile snapshot
+# preallocated-output rerun
 
 on:
   workflow_dispatch:
