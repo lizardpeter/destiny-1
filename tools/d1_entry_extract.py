@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import argparse, ctypes, hashlib, json, os, struct, sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
@@ -27,8 +28,7 @@ class EntryReader:
     def expected_raw_len(self,i:int)->int:
         used=self.block_used_end[i]
         return BLOCK_SIZE if used<=0 else min(BLOCK_SIZE,_align_up(used,RAW_QUANTUM))
-    def block(self,i:int)->bytes:
-        if i in self.cache:return self.cache[i]
+    def _decode_block(self,i:int)->bytes:
         b=self.blocks[i]; owner=patch_path(self.pkg,b['patch_id'])
         if not owner.exists(): raise FileNotFoundError(str(owner))
         with owner.open('rb') as f:f.seek(b['offset']); raw=f.read(b['size'])
@@ -39,15 +39,35 @@ class EntryReader:
         else: dec=raw
         if len(dec)>BLOCK_SIZE:raise RuntimeError(f'block {i} oversized')
         if len(dec)<BLOCK_SIZE:dec=dec+b'\0'*(BLOCK_SIZE-len(dec))
-        self.cache[i]=dec; return dec
+        return dec
+    def block(self,i:int)->bytes:
+        if i in self.cache:return self.cache[i]
+        dec=self._decode_block(i); self.cache[i]=dec; return dec
+    def entry_blocks(self,i:int)->range:
+        e=self.entries[i]; span=e['starting_block_offset']+e['file_size']; count=max(1,(span+BLOCK_SIZE-1)//BLOCK_SIZE)
+        return range(e['starting_block'],e['starting_block']+count)
+    def prefetch_entries(self,indices,workers:int=0)->int:
+        needed=sorted({b for i in indices for b in self.entry_blocks(i) if b not in self.cache})
+        if not needed:return 0
+        max_workers=workers if workers>0 else min(len(needed),max(1,os.cpu_count() or 1))
+        max_workers=max(1,min(max_workers,len(needed)))
+        if max_workers==1:
+            decoded=[self._decode_block(i) for i in needed]
+        else:
+            # ctypes WinDLL/CDLL calls release the Python GIL. D1 package blocks
+            # are independent restartable streams, so they can be decompressed
+            # concurrently without changing entry assembly semantics.
+            with ThreadPoolExecutor(max_workers=max_workers,thread_name_prefix='d1-oodle') as pool:
+                decoded=list(pool.map(self._decode_block,needed))
+        self.cache.update(zip(needed,decoded))
+        return len(needed)
     def entry(self,i:int)->bytes:
         e=self.entries[i]; remaining=e['file_size']; bi=e['starting_block']; off=e['starting_block_offset']; out=bytearray()
         while remaining:
             blk=self.block(bi); n=min(remaining,BLOCK_SIZE-off); out+=blk[off:off+n]; remaining-=n; bi+=1; off=0
         return bytes(out)
     def available(self,i:int)->bool:
-        e=self.entries[i]; span=e['starting_block_offset']+e['file_size']; count=max(1,(span+BLOCK_SIZE-1)//BLOCK_SIZE)
-        return all(patch_path(self.pkg,self.blocks[b]['patch_id']).exists() for b in range(e['starting_block'],e['starting_block']+count))
+        return all(patch_path(self.pkg,self.blocks[b]['patch_id']).exists() for b in self.entry_blocks(i))
 
 def u16(b,o): return struct.unpack_from('<H',b,o)[0]
 def s16(b,o): return struct.unpack_from('<h',b,o)[0]
@@ -83,7 +103,7 @@ def decode_known(e,b,platform):
     return d
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('pkg',type=Path); ap.add_argument('--runtime',type=Path,required=True); ap.add_argument('--types',nargs='*'); ap.add_argument('--all-available',action='store_true'); ap.add_argument('--entry',type=int,action='append'); ap.add_argument('--tag-hash',action='append'); ap.add_argument('-o','--output',type=Path); ap.add_argument('--dump-dir',type=Path)
+    ap=argparse.ArgumentParser(); ap.add_argument('pkg',type=Path); ap.add_argument('--runtime',type=Path,required=True); ap.add_argument('--types',nargs='*'); ap.add_argument('--all-available',action='store_true'); ap.add_argument('--entry',type=int,action='append'); ap.add_argument('--tag-hash',action='append'); ap.add_argument('-o','--output',type=Path); ap.add_argument('--dump-dir',type=Path); ap.add_argument('--workers',type=int,default=0,help='parallel block decoders; 0=auto, 1=serial')
     a=ap.parse_args(); r=EntryReader(a.pkg,a.runtime); wanted=None
     if a.types:
         wanted=set()
@@ -104,14 +124,19 @@ def main():
     else:
         inds=[e['index'] for e in r.entries if (wanted is None or (e['type'],e['subtype']) in wanted)]
     out=[]; unavailable=[]; errors=[]
-    for i in inds:
-        if not r.available(i): unavailable.append(i); continue
+    available_inds=[i for i in inds if r.available(i)]
+    unavailable=[i for i in inds if i not in set(available_inds)]
+    try:
+        prefetched=r.prefetch_entries(available_inds,workers=a.workers)
+    except Exception as ex:
+        raise SystemExit(f'parallel block prefetch failed: {ex!r}')
+    for i in available_inds:
         try:
             b=r.entry(i); d=decode_known(r.entries[i],b,r.h['platform']); out.append(d)
             if a.dump_dir:
                 a.dump_dir.mkdir(parents=True,exist_ok=True); (a.dump_dir/f"{r.entries[i]['tag_hash']}_{i:04d}_{r.entries[i]['type']}_{r.entries[i]['subtype']}.bin").write_bytes(b)
         except Exception as ex: errors.append({'index':i,'error':repr(ex)})
-    rep={'package':str(r.pkg),'platform':r.h['platform'],'pkg_id':r.h['pkg_id'],'selected':len(inds),'decoded':len(out),'missing_tag_hashes':missing_hashes,'unavailable':unavailable,'errors':errors,'entries':out}
+    rep={'package':str(r.pkg),'platform':r.h['platform'],'pkg_id':r.h['pkg_id'],'selected':len(inds),'decoded':len(out),'prefetched_blocks':prefetched,'workers':a.workers if a.workers>0 else max(1,os.cpu_count() or 1),'missing_tag_hashes':missing_hashes,'unavailable':unavailable,'errors':errors,'entries':out}
     text=json.dumps(rep,indent=2)
     if a.output:a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(text+'\n');print('wrote',a.output)
     else:print(text)
