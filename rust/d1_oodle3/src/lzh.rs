@@ -836,18 +836,28 @@ fn unfold_signed(value: i32) -> i32 {
 #[derive(Debug, Clone, Copy)]
 struct MsbBitReader<'a> {
     input: &'a [u8],
+    byte_pos: usize,
+    bit_buf: u64,
+    bit_count: u8,
     bit_pos: usize,
 }
 
 impl<'a> MsbBitReader<'a> {
     const fn new(input: &'a [u8]) -> Self {
-        Self { input, bit_pos: 0 }
+        Self {
+            input,
+            byte_pos: 0,
+            bit_buf: 0,
+            bit_count: 0,
+            bit_pos: 0,
+        }
     }
 
     const fn position(self) -> usize {
         self.bit_pos
     }
 
+    #[inline(always)]
     fn remaining_bits(&self) -> usize {
         self.input
             .len()
@@ -855,66 +865,84 @@ impl<'a> MsbBitReader<'a> {
             .saturating_sub(self.bit_pos)
     }
 
+    #[inline(always)]
+    fn ensure_bits(&mut self, count: usize) -> Result<(), Error> {
+        if count > 56
+            || self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8)
+        {
+            return Err(Error::Truncated);
+        }
+        while usize::from(self.bit_count) < count {
+            let byte = *self.input.get(self.byte_pos).ok_or(Error::Truncated)?;
+            let shift = 56usize
+                .checked_sub(usize::from(self.bit_count))
+                .ok_or(Error::Truncated)?;
+            self.bit_buf |= u64::from(byte) << shift;
+            self.bit_count += 8;
+            self.byte_pos += 1;
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
     fn read_bit(&mut self) -> Result<bool, Error> {
         Ok(self.read_bits(1)? != 0)
     }
 
     #[inline(always)]
-    fn peek_bits(&self, count: usize) -> Result<u64, Error> {
-        if count > 64 || self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8) {
+    fn peek_bits(&mut self, count: usize) -> Result<u64, Error> {
+        if count > 64 {
             return Err(Error::Truncated);
         }
         if count == 0 {
             return Ok(0);
         }
-
-        let byte_pos = self.bit_pos >> 3;
-        let bit_offset = self.bit_pos & 7;
-
-        // The payload hot path never asks for more than 16 bits. An aligned
-        // 64-bit big-endian window lets those reads collapse to a load+shifts.
-        if count <= 56 && byte_pos + 8 <= self.input.len() {
-            let word = u64::from_be_bytes(
-                self.input[byte_pos..byte_pos + 8]
-                    .try_into()
-                    .map_err(|_| Error::Truncated)?,
-            );
-            let shifted = word << bit_offset;
-            return Ok(shifted >> (64 - count));
+        if count > 56 {
+            let mut copy = *self;
+            return copy.read_bits(count);
         }
-
-        // Boundary/large-read fallback. This executes mainly while reading the
-        // final bytes of a quantum and keeps the general 64-bit API intact.
-        let byte_count = (bit_offset + count).div_ceil(8);
-        let mut acc = 0u128;
-        for &byte in self
-            .input
-            .get(byte_pos..byte_pos + byte_count)
-            .ok_or(Error::Truncated)?
-        {
-            acc = (acc << 8) | u128::from(byte);
-        }
-        let shift = byte_count * 8 - bit_offset - count;
-        let mask = if count == 64 {
-            u128::from(u64::MAX)
-        } else {
-            (1u128 << count) - 1
-        };
-        Ok(((acc >> shift) & mask) as u64)
+        self.ensure_bits(count)?;
+        Ok(self.bit_buf >> (64 - count))
     }
 
     #[inline(always)]
     fn skip_bits(&mut self, count: usize) -> Result<(), Error> {
-        if self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8) {
-            return Err(Error::Truncated);
+        if count > 56 {
+            let mut remaining = count;
+            while remaining > 56 {
+                self.skip_bits(56)?;
+                remaining -= 56;
+            }
+            return self.skip_bits(remaining);
         }
+        if count == 0 {
+            return Ok(());
+        }
+        self.ensure_bits(count)?;
+        self.bit_buf <<= count;
+        self.bit_count -= count as u8;
         self.bit_pos += count;
         Ok(())
     }
 
     #[inline(always)]
     fn read_bits(&mut self, count: usize) -> Result<u64, Error> {
-        let value = self.peek_bits(count)?;
+        if count > 64 {
+            return Err(Error::Truncated);
+        }
+        if count > 56 {
+            let tail = count - 56;
+            let high = self.read_bits(56)?;
+            let low = self.read_bits(tail)?;
+            return Ok((high << tail) | low);
+        }
+        if count == 0 {
+            return Ok(0);
+        }
+        self.ensure_bits(count)?;
+        let value = self.bit_buf >> (64 - count);
+        self.bit_buf <<= count;
+        self.bit_count -= count as u8;
         self.bit_pos += count;
         Ok(value)
     }
