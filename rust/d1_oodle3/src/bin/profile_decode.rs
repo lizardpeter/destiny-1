@@ -27,6 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("PROFILE_RAW_BYTES {}", decoded_bytes);
     println!("PROFILE_MODELS {}", s.models);
     println!("PROFILE_MODEL_SYMBOLS {}", s.model_symbols);
+    println!("PROFILE_MODEL_SPARSE {}", s.model_sparse);
+    println!("PROFILE_MODEL_RICE {}", s.model_rice);
+    println!("PROFILE_LONG_TABLES_TOTAL {}", s.long_tables_total);
+    println!("PROFILE_LONG_TABLES_MAX {}", s.long_tables_max);
     println!("PROFILE_QUANTA {}", s.quanta);
     println!("PROFILE_HUFFMAN_FAST {}", s.huffman_fast);
     println!("PROFILE_HUFFMAN_LONG {}", s.huffman_long);
