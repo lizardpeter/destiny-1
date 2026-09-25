@@ -1026,13 +1026,9 @@ impl Decoder {
 
             #[cfg(feature = "stage_profile")]
             let table_started = std::time::Instant::now();
-            if let Some(huffman) = self.huffman.as_mut() {
-                huffman.rebuild_fixed(&model)?;
-            } else {
-                let mut huffman = CanonicalDecoder::empty();
-                huffman.rebuild_fixed(&model)?;
-                self.huffman = Some(huffman);
-            }
+            self.huffman
+                .get_or_insert_with(CanonicalDecoder::empty)
+                .rebuild_fixed(&model)?;
             #[cfg(feature = "stage_profile")]
             stage_profile::table_build(
                 table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
