@@ -1,0 +1,152 @@
+name: D1 Oodle3 Rust cross-family corpus
+
+on:
+  push:
+    paths:
+      - 'rust/d1_oodle3/**'
+      - '.github/workflows/d1-oodle3-rust-cross-family.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-family:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact small current package members
+        run: |
+          set -euo pipefail
+          mkdir -p recovered runtime out
+          python - <<'PY'
+          import hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_globals_pvp_0169_5.pkg',20754878976,92160,'a8b7a449d03d0fedfb3ffb6280f40e5d1a8782bc360d22a50f3cd5b179fe500c'),
+            ('ps4_race_set_all_00ef_5.pkg',46274889728,184320,'80c462b23f22593d82efb78305921c830c9e64aa25fc5d4ceb25e705606dbb72'),
+            ('ps4_env_skies_01d1_4.pkg',15870362112,256000,'fe790b1d736708cfa583eb59b970ea098fbecdfaf9afba51e3e81a2552140102'),
+            ('ps4_shared_manifest_0432_6.pkg',0xB4728AE00,157696,'d9c4136409a07e0c700e3bc914a40f7db2baa85d6958b7954c343693bba2dd28'),
+          ]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          for name,off,size,expected in rows:
+              path=Path('recovered')/name
+              got=arc.copy_to(off,size,path)
+              if got.lower()!=expected:
+                  raise SystemExit(f'{name}: SHA mismatch {got} != {expected}')
+              print('RECOVERED',name,size,got)
+          PY
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build native Rust decoder
+        working-directory: rust/d1_oodle3
+        run: cargo build --release --bin native_decode
+
+      - name: Compare every resident compressed block in recovered members
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,subprocess,sys
+          from collections import Counter
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+          from d1_oodle_probe import Oodle3
+
+          reference=Oodle3(Path('runtime/liblinoodle3.so'))
+          exe=Path('rust/d1_oodle3/target/release/native_decode')
+          report={'packages':[],'rows':[],'failures':[]}
+          first_bytes=Counter()
+
+          for pkg in sorted(Path('recovered').glob('*.pkg')):
+              with pkg.open('rb') as f:
+                  h=parse_header(f)
+                  bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+              blocks=parse_blocks(bt)
+              patch=int(h['patch_id'])
+              resident=[b for b in blocks if b['compressed'] and int(b['patch_id'])==patch]
+              package_row={
+                  'name':pkg.name,'package_id':f"{int(h['pkg_id']):04X}",
+                  'patch_id':patch,'resident_compressed':len(resident),
+              }
+              report['packages'].append(package_row)
+              print('PACKAGE',package_row)
+
+              for b in resident:
+                  with pkg.open('rb') as f:
+                      f.seek(int(b['offset']))
+                      comp=f.read(int(b['size']))
+                  if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                      raise SystemExit(f"{pkg.name} block {b['index']} stored SHA mismatch")
+                  first=comp[0] if comp else None
+                  if first is not None:
+                      first_bytes[f'{first:02x}']+=1
+                  try:
+                      expected=reference.decompress_block(comp)
+                  except Exception as ex:
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'reference',
+                          'prefix':comp[:8].hex(),'error':repr(ex),
+                      })
+                      continue
+                  cp=Path('out')/f"{pkg.stem}_b{int(b['index']):04d}.comp"
+                  op=Path('out')/f"{pkg.stem}_b{int(b['index']):04d}.rust"
+                  cp.write_bytes(comp)
+                  p=subprocess.run([str(exe),str(cp),str(len(expected)),str(op)],text=True,capture_output=True)
+                  if p.returncode!=0:
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'rust',
+                          'prefix':comp[:8].hex(),'raw_size':len(expected),
+                          'stderr':p.stderr[-2000:],
+                      })
+                      continue
+                  actual=op.read_bytes()
+                  if actual!=expected:
+                      first_mismatch=next((i for i,(a,e) in enumerate(zip(actual,expected)) if a!=e),None)
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'compare',
+                          'prefix':comp[:8].hex(),'raw_size':len(expected),
+                          'first_mismatch':first_mismatch,
+                      })
+                      continue
+                  row={
+                      'package':pkg.name,'block':int(b['index']),
+                      'stored_size':len(comp),'raw_size':len(actual),
+                      'prefix':comp[:8].hex(),'sha256':hashlib.sha256(actual).hexdigest(),
+                  }
+                  report['rows'].append(row)
+                  print('CROSS_FAMILY_BYTE_IDENTICAL',row)
+
+          report['first_byte_census']=dict(first_bytes)
+          report['tested_ok']=len(report['rows'])
+          Path('out/cross_family.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('FIRST_BYTE_CENSUS',dict(first_bytes))
+          print('CROSS_FAMILY_OK',len(report['rows']))
+          if report['failures']:
+              print(json.dumps(report['failures'],indent=2))
+              raise SystemExit(f"{len(report['failures'])} cross-family failures")
+          if not report['rows']:
+              raise SystemExit('no resident compressed blocks found')
+          print('D1_OODLE23_RUST_CROSS_FAMILY_GREEN',len(report['rows']))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle23-rust-cross-family
+          path: out/cross_family.json
+          retention-days: 30
+          if-no-files-found: error
