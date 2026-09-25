@@ -1,0 +1,156 @@
+name: D1 Oodle3 packed entry benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-packed-entry-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  packed-entry:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact corpus and reference runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build previous-fastest and packed candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add ../previous 4f8982d79d0e28a05c93e47b75c1ed60b7dc91e1
+          (cd ../previous/rust/d1_oodle3 && CARGO_TARGET_DIR=target-packed-ab cargo build --release --lib)
+          mkdir -p out
+          cp ../previous/rust/d1_oodle3/target-packed-ab/release/d1_oodle3.dll out/previous.dll
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-packed-ab cargo build --release --lib)
+          cp rust/d1_oodle3/target-packed-ab/release/d1_oodle3.dll out/packed.dll
+
+      - name: A-B benchmark packed fast table
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise RuntimeError(f"sha mismatch {b['index']}")
+              cases.append((comp,0x40000))
+              if len(cases)>=8: break
+
+          fns={'reference':bind('reference/oo2core_3_win64.dll'),
+               'previous':bind('out/previous.dll'),
+               'packed':bind('out/packed.dll')}
+          bufs={k:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                   for c,raw in cases] for k in fns}
+
+          def call(name,i):
+              src,dst,cl,raw=bufs[name][i]
+              n=fns[name](ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                          1,0,0,None,None,None,None,None,None,3)
+              if n!=raw: raise RuntimeError(f'{name} returned {n}')
+              return dst.raw[:raw]
+
+          for i in range(len(cases)):
+              outs={k:call(k,i) for k in fns}
+              if not (outs['reference']==outs['previous']==outs['packed']):
+                  raise RuntimeError(f'correctness mismatch case {i}')
+
+          for _ in range(20):
+              for k in fns:
+                  for i in range(len(cases)): call(k,i)
+
+          iterations=80; rounds=11
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          samples={k:[] for k in fns}
+          packed_over_previous=[]
+          orders=[
+              ['previous','packed','reference'],
+              ['packed','previous','reference'],
+              ['reference','previous','packed'],
+              ['reference','packed','previous'],
+          ]
+          for r in range(rounds):
+              vals={}
+              for name in orders[r%len(orders)]:
+                  t0=time.perf_counter_ns()
+                  for _ in range(iterations):
+                      for i in range(len(cases)): call(name,i)
+                  sec=(time.perf_counter_ns()-t0)/1e9
+                  vals[name]=raw_bytes/sec/(1024*1024)
+                  samples[name].append(vals[name])
+              packed_over_previous.append(vals['packed']/vals['previous'])
+
+          med={k:statistics.median(v) for k,v in samples.items()}
+          report={
+              'median_mib_s':med,
+              'packed_over_previous_paired':packed_over_previous,
+              'packed_over_previous_ratio':statistics.median(packed_over_previous),
+              'packed_ratio_to_oodle':med['packed']/med['reference'],
+              'previous_ratio_to_oodle':med['previous']/med['reference'],
+              'samples':samples,
+          }
+          Path('out/packed_benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('PACKED_REFERENCE',med['reference'])
+          print('PACKED_PREVIOUS',med['previous'])
+          print('PACKED_CURRENT',med['packed'])
+          print('PACKED_OVER_PREVIOUS',report['packed_over_previous_ratio'])
+          print('PACKED_RATIO_TO_OODLE',report['packed_ratio_to_oodle'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-packed-entry-benchmark
+          path: out/packed_benchmark.json
+          retention-days: 30
+          if-no-files-found: error
