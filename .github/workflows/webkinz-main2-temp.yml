@@ -1,0 +1,45 @@
+name: Temporary Webkinz main2 decompile
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  main2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Decompile live main2.swf
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out/source out/meta
+          curl -L --fail --retry 3 -o ffdec.zip             "https://github.com/jindrapetrik/jpexs-decompiler/releases/download/version26.3.0/ffdec_26.3.0.zip"
+          unzip -q ffdec.zip -d ffdec
+          curl -L --fail --retry 3 -o main2.swf             "https://www.webkinz.com/SWF/main2.swf?v=v390_249"
+
+          java -Xmx3g -jar ffdec/ffdec.jar -cli -timeout 45 -exportTimeout 360             -onerror ignore -export script out/source main2.swf             > out/meta/export.log 2>&1 || true
+
+          find out/source -type f -printf '%p\t%s\n' | sort > out/meta/files.txt
+          grep -RhaoE 'https?://[^"'"'"' <>)]+' out/source > out/urls.txt 2>/dev/null || true
+          grep -RhaoE '([A-Za-z0-9_.%+ -]+/)+[A-Za-z0-9_.%+?=&-]+\.(swf|xml|php|jpg|jpeg|png|gif|mp3|wav|flv|json|js)(\?[^"'"'"' <>)]*)?' out/source > out/paths.txt 2>/dev/null || true
+          sort -u -o out/urls.txt out/urls.txt
+          sort -u -o out/paths.txt out/paths.txt
+          {
+            echo "files: $(find out/source -type f | wc -l)"
+            echo "=== urls ==="
+            cat out/urls.txt
+            echo "=== paths ==="
+            cat out/paths.txt
+          } > out/SUMMARY.txt
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webkinz-main2-decompile
+          path: out/
+          retention-days: 7
