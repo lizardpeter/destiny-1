@@ -1,0 +1,104 @@
+name: D1 Oodle3 fuzzSafe single-thread benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-fuzzsafe-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fuzzsafe:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover Tower package and Oodle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(7715401728,1687552,Path('recovered/ps4_city_tower_destination_024c_5.pkg'))
+          if got.lower()!='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311':
+              raise SystemExit(got)
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
+      - name: Compare fuzzSafe 0 vs 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          dll=ctypes.WinDLL(str(Path('reference/oo2core_3_win64.dll').resolve()))
+          fn=dll.OodleLZ_Decompress
+          fn.restype=ctypes.c_int64
+          fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                       ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                       ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,
+                       ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha')
+              src=ctypes.create_string_buffer(comp)
+              cases.append((src,len(comp),0x40000))
+              if len(cases)>=8: break
+
+          bufs={m:[ctypes.create_string_buffer(raw) for _,_,raw in cases] for m in (0,1)}
+          def call(mode,i):
+              src,n,raw=cases[i]; dst=bufs[mode][i]
+              got=fn(ctypes.cast(src,ctypes.c_void_p),n,ctypes.cast(dst,ctypes.c_void_p),raw,
+                     mode,0,0,None,None,None,None,None,None,3)
+              if got!=raw: raise RuntimeError((mode,i,got))
+          for i in range(len(cases)):
+              call(0,i); call(1,i)
+              if bufs[0][i].raw!=bufs[1][i].raw: raise RuntimeError(f'mismatch {i}')
+          for _ in range(20):
+              for mode in (0,1):
+                  for i in range(len(cases)): call(mode,i)
+
+          iterations=90; rounds=11; raw_bytes=sum(x[2] for x in cases)*iterations
+          def once(mode):
+              t0=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for i in range(len(cases)): call(mode,i)
+              sec=(time.perf_counter_ns()-t0)/1e9
+              return raw_bytes/sec/(1024*1024)
+          samples={0:[],1:[]}; ratios=[]
+          for r in range(rounds):
+              order=(0,1) if r%2==0 else (1,0)
+              vals={}
+              for m in order: vals[m]=once(m); samples[m].append(vals[m])
+              ratios.append(vals[0]/vals[1])
+          med={m:statistics.median(samples[m]) for m in samples}
+          report={'fuzz0_mib_s':med[0],'fuzz1_mib_s':med[1],
+                  'fuzz0_over_fuzz1':statistics.median(ratios),'samples':samples}
+          Path('out/fuzzsafe.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('FUZZ0_MIB_S',med[0])
+          print('FUZZ1_MIB_S',med[1])
+          print('FUZZ0_OVER_FUZZ1',report['fuzz0_over_fuzz1'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-fuzzsafe
+          path: out/fuzzsafe.json
