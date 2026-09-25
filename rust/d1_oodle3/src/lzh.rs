@@ -1869,7 +1869,7 @@ impl<'a> MsbBitReader<'a> {
             return Ok(0);
         }
         self.ensure_bits(count)?;
-        let value = self.bit_buf >> (64 - count);
+        let value = (self.bit_buf >> (128 - count)) as u64;
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
         Ok(value)
