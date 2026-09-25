@@ -1,0 +1,85 @@
+name: D1 Oodle3 Rust stage profile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-stage-profile.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  stage-profile:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact Tower package and benchmark blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered profile out
+          python - <<'PY'
+          import hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          pkg=Path('recovered')/name
+          got=arc.copy_to(off,size,pkg)
+          if got.lower()!=expected:
+              raise SystemExit(f'package SHA mismatch: {got}')
+
+          with pkg.open('rb') as f:
+              h=parse_header(f)
+              bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          chosen=[]
+          for b in blocks:
+              if not b['compressed'] or int(b['patch_id'])!=5:
+                  continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset']))
+                  comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise SystemExit(f"block {b['index']} SHA mismatch")
+              path=Path('profile')/f"block_{int(b['index'])}.comp"
+              path.write_bytes(comp)
+              chosen.append(path)
+              if len(chosen)>=8: break
+          if len(chosen)!=8:
+              raise SystemExit(f'expected 8 blocks, got {len(chosen)}')
+          Path('out/stage_inputs.txt').write_text('\n'.join(map(str,chosen))+'\n')
+          print('STAGE_BLOCKS',*[p.name for p in chosen])
+          PY
+
+      - name: Measure model, table, and payload stages
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < ../../out/stage_inputs.txt
+          args=()
+          for f in "${files[@]}"; do args+=("../../$f"); done
+          cargo run --release --features stage_profile --bin stage_profile_decode -- 262144 80 "${args[@]}" | tee ../../out/stage_profile.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-stage-profile
+          path: out/stage_profile.txt
+          retention-days: 30
+          if-no-files-found: error
