@@ -960,7 +960,6 @@ struct MsbBitReader<'a> {
     byte_pos: usize,
     bit_buf: u64,
     bit_count: u8,
-    bit_pos: usize,
 }
 
 impl<'a> MsbBitReader<'a> {
@@ -970,44 +969,45 @@ impl<'a> MsbBitReader<'a> {
             byte_pos: 0,
             bit_buf: 0,
             bit_count: 0,
-            bit_pos: 0,
         }
     }
 
-    const fn position(self) -> usize {
-        self.bit_pos
+    #[inline(always)]
+    fn position(self) -> usize {
+        self.byte_pos * 8 - usize::from(self.bit_count)
     }
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        self.input
-            .len()
-            .saturating_mul(8)
-            .saturating_sub(self.bit_pos)
+        usize::from(self.bit_count)
+            + self.input.len().saturating_sub(self.byte_pos) * 8
     }
 
     #[inline(always)]
     fn ensure_bits(&mut self, count: usize) -> Result<(), Error> {
-        if count > 56 || self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8) {
+        if count > 56 {
             return Err(Error::Truncated);
         }
+        if usize::from(self.bit_count) >= count {
+            return Ok(());
+        }
+        if self.remaining_bits() < count {
+            return Err(Error::Truncated);
+        }
+
         while usize::from(self.bit_count) < count {
             if self.byte_pos + 4 <= self.input.len() && self.bit_count <= 32 {
                 let word = unsafe {
                     let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
                     u32::from_be(core::ptr::read_unaligned(ptr))
                 };
-                let shift = 32usize
-                    .checked_sub(usize::from(self.bit_count))
-                    .ok_or(Error::Truncated)?;
+                let shift = 32 - usize::from(self.bit_count);
                 self.bit_buf |= u64::from(word) << shift;
                 self.bit_count += 32;
                 self.byte_pos += 4;
             } else {
-                let byte = *self.input.get(self.byte_pos).ok_or(Error::Truncated)?;
-                let shift = 56usize
-                    .checked_sub(usize::from(self.bit_count))
-                    .ok_or(Error::Truncated)?;
+                let byte = unsafe { *self.input.get_unchecked(self.byte_pos) };
+                let shift = 56 - usize::from(self.bit_count);
                 self.bit_buf |= u64::from(byte) << shift;
                 self.bit_count += 8;
                 self.byte_pos += 1;
@@ -1027,7 +1027,6 @@ impl<'a> MsbBitReader<'a> {
         debug_assert!(count <= usize::from(self.bit_count));
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
-        self.bit_pos += count;
     }
 
     #[inline(always)]
@@ -1053,7 +1052,6 @@ impl<'a> MsbBitReader<'a> {
         let value = self.bit_buf >> (64 - count);
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
-        self.bit_pos += count;
         Ok(value)
     }
 
