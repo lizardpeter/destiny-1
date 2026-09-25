@@ -1095,6 +1095,107 @@ impl Decoder {
         let payload_started = std::time::Instant::now();
 
         if huffman.one_char.is_none() {
+            // The benchmark corpus is strongly literal-heavy. Amortize the
+            // input-margin branch across up to four decoded symbols. Starting
+            // each burst with 16 bytes available is sufficient for four
+            // maximum-length Huffman literals, or for preceding literals plus
+            // the largest match token encountered by this decoder.
+            'fast_batch: while op < output_end && bits.bytes_remaining() >= 16 {
+                for _ in 0..4 {
+                    let symbol = huffman.decode_fast_multi(&mut bits);
+                    if symbol < LITERAL_SYMBOLS {
+                        #[cfg(feature = "profile")]
+                        profile::literal();
+                        unsafe {
+                            *output.get_unchecked_mut(op) = symbol as u8;
+                        }
+                        op += 1;
+                        if op >= output_end {
+                            break 'fast_batch;
+                        }
+                        continue;
+                    }
+
+                    debug_assert!(symbol < SYMBOL_COUNT);
+                    if symbol < LITERAL_SYMBOLS + RECENT_TOKEN_COUNT {
+                        #[cfg(feature = "profile")]
+                        profile::recent_match();
+                        let length =
+                            unsafe { *RECENT_LENGTHS.get_unchecked(symbol - LITERAL_SYMBOLS) };
+                        let selector = bits.read_bits_fast(2) as usize;
+                        let distance = match selector {
+                            0 => recent[0],
+                            1 => {
+                                recent.swap(0, 1);
+                                recent[0]
+                            }
+                            2 => {
+                                recent.swap(1, 2);
+                                recent.swap(0, 1);
+                                recent[0]
+                            }
+                            3 => {
+                                recent.swap(2, 3);
+                                recent.swap(1, 2);
+                                recent.swap(0, 1);
+                                recent[0]
+                            }
+                            _ => unreachable!(),
+                        };
+                        let match_len = decode_length_parts_fast(
+                            &mut bits,
+                            length.base,
+                            length.extra_bits,
+                            length.extended,
+                        );
+                        #[cfg(feature = "profile")]
+                        {
+                            profile::distance(distance);
+                            profile::length(match_len);
+                        }
+                        copy_match_into(output, &mut op, output_end, distance, match_len)?;
+                    } else {
+                        #[cfg(feature = "profile")]
+                        profile::explicit_match();
+                        let meta =
+                            unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
+                        let match_distance = meta.distance_base as usize
+                            + bits.read_bits_fast(usize::from(meta.distance_info)) as usize
+                            + 1;
+
+                        if meta.distance_base != 0 {
+                            recent[3] = recent[2];
+                            recent[2] = recent[1];
+                            recent[1] = match_distance;
+                        }
+
+                        let match_len = decode_length_parts_fast(
+                            &mut bits,
+                            meta.length_base,
+                            meta.length_info & !TOKEN_EXTENDED_FLAG,
+                            (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                        );
+                        #[cfg(feature = "profile")]
+                        {
+                            profile::distance(match_distance);
+                            profile::length(match_len);
+                        }
+                        copy_match_into(
+                            output,
+                            &mut op,
+                            output_end,
+                            match_distance,
+                            match_len,
+                        )?;
+                    }
+
+                    // A match can consume substantially more bits than a
+                    // literal. Re-establish the 16-byte burst guarantee before
+                    // decoding another symbol.
+                    continue 'fast_batch;
+                }
+            }
+
             'fast_decode: while op < output_end && bits.has_fast_margin() {
                 let mut symbol = huffman.decode_fast_multi(&mut bits);
 
