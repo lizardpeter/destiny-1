@@ -1501,7 +1501,20 @@ fn copy_match_into(
         }
     }
 
-    let seed = length.min(distance);
+    if length <= distance {
+        unsafe {
+            let base = output.as_mut_ptr();
+            core::ptr::copy_nonoverlapping(
+                base.add(source_start),
+                base.add(match_start),
+                length,
+            );
+        }
+        *output_pos += length;
+        return Ok(());
+    }
+
+    let seed = distance;
 
     // seed <= distance, so source and destination do not overlap. Subsequent
     // doubling copies are also adjacent/non-overlapping because chunk <= produced.
