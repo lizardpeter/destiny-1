@@ -6,6 +6,10 @@ on:
       - 'ci/falkordb-native-windows-poc'
   workflow_dispatch:
 
+concurrency:
+  group: falkordb-native-windows-poc
+  cancel-in-progress: true
+
 jobs:
   windows-native:
     runs-on: windows-2025
