@@ -129,8 +129,8 @@ pub const LEGACY_QUANTUM_LEN: usize = 0x4000;
 pub enum LegacyQuantumKind {
     /// Low 14 bits encode compressed_size - 1. The two high bits are retained.
     Compressed { compressed_len: usize, flags: u8 },
-    /// Oracle-proven special header 0x7fff: the quantum bytes are stored verbatim.
-    StoredRaw,
+    /// Oracle-proven special header 0x7fff: fill the quantum with one byte.
+    Memset { value: u8 },
     /// Reserved/special legacy form not yet behaviorally classified.
     Special { selector: u8 },
 }
@@ -149,7 +149,7 @@ pub struct LegacyQuantum {
 /// D1's exact Oodle 3 oracle establishes a big-endian 16-bit header per quantum.
 /// For normal compressed quanta, bits 0..13 store `compressed_len - 1` and the
 /// two high bits are flags. A low-14 value of 0x3fff selects a special form.
-/// The `0x7fff` special form is proven to store the raw quantum bytes directly.
+/// The `0x7fff` special form is proven to encode a one-byte memset value.
 pub fn scan_legacy_quanta(
     compressed: &[u8],
     raw_len: usize,
@@ -197,10 +197,18 @@ pub fn scan_legacy_quanta(
                 n,
             )
         } else if selector == 1 {
-            (LegacyQuantumKind::StoredRaw, qraw)
+            if cp >= compressed.len() {
+                return Err(DecodeError::TruncatedInput);
+            }
+            (
+                LegacyQuantumKind::Memset {
+                    value: compressed[cp],
+                },
+                1,
+            )
         } else {
-            // The byte count of the other legacy special selectors is not yet
-            // proven, so do not guess and desynchronize the stream.
+            // Other special selectors are kept closed until an oracle vector
+            // proves both their meaning and byte count.
             return Err(DecodeError::InvalidStream(
                 "unclassified legacy special quantum",
             ));
@@ -341,7 +349,9 @@ mod tests {
     #[test]
     fn scans_oracle_proven_legacy_quantum_layout() {
         // Shape of the reference LZH 0x4001-byte boundary vector:
-        // first 16 KiB compressed quantum, then a one-byte 0x7fff stored quantum.
+        // first 16 KiB compressed quantum, then a one-byte final quantum.  The
+        // exact 0x7fff form is a memset, which is observationally identical for
+        // a one-byte final quantum.
         let comp = [
             0x8c, 0x07,
             0x40, 0x02, 0xaa, 0xbb, 0xcc,
@@ -358,8 +368,26 @@ mod tests {
             }
         );
         assert_eq!(q[1].raw_len, 1);
-        assert_eq!(q[1].kind, LegacyQuantumKind::StoredRaw);
-        assert_eq!(comp[q[1].compressed_offset], 0xa3);
+        assert_eq!(
+            q[1].kind,
+            LegacyQuantumKind::Memset { value: 0xa3 }
+        );
+        assert_eq!(q[1].compressed_len, 1);
+    }
+
+
+    #[test]
+    fn parses_exact_lzh_memset_shape() {
+        // Exact reference-runtime form for 257 bytes of 'A':
+        // 8c 07 = independent LZH stream; 7f ff 41 = memset quantum.
+        let comp = [0x8c, 0x07, 0x7f, 0xff, 0x41];
+        let q = scan_legacy_quanta(&comp, 257).unwrap();
+        assert_eq!(q.len(), 1);
+        assert_eq!(q[0].raw_len, 257);
+        assert_eq!(
+            q[0].kind,
+            LegacyQuantumKind::Memset { value: b'A' }
+        );
     }
 
     #[test]
