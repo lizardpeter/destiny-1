@@ -1,5 +1,5 @@
 name: D1 Oodle3 packed entry benchmark
-# reuse A-B harness: fixed canonical-symbol storage candidate
+# reuse A-B harness: fixed canonical-symbol storage candidate rerun
 
 on:
   workflow_dispatch:
