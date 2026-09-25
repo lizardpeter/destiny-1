@@ -1717,7 +1717,7 @@ struct MsbBitReader<'a> {
     end: *const u8,
     fast_limit: usize,
     bit_buf: u64,
-    bit_count: u8,
+    bit_count: usize,
     marker: core::marker::PhantomData<&'a [u8]>,
 }
 
@@ -1751,12 +1751,12 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn position(self) -> usize {
         let consumed = unsafe { self.ptr.offset_from(self.start) as usize };
-        consumed * 8 - usize::from(self.bit_count)
+        consumed * 8 - self.bit_count
     }
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        usize::from(self.bit_count) + self.bytes_remaining() * 8
+        self.bit_count + self.bytes_remaining() * 8
     }
 
     #[inline(always)]
@@ -1767,12 +1767,12 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn ensure_bits_fast(&mut self, count: usize) {
         debug_assert!(count <= 32);
-        while usize::from(self.bit_count) < count {
+        while self.bit_count < count {
             debug_assert!(self.bytes_remaining() >= 4);
             debug_assert!(self.bit_count <= 32);
             let word = unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
             self.ptr = unsafe { self.ptr.add(4) };
-            let shift = 32 - usize::from(self.bit_count);
+            let shift = 32 - self.bit_count;
             self.bit_buf |= u64::from(word) << shift;
             self.bit_count += 32;
             #[cfg(feature = "profile")]
@@ -1788,7 +1788,7 @@ impl<'a> MsbBitReader<'a> {
         self.ensure_bits_fast(count);
         let value = self.bit_buf >> (64 - count);
         self.bit_buf <<= count;
-        self.bit_count -= count as u8;
+        self.bit_count -= count;
         value
     }
 
@@ -1797,19 +1797,19 @@ impl<'a> MsbBitReader<'a> {
         if count > 56 {
             return Err(Error::Truncated);
         }
-        if usize::from(self.bit_count) >= count {
+        if self.bit_count >= count {
             return Ok(());
         }
         if self.remaining_bits() < count {
             return Err(Error::Truncated);
         }
 
-        while usize::from(self.bit_count) < count {
+        while self.bit_count < count {
             if self.bytes_remaining() >= 4 && self.bit_count <= 32 {
                 let word =
                     unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
                 self.ptr = unsafe { self.ptr.add(4) };
-                let shift = 32 - usize::from(self.bit_count);
+                let shift = 32 - self.bit_count;
                 self.bit_buf |= u64::from(word) << shift;
                 self.bit_count += 32;
                 #[cfg(feature = "profile")]
@@ -1820,7 +1820,7 @@ impl<'a> MsbBitReader<'a> {
                 }
                 let byte = unsafe { *self.ptr };
                 self.ptr = unsafe { self.ptr.add(1) };
-                let shift = 56 - usize::from(self.bit_count);
+                let shift = 56 - self.bit_count;
                 self.bit_buf |= u64::from(byte) << shift;
                 self.bit_count += 8;
                 #[cfg(feature = "profile")]
@@ -1832,15 +1832,15 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn peek_buffered(&self, count: usize) -> u64 {
-        debug_assert!(count <= usize::from(self.bit_count));
+        debug_assert!(count <= self.bit_count);
         self.bit_buf >> (64 - count)
     }
 
     #[inline(always)]
     fn consume_buffered(&mut self, count: usize) {
-        debug_assert!(count <= usize::from(self.bit_count));
+        debug_assert!(count <= self.bit_count);
         self.bit_buf <<= count;
-        self.bit_count -= count as u8;
+        self.bit_count -= count;
     }
 
     #[inline(always)]
@@ -1865,7 +1865,7 @@ impl<'a> MsbBitReader<'a> {
         self.ensure_bits(count)?;
         let value = self.bit_buf >> (64 - count);
         self.bit_buf <<= count;
-        self.bit_count -= count as u8;
+        self.bit_count -= count;
         Ok(value)
     }
 
@@ -1877,7 +1877,7 @@ impl<'a> MsbBitReader<'a> {
                 self.ensure_bits(1)?;
             }
 
-            let available = usize::from(self.bit_count);
+            let available = self.bit_count;
             let leading = self.bit_buf.leading_zeros() as usize;
             if leading < available {
                 let consume = leading + 1;
