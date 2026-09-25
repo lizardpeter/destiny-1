@@ -57,6 +57,9 @@ jobs:
           print('BLOCK',b['index'],len(comp),comp[:32].hex())
           PY
 
+      - name: Enter MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Compile probe
         shell: cmd
         run: cl /nologo /EHsc /O2 tools\d1_oodle_internal_codebook_probe.cpp /Fe:out\probe.exe
