@@ -1,0 +1,163 @@
+name: D1 Oodle3 best-candidate paired benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-best-candidates.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact Tower benchmark package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+
+      - name: Build best baseline, one-pass candidate, and current
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add ../best 4f8982d79d0e28a05c93e47b75c1ed60b7dc91e1
+          git worktree add ../onepass 39dd8860bbe021f3027ea2f378d91ec57926a562
+          (cd ../best/rust/d1_oodle3 && CARGO_TARGET_DIR=target-cmp cargo build --release)
+          (cd ../onepass/rust/d1_oodle3 && CARGO_TARGET_DIR=target-cmp cargo build --release)
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-cmp cargo build --release)
+          cp ../best/rust/d1_oodle3/target-cmp/release/d1_oodle3.dll out/best.dll
+          cp ../onepass/rust/d1_oodle3/target-cmp/release/d1_oodle3.dll out/onepass.dll
+          cp rust/d1_oodle3/target-cmp/release/d1_oodle3.dll out/current.dll
+
+      - name: Paired benchmark all variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha mismatch')
+              cases.append((comp,0x40000))
+              if len(cases)>=8: break
+
+          fns={
+              'reference':bind('reference/oo2core_3_win64.dll'),
+              'best':bind('out/best.dll'),
+              'onepass':bind('out/onepass.dll'),
+              'current':bind('out/current.dll'),
+          }
+          bufs={k:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                   for c,raw in cases] for k in fns}
+
+          for i in range(len(cases)):
+              outs={}
+              for name,fn in fns.items():
+                  src,dst,cl,raw=bufs[name][i]
+                  n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                       1,0,0,None,None,None,None,None,None,3)
+                  if n!=raw: raise RuntimeError(f'{name} decode {n}')
+                  outs[name]=dst.raw[:raw]
+              if len(set(outs.values())) != 1: raise RuntimeError(f'correctness mismatch case {i}')
+
+          for _ in range(15):
+              for name,fn in fns.items():
+                  for src,dst,cl,raw in bufs[name]:
+                      fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                         1,0,0,None,None,None,None,None,None,3)
+
+          iterations=80; rounds=11
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          def once(name):
+              fn=fns[name]; t0=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for src,dst,cl,raw in bufs[name]:
+                      n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                           1,0,0,None,None,None,None,None,None,3)
+                      if n!=raw: raise RuntimeError(n)
+              sec=(time.perf_counter_ns()-t0)/1e9
+              return raw_bytes/sec/(1024*1024)
+
+          orders=[
+              ['best','current','onepass','reference'],
+              ['reference','onepass','current','best'],
+              ['current','best','reference','onepass'],
+              ['onepass','reference','best','current'],
+          ]
+          samples={k:[] for k in fns}
+          paired={'current_over_best':[],'onepass_over_best':[],'current_over_reference':[]}
+          for r in range(rounds):
+              vals={}
+              for name in orders[r%len(orders)]:
+                  vals[name]=once(name); samples[name].append(vals[name])
+              paired['current_over_best'].append(vals['current']/vals['best'])
+              paired['onepass_over_best'].append(vals['onepass']/vals['best'])
+              paired['current_over_reference'].append(vals['current']/vals['reference'])
+
+          med={k:statistics.median(v) for k,v in samples.items()}
+          pmed={k:statistics.median(v) for k,v in paired.items()}
+          report={'median_mib_s':med,'paired_ratios':paired,'paired_medians':pmed,'samples':samples}
+          Path('out/best_candidates.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('BESTCMP_REFERENCE',med['reference'])
+          print('BESTCMP_BEST',med['best'])
+          print('BESTCMP_ONEPASS',med['onepass'])
+          print('BESTCMP_CURRENT',med['current'])
+          print('BESTCMP_CURRENT_OVER_BEST',pmed['current_over_best'])
+          print('BESTCMP_ONEPASS_OVER_BEST',pmed['onepass_over_best'])
+          print('BESTCMP_CURRENT_OVER_REFERENCE',pmed['current_over_reference'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-best-candidates
+          path: out/best_candidates.json
+          retention-days: 30
+          if-no-files-found: error
