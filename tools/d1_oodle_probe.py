@@ -2,8 +2,11 @@
 """Probe D1 ROI Tiger Oodle-3 compressed blocks.
 
 Supports:
-  * Windows: load oo2core_3_win64.dll directly.
-  * Linux: load liblinoodle3.so; keep oo2core_3_win64.dll beside it/in cwd.
+  * Native Rust replacement on Windows or Linux (`d1_oodle3.dll` /
+    `libd1_oodle3.so`).
+  * Reference Windows Oodle 2.3 DLL directly.
+  * Historical Linux bridge `liblinoodle3.so` with the matching reference DLL
+    beside it, retained only as a differential oracle.
 
 The tool resolves Tiger patch-family block ownership, verifies the stored SHA-1,
 invokes OodleLZ_Decompress, and records decompressed size/hash/prefix. It does
@@ -54,10 +57,13 @@ class Oodle3:
                 lib_path = runtime
             loader = ctypes.WinDLL
         else:
-            # liblinoodle3.so exports an OodleLZ_Decompress-compatible bridge and
-            # expects the matching oo2core_3_win64.dll to be available at runtime.
+            # Prefer the native Rust replacement when a directory is supplied.
+            # Fall back to the historical bridge only for reference/differential
+            # workflows; the Rust .so has no dependency on the Oodle DLL.
             if runtime.is_dir():
-                lib_path = runtime / "liblinoodle3.so"
+                native = runtime / "libd1_oodle3.so"
+                bridge = runtime / "liblinoodle3.so"
+                lib_path = native if native.exists() else bridge
             else:
                 lib_path = runtime
             loader = ctypes.CDLL
@@ -203,8 +209,15 @@ def probe_one(pkg: Path, blocks: list[dict], block_index: int, oodle: Oodle3) ->
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("pkg", type=Path)
-    ap.add_argument("--runtime", type=Path, required=True,
-                    help="Windows: oo2core_3_win64.dll or containing dir; Linux: liblinoodle3.so or containing dir")
+    ap.add_argument(
+        "--runtime",
+        type=Path,
+        required=True,
+        help=(
+            "native Rust d1_oodle3 library, reference Oodle DLL/bridge, "
+            "or a containing directory"
+        ),
+    )
     ap.add_argument("--block", type=int, action="append",
                     help="block index to test; repeatable. Default: first resident compressed block")
     ap.add_argument("--count", type=int, default=1,
