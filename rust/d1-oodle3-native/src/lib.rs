@@ -122,6 +122,106 @@ pub fn parse_frame_header(compressed: &[u8]) -> Result<FrameHeader, DecodeError>
     })
 }
 
+
+pub const LEGACY_QUANTUM_LEN: usize = 0x4000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegacyQuantumKind {
+    /// Low 14 bits encode compressed_size - 1. The two high bits are retained.
+    Compressed { compressed_len: usize, flags: u8 },
+    /// Oracle-proven special header 0x7fff: the quantum bytes are stored verbatim.
+    StoredRaw,
+    /// Reserved/special legacy form not yet behaviorally classified.
+    Special { selector: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyQuantum {
+    pub raw_offset: usize,
+    pub raw_len: usize,
+    pub compressed_offset: usize,
+    pub compressed_len: usize,
+    pub kind: LegacyQuantumKind,
+}
+
+/// Parse the 16 KiB quantum framing used by legacy Oodle codecs such as LZH.
+///
+/// D1's exact Oodle 3 oracle establishes a big-endian 16-bit header per quantum.
+/// For normal compressed quanta, bits 0..13 store `compressed_len - 1` and the
+/// two high bits are flags. A low-14 value of 0x3fff selects a special form.
+/// The `0x7fff` special form is proven to store the raw quantum bytes directly.
+pub fn scan_legacy_quanta(
+    compressed: &[u8],
+    raw_len: usize,
+) -> Result<Vec<LegacyQuantum>, DecodeError> {
+    let header = parse_frame_header(compressed)?;
+    if header.checksums {
+        return Err(DecodeError::UnsupportedChecksums);
+    }
+    if header.uncompressed {
+        return Err(DecodeError::InvalidStream(
+            "whole-stream stored frame has no legacy quantum headers",
+        ));
+    }
+
+    let mut result = Vec::new();
+    let mut cp = 2usize;
+    let mut rp = 0usize;
+
+    while rp < raw_len {
+        if cp.checked_add(2).filter(|&end| end <= compressed.len()).is_none() {
+            return Err(DecodeError::TruncatedInput);
+        }
+        let word = u16::from_be_bytes([compressed[cp], compressed[cp + 1]]);
+        cp += 2;
+
+        let qraw = core::cmp::min(LEGACY_QUANTUM_LEN, raw_len - rp);
+        let size_code = (word & 0x3fff) as usize;
+        let selector = (word >> 14) as u8;
+
+        let (kind, payload_len) = if size_code != 0x3fff {
+            let n = size_code + 1;
+            (
+                LegacyQuantumKind::Compressed {
+                    compressed_len: n,
+                    flags: selector,
+                },
+                n,
+            )
+        } else if selector == 1 {
+            (LegacyQuantumKind::StoredRaw, qraw)
+        } else {
+            // The byte count of the other legacy special selectors is not yet
+            // proven, so do not guess and desynchronize the stream.
+            return Err(DecodeError::InvalidStream(
+                "unclassified legacy special quantum",
+            ));
+        };
+
+        let end = cp.checked_add(payload_len).ok_or(DecodeError::TruncatedInput)?;
+        if end > compressed.len() {
+            return Err(DecodeError::TruncatedInput);
+        }
+
+        result.push(LegacyQuantum {
+            raw_offset: rp,
+            raw_len: qraw,
+            compressed_offset: cp,
+            compressed_len: payload_len,
+            kind,
+        });
+        cp = end;
+        rp += qraw;
+    }
+
+    if cp != compressed.len() {
+        return Err(DecodeError::InvalidStream(
+            "trailing bytes after legacy quantum stream",
+        ));
+    }
+    Ok(result)
+}
+
 /// Copy an LZ match with standard overlapping-copy semantics.
 pub fn copy_match(
     output: &mut [u8],
@@ -228,6 +328,51 @@ mod tests {
             decode_into(&[0x8c, 0x07, 0x40, 0x0b], &mut out),
             Err(DecodeError::UnsupportedCompressedCodec(RawCodec::Lzh))
         );
+    }
+
+    #[test]
+    fn scans_oracle_proven_legacy_quantum_layout() {
+        // Shape of the reference LZH 0x4001-byte boundary vector:
+        // first 16 KiB compressed quantum, then a one-byte 0x7fff stored quantum.
+        let comp = [
+            0x8c, 0x07,
+            0x40, 0x02, 0xaa, 0xbb, 0xcc,
+            0x7f, 0xff, 0xa3,
+        ];
+        let q = scan_legacy_quanta(&comp, 0x4001).unwrap();
+        assert_eq!(q.len(), 2);
+        assert_eq!(q[0].raw_len, 0x4000);
+        assert_eq!(
+            q[0].kind,
+            LegacyQuantumKind::Compressed {
+                compressed_len: 3,
+                flags: 1
+            }
+        );
+        assert_eq!(q[1].raw_len, 1);
+        assert_eq!(q[1].kind, LegacyQuantumKind::StoredRaw);
+        assert_eq!(comp[q[1].compressed_offset], 0xa3);
+    }
+
+    #[test]
+    fn scans_four_legacy_quanta_with_reset_flag_only_on_first() {
+        let mut comp = vec![0x8c, 0x07];
+        for flags in [1u16, 0, 0, 0] {
+            // one-byte compressed payload for each synthetic quantum
+            let word = (flags << 14) | 0;
+            comp.extend_from_slice(&word.to_be_bytes());
+            comp.push(0x55);
+        }
+        let q = scan_legacy_quanta(&comp, 0x10000).unwrap();
+        assert_eq!(q.len(), 4);
+        assert!(matches!(
+            q[0].kind,
+            LegacyQuantumKind::Compressed { flags: 1, .. }
+        ));
+        assert!(q[1..].iter().all(|x| matches!(
+            x.kind,
+            LegacyQuantumKind::Compressed { flags: 0, .. }
+        )));
     }
 
     #[test]
