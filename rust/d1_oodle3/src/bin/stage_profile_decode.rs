@@ -1,6 +1,6 @@
 use std::{env, fs, hint::black_box, time::Instant};
 
-use d1_oodle3::lzh::{decode_stream, stage_profile_reset, stage_profile_snapshot};
+use d1_oodle3::lzh::{decode_stream_into, stage_profile_reset, stage_profile_snapshot};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
@@ -22,19 +22,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(fs::read)
         .collect::<Result<_, _>>()?;
 
-    // Warm the allocator, instruction cache, and branch predictors first.
-    for input in &inputs {
-        black_box(decode_stream(input, raw_len)?);
+    // Match the FFI path more closely: allocate caller-owned outputs once and
+    // reuse them across all decodes. This removes output Vec allocation from
+    // the residual timing bucket.
+    let mut outputs = vec![vec![0u8; raw_len]; inputs.len()];
+    for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
+        decode_stream_into(input, output)?;
+        black_box(&output[..]);
     }
 
     stage_profile_reset();
     let started = Instant::now();
     let mut decoded_bytes = 0usize;
     for _ in 0..repeats {
-        for input in &inputs {
-            let decoded = decode_stream(input, raw_len)?;
-            decoded_bytes += decoded.len();
-            black_box(decoded);
+        for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
+            decode_stream_into(input, output)?;
+            decoded_bytes += output.len();
+            black_box(&output[..]);
         }
     }
     let wall_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
