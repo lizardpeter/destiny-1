@@ -1381,6 +1381,8 @@ struct MsbBitReader<'a> {
     byte_pos: usize,
     bit_buf: u64,
     bit_count: u8,
+    spill_buf: u64,
+    spill_count: u8,
 }
 
 impl<'a> MsbBitReader<'a> {
@@ -1390,40 +1392,74 @@ impl<'a> MsbBitReader<'a> {
             byte_pos: 0,
             bit_buf: 0,
             bit_count: 0,
+            spill_buf: 0,
+            spill_count: 0,
         }
     }
 
     #[inline(always)]
     fn position(self) -> usize {
-        self.byte_pos * 8 - usize::from(self.bit_count)
+        self.byte_pos * 8 - usize::from(self.bit_count) - usize::from(self.spill_count)
     }
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        usize::from(self.bit_count) + self.input.len().saturating_sub(self.byte_pos) * 8
+        usize::from(self.bit_count)
+            + usize::from(self.spill_count)
+            + self.input.len().saturating_sub(self.byte_pos) * 8
     }
 
     #[inline(always)]
     fn has_fast_margin(&self) -> bool {
         self.byte_pos.saturating_add(8) <= self.input.len()
+            || usize::from(self.bit_count) + usize::from(self.spill_count)
+                >= usize::from(MAX_CODE_LEN) + 16
+    }
+
+    #[inline(always)]
+    fn append_spill(&mut self) {
+        if self.spill_count == 0 || self.bit_count == 64 {
+            return;
+        }
+        let space = 64 - usize::from(self.bit_count);
+        let take = space.min(usize::from(self.spill_count));
+        if take == 64 {
+            self.bit_buf = self.spill_buf;
+        } else {
+            let top = self.spill_buf >> (64 - take);
+            self.bit_buf |= top << (space - take);
+        }
+        self.spill_buf <<= take;
+        self.bit_count += take as u8;
+        self.spill_count -= take as u8;
+    }
+
+    #[inline(always)]
+    fn load_spill_word_fast(&mut self) {
+        debug_assert_eq!(self.spill_count, 0);
+        debug_assert!(self.byte_pos + 8 <= self.input.len());
+        let word = unsafe {
+            let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u64>();
+            u64::from_be(core::ptr::read_unaligned(ptr))
+        };
+        self.byte_pos += 8;
+        self.spill_buf = word;
+        self.spill_count = 64;
+        #[cfg(feature = "profile")]
+        {
+            profile::refill32();
+            profile::refill32();
+        }
     }
 
     #[inline(always)]
     fn ensure_bits_fast(&mut self, count: usize) {
         debug_assert!(count <= 32);
         while usize::from(self.bit_count) < count {
-            debug_assert!(self.byte_pos + 4 <= self.input.len());
-            debug_assert!(self.bit_count <= 32);
-            let word = unsafe {
-                let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
-                u32::from_be(core::ptr::read_unaligned(ptr))
-            };
-            let shift = 32 - usize::from(self.bit_count);
-            self.bit_buf |= u64::from(word) << shift;
-            self.bit_count += 32;
-            self.byte_pos += 4;
-            #[cfg(feature = "profile")]
-            profile::refill32();
+            if self.spill_count == 0 {
+                self.load_spill_word_fast();
+            }
+            self.append_spill();
         }
     }
 
@@ -1452,17 +1488,25 @@ impl<'a> MsbBitReader<'a> {
         }
 
         while usize::from(self.bit_count) < count {
-            if self.byte_pos + 4 <= self.input.len() && self.bit_count <= 32 {
+            if self.spill_count != 0 {
+                self.append_spill();
+                continue;
+            }
+
+            if self.byte_pos + 8 <= self.input.len() {
                 let word = unsafe {
-                    let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
-                    u32::from_be(core::ptr::read_unaligned(ptr))
+                    let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u64>();
+                    u64::from_be(core::ptr::read_unaligned(ptr))
                 };
-                let shift = 32 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(word) << shift;
-                self.bit_count += 32;
-                self.byte_pos += 4;
+                self.byte_pos += 8;
+                self.spill_buf = word;
+                self.spill_count = 64;
                 #[cfg(feature = "profile")]
-                profile::refill32();
+                {
+                    profile::refill32();
+                    profile::refill32();
+                }
+                self.append_spill();
             } else {
                 let byte = unsafe { *self.input.get_unchecked(self.byte_pos) };
                 let shift = 56 - usize::from(self.bit_count);
