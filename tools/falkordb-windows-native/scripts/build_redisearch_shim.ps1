@@ -1,8 +1,18 @@
 param(
-    [Parameter(Mandatory=$true)][string]$OutDir
+    [Parameter(Mandatory=$true)][string]$OutDir,
+    [string]$VSGenerator = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($VSGenerator)) {
+    $Help = (cmake --help | Out-String)
+    $VSGenerator = @("Visual Studio 18 2026", "Visual Studio 17 2022") |
+        Where-Object { $Help.Contains($_) } |
+        Select-Object -First 1
+    if (-not $VSGenerator) {
+        throw "No supported Visual Studio CMake generator found"
+    }
+}
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $Source = Join-Path $OutDir "redisearch_shim.c"
@@ -67,7 +77,7 @@ add_library(redisearch_shim STATIC redisearch_shim.c)
 set_target_properties(redisearch_shim PROPERTIES OUTPUT_NAME redisearch_shim)
 '@ | Set-Content -Path $CMakeLists -Encoding Ascii
 
-cmake -S $OutDir -B $BuildDir -G "Visual Studio 17 2022" -A x64
+cmake -S $OutDir -B $BuildDir -G "$VSGenerator" -A x64
 cmake --build $BuildDir --config Release --target redisearch_shim
 
 $Built = Join-Path $BuildDir "Release\redisearch_shim.lib"
