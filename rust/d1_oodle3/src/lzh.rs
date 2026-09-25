@@ -1172,29 +1172,29 @@ fn copy_match_into(
     let match_start = *output_pos;
     let source_start = match_start - distance;
 
-    // Oodle's scalar LZH kernel uses fixed-width short-match copies.  For
-    // distance >= 8, an 8-byte source chunk cannot overlap its destination.
-    // It is safe to write past the logical match end as long as the backing
-    // output slice has physical slack; subsequent output overwrites those bytes.
+    // Oodle's scalar LZH kernel uses fixed-width match copies. For distance
+    // >= 8, each 8-byte source chunk ends at or before the destination chunk,
+    // so sequential 8-byte moves preserve overlap semantics. The final move may
+    // write up to seven bytes past the logical match end; allow that only when
+    // the backing output slice has the corresponding physical slack.
     if distance >= 8 {
-        let physical_remaining = output.len() - match_start;
-        if length <= 8 && physical_remaining >= 8 {
+        let wild_length = length.checked_add(7).ok_or(Error::OutputOverrun {
+            requested: length,
+            remaining,
+        })? & !7usize;
+        if wild_length <= output.len() - match_start {
             unsafe {
                 let base = output.as_mut_ptr();
-                let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-                core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
-            }
-            *output_pos += length;
-            return Ok(());
-        }
-        if length <= 16 && physical_remaining >= 16 {
-            unsafe {
-                let base = output.as_mut_ptr();
-                let first = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-                core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), first);
-                let second =
-                    core::ptr::read_unaligned(base.add(source_start + 8).cast::<u64>());
-                core::ptr::write_unaligned(base.add(match_start + 8).cast::<u64>(), second);
+                let mut produced = 0usize;
+                while produced < wild_length {
+                    let word =
+                        core::ptr::read_unaligned(base.add(source_start + produced).cast::<u64>());
+                    core::ptr::write_unaligned(
+                        base.add(match_start + produced).cast::<u64>(),
+                        word,
+                    );
+                    produced += 8;
+                }
             }
             *output_pos += length;
             return Ok(());
