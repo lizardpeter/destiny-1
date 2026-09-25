@@ -550,9 +550,6 @@ impl HuffmanModel {
                     }
                     let code_len = code_len_i32 as u8;
                     lengths[symbol] = code_len;
-                    counts[usize::from(code_len)] += 1;
-                    used_symbols += 1;
-                    max_seen = max_seen.max(code_len);
                     predictor_state = ((predictor_state * 3 + 2) >> 2) + code_len_i32;
                     symbol += 1;
                 }
@@ -707,6 +704,9 @@ impl FixedLzhModel {
                     }
                     let code_len = code_len_i32 as u8;
                     lengths[symbol] = code_len;
+                    counts[usize::from(code_len)] += 1;
+                    used_symbols += 1;
+                    max_seen = max_seen.max(code_len);
                     predictor_state = ((predictor_state * 3 + 2) >> 2) + code_len_i32;
                     symbol += 1;
                 }
