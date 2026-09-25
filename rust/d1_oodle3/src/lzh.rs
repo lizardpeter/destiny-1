@@ -1053,7 +1053,8 @@ impl Decoder {
         }
         let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
         let mut bits = MsbBitReader::new(&payload[payload_offset..]);
-        let output_end = output_pos
+        let start_pos = op;
+        let output_end = start_pos
             .checked_add(raw_len)
             .ok_or(Error::OutputOverrun {
                 requested: raw_len,
@@ -1062,15 +1063,16 @@ impl Decoder {
         if output_end > output.len() {
             return Err(Error::OutputOverrun {
                 requested: raw_len,
-                remaining: output.len().saturating_sub(*output_pos),
+                remaining: output.len().saturating_sub(start_pos),
             });
         }
+        let mut op = start_pos;
         let mut recent = [20usize, 24, 28, 32];
 
         #[cfg(feature = "stage_profile")]
         let payload_started = std::time::Instant::now();
 
-        'fast_decode: while *output_pos < output_end && bits.has_fast_margin() {
+        'fast_decode: while op < output_end && bits.has_fast_margin() {
             let mut symbol = huffman.decode_fast(&mut bits);
 
             // D1 LZH is strongly literal-heavy. Stay in a compact literal-only
@@ -1080,11 +1082,11 @@ impl Decoder {
                 #[cfg(feature = "profile")]
                 profile::literal();
                 unsafe {
-                    *output.get_unchecked_mut(*output_pos) = symbol as u8;
+                    *output.get_unchecked_mut(op) = symbol as u8;
                 }
-                *output_pos += 1;
+                op += 1;
 
-                if *output_pos >= output_end || !bits.has_fast_margin() {
+                if op >= output_end || !bits.has_fast_margin() {
                     break 'fast_decode;
                 }
                 symbol = huffman.decode_fast(&mut bits);
@@ -1127,7 +1129,7 @@ impl Decoder {
                     profile::distance(distance);
                     profile::length(match_len);
                 }
-                copy_match_into(output, output_pos, output_end, distance, match_len)?;
+                copy_match_into(output, &mut op, output_end, distance, match_len)?;
             } else {
                 #[cfg(feature = "profile")]
                 profile::explicit_match();
@@ -1153,21 +1155,21 @@ impl Decoder {
                     profile::distance(match_distance);
                     profile::length(match_len);
                 }
-                copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
+                copy_match_into(output, &mut op, output_end, match_distance, match_len)?;
             }
         }
 
         // Only the final input-boundary region uses the fully checked reader.
-        while *output_pos < output_end {
+        while op < output_end {
             let symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
                 #[cfg(feature = "profile")]
                 profile::literal();
-                debug_assert!(*output_pos < output_end);
+                debug_assert!(op < output_end);
                 unsafe {
-                    *output.get_unchecked_mut(*output_pos) = symbol as u8;
+                    *output.get_unchecked_mut(op) = symbol as u8;
                 }
-                *output_pos += 1;
+                op += 1;
                 continue;
             }
             if symbol >= SYMBOL_COUNT {
@@ -1210,7 +1212,7 @@ impl Decoder {
                     profile::distance(distance);
                     profile::length(match_len);
                 }
-                copy_match_into(output, output_pos, output_end, distance, match_len)?;
+                copy_match_into(output, &mut op, output_end, distance, match_len)?;
             } else {
                 #[cfg(feature = "profile")]
                 profile::explicit_match();
@@ -1238,9 +1240,11 @@ impl Decoder {
                     profile::distance(match_distance);
                     profile::length(match_len);
                 }
-                copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
+                copy_match_into(output, &mut op, output_end, match_distance, match_len)?;
             }
         }
+
+        *output_pos = op;
 
         let remaining_bits = bits.remaining_bits();
         if remaining_bits > 7 {
