@@ -100,7 +100,29 @@ jobs:
 
       - name: Build pure Rust decoder
         working-directory: rust/d1_oodle3
-        run: cargo build --release --bin native_decode
+        run: cargo build --release --bins
+
+      - name: Validate native Oodle 2.3 framing and LZH models
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          rows=json.load(open('vectors/manifest.json'))
+          exe=Path('rust/d1_oodle3/target/release/frame_scan')
+          for row in rows:
+              comp=Path('vectors')/(row['stem']+'.comp')
+              p=subprocess.run([str(exe),str(comp),str(row['raw_size'])],text=True,capture_output=True)
+              if p.returncode != 0:
+                  print(p.stdout)
+                  print(p.stderr)
+                  raise SystemExit(f"native frame/model scan failed for block {row['block_index']}")
+              if 'D1_OODLE23_FRAME_GREEN quanta=16 models=4' not in p.stdout:
+                  print(p.stdout)
+                  raise SystemExit(f"unexpected LZH framing/model census for block {row['block_index']}")
+              print('FRAME_MODEL_GREEN',row['block_index'])
+          print('D1_OODLE23_ALL_FRAME_MODELS_GREEN',len(rows))
+          PY
 
       - name: Differential compare Rust vs exact Oodle 2.3 DLL
         run: |
