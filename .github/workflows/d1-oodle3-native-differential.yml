@@ -6,6 +6,7 @@ on:
       - 'rust/d1_oodle3/**'
       - 'tools/oodle3_pe_map.py'
       - 'notes/OODLE3_RUST_REVERSAL.md'
+      - 'tools/d1_oodle_probe.py'
       - '.github/workflows/d1-oodle3-native-differential.yml'
   workflow_dispatch:
 
@@ -98,9 +99,9 @@ jobs:
           print(json.dumps(rows,indent=2))
           PY
 
-      - name: Build pure Rust decoder
+      - name: Build pure Rust decoder and native library
         working-directory: rust/d1_oodle3
-        run: cargo build --release --bins
+        run: cargo build --release
 
       - name: Validate native Oodle 2.3 framing and LZH models
         run: |
@@ -122,6 +123,26 @@ jobs:
                   raise SystemExit(f"unexpected LZH framing/model census for block {row['block_index']}")
               print('FRAME_MODEL_GREEN',row['block_index'])
           print('D1_OODLE23_ALL_FRAME_MODELS_GREEN',len(rows))
+          PY
+
+      - name: Validate native Linux cdylib through existing D1 Oodle wrapper
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_oodle_probe import Oodle3
+          rows=json.load(open('vectors/manifest.json'))
+          rust=Oodle3(Path('rust/d1_oodle3/target/release/libd1_oodle3.so'))
+          for row in rows:
+              comp=(Path('vectors')/(row['stem']+'.comp')).read_bytes()
+              ref=(Path('vectors')/(row['stem']+'.ref')).read_bytes()
+              actual=rust.decompress(comp,raw_capacity=int(row['raw_size']))
+              if actual!=ref:
+                  raise SystemExit(f"native .so mismatch block {row['block_index']}")
+              print('RUST_SO_BYTE_IDENTICAL',row['block_index'],hashlib.sha256(actual).hexdigest())
+          print('D1_OODLE23_RUST_SO_ABI_GREEN',len(rows))
           PY
 
       - name: Differential compare Rust vs exact Oodle 2.3 DLL
