@@ -409,9 +409,7 @@ impl CanonicalDecoder {
 
         let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
         let mut long_prefix = [-1i16; 1 << FAST_DECODE_BITS];
-        let mut long_tables: Vec<
-            [FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]
-        > = Vec::new();
+        let mut long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]> = Vec::new();
         let mut next_code = first_code;
         for (symbol, &len) in model.code_lengths.iter().enumerate() {
             if len == 0 {
@@ -438,9 +436,8 @@ impl CanonicalDecoder {
                     if index > i16::MAX as usize {
                         return Err(Error::NonCanonical);
                     }
-                    long_tables.push(
-                        [FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]
-                    );
+                    long_tables
+                        .push([FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
                     long_prefix[prefix] = index as i16;
                     index
                 };
@@ -484,10 +481,8 @@ impl CanonicalDecoder {
                 let table_index = self.long_prefix[prefix];
                 if table_index >= 0 {
                     let window = bits.peek_bits(usize::from(MAX_CODE_LEN))? as usize;
-                    let suffix_mask =
-                        (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-                    let long_entry =
-                        self.long_tables[table_index as usize][window & suffix_mask];
+                    let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
+                    let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
                     if long_entry.len != 0 {
                         bits.skip_bits(usize::from(long_entry.len))?;
                         return Ok(usize::from(long_entry.symbol));
