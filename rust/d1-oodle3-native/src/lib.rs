@@ -1,12 +1,73 @@
 //! Native compatibility work for Destiny-era Oodle 3 streams.
 //!
-//! This crate is deliberately evidence-driven.  The public API and low-level
-//! LZ primitives are in place first; framing and entropy decode stages are only
-//! enabled once proven against exact synthetic oracle vectors.
+//! This crate is evidence-driven.  The outer frame header and stored/raw path
+//! below are implemented only from behavior reproduced by deterministic oracle
+//! vectors from the exact D1 reference runtime.
 
 mod bit;
 
 pub use bit::{BitOrder, BitReader};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawCodec {
+    Lzhlw,
+    Lznib,
+    Lzb16,
+    Lzblw,
+    Lza,
+    Lzna,
+    Kraken,
+    Lzh,
+    MermaidSelkie,
+    Bitknit,
+    Unknown(u8),
+}
+
+impl RawCodec {
+    pub fn from_id(id: u8) -> Self {
+        match id {
+            0 => Self::Lzhlw,
+            1 => Self::Lznib,
+            2 => Self::Lzb16,
+            3 => Self::Lzblw,
+            4 => Self::Lza,
+            5 => Self::Lzna,
+            6 => Self::Kraken,
+            7 => Self::Lzh,
+            10 => Self::MermaidSelkie,
+            11 => Self::Bitknit,
+            other => Self::Unknown(other),
+        }
+    }
+
+    pub fn id(self) -> u8 {
+        match self {
+            Self::Lzhlw => 0,
+            Self::Lznib => 1,
+            Self::Lzb16 => 2,
+            Self::Lzblw => 3,
+            Self::Lza => 4,
+            Self::Lzna => 5,
+            Self::Kraken => 6,
+            Self::Lzh => 7,
+            Self::MermaidSelkie => 10,
+            Self::Bitknit => 11,
+            Self::Unknown(id) => id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameHeader {
+    /// Bit 7 of the first header byte.  D1 independent oracle streams use this.
+    pub restart_decoder: bool,
+    /// Bit 6 of the first header byte.  When set, the post-header bytes are raw.
+    pub uncompressed: bool,
+    /// Low seven bits of the second header byte.
+    pub codec: RawCodec,
+    /// High bit of the second header byte.
+    pub checksums: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
@@ -14,7 +75,8 @@ pub enum DecodeError {
     TruncatedInput,
     InvalidDistance { distance: usize, produced: usize },
     InvalidStream(&'static str),
-    UnsupportedFormat,
+    UnsupportedChecksums,
+    UnsupportedCompressedCodec(RawCodec),
 }
 
 impl core::fmt::Display for DecodeError {
@@ -26,18 +88,41 @@ impl core::fmt::Display for DecodeError {
                 write!(f, "invalid match distance {distance} after {produced} output bytes")
             }
             Self::InvalidStream(s) => write!(f, "invalid stream: {s}"),
-            Self::UnsupportedFormat => write!(f, "Oodle 3 stream format stage not yet implemented"),
+            Self::UnsupportedChecksums => write!(f, "checksummed Oodle stream is not implemented yet"),
+            Self::UnsupportedCompressedCodec(codec) => {
+                write!(f, "compressed {:?} decoder is not implemented yet", codec)
+            }
         }
     }
 }
 
 impl std::error::Error for DecodeError {}
 
-/// Copy an LZ match with standard overlapping-copy semantics.
+/// Parse Oodle's two-byte outer stream header.
 ///
-/// Kept as a small independently tested primitive because the legacy Oodle
-/// decoder uses repeated-history copies heavily; exact overlap behavior matters
-/// when differential testing starts.
+/// Exact D1 Oodle-3 oracle vectors prove the independent-stream forms 0x8c
+/// (compressed) and 0xcc (stored/raw).  The low nibble is always 0xc, bits 4-5
+/// are reserved in this runtime family, bit 7 is restart, and bit 6 is raw.
+pub fn parse_frame_header(compressed: &[u8]) -> Result<FrameHeader, DecodeError> {
+    if compressed.len() < 2 {
+        return Err(DecodeError::TruncatedInput);
+    }
+
+    let control = compressed[0];
+    if control & 0x0f != 0x0c || control & 0x30 != 0 {
+        return Err(DecodeError::InvalidStream("invalid outer Oodle header"));
+    }
+
+    let codec_flags = compressed[1];
+    Ok(FrameHeader {
+        restart_decoder: control & 0x80 != 0,
+        uncompressed: control & 0x40 != 0,
+        codec: RawCodec::from_id(codec_flags & 0x7f),
+        checksums: codec_flags & 0x80 != 0,
+    })
+}
+
+/// Copy an LZ match with standard overlapping-copy semantics.
 pub fn copy_match(
     output: &mut [u8],
     produced: &mut usize,
@@ -65,15 +150,85 @@ pub fn copy_match(
 
 /// Decode one independently decodable Oodle 3 buffer into an exact-size output.
 ///
-/// The ABI-facing wrapper will use this function once top-level framing and the
-/// legacy entropy/LZ stages are proven from the exact reference runtime.
-pub fn decode_into(_compressed: &[u8], _output: &mut [u8]) -> Result<usize, DecodeError> {
-    Err(DecodeError::UnsupportedFormat)
+/// The stored/raw path is already fully native.  Compressed codec bodies are
+/// deliberately rejected until their individual formats pass oracle tests.
+pub fn decode_into(compressed: &[u8], output: &mut [u8]) -> Result<usize, DecodeError> {
+    let header = parse_frame_header(compressed)?;
+    if header.checksums {
+        return Err(DecodeError::UnsupportedChecksums);
+    }
+
+    if header.uncompressed {
+        let raw = &compressed[2..];
+        if raw.len() != output.len() {
+            return Err(DecodeError::InvalidStream(
+                "stored/raw payload length does not match requested output length",
+            ));
+        }
+        output.copy_from_slice(raw);
+        return Ok(raw.len());
+    }
+
+    Err(DecodeError::UnsupportedCompressedCodec(header.codec))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_exact_oracle_outer_headers() {
+        let lzh = parse_frame_header(&[0x8c, 0x07]).unwrap();
+        assert!(lzh.restart_decoder);
+        assert!(!lzh.uncompressed);
+        assert_eq!(lzh.codec, RawCodec::Lzh);
+        assert!(!lzh.checksums);
+
+        let kraken = parse_frame_header(&[0x8c, 0x06]).unwrap();
+        assert_eq!(kraken.codec, RawCodec::Kraken);
+
+        let bitknit = parse_frame_header(&[0x8c, 0x0b]).unwrap();
+        assert_eq!(bitknit.codec, RawCodec::Bitknit);
+    }
+
+    #[test]
+    fn decodes_exact_lzh_stored_oracle_shape() {
+        // Exact form emitted by the reference DLL for the 64-byte all-zero
+        // synthetic vector: cc 07 followed by the raw bytes.
+        let mut comp = vec![0xcc, 0x07];
+        comp.extend_from_slice(&[0u8; 64]);
+        let mut out = [0xa5u8; 64];
+        assert_eq!(decode_into(&comp, &mut out), Ok(64));
+        assert_eq!(out, [0u8; 64]);
+    }
+
+    #[test]
+    fn decodes_stored_lzb16_ramp() {
+        let raw: Vec<u8> = (0..64u8).collect();
+        let mut comp = vec![0xcc, 0x02];
+        comp.extend_from_slice(&raw);
+        let mut out = vec![0u8; raw.len()];
+        assert_eq!(decode_into(&comp, &mut out), Ok(raw.len()));
+        assert_eq!(out, raw);
+    }
+
+    #[test]
+    fn rejects_wrong_stored_raw_length() {
+        let mut out = [0u8; 4];
+        assert!(matches!(
+            decode_into(&[0xcc, 0x07, 1, 2, 3], &mut out),
+            Err(DecodeError::InvalidStream(_))
+        ));
+    }
+
+    #[test]
+    fn compressed_codec_is_parsed_before_rejection() {
+        let mut out = [0u8; 16];
+        assert_eq!(
+            decode_into(&[0x8c, 0x07, 0x40, 0x0b], &mut out),
+            Err(DecodeError::UnsupportedCompressedCodec(RawCodec::Lzh))
+        );
+    }
 
     #[test]
     fn overlapping_match_repeats_history() {
