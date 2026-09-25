@@ -724,40 +724,6 @@ impl Decoder {
 }
 
 #[inline(always)]
-fn decode_length(bits: &mut MsbBitReader<'_>, code: LengthCode) -> Result<usize, Error> {
-    decode_length_parts(bits, code.base, code.extra_bits, code.extended)
-}
-
-#[inline(always)]
-fn decode_length_parts(
-    bits: &mut MsbBitReader<'_>,
-    base: u16,
-    extra_bits: u8,
-    extended: bool,
-) -> Result<usize, Error> {
-    let base = usize::from(base);
-    if extra_bits == 0 {
-        return Ok(base);
-    }
-    if !extended {
-        return Ok(base + bits.read_bits(usize::from(extra_bits))? as usize);
-    }
-
-    if !bits.read_bit()? {
-        return Ok(157 + bits.read_bits(6)? as usize);
-    }
-    if !bits.read_bit()? {
-        return Ok(221 + bits.read_bits(7)? as usize);
-    }
-    if !bits.read_bit()? {
-        return Ok(349 + bits.read_bits(8)? as usize);
-    }
-    if !bits.read_bit()? {
-        return Ok(605 + bits.read_bits(10)? as usize);
-    }
-    Ok(1629 + bits.read_bits(14)? as usize)
-}
-
 #[inline(always)]
 fn copy_match_into(
     output: &mut [u8],
