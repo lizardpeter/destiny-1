@@ -611,25 +611,19 @@ impl Decoder {
                     let distance = match selector {
                         0 => recent[0],
                         1 => {
-                            let distance = recent[1];
-                            recent[1] = recent[0];
-                            recent[0] = distance;
-                            distance
+                            recent.swap(0, 1);
+                            recent[0]
                         }
                         2 => {
-                            let distance = recent[2];
-                            recent[2] = recent[1];
-                            recent[1] = recent[0];
-                            recent[0] = distance;
-                            distance
+                            recent.swap(1, 2);
+                            recent.swap(0, 1);
+                            recent[0]
                         }
                         3 => {
-                            let distance = recent[3];
-                            recent[3] = recent[2];
-                            recent[2] = recent[1];
-                            recent[1] = recent[0];
-                            recent[0] = distance;
-                            distance
+                            recent.swap(2, 3);
+                            recent.swap(1, 2);
+                            recent.swap(0, 1);
+                            recent[0]
                         }
                         _ => return Err(Error::InvalidRun),
                     };
@@ -973,42 +967,6 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn read_bit(&mut self) -> Result<bool, Error> {
         Ok(self.read_bits(1)? != 0)
-    }
-
-    #[inline(always)]
-    fn peek_bits(&mut self, count: usize) -> Result<u64, Error> {
-        if count > 64 {
-            return Err(Error::Truncated);
-        }
-        if count == 0 {
-            return Ok(0);
-        }
-        if count > 56 {
-            let mut copy = *self;
-            return copy.read_bits(count);
-        }
-        self.ensure_bits(count)?;
-        Ok(self.bit_buf >> (64 - count))
-    }
-
-    #[inline(always)]
-    fn skip_bits(&mut self, count: usize) -> Result<(), Error> {
-        if count > 56 {
-            let mut remaining = count;
-            while remaining > 56 {
-                self.skip_bits(56)?;
-                remaining -= 56;
-            }
-            return self.skip_bits(remaining);
-        }
-        if count == 0 {
-            return Ok(());
-        }
-        self.ensure_bits(count)?;
-        self.bit_buf <<= count;
-        self.bit_count -= count as u8;
-        self.bit_pos += count;
-        Ok(())
     }
 
     #[inline(always)]
