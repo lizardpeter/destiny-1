@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git worktree add ../combined eb737bfe4e6b81ecfcb2f3753862c2d498f46151
+          git worktree add ../combined e41cfecac6083f1da830e7f93ff6c6b805d709f8
           (cd ../combined/rust/d1_oodle3 && CARGO_TARGET_DIR=target-pair cargo build --release)
           (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-pair cargo build --release)
           cp ../combined/rust/d1_oodle3/target-pair/release/d1_oodle3.dll out/baseline.dll
