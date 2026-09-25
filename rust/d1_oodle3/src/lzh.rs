@@ -23,6 +23,10 @@ mod profile {
     pub struct ProfileSnapshot {
         pub models: u64,
         pub model_symbols: u64,
+        pub model_sparse: u64,
+        pub model_rice: u64,
+        pub long_tables_total: u64,
+        pub long_tables_max: u64,
         pub quanta: u64,
         pub huffman_fast: u64,
         pub huffman_long: u64,
@@ -50,6 +54,10 @@ mod profile {
 
     static MODELS: AtomicU64 = AtomicU64::new(0);
     static MODEL_SYMBOLS: AtomicU64 = AtomicU64::new(0);
+    static MODEL_SPARSE: AtomicU64 = AtomicU64::new(0);
+    static MODEL_RICE: AtomicU64 = AtomicU64::new(0);
+    static LONG_TABLES_TOTAL: AtomicU64 = AtomicU64::new(0);
+    static LONG_TABLES_MAX: AtomicU64 = AtomicU64::new(0);
     static QUANTA: AtomicU64 = AtomicU64::new(0);
     static HUFFMAN_FAST: AtomicU64 = AtomicU64::new(0);
     static HUFFMAN_LONG: AtomicU64 = AtomicU64::new(0);
@@ -74,6 +82,13 @@ mod profile {
     pub(super) fn model(used: usize) {
         inc(&MODELS);
         MODEL_SYMBOLS.fetch_add(used as u64, Ordering::Relaxed);
+    }
+    pub(super) fn model_encoding(rice: bool) {
+        inc(if rice { &MODEL_RICE } else { &MODEL_SPARSE });
+    }
+    pub(super) fn long_tables(count: usize) {
+        LONG_TABLES_TOTAL.fetch_add(count as u64, Ordering::Relaxed);
+        LONG_TABLES_MAX.fetch_max(count as u64, Ordering::Relaxed);
     }
     pub(super) fn quantum() { inc(&QUANTA); }
     pub(super) fn huffman_fast() { inc(&HUFFMAN_FAST); }
@@ -101,7 +116,9 @@ mod profile {
 
     pub fn reset() {
         for a in [
-            &MODELS, &MODEL_SYMBOLS, &QUANTA, &HUFFMAN_FAST, &HUFFMAN_LONG, &HUFFMAN_TAIL,
+            &MODELS, &MODEL_SYMBOLS, &MODEL_SPARSE, &MODEL_RICE,
+            &LONG_TABLES_TOTAL, &LONG_TABLES_MAX,
+            &QUANTA, &HUFFMAN_FAST, &HUFFMAN_LONG, &HUFFMAN_TAIL,
             &LITERALS, &RECENT_MATCHES, &EXPLICIT_MATCHES, &REFILL_32, &REFILL_8,
         ] { a.store(0, Ordering::Relaxed); }
         for a in &DISTANCE { a.store(0, Ordering::Relaxed); }
@@ -111,7 +128,10 @@ mod profile {
     pub fn snapshot() -> ProfileSnapshot {
         let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
         ProfileSnapshot {
-            models: g(&MODELS), model_symbols: g(&MODEL_SYMBOLS), quanta: g(&QUANTA),
+            models: g(&MODELS), model_symbols: g(&MODEL_SYMBOLS),
+            model_sparse: g(&MODEL_SPARSE), model_rice: g(&MODEL_RICE),
+            long_tables_total: g(&LONG_TABLES_TOTAL), long_tables_max: g(&LONG_TABLES_MAX),
+            quanta: g(&QUANTA),
             huffman_fast: g(&HUFFMAN_FAST), huffman_long: g(&HUFFMAN_LONG),
             huffman_tail: g(&HUFFMAN_TAIL), literals: g(&LITERALS),
             recent_matches: g(&RECENT_MATCHES), explicit_matches: g(&EXPLICIT_MATCHES),
@@ -607,6 +627,8 @@ impl FixedLzhModel {
         const SYMBOL_BITS: usize = 10;
         let mut bits = MsbBitReader::new(input);
         let method = bits.read_bit()?;
+        #[cfg(feature = "profile")]
+        profile::model_encoding(method);
         let mut lengths = [0u8; SYMBOL_COUNT];
         let mut one_char = None;
 
@@ -880,6 +902,9 @@ impl CanonicalDecoder {
                 self.long_tables[table_index][start..end].fill(entry);
             }
         }
+
+        #[cfg(feature = "profile")]
+        profile::long_tables(self.long_tables.len());
 
         Ok(())
     }
