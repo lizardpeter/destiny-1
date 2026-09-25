@@ -346,6 +346,89 @@ def main() -> int:
                 "text": s,
             })
 
+    def summarize_codec_dispatch(fn):
+        codec_ids = {0, 1, 2, 3, 4, 5, 6, 7, 10, 11}
+        rows = fn["instructions"]
+        by_addr = {row["address"]: row for row in rows}
+
+        def codec_cmp(row):
+            return (
+                row["mnemonic"] == "cmp"
+                and any(imm in codec_ids for imm in row.get("immediates", []))
+            )
+
+        def path_calls(start, budget=96):
+            pending = [start]
+            seen = set()
+            calls = []
+            while pending and len(seen) < budget:
+                pc = pending.pop()
+                while pc in by_addr and pc not in seen and len(seen) < budget:
+                    row = by_addr[pc]
+                    seen.add(pc)
+                    if codec_cmp(row) and pc != start:
+                        break
+                    m = row["mnemonic"]
+                    imms = row.get("immediates", [])
+                    nxt = pc + row["size"]
+                    if m == "call" and imms:
+                        target = imms[0]
+                        if text_va <= target < text_end and target not in calls:
+                            calls.append(target)
+                        pc = nxt
+                        continue
+                    if m.startswith("ret"):
+                        break
+                    if m == "jmp":
+                        if imms and imms[0] in by_addr:
+                            pc = imms[0]
+                            continue
+                        break
+                    if m.startswith("j") and m != "jmp":
+                        if imms and imms[0] in by_addr:
+                            pending.append(imms[0])
+                        pc = nxt
+                        continue
+                    pc = nxt
+            return calls[:16]
+
+        sites = []
+        for row in rows:
+            if not codec_cmp(row):
+                continue
+            codec_values = [imm for imm in row["immediates"] if imm in codec_ids]
+            nxt_addr = row["address"] + row["size"]
+            jcc = by_addr.get(nxt_addr)
+            item = {
+                "cmp_rva": row["address"] - image_base,
+                "codec_values": codec_values,
+                "next_mnemonic": jcc["mnemonic"] if jcc else None,
+                "taken_rva": None,
+                "fallthrough_rva": None,
+                "taken_call_rvas": [],
+                "fallthrough_call_rvas": [],
+            }
+            if jcc and jcc["mnemonic"].startswith("j") and jcc["mnemonic"] != "jmp":
+                targets = jcc.get("immediates", [])
+                if targets and text_va <= targets[0] < text_end:
+                    item["taken_rva"] = targets[0] - image_base
+                    item["taken_call_rvas"] = [
+                        x - image_base for x in path_calls(targets[0])
+                    ]
+                fall = jcc["address"] + jcc["size"]
+                if fall in by_addr:
+                    item["fallthrough_rva"] = fall - image_base
+                    item["fallthrough_call_rvas"] = [
+                        x - image_base for x in path_calls(fall)
+                    ]
+            sites.append(item)
+        return sites
+
+    decode_some = funcs.get(export_by_name["OodleLZDecoder_DecodeSome"]["va"])
+    decode_some_dispatch_sites = (
+        summarize_codec_dispatch(decode_some) if decode_some is not None else []
+    )
+
     report = {
         "schema": "d1_oodle3_static_probe_v1",
         "dll": args.dll.name,
@@ -377,6 +460,7 @@ def main() -> int:
         "string_xrefs": string_xrefs,
         "whole_text_string_xrefs": whole_text_string_xrefs,
         "runtime_function_count": len(runtime_functions),
+        "decode_some_dispatch_sites": decode_some_dispatch_sites,
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
