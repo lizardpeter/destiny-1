@@ -762,7 +762,7 @@ struct CanonicalDecoder {
     counts: [u16; MAX_CODE_LEN as usize + 1],
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
-    symbols: Vec<u16>,
+    symbols: [u16; SYMBOL_COUNT],
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
     max_len: u8,
     one_char: Option<usize>,
@@ -774,7 +774,7 @@ impl CanonicalDecoder {
             counts: [0; MAX_CODE_LEN as usize + 1],
             first_code: [0; MAX_CODE_LEN as usize + 1],
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
-            symbols: Vec::new(),
+            symbols: [0; SYMBOL_COUNT],
             fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
             max_len: 0,
             one_char: None,
@@ -839,7 +839,6 @@ impl CanonicalDecoder {
         self.counts.fill(0);
         self.first_code.fill(0);
         self.first_symbol.fill(0);
-        self.symbols.clear();
         // Every accepted multi-symbol model is Kraft-complete. Therefore every
         // FAST_DECODE_BITS prefix is overwritten by either a short-code fill
         // or an explicit long-prefix sentinel below; zeroing the full 8 KiB
@@ -869,11 +868,6 @@ impl CanonicalDecoder {
             self.first_symbol[len] = symbol_index;
             symbol_index += usize::from(self.counts[len]);
         }
-
-        if self.symbols.capacity() < used_symbols {
-            self.symbols.reserve(used_symbols - self.symbols.capacity());
-        }
-        self.symbols.resize(used_symbols, 0);
 
         // Build canonical symbol order and decode tables. Fixed D1 models
         // provide the already-collected nonzero symbol list, avoiding a scan
