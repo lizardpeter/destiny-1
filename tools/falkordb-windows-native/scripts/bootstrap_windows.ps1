@@ -20,6 +20,19 @@ Need rustc
 Need cmake
 Need python
 
+function Get-CMakeVSGenerator {
+    $Help = (cmake --help | Out-String)
+    foreach ($Generator in @("Visual Studio 18 2026", "Visual Studio 17 2022")) {
+        if ($Help.Contains($Generator)) {
+            return $Generator
+        }
+    }
+    throw "No supported Visual Studio CMake generator found. Available generators:`n$Help"
+}
+
+$VSGenerator = Get-CMakeVSGenerator
+Write-Host "Using CMake generator: $VSGenerator"
+
 $WorkDir = [IO.Path]::GetFullPath($WorkDir)
 $Src = Join-Path $WorkDir "src"
 $Prefix = Join-Path $WorkDir "native-prefix"
@@ -28,12 +41,11 @@ New-Item -ItemType Directory -Force -Path $Src, $Prefix, $ShimDir | Out-Null
 
 $Falkor = Join-Path $Src "FalkorDB"
 if (-not (Test-Path $Falkor)) {
-    git clone --recurse-submodules https://github.com/FalkorDB/FalkorDB.git $Falkor
+    git clone https://github.com/FalkorDB/FalkorDB.git $Falkor
 }
 Push-Location $Falkor
 git fetch origin
 git checkout $Commit
-git submodule update --init --recursive
 Pop-Location
 
 python "$PSScriptRoot\apply_windows_foundation.py" $Falkor
@@ -46,7 +58,7 @@ if (-not $SkipNativeDeps) {
     }
 
     $GBBuild = Join-Path $WorkDir "graphblas-build"
-    cmake -S $GB -B $GBBuild -G "Visual Studio 17 2022" -A x64 `
+    cmake -S $GB -B $GBBuild -G "$VSGenerator" -A x64 `
         -DCMAKE_INSTALL_PREFIX="$Prefix" `
         -DSUITESPARSE_USE_FORTRAN=OFF `
         -DBUILD_STATIC_LIBS=ON `
@@ -72,7 +84,7 @@ if (-not $SkipNativeDeps) {
     }
 
     $LABuild = Join-Path $WorkDir "lagraph-build"
-    cmake -S $LA -B $LABuild -G "Visual Studio 17 2022" -A x64 `
+    cmake -S $LA -B $LABuild -G "$VSGenerator" -A x64 `
         -DCMAKE_INSTALL_PREFIX="$Prefix" `
         -DBUILD_STATIC_LIBS=ON `
         -DBUILD_SHARED_LIBS=OFF `
@@ -100,7 +112,7 @@ if (-not $SkipNativeDeps) {
 }
 
 & "$PSScriptRoot\generate_graphblas_bindings.ps1" -FalkorRoot $Falkor -Prefix $Prefix
-& "$PSScriptRoot\build_redisearch_shim.ps1" -OutDir $ShimDir
+& "$PSScriptRoot\build_redisearch_shim.ps1" -OutDir $ShimDir -VSGenerator $VSGenerator
 
 Write-Host ""
 Write-Host "Prepared source:       $Falkor"
