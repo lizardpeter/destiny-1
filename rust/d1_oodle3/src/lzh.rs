@@ -263,18 +263,36 @@ pub struct HuffmanModel {
 
 impl HuffmanModel {
     pub fn parse_lzh(input: &[u8]) -> Result<Self, Error> {
-        Self::parse(input, SYMBOL_COUNT, MAX_CODE_LEN)
+        Self::parse_reusing(input, SYMBOL_COUNT, MAX_CODE_LEN, Vec::new())
+    }
+
+    fn parse_lzh_reusing(input: &[u8], storage: Vec<u8>) -> Result<Self, Error> {
+        Self::parse_reusing(input, SYMBOL_COUNT, MAX_CODE_LEN, storage)
     }
 
     pub fn parse(input: &[u8], symbol_count: usize, max_code_len: u8) -> Result<Self, Error> {
+        Self::parse_reusing(input, symbol_count, max_code_len, Vec::new())
+    }
+
+    fn parse_reusing(
+        input: &[u8],
+        symbol_count: usize,
+        max_code_len: u8,
+        mut lengths: Vec<u8>,
+    ) -> Result<Self, Error> {
         if symbol_count < 2 {
             return Err(Error::InvalidSymbolCount(symbol_count));
+        }
+
+        if lengths.len() != symbol_count {
+            lengths.resize(symbol_count, 0);
+        } else {
+            lengths.fill(0);
         }
 
         let symbol_bits = usize::BITS as usize - (symbol_count - 1).leading_zeros() as usize;
         let mut bits = MsbBitReader::new(input);
         let method = bits.read_bit()?;
-        let mut lengths = vec![0u8; symbol_count];
         let mut one_char = None;
 
         if !method {
@@ -596,6 +614,7 @@ impl CanonicalDecoder {
 #[derive(Debug, Default, Clone)]
 pub struct Decoder {
     model: Option<HuffmanModel>,
+    model_storage: Vec<u8>,
     huffman: Option<CanonicalDecoder>,
 }
 
@@ -603,12 +622,15 @@ impl Decoder {
     pub const fn new() -> Self {
         Self {
             model: None,
+            model_storage: Vec::new(),
             huffman: None,
         }
     }
 
     pub fn reset(&mut self) {
-        self.model = None;
+        if let Some(model) = self.model.take() {
+            self.model_storage = model.code_lengths;
+        }
     }
 
     pub fn decode_quantum_into(
@@ -621,7 +643,12 @@ impl Decoder {
     ) -> Result<(), Error> {
         let mut payload_offset = 0usize;
         if has_new_model {
-            let model = HuffmanModel::parse_lzh(payload)?;
+            let storage = if let Some(model) = self.model.take() {
+                model.code_lengths
+            } else {
+                core::mem::take(&mut self.model_storage)
+            };
+            let model = HuffmanModel::parse_lzh_reusing(payload, storage)?;
             payload_offset = model.consumed_bits.div_ceil(8);
             if payload_offset > payload.len() {
                 return Err(Error::Truncated);
