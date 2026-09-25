@@ -1,3 +1,4 @@
+# candidate validation: reusable decoder + used-symbol setup
 [package]
 name = "d1_oodle3"
 version = "0.1.0"
