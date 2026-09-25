@@ -395,18 +395,8 @@ impl CanonicalDecoder {
             symbol_index += usize::from(counts[len]);
         }
 
-        let mut symbols = Vec::with_capacity(model.used_symbols);
-        for len in 1..=model.max_code_len {
-            for (symbol, &symbol_len) in model.code_lengths.iter().enumerate() {
-                if symbol_len == len {
-                    symbols.push(symbol as u16);
-                }
-            }
-        }
-        if symbols.len() != model.used_symbols {
-            return Err(Error::NonCanonical);
-        }
-
+        let mut symbols = vec![0u16; model.used_symbols];
+        let mut next_symbol = first_symbol;
         let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
         let mut long_prefix = [-1i16; 1 << FAST_DECODE_BITS];
         let mut long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]> = Vec::new();
@@ -415,8 +405,14 @@ impl CanonicalDecoder {
             if len == 0 {
                 continue;
             }
-            let code = next_code[usize::from(len)];
-            next_code[usize::from(len)] += 1;
+            let len_index = usize::from(len);
+            let symbol_slot = next_symbol[len_index];
+            let dst = symbols.get_mut(symbol_slot).ok_or(Error::NonCanonical)?;
+            *dst = symbol as u16;
+            next_symbol[len_index] += 1;
+
+            let code = next_code[len_index];
+            next_code[len_index] += 1;
             let entry = FastEntry {
                 symbol: symbol as u16,
                 len,
