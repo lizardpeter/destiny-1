@@ -1,0 +1,14 @@
+[package]
+name = "d1-oodle3-native"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Clean-room native Rust compatibility decoder for Destiny-era Oodle 3 streams"
+
+[lib]
+name = "d1_oodle3_native"
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
