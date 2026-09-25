@@ -25,15 +25,15 @@ pub unsafe extern "C" fn OodleLZ_Decompress(
     _decoder_memory_size: *mut c_void,
     thread_phase: u32,
 ) -> i64 {
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<i64, ()> {
         if comp_buf.is_null()
             || raw_buf.is_null()
             || comp_len < 0
             || raw_len < 0
-            || callback.is_null().not()
+            || !callback.is_null()
             || thread_phase != THREAD_PHASE_ALL
         {
-            return -1;
+            return Err(());
         }
 
         let comp_len = usize::try_from(comp_len).map_err(|_| ())?;
@@ -48,22 +48,12 @@ pub unsafe extern "C" fn OodleLZ_Decompress(
         unsafe {
             core::ptr::copy_nonoverlapping(decoded.as_ptr(), raw_buf.cast::<u8>(), raw_len);
         }
-        Ok(i64::try_from(raw_len).map_err(|_| ())?)
+        i64::try_from(raw_len).map_err(|_| ())
     }));
 
     match result {
         Ok(Ok(value)) => value,
         _ => -1,
-    }
-}
-
-trait BoolNot {
-    fn not(self) -> bool;
-}
-
-impl BoolNot for bool {
-    fn not(self) -> bool {
-        !self
     }
 }
 
