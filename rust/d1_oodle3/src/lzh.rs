@@ -1683,12 +1683,32 @@ impl<'a> MsbBitReader<'a> {
         Ok(value)
     }
 
+    #[inline]
     fn read_unary(&mut self) -> Result<u32, Error> {
         let mut zeros = 0u32;
-        while !self.read_bit()? {
-            zeros = zeros.checked_add(1).ok_or(Error::InvalidRun)?;
+        loop {
+            if self.bit_count == 0 {
+                self.ensure_bits(1)?;
+            }
+
+            let available = usize::from(self.bit_count);
+            let leading = self.bit_buf.leading_zeros() as usize;
+            if leading < available {
+                let consume = leading + 1;
+                self.bit_buf <<= consume;
+                self.bit_count -= consume as u8;
+                zeros = zeros
+                    .checked_add(leading as u32)
+                    .ok_or(Error::InvalidRun)?;
+                return Ok(zeros);
+            }
+
+            zeros = zeros
+                .checked_add(available as u32)
+                .ok_or(Error::InvalidRun)?;
+            self.bit_buf = 0;
+            self.bit_count = 0;
         }
-        Ok(zeros)
     }
 
     fn read_rice(&mut self, rice_bits: u8) -> Result<u32, Error> {
