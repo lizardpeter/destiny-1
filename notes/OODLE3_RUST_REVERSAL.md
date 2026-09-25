@@ -158,37 +158,57 @@ Branch: `oodle3-rust-native-20260925`
 
 Native Rust components:
 
-- `rust/d1_oodle3/src/lib.rs` - version-aware framing
-- `rust/d1_oodle3/src/lzh.rs` - LZH model and token primitives
+- `rust/d1_oodle3/src/lib.rs` - version-aware Oodle 2.3 framing
+- `rust/d1_oodle3/src/lzh.rs` - complete clean-room legacy LZH payload decoder
+- `rust/d1_oodle3/src/ffi.rs` - fail-closed `OodleLZ_Decompress` whole-buffer compatibility ABI
 - `rust/d1_oodle3/src/bin/frame_scan.rs` - frame/model diagnostic
-- `rust/d1_oodle3/src/bin/native_decode.rs` - differential decoder CLI
+- `rust/d1_oodle3/src/bin/native_decode.rs` - native decoder CLI
 - `tools/oodle3_pe_map.py` - deterministic PE map
 - `.github/workflows/d1-oodle3-rust.yml` - Rust fmt/test/clippy
-- `.github/workflows/d1-oodle3-native-differential.yml` - real D1 differential harness
+- `.github/workflows/d1-oodle3-native-differential.yml` - exact reference differential harness
+- `.github/workflows/d1-oodle3-rust-corpus.yml` - Tower patch-family corpus
+- `.github/workflows/d1-oodle3-rust-cross-family.yml` - unrelated package-family samples
+- `.github/workflows/d1-oodle3-rust-dll.yml` - Windows compatibility-DLL ABI differential
+- `.github/workflows/d1-oodle3-rust-known-offset-corpus.yml` - expanded validated-offset corpus
 
-The real-corpus workflow proves, for blocks 764-771:
+The LZH payload consumer is now implemented. The earlier red-differential checkpoint is obsolete.
 
-- exact reference DLL successfully decodes all eight
-- native parser sees exactly 16 LZH quanta per block
-- native parser sees exactly four transmitted Huffman models per block
-- all 32 models pass canonical validation
-- the modern `oozextract` backend rejects the historical LZH payload, as expected
+Verified byte-identical results against the exact Oodle 2.3 reference runtime:
 
-The remaining red differential step is therefore localized to the not-yet-implemented LZH payload
-consumer, not framing or model reconstruction.
+- initial Tower differential: 8/8 blocks
+- Tower broad corpus: 43/43 blocks across patch members 3, 4, and 5
+- unrelated cross-family corpus: 3/3 blocks
+- expanded known-offset corpus: 67/67 additional blocks across 21 additional package members
+- Windows Rust `cdylib` loaded through the Oodle 14-argument `OodleLZ_Decompress` ABI: 8/8 initial blocks byte-identical
+- Linux native shared-library integration: green
+
+The 67-block expanded run is GitHub Actions run `36134573694`. It covered current members from
+multiple `globals` and `investment_assets` families, including package IDs 0151, 0154, 0156,
+0157, 0158, 0135, 0137, 0139, 013A-0146. Every tested compressed block began with the legacy
+`0xB7` version-3 LZH header and decoded byte-identically.
+
+Across the non-overlapping broad/cross-family/known-offset sets, the current certification corpus is
+**113 real compressed blocks across 27 physical D1 package members**. Tested raw output sizes include
+16 KiB through 256 KiB, with numerous partial final-block sizes. No alternative Oodle codec/header
+was encountered in this corpus.
+
+## Current compatibility boundary
+
+For the Destiny package-decompression path actually observed so far, native Rust LZH is green.
+
+This is not yet a claim that the complete `oo2core_3_win64.dll` has been cloned. The compatibility
+library intentionally implements the whole-buffer `OodleLZ_Decompress` call shape used by the D1
+tooling and fails closed for unsupported callback/phased modes. Other historical Oodle codecs,
+compression/encoding APIs, networking APIs, configuration helpers, optional callback behavior, and
+the rest of the roughly 60-export DLL surface remain separate work unless a D1 caller requires them.
 
 ## Remaining work
 
-The remaining critical path is now narrow:
-
-1. finish canonical symbol decoder/table construction from the reconstructed 713 code lengths;
-2. implement the four-entry recent-distance history exactly;
-3. implement explicit distance extraction and the normal length classes;
-4. finish the `157` extended-length escape sequence;
-5. implement overlap-safe match copying;
-6. replace the temporary modern-Oodle backend with the native LZH quantum decoder;
-7. require byte-identical output against all eight D1 reference blocks, then expand the corpus;
-8. only after D1 LZH is green, implement other codec families if the package census shows they are needed.
-
-Callback/thread-phase API parity and optional checksum verification are secondary to the current
-Destiny whole-buffer decode target.
+1. Continue corpus expansion until every recoverable D1 package family has been scanned.
+2. Record a complete census of encountered block-header bytes / serialized decoder types.
+3. If any non-LZH block appears, differential-reverse that codec before declaring full D1 package
+   decompression coverage.
+4. Exercise the Rust compatibility DLL through more existing D1 tools, not just the standalone
+   differential harness.
+5. Separately map/reimplement the remaining Oodle 2.3 exports if the goal is a complete DLL clone
+   rather than only removal of D1's package-decompression dependency.
