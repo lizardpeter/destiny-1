@@ -4,11 +4,13 @@ use std::{env, fs, io, path::PathBuf};
 
 fn parse_usize(s: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let v = s.trim();
-    Ok(if let Some(hex) = v.strip_prefix("0x").or_else(|| v.strip_prefix("0X")) {
-        usize::from_str_radix(hex, 16)?
-    } else {
-        v.parse()?
-    })
+    Ok(
+        if let Some(hex) = v.strip_prefix("0x").or_else(|| v.strip_prefix("0X")) {
+            usize::from_str_radix(hex, 16)?
+        } else {
+            v.parse()?
+        },
+    )
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,19 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         if span.block.decoder_type == DecoderType::Lzh
-            && matches!(
-                span.kind,
-                QuantumKind::Compressed {
-                    flag1: true,
-                    ..
-                }
-            )
+            && matches!(span.kind, QuantumKind::Compressed { flag1: true, .. })
         {
-            let header = parse_quantum_header(
-                &input[span.input_offset..],
-                span.block,
-                span.raw_len,
-            )?;
+            let header =
+                parse_quantum_header(&input[span.input_offset..], span.block, span.raw_len)?;
             let payload_start = span.input_offset + header.header_len;
             let payload_end = span.input_offset + span.input_len;
             let model = HuffmanModel::parse_lzh(&input[payload_start..payload_end])?;
