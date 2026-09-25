@@ -1,0 +1,174 @@
+name: D1 Oodle3 bitcount plus BMI2 LZCNT
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-exp-bitcount-bmi2lzcnt.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover package and Oodle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(got)
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+
+      - name: Build baseline/current generic/tuned
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add ../base ad42564c1958780289a6af01f2cbb2568c7cb695
+
+          (cd ../base && CARGO_TARGET_DIR=rust/d1_oodle3/target-bg cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib)
+          cp ../base/rust/d1_oodle3/target-bg/release/d1_oodle3.dll out/base_generic.dll
+
+          (cd ../base && CARGO_TARGET_DIR=rust/d1_oodle3/target-bt RUSTFLAGS="-C target-feature=+bmi2,+lzcnt" cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib)
+          cp ../base/rust/d1_oodle3/target-bt/release/d1_oodle3.dll out/base_tuned.dll
+
+          CARGO_TARGET_DIR=rust/d1_oodle3/target-cg cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          cp rust/d1_oodle3/target-cg/release/d1_oodle3.dll out/current_generic.dll
+
+          CARGO_TARGET_DIR=rust/d1_oodle3/target-ct RUSTFLAGS="-C target-feature=+bmi2,+lzcnt" \
+            cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          cp rust/d1_oodle3/target-ct/release/d1_oodle3.dll out/current_tuned.dll
+
+      - name: Benchmark all four
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha')
+              cases.append((comp,0x40000))
+              if len(cases)==8: break
+
+          names=['oodle','base_generic','current_generic','base_tuned','current_tuned']
+          paths={
+              'oodle':'reference/oo2core_3_win64.dll',
+              'base_generic':'out/base_generic.dll',
+              'current_generic':'out/current_generic.dll',
+              'base_tuned':'out/base_tuned.dll',
+              'current_tuned':'out/current_tuned.dll'
+          }
+          fns={n:bind(paths[n]) for n in names}
+          bufs={n:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                   for c,raw in cases] for n in names}
+
+          def call(n,i):
+              fn=fns[n]; src,dst,cl,raw=bufs[n][i]
+              got=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                     1,0,0,None,None,None,None,None,None,3)
+              if got!=raw: raise RuntimeError((n,got,raw))
+              return dst.raw[:raw]
+
+          for i in range(len(cases)):
+              outs={n:call(n,i) for n in names}
+              if len(set(outs.values()))!=1: raise RuntimeError(f'mismatch {i}')
+
+          for _ in range(15):
+              for n in names:
+                  for i in range(len(cases)): call(n,i)
+
+          iterations=55; rounds=15
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          def once(n):
+              t=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for i in range(len(cases)): call(n,i)
+              return raw_bytes/((time.perf_counter_ns()-t)/1e9)/(1024*1024)
+
+          samples={n:[] for n in names}
+          ratios={'generic_source':[],'tuned_source':[],'base_tuning':[],'current_tuning':[]}
+          orders=[
+              names,
+              list(reversed(names)),
+              ['base_generic','base_tuned','current_generic','current_tuned','oodle'],
+              ['oodle','current_tuned','current_generic','base_tuned','base_generic'],
+              ['current_generic','base_generic','oodle','current_tuned','base_tuned'],
+          ]
+          for r in range(rounds):
+              vals={}
+              for n in orders[r%len(orders)]:
+                  vals[n]=once(n); samples[n].append(vals[n])
+              ratios['generic_source'].append(vals['current_generic']/vals['base_generic'])
+              ratios['tuned_source'].append(vals['current_tuned']/vals['base_tuned'])
+              ratios['base_tuning'].append(vals['base_tuned']/vals['base_generic'])
+              ratios['current_tuning'].append(vals['current_tuned']/vals['current_generic'])
+
+          med={n:statistics.median(v) for n,v in samples.items()}
+          report={
+              'base_commit':'ad42564c1958780289a6af01f2cbb2568c7cb695',
+              'candidate_commit':'9e00dc8c54f58751e00f04a2270608c1a99035da',
+              'median_mib_s':med,
+              'paired_median':{k:statistics.median(v) for k,v in ratios.items()},
+              'ratio_to_oodle':{n:med[n]/med['oodle'] for n in names if n!='oodle'},
+              'samples':samples,
+              'correctness':'8/8 byte-identical across Oodle and all four Rust variants'
+          }
+          Path('out/bitcount_bmi2_lzcnt.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Commit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/benchmarks
+          cp out/bitcount_bmi2_lzcnt.json evidence/benchmarks/oodle3_bitcount_bmi2_lzcnt.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add evidence/benchmarks/oodle3_bitcount_bmi2_lzcnt.json
+          git commit -m "Record bitcount plus BMI2 LZCNT benchmark" || exit 0
+          git push
