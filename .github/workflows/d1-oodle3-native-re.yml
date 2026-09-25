@@ -10,6 +10,7 @@ on:
       - 'tools/oodle3_static_probe.py'
       - 'tools/oodle3_oracle_vectors.py'
       - 'tools/oodle3_lzh_micro_oracle.py'
+      - 'tools/oodle3_lzh_internal_huff_probe.py'
       - 'rust/d1-oodle3-native/**'
       - 'notes/OODLE3_RUST_RE_PROGRESS.md'
 
@@ -102,6 +103,33 @@ jobs:
         with:
           name: d1-oodle3-lzh-micro-oracle
           path: out/oodle3_lzh_micro_oracle.json
+          retention-days: 30
+          if-no-files-found: error
+
+
+  lzh-internal-huff:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover exact verified runtime
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri $env:OODLE_URL -OutFile oo2core_3_win64.dll
+          $got = (Get-FileHash oo2core_3_win64.dll -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:OODLE_SHA256) { throw "Oodle SHA-256 mismatch: $got" }
+      - name: Probe internal LZH Huffman construction
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          python tools/oodle3_lzh_internal_huff_probe.py oo2core_3_win64.dll -o out/oodle3_lzh_internal_huff.json
+          Remove-Item oo2core_3_win64.dll -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle3-lzh-internal-huff
+          path: out/oodle3_lzh_internal_huff.json
           retention-days: 30
           if-no-files-found: error
 
