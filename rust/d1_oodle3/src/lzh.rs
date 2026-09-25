@@ -832,24 +832,27 @@ impl CanonicalDecoder {
         if self.symbols.capacity() < used_symbols {
             self.symbols.reserve(used_symbols - self.symbols.capacity());
         }
-        for len in 1..=max_code_len {
-            for (symbol, &symbol_len) in code_lengths.iter().enumerate() {
-                if symbol_len == len {
-                    self.symbols.push(symbol as u16);
-                }
-            }
-        }
-        if self.symbols.len() != used_symbols {
-            return Err(Error::NonCanonical);
-        }
+        self.symbols.resize(used_symbols, 0);
 
+        // Build canonical symbol order and decode tables in one pass. The old
+        // code scanned all 713 symbols once for every code length and then
+        // scanned them again for table generation.
+        let mut next_symbol = self.first_symbol;
         let mut next_code = self.first_code;
         for (symbol, &len) in code_lengths.iter().enumerate() {
             if len == 0 {
                 continue;
             }
-            let code = next_code[usize::from(len)];
-            next_code[usize::from(len)] += 1;
+            let len_index = usize::from(len);
+            let symbol_index = next_symbol[len_index];
+            if symbol_index >= used_symbols {
+                return Err(Error::NonCanonical);
+            }
+            self.symbols[symbol_index] = symbol as u16;
+            next_symbol[len_index] += 1;
+
+            let code = next_code[len_index];
+            next_code[len_index] += 1;
             let entry = FastEntry {
                 symbol: symbol as u16,
                 len,
