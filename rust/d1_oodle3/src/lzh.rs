@@ -862,7 +862,7 @@ impl Decoder {
         let payload_started = std::time::Instant::now();
 
         while *output_pos < output_end {
-            let symbol = huffman.decode(&mut bits)?;
+            let mut symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
                 #[cfg(feature = "profile")]
                 profile::literal();
@@ -871,7 +871,23 @@ impl Decoder {
                     *output.get_unchecked_mut(*output_pos) = symbol as u8;
                 }
                 *output_pos += 1;
-                continue;
+                if *output_pos >= output_end {
+                    break;
+                }
+
+                // The Oodle 2.3 shift-0 kernel immediately decodes one more
+                // symbol after a literal instead of returning to its generic
+                // loop head. Preserve that two-symbol scalar unroll here.
+                symbol = huffman.decode(&mut bits)?;
+                if symbol < LITERAL_SYMBOLS {
+                    #[cfg(feature = "profile")]
+                    profile::literal();
+                    unsafe {
+                        *output.get_unchecked_mut(*output_pos) = symbol as u8;
+                    }
+                    *output_pos += 1;
+                    continue;
+                }
             }
             if symbol >= SYMBOL_COUNT {
                 return Err(Error::InvalidSymbol(symbol));
