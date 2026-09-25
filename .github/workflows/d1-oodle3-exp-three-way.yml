@@ -1,0 +1,164 @@
+name: D1 Oodle3 three-way retained/stable/candidate benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-exp-three-way.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover benchmark package and Oodle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(got)
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build stable, retained, and candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add ../stable a5d3df27f14708635f307cd59f3e857fd62a2d4a
+          git worktree add ../retained ad42564c1958780289a6af01f2cbb2568c7cb695
+          (cd ../stable/rust/d1_oodle3 && CARGO_TARGET_DIR=target-three cargo build --release)
+          (cd ../retained/rust/d1_oodle3 && CARGO_TARGET_DIR=target-three cargo build --release)
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-three cargo build --release)
+          cp ../stable/rust/d1_oodle3/target-three/release/d1_oodle3.dll out/stable.dll
+          cp ../retained/rust/d1_oodle3/target-three/release/d1_oodle3.dll out/retained.dll
+          cp rust/d1_oodle3/target-three/release/d1_oodle3.dll out/candidate.dll
+
+      - name: Three-way paired benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha')
+              cases.append((comp,0x40000))
+              if len(cases)==8: break
+
+          names=['stable','retained','candidate','oodle']
+          fns={
+              'stable':bind('out/stable.dll'),
+              'retained':bind('out/retained.dll'),
+              'candidate':bind('out/candidate.dll'),
+              'oodle':bind('reference/oo2core_3_win64.dll'),
+          }
+          bufs={n:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw) for c,raw in cases] for n in names}
+          def call(n,i):
+              fn=fns[n]; src,dst,cl,raw=bufs[n][i]
+              got=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,1,0,0,None,None,None,None,None,None,3)
+              if got!=raw: raise RuntimeError((n,got,raw))
+              return dst.raw[:raw]
+
+          for i in range(len(cases)):
+              outs={n:call(n,i) for n in names}
+              if len(set(outs.values()))!=1: raise RuntimeError(('mismatch',i))
+
+          for _ in range(18):
+              for n in names:
+                  for i in range(len(cases)): call(n,i)
+
+          iters=90; rounds=21
+          raw_bytes=sum(raw for _,raw in cases)*iters
+          def once(n):
+              t=time.perf_counter_ns()
+              for _ in range(iters):
+                  for i in range(len(cases)): call(n,i)
+              sec=(time.perf_counter_ns()-t)/1e9
+              return raw_bytes/sec/(1024*1024)
+
+          orders=[
+              ['stable','retained','candidate','oodle'],
+              ['candidate','retained','stable','oodle'],
+              ['oodle','stable','candidate','retained'],
+              ['oodle','candidate','stable','retained'],
+              ['retained','oodle','stable','candidate'],
+              ['retained','candidate','oodle','stable'],
+          ]
+          samples={n:[] for n in names}
+          paired={'retained_over_stable':[],'candidate_over_retained':[],'candidate_over_stable':[],'candidate_over_oodle':[]}
+          for r in range(rounds):
+              vals={}
+              for n in orders[r%len(orders)]:
+                  vals[n]=once(n); samples[n].append(vals[n])
+              paired['retained_over_stable'].append(vals['retained']/vals['stable'])
+              paired['candidate_over_retained'].append(vals['candidate']/vals['retained'])
+              paired['candidate_over_stable'].append(vals['candidate']/vals['stable'])
+              paired['candidate_over_oodle'].append(vals['candidate']/vals['oodle'])
+
+          report={
+              'stable':'a5d3df27f14708635f307cd59f3e857fd62a2d4a',
+              'retained':'ad42564c1958780289a6af01f2cbb2568c7cb695',
+              'candidate':'reusable decoder + uninitialized used-symbol list',
+              'median_mib_s':{n:statistics.median(v) for n,v in samples.items()},
+              'paired_medians':{k:statistics.median(v) for k,v in paired.items()},
+              'paired':paired,
+              'samples':samples,
+              'correctness':'8/8 byte-identical across stable, retained, candidate, and Oodle'
+          }
+          Path('out/three_way.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Commit three-way result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/benchmarks
+          cp out/three_way.json evidence/benchmarks/oodle3_three_way.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add evidence/benchmarks/oodle3_three_way.json
+          git commit -m "Record Oodle3 three-way benchmark" || exit 0
+          git push
