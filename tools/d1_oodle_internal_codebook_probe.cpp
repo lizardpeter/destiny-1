@@ -18,7 +18,7 @@ static int safe_call(LzhInitFn fn, void *decoder, const uint8_t *src, const uint
     __try {
         return fn(decoder, src, end, consumed);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        *exception_code = GetExceptionCode();
+        *exception_code = 1;
         return -1;
     }
 }
