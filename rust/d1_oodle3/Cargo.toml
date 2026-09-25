@@ -9,3 +9,7 @@ description = "Clean-room Oodle 2.3 framing compatibility work for Destiny 1"
 path = "src/lib.rs"
 crate-type = ["rlib", "cdylib"]
 
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
