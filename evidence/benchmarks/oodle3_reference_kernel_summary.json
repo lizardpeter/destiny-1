@@ -1,0 +1,328 @@
+{
+  "a": {
+    "instruction_count": 3207,
+    "top_mnemonics": [
+      [
+        "mov",
+        697
+      ],
+      [
+        "movzx",
+        257
+      ],
+      [
+        "add",
+        243
+      ],
+      [
+        "sub",
+        197
+      ],
+      [
+        "inc",
+        149
+      ],
+      [
+        "lea",
+        147
+      ],
+      [
+        "cmp",
+        140
+      ],
+      [
+        "shr",
+        117
+      ],
+      [
+        "test",
+        101
+      ],
+      [
+        "jne",
+        96
+      ],
+      [
+        "dec",
+        93
+      ],
+      [
+        "shl",
+        90
+      ],
+      [
+        "e9",
+        80
+      ],
+      [
+        "je",
+        77
+      ],
+      [
+        "eb",
+        61
+      ],
+      [
+        "nop",
+        52
+      ],
+      [
+        "jae",
+        49
+      ],
+      [
+        "xor",
+        36
+      ],
+      [
+        "or",
+        34
+      ],
+      [
+        "e8",
+        33
+      ],
+      [
+        "cc",
+        30
+      ],
+      [
+        "b9",
+        28
+      ],
+      [
+        "and",
+        28
+      ],
+      [
+        "sar",
+        26
+      ],
+      [
+        "jb",
+        26
+      ],
+      [
+        "bswap",
+        24
+      ],
+      [
+        "jns",
+        24
+      ],
+      [
+        "sets",
+        24
+      ],
+      [
+        "movsxd",
+        23
+      ],
+      [
+        "jle",
+        23
+      ]
+    ],
+    "call_count": 3,
+    "branch_count": 320,
+    "cmov_count": 0,
+    "vector_instruction_lines": [],
+    "rep_instruction_lines": [],
+    "calls": [
+      "180076dc9:\t41 ff d2             \tcall   r10",
+      "180077c42:\t41 ff d2             \tcall   r10",
+      "180078a72:\t41 ff d2             \tcall   r10"
+    ]
+  },
+  "b": {
+    "instruction_count": 1493,
+    "top_mnemonics": [
+      [
+        "mov",
+        342
+      ],
+      [
+        "add",
+        108
+      ],
+      [
+        "movzx",
+        92
+      ],
+      [
+        "sub",
+        75
+      ],
+      [
+        "lea",
+        66
+      ],
+      [
+        "cmp",
+        54
+      ],
+      [
+        "inc",
+        52
+      ],
+      [
+        "cc",
+        51
+      ],
+      [
+        "test",
+        49
+      ],
+      [
+        "je",
+        47
+      ],
+      [
+        "shr",
+        46
+      ],
+      [
+        "dec",
+        42
+      ],
+      [
+        "jne",
+        42
+      ],
+      [
+        "shl",
+        30
+      ],
+      [
+        "e9",
+        28
+      ],
+      [
+        "f2",
+        27
+      ],
+      [
+        "nop",
+        21
+      ],
+      [
+        "e8",
+        19
+      ],
+      [
+        "eb",
+        18
+      ],
+      [
+        "xor",
+        17
+      ],
+      [
+        "jae",
+        17
+      ],
+      [
+        "c3",
+        17
+      ],
+      [
+        "or",
+        13
+      ],
+      [
+        "pop",
+        13
+      ],
+      [
+        "f3",
+        11
+      ],
+      [
+        "movsxd",
+        9
+      ],
+      [
+        "sar",
+        9
+      ],
+      [
+        "b9",
+        9
+      ],
+      [
+        "and",
+        9
+      ],
+      [
+        "push",
+        8
+      ]
+    ],
+    "call_count": 1,
+    "branch_count": 142,
+    "cmov_count": 0,
+    "vector_instruction_lines": [
+      "180079d30:\tf3 0f 6f 40 f0       \tmovdqu xmm0,XMMWORD PTR [rax-0x10]",
+      "180079d35:\tf3 0f 6f 4c 01 f0    \tmovdqu xmm1,XMMWORD PTR [rcx+rax*1-0x10]",
+      "180079d3f:\t66 0f fe c8          \tpaddd  xmm1,xmm0",
+      "180079d43:\tf3 0f 7f 48 d0       \tmovdqu XMMWORD PTR [rax-0x30],xmm1",
+      "180079d48:\tf3 0f 6f 54 01 e0    \tmovdqu xmm2,XMMWORD PTR [rcx+rax*1-0x20]",
+      "180079d4e:\tf3 0f 6f 40 e0       \tmovdqu xmm0,XMMWORD PTR [rax-0x20]",
+      "180079d53:\t66 0f fe d0          \tpaddd  xmm2,xmm0",
+      "180079d57:\tf3 0f 7f 50 e0       \tmovdqu XMMWORD PTR [rax-0x20],xmm2",
+      "180079e6d:\t0f 57 c0             \txorps  xmm0,xmm0",
+      "180079e72:\tf2 0f 10 25 1e 13 04 \tmovsd  xmm4,QWORD PTR [rip+0x4131e]        # 0x1800bb198",
+      "180079e84:\t0f 57 ed             \txorps  xmm5,xmm5",
+      "180079e89:\t0f 28 d5             \tmovaps xmm2,xmm5",
+      "180079e8c:\t0f 28 dd             \tmovaps xmm3,xmm5",
+      "180079ecb:\t0f 57 c9             \txorps  xmm1,xmm1",
+      "180079ece:\tf2 49 0f 2a c8       \tcvtsi2sd xmm1,r8",
+      "180079ede:\tf2 0f 58 d9          \taddsd  xmm3,xmm1",
+      "180079ee2:\t66 0f 6e 04 87       \tmovd   xmm0,DWORD PTR [rdi+rax*4]",
+      "180079ee7:\tf3 0f e6 c0          \tcvtdq2pd xmm0,xmm0",
+      "180079eeb:\tf2 0f 59 c4          \tmulsd  xmm0,xmm4",
+      "180079eef:\tf2 0f 59 c1          \tmulsd  xmm0,xmm1",
+      "180079ef3:\tf2 0f 58 d0          \taddsd  xmm2,xmm0",
+      "180079f00:\t0f 57 c9             \txorps  xmm1,xmm1",
+      "180079f03:\tf2 49 0f 2a c8       \tcvtsi2sd xmm1,r8",
+      "180079f13:\tf2 0f 58 d9          \taddsd  xmm3,xmm1",
+      "180079f17:\t66 0f 6e 04 87       \tmovd   xmm0,DWORD PTR [rdi+rax*4]",
+      "180079f1c:\tf3 0f e6 c0          \tcvtdq2pd xmm0,xmm0",
+      "180079f20:\tf2 0f 59 c4          \tmulsd  xmm0,xmm4",
+      "180079f24:\tf2 0f 59 c1          \tmulsd  xmm0,xmm1",
+      "180079f28:\tf2 0f 58 d0          \taddsd  xmm2,xmm0",
+      "180079f34:\t0f 57 c9             \txorps  xmm1,xmm1",
+      "180079f37:\tf2 49 0f 2a c8       \tcvtsi2sd xmm1,r8",
+      "180079f47:\tf2 0f 58 d9          \taddsd  xmm3,xmm1",
+      "180079f4b:\t66 0f 6e 04 87       \tmovd   xmm0,DWORD PTR [rdi+rax*4]",
+      "180079f50:\tf3 0f e6 c0          \tcvtdq2pd xmm0,xmm0",
+      "180079f54:\tf2 0f 59 c4          \tmulsd  xmm0,xmm4",
+      "180079f58:\tf2 0f 59 c1          \tmulsd  xmm0,xmm1",
+      "180079f5c:\tf2 0f 58 d0          \taddsd  xmm2,xmm0",
+      "180079f69:\t0f 57 c9             \txorps  xmm1,xmm1",
+      "180079f6c:\tf2 49 0f 2a c8       \tcvtsi2sd xmm1,r8",
+      "180079f7c:\tf2 0f 58 d9          \taddsd  xmm3,xmm1",
+      "180079f80:\t66 0f 6e 04 87       \tmovd   xmm0,DWORD PTR [rdi+rax*4]",
+      "180079f85:\tf3 0f e6 c0          \tcvtdq2pd xmm0,xmm0",
+      "180079f89:\tf2 0f 59 c4          \tmulsd  xmm0,xmm4",
+      "180079f8d:\tf2 0f 59 c1          \tmulsd  xmm0,xmm1",
+      "180079f91:\tf2 0f 58 d0          \taddsd  xmm2,xmm0",
+      "180079fae:\t0f 57 c9             \txorps  xmm1,xmm1",
+      "180079fb1:\tf2 48 0f 2a c9       \tcvtsi2sd xmm1,rcx",
+      "180079fc0:\tf2 0f 58 d9          \taddsd  xmm3,xmm1",
+      "180079fc4:\t66 0f 6e 04 87       \tmovd   xmm0,DWORD PTR [rdi+rax*4]",
+      "180079fc9:\tf3 0f e6 c0          \tcvtdq2pd xmm0,xmm0",
+      "180079fcd:\tf2 0f 59 c4          \tmulsd  xmm0,xmm4",
+      "180079fd1:\tf2 0f 59 c1          \tmulsd  xmm0,xmm1",
+      "180079fd5:\tf2 0f 58 d0          \taddsd  xmm2,xmm0",
+      "180079fe1:\t66 0f 2e dd          \tucomisd xmm3,xmm5",
+      "180079fee:\t0f 28 c5             \tmovaps xmm0,xmm5",
+      "180079ff3:\tf2 0f 5e d3          \tdivsd  xmm2,xmm3",
+      "180079ff7:\t0f 28 c2             \tmovaps xmm0,xmm2"
+    ],
+    "rep_instruction_lines": [],
+    "calls": [
+      "1800799c2:\t41 ff d2             \tcall   r10"
+    ]
+  }
+}
