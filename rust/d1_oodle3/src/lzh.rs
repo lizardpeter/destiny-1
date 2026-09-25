@@ -1084,12 +1084,12 @@ impl Decoder {
             }
 
             debug_assert!(symbol < SYMBOL_COUNT);
-            let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
-            if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
+            if symbol < LITERAL_SYMBOLS + RECENT_TOKEN_COUNT {
                 #[cfg(feature = "profile")]
                 profile::recent_match();
-                let selector_bits = meta.distance_info & !TOKEN_RECENT_FLAG;
-                let selector = bits.read_bits_fast(usize::from(selector_bits)) as usize;
+                let length =
+                    unsafe { *RECENT_LENGTHS.get_unchecked(symbol - LITERAL_SYMBOLS) };
+                let selector = bits.read_bits_fast(2) as usize;
                 let distance = match selector {
                     0 => recent[0],
                     1 => {
@@ -1111,9 +1111,9 @@ impl Decoder {
                 };
                 let match_len = decode_length_parts_fast(
                     &mut bits,
-                    meta.length_base,
-                    meta.length_info & !TOKEN_EXTENDED_FLAG,
-                    (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                    length.base,
+                    length.extra_bits,
+                    length.extended,
                 );
                 #[cfg(feature = "profile")]
                 {
@@ -1124,6 +1124,7 @@ impl Decoder {
             } else {
                 #[cfg(feature = "profile")]
                 profile::explicit_match();
+                let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
                 let match_distance = meta.distance_base as usize
                     + bits.read_bits_fast(usize::from(meta.distance_info)) as usize
                     + 1;
