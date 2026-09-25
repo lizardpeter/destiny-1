@@ -115,6 +115,7 @@ const EXPLICIT_DISTANCES: [DistanceCode; EXPLICIT_DISTANCE_CLASS_COUNT] = [
     DistanceCode { base: 98304, extra_bits: 15 },
 ];
 
+#[inline(always)]
 pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
     if symbol < LITERAL_SYMBOLS {
         return Ok(SymbolCode::Literal(symbol as u8));
@@ -338,12 +339,19 @@ impl HuffmanModel {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct FastEntry {
+    symbol: u16,
+    len: u8,
+}
+
 #[derive(Debug, Clone)]
 struct CanonicalDecoder {
     counts: [u16; MAX_CODE_LEN as usize + 1],
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
+    fast: [FastEntry; 1 << FAST_DECODE_BITS],
     max_len: u8,
     one_char: Option<usize>,
 }
@@ -356,6 +364,7 @@ impl CanonicalDecoder {
                 first_code: [0; MAX_CODE_LEN as usize + 1],
                 first_symbol: [0; MAX_CODE_LEN as usize + 1],
                 symbols: Vec::new(),
+                fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
                 max_len: 0,
                 one_char: Some(one_char),
             });
@@ -394,19 +403,68 @@ impl CanonicalDecoder {
             return Err(Error::NonCanonical);
         }
 
+        let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
+        let mut next_code = first_code;
+        for (symbol, &len) in model.code_lengths.iter().enumerate() {
+            if len == 0 {
+                continue;
+            }
+            let code = next_code[usize::from(len)];
+            next_code[usize::from(len)] += 1;
+            if len <= FAST_DECODE_BITS {
+                let shift = usize::from(FAST_DECODE_BITS - len);
+                let start = (code as usize) << shift;
+                let end = start + (1usize << shift);
+                let entry = FastEntry {
+                    symbol: symbol as u16,
+                    len,
+                };
+                fast[start..end].fill(entry);
+            }
+        }
+
         Ok(Self {
             counts,
             first_code,
             first_symbol,
             symbols,
+            fast,
             max_len: model.max_code_len,
             one_char: None,
         })
     }
 
+    #[inline(always)]
     fn decode(&self, bits: &mut MsbBitReader<'_>) -> Result<usize, Error> {
         if let Some(symbol) = self.one_char {
             return Ok(symbol);
+        }
+
+        if bits.remaining_bits() >= usize::from(FAST_DECODE_BITS) {
+            let prefix = bits.peek_bits(usize::from(FAST_DECODE_BITS))? as usize;
+            let entry = self.fast[prefix];
+            if entry.len != 0 {
+                bits.skip_bits(usize::from(entry.len))?;
+                return Ok(usize::from(entry.symbol));
+            }
+        }
+
+        // Slow path is only needed for codes longer than the 10-bit prefix
+        // table (or for the final few payload bits).
+        if bits.remaining_bits() >= usize::from(self.max_len) {
+            let window = bits.peek_bits(usize::from(self.max_len))? as u32;
+            for len in (usize::from(FAST_DECODE_BITS) + 1)..=usize::from(self.max_len) {
+                let code = window >> (usize::from(self.max_len) - len);
+                let first = self.first_code[len];
+                let count = u32::from(self.counts[len]);
+                if code >= first && code - first < count {
+                    let index = self.first_symbol[len] + (code - first) as usize;
+                    let symbol = *self.symbols.get(index).ok_or(Error::InvalidHuffmanCode)?;
+                    bits.skip_bits(len)?;
+                    return Ok(usize::from(symbol));
+                }
+            }
+            return Err(Error::InvalidHuffmanCode);
         }
 
         let mut code = 0u32;
@@ -431,15 +489,20 @@ impl CanonicalDecoder {
 #[derive(Debug, Default, Clone)]
 pub struct Decoder {
     model: Option<HuffmanModel>,
+    huffman: Option<CanonicalDecoder>,
 }
 
 impl Decoder {
     pub const fn new() -> Self {
-        Self { model: None }
+        Self {
+            model: None,
+            huffman: None,
+        }
     }
 
     pub fn reset(&mut self) {
         self.model = None;
+        self.huffman = None;
     }
 
     pub fn decode_quantum(
@@ -456,11 +519,12 @@ impl Decoder {
             if payload_offset > payload.len() {
                 return Err(Error::Truncated);
             }
+            let huffman = CanonicalDecoder::new(&model)?;
             self.model = Some(model);
+            self.huffman = Some(huffman);
         }
 
-        let model = self.model.as_ref().ok_or(Error::MissingModel)?;
-        let huffman = CanonicalDecoder::new(model)?;
+        let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
         let mut bits = MsbBitReader::new(&payload[payload_offset..]);
         let output_end = output
             .len()
@@ -545,6 +609,7 @@ fn decode_length(bits: &mut MsbBitReader<'_>, code: LengthCode) -> Result<usize,
     Ok(1629 + bits.read_bits(14)? as usize)
 }
 
+#[inline(always)]
 fn copy_match(
     output: &mut Vec<u8>,
     output_end: usize,
@@ -564,11 +629,23 @@ fn copy_match(
             remaining,
         });
     }
+    if length == 0 {
+        return Ok(());
+    }
 
-    for _ in 0..length {
-        let source = output.len() - distance;
-        let byte = output[source];
-        output.push(byte);
+    let match_start = output.len();
+    let source_start = match_start - distance;
+    let seed = length.min(distance);
+    output.extend_from_within(source_start..source_start + seed);
+
+    // Once one seed exists in the output, copy from the newly-produced match
+    // itself. This preserves LZ overlap semantics while growing geometrically
+    // instead of pushing one byte at a time for short-distance matches.
+    let mut produced = seed;
+    while produced < length {
+        let chunk = (length - produced).min(produced);
+        output.extend_from_within(match_start..match_start + chunk);
+        produced += chunk;
     }
     Ok(())
 }
@@ -698,18 +775,63 @@ impl<'a> MsbBitReader<'a> {
         Ok(self.read_bits(1)? != 0)
     }
 
-    fn read_bits(&mut self, count: usize) -> Result<u64, Error> {
+    #[inline(always)]
+    fn peek_bits(&self, count: usize) -> Result<u64, Error> {
         if count > 64 || self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8) {
             return Err(Error::Truncated);
         }
-
-        let mut value = 0u64;
-        for _ in 0..count {
-            let byte = self.input[self.bit_pos >> 3];
-            let shift = 7 - (self.bit_pos & 7);
-            value = (value << 1) | u64::from((byte >> shift) & 1);
-            self.bit_pos += 1;
+        if count == 0 {
+            return Ok(0);
         }
+
+        let byte_pos = self.bit_pos >> 3;
+        let bit_offset = self.bit_pos & 7;
+
+        // The payload hot path never asks for more than 16 bits. An aligned
+        // 64-bit big-endian window lets those reads collapse to a load+shifts.
+        if count <= 56 && byte_pos + 8 <= self.input.len() {
+            let word = u64::from_be_bytes(
+                self.input[byte_pos..byte_pos + 8]
+                    .try_into()
+                    .map_err(|_| Error::Truncated)?,
+            );
+            let shifted = word << bit_offset;
+            return Ok(shifted >> (64 - count));
+        }
+
+        // Boundary/large-read fallback. This executes mainly while reading the
+        // final bytes of a quantum and keeps the general 64-bit API intact.
+        let byte_count = (bit_offset + count).div_ceil(8);
+        let mut acc = 0u128;
+        for &byte in self
+            .input
+            .get(byte_pos..byte_pos + byte_count)
+            .ok_or(Error::Truncated)?
+        {
+            acc = (acc << 8) | u128::from(byte);
+        }
+        let shift = byte_count * 8 - bit_offset - count;
+        let mask = if count == 64 {
+            u128::from(u64::MAX)
+        } else {
+            (1u128 << count) - 1
+        };
+        Ok(((acc >> shift) & mask) as u64)
+    }
+
+    #[inline(always)]
+    fn skip_bits(&mut self, count: usize) -> Result<(), Error> {
+        if self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8) {
+            return Err(Error::Truncated);
+        }
+        self.bit_pos += count;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn read_bits(&mut self, count: usize) -> Result<u64, Error> {
+        let value = self.peek_bits(count)?;
+        self.bit_pos += count;
         Ok(value)
     }
 
