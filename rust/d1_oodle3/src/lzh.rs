@@ -1377,6 +1377,57 @@ fn copy_match_into(
         }
     }
 
+    // For the next two common length buckets, use fixed 16-byte sequential
+    // chunks when the match distance is at least 16. Sequential chunks preserve
+    // LZ overlap semantics for distance == 16 while avoiding memcpy dispatch.
+    if distance >= 16 {
+        let physical_remaining = output.len() - match_start;
+        if length <= 32 && physical_remaining >= 32 {
+            unsafe {
+                let base = output.as_mut_ptr();
+                for offset in [0usize, 16] {
+                    let a =
+                        core::ptr::read_unaligned(base.add(source_start + offset).cast::<u64>());
+                    let b = core::ptr::read_unaligned(
+                        base.add(source_start + offset + 8).cast::<u64>(),
+                    );
+                    core::ptr::write_unaligned(
+                        base.add(match_start + offset).cast::<u64>(),
+                        a,
+                    );
+                    core::ptr::write_unaligned(
+                        base.add(match_start + offset + 8).cast::<u64>(),
+                        b,
+                    );
+                }
+            }
+            *output_pos += length;
+            return Ok(());
+        }
+        if length <= 64 && physical_remaining >= 64 {
+            unsafe {
+                let base = output.as_mut_ptr();
+                for offset in [0usize, 16, 32, 48] {
+                    let a =
+                        core::ptr::read_unaligned(base.add(source_start + offset).cast::<u64>());
+                    let b = core::ptr::read_unaligned(
+                        base.add(source_start + offset + 8).cast::<u64>(),
+                    );
+                    core::ptr::write_unaligned(
+                        base.add(match_start + offset).cast::<u64>(),
+                        a,
+                    );
+                    core::ptr::write_unaligned(
+                        base.add(match_start + offset + 8).cast::<u64>(),
+                        b,
+                    );
+                }
+            }
+            *output_pos += length;
+            return Ok(());
+        }
+    }
+
     let seed = length.min(distance);
 
     // seed <= distance, so source and destination do not overlap. Subsequent
