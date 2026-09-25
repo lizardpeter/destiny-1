@@ -37,6 +37,12 @@ pub enum Error {
     UnsupportedHeader(u8),
     InvalidMatchSymbol(usize),
     UnexpectedEof,
+    HuffmanUsedSymbolsOutOfRange(usize),
+    HuffmanSymbolOutOfRange(usize),
+    HuffmanCodeLengthWidthOutOfRange(u8),
+    HuffmanCodeLengthOutOfRange(u8),
+    HuffmanDuplicateSymbol(usize),
+    HuffmanComplexCodebookNotImplemented,
     HuffmanCodebookNotImplemented,
 }
 
@@ -172,6 +178,108 @@ impl<'a> BitReader<'a> {
 
     pub fn read_bit(&mut self) -> Result<u32, Error> {
         self.read_bits(1)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HuffmanCodebook {
+    pub code_lengths: Vec<u8>,
+    pub used_symbols: usize,
+    pub one_symbol: Option<usize>,
+}
+
+impl HuffmanCodebook {
+    /// Read the sparse/simple rrHuffman serialization used when its leading
+    /// mode bit is zero.
+    ///
+    /// For an alphabet of N symbols the verified Oodle 3 reader uses
+    /// ceil(log2(N)) bits for both the used-symbol count and symbol indices.
+    /// If more than one symbol is present, a 3-bit field gives the number of
+    /// bits used to serialize (code_length - 1), followed by that many
+    /// (symbol, code_length) pairs.
+    pub fn read(bits: &mut BitReader<'_>, alphabet_size: usize) -> Result<Self, Error> {
+        if bits.read_bit()? != 0 {
+            return Err(Error::HuffmanComplexCodebookNotImplemented);
+        }
+        Self::read_sparse_after_mode(bits, alphabet_size)
+    }
+
+    pub fn read_sparse_after_mode(
+        bits: &mut BitReader<'_>,
+        alphabet_size: usize,
+    ) -> Result<Self, Error> {
+        let index_bits = ceil_log2(alphabet_size) as u8;
+        let used = bits.read_bits(index_bits)? as usize;
+        if used > alphabet_size {
+            return Err(Error::HuffmanUsedSymbolsOutOfRange(used));
+        }
+
+        let mut code_lengths = vec![0u8; alphabet_size];
+        if used == 0 {
+            return Ok(Self {
+                code_lengths,
+                used_symbols: 0,
+                one_symbol: None,
+            });
+        }
+
+        if used == 1 {
+            let symbol = bits.read_bits(index_bits)? as usize;
+            if symbol >= alphabet_size {
+                return Err(Error::HuffmanSymbolOutOfRange(symbol));
+            }
+            // The original reader represents the single-symbol case
+            // specially rather than assigning a normal positive code length.
+            return Ok(Self {
+                code_lengths,
+                used_symbols: 1,
+                one_symbol: Some(symbol),
+            });
+        }
+
+        let code_len_bits = bits.read_bits(3)? as u8;
+        if code_len_bits > 5 {
+            return Err(Error::HuffmanCodeLengthWidthOutOfRange(code_len_bits));
+        }
+
+        for _ in 0..used {
+            let symbol = bits.read_bits(index_bits)? as usize;
+            if symbol >= alphabet_size {
+                return Err(Error::HuffmanSymbolOutOfRange(symbol));
+            }
+            if code_lengths[symbol] != 0 {
+                return Err(Error::HuffmanDuplicateSymbol(symbol));
+            }
+
+            let code_len = bits.read_bits(code_len_bits)? as u8 + 1;
+            if code_len > 16 {
+                return Err(Error::HuffmanCodeLengthOutOfRange(code_len));
+            }
+            code_lengths[symbol] = code_len;
+        }
+
+        Ok(Self {
+            code_lengths,
+            used_symbols: used,
+            one_symbol: None,
+        })
+    }
+
+    pub fn min_code_len(&self) -> Option<u8> {
+        self.code_lengths.iter().copied().filter(|&x| x != 0).min()
+    }
+
+    pub fn max_code_len(&self) -> Option<u8> {
+        self.code_lengths.iter().copied().max().filter(|&x| x != 0)
+    }
+}
+
+fn ceil_log2(n: usize) -> u32 {
+    if n <= 1 {
+        0
+    } else {
+        usize::BITS - (n - 1).leading_zeros()
     }
 }
 
@@ -326,6 +434,43 @@ mod tests {
         assert_eq!(br.read_bits(4).unwrap(), 0b1011);
         assert_eq!(br.read_bits(5).unwrap(), 0b00100);
         assert_eq!(br.bit_pos(), 9);
+    }
+
+    #[test]
+    fn sparse_huffman_multi_symbol_layout_matches_reversed_reader() {
+        // alphabet=8 => index width=3.
+        // mode=0, used=3, code_len_bits=2,
+        // then (symbol=1,len=1), (symbol=5,len=2), (symbol=7,len=3).
+        let bits = [
+            0, // mode
+            0,1,1, // used=3
+            0,1,0, // code_len_bits=2
+            0,0,1, 0,0, // sym1,len-1=0
+            1,0,1, 0,1, // sym5,len-1=1
+            1,1,1, 1,0, // sym7,len-1=2
+        ];
+        let mut packed = vec![0u8; (bits.len()+7)/8];
+        for (i,&b) in bits.iter().enumerate() {
+            packed[i/8] |= b << (7-(i&7));
+        }
+        let mut br = BitReader::new(&packed,0);
+        let h = HuffmanCodebook::read(&mut br,8).unwrap();
+        assert_eq!(h.used_symbols,3);
+        assert_eq!(h.code_lengths[1],1);
+        assert_eq!(h.code_lengths[5],2);
+        assert_eq!(h.code_lengths[7],3);
+        assert_eq!(h.min_code_len(),Some(1));
+        assert_eq!(h.max_code_len(),Some(3));
+    }
+
+    #[test]
+    fn sparse_huffman_single_symbol_is_special() {
+        // alphabet=8: mode 0, used=1, symbol=6.
+        let mut br = BitReader::new(&[0b0001_1100],0);
+        let h = HuffmanCodebook::read(&mut br,8).unwrap();
+        assert_eq!(h.used_symbols,1);
+        assert_eq!(h.one_symbol,Some(6));
+        assert!(h.code_lengths.iter().all(|&x| x==0));
     }
 
     #[test]
