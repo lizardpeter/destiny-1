@@ -541,7 +541,8 @@ mod tests {
             (0b0100_0000u8, 3usize),
             (0b0110_0000u8, 5usize),
         ] {
-            let mut br = BitReader::new(&[byte], 0);
+            let storage = [byte];
+            let mut br = BitReader::new(&storage, 0);
             assert_eq!(read_packed_run_len(&mut br).unwrap(), expected);
         }
     }
