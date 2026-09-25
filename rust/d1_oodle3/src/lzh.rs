@@ -549,22 +549,27 @@ impl CanonicalDecoder {
             return Ok(symbol);
         }
 
-        if bits.ensure_bits(usize::from(MAX_CODE_LEN)).is_ok() {
-            let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
-            let prefix = window >> (MAX_CODE_LEN - FAST_DECODE_BITS);
+        let remaining_bits = bits.remaining_bits();
+        if remaining_bits >= usize::from(FAST_DECODE_BITS) {
+            bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
+            let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
             let entry = self.fast[prefix];
             if entry.len != 0 {
                 bits.consume_buffered(usize::from(entry.len));
                 return Ok(usize::from(entry.symbol));
             }
 
-            let table_index = self.long_prefix[prefix];
-            if table_index >= 0 {
-                let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-                let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
-                if long_entry.len != 0 {
-                    bits.consume_buffered(usize::from(long_entry.len));
-                    return Ok(usize::from(long_entry.symbol));
+            if remaining_bits >= usize::from(MAX_CODE_LEN) {
+                let table_index = self.long_prefix[prefix];
+                if table_index >= 0 {
+                    bits.ensure_bits(usize::from(MAX_CODE_LEN))?;
+                    let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
+                    let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
+                    let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
+                    if long_entry.len != 0 {
+                        bits.consume_buffered(usize::from(long_entry.len));
+                        return Ok(usize::from(long_entry.symbol));
+                    }
                 }
             }
         }
@@ -787,6 +792,20 @@ fn copy_match_into(
         let value = unsafe { *output.get_unchecked(*output_pos - 1) };
         unsafe {
             core::ptr::write_bytes(output.as_mut_ptr().add(*output_pos), value, length);
+        }
+        *output_pos += length;
+        return Ok(());
+    }
+
+    if length <= 32 {
+        let match_start = *output_pos;
+        unsafe {
+            let base = output.as_mut_ptr();
+            let src = base.add(match_start - distance);
+            let dst = base.add(match_start);
+            for i in 0..length {
+                *dst.add(i) = *src.add(i);
+            }
         }
         *output_pos += length;
         return Ok(());
