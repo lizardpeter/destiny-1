@@ -1713,71 +1713,66 @@ fn unfold_signed(value: i32) -> i32 {
 #[derive(Debug, Clone, Copy)]
 struct MsbBitReader<'a> {
     start: *const u8,
-    ptr: *const u8,
-    end: *const u8,
-    fast_limit: usize,
-    bit_buf: u64,
-    bit_count: u8,
+    len: usize,
+    bit_pos: usize,
     marker: core::marker::PhantomData<&'a [u8]>,
 }
 
 impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn new(input: &'a [u8]) -> Self {
-        let start = input.as_ptr();
-        let end = unsafe { start.add(input.len()) };
-        let fast_limit = if input.len() >= 8 {
-            start as usize + input.len() - 8
-        } else {
-            0
-        };
         Self {
-            start,
-            ptr: start,
-            end,
-            fast_limit,
-            bit_buf: 0,
-            bit_count: 0,
+            start: input.as_ptr(),
+            len: input.len(),
+            bit_pos: 0,
             marker: core::marker::PhantomData,
         }
     }
 
     #[inline(always)]
-    fn bytes_remaining(&self) -> usize {
-        debug_assert!((self.ptr as usize) <= (self.end as usize));
-        unsafe { self.end.offset_from(self.ptr) as usize }
-    }
-
-    #[inline(always)]
     fn position(self) -> usize {
-        let consumed = unsafe { self.ptr.offset_from(self.start) as usize };
-        consumed * 8 - usize::from(self.bit_count)
+        self.bit_pos
     }
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        usize::from(self.bit_count) + self.bytes_remaining() * 8
+        self.len * 8 - self.bit_pos
     }
 
     #[inline(always)]
     fn has_fast_margin(&self) -> bool {
-        self.ptr as usize <= self.fast_limit
+        (self.bit_pos >> 3) + 8 <= self.len
+    }
+
+    #[inline(always)]
+    fn aligned_window(&self) -> u64 {
+        let byte_pos = self.bit_pos >> 3;
+        let bit_shift = self.bit_pos & 7;
+        let remaining = self.len - byte_pos;
+
+        let word = if remaining >= 8 {
+            unsafe {
+                u64::from_be(core::ptr::read_unaligned(
+                    self.start.add(byte_pos).cast::<u64>(),
+                ))
+            }
+        } else {
+            let mut word = 0u64;
+            let mut i = 0usize;
+            while i < remaining {
+                let byte = unsafe { *self.start.add(byte_pos + i) };
+                word |= u64::from(byte) << (56 - i * 8);
+                i += 1;
+            }
+            word
+        };
+        word << bit_shift
     }
 
     #[inline(always)]
     fn ensure_bits_fast(&mut self, count: usize) {
-        debug_assert!(count <= 32);
-        while usize::from(self.bit_count) < count {
-            debug_assert!(self.bytes_remaining() >= 4);
-            debug_assert!(self.bit_count <= 32);
-            let word = unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
-            self.ptr = unsafe { self.ptr.add(4) };
-            let shift = 32 - usize::from(self.bit_count);
-            self.bit_buf |= u64::from(word) << shift;
-            self.bit_count += 32;
-            #[cfg(feature = "profile")]
-            profile::refill32();
-        }
+        debug_assert!(count <= 56);
+        debug_assert!(self.has_fast_margin());
     }
 
     #[inline(always)]
@@ -1785,62 +1780,32 @@ impl<'a> MsbBitReader<'a> {
         if count == 0 {
             return 0;
         }
-        self.ensure_bits_fast(count);
-        let value = self.bit_buf >> (64 - count);
-        self.bit_buf <<= count;
-        self.bit_count -= count as u8;
+        debug_assert!(count <= 56);
+        debug_assert!(self.has_fast_margin());
+        let value = self.peek_buffered(count);
+        self.bit_pos += count;
         value
     }
 
     #[inline(always)]
     fn ensure_bits(&mut self, count: usize) -> Result<(), Error> {
-        if count > 56 {
+        if count > 56 || self.remaining_bits() < count {
             return Err(Error::Truncated);
-        }
-        if usize::from(self.bit_count) >= count {
-            return Ok(());
-        }
-        if self.remaining_bits() < count {
-            return Err(Error::Truncated);
-        }
-
-        while usize::from(self.bit_count) < count {
-            if self.bytes_remaining() >= 4 && self.bit_count <= 32 {
-                let word =
-                    unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
-                self.ptr = unsafe { self.ptr.add(4) };
-                let shift = 32 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(word) << shift;
-                self.bit_count += 32;
-                #[cfg(feature = "profile")]
-                profile::refill32();
-            } else {
-                if self.ptr == self.end {
-                    return Err(Error::Truncated);
-                }
-                let byte = unsafe { *self.ptr };
-                self.ptr = unsafe { self.ptr.add(1) };
-                let shift = 56 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(byte) << shift;
-                self.bit_count += 8;
-                #[cfg(feature = "profile")]
-                profile::refill8();
-            }
         }
         Ok(())
     }
 
     #[inline(always)]
     fn peek_buffered(&self, count: usize) -> u64 {
-        debug_assert!(count <= usize::from(self.bit_count));
-        self.bit_buf >> (64 - count)
+        debug_assert!(count <= 56);
+        debug_assert!(self.remaining_bits() >= count);
+        self.aligned_window() >> (64 - count)
     }
 
     #[inline(always)]
     fn consume_buffered(&mut self, count: usize) {
-        debug_assert!(count <= usize::from(self.bit_count));
-        self.bit_buf <<= count;
-        self.bit_count -= count as u8;
+        debug_assert!(self.remaining_bits() >= count);
+        self.bit_pos += count;
     }
 
     #[inline(always)]
@@ -1863,9 +1828,8 @@ impl<'a> MsbBitReader<'a> {
             return Ok(0);
         }
         self.ensure_bits(count)?;
-        let value = self.bit_buf >> (64 - count);
-        self.bit_buf <<= count;
-        self.bit_count -= count as u8;
+        let value = self.peek_buffered(count);
+        self.bit_pos += count;
         Ok(value)
     }
 
@@ -1873,27 +1837,26 @@ impl<'a> MsbBitReader<'a> {
     fn read_unary(&mut self) -> Result<u32, Error> {
         let mut zeros = 0u32;
         loop {
-            if self.bit_count == 0 {
-                self.ensure_bits(1)?;
+            let available = self.remaining_bits().min(56);
+            if available == 0 {
+                return Err(Error::Truncated);
             }
-
-            let available = usize::from(self.bit_count);
-            let leading = self.bit_buf.leading_zeros() as usize;
+            let value = self.peek_buffered(available);
+            let leading = (value << (64 - available))
+                .leading_zeros()
+                .min(available as u32) as usize;
             if leading < available {
-                let consume = leading + 1;
-                self.bit_buf <<= consume;
-                self.bit_count -= consume as u8;
+                self.bit_pos += leading + 1;
                 zeros = zeros
                     .checked_add(leading as u32)
                     .ok_or(Error::InvalidRun)?;
                 return Ok(zeros);
             }
 
+            self.bit_pos += available;
             zeros = zeros
                 .checked_add(available as u32)
                 .ok_or(Error::InvalidRun)?;
-            self.bit_buf = 0;
-            self.bit_count = 0;
         }
     }
 
