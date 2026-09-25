@@ -1,0 +1,261 @@
+name: D1 Oodle3 Rust PGO benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-pgo-benchmark.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  pgo:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover training and holdout D1 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out/pgo-raw out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          members=[
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,
+             'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+            ('ps4_globals_0157_6.pkg',0x47AF53A00,356352,None),
+          ]
+          for name,off,size,expected in members:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if expected and got.lower()!=expected:
+                  raise SystemExit(f'{name} SHA mismatch: {got}')
+              print('RECOVERED',name,size,got)
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Install LLVM profile tools
+        shell: bash
+        run: |
+          rustup component add llvm-tools-preview
+          sysroot=$(rustc --print sysroot)
+          echo "LLVM_PROFDATA=$sysroot/lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-profdata.exe" >> "$GITHUB_ENV"
+          test -f "$sysroot/lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-profdata.exe"
+
+      - name: Build baseline ThinLTO and instrumented variants
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: |
+          set -euo pipefail
+          CARGO_TARGET_DIR=target-thin \
+          CARGO_PROFILE_RELEASE_LTO=thin \
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+          cargo build --release --lib
+          cp target-thin/release/d1_oodle3.dll ../../out/thin.dll
+
+          absraw=$(cd ../../out/pgo-raw && pwd -W)
+          CARGO_TARGET_DIR=target-pgogen \
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+          RUSTFLAGS="-C profile-generate=$absraw" \
+          cargo build --release --lib
+          cp target-pgogen/release/d1_oodle3.dll ../../out/pgogen.dll
+
+      - name: Train PGO on Tower blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          lib=ctypes.WinDLL(str(Path('out/pgogen.dll').resolve()))
+          fn=lib.OodleLZ_Decompress
+          fn.restype=ctypes.c_int64
+          fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                       ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                       ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,
+                       ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          cases=[]
+          for b in blocks:
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise RuntimeError(f"SHA mismatch {b['index']}")
+              cases.append((ctypes.create_string_buffer(comp),len(comp),ctypes.create_string_buffer(0x40000)))
+              if len(cases)>=8: break
+          for _ in range(250):
+              for src,n,dst in cases:
+                  got=fn(ctypes.cast(src,ctypes.c_void_p),n,ctypes.cast(dst,ctypes.c_void_p),0x40000,
+                         1,0,0,None,None,None,None,None,None,3)
+                  if got!=0x40000: raise RuntimeError(got)
+          print('PGO_TRAIN_CALLS',250*len(cases))
+          PY
+          find out/pgo-raw -type f -name '*.profraw' -print
+
+      - name: Merge profile and build PGO ThinLTO DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$LLVM_PROFDATA" merge -o out/d1.profdata out/pgo-raw/*.profraw
+          prof=$(cd out && pwd -W)/d1.profdata
+          cd rust/d1_oodle3
+          CARGO_TARGET_DIR=target-pgouse \
+          CARGO_PROFILE_RELEASE_LTO=thin \
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+          RUSTFLAGS="-C profile-use=$prof -C llvm-args=-pgo-warn-missing-function" \
+          cargo build --release --lib
+          cp target-pgouse/release/d1_oodle3.dll ../../out/pgo.dll
+
+      - name: Benchmark holdout and mixed corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                           ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                           ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,
+                           ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          def cases_from(path,patch,limit):
+              pkg=Path(path)
+              with pkg.open('rb') as f:
+                  h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+              out=[]
+              for b in parse_blocks(bt):
+                  if not b['compressed'] or int(b['patch_id'])!=patch: continue
+                  with pkg.open('rb') as f:
+                      f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+                  if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                      raise RuntimeError(f"SHA mismatch {pkg.name} {b['index']}")
+                  raw=int(b.get('raw_size') or 0x40000)
+                  # d1_pkg_probe block entries do not always expose raw_size;
+                  # package resident block capacity is 0x40000 except terminal blocks.
+                  # Use framing to infer the exact required output when needed.
+                  import subprocess
+                  out.append((pkg.name,int(b['index']),comp))
+                  if len(out)>=limit: break
+              return out
+
+          raw_cases=[]
+          raw_cases += cases_from('recovered/ps4_globals_0157_6.pkg',6,4)
+          raw_cases += cases_from('recovered/ps4_city_tower_destination_024c_5.pkg',5,8)
+
+          fns={'reference':bind('reference/oo2core_3_win64.dll'),
+               'thin':bind('out/thin.dll'),'pgo':bind('out/pgo.dll')}
+          cases=[]
+          for pkg,idx,comp in raw_cases:
+              src=ctypes.create_string_buffer(comp)
+              # Probe the known D1 logical capacity first. All selected benchmark
+              # blocks in these two package members are full resident blocks.
+              raw=0x40000
+              refdst=ctypes.create_string_buffer(raw)
+              got=fns['reference'](ctypes.cast(src,ctypes.c_void_p),len(comp),
+                                   ctypes.cast(refdst,ctypes.c_void_p),raw,
+                                   1,0,0,None,None,None,None,None,None,3)
+              if got<=0:
+                  raise RuntimeError(f'reference failed {pkg} {idx}: {got}')
+              if got!=raw:
+                  raw=int(got); refdst=ctypes.create_string_buffer(raw)
+                  got=fns['reference'](ctypes.cast(src,ctypes.c_void_p),len(comp),
+                                       ctypes.cast(refdst,ctypes.c_void_p),raw,
+                                       1,0,0,None,None,None,None,None,None,3)
+                  if got!=raw: raise RuntimeError(f'reference reprobe failed {pkg} {idx}')
+              cases.append((pkg,idx,src,len(comp),raw,refdst.raw[:raw]))
+
+          dst={k:[ctypes.create_string_buffer(c[4]) for c in cases] for k in ('thin','pgo')}
+          def call(fn,case,dstbuf):
+              _,_,src,n,raw,_=case
+              got=fn(ctypes.cast(src,ctypes.c_void_p),n,ctypes.cast(dstbuf,ctypes.c_void_p),raw,
+                     1,0,0,None,None,None,None,None,None,3)
+              if got!=raw: raise RuntimeError(f'decode returned {got}, expected {raw}')
+
+          for i,case in enumerate(cases):
+              for k in ('thin','pgo'):
+                  call(fns[k],case,dst[k][i])
+                  if dst[k][i].raw[:case[4]]!=case[5]:
+                      raise RuntimeError(f'mismatch {k} {case[0]} {case[1]}')
+
+          for _ in range(12):
+              for k in ('reference','thin','pgo'):
+                  if k=='reference':
+                      tmp=ctypes.create_string_buffer(cases[0][4])
+                  for i,case in enumerate(cases):
+                      if k=='reference':
+                          _,_,src,n,raw,_=case
+                          if len(tmp)!=raw: tmp=ctypes.create_string_buffer(raw)
+                          got=fns[k](ctypes.cast(src,ctypes.c_void_p),n,ctypes.cast(tmp,ctypes.c_void_p),raw,
+                                     1,0,0,None,None,None,None,None,None,3)
+                          if got!=raw: raise RuntimeError(got)
+                      else: call(fns[k],case,dst[k][i])
+
+          iterations=45; rounds=9
+          raw_bytes=sum(c[4] for c in cases)*iterations
+          samples={k:[] for k in fns}
+          orders=[['reference','thin','pgo'],['pgo','thin','reference'],['thin','reference','pgo']]
+          refdst=[ctypes.create_string_buffer(c[4]) for c in cases]
+          for r in range(rounds):
+              for k in orders[r%3]:
+                  t0=time.perf_counter_ns()
+                  for _ in range(iterations):
+                      for i,case in enumerate(cases):
+                          target=refdst[i] if k=='reference' else dst[k][i]
+                          call(fns[k],case,target)
+                  sec=(time.perf_counter_ns()-t0)/1e9
+                  samples[k].append(raw_bytes/sec/(1024*1024))
+          med={k:statistics.median(v) for k,v in samples.items()}
+          report={'cases':[(c[0],c[1],c[4]) for c in cases],
+                  'median_mib_s':med,
+                  'thin_ratio_to_oodle':med['thin']/med['reference'],
+                  'pgo_ratio_to_oodle':med['pgo']/med['reference'],
+                  'pgo_over_thin':med['pgo']/med['thin'],
+                  'samples':samples}
+          Path('out/pgo_benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          print('PGO_REFERENCE',med['reference'])
+          print('PGO_THIN',med['thin'])
+          print('PGO_PGO',med['pgo'])
+          print('PGO_OVER_THIN',report['pgo_over_thin'])
+          print('PGO_RATIO_TO_OODLE',report['pgo_ratio_to_oodle'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-pgo-benchmark
+          path: |
+            out/d1.profdata
+            out/pgo_benchmark.json
+          retention-days: 30
+          if-no-files-found: error
