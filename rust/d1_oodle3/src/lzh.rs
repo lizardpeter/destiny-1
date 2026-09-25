@@ -469,7 +469,8 @@ impl CanonicalDecoder {
             return Ok(symbol);
         }
 
-        if bits.remaining_bits() >= usize::from(FAST_DECODE_BITS) {
+        let remaining_bits = bits.remaining_bits();
+        if remaining_bits >= usize::from(FAST_DECODE_BITS) {
             let prefix = bits.peek_bits(usize::from(FAST_DECODE_BITS))? as usize;
             let entry = self.fast[prefix];
             if entry.len != 0 {
@@ -477,7 +478,7 @@ impl CanonicalDecoder {
                 return Ok(usize::from(entry.symbol));
             }
 
-            if bits.remaining_bits() >= usize::from(MAX_CODE_LEN) {
+            if remaining_bits >= usize::from(MAX_CODE_LEN) {
                 let table_index = self.long_prefix[prefix];
                 if table_index >= 0 {
                     let window = bits.peek_bits(usize::from(MAX_CODE_LEN))? as usize;
@@ -672,15 +673,27 @@ fn copy_match_into(
     let match_start = *output_pos;
     let source_start = match_start - distance;
     let seed = length.min(distance);
-    output.copy_within(source_start..source_start + seed, match_start);
+
+    // seed <= distance, so source and destination do not overlap. Subsequent
+    // doubling copies are also adjacent/non-overlapping because chunk <= produced.
+    // The full destination range was validated above.
+    unsafe {
+        let base = output.as_mut_ptr();
+        core::ptr::copy_nonoverlapping(base.add(source_start), base.add(match_start), seed);
+    }
     *output_pos += seed;
 
-    // Preserve LZ overlap semantics by doubling from already-produced output.
-    // This takes O(log(length)) bulk copies for tiny match distances.
     let mut produced = seed;
     while produced < length {
         let chunk = (length - produced).min(produced);
-        output.copy_within(match_start..match_start + chunk, match_start + produced);
+        unsafe {
+            let base = output.as_mut_ptr();
+            core::ptr::copy_nonoverlapping(
+                base.add(match_start),
+                base.add(match_start + produced),
+                chunk,
+            );
+        }
         produced += chunk;
         *output_pos += chunk;
     }
@@ -871,13 +884,28 @@ impl<'a> MsbBitReader<'a> {
             return Err(Error::Truncated);
         }
         while usize::from(self.bit_count) < count {
-            let byte = *self.input.get(self.byte_pos).ok_or(Error::Truncated)?;
-            let shift = 56usize
-                .checked_sub(usize::from(self.bit_count))
-                .ok_or(Error::Truncated)?;
-            self.bit_buf |= u64::from(byte) << shift;
-            self.bit_count += 8;
-            self.byte_pos += 1;
+            if self.byte_pos + 4 <= self.input.len() && self.bit_count <= 32 {
+                let word = u32::from_be_bytes([
+                    self.input[self.byte_pos],
+                    self.input[self.byte_pos + 1],
+                    self.input[self.byte_pos + 2],
+                    self.input[self.byte_pos + 3],
+                ]);
+                let shift = 32usize
+                    .checked_sub(usize::from(self.bit_count))
+                    .ok_or(Error::Truncated)?;
+                self.bit_buf |= u64::from(word) << shift;
+                self.bit_count += 32;
+                self.byte_pos += 4;
+            } else {
+                let byte = *self.input.get(self.byte_pos).ok_or(Error::Truncated)?;
+                let shift = 56usize
+                    .checked_sub(usize::from(self.bit_count))
+                    .ok_or(Error::Truncated)?;
+                self.bit_buf |= u64::from(byte) << shift;
+                self.bit_count += 8;
+                self.byte_pos += 1;
+            }
         }
         Ok(())
     }
