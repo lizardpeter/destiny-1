@@ -35,7 +35,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: tools/falkordb-windows-native/build/native-prefix
-          key: falkordb-native-win-gb10.5-lagraph1.3-compact-nojit-noomp-v1
+          key: falkordb-native-win-gb10.5-lagraph1.3-compact-nojit-noomp-mp-v2
 
       - name: Bootstrap native dependencies
         shell: pwsh
