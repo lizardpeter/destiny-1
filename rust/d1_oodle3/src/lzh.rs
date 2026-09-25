@@ -897,6 +897,38 @@ impl CanonicalDecoder {
     }
 
     #[inline(always)]
+    fn decode_literal_pair_fast(&self, bits: &mut MsbBitReader<'_>) -> Option<(u8, u8)> {
+        debug_assert!(self.one_char.is_none());
+
+        // Two fast-table codes consume at most 22 bits. Refill once, then
+        // inspect both prefixes without mutating the reader unless both are
+        // literals. This amortizes the dominant literal-loop branch/refill cost.
+        bits.ensure_bits_fast(usize::from(FAST_DECODE_BITS) * 2);
+        let window = bits.bit_buf;
+
+        let prefix0 = (window >> (64 - FAST_DECODE_BITS)) as usize;
+        let entry0 = unsafe { *self.fast.get_unchecked(prefix0) };
+        if entry0.len == 0 || usize::from(entry0.symbol) >= LITERAL_SYMBOLS {
+            return None;
+        }
+
+        let shifted = window << usize::from(entry0.len);
+        let prefix1 = (shifted >> (64 - FAST_DECODE_BITS)) as usize;
+        let entry1 = unsafe { *self.fast.get_unchecked(prefix1) };
+        if entry1.len == 0 || usize::from(entry1.symbol) >= LITERAL_SYMBOLS {
+            return None;
+        }
+
+        bits.consume_buffered(usize::from(entry0.len + entry1.len));
+        #[cfg(feature = "profile")]
+        {
+            profile::huffman_fast();
+            profile::huffman_fast();
+        }
+        Some((entry0.symbol as u8, entry1.symbol as u8))
+    }
+
+    #[inline(always)]
     fn decode_fast_multi(&self, bits: &mut MsbBitReader<'_>) -> usize {
         debug_assert!(self.one_char.is_none());
 
@@ -1072,23 +1104,38 @@ impl Decoder {
 
         if huffman.one_char.is_none() {
             'fast_decode: while op < output_end && bits.has_fast_margin() {
-                let mut symbol = huffman.decode_fast_multi(&mut bits);
+                // Most D1 symbols are literals. Decode two fast-table literals
+                // from one buffered window whenever possible, then fall back to
+                // the normal single-symbol path for matches/long codes.
+                while op + 1 < output_end && bits.has_fast_margin() {
+                    let Some((a, b)) = huffman.decode_literal_pair_fast(&mut bits) else {
+                        break;
+                    };
+                    #[cfg(feature = "profile")]
+                    {
+                        profile::literal();
+                        profile::literal();
+                    }
+                    unsafe {
+                        *output.get_unchecked_mut(op) = a;
+                        *output.get_unchecked_mut(op + 1) = b;
+                    }
+                    op += 2;
+                }
 
-                // D1 LZH is strongly literal-heavy. Stay in a compact literal-only
-                // loop until a match token appears instead of returning through the
-                // full token-dispatch loop for every literal.
-                while symbol < LITERAL_SYMBOLS {
+                if op >= output_end || !bits.has_fast_margin() {
+                    break 'fast_decode;
+                }
+
+                let symbol = huffman.decode_fast_multi(&mut bits);
+                if symbol < LITERAL_SYMBOLS {
                     #[cfg(feature = "profile")]
                     profile::literal();
                     unsafe {
                         *output.get_unchecked_mut(op) = symbol as u8;
                     }
                     op += 1;
-
-                    if op >= output_end || !bits.has_fast_margin() {
-                        break 'fast_decode;
-                    }
-                    symbol = huffman.decode_fast_multi(&mut bits);
+                    continue;
                 }
 
                 debug_assert!(symbol < SYMBOL_COUNT);
