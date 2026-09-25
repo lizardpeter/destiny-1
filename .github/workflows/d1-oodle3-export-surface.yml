@@ -1,0 +1,58 @@
+name: D1 Oodle3 export surface inventory
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-export-surface.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch verified reference runtime and enumerate exports
+        run: |
+          set -euo pipefail
+          mkdir -p reference out
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+          python tools/oodle3_pe_map.py reference/oo2core_3_win64.dll -o out/pe_map.json
+          python - <<'PY'
+          import collections,json,re
+          from pathlib import Path
+          j=json.loads(Path('out/pe_map.json').read_text())
+          exports=sorted(j['exports'],key=lambda x:x['ordinal'])
+          def family(name):
+              if not name: return '(ordinal-only)'
+              for p in (
+                  'OodleLZDecoder_','OodleLZ_','OodleNetwork1UDP_','OodleNetwork1_',
+                  'OodleConfigValues_','OodleCore_Plugins_','OodleTex_','Oodle_'
+              ):
+                  if name.startswith(p): return p
+              return name.split('_',1)[0]+'_'
+          fam=collections.Counter(family(x.get('name')) for x in exports)
+          report={'total_exports':len(exports),'families':dict(sorted(fam.items())),
+                  'exports':exports}
+          Path('out/export_surface.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('TOTAL_EXPORTS',len(exports))
+          print('FAMILIES',json.dumps(report['families'],sort_keys=True))
+          for x in exports:
+              print('EXPORT',x['ordinal'],hex(x['rva']),x.get('name'))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-export-surface
+          path: |
+            out/pe_map.json
+            out/export_surface.json
+          retention-days: 30
+          if-no-files-found: error
