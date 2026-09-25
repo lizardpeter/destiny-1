@@ -762,6 +762,7 @@ struct CanonicalDecoder {
     counts: [u16; MAX_CODE_LEN as usize + 1],
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
+    long_limit: [u32; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
     max_len: u8,
@@ -774,6 +775,7 @@ impl CanonicalDecoder {
             counts: [0; MAX_CODE_LEN as usize + 1],
             first_code: [0; MAX_CODE_LEN as usize + 1],
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
+            long_limit: [0; MAX_CODE_LEN as usize + 1],
             symbols: Vec::new(),
             fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
             max_len: 0,
@@ -839,6 +841,7 @@ impl CanonicalDecoder {
         self.counts.fill(0);
         self.first_code.fill(0);
         self.first_symbol.fill(0);
+        self.long_limit.fill(0);
         self.symbols.clear();
         // Every accepted multi-symbol model is Kraft-complete. Therefore every
         // FAST_DECODE_BITS prefix is overwritten by either a short-code fill
@@ -867,7 +870,10 @@ impl CanonicalDecoder {
             code = (code + u32::from(self.counts[len - 1])) << 1;
             self.first_code[len] = code;
             self.first_symbol[len] = symbol_index;
-            symbol_index += usize::from(self.counts[len]);
+            let count = u32::from(self.counts[len]);
+            self.long_limit[len] =
+                (code + count) << (usize::from(MAX_CODE_LEN) - len);
+            symbol_index += count as usize;
         }
 
         if self.symbols.capacity() < used_symbols {
@@ -949,19 +955,29 @@ impl CanonicalDecoder {
 
         bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));
         let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as u32;
-        for len in (usize::from(FAST_DECODE_BITS) + 1)..=usize::from(self.max_len) {
-            let code = window >> (usize::from(MAX_CODE_LEN) - len);
-            let first = self.first_code[len];
-            let count = u32::from(self.counts[len]);
-            if code >= first && code - first < count {
-                let index = self.first_symbol[len] + (code - first) as usize;
-                let symbol = unsafe { *self.symbols.get_unchecked(index) };
-                #[cfg(feature = "profile")]
-                profile::huffman_long();
-                bits.consume_buffered(len);
-                return usize::from(symbol);
-            }
+
+        macro_rules! try_long {
+            ($len:expr) => {{
+                let limit = unsafe { *self.long_limit.get_unchecked($len) };
+                if window < limit {
+                    let code = window >> (usize::from(MAX_CODE_LEN) - $len);
+                    let first = unsafe { *self.first_code.get_unchecked($len) };
+                    let index = unsafe { *self.first_symbol.get_unchecked($len) }
+                        + (code - first) as usize;
+                    let symbol = unsafe { *self.symbols.get_unchecked(index) };
+                    #[cfg(feature = "profile")]
+                    profile::huffman_long();
+                    bits.consume_buffered($len);
+                    return usize::from(symbol);
+                }
+            }};
         }
+
+        try_long!(12);
+        try_long!(13);
+        try_long!(14);
+        try_long!(15);
+        try_long!(16);
         debug_assert!(false, "invalid canonical long code");
         0
     }
