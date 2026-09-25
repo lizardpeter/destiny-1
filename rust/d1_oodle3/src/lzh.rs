@@ -824,7 +824,6 @@ impl CanonicalDecoder {
         self.counts.fill(0);
         self.first_code.fill(0);
         self.first_symbol.fill(0);
-        self.symbols.clear();
         self.fast.fill(FastEntry::default());
         self.long_prefix.fill(-1);
         self.long_tables.clear();
