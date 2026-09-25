@@ -1032,7 +1032,8 @@ impl Decoder {
         self.has_model = false;
     }
 
-    pub fn decode_quantum_into(
+    #[inline(always)]
+    fn decode_quantum_into_impl(
         &mut self,
         payload: &[u8],
         output: &mut [u8],
@@ -1285,6 +1286,43 @@ impl Decoder {
         );
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn decode_quantum_into(
+        &mut self,
+        payload: &[u8],
+        output: &mut [u8],
+        output_pos: &mut usize,
+        raw_len: usize,
+        has_new_model: bool,
+    ) -> Result<(), Error> {
+        self.decode_quantum_into_impl(
+            payload,
+            output,
+            output_pos,
+            raw_len,
+            has_new_model,
+        )
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[target_feature(enable = "bmi2,lzcnt")]
+    unsafe fn decode_quantum_into_bmi2_lzcnt(
+        &mut self,
+        payload: &[u8],
+        output: &mut [u8],
+        output_pos: &mut usize,
+        raw_len: usize,
+        has_new_model: bool,
+    ) -> Result<(), Error> {
+        self.decode_quantum_into_impl(
+            payload,
+            output,
+            output_pos,
+            raw_len,
+            has_new_model,
+        )
     }
 }
 
@@ -1619,6 +1657,13 @@ fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), E
     let mut input_pos = 1usize;
     let mut output_pos = 0usize;
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let use_bmi2_lzcnt =
+        std::arch::is_x86_feature_detected!("bmi2")
+            && std::arch::is_x86_feature_detected!("lzcnt");
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let use_bmi2_lzcnt = false;
+
     while output_pos < output_len {
         let header_bytes = input
             .get(input_pos..input_pos + 2)
@@ -1652,13 +1697,28 @@ fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), E
                 available: input.len().saturating_sub(input_pos),
             }))?;
 
-        decoder.decode_quantum_into(
-            payload,
-            output,
-            &mut output_pos,
-            raw_len,
-            (header & 0x4000) != 0,
-        )?;
+        if use_bmi2_lzcnt {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            unsafe {
+                decoder.decode_quantum_into_bmi2_lzcnt(
+                    payload,
+                    output,
+                    &mut output_pos,
+                    raw_len,
+                    (header & 0x4000) != 0,
+                )?;
+            }
+            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+            unreachable!();
+        } else {
+            decoder.decode_quantum_into(
+                payload,
+                output,
+                &mut output_pos,
+                raw_len,
+                (header & 0x4000) != 0,
+            )?;
+        }
         input_pos = payload_end;
     }
 
