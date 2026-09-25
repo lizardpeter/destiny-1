@@ -867,9 +867,7 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn ensure_bits(&mut self, count: usize) -> Result<(), Error> {
-        if count > 56
-            || self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8)
-        {
+        if count > 56 || self.bit_pos.saturating_add(count) > self.input.len().saturating_mul(8) {
             return Err(Error::Truncated);
         }
         while usize::from(self.bit_count) < count {
