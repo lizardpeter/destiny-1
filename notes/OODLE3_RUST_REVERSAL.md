@@ -212,3 +212,35 @@ the rest of the roughly 60-export DLL surface remain separate work unless a D1 c
    differential harness.
 5. Separately map/reimplement the remaining Oodle 2.3 exports if the goal is a complete DLL clone
    rather than only removal of D1's package-decompression dependency.
+
+## Performance baseline
+
+Windows hosted-runner benchmark against the exact Oodle 2.3 DLL was added in
+`.github/workflows/d1-oodle3-rust-benchmark.yml`.
+
+Benchmark method:
+
+- blocks 764-771 from `ps4_city_tower_destination_024c_5.pkg`
+- both libraries called through the same 14-argument `OodleLZ_Decompress` ABI
+- correctness checked byte-for-byte immediately before timing
+- 20 shared warmup iterations
+- 100 iterations per round across all 8 blocks
+- 200 MiB decompressed output per round
+- 7 timed rounds
+- release-mode Rust build
+- Windows 2025 GitHub-hosted runner
+
+Run `36135551343` measured:
+
+- original Oodle 2.3 median: **455.65 MiB/s**
+- native Rust median: **73.25 MiB/s**
+- Rust/original throughput ratio: **0.1608x**
+- original Oodle is about **6.22x faster**
+- current Rust throughput is about **83.9% lower**
+
+This is intentionally the unoptimized compatibility implementation, not a tuned target. The current
+Rust decoder performs straightforward canonical-Huffman decoding and the FFI path allocates a decoded
+`Vec` and then copies it into the caller's output buffer. Future optimization should preserve the
+byte-identical corpus while targeting direct-to-caller output, a fast Huffman lookup table matching
+the observed 10-bit prefix, reduced bounds-check/branch overhead, and match-copy specialization.
+
