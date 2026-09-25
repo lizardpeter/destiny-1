@@ -74,7 +74,7 @@ Public wrappers confirm the legacy DLL exposes the expected compress/decompress 
 - [x] Static PE/call-graph probe scaffolded.
 - [x] Synthetic compression/decompression oracle generator scaffolded.
 - [x] Native Rust crate scaffolded.
-- [ ] Run exact binary static probe and record export/function map.
+- [ ] Run exact binary static probe and record export/function map. (workflow trigger checkpoint pushed 2026-09-25)
 - [ ] Generate deterministic oracle-vector family on Windows.
 - [ ] Identify top-level stream framing and codec dispatch.
 - [ ] Identify entropy/literal decode path.
