@@ -654,14 +654,27 @@ impl Decoder {
         let mut recent = [20usize, 24, 28, 32];
 
         while *output_pos < output_end {
-            let symbol = huffman.decode(&mut bits)?;
+            let mut symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
                 debug_assert!(*output_pos < output_end);
                 unsafe {
                     *output.get_unchecked_mut(*output_pos) = symbol as u8;
                 }
                 *output_pos += 1;
-                continue;
+                if *output_pos >= output_end {
+                    break;
+                }
+
+                // Oodle 2.3 immediately decodes a second symbol after a
+                // literal instead of returning to the generic loop head.
+                symbol = huffman.decode(&mut bits)?;
+                if symbol < LITERAL_SYMBOLS {
+                    unsafe {
+                        *output.get_unchecked_mut(*output_pos) = symbol as u8;
+                    }
+                    *output_pos += 1;
+                    continue;
+                }
             }
             if symbol >= SYMBOL_COUNT {
                 return Err(Error::InvalidSymbol(symbol));
