@@ -723,7 +723,6 @@ impl Decoder {
     }
 }
 
-
 #[inline(always)]
 fn decode_length_parts(
     bits: &mut MsbBitReader<'_>,
