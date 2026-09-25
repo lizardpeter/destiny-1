@@ -64,7 +64,7 @@ if (-not $SkipNativeDeps) {
         -DBUILD_STATIC_LIBS=ON `
         -DBUILD_SHARED_LIBS=OFF `
         -DGRAPHBLAS_BUILD_STATIC_LIBS=ON `
-        -DGRAPHBLAS_COMPACT=OFF `
+        -DGRAPHBLAS_COMPACT=ON `
         -DGRAPHBLAS_USE_OPENMP=OFF `
         -DBUILD_TESTING=OFF
     cmake --build $GBBuild --config Release --target GraphBLAS_static
