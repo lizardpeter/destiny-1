@@ -1,0 +1,86 @@
+name: D1 Oodle3 native Rust reversal
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - oodle3-rust-re-20260925
+    paths:
+      - '.github/workflows/d1-oodle3-native-re.yml'
+      - 'tools/oodle3_static_probe.py'
+      - 'tools/oodle3_oracle_vectors.py'
+      - 'rust/d1-oodle3-native/**'
+      - 'notes/OODLE3_RUST_RE_PROGRESS.md'
+
+permissions:
+  contents: read
+
+env:
+  OODLE_URL: https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll
+  OODLE_SHA256: 682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62
+
+jobs:
+  static-map:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover exact verified runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "$OODLE_URL" -o oo2core_3_win64.dll
+          echo "$OODLE_SHA256  oo2core_3_win64.dll" | sha256sum --check --strict
+      - name: Build compatibility-oriented static map
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pefile==2024.8.26 capstone==5.0.6
+          mkdir -p out
+          python tools/oodle3_static_probe.py oo2core_3_win64.dll \
+            -o out/oodle3_static_map.json \
+            --asm-output out/private_local_disassembly.txt \
+            --max-functions 384 | tee out/static-summary.txt
+          rm -f out/private_local_disassembly.txt oo2core_3_win64.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle3-static-map
+          path: |
+            out/oodle3_static_map.json
+            out/static-summary.txt
+          retention-days: 30
+          if-no-files-found: error
+
+  oracle-vectors:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover exact verified runtime
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri $env:OODLE_URL -OutFile oo2core_3_win64.dll
+          $got = (Get-FileHash oo2core_3_win64.dll -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:OODLE_SHA256) { throw "Oodle SHA-256 mismatch: $got" }
+      - name: Generate deterministic synthetic oracle vectors
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          python tools/oodle3_oracle_vectors.py oo2core_3_win64.dll -o out/oodle3_oracle_vectors.json
+          Remove-Item oo2core_3_win64.dll -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle3-synthetic-oracle
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+
+  rust-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test native decoder scaffold
+        run: cargo test --manifest-path rust/d1-oodle3-native/Cargo.toml --all-targets
