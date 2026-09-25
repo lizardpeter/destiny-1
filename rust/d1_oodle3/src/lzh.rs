@@ -797,20 +797,6 @@ fn copy_match_into(
         return Ok(());
     }
 
-    if length <= 32 {
-        let match_start = *output_pos;
-        unsafe {
-            let base = output.as_mut_ptr();
-            let src = base.add(match_start - distance);
-            let dst = base.add(match_start);
-            for i in 0..length {
-                *dst.add(i) = *src.add(i);
-            }
-        }
-        *output_pos += length;
-        return Ok(());
-    }
-
     let match_start = *output_pos;
     let source_start = match_start - distance;
     let seed = length.min(distance);
