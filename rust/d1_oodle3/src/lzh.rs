@@ -1172,29 +1172,27 @@ fn copy_match_into(
     let match_start = *output_pos;
     let source_start = match_start - distance;
 
-    // Oodle's scalar LZH kernel uses fixed-width match copies. For distance
-    // >= 8, each 8-byte source chunk ends at or before the destination chunk,
-    // so sequential 8-byte moves preserve overlap semantics. The final move may
-    // write up to seven bytes past the logical match end; allow that only when
-    // the backing output slice has the corresponding physical slack.
+    // The measured D1 corpus is dominated by matches of 16 bytes or less.
+    // Keep those cases branch-light and fully unrolled. Longer matches fall
+    // through to the overlap-safe bulk copier below.
     if distance >= 8 {
-        let wild_length = length.checked_add(7).ok_or(Error::OutputOverrun {
-            requested: length,
-            remaining,
-        })? & !7usize;
-        if wild_length <= output.len() - match_start {
+        let physical_remaining = output.len() - match_start;
+        if length <= 8 && physical_remaining >= 8 {
             unsafe {
                 let base = output.as_mut_ptr();
-                let mut produced = 0usize;
-                while produced < wild_length {
-                    let word =
-                        core::ptr::read_unaligned(base.add(source_start + produced).cast::<u64>());
-                    core::ptr::write_unaligned(
-                        base.add(match_start + produced).cast::<u64>(),
-                        word,
-                    );
-                    produced += 8;
-                }
+                let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
+                core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
+            }
+            *output_pos += length;
+            return Ok(());
+        }
+        if length <= 16 && physical_remaining >= 16 {
+            unsafe {
+                let base = output.as_mut_ptr();
+                let first = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
+                let second = core::ptr::read_unaligned(base.add(source_start + 8).cast::<u64>());
+                core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), first);
+                core::ptr::write_unaligned(base.add(match_start + 8).cast::<u64>(), second);
             }
             *output_pos += length;
             return Ok(());
