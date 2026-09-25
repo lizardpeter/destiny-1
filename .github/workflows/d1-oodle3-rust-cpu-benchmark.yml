@@ -1,0 +1,145 @@
+name: D1 Oodle3 Rust CPU tuning benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-rust-cpu-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-cpu-benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact Tower package and reference DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(got)
+          PY
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build generic and CPU-tuned DLLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust/d1_oodle3
+          cargo build --release
+          cp target/release/d1_oodle3.dll ../../out/generic.dll
+          CARGO_TARGET_DIR=target-v3 RUSTFLAGS='-C target-cpu=x86-64-v3' cargo build --release
+          cp target-v3/release/d1_oodle3.dll ../../out/v3.dll
+          CARGO_TARGET_DIR=target-native RUSTFLAGS='-C target-cpu=native' cargo build --release
+          cp target-native/release/d1_oodle3.dll ../../out/native.dll
+
+      - name: Benchmark all builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                           ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                           ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,
+                           ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          def call(fn,src,dst,comp_len,raw_len):
+              n=fn(ctypes.cast(src,ctypes.c_void_p),comp_len,
+                   ctypes.cast(dst,ctypes.c_void_p),raw_len,
+                   1,0,0,None,None,None,None,None,None,3)
+              if n!=raw_len: raise RuntimeError((n,raw_len))
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha')
+              raw_len=0x40000
+              cases.append((comp,ctypes.create_string_buffer(comp),raw_len))
+              if len(cases)==8: break
+
+          fns={
+              'reference':bind('reference/oo2core_3_win64.dll'),
+              'generic':bind('out/generic.dll'),
+              'v3':bind('out/v3.dll'),
+              'native':bind('out/native.dll'),
+          }
+          dst={k:[ctypes.create_string_buffer(x[2]) for x in cases] for k in fns}
+
+          for ci,(comp,src,raw_len) in enumerate(cases):
+              call(fns['reference'],src,dst['reference'][ci],len(comp),raw_len)
+              ref=dst['reference'][ci].raw[:raw_len]
+              for k in ('generic','v3','native'):
+                  call(fns[k],src,dst[k][ci],len(comp),raw_len)
+                  if dst[k][ci].raw[:raw_len]!=ref: raise RuntimeError(f'mismatch {k} {ci}')
+
+          for _ in range(15):
+              for ci,(comp,src,raw_len) in enumerate(cases):
+                  for k in fns: call(fns[k],src,dst[k][ci],len(comp),raw_len)
+
+          iterations=60; rounds=7
+          raw_bytes=sum(x[2] for x in cases)*iterations
+          def once(k):
+              t0=time.perf_counter_ns()
+              fn=fns[k]
+              for _ in range(iterations):
+                  for ci,(comp,src,raw_len) in enumerate(cases):
+                      call(fn,src,dst[k][ci],len(comp),raw_len)
+              sec=(time.perf_counter_ns()-t0)/1e9
+              return raw_bytes/sec/(1024*1024)
+
+          samples={k:[] for k in fns}
+          order=['reference','generic','v3','native']
+          for r in range(rounds):
+              seq=order if r%2==0 else list(reversed(order))
+              for k in seq: samples[k].append(once(k))
+
+          med={k:statistics.median(v) for k,v in samples.items()}
+          ratios={k:med[k]/med['reference'] for k in ('generic','v3','native')}
+          report={'median_mib_s':med,'ratios_to_oodle':ratios,'samples':samples}
+          Path('out/cpu_benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          print('CPU_GENERIC_RATIO',ratios['generic'])
+          print('CPU_V3_RATIO',ratios['v3'])
+          print('CPU_NATIVE_RATIO',ratios['native'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-rust-cpu-benchmark
+          path: out/cpu_benchmark.json
+          retention-days: 30
