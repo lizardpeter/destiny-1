@@ -1,5 +1,5 @@
 name: D1 Oodle3 combined-baseline paired benchmark
-# candidate: fused-entry-v2
+# candidate: pointer-bit-reader
 
 on:
   workflow_dispatch:
