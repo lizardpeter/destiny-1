@@ -724,6 +724,40 @@ impl CanonicalDecoder {
     }
 
     #[inline(always)]
+    fn decode_fast(&self, bits: &mut MsbBitReader<'_>) -> usize {
+        if let Some(symbol) = self.one_char {
+            return symbol;
+        }
+
+        bits.ensure_bits_fast(usize::from(FAST_DECODE_BITS));
+        let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
+        let entry = unsafe { *self.fast.get_unchecked(prefix) };
+        if entry.len != 0 {
+            #[cfg(feature = "profile")]
+            profile::huffman_fast();
+            bits.consume_buffered(usize::from(entry.len));
+            return usize::from(entry.symbol);
+        }
+
+        bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));
+        let table_index = unsafe { *self.long_prefix.get_unchecked(prefix) };
+        debug_assert!(table_index >= 0);
+        let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
+        let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
+        let long_entry = unsafe {
+            *self
+                .long_tables
+                .get_unchecked(table_index as usize)
+                .get_unchecked(window & suffix_mask)
+        };
+        debug_assert!(long_entry.len != 0);
+        #[cfg(feature = "profile")]
+        profile::huffman_long();
+        bits.consume_buffered(usize::from(long_entry.len));
+        usize::from(long_entry.symbol)
+    }
+
+    #[inline(always)]
     fn decode(&self, bits: &mut MsbBitReader<'_>) -> Result<usize, Error> {
         if let Some(symbol) = self.one_char {
             return Ok(symbol);
@@ -861,6 +895,85 @@ impl Decoder {
         #[cfg(feature = "stage_profile")]
         let payload_started = std::time::Instant::now();
 
+        while *output_pos < output_end && bits.has_fast_margin() {
+            let symbol = huffman.decode_fast(&mut bits);
+            if symbol < LITERAL_SYMBOLS {
+                #[cfg(feature = "profile")]
+                profile::literal();
+                unsafe {
+                    *output.get_unchecked_mut(*output_pos) = symbol as u8;
+                }
+                *output_pos += 1;
+                continue;
+            }
+
+            debug_assert!(symbol < SYMBOL_COUNT);
+            let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
+            if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
+                #[cfg(feature = "profile")]
+                profile::recent_match();
+                let selector_bits = meta.distance_info & !TOKEN_RECENT_FLAG;
+                let selector = bits.read_bits_fast(usize::from(selector_bits)) as usize;
+                let distance = match selector {
+                    0 => recent[0],
+                    1 => {
+                        recent.swap(0, 1);
+                        recent[0]
+                    }
+                    2 => {
+                        recent.swap(1, 2);
+                        recent.swap(0, 1);
+                        recent[0]
+                    }
+                    3 => {
+                        recent.swap(2, 3);
+                        recent.swap(1, 2);
+                        recent.swap(0, 1);
+                        recent[0]
+                    }
+                    _ => unreachable!(),
+                };
+                let match_len = decode_length_parts_fast(
+                    &mut bits,
+                    meta.length_base,
+                    meta.length_info & !TOKEN_EXTENDED_FLAG,
+                    (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                );
+                #[cfg(feature = "profile")]
+                {
+                    profile::distance(distance);
+                    profile::length(match_len);
+                }
+                copy_match_into(output, output_pos, output_end, distance, match_len)?;
+            } else {
+                #[cfg(feature = "profile")]
+                profile::explicit_match();
+                let match_distance = meta.distance_base as usize
+                    + bits.read_bits_fast(usize::from(meta.distance_info)) as usize
+                    + 1;
+
+                if meta.distance_base != 0 {
+                    recent[3] = recent[2];
+                    recent[2] = recent[1];
+                    recent[1] = match_distance;
+                }
+
+                let match_len = decode_length_parts_fast(
+                    &mut bits,
+                    meta.length_base,
+                    meta.length_info & !TOKEN_EXTENDED_FLAG,
+                    (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                );
+                #[cfg(feature = "profile")]
+                {
+                    profile::distance(match_distance);
+                    profile::length(match_len);
+                }
+                copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
+            }
+        }
+
+        // Only the final input-boundary region uses the fully checked reader.
         while *output_pos < output_end {
             let symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
@@ -960,6 +1073,36 @@ impl Decoder {
 
         Ok(())
     }
+}
+
+#[inline(always)]
+fn decode_length_parts_fast(
+    bits: &mut MsbBitReader<'_>,
+    base: u16,
+    extra_bits: u8,
+    extended: bool,
+) -> usize {
+    let base = usize::from(base);
+    if extra_bits == 0 {
+        return base;
+    }
+    if !extended {
+        return base + bits.read_bits_fast(usize::from(extra_bits)) as usize;
+    }
+
+    if bits.read_bits_fast(1) == 0 {
+        return 157 + bits.read_bits_fast(6) as usize;
+    }
+    if bits.read_bits_fast(1) == 0 {
+        return 221 + bits.read_bits_fast(7) as usize;
+    }
+    if bits.read_bits_fast(1) == 0 {
+        return 349 + bits.read_bits_fast(8) as usize;
+    }
+    if bits.read_bits_fast(1) == 0 {
+        return 605 + bits.read_bits_fast(10) as usize;
+    }
+    1629 + bits.read_bits_fast(14) as usize
 }
 
 #[inline(always)]
@@ -1228,6 +1371,42 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
         usize::from(self.bit_count) + self.input.len().saturating_sub(self.byte_pos) * 8
+    }
+
+    #[inline(always)]
+    fn has_fast_margin(&self) -> bool {
+        self.byte_pos.saturating_add(8) <= self.input.len()
+    }
+
+    #[inline(always)]
+    fn ensure_bits_fast(&mut self, count: usize) {
+        debug_assert!(count <= 32);
+        while usize::from(self.bit_count) < count {
+            debug_assert!(self.byte_pos + 4 <= self.input.len());
+            debug_assert!(self.bit_count <= 32);
+            let word = unsafe {
+                let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
+                u32::from_be(core::ptr::read_unaligned(ptr))
+            };
+            let shift = 32 - usize::from(self.bit_count);
+            self.bit_buf |= u64::from(word) << shift;
+            self.bit_count += 32;
+            self.byte_pos += 4;
+            #[cfg(feature = "profile")]
+            profile::refill32();
+        }
+    }
+
+    #[inline(always)]
+    fn read_bits_fast(&mut self, count: usize) -> u64 {
+        if count == 0 {
+            return 0;
+        }
+        self.ensure_bits_fast(count);
+        let value = self.bit_buf >> (64 - count);
+        self.bit_buf <<= count;
+        self.bit_count -= count as u8;
+        value
     }
 
     #[inline(always)]
