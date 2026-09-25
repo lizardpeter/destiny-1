@@ -1599,10 +1599,10 @@ fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), E
         let stored_size = (header & 0x3fff) + 1;
         let raw_len = crate::LEGACY_QUANTUM_LEN.min(output_len - output_pos);
         if stored_size > raw_len {
-            return Err(Error::StoredSizeExceedsRaw {
+            return Err(Error::Frame(crate::Error::StoredSizeExceedsRaw {
                 stored: stored_size,
                 raw: raw_len,
-            });
+            }));
         }
 
         let payload_end = input_pos
@@ -1610,10 +1610,10 @@ fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), E
             .ok_or(Error::Truncated)?;
         let payload = input
             .get(input_pos..payload_end)
-            .ok_or(Error::StoredSizeExceedsInput {
+            .ok_or(Error::Frame(crate::Error::StoredSizeExceedsInput {
                 stored: stored_size,
                 available: input.len().saturating_sub(input_pos),
-            })?;
+            }))?;
 
         decoder.decode_quantum_into(
             payload,
@@ -1626,9 +1626,9 @@ fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), E
     }
 
     if input_pos != input.len() {
-        return Err(Error::TrailingInput {
+        return Err(Error::Frame(crate::Error::TrailingInput {
             remaining: input.len() - input_pos,
-        });
+        }));
     }
     Ok(())
 }
