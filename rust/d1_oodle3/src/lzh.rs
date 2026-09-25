@@ -1379,7 +1379,7 @@ fn unfold_signed(value: i32) -> i32 {
 struct MsbBitReader<'a> {
     input: &'a [u8],
     byte_pos: usize,
-    bit_buf: u64,
+    bit_buf: u128,
     bit_count: u8,
 }
 
@@ -1410,20 +1410,23 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn ensure_bits_fast(&mut self, count: usize) {
-        debug_assert!(count <= 32);
+        debug_assert!(count <= 64);
         while usize::from(self.bit_count) < count {
-            debug_assert!(self.byte_pos + 4 <= self.input.len());
-            debug_assert!(self.bit_count <= 32);
+            debug_assert!(self.byte_pos + 8 <= self.input.len());
+            debug_assert!(self.bit_count <= 64);
             let word = unsafe {
-                let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
-                u32::from_be(core::ptr::read_unaligned(ptr))
+                let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u64>();
+                u64::from_be(core::ptr::read_unaligned(ptr))
             };
-            let shift = 32 - usize::from(self.bit_count);
-            self.bit_buf |= u64::from(word) << shift;
-            self.bit_count += 32;
-            self.byte_pos += 4;
+            let shift = 64 - usize::from(self.bit_count);
+            self.bit_buf |= u128::from(word) << shift;
+            self.bit_count += 64;
+            self.byte_pos += 8;
             #[cfg(feature = "profile")]
-            profile::refill32();
+            {
+                profile::refill32();
+                profile::refill32();
+            }
         }
     }
 
@@ -1433,7 +1436,7 @@ impl<'a> MsbBitReader<'a> {
             return 0;
         }
         self.ensure_bits_fast(count);
-        let value = self.bit_buf >> (64 - count);
+        let value = (self.bit_buf >> (128 - count)) as u64;
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
         value
@@ -1441,7 +1444,7 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn ensure_bits(&mut self, count: usize) -> Result<(), Error> {
-        if count > 56 {
+        if count > 64 {
             return Err(Error::Truncated);
         }
         if usize::from(self.bit_count) >= count {
@@ -1452,21 +1455,24 @@ impl<'a> MsbBitReader<'a> {
         }
 
         while usize::from(self.bit_count) < count {
-            if self.byte_pos + 4 <= self.input.len() && self.bit_count <= 32 {
+            if self.byte_pos + 8 <= self.input.len() && self.bit_count <= 64 {
                 let word = unsafe {
-                    let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
-                    u32::from_be(core::ptr::read_unaligned(ptr))
+                    let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u64>();
+                    u64::from_be(core::ptr::read_unaligned(ptr))
                 };
-                let shift = 32 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(word) << shift;
-                self.bit_count += 32;
-                self.byte_pos += 4;
+                let shift = 64 - usize::from(self.bit_count);
+                self.bit_buf |= u128::from(word) << shift;
+                self.bit_count += 64;
+                self.byte_pos += 8;
                 #[cfg(feature = "profile")]
-                profile::refill32();
+                {
+                    profile::refill32();
+                    profile::refill32();
+                }
             } else {
                 let byte = unsafe { *self.input.get_unchecked(self.byte_pos) };
-                let shift = 56 - usize::from(self.bit_count);
-                self.bit_buf |= u64::from(byte) << shift;
+                let shift = 120 - usize::from(self.bit_count);
+                self.bit_buf |= u128::from(byte) << shift;
                 self.bit_count += 8;
                 self.byte_pos += 1;
                 #[cfg(feature = "profile")]
@@ -1479,7 +1485,7 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn peek_buffered(&self, count: usize) -> u64 {
         debug_assert!(count <= usize::from(self.bit_count));
-        self.bit_buf >> (64 - count)
+        (self.bit_buf >> (128 - count)) as u64
     }
 
     #[inline(always)]
@@ -1509,7 +1515,7 @@ impl<'a> MsbBitReader<'a> {
             return Ok(0);
         }
         self.ensure_bits(count)?;
-        let value = self.bit_buf >> (64 - count);
+        let value = (self.bit_buf >> (128 - count)) as u64;
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
         Ok(value)
