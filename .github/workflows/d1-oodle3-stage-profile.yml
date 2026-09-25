@@ -72,9 +72,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t files < <(tr -d '\\r' < ../../out/stage_inputs.txt)
           args=()
-          for f in "${files[@]}"; do args+=("../../$f"); done
+          for f in ../../profile/block_*.comp; do args+=("$f"); done
           cargo run --release --features stage_profile --bin stage_profile_decode -- 262144 80 "${args[@]}" | tee ../../out/stage_profile.txt
 
       - uses: actions/upload-artifact@v4
