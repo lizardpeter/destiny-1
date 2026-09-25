@@ -357,10 +357,21 @@ impl HuffmanModel {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct FastEntry {
-    symbol: u16,
-    len: u8,
+const FAST_SYMBOL_MASK: u16 = (1 << FAST_DECODE_BITS) - 1;
+
+#[inline(always)]
+const fn pack_fast_entry(symbol: usize, len: u8) -> u16 {
+    ((len as u16) << FAST_DECODE_BITS) | symbol as u16
+}
+
+#[inline(always)]
+const fn fast_entry_symbol(entry: u16) -> usize {
+    usize::from(entry & FAST_SYMBOL_MASK)
+}
+
+#[inline(always)]
+const fn fast_entry_len(entry: u16) -> usize {
+    usize::from(entry >> FAST_DECODE_BITS)
 }
 
 #[derive(Debug, Clone)]
@@ -369,9 +380,9 @@ struct CanonicalDecoder {
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
-    fast: [FastEntry; 1 << FAST_DECODE_BITS],
+    fast: [u16; 1 << FAST_DECODE_BITS],
     long_prefix: [i16; 1 << FAST_DECODE_BITS],
-    long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
+    long_tables: Vec<[u16; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
     max_len: u8,
     one_char: Option<usize>,
 }
@@ -384,7 +395,7 @@ impl CanonicalDecoder {
                 first_code: [0; MAX_CODE_LEN as usize + 1],
                 first_symbol: [0; MAX_CODE_LEN as usize + 1],
                 symbols: Vec::new(),
-                fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
+                fast: [0; 1 << FAST_DECODE_BITS],
                 long_prefix: [-1; 1 << FAST_DECODE_BITS],
                 long_tables: Vec::new(),
                 max_len: 0,
@@ -427,7 +438,7 @@ impl CanonicalDecoder {
 
         let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
         let mut long_prefix = [-1i16; 1 << FAST_DECODE_BITS];
-        let mut long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]> = Vec::new();
+        let mut long_tables: Vec<[u16; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]> = Vec::new();
         let mut next_code = first_code;
         for (symbol, &len) in model.code_lengths.iter().enumerate() {
             if len == 0 {
@@ -435,10 +446,7 @@ impl CanonicalDecoder {
             }
             let code = next_code[usize::from(len)];
             next_code[usize::from(len)] += 1;
-            let entry = FastEntry {
-                symbol: symbol as u16,
-                len,
-            };
+            let entry = pack_fast_entry(symbol, len);
             if len <= FAST_DECODE_BITS {
                 let shift = usize::from(FAST_DECODE_BITS - len);
                 let start = (code as usize) << shift;
@@ -455,7 +463,7 @@ impl CanonicalDecoder {
                         return Err(Error::NonCanonical);
                     }
                     long_tables
-                        .push([FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
+                        .push([0; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
                     long_prefix[prefix] = index as i16;
                     index
                 };
@@ -492,9 +500,9 @@ impl CanonicalDecoder {
             bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
             let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
             let entry = self.fast[prefix];
-            if entry.len != 0 {
-                bits.consume_buffered(usize::from(entry.len));
-                return Ok(usize::from(entry.symbol));
+            if entry != 0 {
+                bits.consume_buffered(fast_entry_len(entry));
+                return Ok(fast_entry_symbol(entry));
             }
 
             if remaining_bits >= usize::from(MAX_CODE_LEN) {
@@ -504,9 +512,9 @@ impl CanonicalDecoder {
                     let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
                     let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
                     let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
-                    if long_entry.len != 0 {
-                        bits.consume_buffered(usize::from(long_entry.len));
-                        return Ok(usize::from(long_entry.symbol));
+                    if long_entry != 0 {
+                        bits.consume_buffered(fast_entry_len(long_entry));
+                        return Ok(fast_entry_symbol(long_entry));
                     }
                 }
             }
