@@ -1,0 +1,182 @@
+name: D1 PS4 65:1 mip-record probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-ps4-stream-mip-record-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install verified D1 runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime source reports
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover exact current 0157 family
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' \
+            -o reports/packages.txt
+          python tools/d1_recover_member_catalog.py \
+            --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
+            --package-list reports/packages.txt \
+            --family 0157 \
+            --out-dir source \
+            --report reports/recover_0157.json
+          ls -lh source/ps4_globals_0157_*.pkg
+
+      - name: Decode 65:1 intermediate records and texture parents
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, math, struct, sys
+          from pathlib import Path
+
+          sys.path.insert(0, 'tools')
+          from d1_entry_extract import EntryReader
+
+          candidates = sorted(Path('source').glob('ps4_globals_0157_*.pkg'))
+          if not candidates:
+              raise SystemExit('no recovered 0157 packages')
+          base = candidates[-1]
+          r = EntryReader(base, Path('runtime'))
+          by_hash = {e['tag_hash'].upper(): e for e in r.entries}
+
+          def u16(b,o): return struct.unpack_from('<H', b, o)[0]
+          def u32(b,o): return struct.unpack_from('<I', b, o)[0]
+
+          def block_bytes(fmt):
+              return {0x23:8,0x24:16,0x25:16,0x26:8,0x27:16,0x0A:4}.get(fmt)
+
+          def top_size(w,h,fmt):
+              bb=block_bytes(fmt)
+              if bb is None: return None
+              if fmt==0x0A: return w*h*bb
+              return max(1,(w+3)//4)*max(1,(h+3)//4)*bb
+
+          def theoretical_chain(w,h,fmt):
+              total=0; levels=[]; level=0
+              while True:
+                  n=top_size(w,h,fmt)
+                  if n is None: return None,[]
+                  levels.append({'level':level,'width':w,'height':h,'bytes':n})
+                  total+=n
+                  if w==1 and h==1: break
+                  w=max(1,w//2); h=max(1,h//2); level+=1
+              return total,levels
+
+          parents={}
+          for e in r.entries:
+              if (e['type'],e['subtype']) not in ((32,1),(32,2)):
+                  continue
+              ref=e['reference'].upper()
+              parents.setdefault(ref,[]).append(e)
+
+          rows=[]
+          for e in r.entries:
+              if (e['type'],e['subtype']) != (65,1):
+                  continue
+              row={
+                  'tag_hash':e['tag_hash'].upper(),
+                  'index':e['index'],
+                  'file_size':e['file_size'],
+                  'reference':e['reference'].upper(),
+                  'available':r.available(e['index']),
+              }
+              if row['available']:
+                  b=r.entry(e['index'])
+                  row['sha256']=hashlib.sha256(b).hexdigest()
+                  row['raw_hex']=b.hex() if len(b)<=4096 else None
+                  row['prefix_hex']=b[:256].hex()
+                  row['suffix_hex']=b[-256:].hex() if len(b)>256 else ''
+                  row['u32_le']=[
+                      {'offset':i,'hex':f'{u32(b,i):08X}','value':u32(b,i)}
+                      for i in range(0,len(b)-3,4)
+                  ]
+              child=by_hash.get(row['reference'])
+              row['terminal']=None if child is None else {
+                  'tag_hash':child['tag_hash'].upper(),
+                  'type':child['type'],'subtype':child['subtype'],
+                  'file_size':child['file_size'],
+                  'available':r.available(child['index']),
+              }
+              row['texture_parents']=[]
+              for p in parents.get(row['tag_hash'],[]):
+                  pr={'tag_hash':p['tag_hash'].upper(),'type':p['type'],'subtype':p['subtype'],'file_size':p['file_size']}
+                  if r.available(p['index']):
+                      hb=r.entry(p['index'])
+                      if len(hb)>=0x3c:
+                          raw=u16(hb,6); fmt=(raw>>4)&0x3f
+                          w=u16(hb,0x28); h=u16(hb,0x2a)
+                          top=top_size(w,h,fmt)
+                          chain,levels=theoretical_chain(w,h,fmt)
+                          pr.update({
+                              'data_size':u32(hb,0),
+                              'unknown_04':hb[4],
+                              'unknown_05':hb[5],
+                              'unparsed_08_23_hex':hb[8:0x24].hex(),
+                              'surface_format_raw':raw,
+                              'surface_format':fmt,
+                              'width':w,'height':h,
+                              'depth':u16(hb,0x2c),
+                              'array_size':u16(hb,0x2e),
+                              'flags1':f'{u32(hb,0x30):08X}',
+                              'flags2':f'{u32(hb,0x34):08X}',
+                              'flags3':f'{u32(hb,0x38):08X}',
+                              'expected_top_level_bytes':top,
+                              'theoretical_full_chain_bytes':chain,
+                              'theoretical_lower_mip_bytes':None if chain is None or top is None else chain-top,
+                              'theoretical_levels':levels,
+                          })
+                  row['texture_parents'].append(pr)
+              rows.append(row)
+
+          summary={
+              'base_package':base.name,
+              'package_id':r.h['pkg_id'],
+              'entry_count':len(r.entries),
+              'stream_65_1_count':len(rows),
+              'available_stream_65_1_count':sum(x['available'] for x in rows),
+              'stream_sizes':sorted({x['file_size'] for x in rows}),
+              'texture_parent_count':sum(len(x['texture_parents']) for x in rows),
+              'terminal_class_counts':{},
+          }
+          for row in rows:
+              t=row['terminal']
+              key='missing' if t is None else f"{t['type']}:{t['subtype']}"
+              summary['terminal_class_counts'][key]=summary['terminal_class_counts'].get(key,0)+1
+          out={
+              'status':'D1_PS4_STREAM_MIP_RECORD_PROBE_COMPLETE',
+              'summary':summary,
+              'records':rows,
+              'proof_boundary':'Raw current-retail 65:1 payloads and their exact 32:1/32:2 parents/terminal references only. Field semantics are not named until repeated correlations prove them.',
+          }
+          Path('reports/D1_PS4_STREAM_MIP_RECORD_PROBE.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
+
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-ps4-stream-mip-record-probe
+          path: reports/
+          retention-days: 14
