@@ -785,13 +785,7 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
                             requested: span.raw_len,
                             remaining: 0,
                         })?;
-                copy_match_into(
-                    output,
-                    &mut output_pos,
-                    output_end,
-                    distance,
-                    span.raw_len,
-                )?;
+                copy_match_into(output, &mut output_pos, output_end, distance, span.raw_len)?;
             }
         }
     }
