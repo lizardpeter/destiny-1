@@ -130,6 +130,71 @@ mod profile {
 #[cfg(feature = "profile")]
 pub use profile::{reset as profile_reset, snapshot as profile_snapshot, ProfileSnapshot};
 
+#[cfg(feature = "stage_profile")]
+mod stage_profile {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct StageProfileSnapshot {
+        pub model_parse_ns: u64,
+        pub table_build_ns: u64,
+        pub payload_ns: u64,
+        pub models: u64,
+        pub quanta: u64,
+    }
+
+    static MODEL_PARSE_NS: AtomicU64 = AtomicU64::new(0);
+    static TABLE_BUILD_NS: AtomicU64 = AtomicU64::new(0);
+    static PAYLOAD_NS: AtomicU64 = AtomicU64::new(0);
+    static MODELS: AtomicU64 = AtomicU64::new(0);
+    static QUANTA: AtomicU64 = AtomicU64::new(0);
+
+    #[inline(always)]
+    pub(super) fn model_parse(ns: u64) {
+        MODEL_PARSE_NS.fetch_add(ns, Ordering::Relaxed);
+        MODELS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline(always)]
+    pub(super) fn table_build(ns: u64) {
+        TABLE_BUILD_NS.fetch_add(ns, Ordering::Relaxed);
+    }
+
+    #[inline(always)]
+    pub(super) fn payload(ns: u64) {
+        PAYLOAD_NS.fetch_add(ns, Ordering::Relaxed);
+        QUANTA.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn reset() {
+        for counter in [
+            &MODEL_PARSE_NS,
+            &TABLE_BUILD_NS,
+            &PAYLOAD_NS,
+            &MODELS,
+            &QUANTA,
+        ] {
+            counter.store(0, Ordering::Relaxed);
+        }
+    }
+
+    pub fn snapshot() -> StageProfileSnapshot {
+        let load = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
+        StageProfileSnapshot {
+            model_parse_ns: load(&MODEL_PARSE_NS),
+            table_build_ns: load(&TABLE_BUILD_NS),
+            payload_ns: load(&PAYLOAD_NS),
+            models: load(&MODELS),
+            quanta: load(&QUANTA),
+        }
+    }
+}
+
+#[cfg(feature = "stage_profile")]
+pub use stage_profile::{
+    reset as stage_profile_reset, snapshot as stage_profile_snapshot, StageProfileSnapshot,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LengthCode {
     pub base: u16,
@@ -744,18 +809,33 @@ impl Decoder {
         profile::quantum();
         let mut payload_offset = 0usize;
         if has_new_model {
+            #[cfg(feature = "stage_profile")]
+            let parse_started = std::time::Instant::now();
             let model = HuffmanModel::parse_lzh(payload)?;
+            #[cfg(feature = "stage_profile")]
+            stage_profile::model_parse(
+                parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            );
+
             payload_offset = model.consumed_bits.div_ceil(8);
             if payload_offset > payload.len() {
                 return Err(Error::Truncated);
             }
             #[cfg(feature = "profile")]
             profile::model(model.used_symbols);
+
+            #[cfg(feature = "stage_profile")]
+            let table_started = std::time::Instant::now();
             if let Some(huffman) = self.huffman.as_mut() {
                 huffman.rebuild(&model)?;
             } else {
                 self.huffman = Some(CanonicalDecoder::new(&model)?);
             }
+            #[cfg(feature = "stage_profile")]
+            stage_profile::table_build(
+                table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            );
+
             self.model = Some(model);
         }
 
@@ -777,6 +857,9 @@ impl Decoder {
             });
         }
         let mut recent = [20usize, 24, 28, 32];
+
+        #[cfg(feature = "stage_profile")]
+        let payload_started = std::time::Instant::now();
 
         while *output_pos < output_end {
             let symbol = huffman.decode(&mut bits)?;
@@ -869,6 +952,11 @@ impl Decoder {
         if remaining_bits != 0 && bits.read_bits(remaining_bits)? != 0 {
             return Err(Error::NonZeroPadding);
         }
+
+        #[cfg(feature = "stage_profile")]
+        stage_profile::payload(
+            payload_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+        );
 
         Ok(())
     }
