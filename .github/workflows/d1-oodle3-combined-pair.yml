@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/d1-oodle3-combined-pair.yml'
+      - 'rust/d1_oodle3/**'
 
 permissions:
   contents: read
