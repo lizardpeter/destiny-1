@@ -1,0 +1,217 @@
+name: D1 Oodle3 threading and import probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-threading-probe.yml'
+      - 'rust/d1_oodle3/**'
+      - 'tools/oodle3_pe_map.py'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-threading-probe:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact Tower package and reference Oodle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected:
+              raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Map reference DLL imports
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/oodle3_pe_map.py reference/oo2core_3_win64.dll -o out/oodle3_pe_map.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path('out/oodle3_pe_map.json').read_text())
+          names=[]
+          for dll in j['imports']:
+              for s in dll['symbols']:
+                  if 'name' in s:
+                      names.append(s['name'])
+          threadish=[n for n in names if any(k in n.lower() for k in (
+              'thread','workitem','fiber','criticalsection','srw','conditionvariable',
+              'semaphore','event','waitforsingle','waitformultiple','interlocked'
+          ))]
+          report={
+              'import_dlls':[x['dll'] for x in j['imports']],
+              'import_count':len(names),
+              'thread_related_imports':threadish,
+              'all_imports':names,
+          }
+          Path('out/thread_imports.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('IMPORT_DLLS',report['import_dlls'])
+          print('IMPORT_COUNT',report['import_count'])
+          print('THREAD_RELATED_IMPORTS',threadish)
+          PY
+
+      - name: Build native Rust DLL
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: cargo build --release
+
+      - name: Benchmark external block-level parallelism
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,os,statistics,sys,time,threading
+          from concurrent.futures import ThreadPoolExecutor
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[
+                  ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_uint32,
+              ]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f)
+              bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          case_bytes=[]
+          for b in blocks:
+              if not b['compressed'] or int(b['patch_id'])!=5:
+                  continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset']))
+                  comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise RuntimeError(f"SHA mismatch block {b['index']}")
+              case_bytes.append((int(b['index']),comp,0x40000))
+              if len(case_bytes)>=8: break
+          if len(case_bytes)!=8:
+              raise RuntimeError(f'expected 8 blocks, got {len(case_bytes)}')
+
+          fns={
+              'reference':bind('reference/oo2core_3_win64.dll'),
+              'rust':bind('rust/d1_oodle3/target/release/d1_oodle3.dll'),
+          }
+
+          # Correctness before timing.
+          for idx,comp,raw_len in case_bytes:
+              src=ctypes.create_string_buffer(comp)
+              outs={}
+              for name,fn in fns.items():
+                  dst=ctypes.create_string_buffer(raw_len)
+                  n=fn(ctypes.cast(src,ctypes.c_void_p),len(comp),
+                       ctypes.cast(dst,ctypes.c_void_p),raw_len,
+                       1,0,0,None,None,None,None,None,None,3)
+                  if n!=raw_len: raise RuntimeError(f'{name} return {n} block {idx}')
+                  outs[name]=dst.raw[:raw_len]
+              if outs['reference']!=outs['rust']:
+                  raise RuntimeError(f'output mismatch block {idx}')
+
+          logical_cpus=os.cpu_count()
+          worker_counts=[1,2,4,8]
+          iterations_per_worker=30
+          rounds=5
+
+          def one_worker(fn,worker_id,start_barrier):
+              # Private ctypes buffers: no allocator/destination sharing inside timed calls.
+              local=[]
+              for idx,comp,raw_len in case_bytes:
+                  local.append((ctypes.create_string_buffer(comp),len(comp),
+                                ctypes.create_string_buffer(raw_len),raw_len))
+              start_barrier.wait()
+              for _ in range(iterations_per_worker):
+                  for src,comp_len,dst,raw_len in local:
+                      n=fn(ctypes.cast(src,ctypes.c_void_p),comp_len,
+                           ctypes.cast(dst,ctypes.c_void_p),raw_len,
+                           1,0,0,None,None,None,None,None,None,3)
+                      if n!=raw_len:
+                          raise RuntimeError(f'decode failed {n}')
+              return True
+
+          def run_parallel(fn,workers):
+              barrier=threading.Barrier(workers+1)
+              with ThreadPoolExecutor(max_workers=workers) as ex:
+                  futures=[ex.submit(one_worker,fn,i,barrier) for i in range(workers)]
+                  barrier.wait()
+                  t0=time.perf_counter_ns()
+                  for fut in futures: fut.result()
+                  t1=time.perf_counter_ns()
+              seconds=(t1-t0)/1e9
+              raw_bytes=workers*iterations_per_worker*sum(x[2] for x in case_bytes)
+              return raw_bytes/seconds/(1024*1024)
+
+          results={'logical_cpus':logical_cpus,'iterations_per_worker':iterations_per_worker,
+                   'rounds':rounds,'implementations':{}}
+          for name,fn in fns.items():
+              impl={}
+              for workers in worker_counts:
+                  samples=[run_parallel(fn,workers) for _ in range(rounds)]
+                  impl[str(workers)]={
+                      'median_mib_s':statistics.median(samples),
+                      'best_mib_s':max(samples),
+                      'samples':samples,
+                  }
+                  print('THREAD_BENCH',name,workers,impl[str(workers)])
+              results['implementations'][name]=impl
+
+          ref1=results['implementations']['reference']['1']['median_mib_s']
+          for workers in worker_counts:
+              rs=results['implementations']['rust'][str(workers)]['median_mib_s']
+              rr=results['implementations']['reference'][str(workers)]['median_mib_s']
+              results.setdefault('rust_vs_reference_same_workers',{})[str(workers)]=rs/rr
+              results.setdefault('rust_vs_reference_single_thread',{})[str(workers)]=rs/ref1
+
+          Path('out/threading_benchmark.json').write_text(json.dumps(results,indent=2)+'\n')
+          print('LOGICAL_CPUS',logical_cpus)
+          print('RUST_VS_REFERENCE_SAME_WORKERS',results['rust_vs_reference_same_workers'])
+          print('RUST_VS_REFERENCE_SINGLE_THREAD',results['rust_vs_reference_single_thread'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-threading-probe
+          path: |
+            out/oodle3_pe_map.json
+            out/thread_imports.json
+            out/threading_benchmark.json
+          retention-days: 30
+          if-no-files-found: error
