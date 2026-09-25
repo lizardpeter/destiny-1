@@ -1,5 +1,5 @@
 name: D1 Oodle3 Rust hot-path profile
-# model-shape rerun
+# model-shape rerun fixed-symbol
 
 on:
   workflow_dispatch:
