@@ -8,6 +8,137 @@ pub const SYMBOL_COUNT: usize = 713;
 pub const FAST_DECODE_BITS: u8 = 10;
 pub const MAX_CODE_LEN: u8 = 16;
 
+pub const LITERAL_SYMBOLS: usize = 256;
+pub const RECENT_TOKEN_COUNT: usize = 20;
+pub const EXPLICIT_LENGTH_CLASS_COUNT: usize = 19;
+pub const EXPLICIT_DISTANCE_CLASS_COUNT: usize = 23;
+pub const TOKEN_SYMBOLS: usize =
+    RECENT_TOKEN_COUNT + EXPLICIT_LENGTH_CLASS_COUNT * EXPLICIT_DISTANCE_CLASS_COUNT;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LengthCode {
+    pub base: u16,
+    pub extra_bits: u8,
+    pub extended: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DistanceCode {
+    pub base: u32,
+    pub extra_bits: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolCode {
+    Literal(u8),
+    Recent {
+        selector_bits: u8,
+        length: LengthCode,
+    },
+    Explicit {
+        distance: DistanceCode,
+        length: LengthCode,
+    },
+}
+
+const RECENT_LENGTHS: [LengthCode; RECENT_TOKEN_COUNT] = [
+    LengthCode { base: 2, extra_bits: 0, extended: false },
+    LengthCode { base: 3, extra_bits: 0, extended: false },
+    LengthCode { base: 4, extra_bits: 0, extended: false },
+    LengthCode { base: 5, extra_bits: 0, extended: false },
+    LengthCode { base: 6, extra_bits: 0, extended: false },
+    LengthCode { base: 7, extra_bits: 0, extended: false },
+    LengthCode { base: 8, extra_bits: 0, extended: false },
+    LengthCode { base: 9, extra_bits: 1, extended: false },
+    LengthCode { base: 11, extra_bits: 1, extended: false },
+    LengthCode { base: 13, extra_bits: 1, extended: false },
+    LengthCode { base: 15, extra_bits: 1, extended: false },
+    LengthCode { base: 17, extra_bits: 2, extended: false },
+    LengthCode { base: 21, extra_bits: 2, extended: false },
+    LengthCode { base: 25, extra_bits: 2, extended: false },
+    LengthCode { base: 29, extra_bits: 3, extended: false },
+    LengthCode { base: 37, extra_bits: 3, extended: false },
+    LengthCode { base: 45, extra_bits: 4, extended: false },
+    LengthCode { base: 61, extra_bits: 5, extended: false },
+    LengthCode { base: 93, extra_bits: 6, extended: false },
+    LengthCode { base: 157, extra_bits: 6, extended: true },
+];
+
+const EXPLICIT_LENGTHS: [LengthCode; EXPLICIT_LENGTH_CLASS_COUNT] = [
+    LengthCode { base: 3, extra_bits: 0, extended: false },
+    LengthCode { base: 4, extra_bits: 0, extended: false },
+    LengthCode { base: 5, extra_bits: 0, extended: false },
+    LengthCode { base: 6, extra_bits: 0, extended: false },
+    LengthCode { base: 7, extra_bits: 0, extended: false },
+    LengthCode { base: 8, extra_bits: 0, extended: false },
+    LengthCode { base: 9, extra_bits: 1, extended: false },
+    LengthCode { base: 11, extra_bits: 1, extended: false },
+    LengthCode { base: 13, extra_bits: 1, extended: false },
+    LengthCode { base: 15, extra_bits: 1, extended: false },
+    LengthCode { base: 17, extra_bits: 2, extended: false },
+    LengthCode { base: 21, extra_bits: 2, extended: false },
+    LengthCode { base: 25, extra_bits: 2, extended: false },
+    LengthCode { base: 29, extra_bits: 3, extended: false },
+    LengthCode { base: 37, extra_bits: 3, extended: false },
+    LengthCode { base: 45, extra_bits: 4, extended: false },
+    LengthCode { base: 61, extra_bits: 5, extended: false },
+    LengthCode { base: 93, extra_bits: 6, extended: false },
+    LengthCode { base: 157, extra_bits: 7, extended: true },
+];
+
+const EXPLICIT_DISTANCES: [DistanceCode; EXPLICIT_DISTANCE_CLASS_COUNT] = [
+    DistanceCode { base: 0, extra_bits: 4 },
+    DistanceCode { base: 16, extra_bits: 4 },
+    DistanceCode { base: 32, extra_bits: 5 },
+    DistanceCode { base: 64, extra_bits: 6 },
+    DistanceCode { base: 128, extra_bits: 7 },
+    DistanceCode { base: 256, extra_bits: 8 },
+    DistanceCode { base: 512, extra_bits: 8 },
+    DistanceCode { base: 768, extra_bits: 8 },
+    DistanceCode { base: 1024, extra_bits: 9 },
+    DistanceCode { base: 1536, extra_bits: 9 },
+    DistanceCode { base: 2048, extra_bits: 10 },
+    DistanceCode { base: 3072, extra_bits: 10 },
+    DistanceCode { base: 4096, extra_bits: 10 },
+    DistanceCode { base: 5120, extra_bits: 10 },
+    DistanceCode { base: 6144, extra_bits: 11 },
+    DistanceCode { base: 8192, extra_bits: 12 },
+    DistanceCode { base: 12288, extra_bits: 12 },
+    DistanceCode { base: 16384, extra_bits: 13 },
+    DistanceCode { base: 24576, extra_bits: 13 },
+    DistanceCode { base: 32768, extra_bits: 14 },
+    DistanceCode { base: 49152, extra_bits: 14 },
+    DistanceCode { base: 65536, extra_bits: 15 },
+    DistanceCode { base: 98304, extra_bits: 15 },
+];
+
+pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
+    if symbol < LITERAL_SYMBOLS {
+        return Ok(SymbolCode::Literal(symbol as u8));
+    }
+
+    if symbol >= SYMBOL_COUNT {
+        return Err(Error::InvalidSymbol(symbol));
+    }
+
+    let token = symbol - LITERAL_SYMBOLS;
+    if token < RECENT_TOKEN_COUNT {
+        return Ok(SymbolCode::Recent {
+            selector_bits: 2,
+            length: RECENT_LENGTHS[token],
+        });
+    }
+
+    let explicit = token - RECENT_TOKEN_COUNT;
+    let length_index = explicit / EXPLICIT_DISTANCE_CLASS_COUNT;
+    let distance_index = explicit % EXPLICIT_DISTANCE_CLASS_COUNT;
+    Ok(SymbolCode::Explicit {
+        distance: EXPLICIT_DISTANCES[distance_index],
+        length: EXPLICIT_LENGTHS[length_index],
+    })
+}
+
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Truncated,
@@ -308,5 +439,66 @@ mod tests {
     fn canonical_kraft_validation() {
         assert!(kraft_complete(&[1, 2, 2], 2));
         assert!(!kraft_complete(&[2, 2], 2));
+    }
+
+    #[test]
+    fn lzh_alphabet_decomposes_exactly() {
+        assert_eq!(LITERAL_SYMBOLS + TOKEN_SYMBOLS, SYMBOL_COUNT);
+        assert_eq!(TOKEN_SYMBOLS, 457);
+
+        assert_eq!(classify_symbol(0).unwrap(), SymbolCode::Literal(0));
+        assert_eq!(classify_symbol(255).unwrap(), SymbolCode::Literal(255));
+
+        assert_eq!(
+            classify_symbol(256).unwrap(),
+            SymbolCode::Recent {
+                selector_bits: 2,
+                length: LengthCode {
+                    base: 2,
+                    extra_bits: 0,
+                    extended: false,
+                },
+            }
+        );
+        assert_eq!(
+            classify_symbol(275).unwrap(),
+            SymbolCode::Recent {
+                selector_bits: 2,
+                length: LengthCode {
+                    base: 157,
+                    extra_bits: 6,
+                    extended: true,
+                },
+            }
+        );
+
+        assert_eq!(
+            classify_symbol(276).unwrap(),
+            SymbolCode::Explicit {
+                distance: DistanceCode {
+                    base: 0,
+                    extra_bits: 4,
+                },
+                length: LengthCode {
+                    base: 3,
+                    extra_bits: 0,
+                    extended: false,
+                },
+            }
+        );
+        assert_eq!(
+            classify_symbol(712).unwrap(),
+            SymbolCode::Explicit {
+                distance: DistanceCode {
+                    base: 98304,
+                    extra_bits: 15,
+                },
+                length: LengthCode {
+                    base: 157,
+                    extra_bits: 7,
+                    extended: true,
+                },
+            }
+        );
     }
 }
