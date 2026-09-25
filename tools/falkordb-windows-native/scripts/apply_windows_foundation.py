@@ -45,6 +45,22 @@ unsafe extern "C" {
 
     p.write_text(s, encoding="utf-8")
 
+def patch_graphblas_matrix():
+    p = root / "graph/src/graph/graphblas/matrix.rs"
+    s = p.read_text(encoding="utf-8")
+
+    old_call = "        omp_set_num_threads(n);"
+    new_call = "        #[cfg(not(windows))]\n        omp_set_num_threads(n);"
+    if old_call in s and new_call not in s:
+        s = s.replace(old_call, new_call, 1)
+
+    old_decl = 'unsafe extern "C" {\n    fn omp_set_num_threads(num_threads: i32);\n}'
+    new_decl = '#[cfg(not(windows))]\nunsafe extern "C" {\n    fn omp_set_num_threads(num_threads: i32);\n}'
+    if old_decl in s and new_decl not in s:
+        s = s.replace(old_decl, new_decl, 1)
+
+    p.write_text(s, encoding="utf-8")
+
 def patch_graph_build():
     p = root / "graph/build.rs"
     s = p.read_text(encoding="utf-8")
@@ -140,5 +156,6 @@ fn create_archive_alias(src: &std::path::Path, dst: &std::path::Path) -> std::io
     p.write_text(s, encoding="utf-8")
 
 patch_module_init()
+patch_graphblas_matrix()
 patch_graph_build()
 print("Windows foundation patches applied")
