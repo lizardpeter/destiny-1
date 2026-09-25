@@ -65,7 +65,7 @@ Decoder families currently represented:
 - 6: Kraken/newLZ
 - 10: Mermaid/Selkie shared format
 - 11: BitKnit
-- 12: Akkorokamui/newLZ-family format for this DLL generation
+- 12: newLZ-family wire type; exact Oodle 2.3 algorithm association is deliberately left unlabelled until proven from the corpus
 
 NewLZ-family quantum size is 0x40000. LZNA/BitKnit legacy quantum size is 0x4000. NewLZ compressed quantum headers carry an 18-bit stored_size-1. Legacy headers carry a 14-bit stored_size-1. Special zero-payload forms are represented as well.
 
@@ -92,3 +92,7 @@ NewLZ-family quantum size is 0x40000. LZNA/BitKnit legacy quantum size is 0x4000
 ## Implementation order
 
 Do not port the entire DLL blindly. First census the decoder type from real D1 compressed block headers. Then implement only the codec families actually present in the PS4/Xbox package corpus. Validate every stage against the verified reference DLL and keep regression fixtures by hashes/metadata rather than redistributing game data.
+
+## Native Rust acceleration path
+
+A current MIT pure-Rust decoder, `oozextract` 0.5.5, implements the same Oodle framing family and Kraken/Mermaid/Selkie/Leviathan/LZNA/BitKnit decode kernels. The project now uses it as an initial native backend/differential oracle while retaining our own Oodle-2.3 framing map and exact-DLL reverse-engineering record. It is not assumed compatible merely because it is newer: CI compares it byte-for-byte against the verified Oodle 2.3 DLL on real Destiny package blocks.
