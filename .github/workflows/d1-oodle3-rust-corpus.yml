@@ -1,0 +1,170 @@
+name: D1 Oodle3 Rust broad corpus
+
+on:
+  push:
+    paths:
+      - 'rust/d1_oodle3/**'
+      - '.github/workflows/d1-oodle3-rust-corpus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tower-corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover Tower patch packages 3-5 and reference Oodle runtime
+        run: |
+          set -euo pipefail
+          mkdir -p recovered runtime out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          rows=[
+            ('ps4_city_tower_destination_024c_3.pkg',7706278912,2134016,'c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef'),
+            ('ps4_city_tower_destination_024c_4.pkg',7708413440,6987776,'12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018'),
+            ('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+          ]
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          for name,off,size,expected in rows:
+              got=arc.copy_to(off,size,Path('recovered')/name)
+              if got.lower()!=expected:
+                  raise SystemExit(f'{name}: SHA mismatch {got}')
+              print('RECOVERED',name,size,got)
+          PY
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build native Rust decoder
+        working-directory: rust/d1_oodle3
+        run: cargo build --release --bin native_decode
+
+      - name: Differential-test resident compressed corpus
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,subprocess,sys
+          from collections import Counter
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table,patch_path
+          from d1_oodle_probe import Oodle3
+
+          root=Path('recovered')
+          catalog=root/'ps4_city_tower_destination_024c_5.pkg'
+          with catalog.open('rb') as f:
+              h=parse_header(f)
+              bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          reference=Oodle3(Path('runtime/liblinoodle3.so'))
+          exe=Path('rust/d1_oodle3/target/release/native_decode')
+
+          rows=[]
+          codec_prefixes=Counter()
+          by_patch=Counter()
+          failures=[]
+          # Spread samples through each resident patch instead of taking only a
+          # contiguous tail.  Up to 16 compressed blocks per patch => 48 total.
+          for patch_id in (3,4,5):
+              candidates=[b for b in blocks if b['compressed'] and int(b['patch_id'])==patch_id]
+              if not candidates:
+                  continue
+              if len(candidates)<=16:
+                  selected=candidates
+              else:
+                  positions=sorted({round(i*(len(candidates)-1)/15) for i in range(16)})
+                  selected=[candidates[i] for i in positions]
+              for b in selected:
+                  owner=patch_path(catalog,patch_id)
+                  with owner.open('rb') as f:
+                      f.seek(int(b['offset']))
+                      comp=f.read(int(b['size']))
+                  got_sha=hashlib.sha1(comp).hexdigest()
+                  if got_sha.lower()!=str(b['sha1']).lower():
+                      raise SystemExit(f"block {b['index']} stored SHA mismatch")
+
+                  prefix=comp[:8].hex()
+                  codec_prefixes[prefix[:2]]+=1
+                  try:
+                      expected=reference.decompress_block(comp)
+                  except Exception as ex:
+                      failures.append({
+                          'block':int(b['index']),'patch_id':patch_id,'stage':'reference',
+                          'stored_size':len(comp),'prefix':prefix,'error':repr(ex),
+                      })
+                      continue
+
+                  comp_path=Path('out')/f"b{int(b['index']):04d}.comp"
+                  out_path=Path('out')/f"b{int(b['index']):04d}.rust"
+                  comp_path.write_bytes(comp)
+                  p=subprocess.run(
+                      [str(exe),str(comp_path),str(len(expected)),str(out_path)],
+                      text=True,capture_output=True,
+                  )
+                  if p.returncode!=0:
+                      failures.append({
+                          'block':int(b['index']),'patch_id':patch_id,'stage':'rust',
+                          'stored_size':len(comp),'raw_size':len(expected),'prefix':prefix,
+                          'stderr':p.stderr[-2000:],
+                      })
+                      continue
+
+                  actual=out_path.read_bytes()
+                  if actual!=expected:
+                      first=next((i for i,(a,e) in enumerate(zip(actual,expected)) if a!=e),None)
+                      failures.append({
+                          'block':int(b['index']),'patch_id':patch_id,'stage':'compare',
+                          'stored_size':len(comp),'raw_size':len(expected),'prefix':prefix,
+                          'first_mismatch':first,
+                      })
+                      continue
+
+                  sha=hashlib.sha256(actual).hexdigest()
+                  row={
+                      'block':int(b['index']),'patch_id':patch_id,
+                      'stored_size':len(comp),'raw_size':len(actual),
+                      'prefix':prefix,'sha256':sha,
+                  }
+                  rows.append(row)
+                  by_patch[patch_id]+=1
+                  print('CORPUS_BYTE_IDENTICAL',row)
+
+          report={
+              'status':'D1_OODLE23_RUST_CORPUS',
+              'tested_ok':len(rows),
+              'by_patch':dict(by_patch),
+              'first_byte_census':dict(codec_prefixes),
+              'rows':rows,
+              'failures':failures,
+          }
+          Path('out/corpus.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in report.items() if k not in ('rows','failures')},indent=2))
+          if failures:
+              print(json.dumps(failures,indent=2))
+              raise SystemExit(f'{len(failures)} broad-corpus failures')
+          if len(rows)<24:
+              raise SystemExit(f'expected broad corpus >=24, got {len(rows)}')
+          print('D1_OODLE23_RUST_BROAD_CORPUS_GREEN',len(rows),dict(by_patch))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle23-rust-broad-corpus
+          path: out/corpus.json
+          retention-days: 30
+          if-no-files-found: error
