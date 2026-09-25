@@ -1,0 +1,30 @@
+name: Cross-repo Rust-test native compile gate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rust-test-native-compile-gate.yml'
+
+jobs:
+  windows-native:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout current Rust-test
+        uses: actions/checkout@v4
+        with:
+          repository: lizardpeter/Rust-test
+          ref: 5f012e4944eb35f1111c3307882c68ed906c9039
+          path: rust-test
+          fetch-depth: 1
+
+      - name: Check Destiny 1 native boundary
+        working-directory: rust-test
+        shell: pwsh
+        run: cargo check --no-default-features --features import-destiny1 --bin fps_game
+
+      - name: Check T6 native boundary
+        working-directory: rust-test
+        shell: pwsh
+        run: cargo check --no-default-features --features import-bo2 --bin fps_game
