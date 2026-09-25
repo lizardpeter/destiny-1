@@ -1,4 +1,5 @@
 name: D1 Oodle3 Rust PGO benchmark
+# rerun current in-place decoder
 
 on:
   workflow_dispatch:
