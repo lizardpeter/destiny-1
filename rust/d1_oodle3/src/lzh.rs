@@ -1882,7 +1882,7 @@ impl<'a> MsbBitReader<'a> {
             if leading < available {
                 let consume = leading + 1;
                 self.bit_buf <<= consume;
-                self.bit_count -= consume as u8;
+                self.bit_count -= consume;
                 zeros = zeros
                     .checked_add(leading as u32)
                     .ok_or(Error::InvalidRun)?;
