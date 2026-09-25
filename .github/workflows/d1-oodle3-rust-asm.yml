@@ -1,0 +1,75 @@
+name: D1 Oodle3 Rust assembly probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-rust-asm.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  rust-asm:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Emit optimized Rust assembly
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf target-asm
+          CARGO_TARGET_DIR=target-asm cargo rustc --release --lib -- --emit=asm
+          mkdir -p ../../out
+          find target-asm/release/deps -type f -name '*.s' -print
+          asm=$(find target-asm/release/deps -type f -name '*.s' | head -1)
+          cp "$asm" ../../out/d1_oodle3_release.s
+          grep -n -E 'decode_quantum_into|decode_stream_into|copy_match_into|OodleLZ_Decompress|CanonicalDecoder|decode_fast' "$asm"             > ../../out/hot_symbols.txt || true
+          cat ../../out/hot_symbols.txt
+
+      - name: Summarize generated hot-loop assembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          p=Path('out/d1_oodle3_release.s')
+          text=p.read_text(errors='replace')
+          needles=['decode_quantum_into','decode_stream_into','OodleLZ_Decompress']
+          hits={}
+          lines=text.splitlines()
+          for needle in needles:
+              positions=[i for i,x in enumerate(lines) if needle in x]
+              rows=[]
+              for i in positions[:10]:
+                  lo=max(0,i-5); hi=min(len(lines),i+12)
+                  rows.append({'line':i+1,'context':'\n'.join(lines[lo:hi])})
+              hits[needle]=rows
+          mn=[]
+          for line in lines:
+              s=line.strip()
+              m=re.match(r'([a-zA-Z][a-zA-Z0-9.]*)\s',s)
+              if m: mn.append(m.group(1).lower())
+          from collections import Counter
+          report={'line_count':len(lines),'top_mnemonics':Counter(mn).most_common(40),'hits':hits}
+          Path('out/rust_asm_summary.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('ASM_LINES',len(lines))
+          print('TOP_MNEMONICS',report['top_mnemonics'])
+          for k,v in hits.items(): print('SYMBOL_HITS',k,len(v))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-rust-release-asm
+          path: |
+            out/d1_oodle3_release.s
+            out/hot_symbols.txt
+            out/rust_asm_summary.json
+          retention-days: 30
+          if-no-files-found: error
