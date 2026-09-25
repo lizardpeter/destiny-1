@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pefile
 from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_CALL, CS_GRP_JUMP, CS_GRP_RET
-from capstone.x86_const import X86_OP_IMM
+from capstone.x86_const import X86_OP_IMM, X86_OP_MEM, X86_REG_RIP
 
 EXPECTED_SHA256 = "682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62"
 
@@ -77,9 +77,15 @@ def walk_function(md: Cs, image: bytes, text_va: int, text_end: int, start: int,
             ins = decoded[0]
             seen_ins.add(pc)
             imm_values = []
+            rip_targets = []
             try:
                 imm_values = [
                     int(op.imm) for op in ins.operands if op.type == X86_OP_IMM
+                ]
+                rip_targets = [
+                    int(ins.address + ins.size + op.mem.disp)
+                    for op in ins.operands
+                    if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP
                 ]
             except Exception:
                 pass
@@ -90,6 +96,7 @@ def walk_function(md: Cs, image: bytes, text_va: int, text_end: int, start: int,
                 "op_str": ins.op_str,
                 "bytes": ins.bytes.hex(),
                 "immediates": imm_values,
+                "rip_targets": rip_targets,
             })
             nxt = pc + ins.size
 
@@ -257,6 +264,39 @@ def main() -> int:
             if callee not in funcs:
                 queue.append(callee)
 
+    def ascii_at_va(va: int):
+        rva = va - image_base
+        if rva < 0:
+            return None
+        try:
+            off = pe.get_offset_from_rva(rva)
+        except Exception:
+            return None
+        if off < 0 or off >= len(data):
+            return None
+        end = off
+        while end < len(data) and end - off < 500 and data[end] != 0:
+            b = data[end]
+            if b < 0x20 or b > 0x7e:
+                return None
+            end += 1
+        if end - off < 4:
+            return None
+        return data[off:end].decode("ascii", "replace")
+
+    string_xrefs = []
+    for fva, fn in funcs.items():
+        for row in fn["instructions"]:
+            for target_va in row.get("rip_targets", []):
+                s = ascii_at_va(target_va)
+                if s:
+                    string_xrefs.append({
+                        "function_rva": fva - image_base,
+                        "instruction_rva": row["address"] - image_base,
+                        "target_rva": target_va - image_base,
+                        "text": s,
+                    })
+
     report = {
         "schema": "d1_oodle3_static_probe_v1",
         "dll": args.dll.name,
@@ -285,6 +325,7 @@ def main() -> int:
             for a in sorted(funcs)
         ],
         "interesting_strings": interesting_strings(data),
+        "string_xrefs": string_xrefs,
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
