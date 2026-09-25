@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/d1-oodle3-kernel-disasm.yml'
+      - '.github/workflows/d1-oodle3-exp-kernel-analysis.yml'
 
 permissions:
   contents: write
