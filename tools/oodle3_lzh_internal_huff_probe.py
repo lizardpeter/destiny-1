@@ -133,14 +133,14 @@ class Runtime:
             return bytes((ctypes.c_uint8 * n).from_address(p))
 
         if p_a and p_b and p_b >= p_a and p_b - p_a <= 16384:
-            b = bounded_bytes(p_a, p_b - p_a)
+            b = bounded_bytes(p_a, p_b - p_a) or b""
             result["array_2a0_to_2a8"] = {
                 "size": len(b),
                 "sha256": sha(b),
                 "hex": b.hex(),
             }
         if p_b and p_c and p_c >= p_b and p_c - p_b <= 16384:
-            b = bounded_bytes(p_b, p_c - p_b)
+            b = bounded_bytes(p_b, p_c - p_b) or b""
             result["array_2a8_to_2b0"] = {
                 "size": len(b),
                 "sha256": sha(b),
