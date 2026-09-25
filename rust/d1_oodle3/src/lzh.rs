@@ -1042,6 +1042,7 @@ impl Decoder {
         self.has_model = false;
     }
 
+    #[inline(always)]
     pub fn decode_quantum_into(
         &mut self,
         payload: &[u8],
