@@ -1,0 +1,173 @@
+name: D1 Oodle3 target-cpu benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-exp-target-cpu.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover benchmark corpus and reference DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(got)
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build generic/native/v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          CARGO_TARGET_DIR=rust/d1_oodle3/target-generic \
+            cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          cp rust/d1_oodle3/target-generic/release/d1_oodle3.dll out/generic.dll
+
+          CARGO_TARGET_DIR=rust/d1_oodle3/target-native \
+          RUSTFLAGS="-C target-cpu=native" \
+            cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/native.dll
+
+          CARGO_TARGET_DIR=rust/d1_oodle3/target-v3 \
+          RUSTFLAGS="-C target-cpu=x86-64-v3" \
+            cargo build --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          cp rust/d1_oodle3/target-v3/release/d1_oodle3.dll out/v3.dll
+
+          rustc --version --verbose > out/rustc.txt
+          rustc --print cfg -C target-cpu=native > out/native_cfg.txt
+
+      - name: Paired benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower(): raise RuntimeError('sha')
+              cases.append((comp,0x40000))
+              if len(cases)==8: break
+
+          fns={k:bind(v) for k,v in {
+              'oodle':'reference/oo2core_3_win64.dll',
+              'generic':'out/generic.dll',
+              'native':'out/native.dll',
+              'v3':'out/v3.dll',
+          }.items()}
+          bufs={name:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                      for c,raw in cases] for name in fns}
+
+          def call(name,i):
+              fn=fns[name]; src,dst,cl,raw=bufs[name][i]
+              n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                   1,0,0,None,None,None,None,None,None,3)
+              if n!=raw: raise RuntimeError((name,n,raw))
+              return dst.raw[:raw]
+
+          for i in range(len(cases)):
+              outs={name:call(name,i) for name in fns}
+              if len(set(outs.values()))!=1: raise RuntimeError(f'mismatch {i}')
+
+          for _ in range(15):
+              for name in fns:
+                  for i in range(len(cases)): call(name,i)
+
+          iterations=65; rounds=11
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          def once(name):
+              t=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for i in range(len(cases)): call(name,i)
+              sec=(time.perf_counter_ns()-t)/1e9
+              return raw_bytes/sec/(1024*1024)
+
+          samples={k:[] for k in fns}
+          paired_native=[]; paired_v3=[]
+          orders=[
+              ['generic','native','v3','oodle'],
+              ['native','generic','oodle','v3'],
+              ['v3','oodle','generic','native'],
+              ['oodle','v3','native','generic'],
+          ]
+          for r in range(rounds):
+              vals={}
+              for name in orders[r%len(orders)]:
+                  vals[name]=once(name); samples[name].append(vals[name])
+              paired_native.append(vals['native']/vals['generic'])
+              paired_v3.append(vals['v3']/vals['generic'])
+
+          med={k:statistics.median(v) for k,v in samples.items()}
+          report={
+              'base_commit':'ad42564c1958780289a6af01f2cbb2568c7cb695',
+              'median_mib_s':med,
+              'native_over_generic_paired_median':statistics.median(paired_native),
+              'v3_over_generic_paired_median':statistics.median(paired_v3),
+              'generic_over_oodle':med['generic']/med['oodle'],
+              'native_over_oodle':med['native']/med['oodle'],
+              'v3_over_oodle':med['v3']/med['oodle'],
+              'samples':samples,
+              'correctness':'8/8 byte-identical across Oodle, generic, native, and x86-64-v3'
+          }
+          Path('out/target_cpu.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Commit benchmark result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/benchmarks
+          cp out/target_cpu.json evidence/benchmarks/oodle3_target_cpu.json
+          cp out/native_cfg.txt evidence/benchmarks/oodle3_target_cpu_native_cfg.txt
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add evidence/benchmarks/oodle3_target_cpu.json evidence/benchmarks/oodle3_target_cpu_native_cfg.txt
+          git commit -m "Record Oodle3 target-cpu benchmark" || exit 0
+          git push
