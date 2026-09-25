@@ -1,0 +1,9 @@
+[package]
+name = "d1-oodle-lzh"
+version = "0.1.0"
+edition = "2021"
+description = "Clean-room native decoder research for Destiny 1 Oodle 3 LZH streams"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
