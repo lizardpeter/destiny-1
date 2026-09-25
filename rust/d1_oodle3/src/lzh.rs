@@ -128,7 +128,12 @@ const TOKEN_RECENT_FLAG: u8 = 0x80;
 const TOKEN_EXTENDED_FLAG: u8 = 0x80;
 
 const fn encode_length_info(code: LengthCode) -> u8 {
-    code.extra_bits | if code.extended { TOKEN_EXTENDED_FLAG } else { 0 }
+    code.extra_bits
+        | if code.extended {
+            TOKEN_EXTENDED_FLAG
+        } else {
+            0
+        }
 }
 
 const fn build_token_meta() -> [TokenMeta; TOKEN_SYMBOLS] {
@@ -209,7 +214,6 @@ pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
         })
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
