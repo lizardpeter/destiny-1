@@ -3,6 +3,8 @@
 
 use core::fmt;
 
+pub mod lzh;
+
 pub const BLOCK_LEN: usize = 0x40000;
 pub const LEGACY_QUANTUM_LEN: usize = 0x4000;
 pub const NEWLZ_QUANTUM_LEN: usize = 0x40000;
