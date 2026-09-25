@@ -1691,6 +1691,7 @@ struct MsbBitReader<'a> {
     start: *const u8,
     ptr: *const u8,
     end: *const u8,
+    fast_limit: usize,
     bit_buf: u64,
     bit_count: u8,
     marker: core::marker::PhantomData<&'a [u8]>,
@@ -1701,10 +1702,16 @@ impl<'a> MsbBitReader<'a> {
     fn new(input: &'a [u8]) -> Self {
         let start = input.as_ptr();
         let end = unsafe { start.add(input.len()) };
+        let fast_limit = if input.len() >= 8 {
+            start as usize + input.len() - 8
+        } else {
+            0
+        };
         Self {
             start,
             ptr: start,
             end,
+            fast_limit,
             bit_buf: 0,
             bit_count: 0,
             marker: core::marker::PhantomData,
@@ -1730,7 +1737,7 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn has_fast_margin(&self) -> bool {
-        self.bytes_remaining() >= 8
+        self.ptr as usize <= self.fast_limit
     }
 
     #[inline(always)]
