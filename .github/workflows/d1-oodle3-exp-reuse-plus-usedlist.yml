@@ -1,0 +1,164 @@
+name: D1 Oodle3 reuse-plus-usedlist experiment
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-exp-reuse-plus-usedlist.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover benchmark package and reference Oodle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Test and build baseline/current
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release
+          git worktree add ../baseline ad42564c1958780289a6af01f2cbb2568c7cb695
+          (cd ../baseline/rust/d1_oodle3 && CARGO_TARGET_DIR=target-exp cargo build --release)
+          mkdir -p out
+          cp ../baseline/rust/d1_oodle3/target-exp/release/d1_oodle3.dll out/baseline.dll
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-exp cargo build --release)
+          cp rust/d1_oodle3/target-exp/release/d1_oodle3.dll out/current.dll
+
+      - name: Paired benchmark and correctness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          cases=[]
+          for b in parse_blocks(bt):
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise RuntimeError('sha mismatch')
+              cases.append((comp,0x40000))
+              if len(cases)>=8: break
+
+          fns={'oodle':bind('reference/oo2core_3_win64.dll'),
+               'baseline':bind('out/baseline.dll'),
+               'current':bind('out/current.dll')}
+          bufs={name:[(ctypes.create_string_buffer(c),ctypes.create_string_buffer(raw),len(c),raw)
+                      for c,raw in cases] for name in fns}
+
+          def call(name,i):
+              fn=fns[name]; src,dst,cl,raw=bufs[name][i]
+              n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,
+                   1,0,0,None,None,None,None,None,None,3)
+              if n!=raw: raise RuntimeError((name,n,raw))
+              return dst.raw[:raw]
+
+          for i in range(len(cases)):
+              outs={name:call(name,i) for name in fns}
+              if len(set(outs.values()))!=1:
+                  raise RuntimeError(f'correctness mismatch case {i}')
+
+          for _ in range(15):
+              for name in fns:
+                  for i in range(len(cases)): call(name,i)
+
+          iterations=90; rounds=17
+          raw_bytes=sum(raw for _,raw in cases)*iterations
+          def once(name):
+              t0=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for i in range(len(cases)): call(name,i)
+              sec=(time.perf_counter_ns()-t0)/1e9
+              return raw_bytes/sec/(1024*1024)
+
+          samples={k:[] for k in fns}
+          paired=[]
+          orders=[
+              ['baseline','current','oodle'],
+              ['current','baseline','oodle'],
+              ['oodle','baseline','current'],
+              ['oodle','current','baseline'],
+          ]
+          for r in range(rounds):
+              vals={}
+              for name in orders[r%len(orders)]:
+                  vals[name]=once(name); samples[name].append(vals[name])
+              paired.append(vals['current']/vals['baseline'])
+          med={k:statistics.median(v) for k,v in samples.items()}
+          report={
+              'candidate':'reusable decoder + uninitialized used-symbol list',
+              'base_commit':'ad42564c1958780289a6af01f2cbb2568c7cb695',
+              'head_commit':'HEAD_AT_WORKFLOW',
+              'median_mib_s':med,
+              'current_over_baseline_paired_median':statistics.median(paired),
+              'current_over_oodle':med['current']/med['oodle'],
+              'baseline_over_oodle':med['baseline']/med['oodle'],
+              'paired_ratios':paired,
+              'samples':samples,
+              'correctness':'8/8 byte-identical to Oodle and baseline; cargo test --release passed'
+          }
+          Path('out/reuse_plus_usedlist.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Commit benchmark result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/benchmarks
+          cp out/reuse_plus_usedlist.json evidence/benchmarks/oodle3_reuse_plus_usedlist.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add evidence/benchmarks/oodle3_reuse_plus_usedlist.json
+          git commit -m "Record combined reusable-decoder + used-list benchmark" || exit 0
+          git push
