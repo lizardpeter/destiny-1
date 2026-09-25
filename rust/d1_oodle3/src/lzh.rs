@@ -595,7 +595,7 @@ impl HuffmanModel {
 
 struct FixedLzhModel {
     code_lengths: [u8; SYMBOL_COUNT],
-    used_list: [u16; SYMBOL_COUNT],
+    used_list: [core::mem::MaybeUninit<u16>; SYMBOL_COUNT],
     counts: [u16; MAX_CODE_LEN as usize + 1],
     used_symbols: usize,
     max_code_len: u8,
@@ -610,7 +610,7 @@ impl FixedLzhModel {
         let mut bits = MsbBitReader::new(input);
         let method = bits.read_bit()?;
         let mut lengths = [0u8; SYMBOL_COUNT];
-        let mut used_list = [0u16; SYMBOL_COUNT];
+        let mut used_list = [core::mem::MaybeUninit::uninit(); SYMBOL_COUNT];
         let mut counts = [0u16; MAX_CODE_LEN as usize + 1];
         let mut used_symbols = 0usize;
         let mut max_seen = 0u8;
@@ -638,7 +638,7 @@ impl FixedLzhModel {
                     return Err(Error::InvalidSymbol(symbol));
                 }
                 one_char = Some(symbol);
-                used_list[0] = symbol as u16;
+                used_list[0].write(symbol as u16);
                 return Ok(Self {
                     code_lengths: lengths,
                     used_list,
@@ -671,7 +671,7 @@ impl FixedLzhModel {
                     return Err(Error::InvalidCodeLength(code_len));
                 }
                 lengths[symbol] = code_len;
-                used_list[used_symbols] = symbol as u16;
+                used_list[used_symbols].write(symbol as u16);
                 counts[usize::from(code_len)] += 1;
                 used_symbols += 1;
                 max_seen = max_seen.max(code_len);
@@ -710,7 +710,7 @@ impl FixedLzhModel {
                     }
                     let code_len = code_len_i32 as u8;
                     lengths[symbol] = code_len;
-                    used_list[used_symbols] = symbol as u16;
+                    used_list[used_symbols].write(symbol as u16);
                     counts[usize::from(code_len)] += 1;
                     used_symbols += 1;
                     max_seen = max_seen.max(code_len);
@@ -798,13 +798,19 @@ impl CanonicalDecoder {
 
     #[inline]
     fn rebuild_fixed(&mut self, model: &FixedLzhModel) -> Result<(), Error> {
+        let used_list = unsafe {
+            core::slice::from_raw_parts(
+                model.used_list.as_ptr().cast::<u16>(),
+                model.used_symbols,
+            )
+        };
         self.rebuild_parts_with_counts(
             &model.code_lengths,
             model.used_symbols,
             model.max_code_len,
             model.one_char,
             Some(&model.counts),
-            Some(&model.used_list[..model.used_symbols]),
+            Some(used_list),
         )
     }
 
