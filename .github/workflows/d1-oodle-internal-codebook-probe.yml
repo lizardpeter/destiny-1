@@ -1,0 +1,82 @@
+name: D1 Oodle internal LZH codebook probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/d1_oodle_internal_codebook_probe.cpp'
+      - '.github/workflows/d1-oodle-internal-codebook-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover package and exact runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered runtime out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728; size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          assert got.lower()==expected
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Extract exact block 764 compressed payload
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_oodle_probe import read_pkg_blocks, stored_block
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg').resolve()
+          _,blocks=read_pkg_blocks(pkg)
+          b=blocks[764]
+          owner,comp=stored_block(pkg,b)
+          assert b['compressed'] and int(b['patch_id'])==5 and comp[0]==0xB7
+          Path('out/block764.comp').write_bytes(comp)
+          print('BLOCK',b['index'],len(comp),comp[:32].hex())
+          PY
+
+      - name: Compile probe
+        shell: cmd
+        run: cl /nologo /EHsc /O2 tools\d1_oodle_internal_codebook_probe.cpp /Fe:out\probe.exe
+
+      - name: Sweep candidate LZH payload offsets
+        shell: pwsh
+        run: |
+          $dll = (Resolve-Path 'runtime/oo2core_3_win64.dll').Path
+          $blk = (Resolve-Path 'out/block764.comp').Path
+          0..64 | ForEach-Object {
+            "=== OFFSET $_ ===" | Tee-Object -FilePath out\probe.txt -Append
+            & out\probe.exe $dll $blk $_ 2>&1 | Tee-Object -FilePath out\probe.txt -Append
+          }
+          Get-Content out\probe.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle-internal-codebook-probe
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 6
