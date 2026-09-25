@@ -752,9 +752,58 @@ impl FixedLzhModel {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct FastEntry {
-    symbol: u16,
-    len: u8,
+struct FastEntry(u16);
+
+impl FastEntry {
+    const LEN_MASK: u16 = 0x1f00;
+    const TOKEN_HIGH: u16 = 0x2000;
+    const TOKEN_FLAG: u16 = 0x4000;
+
+    #[inline(always)]
+    const fn new(symbol: usize, len: u8) -> Self {
+        if symbol < LITERAL_SYMBOLS {
+            Self(((len as u16) << 8) | symbol as u16)
+        } else {
+            let token = (symbol - LITERAL_SYMBOLS) as u16;
+            Self(
+                ((len as u16) << 8)
+                    | (token & 0x00ff)
+                    | ((token & 0x0100) << 5)
+                    | Self::TOKEN_FLAG,
+            )
+        }
+    }
+
+    #[inline(always)]
+    const fn is_valid(self) -> bool {
+        (self.0 & Self::LEN_MASK) != 0
+    }
+
+    #[inline(always)]
+    const fn len(self) -> usize {
+        ((self.0 & Self::LEN_MASK) >> 8) as usize
+    }
+
+    #[inline(always)]
+    const fn is_literal(self) -> bool {
+        (self.0 & Self::TOKEN_FLAG) == 0
+    }
+
+    #[inline(always)]
+    const fn literal(self) -> u8 {
+        self.0 as u8
+    }
+
+    #[inline(always)]
+    const fn symbol(self) -> usize {
+        if self.is_literal() {
+            self.literal() as usize
+        } else {
+            LITERAL_SYMBOLS
+                + ((self.0 & 0x00ff) as usize)
+                + (((self.0 & Self::TOKEN_HIGH) >> 5) as usize)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -895,10 +944,7 @@ impl CanonicalDecoder {
 
                 let code = next_code[len_index];
                 next_code[len_index] += 1;
-                let entry = FastEntry {
-                    symbol: symbol as u16,
-                    len,
-                };
+                let entry = FastEntry::new(symbol, len);
                 if len <= FAST_DECODE_BITS {
                     let shift = usize::from(FAST_DECODE_BITS - len);
                     let start = (code as usize) << shift;
@@ -934,17 +980,17 @@ impl CanonicalDecoder {
     }
 
     #[inline(always)]
-    fn decode_fast_multi(&self, bits: &mut MsbBitReader<'_>) -> usize {
+    fn decode_fast_multi(&self, bits: &mut MsbBitReader<'_>) -> FastEntry {
         debug_assert!(self.one_char.is_none());
 
         bits.ensure_bits_fast(usize::from(FAST_DECODE_BITS));
         let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
         let entry = unsafe { *self.fast.get_unchecked(prefix) };
-        if entry.len != 0 {
+        if entry.is_valid() {
             #[cfg(feature = "profile")]
             profile::huffman_fast();
-            bits.consume_buffered(usize::from(entry.len));
-            return usize::from(entry.symbol);
+            bits.consume_buffered(entry.len());
+            return entry;
         }
 
         bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));
@@ -959,11 +1005,11 @@ impl CanonicalDecoder {
                 #[cfg(feature = "profile")]
                 profile::huffman_long();
                 bits.consume_buffered(len);
-                return usize::from(symbol);
+                return FastEntry::new(usize::from(symbol), len as u8);
             }
         }
         debug_assert!(false, "invalid canonical long code");
-        0
+        FastEntry::default()
     }
 
     #[inline(always)]
@@ -977,11 +1023,11 @@ impl CanonicalDecoder {
             bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
             let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
             let entry = self.fast[prefix];
-            if entry.len != 0 {
+            if entry.is_valid() {
                 #[cfg(feature = "profile")]
                 profile::huffman_fast();
-                bits.consume_buffered(usize::from(entry.len));
-                return Ok(usize::from(entry.symbol));
+                bits.consume_buffered(entry.len());
+                return Ok(entry.symbol());
             }
 
 
@@ -1096,25 +1142,26 @@ impl Decoder {
 
         if huffman.one_char.is_none() {
             'fast_decode: while op < output_end && bits.has_fast_margin() {
-                let mut symbol = huffman.decode_fast_multi(&mut bits);
+                let mut entry = huffman.decode_fast_multi(&mut bits);
 
-                // D1 LZH is strongly literal-heavy. Stay in a compact literal-only
-                // loop until a match token appears instead of returning through the
-                // full token-dispatch loop for every literal.
-                while symbol < LITERAL_SYMBOLS {
+                // The packed entry is laid out for the dominant literal case:
+                // low byte is the literal itself and no symbol mask/reconstruction
+                // is needed until a match token appears.
+                while entry.is_literal() {
                     #[cfg(feature = "profile")]
                     profile::literal();
                     unsafe {
-                        *output.get_unchecked_mut(op) = symbol as u8;
+                        *output.get_unchecked_mut(op) = entry.literal();
                     }
                     op += 1;
 
                     if op >= output_end || !bits.has_fast_margin() {
                         break 'fast_decode;
                     }
-                    symbol = huffman.decode_fast_multi(&mut bits);
+                    entry = huffman.decode_fast_multi(&mut bits);
                 }
 
+                let symbol = entry.symbol();
                 debug_assert!(symbol < SYMBOL_COUNT);
                 if symbol < LITERAL_SYMBOLS + RECENT_TOKEN_COUNT {
                     #[cfg(feature = "profile")]
