@@ -1688,51 +1688,62 @@ fn unfold_signed(value: i32) -> i32 {
 
 #[derive(Debug, Clone, Copy)]
 struct MsbBitReader<'a> {
-    input: &'a [u8],
-    byte_pos: usize,
+    start: *const u8,
+    ptr: *const u8,
+    end: *const u8,
     bit_buf: u64,
     bit_count: u8,
+    marker: core::marker::PhantomData<&'a [u8]>,
 }
 
 impl<'a> MsbBitReader<'a> {
-    const fn new(input: &'a [u8]) -> Self {
+    #[inline(always)]
+    fn new(input: &'a [u8]) -> Self {
+        let start = input.as_ptr();
+        let end = unsafe { start.add(input.len()) };
         Self {
-            input,
-            byte_pos: 0,
+            start,
+            ptr: start,
+            end,
             bit_buf: 0,
             bit_count: 0,
+            marker: core::marker::PhantomData,
         }
     }
 
     #[inline(always)]
+    fn bytes_remaining(&self) -> usize {
+        debug_assert!((self.ptr as usize) <= (self.end as usize));
+        unsafe { self.end.offset_from(self.ptr) as usize }
+    }
+
+    #[inline(always)]
     fn position(self) -> usize {
-        self.byte_pos * 8 - usize::from(self.bit_count)
+        let consumed = unsafe { self.ptr.offset_from(self.start) as usize };
+        consumed * 8 - usize::from(self.bit_count)
     }
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        usize::from(self.bit_count) + self.input.len().saturating_sub(self.byte_pos) * 8
+        usize::from(self.bit_count) + self.bytes_remaining() * 8
     }
 
     #[inline(always)]
     fn has_fast_margin(&self) -> bool {
-        self.byte_pos.saturating_add(8) <= self.input.len()
+        self.bytes_remaining() >= 8
     }
 
     #[inline(always)]
     fn ensure_bits_fast(&mut self, count: usize) {
         debug_assert!(count <= 32);
         while usize::from(self.bit_count) < count {
-            debug_assert!(self.byte_pos + 4 <= self.input.len());
+            debug_assert!(self.bytes_remaining() >= 4);
             debug_assert!(self.bit_count <= 32);
-            let word = unsafe {
-                let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
-                u32::from_be(core::ptr::read_unaligned(ptr))
-            };
+            let word = unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
+            self.ptr = unsafe { self.ptr.add(4) };
             let shift = 32 - usize::from(self.bit_count);
             self.bit_buf |= u64::from(word) << shift;
             self.bit_count += 32;
-            self.byte_pos += 4;
             #[cfg(feature = "profile")]
             profile::refill32();
         }
@@ -1763,23 +1774,24 @@ impl<'a> MsbBitReader<'a> {
         }
 
         while usize::from(self.bit_count) < count {
-            if self.byte_pos + 4 <= self.input.len() && self.bit_count <= 32 {
-                let word = unsafe {
-                    let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
-                    u32::from_be(core::ptr::read_unaligned(ptr))
-                };
+            if self.bytes_remaining() >= 4 && self.bit_count <= 32 {
+                let word =
+                    unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
+                self.ptr = unsafe { self.ptr.add(4) };
                 let shift = 32 - usize::from(self.bit_count);
                 self.bit_buf |= u64::from(word) << shift;
                 self.bit_count += 32;
-                self.byte_pos += 4;
                 #[cfg(feature = "profile")]
                 profile::refill32();
             } else {
-                let byte = unsafe { *self.input.get_unchecked(self.byte_pos) };
+                if self.ptr == self.end {
+                    return Err(Error::Truncated);
+                }
+                let byte = unsafe { *self.ptr };
+                self.ptr = unsafe { self.ptr.add(1) };
                 let shift = 56 - usize::from(self.bit_count);
                 self.bit_buf |= u64::from(byte) << shift;
                 self.bit_count += 8;
-                self.byte_pos += 1;
                 #[cfg(feature = "profile")]
                 profile::refill8();
             }
