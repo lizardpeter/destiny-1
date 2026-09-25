@@ -1,0 +1,193 @@
+name: D1 Oodle3 Rust performance benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-rust-benchmark.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact Tower package and reference Oodle DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected:
+              raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build native Rust DLL
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: cargo build --release
+
+      - name: Benchmark original Oodle vs native Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[
+                  ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_uint32,
+              ]
+              return fn
+
+          def call(fn,src,dst,comp_len,raw_len):
+              n=fn(
+                  ctypes.cast(src,ctypes.c_void_p),comp_len,
+                  ctypes.cast(dst,ctypes.c_void_p),raw_len,
+                  1,0,0,
+                  None,None,None,None,None,None,
+                  3,
+              )
+              if n!=raw_len:
+                  raise RuntimeError(f'decode returned {n}, expected {raw_len}')
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f)
+              bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+
+          cases=[]
+          for block in blocks:
+              if not block['compressed'] or int(block['patch_id'])!=5:
+                  continue
+              with pkg.open('rb') as f:
+                  f.seek(int(block['offset']))
+                  comp=f.read(int(block['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower():
+                  raise RuntimeError(f"stored SHA mismatch block {block['index']}")
+              raw_len=0x40000
+              src=ctypes.create_string_buffer(comp)
+              ref_dst=ctypes.create_string_buffer(raw_len)
+              rust_dst=ctypes.create_string_buffer(raw_len)
+              cases.append((int(block['index']),comp,src,ref_dst,rust_dst,raw_len))
+              if len(cases)>=8:
+                  break
+          if len(cases)!=8:
+              raise RuntimeError(f'expected 8 benchmark blocks, got {len(cases)}')
+
+          reference=bind('reference/oo2core_3_win64.dll')
+          rust=bind('rust/d1_oodle3/target/release/d1_oodle3.dll')
+
+          # Correctness immediately before timing.
+          for idx,comp,src,ref_dst,rust_dst,raw_len in cases:
+              call(reference,src,ref_dst,len(comp),raw_len)
+              call(rust,src,rust_dst,len(comp),raw_len)
+              if ref_dst.raw[:raw_len] != rust_dst.raw[:raw_len]:
+                  raise RuntimeError(f'pre-benchmark mismatch block {idx}')
+
+          # Warm caches/JIT-independent system state.
+          for _ in range(20):
+              for idx,comp,src,ref_dst,rust_dst,raw_len in cases:
+                  call(reference,src,ref_dst,len(comp),raw_len)
+                  call(rust,src,rust_dst,len(comp),raw_len)
+
+          iterations=100
+          rounds=7
+          raw_bytes_per_round=sum(x[5] for x in cases)*iterations
+
+          def bench(fn,dst_slot):
+              samples=[]
+              for _ in range(rounds):
+                  t0=time.perf_counter_ns()
+                  for _ in range(iterations):
+                      for idx,comp,src,ref_dst,rust_dst,raw_len in cases:
+                          dst=ref_dst if dst_slot==3 else rust_dst
+                          call(fn,src,dst,len(comp),raw_len)
+                  t1=time.perf_counter_ns()
+                  sec=(t1-t0)/1e9
+                  samples.append({
+                      'seconds':sec,
+                      'throughput_mib_s':raw_bytes_per_round/sec/(1024*1024),
+                  })
+              return samples
+
+          # Alternate order between implementations by running a full benchmark
+          # for each after shared warmup; report median and best to reduce host noise.
+          ref_samples=bench(reference,3)
+          rust_samples=bench(rust,4)
+
+          def summary(samples):
+              vals=[x['throughput_mib_s'] for x in samples]
+              times=[x['seconds'] for x in samples]
+              return {
+                  'median_mib_s':statistics.median(vals),
+                  'best_mib_s':max(vals),
+                  'median_seconds':statistics.median(times),
+                  'samples':samples,
+              }
+
+          ref=summary(ref_samples)
+          rs=summary(rust_samples)
+          speed_ratio=rs['median_mib_s']/ref['median_mib_s']
+          report={
+              'blocks':[x[0] for x in cases],
+              'block_count':len(cases),
+              'raw_bytes_per_round':raw_bytes_per_round,
+              'iterations_per_round':iterations,
+              'rounds':rounds,
+              'reference_oodle_2_3':ref,
+              'native_rust':rs,
+              'rust_over_reference_ratio':speed_ratio,
+              'rust_percent_faster':(speed_ratio-1.0)*100.0,
+          }
+          Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          print('REFERENCE_MEDIAN_MIB_S',ref['median_mib_s'])
+          print('RUST_MEDIAN_MIB_S',rs['median_mib_s'])
+          print('RUST_OVER_REFERENCE_RATIO',speed_ratio)
+          print('RUST_PERCENT_FASTER',report['rust_percent_faster'])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-rust-benchmark
+          path: out/benchmark.json
+          retention-days: 30
+          if-no-files-found: error
