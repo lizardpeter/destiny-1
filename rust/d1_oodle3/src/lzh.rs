@@ -115,31 +115,51 @@ const EXPLICIT_DISTANCES: [DistanceCode; EXPLICIT_DISTANCE_CLASS_COUNT] = [
     DistanceCode { base: 98304, extra_bits: 15 },
 ];
 
+const fn build_token_codes() -> [SymbolCode; TOKEN_SYMBOLS] {
+    let mut codes = [SymbolCode::Recent {
+        selector_bits: 2,
+        length: RECENT_LENGTHS[0],
+    }; TOKEN_SYMBOLS];
+
+    let mut recent = 0usize;
+    while recent < RECENT_TOKEN_COUNT {
+        codes[recent] = SymbolCode::Recent {
+            selector_bits: 2,
+            length: RECENT_LENGTHS[recent],
+        };
+        recent += 1;
+    }
+
+    let mut length_index = 0usize;
+    while length_index < EXPLICIT_LENGTH_CLASS_COUNT {
+        let mut distance_index = 0usize;
+        while distance_index < EXPLICIT_DISTANCE_CLASS_COUNT {
+            let token = RECENT_TOKEN_COUNT
+                + length_index * EXPLICIT_DISTANCE_CLASS_COUNT
+                + distance_index;
+            codes[token] = SymbolCode::Explicit {
+                distance: EXPLICIT_DISTANCES[distance_index],
+                length: EXPLICIT_LENGTHS[length_index],
+            };
+            distance_index += 1;
+        }
+        length_index += 1;
+    }
+    codes
+}
+
+const TOKEN_CODES: [SymbolCode; TOKEN_SYMBOLS] = build_token_codes();
+
+
 #[inline(always)]
 pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
     if symbol < LITERAL_SYMBOLS {
         return Ok(SymbolCode::Literal(symbol as u8));
     }
-
     if symbol >= SYMBOL_COUNT {
         return Err(Error::InvalidSymbol(symbol));
     }
-
-    let token = symbol - LITERAL_SYMBOLS;
-    if token < RECENT_TOKEN_COUNT {
-        return Ok(SymbolCode::Recent {
-            selector_bits: 2,
-            length: RECENT_LENGTHS[token],
-        });
-    }
-
-    let explicit = token - RECENT_TOKEN_COUNT;
-    let length_index = explicit / EXPLICIT_DISTANCE_CLASS_COUNT;
-    let distance_index = explicit % EXPLICIT_DISTANCE_CLASS_COUNT;
-    Ok(SymbolCode::Explicit {
-        distance: EXPLICIT_DISTANCES[distance_index],
-        length: EXPLICIT_LENGTHS[length_index],
-    })
+    Ok(TOKEN_CODES[symbol - LITERAL_SYMBOLS])
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -570,27 +590,51 @@ impl Decoder {
 
         while *output_pos < output_end {
             let symbol = huffman.decode(&mut bits)?;
-            match classify_symbol(symbol)? {
-                SymbolCode::Literal(byte) => {
-                    output[*output_pos] = byte;
-                    *output_pos += 1;
-                }
+            if symbol < LITERAL_SYMBOLS {
+                output[*output_pos] = symbol as u8;
+                *output_pos += 1;
+                continue;
+            }
+            if symbol >= SYMBOL_COUNT {
+                return Err(Error::InvalidSymbol(symbol));
+            }
+
+            match TOKEN_CODES[symbol - LITERAL_SYMBOLS] {
                 SymbolCode::Recent {
                     selector_bits,
                     length,
                 } => {
                     let selector = bits.read_bits(usize::from(selector_bits))? as usize;
-                    if selector >= recent.len() {
-                        return Err(Error::InvalidRun);
-                    }
-                    let distance = recent[selector];
-                    recent[..=selector].rotate_right(1);
+                    let distance = match selector {
+                        0 => recent[0],
+                        1 => {
+                            let distance = recent[1];
+                            recent[1] = recent[0];
+                            recent[0] = distance;
+                            distance
+                        }
+                        2 => {
+                            let distance = recent[2];
+                            recent[2] = recent[1];
+                            recent[1] = recent[0];
+                            recent[0] = distance;
+                            distance
+                        }
+                        3 => {
+                            let distance = recent[3];
+                            recent[3] = recent[2];
+                            recent[2] = recent[1];
+                            recent[1] = recent[0];
+                            recent[0] = distance;
+                            distance
+                        }
+                        _ => return Err(Error::InvalidRun),
+                    };
                     let match_len = decode_length(&mut bits, length)?;
                     copy_match_into(output, output_pos, output_end, distance, match_len)?;
                 }
                 SymbolCode::Explicit { distance, length } => {
-                    let match_distance = usize::try_from(distance.base)
-                        .map_err(|_| Error::InvalidRun)?
+                    let match_distance = distance.base as usize
                         + bits.read_bits(usize::from(distance.extra_bits))? as usize
                         + 1;
 
@@ -606,6 +650,7 @@ impl Decoder {
                     let match_len = decode_length(&mut bits, length)?;
                     copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
                 }
+                SymbolCode::Literal(_) => unreachable!("token table cannot contain literals"),
             }
         }
 
