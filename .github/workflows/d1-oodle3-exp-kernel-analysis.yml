@@ -1,0 +1,103 @@
+name: D1 Oodle3 durable kernel disassembly profile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-kernel-disasm.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  kernel-disasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch verified Oodle 2.3 reference runtime
+        run: |
+          set -euo pipefail
+          mkdir -p reference out
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Disassemble known D1 LZH payload kernels
+        run: |
+          set -euo pipefail
+          objdump -d -Mintel \
+            --start-address=0x180075dc0 --stop-address=0x180078b20 \
+            reference/oo2core_3_win64.dll > out/lzh_kernel_a.asm
+          objdump -d -Mintel \
+            --start-address=0x180078b20 --stop-address=0x18007a000 \
+            reference/oo2core_3_win64.dll > out/lzh_kernel_b.asm
+
+          python - <<'PY'
+          import collections,json,re
+          from pathlib import Path
+
+          report={}
+          for name in ('a','b'):
+              text=Path(f'out/lzh_kernel_{name}.asm').read_text(errors='replace')
+              lines=[x for x in text.splitlines() if re.search(r'^\s*[0-9a-f]+:',x)]
+              mn=[]
+              calls=[]
+              branches=[]
+              vector=[]
+              rep=[]
+              cmov=[]
+              for line in lines:
+                  m=re.search(r'\t([a-z][a-z0-9.]*)\s',line,re.I)
+                  if m:
+                      op=m.group(1).lower(); mn.append(op)
+                      if op.startswith('call'): calls.append(line.strip())
+                      if op.startswith('j'): branches.append(line.strip())
+                      if op.startswith('cmov'): cmov.append(line.strip())
+                  low=line.lower()
+                  if any(reg in low for reg in ('xmm','ymm','zmm','mm0','mm1','mm2','mm3','mm4','mm5','mm6','mm7')):
+                      vector.append(line.strip())
+                  if re.search(r'\brep\w*\b',low):
+                      rep.append(line.strip())
+              report[name]={
+                  'instruction_count':len(lines),
+                  'top_mnemonics':collections.Counter(mn).most_common(30),
+                  'call_count':len(calls),
+                  'branch_count':len(branches),
+                  'cmov_count':len(cmov),
+                  'vector_instruction_lines':vector,
+                  'rep_instruction_lines':rep,
+                  'calls':calls,
+              }
+              print('KERNEL',name,'INSTRUCTIONS',len(lines),'CALLS',len(calls),
+                    'BRANCHES',len(branches),'CMOV',len(cmov),
+                    'VECTOR_LINES',len(vector),'REP_LINES',len(rep))
+              print('TOP_MNEMONICS',name,report[name]['top_mnemonics'])
+              print('VECTOR_SAMPLE',name,*vector[:40],sep='\n')
+              print('REP_SAMPLE',name,*rep[:20],sep='\n')
+              print('CALL_SAMPLE',name,*calls[:40],sep='\n')
+          Path('out/kernel_summary.json').write_text(json.dumps(report,indent=2)+'\n')
+          PY
+
+      - name: Commit kernel profile
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/benchmarks
+          cp out/kernel_summary.json evidence/benchmarks/oodle3_reference_kernel_summary.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add evidence/benchmarks/oodle3_reference_kernel_summary.json
+          git commit -m "Record Oodle 2.3 LZH kernel instruction profile" || exit 0
+          git push
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-lzh-kernel-disasm
+          path: |
+            out/lzh_kernel_a.asm
+            out/lzh_kernel_b.asm
+            out/kernel_summary.json
+          retention-days: 30
+          if-no-files-found: error
