@@ -1,4 +1,5 @@
 name: D1 Oodle3 packed entry benchmark
+# rerun after packed-entry compile fix
 
 on:
   workflow_dispatch:
