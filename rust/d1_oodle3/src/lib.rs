@@ -3,6 +3,7 @@
 
 use core::fmt;
 
+pub mod ffi;
 pub mod lzh;
 
 pub const BLOCK_LEN: usize = 0x40000;
