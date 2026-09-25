@@ -763,7 +763,7 @@ struct CanonicalDecoder {
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
     symbols: Vec<u16>,
-    fast: [FastEntry; 1 << FAST_DECODE_BITS],
+    fast: [core::mem::MaybeUninit<FastEntry>; 1 << FAST_DECODE_BITS],
     max_len: u8,
     one_char: Option<usize>,
 }
@@ -775,7 +775,7 @@ impl CanonicalDecoder {
             first_code: [0; MAX_CODE_LEN as usize + 1],
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
             symbols: Vec::new(),
-            fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
+            fast: [core::mem::MaybeUninit::uninit(); 1 << FAST_DECODE_BITS],
             max_len: 0,
             one_char: None,
         }
@@ -903,14 +903,14 @@ impl CanonicalDecoder {
                     let shift = usize::from(FAST_DECODE_BITS - len);
                     let start = (code as usize) << shift;
                     let end = start + (1usize << shift);
-                    self.fast[start..end].fill(entry);
+                    self.fast[start..end].fill(core::mem::MaybeUninit::new(entry));
                 } else {
                     let suffix_bits = usize::from(len - FAST_DECODE_BITS);
                     let prefix = (code as usize) >> suffix_bits;
                     // Long codes are rare in D1. Mark the shared fast prefix as
                     // a canonical fallback instead of constructing a secondary
                     // table for it.
-                    self.fast[prefix] = FastEntry::default();
+                    self.fast[prefix].write(FastEntry::default());
                 }
             }};
         }
@@ -939,7 +939,7 @@ impl CanonicalDecoder {
 
         bits.ensure_bits_fast(usize::from(FAST_DECODE_BITS));
         let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
-        let entry = unsafe { *self.fast.get_unchecked(prefix) };
+        let entry = unsafe { self.fast.get_unchecked(prefix).assume_init_read() };
         if entry.len != 0 {
             #[cfg(feature = "profile")]
             profile::huffman_fast();
@@ -976,7 +976,7 @@ impl CanonicalDecoder {
         if remaining_bits >= usize::from(FAST_DECODE_BITS) {
             bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
             let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
-            let entry = self.fast[prefix];
+            let entry = unsafe { self.fast[prefix].assume_init_read() };
             if entry.len != 0 {
                 #[cfg(feature = "profile")]
                 profile::huffman_fast();
