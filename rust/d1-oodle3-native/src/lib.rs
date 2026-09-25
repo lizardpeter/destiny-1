@@ -163,6 +163,14 @@ pub fn scan_legacy_quanta(
             "whole-stream stored frame has no legacy quantum headers",
         ));
     }
+    if matches!(
+        header.codec,
+        RawCodec::Kraken | RawCodec::MermaidSelkie | RawCodec::Unknown(_)
+    ) {
+        return Err(DecodeError::InvalidStream(
+            "codec does not use the legacy 16 KiB quantum framing",
+        ));
+    }
 
     let mut result = Vec::new();
     let mut cp = 2usize;
@@ -352,6 +360,15 @@ mod tests {
         assert_eq!(q[1].raw_len, 1);
         assert_eq!(q[1].kind, LegacyQuantumKind::StoredRaw);
         assert_eq!(comp[q[1].compressed_offset], 0xa3);
+    }
+
+    #[test]
+    fn rejects_modern_whole_block_codec_as_legacy() {
+        let comp = [0x8c, 0x06, 0x40, 0x00, 0xaa];
+        assert!(matches!(
+            scan_legacy_quanta(&comp, 0x4000),
+            Err(DecodeError::InvalidStream(_))
+        ));
     }
 
     #[test]
