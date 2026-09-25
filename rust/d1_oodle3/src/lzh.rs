@@ -1403,11 +1403,20 @@ fn copy_match_into(
         if length <= 16 && physical_remaining >= 16 {
             unsafe {
                 let base = output.as_mut_ptr();
-                let first = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-                core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), first);
-                let second =
-                    core::ptr::read_unaligned(base.add(source_start + 8).cast::<u64>());
-                core::ptr::write_unaligned(base.add(match_start + 8).cast::<u64>(), second);
+                if distance >= 16 {
+                    let word =
+                        core::ptr::read_unaligned(base.add(source_start).cast::<u128>());
+                    core::ptr::write_unaligned(base.add(match_start).cast::<u128>(), word);
+                } else {
+                    // distance 8..15 needs sequential 8-byte stores so the
+                    // second source chunk observes bytes produced by the first.
+                    let first =
+                        core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
+                    core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), first);
+                    let second =
+                        core::ptr::read_unaligned(base.add(source_start + 8).cast::<u64>());
+                    core::ptr::write_unaligned(base.add(match_start + 8).cast::<u64>(), second);
+                }
             }
             *output_pos += length;
             return Ok(());
@@ -1423,18 +1432,11 @@ fn copy_match_into(
             unsafe {
                 let base = output.as_mut_ptr();
                 for offset in [0usize, 16] {
-                    let a =
-                        core::ptr::read_unaligned(base.add(source_start + offset).cast::<u64>());
-                    let b = core::ptr::read_unaligned(
-                        base.add(source_start + offset + 8).cast::<u64>(),
-                    );
+                    let word =
+                        core::ptr::read_unaligned(base.add(source_start + offset).cast::<u128>());
                     core::ptr::write_unaligned(
-                        base.add(match_start + offset).cast::<u64>(),
-                        a,
-                    );
-                    core::ptr::write_unaligned(
-                        base.add(match_start + offset + 8).cast::<u64>(),
-                        b,
+                        base.add(match_start + offset).cast::<u128>(),
+                        word,
                     );
                 }
             }
@@ -1445,18 +1447,11 @@ fn copy_match_into(
             unsafe {
                 let base = output.as_mut_ptr();
                 for offset in [0usize, 16, 32, 48] {
-                    let a =
-                        core::ptr::read_unaligned(base.add(source_start + offset).cast::<u64>());
-                    let b = core::ptr::read_unaligned(
-                        base.add(source_start + offset + 8).cast::<u64>(),
-                    );
+                    let word =
+                        core::ptr::read_unaligned(base.add(source_start + offset).cast::<u128>());
                     core::ptr::write_unaligned(
-                        base.add(match_start + offset).cast::<u64>(),
-                        a,
-                    );
-                    core::ptr::write_unaligned(
-                        base.add(match_start + offset + 8).cast::<u64>(),
-                        b,
+                        base.add(match_start + offset).cast::<u128>(),
+                        word,
                     );
                 }
             }
