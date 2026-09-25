@@ -1,0 +1,135 @@
+name: D1 Oodle3 native Rust differential
+
+on:
+  push:
+    paths:
+      - 'rust/d1_oodle3/**'
+      - 'tools/oodle3_pe_map.py'
+      - 'notes/OODLE3_RUST_REVERSAL.md'
+      - '.github/workflows/d1-oodle3-native-differential.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  differential:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover one exact Destiny package and verified Oodle 2.3 reference
+        run: |
+          set -euo pipefail
+          mkdir -p recovered runtime vectors
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(f'package SHA mismatch: {got}')
+          print('RECOVERED',name,size,got)
+          PY
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Create exact reference vectors from real Destiny compressed blocks
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+          from d1_oodle_probe import Oodle3
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          runtime=Path('runtime/liblinoodle3.so')
+          with pkg.open('rb') as f:
+              h=parse_header(f)
+              bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          oodle=Oodle3(runtime)
+          rows=[]
+          for b in blocks:
+              if not b['compressed'] or int(b['patch_id']) != 5:
+                  continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset']))
+                  comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise SystemExit(f"block {b['index']} stored SHA mismatch")
+              dec=oodle.decompress_block(comp)
+              stem=f"block_{int(b['index']):04d}"
+              Path(f'vectors/{stem}.comp').write_bytes(comp)
+              Path(f'vectors/{stem}.ref').write_bytes(dec)
+              wire_type=(comp[1]&0x7f) if len(comp)>=2 and (comp[0]&0x0f)==0x0c else None
+              rows.append({
+                  'block_index':int(b['index']),
+                  'stored_size':len(comp),
+                  'raw_size':len(dec),
+                  'wire_type':wire_type,
+                  'stored_sha1':hashlib.sha1(comp).hexdigest(),
+                  'reference_sha256':hashlib.sha256(dec).hexdigest(),
+                  'stem':stem,
+              })
+              if len(rows)>=8:
+                  break
+          if not rows:
+              raise SystemExit('no resident compressed vectors found')
+          Path('vectors/manifest.json').write_text(json.dumps(rows,indent=2)+'\n')
+          print(json.dumps(rows,indent=2))
+          PY
+
+      - name: Build pure Rust decoder
+        working-directory: rust/d1_oodle3
+        run: cargo build --release --bin native_decode
+
+      - name: Differential compare Rust vs exact Oodle 2.3 DLL
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          rows=json.load(open('vectors/manifest.json'))
+          exe=Path('rust/d1_oodle3/target/release/native_decode')
+          for row in rows:
+              comp=Path('vectors')/(row['stem']+'.comp')
+              ref=Path('vectors')/(row['stem']+'.ref')
+              out=Path('vectors')/(row['stem']+'.rust')
+              subprocess.run([str(exe),str(comp),str(row['raw_size']),str(out)],check=True)
+              a=ref.read_bytes(); b=out.read_bytes()
+              if a!=b:
+                  for i,(x,y) in enumerate(zip(a,b)):
+                      if x!=y:
+                          raise SystemExit(f"block {row['block_index']} mismatch at {i:#x}: ref={x:02x} rust={y:02x}")
+                  raise SystemExit(f"block {row['block_index']} length mismatch {len(a)} != {len(b)}")
+              got=hashlib.sha256(b).hexdigest()
+              if got!=row['reference_sha256']:
+                  raise SystemExit(f"block {row['block_index']} SHA mismatch")
+              print('BYTE_IDENTICAL',row['block_index'],'wire',row['wire_type'],'raw',hex(row['raw_size']),got)
+          print('D1_OODLE3_NATIVE_RUST_DIFFERENTIAL_GREEN',len(rows))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle3-native-differential
+          path: vectors/manifest.json
+          retention-days: 30
+          if-no-files-found: error
