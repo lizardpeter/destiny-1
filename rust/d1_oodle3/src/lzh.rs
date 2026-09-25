@@ -1050,11 +1050,12 @@ fn decode_stream_into_b7(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
                         requested: raw_len,
                         remaining: 0,
                     })?;
+                let remaining = output.len().saturating_sub(output_pos);
                 output
                     .get_mut(output_pos..end)
                     .ok_or(Error::OutputOverrun {
                         requested: raw_len,
-                        remaining: output.len().saturating_sub(output_pos),
+                        remaining,
                     })?
                     .fill(value);
                 output_pos = end;
@@ -1069,11 +1070,12 @@ fn decode_stream_into_b7(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
                 }
                 let src = unsafe { input.get_unchecked(input_pos..payload_end) };
                 let end = output_pos + raw_len;
+                let remaining = output.len().saturating_sub(output_pos);
                 let dst = output
                     .get_mut(output_pos..end)
                     .ok_or(Error::OutputOverrun {
                         requested: raw_len,
-                        remaining: output.len().saturating_sub(output_pos),
+                        remaining,
                     })?;
                 dst.copy_from_slice(src);
                 input_pos = payload_end;
