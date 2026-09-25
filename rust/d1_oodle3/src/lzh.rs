@@ -149,6 +149,15 @@ pub enum Error {
     InvalidRun,
     InvalidRiceBits(u8),
     NonCanonical,
+    MissingModel,
+    EmptyModel,
+    InvalidHuffmanCode,
+    InvalidMatchDistance { distance: usize, produced: usize },
+    OutputOverrun { requested: usize, remaining: usize },
+    TrailingPayloadBits(usize),
+    NonZeroPadding,
+    UnsupportedDecoder(crate::DecoderType),
+    Frame(crate::Error),
 }
 
 impl core::fmt::Display for Error {
@@ -158,6 +167,12 @@ impl core::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl From<crate::Error> for Error {
+    fn from(value: crate::Error) -> Self {
+        Self::Frame(value)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HuffmanModel {
@@ -321,6 +336,309 @@ impl HuffmanModel {
     }
 }
 
+
+#[derive(Debug, Clone)]
+struct CanonicalDecoder {
+    counts: [u16; MAX_CODE_LEN as usize + 1],
+    first_code: [u32; MAX_CODE_LEN as usize + 1],
+    first_symbol: [usize; MAX_CODE_LEN as usize + 1],
+    symbols: Vec<u16>,
+    max_len: u8,
+    one_char: Option<usize>,
+}
+
+impl CanonicalDecoder {
+    fn new(model: &HuffmanModel) -> Result<Self, Error> {
+        if let Some(one_char) = model.one_char {
+            return Ok(Self {
+                counts: [0; MAX_CODE_LEN as usize + 1],
+                first_code: [0; MAX_CODE_LEN as usize + 1],
+                first_symbol: [0; MAX_CODE_LEN as usize + 1],
+                symbols: Vec::new(),
+                max_len: 0,
+                one_char: Some(one_char),
+            });
+        }
+        if model.used_symbols == 0 || model.max_code_len == 0 {
+            return Err(Error::EmptyModel);
+        }
+
+        let mut counts = [0u16; MAX_CODE_LEN as usize + 1];
+        for &len in &model.code_lengths {
+            if len != 0 {
+                counts[usize::from(len)] += 1;
+            }
+        }
+
+        let mut first_code = [0u32; MAX_CODE_LEN as usize + 1];
+        let mut first_symbol = [0usize; MAX_CODE_LEN as usize + 1];
+        let mut code = 0u32;
+        let mut symbol_index = 0usize;
+        for len in 1..=usize::from(model.max_code_len) {
+            code = (code + u32::from(counts[len - 1])) << 1;
+            first_code[len] = code;
+            first_symbol[len] = symbol_index;
+            symbol_index += usize::from(counts[len]);
+        }
+
+        let mut symbols = Vec::with_capacity(model.used_symbols);
+        for len in 1..=model.max_code_len {
+            for (symbol, &symbol_len) in model.code_lengths.iter().enumerate() {
+                if symbol_len == len {
+                    symbols.push(symbol as u16);
+                }
+            }
+        }
+        if symbols.len() != model.used_symbols {
+            return Err(Error::NonCanonical);
+        }
+
+        Ok(Self {
+            counts,
+            first_code,
+            first_symbol,
+            symbols,
+            max_len: model.max_code_len,
+            one_char: None,
+        })
+    }
+
+    fn decode(&self, bits: &mut MsbBitReader<'_>) -> Result<usize, Error> {
+        if let Some(symbol) = self.one_char {
+            return Ok(symbol);
+        }
+
+        let mut code = 0u32;
+        for len in 1..=usize::from(self.max_len) {
+            code = (code << 1) | u32::from(bits.read_bit()?);
+            let first = self.first_code[len];
+            let count = u32::from(self.counts[len]);
+            if code >= first && code - first < count {
+                let index = self.first_symbol[len] + (code - first) as usize;
+                return self
+                    .symbols
+                    .get(index)
+                    .copied()
+                    .map(usize::from)
+                    .ok_or(Error::InvalidHuffmanCode);
+            }
+        }
+        Err(Error::InvalidHuffmanCode)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Decoder {
+    model: Option<HuffmanModel>,
+}
+
+impl Decoder {
+    pub const fn new() -> Self {
+        Self { model: None }
+    }
+
+    pub fn reset(&mut self) {
+        self.model = None;
+    }
+
+    pub fn decode_quantum(
+        &mut self,
+        payload: &[u8],
+        output: &mut Vec<u8>,
+        raw_len: usize,
+        has_new_model: bool,
+    ) -> Result<(), Error> {
+        let mut payload_offset = 0usize;
+        if has_new_model {
+            let model = HuffmanModel::parse_lzh(payload)?;
+            payload_offset = model.consumed_bits.div_ceil(8);
+            if payload_offset > payload.len() {
+                return Err(Error::Truncated);
+            }
+            self.model = Some(model);
+        }
+
+        let model = self.model.as_ref().ok_or(Error::MissingModel)?;
+        let huffman = CanonicalDecoder::new(model)?;
+        let mut bits = MsbBitReader::new(&payload[payload_offset..]);
+        let output_end = output
+            .len()
+            .checked_add(raw_len)
+            .ok_or(Error::OutputOverrun {
+                requested: raw_len,
+                remaining: 0,
+            })?;
+        let mut recent = [20usize, 24, 28, 32];
+
+        while output.len() < output_end {
+            let symbol = huffman.decode(&mut bits)?;
+            match classify_symbol(symbol)? {
+                SymbolCode::Literal(byte) => output.push(byte),
+                SymbolCode::Recent {
+                    selector_bits,
+                    length,
+                } => {
+                    let selector = bits.read_bits(usize::from(selector_bits))? as usize;
+                    if selector >= recent.len() {
+                        return Err(Error::InvalidRun);
+                    }
+                    let distance = recent[selector];
+                    recent[..=selector].rotate_right(1);
+                    let match_len = decode_length(&mut bits, length)?;
+                    copy_match(output, output_end, distance, match_len)?;
+                }
+                SymbolCode::Explicit { distance, length } => {
+                    let match_distance = usize::try_from(distance.base)
+                        .map_err(|_| Error::InvalidRun)?
+                        + bits.read_bits(usize::from(distance.extra_bits))? as usize
+                        + 1;
+
+                    // Oodle 2.3 LZH does not cache the shortest explicit
+                    // distance class (1..=16). Longer explicit distances are
+                    // inserted at rank 1 while rank 0 is preserved.
+                    if distance.base != 0 {
+                        recent[3] = recent[2];
+                        recent[2] = recent[1];
+                        recent[1] = match_distance;
+                    }
+
+                    let match_len = decode_length(&mut bits, length)?;
+                    copy_match(output, output_end, match_distance, match_len)?;
+                }
+            }
+        }
+
+        let remaining_bits = bits.remaining_bits();
+        if remaining_bits > 7 {
+            return Err(Error::TrailingPayloadBits(remaining_bits));
+        }
+        if remaining_bits != 0 && bits.read_bits(remaining_bits)? != 0 {
+            return Err(Error::NonZeroPadding);
+        }
+
+        Ok(())
+    }
+}
+
+fn decode_length(bits: &mut MsbBitReader<'_>, code: LengthCode) -> Result<usize, Error> {
+    let base = usize::from(code.base);
+    if code.extra_bits == 0 {
+        return Ok(base);
+    }
+    if !code.extended {
+        return Ok(base + bits.read_bits(usize::from(code.extra_bits))? as usize);
+    }
+
+    if !bits.read_bit()? {
+        return Ok(157 + bits.read_bits(6)? as usize);
+    }
+    if !bits.read_bit()? {
+        return Ok(221 + bits.read_bits(7)? as usize);
+    }
+    if !bits.read_bit()? {
+        return Ok(349 + bits.read_bits(8)? as usize);
+    }
+    if !bits.read_bit()? {
+        return Ok(605 + bits.read_bits(10)? as usize);
+    }
+    Ok(1629 + bits.read_bits(14)? as usize)
+}
+
+fn copy_match(
+    output: &mut Vec<u8>,
+    output_end: usize,
+    distance: usize,
+    length: usize,
+) -> Result<(), Error> {
+    if distance == 0 || distance > output.len() {
+        return Err(Error::InvalidMatchDistance {
+            distance,
+            produced: output.len(),
+        });
+    }
+    let remaining = output_end - output.len();
+    if length > remaining {
+        return Err(Error::OutputOverrun {
+            requested: length,
+            remaining,
+        });
+    }
+
+    for _ in 0..length {
+        let source = output.len() - distance;
+        let byte = output[source];
+        output.push(byte);
+    }
+    Ok(())
+}
+
+pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, Error> {
+    let spans = crate::scan_frame(input, expected_raw_len)?;
+    let mut decoder = Decoder::new();
+    let mut output = Vec::with_capacity(expected_raw_len);
+
+    for span in spans {
+        if span.block.decoder_type != crate::DecoderType::Lzh {
+            return Err(Error::UnsupportedDecoder(span.block.decoder_type));
+        }
+        if span.output_offset.is_multiple_of(crate::BLOCK_LEN) && span.block.restart_decoder {
+            decoder.reset();
+        }
+
+        match span.kind {
+            crate::QuantumKind::Compressed {
+                stored_size,
+                flag1,
+                ..
+            } => {
+                let header = crate::parse_quantum_header(
+                    &input[span.input_offset..],
+                    span.block,
+                    span.raw_len,
+                )?;
+                let payload_start = span.input_offset + header.header_len;
+                let payload_end = payload_start + stored_size;
+                let payload = input.get(payload_start..payload_end).ok_or(Error::Truncated)?;
+                decoder.decode_quantum(payload, &mut output, span.raw_len, flag1)?;
+            }
+            crate::QuantumKind::Raw => {
+                let (payload_start, payload_end) = if span.block.uncompressed {
+                    (
+                        span.input_offset,
+                        span.input_offset
+                            .checked_add(span.raw_len)
+                            .ok_or(Error::Truncated)?,
+                    )
+                } else {
+                    let header = crate::parse_quantum_header(
+                        &input[span.input_offset..],
+                        span.block,
+                        span.raw_len,
+                    )?;
+                    let start = span.input_offset + header.header_len;
+                    (start, start.checked_add(span.raw_len).ok_or(Error::Truncated)?)
+                };
+                let payload = input.get(payload_start..payload_end).ok_or(Error::Truncated)?;
+                output.extend_from_slice(payload);
+            }
+            crate::QuantumKind::Memset { value } => {
+                output.resize(output.len() + span.raw_len, value);
+            }
+            crate::QuantumKind::WholeMatch { distance } => {
+                copy_match(&mut output, output.len() + span.raw_len, distance, span.raw_len)?;
+            }
+        }
+    }
+
+    if output.len() != expected_raw_len {
+        return Err(Error::OutputOverrun {
+            requested: expected_raw_len,
+            remaining: expected_raw_len.saturating_sub(output.len()),
+        });
+    }
+    Ok(output)
+}
+
 fn kraft_complete(lengths: &[u8], max_len: u8) -> bool {
     if max_len == 0 {
         return false;
@@ -360,6 +678,10 @@ impl<'a> MsbBitReader<'a> {
 
     const fn position(self) -> usize {
         self.bit_pos
+    }
+
+    fn remaining_bits(&self) -> usize {
+        self.input.len().saturating_mul(8).saturating_sub(self.bit_pos)
     }
 
     fn read_bit(&mut self) -> Result<bool, Error> {
