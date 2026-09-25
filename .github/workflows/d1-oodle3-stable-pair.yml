@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/d1-oodle3-combined-pair.yml'
+      - '.github/workflows/d1-oodle3-stable-pair.yml'
       - 'rust/d1_oodle3/**'
 
 permissions:
