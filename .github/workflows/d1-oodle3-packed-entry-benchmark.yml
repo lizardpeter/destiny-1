@@ -1,5 +1,5 @@
 name: D1 Oodle3 packed entry benchmark
-# reuse A-B harness: fixed canonical-symbol storage candidate rerun
+# isolate fixed canonical-symbol storage vs in-place state
 
 on:
   workflow_dispatch:
@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git worktree add ../previous 4f8982d79d0e28a05c93e47b75c1ed60b7dc91e1
+          git worktree add ../previous 006b184be5ec5acb13a895fc4a66836d0b9642f2
           (cd ../previous/rust/d1_oodle3 && CARGO_TARGET_DIR=target-packed-ab cargo build --release --lib)
           mkdir -p out
           cp ../previous/rust/d1_oodle3/target-packed-ab/release/d1_oodle3.dll out/previous.dll
