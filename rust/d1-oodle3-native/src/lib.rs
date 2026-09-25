@@ -285,6 +285,29 @@ pub fn decode_into(compressed: &[u8], output: &mut [u8]) -> Result<usize, Decode
         return Ok(raw.len());
     }
 
+    if !matches!(
+        header.codec,
+        RawCodec::Kraken | RawCodec::MermaidSelkie | RawCodec::Unknown(_)
+    ) {
+        let quanta = scan_legacy_quanta(compressed, output.len())?;
+        for q in quanta {
+            match q.kind {
+                LegacyQuantumKind::Memset { value } => {
+                    output[q.raw_offset..q.raw_offset + q.raw_len].fill(value);
+                }
+                LegacyQuantumKind::Compressed { .. } => {
+                    return Err(DecodeError::UnsupportedCompressedCodec(header.codec));
+                }
+                LegacyQuantumKind::Special { .. } => {
+                    return Err(DecodeError::InvalidStream(
+                        "unclassified legacy special quantum",
+                    ));
+                }
+            }
+        }
+        return Ok(output.len());
+    }
+
     Err(DecodeError::UnsupportedCompressedCodec(header.codec))
 }
 
@@ -326,6 +349,28 @@ mod tests {
         let mut out = vec![0u8; raw.len()];
         assert_eq!(decode_into(&comp, &mut out), Ok(raw.len()));
         assert_eq!(out, raw);
+    }
+
+    #[test]
+    fn decodes_exact_lzh_memset_frame_natively() {
+        // Exact verified Oodle-3 output for 257 bytes of 'A'.
+        let comp = [0x8c, 0x07, 0x7f, 0xff, b'A'];
+        let mut out = vec![0u8; 257];
+        assert_eq!(decode_into(&comp, &mut out), Ok(257));
+        assert!(out.iter().all(|&b| b == b'A'));
+    }
+
+    #[test]
+    fn decodes_multiple_memset_quanta_natively() {
+        let comp = [
+            0x8c, 0x07,
+            0x7f, 0xff, b'A',
+            0x7f, 0xff, b'B',
+        ];
+        let mut out = vec![0u8; LEGACY_QUANTUM_LEN * 2];
+        assert_eq!(decode_into(&comp, &mut out), Ok(out.len()));
+        assert!(out[..LEGACY_QUANTUM_LEN].iter().all(|&b| b == b'A'));
+        assert!(out[LEGACY_QUANTUM_LEN..].iter().all(|&b| b == b'B'));
     }
 
     #[test]
