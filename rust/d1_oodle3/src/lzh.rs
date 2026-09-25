@@ -1060,7 +1060,7 @@ impl Decoder {
         }
         let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
         let mut bits = MsbBitReader::new(&payload[payload_offset..]);
-        let start_pos = op;
+        let start_pos = *output_pos;
         let output_end = start_pos
             .checked_add(raw_len)
             .ok_or(Error::OutputOverrun {
