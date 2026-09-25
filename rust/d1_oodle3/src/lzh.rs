@@ -589,6 +589,145 @@ impl HuffmanModel {
             one_char,
             consumed_bits: bits.position(),
         })
+
+    }
+}
+
+struct FixedLzhModel {
+    code_lengths: [u8; SYMBOL_COUNT],
+    used_symbols: usize,
+    max_code_len: u8,
+    one_char: Option<usize>,
+    consumed_bits: usize,
+}
+
+impl FixedLzhModel {
+    #[inline]
+    fn parse(input: &[u8]) -> Result<Self, Error> {
+        const SYMBOL_BITS: usize = 10;
+        let mut bits = MsbBitReader::new(input);
+        let method = bits.read_bit()?;
+        let mut lengths = [0u8; SYMBOL_COUNT];
+        let mut one_char = None;
+
+        if !method {
+            let used = bits.read_bits(SYMBOL_BITS)? as usize;
+            if used > SYMBOL_COUNT {
+                return Err(Error::InvalidSymbolCount(used));
+            }
+            if used == 0 {
+                return Ok(Self {
+                    code_lengths: lengths,
+                    used_symbols: 0,
+                    max_code_len: 0,
+                    one_char: None,
+                    consumed_bits: bits.position(),
+                });
+            }
+            if used == 1 {
+                let symbol = bits.read_bits(SYMBOL_BITS)? as usize;
+                if symbol >= SYMBOL_COUNT {
+                    return Err(Error::InvalidSymbol(symbol));
+                }
+                one_char = Some(symbol);
+                return Ok(Self {
+                    code_lengths: lengths,
+                    used_symbols: 1,
+                    max_code_len: 0,
+                    one_char,
+                    consumed_bits: bits.position(),
+                });
+            }
+
+            let len_bits = bits.read_bits(3)? as usize;
+            let mut previous = None;
+            for _ in 0..used {
+                let symbol = bits.read_bits(SYMBOL_BITS)? as usize;
+                if symbol >= SYMBOL_COUNT {
+                    return Err(Error::InvalidSymbol(symbol));
+                }
+                if previous.is_some_and(|p| symbol <= p) {
+                    return Err(Error::SymbolsNotIncreasing);
+                }
+                previous = Some(symbol);
+                let encoded_len = if len_bits == 0 {
+                    0
+                } else {
+                    bits.read_bits(len_bits)? as u8
+                };
+                let code_len = encoded_len + 1;
+                if code_len > MAX_CODE_LEN {
+                    return Err(Error::InvalidCodeLength(code_len));
+                }
+                lengths[symbol] = code_len;
+            }
+        } else {
+            let rice_bits = bits.read_bits(2)? as u8;
+            if rice_bits > 3 {
+                return Err(Error::InvalidRiceBits(rice_bits));
+            }
+            let first_is_on = bits.read_bit()?;
+            let mut predictor_state = (SYMBOL_BITS as i32) * 4;
+            let mut symbol = 0usize;
+
+            if !first_is_on {
+                let zero_run = bits.read_exp_golomb(1)? as usize + 1;
+                symbol = symbol.checked_add(zero_run).ok_or(Error::InvalidRun)?;
+                if symbol > SYMBOL_COUNT {
+                    return Err(Error::InvalidRun);
+                }
+            }
+
+            while symbol < SYMBOL_COUNT {
+                let nonzero_run = bits.read_exp_golomb(1)? as usize + 1;
+                if nonzero_run > SYMBOL_COUNT - symbol {
+                    return Err(Error::InvalidRun);
+                }
+                for _ in 0..nonzero_run {
+                    let folded_delta = bits.read_rice(rice_bits)? as i32;
+                    let delta = unfold_signed(folded_delta);
+                    let predicted = (predictor_state + 2) >> 2;
+                    let code_len_i32 = predicted + delta;
+                    if !(1..=i32::from(MAX_CODE_LEN)).contains(&code_len_i32) {
+                        return Err(Error::InvalidCodeLength(
+                            u8::try_from(code_len_i32.max(0)).unwrap_or(u8::MAX),
+                        ));
+                    }
+                    let code_len = code_len_i32 as u8;
+                    lengths[symbol] = code_len;
+                    predictor_state = ((predictor_state * 3 + 2) >> 2) + code_len_i32;
+                    symbol += 1;
+                }
+                if symbol == SYMBOL_COUNT {
+                    break;
+                }
+                let zero_run = bits.read_exp_golomb(1)? as usize + 1;
+                if zero_run > SYMBOL_COUNT - symbol {
+                    return Err(Error::InvalidRun);
+                }
+                symbol += zero_run;
+            }
+        }
+
+        let mut used_symbols = 0usize;
+        let mut max_seen = 0u8;
+        for &len in &lengths {
+            if len != 0 {
+                used_symbols += 1;
+                max_seen = max_seen.max(len);
+            }
+        }
+        if used_symbols >= 2 && !kraft_complete(&lengths, max_seen) {
+            return Err(Error::NonCanonical);
+        }
+
+        Ok(Self {
+            code_lengths: lengths,
+            used_symbols,
+            max_code_len: max_seen,
+            one_char,
+            consumed_bits: bits.position(),
+        })
     }
 }
 
@@ -633,8 +772,33 @@ impl CanonicalDecoder {
     }
 
     fn rebuild(&mut self, model: &HuffmanModel) -> Result<(), Error> {
-        self.one_char = model.one_char;
-        self.max_len = model.max_code_len;
+        self.rebuild_parts(
+            &model.code_lengths,
+            model.used_symbols,
+            model.max_code_len,
+            model.one_char,
+        )
+    }
+
+    #[inline]
+    fn rebuild_fixed(&mut self, model: &FixedLzhModel) -> Result<(), Error> {
+        self.rebuild_parts(
+            &model.code_lengths,
+            model.used_symbols,
+            model.max_code_len,
+            model.one_char,
+        )
+    }
+
+    fn rebuild_parts(
+        &mut self,
+        code_lengths: &[u8],
+        used_symbols: usize,
+        max_code_len: u8,
+        one_char: Option<usize>,
+    ) -> Result<(), Error> {
+        self.one_char = one_char;
+        self.max_len = max_code_len;
         self.counts.fill(0);
         self.first_code.fill(0);
         self.first_symbol.fill(0);
@@ -643,14 +807,14 @@ impl CanonicalDecoder {
         self.long_prefix.fill(-1);
         self.long_tables.clear();
 
-        if model.one_char.is_some() {
+        if one_char.is_some() {
             return Ok(());
         }
-        if model.used_symbols == 0 || model.max_code_len == 0 {
+        if used_symbols == 0 || max_code_len == 0 {
             return Err(Error::EmptyModel);
         }
 
-        for &len in &model.code_lengths {
+        for &len in code_lengths {
             if len != 0 {
                 self.counts[usize::from(len)] += 1;
             }
@@ -658,30 +822,29 @@ impl CanonicalDecoder {
 
         let mut code = 0u32;
         let mut symbol_index = 0usize;
-        for len in 1..=usize::from(model.max_code_len) {
+        for len in 1..=usize::from(max_code_len) {
             code = (code + u32::from(self.counts[len - 1])) << 1;
             self.first_code[len] = code;
             self.first_symbol[len] = symbol_index;
             symbol_index += usize::from(self.counts[len]);
         }
 
-        if self.symbols.capacity() < model.used_symbols {
-            self.symbols
-                .reserve(model.used_symbols - self.symbols.capacity());
+        if self.symbols.capacity() < used_symbols {
+            self.symbols.reserve(used_symbols - self.symbols.capacity());
         }
-        for len in 1..=model.max_code_len {
-            for (symbol, &symbol_len) in model.code_lengths.iter().enumerate() {
+        for len in 1..=max_code_len {
+            for (symbol, &symbol_len) in code_lengths.iter().enumerate() {
                 if symbol_len == len {
                     self.symbols.push(symbol as u16);
                 }
             }
         }
-        if self.symbols.len() != model.used_symbols {
+        if self.symbols.len() != used_symbols {
             return Err(Error::NonCanonical);
         }
 
         let mut next_code = self.first_code;
-        for (symbol, &len) in model.code_lengths.iter().enumerate() {
+        for (symbol, &len) in code_lengths.iter().enumerate() {
             if len == 0 {
                 continue;
             }
@@ -815,20 +978,20 @@ impl CanonicalDecoder {
 
 #[derive(Debug, Default, Clone)]
 pub struct Decoder {
-    model: Option<HuffmanModel>,
+    has_model: bool,
     huffman: Option<CanonicalDecoder>,
 }
 
 impl Decoder {
     pub const fn new() -> Self {
         Self {
-            model: None,
+            has_model: false,
             huffman: None,
         }
     }
 
     pub fn reset(&mut self) {
-        self.model = None;
+        self.has_model = false;
     }
 
     pub fn decode_quantum_into(
@@ -845,7 +1008,7 @@ impl Decoder {
         if has_new_model {
             #[cfg(feature = "stage_profile")]
             let parse_started = std::time::Instant::now();
-            let model = HuffmanModel::parse_lzh(payload)?;
+            let model = FixedLzhModel::parse(payload)?;
             #[cfg(feature = "stage_profile")]
             stage_profile::model_parse(
                 parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
@@ -861,19 +1024,21 @@ impl Decoder {
             #[cfg(feature = "stage_profile")]
             let table_started = std::time::Instant::now();
             if let Some(huffman) = self.huffman.as_mut() {
-                huffman.rebuild(&model)?;
+                huffman.rebuild_fixed(&model)?;
             } else {
-                self.huffman = Some(CanonicalDecoder::new(&model)?);
+                let mut huffman = CanonicalDecoder::empty();
+                huffman.rebuild_fixed(&model)?;
+                self.huffman = Some(huffman);
             }
             #[cfg(feature = "stage_profile")]
             stage_profile::table_build(
                 table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
             );
 
-            self.model = Some(model);
+            self.has_model = true;
         }
 
-        if self.model.is_none() {
+        if !self.has_model {
             return Err(Error::MissingModel);
         }
         let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
