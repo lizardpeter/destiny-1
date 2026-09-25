@@ -1,4 +1,4 @@
-use oozextract::Extractor;
+use d1_oodle3::lzh;
 use std::{env, fs, io, path::PathBuf};
 
 fn parse_usize(s: &str) -> Result<usize, Box<dyn std::error::Error>> {
@@ -31,15 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let compressed = fs::read(input)?;
-    let mut decoded = vec![0u8; raw_len];
-    let written = Extractor::new().read_from_slice(&compressed, &mut decoded)?;
-    if written != raw_len {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("decoder wrote {written:#x}, expected {raw_len:#x}"),
-        )
-        .into());
-    }
+    let decoded = lzh::decode_stream(&compressed, raw_len)?;
     fs::write(output, decoded)?;
     Ok(())
 }
