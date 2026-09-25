@@ -1065,10 +1065,7 @@ impl Decoder {
             });
         }
         let mut op = start_pos;
-        let mut recent0 = 20usize;
-        let mut recent1 = 24usize;
-        let mut recent2 = 28usize;
-        let mut recent3 = 32usize;
+        let mut recent = [20usize, 24, 28, 32];
 
         #[cfg(feature = "stage_profile")]
         let payload_started = std::time::Instant::now();
@@ -1102,27 +1099,21 @@ impl Decoder {
                         unsafe { *RECENT_LENGTHS.get_unchecked(symbol - LITERAL_SYMBOLS) };
                     let selector = bits.read_bits_fast(2) as usize;
                     let distance = match selector {
-                        0 => recent0,
+                        0 => recent[0],
                         1 => {
-                            let distance = recent1;
-                            recent1 = recent0;
-                            recent0 = distance;
-                            distance
+                            recent.swap(0, 1);
+                            recent[0]
                         }
                         2 => {
-                            let distance = recent2;
-                            recent2 = recent1;
-                            recent1 = recent0;
-                            recent0 = distance;
-                            distance
+                            recent.swap(1, 2);
+                            recent.swap(0, 1);
+                            recent[0]
                         }
                         3 => {
-                            let distance = recent3;
-                            recent3 = recent2;
-                            recent2 = recent1;
-                            recent1 = recent0;
-                            recent0 = distance;
-                            distance
+                            recent.swap(2, 3);
+                            recent.swap(1, 2);
+                            recent.swap(0, 1);
+                            recent[0]
                         }
                         _ => unreachable!(),
                     };
@@ -1147,9 +1138,9 @@ impl Decoder {
                         + 1;
 
                     if meta.distance_base != 0 {
-                        recent3 = recent2;
-                        recent2 = recent1;
-                        recent1 = match_distance;
+                        recent[3] = recent[2];
+                        recent[2] = recent[1];
+                        recent[1] = match_distance;
                     }
 
                     let match_len = decode_length_parts_fast(
@@ -1193,27 +1184,21 @@ impl Decoder {
                 let selector_bits = meta.distance_info & !TOKEN_RECENT_FLAG;
                 let selector = bits.read_bits(usize::from(selector_bits))? as usize;
                 let distance = match selector {
-                    0 => recent0,
+                    0 => recent[0],
                     1 => {
-                        let distance = recent1;
-                        recent1 = recent0;
-                        recent0 = distance;
-                        distance
+                        recent.swap(0, 1);
+                        recent[0]
                     }
                     2 => {
-                        let distance = recent2;
-                        recent2 = recent1;
-                        recent1 = recent0;
-                        recent0 = distance;
-                        distance
+                        recent.swap(1, 2);
+                        recent.swap(0, 1);
+                        recent[0]
                     }
                     3 => {
-                        let distance = recent3;
-                        recent3 = recent2;
-                        recent2 = recent1;
-                        recent1 = recent0;
-                        recent0 = distance;
-                        distance
+                        recent.swap(2, 3);
+                        recent.swap(1, 2);
+                        recent.swap(0, 1);
+                        recent[0]
                     }
                     _ => return Err(Error::InvalidRun),
                 };
@@ -1240,9 +1225,9 @@ impl Decoder {
                 // distance class (1..=16). Longer explicit distances are
                 // inserted at rank 1 while rank 0 is preserved.
                 if meta.distance_base != 0 {
-                    recent3 = recent2;
-                    recent2 = recent1;
-                    recent1 = match_distance;
+                    recent[3] = recent[2];
+                    recent[2] = recent[1];
+                    recent[1] = match_distance;
                 }
 
                 let match_len = decode_length_parts(
