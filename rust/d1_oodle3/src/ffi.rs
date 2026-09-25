@@ -4,7 +4,6 @@
 //! callback/phased-decoding modes fail closed instead of silently producing data.
 
 use core::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
 const THREAD_PHASE_ALL: u32 = 3;
 
@@ -37,38 +36,43 @@ pub unsafe extern "C" fn OodleLZ_Decompress(
     _decoder_memory_size: *mut c_void,
     thread_phase: u32,
 ) -> i64 {
-    let result = catch_unwind(AssertUnwindSafe(|| -> Result<i64, ()> {
-        if comp_buf.is_null()
-            || raw_buf.is_null()
-            || comp_len < 0
-            || raw_len < 0
-            || !callback.is_null()
-            || thread_phase != THREAD_PHASE_ALL
-        {
-            return Err(());
-        }
-
-        let comp_len = usize::try_from(comp_len).map_err(|_| ())?;
-        let raw_len = usize::try_from(raw_len).map_err(|_| ())?;
-
-        let comp_start = comp_buf as usize;
-        let raw_start = raw_buf as usize;
-        let comp_end = comp_start.checked_add(comp_len).ok_or(())?;
-        let raw_end = raw_start.checked_add(raw_len).ok_or(())?;
-        if comp_start < raw_end && raw_start < comp_end {
-            return Err(());
-        }
-
-        let input = unsafe { core::slice::from_raw_parts(comp_buf.cast::<u8>(), comp_len) };
-        let output = unsafe { core::slice::from_raw_parts_mut(raw_buf.cast::<u8>(), raw_len) };
-        crate::lzh::decode_stream_into(input, output).map_err(|_| ())?;
-        i64::try_from(raw_len).map_err(|_| ())
-    }));
-
-    match result {
-        Ok(Ok(value)) => value,
-        _ => -1,
+    if comp_buf.is_null()
+        || raw_buf.is_null()
+        || comp_len < 0
+        || raw_len < 0
+        || !callback.is_null()
+        || thread_phase != THREAD_PHASE_ALL
+    {
+        return -1;
     }
+
+    let Ok(comp_len) = usize::try_from(comp_len) else {
+        return -1;
+    };
+    let Ok(raw_len) = usize::try_from(raw_len) else {
+        return -1;
+    };
+
+    let comp_start = comp_buf as usize;
+    let raw_start = raw_buf as usize;
+    let Some(comp_end) = comp_start.checked_add(comp_len) else {
+        return -1;
+    };
+    let Some(raw_end) = raw_start.checked_add(raw_len) else {
+        return -1;
+    };
+    if comp_start < raw_end && raw_start < comp_end {
+        return -1;
+    }
+
+    let input = unsafe { core::slice::from_raw_parts(comp_buf.cast::<u8>(), comp_len) };
+    let output = unsafe { core::slice::from_raw_parts_mut(raw_buf.cast::<u8>(), raw_len) };
+    if crate::lzh::decode_stream_into(input, output).is_err() {
+        return -1;
+    }
+
+    i64::try_from(raw_len).unwrap_or(-1)
+
 }
 
 #[cfg(test)]
