@@ -803,7 +803,10 @@ impl CanonicalDecoder {
         self.first_code.fill(0);
         self.first_symbol.fill(0);
         self.symbols.clear();
-        self.fast.fill(FastEntry::default());
+        // Every accepted multi-symbol model is Kraft-complete. Therefore every
+        // FAST_DECODE_BITS prefix is overwritten by either a short-code fill
+        // or an explicit long-prefix sentinel below; zeroing the full 8 KiB
+        // table here is redundant memory traffic.
         self.long_prefix.fill(-1);
         self.long_tables.clear();
 
@@ -865,6 +868,10 @@ impl CanonicalDecoder {
             } else {
                 let suffix_bits = usize::from(len - FAST_DECODE_BITS);
                 let prefix = (code as usize) >> suffix_bits;
+                // Long-code prefixes must clear any short entry left by the
+                // previous model. Kraft completeness guarantees every other
+                // prefix is overwritten by a short-code range fill.
+                self.fast[prefix] = FastEntry::default();
                 let table_index = if self.long_prefix[prefix] >= 0 {
                     self.long_prefix[prefix] as usize
                 } else {
