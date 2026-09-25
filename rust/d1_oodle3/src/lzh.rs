@@ -984,17 +984,23 @@ impl CanonicalDecoder {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Decoder {
     has_model: bool,
-    huffman: Option<CanonicalDecoder>,
+    huffman: CanonicalDecoder,
+}
+
+impl Default for Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Decoder {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             has_model: false,
-            huffman: None,
+            huffman: CanonicalDecoder::empty(),
         }
     }
 
@@ -1031,13 +1037,7 @@ impl Decoder {
 
             #[cfg(feature = "stage_profile")]
             let table_started = std::time::Instant::now();
-            if let Some(huffman) = self.huffman.as_mut() {
-                huffman.rebuild_fixed(&model)?;
-            } else {
-                let mut huffman = CanonicalDecoder::empty();
-                huffman.rebuild_fixed(&model)?;
-                self.huffman = Some(huffman);
-            }
+            self.huffman.rebuild_fixed(&model)?;
             #[cfg(feature = "stage_profile")]
             stage_profile::table_build(
                 table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
@@ -1049,7 +1049,7 @@ impl Decoder {
         if !self.has_model {
             return Err(Error::MissingModel);
         }
-        let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
+        let huffman = &self.huffman;
         let mut bits = MsbBitReader::new(&payload[payload_offset..]);
         let start_pos = *output_pos;
         let output_end = start_pos
