@@ -166,7 +166,12 @@ impl HuffmanModel {
 
         let used_symbols = lengths.iter().filter(|&&len| len != 0).count();
         let top_symbol = lengths.iter().rposition(|&len| len != 0);
-        let min_code_len = lengths.iter().copied().filter(|&len| len != 0).min().unwrap_or(0);
+        let min_code_len = lengths
+            .iter()
+            .copied()
+            .filter(|&len| len != 0)
+            .min()
+            .unwrap_or(0);
         let max_seen = lengths.iter().copied().max().unwrap_or(0);
 
         if used_symbols >= 2 && !kraft_complete(&lengths, max_seen) {
