@@ -53,8 +53,12 @@ pub enum QuantumKind {
         flag2: bool,
         checksum24: Option<u32>,
     },
-    Memset { value: u8 },
-    WholeMatch { distance: usize },
+    Memset {
+        value: u8,
+    },
+    WholeMatch {
+        distance: usize,
+    },
     Raw,
 }
 
@@ -127,10 +131,7 @@ pub fn parse_quantum_header(
     }
 }
 
-fn parse_newlz_quantum_header(
-    input: &[u8],
-    use_checksum: bool,
-) -> Result<QuantumHeader, Error> {
+fn parse_newlz_quantum_header(input: &[u8], use_checksum: bool) -> Result<QuantumHeader, Error> {
     let v = be24(input)?;
     let size = (v & 0x3ffff) as usize;
     if size != 0x3ffff {
