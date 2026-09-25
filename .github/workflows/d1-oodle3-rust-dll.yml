@@ -1,0 +1,133 @@
+name: D1 Oodle3 Rust DLL ABI
+
+on:
+  push:
+    paths:
+      - 'rust/d1_oodle3/**'
+      - '.github/workflows/d1-oodle3-rust-dll.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-dll:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover exact Destiny package and reference Oodle 2.3 DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected:
+              raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build Rust compatibility DLL
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: cargo build --release
+
+      - name: Compare exported ABI against reference DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[
+                  ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_void_p,ctypes.c_int64,
+                  ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_void_p,ctypes.c_void_p,
+                  ctypes.c_uint32,
+              ]
+              return fn
+
+          def call(fn,comp,raw_len):
+              src=ctypes.create_string_buffer(comp)
+              dst=ctypes.create_string_buffer(raw_len)
+              n=fn(
+                  ctypes.cast(src,ctypes.c_void_p),len(comp),
+                  ctypes.cast(dst,ctypes.c_void_p),raw_len,
+                  1,0,1,
+                  None,None,None,None,None,None,
+                  3,
+              )
+              if n!=raw_len:
+                  raise RuntimeError(f'decode returned {n}, expected {raw_len}')
+              return dst.raw[:n]
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f)
+              bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          reference=bind('reference/oo2core_3_win64.dll')
+          rust=bind('rust/d1_oodle3/target/release/d1_oodle3.dll')
+
+          tested=0
+          for block in blocks:
+              if not block['compressed'] or int(block['patch_id'])!=5:
+                  continue
+              with pkg.open('rb') as f:
+                  f.seek(int(block['offset']))
+                  comp=f.read(int(block['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower():
+                  raise RuntimeError(f"stored SHA mismatch block {block['index']}")
+
+              raw_len=0x40000
+              expected=call(reference,comp,raw_len)
+              actual=call(rust,comp,raw_len)
+              if actual!=expected:
+                  for i,(a,b) in enumerate(zip(actual,expected)):
+                      if a!=b:
+                          raise RuntimeError(f"block {block['index']} mismatch at {i:#x}: rust={a:02x} ref={b:02x}")
+                  raise RuntimeError(f"block {block['index']} length mismatch")
+              print('RUST_DLL_BYTE_IDENTICAL',block['index'],hashlib.sha256(actual).hexdigest())
+              tested+=1
+              if tested>=8:
+                  break
+          if tested!=8:
+              raise RuntimeError(f'expected 8 resident compressed blocks, got {tested}')
+          print('D1_OODLE23_RUST_DLL_ABI_GREEN',tested)
+          PY
+          cp rust/d1_oodle3/target/release/d1_oodle3.dll out/oo2core_3_win64.dll
+          sha256sum out/oo2core_3_win64.dll > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-rust-compat-dll
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
