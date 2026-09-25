@@ -128,30 +128,41 @@ jobs:
                   call(reference,src,ref_dst,len(comp),raw_len)
                   call(rust,src,rust_dst,len(comp),raw_len)
 
-          iterations=100
-          rounds=7
+          iterations=80
+          rounds=9
           raw_bytes_per_round=sum(x[5] for x in cases)*iterations
 
-          def bench(fn,dst_slot):
-              samples=[]
-              for _ in range(rounds):
-                  t0=time.perf_counter_ns()
-                  for _ in range(iterations):
-                      for idx,comp,src,ref_dst,rust_dst,raw_len in cases:
-                          dst=ref_dst if dst_slot==3 else rust_dst
-                          call(fn,src,dst,len(comp),raw_len)
-                  t1=time.perf_counter_ns()
-                  sec=(t1-t0)/1e9
-                  samples.append({
-                      'seconds':sec,
-                      'throughput_mib_s':raw_bytes_per_round/sec/(1024*1024),
-                  })
-              return samples
+          def bench_once(fn,dst_slot):
+              t0=time.perf_counter_ns()
+              for _ in range(iterations):
+                  for idx,comp,src,ref_dst,rust_dst,raw_len in cases:
+                      dst=ref_dst if dst_slot==3 else rust_dst
+                      call(fn,src,dst,len(comp),raw_len)
+              t1=time.perf_counter_ns()
+              sec=(t1-t0)/1e9
+              return {
+                  'seconds':sec,
+                  'throughput_mib_s':raw_bytes_per_round/sec/(1024*1024),
+              }
 
-          # Alternate order between implementations by running a full benchmark
-          # for each after shared warmup; report median and best to reduce host noise.
-          ref_samples=bench(reference,3)
-          rust_samples=bench(rust,4)
+          # Pair the two implementations back-to-back and reverse the order
+          # every round. The paired ratio is much less sensitive to the large
+          # CPU/frequency variance seen across GitHub-hosted Windows runners.
+          ref_samples=[]
+          rust_samples=[]
+          paired_ratios=[]
+          for round_index in range(rounds):
+              if round_index % 2 == 0:
+                  ref_sample=bench_once(reference,3)
+                  rust_sample=bench_once(rust,4)
+              else:
+                  rust_sample=bench_once(rust,4)
+                  ref_sample=bench_once(reference,3)
+              ref_samples.append(ref_sample)
+              rust_samples.append(rust_sample)
+              paired_ratios.append(
+                  rust_sample['throughput_mib_s']/ref_sample['throughput_mib_s']
+              )
 
           def summary(samples):
               vals=[x['throughput_mib_s'] for x in samples]
@@ -165,7 +176,7 @@ jobs:
 
           ref=summary(ref_samples)
           rs=summary(rust_samples)
-          speed_ratio=rs['median_mib_s']/ref['median_mib_s']
+          speed_ratio=statistics.median(paired_ratios)
           report={
               'blocks':[x[0] for x in cases],
               'block_count':len(cases),
@@ -174,6 +185,7 @@ jobs:
               'rounds':rounds,
               'reference_oodle_2_3':ref,
               'native_rust':rs,
+              'paired_rust_over_reference_ratios':paired_ratios,
               'rust_over_reference_ratio':speed_ratio,
               'rust_percent_faster':(speed_ratio-1.0)*100.0,
           }
