@@ -59,6 +59,7 @@ if (-not $SkipNativeDeps) {
 
     $GBBuild = Join-Path $WorkDir "graphblas-build"
     cmake -S $GB -B $GBBuild -G "$VSGenerator" -A x64 `
+        -DCMAKE_C_FLAGS=/MP `
         -DCMAKE_INSTALL_PREFIX="$Prefix" `
         -DSUITESPARSE_USE_FORTRAN=OFF `
         -DBUILD_STATIC_LIBS=ON `
@@ -68,7 +69,7 @@ if (-not $SkipNativeDeps) {
         -DGRAPHBLAS_USE_OPENMP=OFF `
         -DGRAPHBLAS_USE_JIT=OFF `
         -DBUILD_TESTING=OFF
-    cmake --build $GBBuild --config Release --target GraphBLAS_static
+    cmake --build $GBBuild --config Release --target GraphBLAS_static --parallel 4
     cmake --install $GBBuild --config Release
 
     $GBStatic = Join-Path $Prefix "lib\graphblas_static.lib"
@@ -96,7 +97,7 @@ if (-not $SkipNativeDeps) {
         -DSUITESPARSE_USE_FORTRAN=OFF `
         -DGraphBLAS_DIR="$Prefix\lib\cmake\GraphBLAS" `
         -DCMAKE_PREFIX_PATH="$Prefix"
-    cmake --build $LABuild --config Release --target LAGraph_static LAGraphX_static
+    cmake --build $LABuild --config Release --target LAGraph_static LAGraphX_static --parallel 4
     cmake --install $LABuild --config Release
 
     foreach ($Pair in @(
