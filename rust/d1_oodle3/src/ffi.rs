@@ -8,6 +8,18 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 const THREAD_PHASE_ALL: u32 = 3;
 
+/// Decode one complete Oodle 2.3 LZH stream into the caller-provided buffer.
+///
+/// This compatibility export implements the whole-buffer call shape used by the
+/// Destiny 1 tooling. Callback and phased-decode modes that have not been
+/// reproduced return -1.
+///
+/// # Safety
+///
+/// `comp_buf` must reference at least `comp_len` readable bytes and
+/// `raw_buf` must reference at least `raw_len` writable bytes. The buffers
+/// must remain valid for the duration of the call. Unsupported callback or
+/// phased-decoding arguments fail closed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn OodleLZ_Decompress(
     comp_buf: *const c_void,
