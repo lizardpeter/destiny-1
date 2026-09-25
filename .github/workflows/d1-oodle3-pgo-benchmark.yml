@@ -70,6 +70,7 @@ jobs:
 
           absraw=$(cd ../../out/pgo-raw && pwd -W)
           CARGO_TARGET_DIR=target-pgogen \
+          CARGO_PROFILE_RELEASE_LTO=thin \
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
           RUSTFLAGS="-C profile-generate=$absraw" \
           cargo build --release --lib
@@ -170,7 +171,9 @@ jobs:
               return out
 
           raw_cases=[]
-          raw_cases += cases_from('recovered/ps4_globals_0157_6.pkg',6,4)
+          # Use the first three full-size holdout blocks. Block 1291 is the
+          # 0x38000 terminal block and is covered by correctness CI separately.
+          raw_cases += cases_from('recovered/ps4_globals_0157_6.pkg',6,3)
           raw_cases += cases_from('recovered/ps4_city_tower_destination_024c_5.pkg',5,8)
 
           fns={'reference':bind('reference/oo2core_3_win64.dll'),
