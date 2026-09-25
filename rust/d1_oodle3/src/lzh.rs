@@ -693,9 +693,9 @@ impl Decoder {
 
                 let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
                 if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
-                    let selector =
-                        bits.read_buffered(usize::from(meta.distance_info & !TOKEN_RECENT_FLAG))
-                            as usize;
+                    let selector = bits
+                        .read_buffered(usize::from(meta.distance_info & !TOKEN_RECENT_FLAG))
+                        as usize;
                     let distance = match selector {
                         0 => recent[0],
                         1 => {
@@ -1110,8 +1110,7 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        usize::from(self.bit_count)
-            + self.input.len().saturating_sub(self.byte_pos) * 8
+        usize::from(self.bit_count) + self.input.len().saturating_sub(self.byte_pos) * 8
     }
 
     #[inline(always)]
