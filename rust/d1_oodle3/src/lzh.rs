@@ -503,9 +503,9 @@ impl CanonicalDecoder {
                 let table_index = self.long_prefix[prefix];
                 if table_index >= 0 {
                     bits.ensure_bits(usize::from(MAX_CODE_LEN))?;
-                let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
-                let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-                let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
+                    let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
+                    let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
+                    let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
                     if long_entry.len != 0 {
                         bits.consume_buffered(usize::from(long_entry.len));
                         return Ok(usize::from(long_entry.symbol));
