@@ -4,9 +4,17 @@
 //! callback/phased-decoding modes fail closed instead of silently producing data.
 
 use core::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::{
+    cell::RefCell,
+    panic::{catch_unwind, AssertUnwindSafe},
+};
 
 const THREAD_PHASE_ALL: u32 = 3;
+
+std::thread_local! {
+    static FFI_DECODER: RefCell<crate::lzh::Decoder> =
+        RefCell::new(crate::lzh::Decoder::new());
+}
 
 /// Decode one complete Oodle 2.3 LZH stream into the caller-provided buffer.
 ///
@@ -61,7 +69,10 @@ pub unsafe extern "C" fn OodleLZ_Decompress(
 
         let input = unsafe { core::slice::from_raw_parts(comp_buf.cast::<u8>(), comp_len) };
         let output = unsafe { core::slice::from_raw_parts_mut(raw_buf.cast::<u8>(), raw_len) };
-        crate::lzh::decode_stream_into(input, output).map_err(|_| ())?;
+        FFI_DECODER.with(|cell| -> Result<(), ()> {
+            let mut decoder = cell.try_borrow_mut().map_err(|_| ())?;
+            crate::lzh::decode_stream_into_reusing(input, output, &mut decoder).map_err(|_| ())
+        })?;
         i64::try_from(raw_len).map_err(|_| ())
     }));
 
