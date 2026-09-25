@@ -1,0 +1,156 @@
+name: D1 Oodle3 Rust release tuning benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-release-tuning.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  release-tuning:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover benchmark corpus and reference DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference out
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name='ps4_city_tower_destination_024c_5.pkg'
+          off=7715401728
+          size=1687552
+          expected='b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          got=arc.copy_to(off,size,Path('recovered')/name)
+          if got.lower()!=expected: raise SystemExit(f'package SHA mismatch: {got}')
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+
+      - name: Build generic and LTO variants
+        working-directory: rust/d1_oodle3
+        shell: bash
+        run: |
+          set -euo pipefail
+          CARGO_TARGET_DIR=target-generic cargo build --release --lib
+          cp target-generic/release/d1_oodle3.dll ../../out/generic.dll
+
+          CARGO_TARGET_DIR=target-lto \
+          CARGO_PROFILE_RELEASE_LTO=fat \
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+          cargo build --release --lib
+          cp target-lto/release/d1_oodle3.dll ../../out/lto.dll
+
+          CARGO_TARGET_DIR=target-thin \
+          CARGO_PROFILE_RELEASE_LTO=thin \
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+          cargo build --release --lib
+          cp target-thin/release/d1_oodle3.dll ../../out/thin.dll
+
+      - name: Benchmark release variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes,hashlib,json,statistics,sys,time
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+
+          def bind(path):
+              lib=ctypes.WinDLL(str(Path(path).resolve()))
+              fn=lib.OodleLZ_Decompress
+              fn.restype=ctypes.c_int64
+              fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,
+                           ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,
+                           ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,
+                           ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
+              return fn
+
+          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
+          with pkg.open('rb') as f:
+              h=parse_header(f); bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+          blocks=parse_blocks(bt)
+          cases=[]
+          for b in blocks:
+              if not b['compressed'] or int(b['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(b['offset'])); comp=f.read(int(b['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
+                  raise RuntimeError(f"SHA mismatch {b['index']}")
+              cases.append((ctypes.create_string_buffer(comp),len(comp),0x40000))
+              if len(cases)>=8: break
+
+          fns={
+            'reference':bind('reference/oo2core_3_win64.dll'),
+            'generic':bind('out/generic.dll'),
+            'thin':bind('out/thin.dll'),
+            'lto':bind('out/lto.dll'),
+          }
+          dst={k:[ctypes.create_string_buffer(raw) for _,_,raw in cases] for k in fns}
+
+          def call(fn,src,n,dst,raw):
+              got=fn(ctypes.cast(src,ctypes.c_void_p),n,ctypes.cast(dst,ctypes.c_void_p),raw,
+                     1,0,0,None,None,None,None,None,None,3)
+              if got!=raw: raise RuntimeError(f'decode returned {got}')
+
+          for i,(src,n,raw) in enumerate(cases):
+              for k,fn in fns.items(): call(fn,src,n,dst[k][i],raw)
+              ref=dst['reference'][i].raw[:raw]
+              for k in ('generic','thin','lto'):
+                  if dst[k][i].raw[:raw]!=ref: raise RuntimeError(f'mismatch {k} case {i}')
+
+          for _ in range(12):
+              for k,fn in fns.items():
+                  for i,(src,n,raw) in enumerate(cases): call(fn,src,n,dst[k][i],raw)
+
+          iterations=55; rounds=9
+          raw_bytes=sum(x[2] for x in cases)*iterations
+          samples={k:[] for k in fns}
+          orders=[
+              ['reference','generic','thin','lto'],
+              ['lto','thin','generic','reference'],
+              ['generic','reference','lto','thin'],
+              ['thin','lto','reference','generic'],
+          ]
+          for r in range(rounds):
+              for k in orders[r%len(orders)]:
+                  fn=fns[k]
+                  t0=time.perf_counter_ns()
+                  for _ in range(iterations):
+                      for i,(src,n,raw) in enumerate(cases): call(fn,src,n,dst[k][i],raw)
+                  sec=(time.perf_counter_ns()-t0)/1e9
+                  samples[k].append(raw_bytes/sec/(1024*1024))
+          med={k:statistics.median(v) for k,v in samples.items()}
+          ratios={k:med[k]/med['reference'] for k in ('generic','thin','lto')}
+          report={'median_mib_s':med,'ratios_to_oodle':ratios,'samples':samples}
+          Path('out/release_tuning.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          for k in ('generic','thin','lto'):
+              print('TUNING',k,'MIB_S',med[k],'RATIO',ratios[k])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-oodle23-release-tuning
+          path: out/release_tuning.json
+          retention-days: 30
+          if-no-files-found: error
