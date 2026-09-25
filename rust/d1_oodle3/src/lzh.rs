@@ -23,10 +23,6 @@ mod profile {
     pub struct ProfileSnapshot {
         pub models: u64,
         pub model_symbols: u64,
-        pub model_sparse: u64,
-        pub model_rice: u64,
-        pub long_tables_total: u64,
-        pub long_tables_max: u64,
         pub quanta: u64,
         pub huffman_fast: u64,
         pub huffman_long: u64,
@@ -54,10 +50,6 @@ mod profile {
 
     static MODELS: AtomicU64 = AtomicU64::new(0);
     static MODEL_SYMBOLS: AtomicU64 = AtomicU64::new(0);
-    static MODEL_SPARSE: AtomicU64 = AtomicU64::new(0);
-    static MODEL_RICE: AtomicU64 = AtomicU64::new(0);
-    static LONG_TABLES_TOTAL: AtomicU64 = AtomicU64::new(0);
-    static LONG_TABLES_MAX: AtomicU64 = AtomicU64::new(0);
     static QUANTA: AtomicU64 = AtomicU64::new(0);
     static HUFFMAN_FAST: AtomicU64 = AtomicU64::new(0);
     static HUFFMAN_LONG: AtomicU64 = AtomicU64::new(0);
@@ -82,13 +74,6 @@ mod profile {
     pub(super) fn model(used: usize) {
         inc(&MODELS);
         MODEL_SYMBOLS.fetch_add(used as u64, Ordering::Relaxed);
-    }
-    pub(super) fn model_encoding(rice: bool) {
-        inc(if rice { &MODEL_RICE } else { &MODEL_SPARSE });
-    }
-    pub(super) fn long_tables(count: usize) {
-        LONG_TABLES_TOTAL.fetch_add(count as u64, Ordering::Relaxed);
-        LONG_TABLES_MAX.fetch_max(count as u64, Ordering::Relaxed);
     }
     pub(super) fn quantum() { inc(&QUANTA); }
     pub(super) fn huffman_fast() { inc(&HUFFMAN_FAST); }
@@ -116,9 +101,7 @@ mod profile {
 
     pub fn reset() {
         for a in [
-            &MODELS, &MODEL_SYMBOLS, &MODEL_SPARSE, &MODEL_RICE,
-            &LONG_TABLES_TOTAL, &LONG_TABLES_MAX,
-            &QUANTA, &HUFFMAN_FAST, &HUFFMAN_LONG, &HUFFMAN_TAIL,
+            &MODELS, &MODEL_SYMBOLS, &QUANTA, &HUFFMAN_FAST, &HUFFMAN_LONG, &HUFFMAN_TAIL,
             &LITERALS, &RECENT_MATCHES, &EXPLICIT_MATCHES, &REFILL_32, &REFILL_8,
         ] { a.store(0, Ordering::Relaxed); }
         for a in &DISTANCE { a.store(0, Ordering::Relaxed); }
@@ -128,10 +111,7 @@ mod profile {
     pub fn snapshot() -> ProfileSnapshot {
         let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
         ProfileSnapshot {
-            models: g(&MODELS), model_symbols: g(&MODEL_SYMBOLS),
-            model_sparse: g(&MODEL_SPARSE), model_rice: g(&MODEL_RICE),
-            long_tables_total: g(&LONG_TABLES_TOTAL), long_tables_max: g(&LONG_TABLES_MAX),
-            quanta: g(&QUANTA),
+            models: g(&MODELS), model_symbols: g(&MODEL_SYMBOLS), quanta: g(&QUANTA),
             huffman_fast: g(&HUFFMAN_FAST), huffman_long: g(&HUFFMAN_LONG),
             huffman_tail: g(&HUFFMAN_TAIL), literals: g(&LITERALS),
             recent_matches: g(&RECENT_MATCHES), explicit_matches: g(&EXPLICIT_MATCHES),
@@ -627,8 +607,6 @@ impl FixedLzhModel {
         const SYMBOL_BITS: usize = 10;
         let mut bits = MsbBitReader::new(input);
         let method = bits.read_bit()?;
-        #[cfg(feature = "profile")]
-        profile::model_encoding(method);
         let mut lengths = [0u8; SYMBOL_COUNT];
         let mut one_char = None;
 
@@ -764,7 +742,7 @@ struct CanonicalDecoder {
     counts: [u16; MAX_CODE_LEN as usize + 1],
     first_code: [u32; MAX_CODE_LEN as usize + 1],
     first_symbol: [usize; MAX_CODE_LEN as usize + 1],
-    symbols: [u16; SYMBOL_COUNT],
+    symbols: Vec<u16>,
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
     long_prefix: [i16; 1 << FAST_DECODE_BITS],
     long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
@@ -778,7 +756,7 @@ impl CanonicalDecoder {
             counts: [0; MAX_CODE_LEN as usize + 1],
             first_code: [0; MAX_CODE_LEN as usize + 1],
             first_symbol: [0; MAX_CODE_LEN as usize + 1],
-            symbols: [0; SYMBOL_COUNT],
+            symbols: Vec::new(),
             fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
             long_prefix: [-1; 1 << FAST_DECODE_BITS],
             long_tables: Vec::new(),
@@ -824,6 +802,7 @@ impl CanonicalDecoder {
         self.counts.fill(0);
         self.first_code.fill(0);
         self.first_symbol.fill(0);
+        self.symbols.clear();
         self.fast.fill(FastEntry::default());
         self.long_prefix.fill(-1);
         self.long_tables.clear();
@@ -849,6 +828,11 @@ impl CanonicalDecoder {
             self.first_symbol[len] = symbol_index;
             symbol_index += usize::from(self.counts[len]);
         }
+
+        if self.symbols.capacity() < used_symbols {
+            self.symbols.reserve(used_symbols - self.symbols.capacity());
+        }
+        self.symbols.resize(used_symbols, 0);
 
         // Build canonical symbol order and decode tables in one pass. The old
         // code scanned all 713 symbols once for every code length and then
@@ -901,9 +885,6 @@ impl CanonicalDecoder {
                 self.long_tables[table_index][start..end].fill(entry);
             }
         }
-
-        #[cfg(feature = "profile")]
-        profile::long_tables(self.long_tables.len());
 
         Ok(())
     }
@@ -1016,40 +997,6 @@ impl Decoder {
         self.has_model = false;
     }
 
-    // Model refreshes occur only every fourth 16 KiB quantum in the observed
-    // D1 LZH stream. Keep the large model parser/table builder out of the
-    // per-quantum payload function so reuse quanta do not pay its stack frame.
-    #[inline(never)]
-    fn install_model(&mut self, payload: &[u8]) -> Result<usize, Error> {
-        #[cfg(feature = "stage_profile")]
-        let parse_started = std::time::Instant::now();
-        let model = FixedLzhModel::parse(payload)?;
-        #[cfg(feature = "stage_profile")]
-        stage_profile::model_parse(
-            parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-        );
-
-        let payload_offset = model.consumed_bits.div_ceil(8);
-        if payload_offset > payload.len() {
-            return Err(Error::Truncated);
-        }
-        #[cfg(feature = "profile")]
-        profile::model(model.used_symbols);
-
-        #[cfg(feature = "stage_profile")]
-        let table_started = std::time::Instant::now();
-        self.huffman
-            .get_or_insert_with(CanonicalDecoder::empty)
-            .rebuild_fixed(&model)?;
-        #[cfg(feature = "stage_profile")]
-        stage_profile::table_build(
-            table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-        );
-
-        self.has_model = true;
-        Ok(payload_offset)
-    }
-
     pub fn decode_quantum_into(
         &mut self,
         payload: &[u8],
@@ -1060,11 +1007,39 @@ impl Decoder {
     ) -> Result<(), Error> {
         #[cfg(feature = "profile")]
         profile::quantum();
-        let payload_offset = if has_new_model {
-            self.install_model(payload)?
-        } else {
-            0
-        };
+        let mut payload_offset = 0usize;
+        if has_new_model {
+            #[cfg(feature = "stage_profile")]
+            let parse_started = std::time::Instant::now();
+            let model = FixedLzhModel::parse(payload)?;
+            #[cfg(feature = "stage_profile")]
+            stage_profile::model_parse(
+                parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            );
+
+            payload_offset = model.consumed_bits.div_ceil(8);
+            if payload_offset > payload.len() {
+                return Err(Error::Truncated);
+            }
+            #[cfg(feature = "profile")]
+            profile::model(model.used_symbols);
+
+            #[cfg(feature = "stage_profile")]
+            let table_started = std::time::Instant::now();
+            if let Some(huffman) = self.huffman.as_mut() {
+                huffman.rebuild_fixed(&model)?;
+            } else {
+                let mut huffman = CanonicalDecoder::empty();
+                huffman.rebuild_fixed(&model)?;
+                self.huffman = Some(huffman);
+            }
+            #[cfg(feature = "stage_profile")]
+            stage_profile::table_build(
+                table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            );
+
+            self.has_model = true;
+        }
 
         if !self.has_model {
             return Err(Error::MissingModel);
