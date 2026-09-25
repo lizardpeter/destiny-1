@@ -14,6 +14,15 @@ static std::vector<uint8_t> read_file(const char *path) {
     return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)), {});
 }
 
+static int safe_call(LzhInitFn fn, void *decoder, const uint8_t *src, const uint8_t *end, int *consumed, unsigned long *exception_code) {
+    __try {
+        return fn(decoder, src, end, consumed);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        *exception_code = GetExceptionCode();
+        return -1;
+    }
+}
+
 int main(int argc, char **argv) {
     if (argc != 4) {
         std::fprintf(stderr, "usage: %s oo2core_3_win64.dll block.comp offset\n", argv[0]);
@@ -35,11 +44,10 @@ int main(int argc, char **argv) {
     // Function keeps its Huffman object/work arrays inside caller-owned storage.
     std::vector<uint8_t> decoder(1 << 20);
     int consumed = -1;
-    int ok = 0;
-    __try {
-        ok = fn(decoder.data(), comp.data() + offset, comp.data() + comp.size(), &consumed);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        std::printf("OFFSET=%ld EXCEPTION=0x%08lx\n", offset, GetExceptionCode());
+    unsigned long exception_code = 0;
+    int ok = safe_call(fn, decoder.data(), comp.data() + offset, comp.data() + comp.size(), &consumed, &exception_code);
+    if (ok < 0) {
+        std::printf("OFFSET=%ld EXCEPTION=0x%08lx\n", offset, exception_code);
         FreeLibrary(mod);
         return 10;
     }
