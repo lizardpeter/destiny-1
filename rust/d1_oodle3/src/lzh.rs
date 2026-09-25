@@ -1405,7 +1405,7 @@ fn copy_match_into(
     Ok(())
 }
 
-pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+fn decode_stream_into_generic(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
     let expected_raw_len = output.len();
     let spans = crate::scan_frame(input, expected_raw_len)?;
     let mut decoder = Decoder::new();
@@ -1517,6 +1517,91 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
         });
     }
     Ok(())
+}
+
+#[inline]
+fn is_b7_all_compressed(input: &[u8], expected_raw_len: usize) -> bool {
+    if expected_raw_len == 0
+        || expected_raw_len > crate::BLOCK_LEN
+        || input.first().copied() != Some(0xb7)
+    {
+        return false;
+    }
+
+    let mut input_pos = 1usize;
+    let mut output_pos = 0usize;
+    while output_pos < expected_raw_len {
+        if input_pos + 2 > input.len() {
+            return false;
+        }
+        let header =
+            u16::from_be_bytes([input[input_pos], input[input_pos + 1]]) as usize;
+        let size_field = header & 0x3fff;
+        if size_field == 0x3fff {
+            return false;
+        }
+        let stored_size = size_field + 1;
+        let raw_len = crate::LEGACY_QUANTUM_LEN.min(expected_raw_len - output_pos);
+        if stored_size > raw_len {
+            return false;
+        }
+        input_pos += 2;
+        let Some(next_input) = input_pos.checked_add(stored_size) else {
+            return false;
+        };
+        if next_input > input.len() {
+            return false;
+        }
+        input_pos = next_input;
+        output_pos += raw_len;
+    }
+
+    input_pos == input.len()
+}
+
+#[inline]
+fn decode_stream_into_b7_compressed(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    debug_assert!(is_b7_all_compressed(input, output.len()));
+
+    let mut decoder = Decoder::new();
+    decoder.reset();
+    let mut input_pos = 1usize;
+    let mut output_pos = 0usize;
+    let output_len = output.len();
+
+    while output_pos < output_len {
+        let header = unsafe {
+            u16::from_be_bytes([
+                *input.get_unchecked(input_pos),
+                *input.get_unchecked(input_pos + 1),
+            ])
+        } as usize;
+        input_pos += 2;
+
+        let stored_size = (header & 0x3fff) + 1;
+        let raw_len = crate::LEGACY_QUANTUM_LEN.min(output_len - output_pos);
+        let payload_end = input_pos + stored_size;
+        let payload = unsafe { input.get_unchecked(input_pos..payload_end) };
+
+        decoder.decode_quantum_into(
+            payload,
+            output,
+            &mut output_pos,
+            raw_len,
+            (header & 0x4000) != 0,
+        )?;
+        input_pos = payload_end;
+    }
+
+    Ok(())
+}
+
+pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    if is_b7_all_compressed(input, output.len()) {
+        decode_stream_into_b7_compressed(input, output)
+    } else {
+        decode_stream_into_generic(input, output)
+    }
 }
 
 pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, Error> {
