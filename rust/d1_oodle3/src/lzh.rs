@@ -757,6 +757,7 @@ struct CanonicalDecoder {
     symbols: Vec<u16>,
     fast: [FastEntry; 1 << FAST_DECODE_BITS],
     long_prefix: [i16; 1 << FAST_DECODE_BITS],
+    long_touched: Vec<u16>,
     long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]>,
     max_len: u8,
     one_char: Option<usize>,
@@ -771,6 +772,7 @@ impl CanonicalDecoder {
             symbols: Vec::new(),
             fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
             long_prefix: [-1; 1 << FAST_DECODE_BITS],
+            long_touched: Vec::new(),
             long_tables: Vec::new(),
             max_len: 0,
             one_char: None,
@@ -837,7 +839,12 @@ impl CanonicalDecoder {
         // FAST_DECODE_BITS prefix is overwritten by either a short-code fill
         // or an explicit long-prefix sentinel below; zeroing the full 8 KiB
         // table here is redundant memory traffic.
-        self.long_prefix.fill(-1);
+        for &prefix in &self.long_touched {
+            unsafe {
+                *self.long_prefix.get_unchecked_mut(usize::from(prefix)) = -1;
+            }
+        }
+        self.long_touched.clear();
         self.long_tables.clear();
 
         if one_char.is_some() {
@@ -916,6 +923,7 @@ impl CanonicalDecoder {
                     self.long_tables
                         .push([FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
                     self.long_prefix[prefix] = index as i16;
+                    self.long_touched.push(prefix as u16);
                     index
                 };
                 let suffix_mask = (1usize << suffix_bits) - 1;
