@@ -537,38 +537,6 @@ impl CanonicalDecoder {
     }
 
     #[inline(always)]
-    fn decode_buffered(&self, bits: &mut MsbBitReader<'_>) -> Result<usize, Error> {
-        if let Some(symbol) = self.one_char {
-            return Ok(symbol);
-        }
-
-        let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
-        let entry = unsafe { *self.fast.get_unchecked(prefix) };
-        if entry.len != 0 {
-            bits.consume_buffered(usize::from(entry.len));
-            return Ok(usize::from(entry.symbol));
-        }
-
-        let table_index = unsafe { *self.long_prefix.get_unchecked(prefix) };
-        if table_index < 0 {
-            return Err(Error::InvalidHuffmanCode);
-        }
-        let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
-        let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-        let long_entry = unsafe {
-            *self
-                .long_tables
-                .get_unchecked(table_index as usize)
-                .get_unchecked(window & suffix_mask)
-        };
-        if long_entry.len == 0 {
-            return Err(Error::InvalidHuffmanCode);
-        }
-        bits.consume_buffered(usize::from(long_entry.len));
-        Ok(usize::from(long_entry.symbol))
-    }
-
-    #[inline(always)]
     fn decode(&self, bits: &mut MsbBitReader<'_>) -> Result<usize, Error> {
         if let Some(symbol) = self.one_char {
             return Ok(symbol);
@@ -676,75 +644,6 @@ impl Decoder {
         let mut recent = [20usize, 24, 28, 32];
 
         while *output_pos < output_end {
-            if bits.remaining_bits() >= 56 {
-                bits.ensure_bits(56)?;
-                let symbol = huffman.decode_buffered(&mut bits)?;
-                if symbol < LITERAL_SYMBOLS {
-                    debug_assert!(*output_pos < output_end);
-                    unsafe {
-                        *output.get_unchecked_mut(*output_pos) = symbol as u8;
-                    }
-                    *output_pos += 1;
-                    continue;
-                }
-                if symbol >= SYMBOL_COUNT {
-                    return Err(Error::InvalidSymbol(symbol));
-                }
-
-                let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
-                if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
-                    let selector = bits
-                        .read_buffered(usize::from(meta.distance_info & !TOKEN_RECENT_FLAG))
-                        as usize;
-                    let distance = match selector {
-                        0 => recent[0],
-                        1 => {
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        2 => {
-                            recent.swap(1, 2);
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        3 => {
-                            recent.swap(2, 3);
-                            recent.swap(1, 2);
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        _ => return Err(Error::InvalidRun),
-                    };
-                    let match_len = decode_length_parts_buffered(
-                        &mut bits,
-                        meta.length_base,
-                        meta.length_info & !TOKEN_EXTENDED_FLAG,
-                        (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
-                    );
-                    copy_match_into(output, output_pos, output_end, distance, match_len)?;
-                } else {
-                    let match_distance = meta.distance_base as usize
-                        + bits.read_buffered(usize::from(meta.distance_info)) as usize
-                        + 1;
-
-                    if meta.distance_base != 0 {
-                        recent[3] = recent[2];
-                        recent[2] = recent[1];
-                        recent[1] = match_distance;
-                    }
-
-                    let match_len = decode_length_parts_buffered(
-                        &mut bits,
-                        meta.length_base,
-                        meta.length_info & !TOKEN_EXTENDED_FLAG,
-                        (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
-                    );
-                    copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
-                }
-                continue;
-            }
-
-            // Checked tail path for the final <56 payload bits.
             let symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
                 debug_assert!(*output_pos < output_end);
@@ -822,36 +721,6 @@ impl Decoder {
 
         Ok(())
     }
-}
-
-#[inline(always)]
-fn decode_length_parts_buffered(
-    bits: &mut MsbBitReader<'_>,
-    base: u16,
-    extra_bits: u8,
-    extended: bool,
-) -> usize {
-    let base = usize::from(base);
-    if extra_bits == 0 {
-        return base;
-    }
-    if !extended {
-        return base + bits.read_buffered(usize::from(extra_bits)) as usize;
-    }
-
-    if bits.read_buffered(1) == 0 {
-        return 157 + bits.read_buffered(6) as usize;
-    }
-    if bits.read_buffered(1) == 0 {
-        return 221 + bits.read_buffered(7) as usize;
-    }
-    if bits.read_buffered(1) == 0 {
-        return 349 + bits.read_buffered(8) as usize;
-    }
-    if bits.read_buffered(1) == 0 {
-        return 605 + bits.read_buffered(10) as usize;
-    }
-    1629 + bits.read_buffered(14) as usize
 }
 
 #[inline(always)]
@@ -1110,7 +979,8 @@ impl<'a> MsbBitReader<'a> {
 
     #[inline(always)]
     fn remaining_bits(&self) -> usize {
-        usize::from(self.bit_count) + self.input.len().saturating_sub(self.byte_pos) * 8
+        usize::from(self.bit_count)
+            + self.input.len().saturating_sub(self.byte_pos) * 8
     }
 
     #[inline(always)]
@@ -1157,18 +1027,6 @@ impl<'a> MsbBitReader<'a> {
         debug_assert!(count <= usize::from(self.bit_count));
         self.bit_buf <<= count;
         self.bit_count -= count as u8;
-    }
-
-    #[inline(always)]
-    fn read_buffered(&mut self, count: usize) -> u64 {
-        debug_assert!(count <= usize::from(self.bit_count));
-        if count == 0 {
-            return 0;
-        }
-        let value = self.bit_buf >> (64 - count);
-        self.bit_buf <<= count;
-        self.bit_count -= count as u8;
-        value
     }
 
     #[inline(always)]
