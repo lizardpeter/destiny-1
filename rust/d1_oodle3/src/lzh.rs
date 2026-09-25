@@ -594,24 +594,39 @@ impl HuffmanModel {
 }
 
 struct FixedLzhModel {
-    code_lengths: [u8; SYMBOL_COUNT],
-    used_list: [u16; SYMBOL_COUNT],
-    counts: [u16; MAX_CODE_LEN as usize + 1],
     used_symbols: usize,
     max_code_len: u8,
     one_char: Option<usize>,
     consumed_bits: usize,
 }
 
-impl FixedLzhModel {
+#[derive(Debug, Clone)]
+struct FixedLzhScratch {
+    code_lengths: [u8; SYMBOL_COUNT],
+    used_list: [u16; SYMBOL_COUNT],
+    counts: [u16; MAX_CODE_LEN as usize + 1],
+}
+
+impl FixedLzhScratch {
+    fn new() -> Self {
+        Self {
+            code_lengths: [0; SYMBOL_COUNT],
+            used_list: [0; SYMBOL_COUNT],
+            counts: [0; MAX_CODE_LEN as usize + 1],
+        }
+    }
+
     #[inline]
-    fn parse(input: &[u8]) -> Result<Self, Error> {
+    fn parse(&mut self, input: &[u8]) -> Result<FixedLzhModel, Error> {
         const SYMBOL_BITS: usize = 10;
         let mut bits = MsbBitReader::new(input);
         let method = bits.read_bit()?;
-        let mut lengths = [0u8; SYMBOL_COUNT];
-        let mut used_list = [0u16; SYMBOL_COUNT];
-        let mut counts = [0u16; MAX_CODE_LEN as usize + 1];
+
+        // Only these arrays need clearing between models. Every used-list entry
+        // in the live prefix is overwritten before rebuild_fixed reads it.
+        self.code_lengths.fill(0);
+        self.counts.fill(0);
+
         let mut used_symbols = 0usize;
         let mut max_seen = 0u8;
         let mut one_char = None;
@@ -622,10 +637,7 @@ impl FixedLzhModel {
                 return Err(Error::InvalidSymbolCount(used));
             }
             if used == 0 {
-                return Ok(Self {
-                    code_lengths: lengths,
-                    used_list,
-                    counts,
+                return Ok(FixedLzhModel {
                     used_symbols: 0,
                     max_code_len: 0,
                     one_char: None,
@@ -638,11 +650,8 @@ impl FixedLzhModel {
                     return Err(Error::InvalidSymbol(symbol));
                 }
                 one_char = Some(symbol);
-                used_list[0] = symbol as u16;
-                return Ok(Self {
-                    code_lengths: lengths,
-                    used_list,
-                    counts,
+                self.used_list[0] = symbol as u16;
+                return Ok(FixedLzhModel {
                     used_symbols: 1,
                     max_code_len: 0,
                     one_char,
@@ -670,9 +679,9 @@ impl FixedLzhModel {
                 if code_len > MAX_CODE_LEN {
                     return Err(Error::InvalidCodeLength(code_len));
                 }
-                lengths[symbol] = code_len;
-                used_list[used_symbols] = symbol as u16;
-                counts[usize::from(code_len)] += 1;
+                self.code_lengths[symbol] = code_len;
+                self.used_list[used_symbols] = symbol as u16;
+                self.counts[usize::from(code_len)] += 1;
                 used_symbols += 1;
                 max_seen = max_seen.max(code_len);
             }
@@ -709,9 +718,9 @@ impl FixedLzhModel {
                         ));
                     }
                     let code_len = code_len_i32 as u8;
-                    lengths[symbol] = code_len;
-                    used_list[used_symbols] = symbol as u16;
-                    counts[usize::from(code_len)] += 1;
+                    self.code_lengths[symbol] = code_len;
+                    self.used_list[used_symbols] = symbol as u16;
+                    self.counts[usize::from(code_len)] += 1;
                     used_symbols += 1;
                     max_seen = max_seen.max(code_len);
                     predictor_state = ((predictor_state * 3 + 2) >> 2) + code_len_i32;
@@ -732,17 +741,14 @@ impl FixedLzhModel {
             let target = 1u64 << max_seen;
             let mut sum = 0u64;
             for len in 1..=usize::from(max_seen) {
-                sum += u64::from(counts[len]) << (usize::from(max_seen) - len);
+                sum += u64::from(self.counts[len]) << (usize::from(max_seen) - len);
             }
             if sum != target {
                 return Err(Error::NonCanonical);
             }
         }
 
-        Ok(Self {
-            code_lengths: lengths,
-            used_list,
-            counts,
+        Ok(FixedLzhModel {
             used_symbols,
             max_code_len: max_seen,
             one_char,
@@ -797,14 +803,18 @@ impl CanonicalDecoder {
     }
 
     #[inline]
-    fn rebuild_fixed(&mut self, model: &FixedLzhModel) -> Result<(), Error> {
+    fn rebuild_fixed(
+        &mut self,
+        model: &FixedLzhModel,
+        scratch: &FixedLzhScratch,
+    ) -> Result<(), Error> {
         self.rebuild_parts_with_counts(
-            &model.code_lengths,
+            &scratch.code_lengths,
             model.used_symbols,
             model.max_code_len,
             model.one_char,
-            Some(&model.counts),
-            Some(&model.used_list[..model.used_symbols]),
+            Some(&scratch.counts),
+            Some(&scratch.used_list[..model.used_symbols]),
         )
     }
 
@@ -1011,6 +1021,7 @@ impl CanonicalDecoder {
 #[derive(Debug, Clone)]
 pub struct Decoder {
     has_model: bool,
+    model_scratch: FixedLzhScratch,
     huffman: CanonicalDecoder,
 }
 
@@ -1024,6 +1035,7 @@ impl Decoder {
     pub fn new() -> Self {
         Self {
             has_model: false,
+            model_scratch: FixedLzhScratch::new(),
             huffman: CanonicalDecoder::empty(),
         }
     }
@@ -1046,7 +1058,7 @@ impl Decoder {
         if has_new_model {
             #[cfg(feature = "stage_profile")]
             let parse_started = std::time::Instant::now();
-            let model = FixedLzhModel::parse(payload)?;
+            let model = self.model_scratch.parse(payload)?;
             #[cfg(feature = "stage_profile")]
             stage_profile::model_parse(
                 parse_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
@@ -1061,7 +1073,7 @@ impl Decoder {
 
             #[cfg(feature = "stage_profile")]
             let table_started = std::time::Instant::now();
-            self.huffman.rebuild_fixed(&model)?;
+            self.huffman.rebuild_fixed(&model, &self.model_scratch)?;
             #[cfg(feature = "stage_profile")]
             stage_profile::table_build(
                 table_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
