@@ -51,15 +51,17 @@ pub unsafe extern "C" fn OodleLZ_Decompress(
         let comp_len = usize::try_from(comp_len).map_err(|_| ())?;
         let raw_len = usize::try_from(raw_len).map_err(|_| ())?;
 
-        let input = unsafe { core::slice::from_raw_parts(comp_buf.cast::<u8>(), comp_len) };
-        let decoded = crate::lzh::decode_stream(input, raw_len).map_err(|_| ())?;
-        if decoded.len() != raw_len {
+        let comp_start = comp_buf as usize;
+        let raw_start = raw_buf as usize;
+        let comp_end = comp_start.checked_add(comp_len).ok_or(())?;
+        let raw_end = raw_start.checked_add(raw_len).ok_or(())?;
+        if comp_start < raw_end && raw_start < comp_end {
             return Err(());
         }
 
-        unsafe {
-            core::ptr::copy_nonoverlapping(decoded.as_ptr(), raw_buf.cast::<u8>(), raw_len);
-        }
+        let input = unsafe { core::slice::from_raw_parts(comp_buf.cast::<u8>(), comp_len) };
+        let output = unsafe { core::slice::from_raw_parts_mut(raw_buf.cast::<u8>(), raw_len) };
+        crate::lzh::decode_stream_into(input, output).map_err(|_| ())?;
         i64::try_from(raw_len).map_err(|_| ())
     }));
 
