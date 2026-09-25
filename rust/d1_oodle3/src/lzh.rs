@@ -491,21 +491,23 @@ impl CanonicalDecoder {
 
         let remaining_bits = bits.remaining_bits();
         if remaining_bits >= usize::from(FAST_DECODE_BITS) {
-            let prefix = bits.peek_bits(usize::from(FAST_DECODE_BITS))? as usize;
+            bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
+            let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
             let entry = self.fast[prefix];
             if entry.len != 0 {
-                bits.skip_bits(usize::from(entry.len))?;
+                bits.consume_buffered(usize::from(entry.len));
                 return Ok(usize::from(entry.symbol));
             }
 
             if remaining_bits >= usize::from(MAX_CODE_LEN) {
                 let table_index = self.long_prefix[prefix];
                 if table_index >= 0 {
-                    let window = bits.peek_bits(usize::from(MAX_CODE_LEN))? as usize;
-                    let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-                    let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
+                    bits.ensure_bits(usize::from(MAX_CODE_LEN))?;
+                let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
+                let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
+                let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
                     if long_entry.len != 0 {
-                        bits.skip_bits(usize::from(long_entry.len))?;
+                        bits.consume_buffered(usize::from(long_entry.len));
                         return Ok(usize::from(long_entry.symbol));
                     }
                 }
@@ -591,7 +593,10 @@ impl Decoder {
         while *output_pos < output_end {
             let symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
-                output[*output_pos] = symbol as u8;
+                debug_assert!(*output_pos < output_end);
+                unsafe {
+                    *output.get_unchecked_mut(*output_pos) = symbol as u8;
+                }
                 *output_pos += 1;
                 continue;
             }
@@ -930,12 +935,10 @@ impl<'a> MsbBitReader<'a> {
         }
         while usize::from(self.bit_count) < count {
             if self.byte_pos + 4 <= self.input.len() && self.bit_count <= 32 {
-                let word = u32::from_be_bytes([
-                    self.input[self.byte_pos],
-                    self.input[self.byte_pos + 1],
-                    self.input[self.byte_pos + 2],
-                    self.input[self.byte_pos + 3],
-                ]);
+                let word = unsafe {
+                    let ptr = self.input.as_ptr().add(self.byte_pos).cast::<u32>();
+                    u32::from_be(core::ptr::read_unaligned(ptr))
+                };
                 let shift = 32usize
                     .checked_sub(usize::from(self.bit_count))
                     .ok_or(Error::Truncated)?;
@@ -953,6 +956,20 @@ impl<'a> MsbBitReader<'a> {
             }
         }
         Ok(())
+    }
+
+    #[inline(always)]
+    fn peek_buffered(&self, count: usize) -> u64 {
+        debug_assert!(count <= usize::from(self.bit_count));
+        self.bit_buf >> (64 - count)
+    }
+
+    #[inline(always)]
+    fn consume_buffered(&mut self, count: usize) {
+        debug_assert!(count <= usize::from(self.bit_count));
+        self.bit_buf <<= count;
+        self.bit_count -= count as u8;
+        self.bit_pos += count;
     }
 
     #[inline(always)]
