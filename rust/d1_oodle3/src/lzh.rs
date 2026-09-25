@@ -752,9 +752,30 @@ impl FixedLzhModel {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct FastEntry {
-    symbol: u16,
-    len: u8,
+struct FastEntry(u32);
+
+impl FastEntry {
+    #[inline(always)]
+    const fn new(symbol: usize, len: u8) -> Self {
+        // Zero remains the long-code sentinel. Store symbol+1 so literal 0 is
+        // representable while keeping the hot path to one 32-bit table load.
+        Self(((u32::from(len)) << 16) | (symbol as u32 + 1))
+    }
+
+    #[inline(always)]
+    const fn is_valid(self) -> bool {
+        self.0 != 0
+    }
+
+    #[inline(always)]
+    const fn symbol(self) -> usize {
+        ((self.0 & 0xffff) - 1) as usize
+    }
+
+    #[inline(always)]
+    const fn len(self) -> usize {
+        (self.0 >> 16) as usize
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -895,10 +916,7 @@ impl CanonicalDecoder {
 
                 let code = next_code[len_index];
                 next_code[len_index] += 1;
-                let entry = FastEntry {
-                    symbol: symbol as u16,
-                    len,
-                };
+                let entry = FastEntry::new(symbol, len);
                 if len <= FAST_DECODE_BITS {
                     let shift = usize::from(FAST_DECODE_BITS - len);
                     let start = (code as usize) << shift;
@@ -940,11 +958,11 @@ impl CanonicalDecoder {
         bits.ensure_bits_fast(usize::from(FAST_DECODE_BITS));
         let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
         let entry = unsafe { *self.fast.get_unchecked(prefix) };
-        if entry.len != 0 {
+        if entry.is_valid() {
             #[cfg(feature = "profile")]
             profile::huffman_fast();
-            bits.consume_buffered(usize::from(entry.len));
-            return usize::from(entry.symbol);
+            bits.consume_buffered(entry.len());
+            return entry.symbol();
         }
 
         bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));
@@ -977,11 +995,11 @@ impl CanonicalDecoder {
             bits.ensure_bits(usize::from(FAST_DECODE_BITS))?;
             let prefix = bits.peek_buffered(usize::from(FAST_DECODE_BITS)) as usize;
             let entry = self.fast[prefix];
-            if entry.len != 0 {
+            if entry.is_valid() {
                 #[cfg(feature = "profile")]
                 profile::huffman_fast();
-                bits.consume_buffered(usize::from(entry.len));
-                return Ok(usize::from(entry.symbol));
+                bits.consume_buffered(entry.len());
+                return Ok(entry.symbol());
             }
 
 
