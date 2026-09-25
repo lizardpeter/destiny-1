@@ -1,5 +1,5 @@
 name: D1 Oodle3 stable-baseline paired benchmark
-# stable baseline: de2ca740
+# stable baseline: 77aacb18
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git worktree add ../combined de2ca7405e510baf5e8765301dc24a07acedf7ef
+          git worktree add ../combined 77aacb18463f7fbc7161d718894dfff4eff7a6f3
           (cd ../combined/rust/d1_oodle3 && CARGO_TARGET_DIR=target-pair cargo build --release)
           (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-pair cargo build --release)
           cp ../combined/rust/d1_oodle3/target-pair/release/d1_oodle3.dll out/baseline.dll
