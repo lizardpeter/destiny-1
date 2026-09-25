@@ -14,7 +14,7 @@ pub enum DecoderType {
     Kraken = 6,
     MermaidSelkie = 10,
     BitKnit = 11,
-    Akkorokamui = 12,
+    Type12 = 12,
 }
 
 impl DecoderType {
@@ -24,14 +24,14 @@ impl DecoderType {
             6 => Ok(Self::Kraken),
             10 => Ok(Self::MermaidSelkie),
             11 => Ok(Self::BitKnit),
-            12 => Ok(Self::Akkorokamui),
+            12 => Ok(Self::Type12),
             _ => Err(Error::UnsupportedDecoderType(v)),
         }
     }
 
     pub const fn quantum_len(self) -> usize {
         match self {
-            Self::Kraken | Self::MermaidSelkie | Self::Akkorokamui => NEWLZ_QUANTUM_LEN,
+            Self::Kraken | Self::MermaidSelkie | Self::Type12 => NEWLZ_QUANTUM_LEN,
             Self::Lzna | Self::BitKnit => LEGACY_QUANTUM_LEN,
         }
     }
@@ -122,7 +122,7 @@ pub fn parse_quantum_header(
     raw_len: usize,
 ) -> Result<QuantumHeader, Error> {
     match block.decoder_type {
-        DecoderType::Kraken | DecoderType::MermaidSelkie | DecoderType::Akkorokamui => {
+        DecoderType::Kraken | DecoderType::MermaidSelkie | DecoderType::Type12 => {
             parse_newlz_quantum_header(input, block.use_checksums)
         }
         DecoderType::Lzna | DecoderType::BitKnit => {
@@ -378,7 +378,7 @@ mod tests {
             (6, DecoderType::Kraken),
             (10, DecoderType::MermaidSelkie),
             (11, DecoderType::BitKnit),
-            (12, DecoderType::Akkorokamui),
+            (12, DecoderType::Type12),
         ] {
             let (h, _) = parse_block_header(&[0x0c, wire]).unwrap();
             assert_eq!(h.decoder_type, expected);
