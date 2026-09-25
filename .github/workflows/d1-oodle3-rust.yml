@@ -1,0 +1,28 @@
+name: D1 Oodle3 Rust compatibility
+
+on:
+  push:
+    paths:
+      - 'rust/d1_oodle3/**'
+      - 'tools/oodle3_pe_map.py'
+      - 'notes/OODLE3_RUST_REVERSAL.md'
+      - '.github/workflows/d1-oodle3-rust.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test native framing crate
+        working-directory: rust/d1_oodle3
+        run: |
+          cargo fmt --check
+          cargo test --all-targets
+          cargo clippy --all-targets -- -D warnings
+      - name: Syntax-check PE mapper
+        run: python -m py_compile tools/oodle3_pe_map.py
