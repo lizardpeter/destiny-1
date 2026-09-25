@@ -1195,46 +1195,8 @@ impl Decoder {
         }
 
         // Only the final input-boundary region uses the fully checked reader.
-        op = decode_checked_tail(
-            huffman,
-            &mut bits,
-            output,
-            op,
-            output_end,
-            &mut recent,
-        )?;
-
-        *output_pos = op;
-
-        let remaining_bits = bits.remaining_bits();
-        if remaining_bits > 7 {
-            return Err(Error::TrailingPayloadBits(remaining_bits));
-        }
-        if remaining_bits != 0 && bits.read_bits(remaining_bits)? != 0 {
-            return Err(Error::NonZeroPadding);
-        }
-
-        #[cfg(feature = "stage_profile")]
-        stage_profile::payload(
-            payload_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-        );
-
-        Ok(())
-    }
-}
-
-#[cold]
-#[inline(never)]
-fn decode_checked_tail(
-    huffman: &CanonicalDecoder,
-    bits: &mut MsbBitReader<'_>,
-    output: &mut [u8],
-    mut op: usize,
-    output_end: usize,
-    recent: &mut [usize; 4],
-) -> Result<usize, Error> {
         while op < output_end {
-            let symbol = huffman.decode(bits)?;
+            let symbol = huffman.decode(&mut bits)?;
             if symbol < LITERAL_SYMBOLS {
                 #[cfg(feature = "profile")]
                 profile::literal();
@@ -1275,7 +1237,7 @@ fn decode_checked_tail(
                     _ => return Err(Error::InvalidRun),
                 };
                 let match_len = decode_length_parts(
-                    bits,
+                    &mut bits,
                     meta.length_base,
                     meta.length_info & !TOKEN_EXTENDED_FLAG,
                     (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
@@ -1303,7 +1265,7 @@ fn decode_checked_tail(
                 }
 
                 let match_len = decode_length_parts(
-                    bits,
+                    &mut bits,
                     meta.length_base,
                     meta.length_info & !TOKEN_EXTENDED_FLAG,
                     (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
@@ -1316,7 +1278,24 @@ fn decode_checked_tail(
                 copy_match_into(output, &mut op, output_end, match_distance, match_len)?;
             }
         }
-    Ok(op)
+
+        *output_pos = op;
+
+        let remaining_bits = bits.remaining_bits();
+        if remaining_bits > 7 {
+            return Err(Error::TrailingPayloadBits(remaining_bits));
+        }
+        if remaining_bits != 0 && bits.read_bits(remaining_bits)? != 0 {
+            return Err(Error::NonZeroPadding);
+        }
+
+        #[cfg(feature = "stage_profile")]
+        stage_profile::payload(
+            payload_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+        );
+
+        Ok(())
+    }
 }
 
 #[inline(always)]
