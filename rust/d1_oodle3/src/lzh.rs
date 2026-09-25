@@ -115,17 +115,38 @@ const EXPLICIT_DISTANCES: [DistanceCode; EXPLICIT_DISTANCE_CLASS_COUNT] = [
     DistanceCode { base: 98304, extra_bits: 15 },
 ];
 
-const fn build_token_codes() -> [SymbolCode; TOKEN_SYMBOLS] {
-    let mut codes = [SymbolCode::Recent {
-        selector_bits: 2,
-        length: RECENT_LENGTHS[0],
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+struct TokenMeta {
+    distance_base: u32,
+    length_base: u16,
+    distance_info: u8,
+    length_info: u8,
+}
+
+const TOKEN_RECENT_FLAG: u8 = 0x80;
+const TOKEN_EXTENDED_FLAG: u8 = 0x80;
+
+const fn encode_length_info(code: LengthCode) -> u8 {
+    code.extra_bits | if code.extended { TOKEN_EXTENDED_FLAG } else { 0 }
+}
+
+const fn build_token_meta() -> [TokenMeta; TOKEN_SYMBOLS] {
+    let mut meta = [TokenMeta {
+        distance_base: 0,
+        length_base: 0,
+        distance_info: 0,
+        length_info: 0,
     }; TOKEN_SYMBOLS];
 
     let mut recent = 0usize;
     while recent < RECENT_TOKEN_COUNT {
-        codes[recent] = SymbolCode::Recent {
-            selector_bits: 2,
-            length: RECENT_LENGTHS[recent],
+        let length = RECENT_LENGTHS[recent];
+        meta[recent] = TokenMeta {
+            distance_base: 0,
+            length_base: length.base,
+            distance_info: TOKEN_RECENT_FLAG | 2,
+            length_info: encode_length_info(length),
         };
         recent += 1;
     }
@@ -136,18 +157,31 @@ const fn build_token_codes() -> [SymbolCode; TOKEN_SYMBOLS] {
         while distance_index < EXPLICIT_DISTANCE_CLASS_COUNT {
             let token =
                 RECENT_TOKEN_COUNT + length_index * EXPLICIT_DISTANCE_CLASS_COUNT + distance_index;
-            codes[token] = SymbolCode::Explicit {
-                distance: EXPLICIT_DISTANCES[distance_index],
-                length: EXPLICIT_LENGTHS[length_index],
+            let distance = EXPLICIT_DISTANCES[distance_index];
+            let length = EXPLICIT_LENGTHS[length_index];
+            meta[token] = TokenMeta {
+                distance_base: distance.base,
+                length_base: length.base,
+                distance_info: distance.extra_bits,
+                length_info: encode_length_info(length),
             };
             distance_index += 1;
         }
         length_index += 1;
     }
-    codes
+    meta
 }
 
-const TOKEN_CODES: [SymbolCode; TOKEN_SYMBOLS] = build_token_codes();
+const TOKEN_META: [TokenMeta; TOKEN_SYMBOLS] = build_token_meta();
+
+#[inline(always)]
+const fn token_length(meta: TokenMeta) -> LengthCode {
+    LengthCode {
+        base: meta.length_base,
+        extra_bits: meta.length_info & !TOKEN_EXTENDED_FLAG,
+        extended: (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+    }
+}
 
 #[inline(always)]
 pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
@@ -157,8 +191,25 @@ pub fn classify_symbol(symbol: usize) -> Result<SymbolCode, Error> {
     if symbol >= SYMBOL_COUNT {
         return Err(Error::InvalidSymbol(symbol));
     }
-    Ok(TOKEN_CODES[symbol - LITERAL_SYMBOLS])
+
+    let meta = TOKEN_META[symbol - LITERAL_SYMBOLS];
+    let length = token_length(meta);
+    if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
+        Ok(SymbolCode::Recent {
+            selector_bits: meta.distance_info & !TOKEN_RECENT_FLAG,
+            length,
+        })
+    } else {
+        Ok(SymbolCode::Explicit {
+            distance: DistanceCode {
+                base: meta.distance_base,
+                extra_bits: meta.distance_info,
+            },
+            length,
+        })
+    }
 }
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -602,52 +653,57 @@ impl Decoder {
                 return Err(Error::InvalidSymbol(symbol));
             }
 
-            match TOKEN_CODES[symbol - LITERAL_SYMBOLS] {
-                SymbolCode::Recent {
-                    selector_bits,
-                    length,
-                } => {
-                    let selector = bits.read_bits(usize::from(selector_bits))? as usize;
-                    let distance = match selector {
-                        0 => recent[0],
-                        1 => {
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        2 => {
-                            recent.swap(1, 2);
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        3 => {
-                            recent.swap(2, 3);
-                            recent.swap(1, 2);
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        _ => return Err(Error::InvalidRun),
-                    };
-                    let match_len = decode_length(&mut bits, length)?;
-                    copy_match_into(output, output_pos, output_end, distance, match_len)?;
-                }
-                SymbolCode::Explicit { distance, length } => {
-                    let match_distance = distance.base as usize
-                        + bits.read_bits(usize::from(distance.extra_bits))? as usize
-                        + 1;
-
-                    // Oodle 2.3 LZH does not cache the shortest explicit
-                    // distance class (1..=16). Longer explicit distances are
-                    // inserted at rank 1 while rank 0 is preserved.
-                    if distance.base != 0 {
-                        recent[3] = recent[2];
-                        recent[2] = recent[1];
-                        recent[1] = match_distance;
+            let meta = TOKEN_META[symbol - LITERAL_SYMBOLS];
+            if (meta.distance_info & TOKEN_RECENT_FLAG) != 0 {
+                let selector_bits = meta.distance_info & !TOKEN_RECENT_FLAG;
+                let selector = bits.read_bits(usize::from(selector_bits))? as usize;
+                let distance = match selector {
+                    0 => recent[0],
+                    1 => {
+                        recent.swap(0, 1);
+                        recent[0]
                     }
+                    2 => {
+                        recent.swap(1, 2);
+                        recent.swap(0, 1);
+                        recent[0]
+                    }
+                    3 => {
+                        recent.swap(2, 3);
+                        recent.swap(1, 2);
+                        recent.swap(0, 1);
+                        recent[0]
+                    }
+                    _ => return Err(Error::InvalidRun),
+                };
+                let match_len = decode_length_parts(
+                    &mut bits,
+                    meta.length_base,
+                    meta.length_info & !TOKEN_EXTENDED_FLAG,
+                    (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                )?;
+                copy_match_into(output, output_pos, output_end, distance, match_len)?;
+            } else {
+                let match_distance = meta.distance_base as usize
+                    + bits.read_bits(usize::from(meta.distance_info))? as usize
+                    + 1;
 
-                    let match_len = decode_length(&mut bits, length)?;
-                    copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
+                // Oodle 2.3 LZH does not cache the shortest explicit
+                // distance class (1..=16). Longer explicit distances are
+                // inserted at rank 1 while rank 0 is preserved.
+                if meta.distance_base != 0 {
+                    recent[3] = recent[2];
+                    recent[2] = recent[1];
+                    recent[1] = match_distance;
                 }
-                SymbolCode::Literal(_) => unreachable!("token table cannot contain literals"),
+
+                let match_len = decode_length_parts(
+                    &mut bits,
+                    meta.length_base,
+                    meta.length_info & !TOKEN_EXTENDED_FLAG,
+                    (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                )?;
+                copy_match_into(output, output_pos, output_end, match_distance, match_len)?;
             }
         }
 
@@ -663,13 +719,24 @@ impl Decoder {
     }
 }
 
+#[inline(always)]
 fn decode_length(bits: &mut MsbBitReader<'_>, code: LengthCode) -> Result<usize, Error> {
-    let base = usize::from(code.base);
-    if code.extra_bits == 0 {
+    decode_length_parts(bits, code.base, code.extra_bits, code.extended)
+}
+
+#[inline(always)]
+fn decode_length_parts(
+    bits: &mut MsbBitReader<'_>,
+    base: u16,
+    extra_bits: u8,
+    extended: bool,
+) -> Result<usize, Error> {
+    let base = usize::from(base);
+    if extra_bits == 0 {
         return Ok(base);
     }
-    if !code.extended {
-        return Ok(base + bits.read_bits(usize::from(code.extra_bits))? as usize);
+    if !extended {
+        return Ok(base + bits.read_bits(usize::from(extra_bits))? as usize);
     }
 
     if !bits.read_bit()? {
