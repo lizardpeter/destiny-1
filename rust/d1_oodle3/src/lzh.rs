@@ -1133,22 +1133,36 @@ impl Decoder {
         if huffman.one_char.is_none() {
             'fast_decode: while op < output_end && bits.has_fast_margin() {
                 let mut symbol = huffman.decode_fast_multi(&mut bits);
+                let mut match_fast = true;
 
-                // D1 LZH is strongly literal-heavy. Stay in a compact literal-only
-                // loop until a match token appears instead of returning through the
-                // full token-dispatch loop for every literal.
-                while symbol < LITERAL_SYMBOLS {
+                // Mirror Oodle's literal cadence more closely: once the first
+                // symbol is known to be a literal, decode one more symbol from
+                // the same reservoir before paying another input-margin check.
+                // If the second symbol is also a literal, the outer loop starts
+                // the next pair. If it is a match, only then check whether its
+                // extra fields can stay on the unchecked fast path.
+                if symbol < LITERAL_SYMBOLS {
                     #[cfg(feature = "profile")]
                     profile::literal();
                     unsafe {
                         *output.get_unchecked_mut(op) = symbol as u8;
                     }
                     op += 1;
-
-                    if op >= output_end || !bits.has_fast_margin() {
-                        break 'fast_decode;
+                    if op >= output_end {
+                        break;
                     }
+
                     symbol = huffman.decode_fast_multi(&mut bits);
+                    if symbol < LITERAL_SYMBOLS {
+                        #[cfg(feature = "profile")]
+                        profile::literal();
+                        unsafe {
+                            *output.get_unchecked_mut(op) = symbol as u8;
+                        }
+                        op += 1;
+                        continue;
+                    }
+                    match_fast = bits.has_fast_margin();
                 }
 
                 debug_assert!(symbol < SYMBOL_COUNT);
@@ -1157,7 +1171,11 @@ impl Decoder {
                     profile::recent_match();
                     let length =
                         unsafe { *RECENT_LENGTHS.get_unchecked(symbol - LITERAL_SYMBOLS) };
-                    let selector = bits.read_bits_fast(2) as usize;
+                    let selector = if match_fast {
+                        bits.read_bits_fast(2) as usize
+                    } else {
+                        bits.read_bits(2)? as usize
+                    };
                     let distance = match selector {
                         0 => recent[0],
                         1 => {
@@ -1177,12 +1195,21 @@ impl Decoder {
                         }
                         _ => unreachable!(),
                     };
-                    let match_len = decode_length_parts_fast(
-                        &mut bits,
-                        length.base,
-                        length.extra_bits,
-                        length.extended,
-                    );
+                    let match_len = if match_fast {
+                        decode_length_parts_fast(
+                            &mut bits,
+                            length.base,
+                            length.extra_bits,
+                            length.extended,
+                        )
+                    } else {
+                        decode_length_parts(
+                            &mut bits,
+                            length.base,
+                            length.extra_bits,
+                            length.extended,
+                        )?
+                    };
                     #[cfg(feature = "profile")]
                     {
                         profile::distance(distance);
@@ -1194,7 +1221,11 @@ impl Decoder {
                     profile::explicit_match();
                     let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
                     let match_distance = meta.distance_base as usize
-                        + bits.read_bits_fast(usize::from(meta.distance_info)) as usize
+                        + if match_fast {
+                            bits.read_bits_fast(usize::from(meta.distance_info)) as usize
+                        } else {
+                            bits.read_bits(usize::from(meta.distance_info))? as usize
+                        }
                         + 1;
 
                     if meta.distance_base != 0 {
@@ -1203,18 +1234,31 @@ impl Decoder {
                         recent[1] = match_distance;
                     }
 
-                    let match_len = decode_length_parts_fast(
-                        &mut bits,
-                        meta.length_base,
-                        meta.length_info & !TOKEN_EXTENDED_FLAG,
-                        (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
-                    );
+                    let match_len = if match_fast {
+                        decode_length_parts_fast(
+                            &mut bits,
+                            meta.length_base,
+                            meta.length_info & !TOKEN_EXTENDED_FLAG,
+                            (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                        )
+                    } else {
+                        decode_length_parts(
+                            &mut bits,
+                            meta.length_base,
+                            meta.length_info & !TOKEN_EXTENDED_FLAG,
+                            (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                        )?
+                    };
                     #[cfg(feature = "profile")]
                     {
                         profile::distance(match_distance);
                         profile::length(match_len);
                     }
                     copy_match_into(output, &mut op, output_end, match_distance, match_len)?;
+                }
+
+                if !match_fast {
+                    break 'fast_decode;
                 }
             }
 
