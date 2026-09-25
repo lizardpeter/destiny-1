@@ -1608,13 +1608,16 @@ fn decode_stream_into_generic(input: &[u8], output: &mut [u8]) -> Result<(), Err
 }
 
 #[inline]
-fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+fn decode_stream_into_b7_common_with_decoder(
+    input: &[u8],
+    output: &mut [u8],
+    decoder: &mut Decoder,
+) -> Result<(), Error> {
     let output_len = output.len();
     if output_len == 0 || output_len > crate::BLOCK_LEN || input.first().copied() != Some(0xb7) {
         return decode_stream_into_generic(input, output);
     }
 
-    let mut decoder = Decoder::new();
     decoder.reset();
     let mut input_pos = 1usize;
     let mut output_pos = 0usize;
@@ -1668,6 +1671,24 @@ fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), E
         }));
     }
     Ok(())
+}
+
+#[inline]
+fn decode_stream_into_b7_common(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    let mut decoder = Decoder::new();
+    decode_stream_into_b7_common_with_decoder(input, output, &mut decoder)
+}
+
+pub(crate) fn decode_stream_into_reusing(
+    input: &[u8],
+    output: &mut [u8],
+    decoder: &mut Decoder,
+) -> Result<(), Error> {
+    if input.first().copied() == Some(0xb7) {
+        decode_stream_into_b7_common_with_decoder(input, output, decoder)
+    } else {
+        decode_stream_into_generic(input, output)
+    }
 }
 
 pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
