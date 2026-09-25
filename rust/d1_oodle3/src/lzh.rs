@@ -702,103 +702,114 @@ fn copy_match_into(
 
 pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
     let expected_raw_len = output.len();
+    let spans = crate::scan_frame(input, expected_raw_len)?;
     let mut decoder = Decoder::new();
-    let mut input_pos = 0usize;
     let mut output_pos = 0usize;
-    let mut current_block = None;
 
-    while output_pos < expected_raw_len {
-        if output_pos.is_multiple_of(crate::BLOCK_LEN) {
-            let (block, header_len) =
-                crate::parse_block_header(input.get(input_pos..).ok_or(Error::Truncated)?)?;
-            input_pos += header_len;
-            if block.decoder_type != crate::DecoderType::Lzh {
-                return Err(Error::UnsupportedDecoder(block.decoder_type));
-            }
-            if block.restart_decoder {
-                decoder.reset();
-            }
-            current_block = Some(block);
+    for span in spans {
+        if span.block.decoder_type != crate::DecoderType::Lzh {
+            return Err(Error::UnsupportedDecoder(span.block.decoder_type));
+        }
+        if span.output_offset.is_multiple_of(crate::BLOCK_LEN) && span.block.restart_decoder {
+            decoder.reset();
         }
 
-        let block = current_block.ok_or(Error::Frame(crate::Error::InvalidQuantumHeader))?;
-        let raw_len = block
-            .decoder_type
-            .quantum_len()
-            .min(expected_raw_len - output_pos)
-            .min(crate::BLOCK_LEN - (output_pos % crate::BLOCK_LEN));
-
-        if block.uncompressed {
-            let payload_end = input_pos.checked_add(raw_len).ok_or(Error::Truncated)?;
-            let payload = input.get(input_pos..payload_end).ok_or(Error::Truncated)?;
-            output[output_pos..output_pos + raw_len].copy_from_slice(payload);
-            input_pos = payload_end;
-            output_pos += raw_len;
-            continue;
-        }
-
-        let header = crate::parse_quantum_header(
-            input.get(input_pos..).ok_or(Error::Truncated)?,
-            block,
-            raw_len,
-        )?;
-        input_pos += header.header_len;
-
-        match header.kind {
+        match span.kind {
             crate::QuantumKind::Compressed {
                 stored_size, flag1, ..
             } => {
-                if stored_size > raw_len {
-                    return Err(crate::Error::StoredSizeExceedsRaw {
-                        stored: stored_size,
-                        raw: raw_len,
-                    }
-                    .into());
-                }
-                let payload_end = input_pos.checked_add(stored_size).ok_or(Error::Truncated)?;
-                let payload = input.get(input_pos..payload_end).ok_or(
-                    crate::Error::StoredSizeExceedsInput {
-                        stored: stored_size,
-                        available: input.len().saturating_sub(input_pos),
-                    },
+                let header = crate::parse_quantum_header(
+                    &input[span.input_offset..],
+                    span.block,
+                    span.raw_len,
                 )?;
-                input_pos = payload_end;
-                decoder.decode_quantum_into(payload, output, &mut output_pos, raw_len, flag1)?;
+                let payload_start = span.input_offset + header.header_len;
+                let payload_end = payload_start + stored_size;
+                let payload = input
+                    .get(payload_start..payload_end)
+                    .ok_or(Error::Truncated)?;
+                decoder.decode_quantum_into(
+                    payload,
+                    output,
+                    &mut output_pos,
+                    span.raw_len,
+                    flag1,
+                )?;
             }
             crate::QuantumKind::Raw => {
-                let payload_end = input_pos.checked_add(raw_len).ok_or(Error::Truncated)?;
-                let payload = input.get(input_pos..payload_end).ok_or(
-                    crate::Error::StoredSizeExceedsInput {
-                        stored: raw_len,
-                        available: input.len().saturating_sub(input_pos),
-                    },
-                )?;
-                output[output_pos..output_pos + raw_len].copy_from_slice(payload);
-                input_pos = payload_end;
-                output_pos += raw_len;
+                let (payload_start, payload_end) = if span.block.uncompressed {
+                    (
+                        span.input_offset,
+                        span.input_offset
+                            .checked_add(span.raw_len)
+                            .ok_or(Error::Truncated)?,
+                    )
+                } else {
+                    let header = crate::parse_quantum_header(
+                        &input[span.input_offset..],
+                        span.block,
+                        span.raw_len,
+                    )?;
+                    let start = span.input_offset + header.header_len;
+                    (
+                        start,
+                        start.checked_add(span.raw_len).ok_or(Error::Truncated)?,
+                    )
+                };
+                let payload = input
+                    .get(payload_start..payload_end)
+                    .ok_or(Error::Truncated)?;
+                let end = output_pos
+                    .checked_add(span.raw_len)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining: 0,
+                    })?;
+                let remaining = output.len().saturating_sub(output_pos);
+                output
+                    .get_mut(output_pos..end)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining,
+                    })?
+                    .copy_from_slice(payload);
+                output_pos = end;
             }
             crate::QuantumKind::Memset { value } => {
-                output[output_pos..output_pos + raw_len].fill(value);
-                output_pos += raw_len;
+                let end = output_pos
+                    .checked_add(span.raw_len)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining: 0,
+                    })?;
+                let remaining = output.len().saturating_sub(output_pos);
+                output
+                    .get_mut(output_pos..end)
+                    .ok_or(Error::OutputOverrun {
+                        requested: span.raw_len,
+                        remaining,
+                    })?
+                    .fill(value);
+                output_pos = end;
             }
             crate::QuantumKind::WholeMatch { distance } => {
                 let output_end =
                     output_pos
-                        .checked_add(raw_len)
+                        .checked_add(span.raw_len)
                         .ok_or(Error::OutputOverrun {
-                            requested: raw_len,
+                            requested: span.raw_len,
                             remaining: 0,
                         })?;
-                copy_match_into(output, &mut output_pos, output_end, distance, raw_len)?;
+                copy_match_into(output, &mut output_pos, output_end, distance, span.raw_len)?;
             }
         }
     }
 
-    if input_pos != input.len() {
-        return Err(crate::Error::TrailingInput {
-            remaining: input.len() - input_pos,
-        }
-        .into());
+    if output_pos != expected_raw_len {
+        return Err(Error::OutputOverrun {
+            requested: expected_raw_len,
+            remaining: expected_raw_len.saturating_sub(output_pos),
+        });
     }
     Ok(())
 }
