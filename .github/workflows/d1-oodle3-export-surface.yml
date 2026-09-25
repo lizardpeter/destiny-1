@@ -48,11 +48,84 @@ jobs:
               print('EXPORT',x['ordinal'],hex(x['rva']),x.get('name'))
           PY
 
+      - name: Measure mapped LZH function footprint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+
+          data=Path('reference/oo2core_3_win64.dll').read_bytes()
+          pe=struct.unpack_from('<I',data,0x3c)[0]
+          coff=pe+4
+          nsects=struct.unpack_from('<H',data,coff+2)[0]
+          opt_size=struct.unpack_from('<H',data,coff+16)[0]
+          opt=coff+20
+          sec_off=opt+opt_size
+          sections=[]
+          for i in range(nsects):
+              o=sec_off+i*40
+              name=data[o:o+8].split(b'\\0',1)[0].decode()
+              vsize,rva,raw_size,raw_off=struct.unpack_from('<IIII',data,o+8)
+              sections.append((name,vsize,rva,raw_size,raw_off))
+          def rva_off(rva):
+              for _,vs,va,rs,ro in sections:
+                  if va <= rva < va+max(vs,rs):
+                      return ro+(rva-va)
+              raise ValueError(hex(rva))
+          # PE32+ exception directory = data directory #3.
+          ndirs=struct.unpack_from('<I',data,opt+108)[0]
+          pdata_rva,pdata_size=struct.unpack_from('<II',data,opt+112+3*8)
+          po=rva_off(pdata_rva)
+          funcs=[]
+          for off in range(po,po+pdata_size,12):
+              if off+12>len(data): break
+              begin,end,unwind=struct.unpack_from('<III',data,off)
+              if begin==0 and end==0: continue
+              funcs.append((begin,end,unwind))
+          funcs.sort()
+
+          targets={
+              'lzh_model_reader':0x5d5e0,
+              'OodleLZDecoder_DecodeSome':0x5e180,
+              'OodleLZ_Decompress':0x5f8b0,
+              'lzh_kernel_a':0x75dc0,
+              'lzh_kernel_b':0x78b20,
+              'lzh_dispatch_a':0x79a70,
+              'lzh_dispatch_b':0x79b40,
+          }
+          mapped={}
+          unique=set()
+          for name,rva in targets.items():
+              hit=next(((b,e,u) for b,e,u in funcs if b<=rva<e),None)
+              if hit:
+                  b,e,u=hit
+                  mapped[name]={'target_rva':rva,'begin':b,'end':e,'size':e-b}
+                  unique.add((b,e))
+              else:
+                  mapped[name]={'target_rva':rva,'begin':None,'end':None,'size':None}
+          text_section=next(x for x in sections if x[0]=='.text')
+          text_bytes=text_section[1]
+          mapped_bytes=sum(e-b for b,e in unique)
+          report={
+              'text_virtual_bytes':text_bytes,
+              'mapped_unique_function_bytes':mapped_bytes,
+              'mapped_fraction_of_text':mapped_bytes/text_bytes,
+              'targets':mapped,
+          }
+          Path('out/lzh_function_footprint.json').write_text(json.dumps(report,indent=2)+'\\n')
+          print('TEXT_BYTES',text_bytes)
+          print('MAPPED_UNIQUE_FUNCTION_BYTES',mapped_bytes)
+          print('MAPPED_FRACTION_OF_TEXT',mapped_bytes/text_bytes)
+          for k,v in mapped.items(): print('MAPPED_FUNCTION',k,v)
+          PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: d1-oodle23-export-surface
           path: |
             out/pe_map.json
             out/export_surface.json
+            out/lzh_function_footprint.json
           retention-days: 30
           if-no-files-found: error
