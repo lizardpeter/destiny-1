@@ -1,5 +1,5 @@
 name: D1 Oodle3 Rust assembly probe
-# stack-frame rerun
+# stack-frame rerun after model split
 
 on:
   workflow_dispatch:
