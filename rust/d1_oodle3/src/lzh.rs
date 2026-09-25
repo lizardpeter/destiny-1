@@ -819,7 +819,7 @@ fn copy_match_into(
     Ok(())
 }
 
-pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+fn decode_stream_into_generic(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
     let expected_raw_len = output.len();
     let spans = crate::scan_frame(input, expected_raw_len)?;
     let mut decoder = Decoder::new();
@@ -931,6 +931,174 @@ pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> 
         });
     }
     Ok(())
+}
+
+
+#[inline(always)]
+fn parse_b7_whole_match(input: &[u8], input_pos: &mut usize) -> Result<usize, Error> {
+    if input.len().saturating_sub(*input_pos) < 2 {
+        return Err(Error::Truncated);
+    }
+    let v = u16::from_be_bytes([input[*input_pos], input[*input_pos + 1]]) as usize;
+    *input_pos += 2;
+    if v >= 0x8000 {
+        return Ok(v - 0x8000 + 1);
+    }
+
+    let mut x = 0usize;
+    let mut pos = 0usize;
+    loop {
+        let b = *input.get(*input_pos).ok_or(Error::Truncated)? as usize;
+        *input_pos += 1;
+        if (b & 0x80) != 0 {
+            x = x
+                .checked_add((b - 0x80) << pos)
+                .ok_or(Error::InvalidRun)?;
+            break;
+        }
+        x = x
+            .checked_add((b + 0x80) << pos)
+            .ok_or(Error::InvalidRun)?;
+        pos += 7;
+        if pos >= usize::BITS as usize {
+            return Err(Error::InvalidRun);
+        }
+    }
+
+    0x8000usize
+        .checked_add(v)
+        .and_then(|z| z.checked_add(x << 15))
+        .and_then(|z| z.checked_add(1))
+        .ok_or(Error::InvalidRun)
+}
+
+fn decode_stream_into_b7(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    let expected_raw_len = output.len();
+    let mut decoder = Decoder::new();
+    let mut input_pos = 0usize;
+    let mut output_pos = 0usize;
+
+    while output_pos < expected_raw_len {
+        if output_pos.is_multiple_of(crate::BLOCK_LEN) {
+            if input.get(input_pos).copied() != Some(0xb7) {
+                return Err(Error::Frame(crate::Error::InvalidBlockHeader(
+                    input.get(input_pos).copied().unwrap_or(0),
+                )));
+            }
+            input_pos += 1;
+            decoder.reset();
+        }
+
+        let raw_len = crate::LEGACY_QUANTUM_LEN
+            .min(expected_raw_len - output_pos)
+            .min(crate::BLOCK_LEN - (output_pos % crate::BLOCK_LEN));
+
+        if input.len().saturating_sub(input_pos) < 2 {
+            return Err(Error::Truncated);
+        }
+        let header = u16::from_be_bytes([input[input_pos], input[input_pos + 1]]) as usize;
+        input_pos += 2;
+        let size_field = header & 0x3fff;
+
+        if size_field != 0x3fff {
+            let stored_size = size_field + 1;
+            if stored_size > raw_len {
+                return Err(Error::Frame(crate::Error::StoredSizeExceedsRaw {
+                    stored: stored_size,
+                    raw: raw_len,
+                }));
+            }
+            let payload_end = input_pos
+                .checked_add(stored_size)
+                .ok_or(Error::Truncated)?;
+            if payload_end > input.len() {
+                return Err(Error::Frame(crate::Error::StoredSizeExceedsInput {
+                    stored: stored_size,
+                    available: input.len().saturating_sub(input_pos),
+                }));
+            }
+            let payload = unsafe { input.get_unchecked(input_pos..payload_end) };
+            let has_new_model = (header & 0x4000) != 0;
+            decoder.decode_quantum_into(
+                payload,
+                output,
+                &mut output_pos,
+                raw_len,
+                has_new_model,
+            )?;
+            input_pos = payload_end;
+            continue;
+        }
+
+        match header >> 14 {
+            0 => {
+                let distance = parse_b7_whole_match(input, &mut input_pos)?;
+                let output_end = output_pos
+                    .checked_add(raw_len)
+                    .ok_or(Error::OutputOverrun {
+                        requested: raw_len,
+                        remaining: 0,
+                    })?;
+                copy_match_into(output, &mut output_pos, output_end, distance, raw_len)?;
+            }
+            1 => {
+                let value = *input.get(input_pos).ok_or(Error::Truncated)?;
+                input_pos += 1;
+                let end = output_pos
+                    .checked_add(raw_len)
+                    .ok_or(Error::OutputOverrun {
+                        requested: raw_len,
+                        remaining: 0,
+                    })?;
+                output
+                    .get_mut(output_pos..end)
+                    .ok_or(Error::OutputOverrun {
+                        requested: raw_len,
+                        remaining: output.len().saturating_sub(output_pos),
+                    })?
+                    .fill(value);
+                output_pos = end;
+            }
+            2 => {
+                let payload_end = input_pos.checked_add(raw_len).ok_or(Error::Truncated)?;
+                if payload_end > input.len() {
+                    return Err(Error::Frame(crate::Error::StoredSizeExceedsInput {
+                        stored: raw_len,
+                        available: input.len().saturating_sub(input_pos),
+                    }));
+                }
+                let src = unsafe { input.get_unchecked(input_pos..payload_end) };
+                let end = output_pos + raw_len;
+                let dst = output
+                    .get_mut(output_pos..end)
+                    .ok_or(Error::OutputOverrun {
+                        requested: raw_len,
+                        remaining: output.len().saturating_sub(output_pos),
+                    })?;
+                dst.copy_from_slice(src);
+                input_pos = payload_end;
+                output_pos = end;
+            }
+            _ => {
+                return Err(Error::Frame(crate::Error::InvalidQuantumHeader));
+            }
+        }
+    }
+
+    if input_pos != input.len() {
+        return Err(Error::Frame(crate::Error::TrailingInput {
+            remaining: input.len() - input_pos,
+        }));
+    }
+    Ok(())
+}
+
+pub fn decode_stream_into(input: &[u8], output: &mut [u8]) -> Result<(), Error> {
+    if input.first().copied() == Some(0xb7) {
+        decode_stream_into_b7(input, output)
+    } else {
+        decode_stream_into_generic(input, output)
+    }
 }
 
 pub fn decode_stream(input: &[u8], expected_raw_len: usize) -> Result<Vec<u8>, Error> {
