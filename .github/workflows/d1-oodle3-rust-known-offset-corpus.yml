@@ -1,0 +1,213 @@
+name: D1 Oodle3 Rust known-offset corpus
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-oodle3-rust-known-offset-corpus.yml'
+      - 'rust/d1_oodle3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  known-offset-corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Recover small exact members from validated catalogs
+        run: |
+          set -euo pipefail
+          mkdir -p recovered runtime out
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_split_tar_extract import SplitHttpTar
+
+          rows=[
+            ('ps4_globals_0151_6.pkg',0x455B58E00,161792),
+            ('ps4_globals_0154_5.pkg',0x461A28E00,157696),
+            ('ps4_globals_0156_5.pkg',0x46AF67400,172032),
+            ('ps4_globals_0157_6.pkg',0x47AF53A00,356352),
+            ('ps4_globals_0158_6.pkg',0x484003600,122880),
+            ('ps4_investment_assets_0135_5.pkg',0x59A9D4C00,247808),
+            ('ps4_investment_assets_0137_5.pkg',0x59B606E00,141312),
+            ('ps4_investment_assets_0139_5.pkg',0x59C427800,180224),
+            ('ps4_investment_assets_013a_5.pkg',0x5A3545C00,165888),
+            ('ps4_investment_assets_013b_2.pkg',0x5A4EB5000,1114112),
+            ('ps4_investment_assets_013c_5.pkg',0x5A680C000,237568),
+            ('ps4_investment_assets_013d_5.pkg',0x5A7EC7A00,196608),
+            ('ps4_investment_assets_013e_5.pkg',0x5A93FDC00,145408),
+            ('ps4_investment_assets_013f_5.pkg',0x5AA910600,317440),
+            ('ps4_investment_assets_0140_5.pkg',0x5D9BFBE00,1605632),
+            ('ps4_investment_assets_0141_5.pkg',0x5DB9A4600,444416),
+            ('ps4_investment_assets_0142_5.pkg',0x5DD3C1600,401408),
+            ('ps4_investment_assets_0143_5.pkg',0x5DECF3600,567296),
+            ('ps4_investment_assets_0144_5.pkg',0x5E0E91600,335872),
+            ('ps4_investment_assets_0145_5.pkg',0x60BD45600,3166208),
+            ('ps4_investment_assets_0146_6.pkg',0x61583AC00,161792),
+          ]
+
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=6,timeout=90)
+          manifest=[]
+          for name,off,size in rows:
+              dst=Path('recovered')/name
+              sha=arc.copy_to(off,size,dst)
+              manifest.append({'name':name,'data_offset':off,'size':size,'sha256':sha})
+              print('RECOVERED',name,size,sha)
+          Path('out/recovery.json').write_text(json.dumps({'members':manifest},indent=2)+'\n')
+          print('RECOVERED_PACKAGE_COUNT',len(manifest))
+          PY
+
+      - name: Fetch verified Oodle 2.3 reference runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' \
+            -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build native Rust decoder
+        working-directory: rust/d1_oodle3
+        run: cargo build --release --bin native_decode
+
+      - name: Compare all resident compressed blocks
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,subprocess,sys
+          from collections import Counter
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from d1_pkg_probe import parse_header,parse_blocks,read_table
+          from d1_oodle_probe import Oodle3
+
+          reference=Oodle3(Path('runtime/liblinoodle3.so'))
+          exe=Path('rust/d1_oodle3/target/release/native_decode')
+          report={'packages':[],'rows':[],'failures':[]}
+          first_bytes=Counter()
+          decoder_headers=Counter()
+          raw_sizes=Counter()
+          tmp_comp=Path('out/current.comp')
+          tmp_raw=Path('out/current.rust')
+
+          for pkg in sorted(Path('recovered').glob('*.pkg')):
+              with pkg.open('rb') as f:
+                  h=parse_header(f)
+                  bt=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+              blocks=parse_blocks(bt)
+              patch=int(h['patch_id'])
+              resident=[b for b in blocks if b['compressed'] and int(b['patch_id'])==patch]
+              prow={
+                  'package':pkg.name,
+                  'package_id':f"{int(h['pkg_id']):04X}",
+                  'patch_id':patch,
+                  'resident_compressed':len(resident),
+                  'tested_ok':0,
+              }
+              report['packages'].append(prow)
+              print('PACKAGE',prow)
+
+              for b in resident:
+                  with pkg.open('rb') as f:
+                      f.seek(int(b['offset']))
+                      comp=f.read(int(b['size']))
+                  got_sha1=hashlib.sha1(comp).hexdigest()
+                  if got_sha1.lower()!=str(b['sha1']).lower():
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'stored_sha1',
+                          'expected':str(b['sha1']),'actual':got_sha1,
+                      })
+                      continue
+
+                  prefix=comp[:16].hex()
+                  if comp:
+                      first_bytes[f'{comp[0]:02x}']+=1
+                      decoder_headers[prefix[:4]]+=1
+                  try:
+                      expected=reference.decompress_block(comp)
+                  except Exception as ex:
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'reference',
+                          'stored_size':len(comp),'prefix':prefix,'error':repr(ex),
+                      })
+                      continue
+
+                  raw_sizes[len(expected)]+=1
+                  tmp_comp.write_bytes(comp)
+                  p=subprocess.run(
+                      [str(exe),str(tmp_comp),str(len(expected)),str(tmp_raw)],
+                      text=True,capture_output=True,
+                  )
+                  if p.returncode!=0:
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'rust',
+                          'stored_size':len(comp),'raw_size':len(expected),'prefix':prefix,
+                          'stderr':p.stderr[-3000:],
+                      })
+                      continue
+
+                  actual=tmp_raw.read_bytes()
+                  if actual!=expected:
+                      first=next((i for i,(a,e) in enumerate(zip(actual,expected)) if a!=e),None)
+                      report['failures'].append({
+                          'package':pkg.name,'block':int(b['index']),'stage':'compare',
+                          'stored_size':len(comp),'raw_size':len(expected),'prefix':prefix,
+                          'first_mismatch':first,
+                          'rust_sha256':hashlib.sha256(actual).hexdigest(),
+                          'reference_sha256':hashlib.sha256(expected).hexdigest(),
+                      })
+                      continue
+
+                  row={
+                      'package':pkg.name,'block':int(b['index']),
+                      'stored_size':len(comp),'raw_size':len(actual),
+                      'prefix':prefix,'sha256':hashlib.sha256(actual).hexdigest(),
+                  }
+                  report['rows'].append(row)
+                  prow['tested_ok']+=1
+                  print('KNOWN_OFFSET_BYTE_IDENTICAL',row)
+
+          report['first_byte_census']=dict(first_bytes)
+          report['header_prefix_census']=dict(decoder_headers)
+          report['raw_size_census']={str(k):v for k,v in sorted(raw_sizes.items())}
+          report['tested_ok']=len(report['rows'])
+          report['packages_with_compressed_blocks']=sum(1 for p in report['packages'] if p['resident_compressed'])
+          Path('out/known_offset_corpus.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('FIRST_BYTE_CENSUS',dict(first_bytes))
+          print('HEADER_PREFIX_CENSUS',dict(decoder_headers))
+          print('RAW_SIZE_CENSUS',dict(raw_sizes))
+          print('PACKAGES_WITH_COMPRESSED',report['packages_with_compressed_blocks'])
+          print('KNOWN_OFFSET_OK',len(report['rows']))
+          if report['failures']:
+              print(json.dumps(report['failures'],indent=2))
+              raise SystemExit(f"{len(report['failures'])} known-offset corpus failures")
+          if report['packages_with_compressed_blocks']<10:
+              raise SystemExit(f"only {report['packages_with_compressed_blocks']} packages had resident compressed blocks")
+          if len(report['rows'])<20:
+              raise SystemExit(f"only {len(report['rows'])} compressed blocks tested")
+          print('D1_OODLE23_RUST_KNOWN_OFFSET_CORPUS_GREEN',len(report['rows']))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle23-rust-known-offset-corpus
+          path: |
+            out/recovery.json
+            out/known_offset_corpus.json
+          retention-days: 30
+          if-no-files-found: error
