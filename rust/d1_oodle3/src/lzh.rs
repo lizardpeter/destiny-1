@@ -759,7 +759,7 @@ impl FastEntry {
     const fn new(symbol: usize, len: u8) -> Self {
         // Zero remains the long-code sentinel. Store symbol+1 so literal 0 is
         // representable while keeping the hot path to one 32-bit table load.
-        Self(((u32::from(len)) << 16) | (symbol as u32 + 1))
+        Self(((len as u32) << 16) | (symbol as u32 + 1))
     }
 
     #[inline(always)]
