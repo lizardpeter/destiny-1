@@ -432,58 +432,75 @@ struct CanonicalDecoder {
 }
 
 impl CanonicalDecoder {
+    fn empty() -> Self {
+        Self {
+            counts: [0; MAX_CODE_LEN as usize + 1],
+            first_code: [0; MAX_CODE_LEN as usize + 1],
+            first_symbol: [0; MAX_CODE_LEN as usize + 1],
+            symbols: Vec::new(),
+            fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
+            long_prefix: [-1; 1 << FAST_DECODE_BITS],
+            long_tables: Vec::new(),
+            max_len: 0,
+            one_char: None,
+        }
+    }
+
     fn new(model: &HuffmanModel) -> Result<Self, Error> {
-        if let Some(one_char) = model.one_char {
-            return Ok(Self {
-                counts: [0; MAX_CODE_LEN as usize + 1],
-                first_code: [0; MAX_CODE_LEN as usize + 1],
-                first_symbol: [0; MAX_CODE_LEN as usize + 1],
-                symbols: Vec::new(),
-                fast: [FastEntry::default(); 1 << FAST_DECODE_BITS],
-                long_prefix: [-1; 1 << FAST_DECODE_BITS],
-                long_tables: Vec::new(),
-                max_len: 0,
-                one_char: Some(one_char),
-            });
+        let mut decoder = Self::empty();
+        decoder.rebuild(model)?;
+        Ok(decoder)
+    }
+
+    fn rebuild(&mut self, model: &HuffmanModel) -> Result<(), Error> {
+        self.one_char = model.one_char;
+        self.max_len = model.max_code_len;
+        self.counts.fill(0);
+        self.first_code.fill(0);
+        self.first_symbol.fill(0);
+        self.symbols.clear();
+        self.fast.fill(FastEntry::default());
+        self.long_prefix.fill(-1);
+        self.long_tables.clear();
+
+        if model.one_char.is_some() {
+            return Ok(());
         }
         if model.used_symbols == 0 || model.max_code_len == 0 {
             return Err(Error::EmptyModel);
         }
 
-        let mut counts = [0u16; MAX_CODE_LEN as usize + 1];
         for &len in &model.code_lengths {
             if len != 0 {
-                counts[usize::from(len)] += 1;
+                self.counts[usize::from(len)] += 1;
             }
         }
 
-        let mut first_code = [0u32; MAX_CODE_LEN as usize + 1];
-        let mut first_symbol = [0usize; MAX_CODE_LEN as usize + 1];
         let mut code = 0u32;
         let mut symbol_index = 0usize;
         for len in 1..=usize::from(model.max_code_len) {
-            code = (code + u32::from(counts[len - 1])) << 1;
-            first_code[len] = code;
-            first_symbol[len] = symbol_index;
-            symbol_index += usize::from(counts[len]);
+            code = (code + u32::from(self.counts[len - 1])) << 1;
+            self.first_code[len] = code;
+            self.first_symbol[len] = symbol_index;
+            symbol_index += usize::from(self.counts[len]);
         }
 
-        let mut symbols = Vec::with_capacity(model.used_symbols);
+        if self.symbols.capacity() < model.used_symbols {
+            self.symbols
+                .reserve(model.used_symbols - self.symbols.capacity());
+        }
         for len in 1..=model.max_code_len {
             for (symbol, &symbol_len) in model.code_lengths.iter().enumerate() {
                 if symbol_len == len {
-                    symbols.push(symbol as u16);
+                    self.symbols.push(symbol as u16);
                 }
             }
         }
-        if symbols.len() != model.used_symbols {
+        if self.symbols.len() != model.used_symbols {
             return Err(Error::NonCanonical);
         }
 
-        let mut fast = [FastEntry::default(); 1 << FAST_DECODE_BITS];
-        let mut long_prefix = [-1i16; 1 << FAST_DECODE_BITS];
-        let mut long_tables: Vec<[FastEntry; 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]> = Vec::new();
-        let mut next_code = first_code;
+        let mut next_code = self.first_code;
         for (symbol, &len) in model.code_lengths.iter().enumerate() {
             if len == 0 {
                 continue;
@@ -498,20 +515,20 @@ impl CanonicalDecoder {
                 let shift = usize::from(FAST_DECODE_BITS - len);
                 let start = (code as usize) << shift;
                 let end = start + (1usize << shift);
-                fast[start..end].fill(entry);
+                self.fast[start..end].fill(entry);
             } else {
                 let suffix_bits = usize::from(len - FAST_DECODE_BITS);
                 let prefix = (code as usize) >> suffix_bits;
-                let table_index = if long_prefix[prefix] >= 0 {
-                    long_prefix[prefix] as usize
+                let table_index = if self.long_prefix[prefix] >= 0 {
+                    self.long_prefix[prefix] as usize
                 } else {
-                    let index = long_tables.len();
+                    let index = self.long_tables.len();
                     if index > i16::MAX as usize {
                         return Err(Error::NonCanonical);
                     }
-                    long_tables
+                    self.long_tables
                         .push([FastEntry::default(); 1 << (MAX_CODE_LEN - FAST_DECODE_BITS)]);
-                    long_prefix[prefix] = index as i16;
+                    self.long_prefix[prefix] = index as i16;
                     index
                 };
                 let suffix_mask = (1usize << suffix_bits) - 1;
@@ -519,21 +536,11 @@ impl CanonicalDecoder {
                 let fill_shift = usize::from(MAX_CODE_LEN - len);
                 let start = suffix << fill_shift;
                 let end = start + (1usize << fill_shift);
-                long_tables[table_index][start..end].fill(entry);
+                self.long_tables[table_index][start..end].fill(entry);
             }
         }
 
-        Ok(Self {
-            counts,
-            first_code,
-            first_symbol,
-            symbols,
-            fast,
-            long_prefix,
-            long_tables,
-            max_len: model.max_code_len,
-            one_char: None,
-        })
+        Ok(())
     }
 
     #[inline(always)]
@@ -558,7 +565,8 @@ impl CanonicalDecoder {
                     bits.ensure_bits(usize::from(MAX_CODE_LEN))?;
                     let window = bits.peek_buffered(usize::from(MAX_CODE_LEN)) as usize;
                     let suffix_mask = (1usize << (MAX_CODE_LEN - FAST_DECODE_BITS)) - 1;
-                    let long_entry = self.long_tables[table_index as usize][window & suffix_mask];
+                    let long_entry =
+                        self.long_tables[table_index as usize][window & suffix_mask];
                     if long_entry.len != 0 {
                         bits.consume_buffered(usize::from(long_entry.len));
                         return Ok(usize::from(long_entry.symbol));
@@ -567,8 +575,6 @@ impl CanonicalDecoder {
             }
         }
 
-        // Only the final <16 payload bits should normally reach this proven
-        // canonical fallback.
         let mut code = 0u32;
         for len in 1..=usize::from(self.max_len) {
             code = (code << 1) | u32::from(bits.read_bit()?);
@@ -604,7 +610,6 @@ impl Decoder {
 
     pub fn reset(&mut self) {
         self.model = None;
-        self.huffman = None;
     }
 
     pub fn decode_quantum_into(
@@ -622,11 +627,17 @@ impl Decoder {
             if payload_offset > payload.len() {
                 return Err(Error::Truncated);
             }
-            let huffman = CanonicalDecoder::new(&model)?;
+            if let Some(huffman) = self.huffman.as_mut() {
+                huffman.rebuild(&model)?;
+            } else {
+                self.huffman = Some(CanonicalDecoder::new(&model)?);
+            }
             self.model = Some(model);
-            self.huffman = Some(huffman);
         }
 
+        if self.model.is_none() {
+            return Err(Error::MissingModel);
+        }
         let huffman = self.huffman.as_ref().ok_or(Error::MissingModel)?;
         let mut bits = MsbBitReader::new(&payload[payload_offset..]);
         let output_end = output_pos
