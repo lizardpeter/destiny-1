@@ -86,6 +86,36 @@ python tools/d1_texture_export.py <ps4_pkg> \
   --manifest evidence/decoded/ps4_texture_manifest.json
 ```
 
+
+Executable/code-side identity:
+
+```bash
+python tools/d1_executable_probe.py <already-available-eboot-or-elf> \
+  --strings -o evidence/<build>.executable.json
+python tools/d1_executable_knowledge.py evidence/<build>.executable.json \
+  -o knowledge/records/<build>_executable.json
+```
+
+Ghidra code graph after normal auto-analysis:
+
+```bash
+analyzeHeadless <project-dir> D1Exec \
+  -import <eboot-or-elf> -overwrite \
+  -scriptPath <destiny-1>/tools/ghidra \
+  -postScript D1ExportCodeGraph.py evidence/<build>.ghidra.json CUSA00219 <version>
+
+python tools/d1_ghidra_graph_normalize.py evidence/<build>.ghidra.json \
+  --out-dir build/codegraph/<build>
+```
+
+Cross-version matching:
+
+```bash
+python tools/d1_executable_compare.py \
+  evidence/01.29.ghidra.json evidence/01.33.ghidra.json \
+  --anchor 0xFAAF4 -o evidence/01.29_vs_01.33.code_compare.json
+```
+
 Knowledge database:
 
 ```bash
