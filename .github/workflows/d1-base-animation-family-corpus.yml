@@ -2,10 +2,6 @@ name: D1 base animation family corpus
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ['D1 base character corpus fast']
-    types: [completed]
-
 permissions:
   contents: read
   actions: read
