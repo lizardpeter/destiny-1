@@ -2,10 +2,6 @@ name: D1 all Guardian source model cache
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ['D1 all Guardian visual export plan']
-    types: [completed]
-
 permissions:
   contents: read
   actions: read
