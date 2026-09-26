@@ -1,6 +1,6 @@
 {
   "schema": "d1_runtime_code_trace/v1",
-  "updated_utc": "2026-09-26T13:20:00Z",
+  "updated_utc": "2026-09-26T13:30:00Z",
   "source": {
     "kind": "public_issue_report",
     "locator": "https://github.com/rexglue/rexglue-sdk/issues/404",
@@ -16,8 +16,17 @@
     "source_xex": "reported only; exact XEX SHA-256 not supplied",
     "rexglue_sdk": "main branch around 2026-08-06",
     "build_preset": "win-amd64-relwithdebinfo",
-    "identity_status": "AUTHOR_REPORTED",
-    "relation_to_public_ttk_title_415608F8": "UNRESOLVED"
+    "identity_status": "STRONGLY_SUPPORTED_PRERELEASE_TITLE",
+    "relation_to_public_ttk_title_415608F8": "STRONGLY_SUPPORTED_DISTINCT_PRERELEASE_VS_RETAIL_TITLE_IDS",
+    "title_identity_corroboration": {
+      "source": "https://github.com/Blam-Network/sunrise_plugin/blob/a1d15e49c8e103c5ba93e759aaccfac71ed021ff/Sunrise2/Sunrise3.cpp",
+      "commit": "a1d15e49c8e103c5ba93e759aaccfac71ed021ff",
+      "evidence": [
+        "DestinyPreRelease = 0x41560907",
+        "Destiny = 0x415608F8",
+        "41560907 path logs 'Destiny Pre Release detected! Spoofing...' and rewrites execution ID to retail Destiny"
+      ]
+    }
   },
   "trace": {
     "thread_name": "TIME_CONTROL",
@@ -120,7 +129,7 @@
   "policy": [
     "This is runtime/recompiler evidence, not an independently verified original XEX disassembly.",
     "Guest function addresses are Xbox 360 build-specific and must never be transferred to PS4.",
-    "The author-reported title ID 41560907 is retained literally; its relationship to the separately observed 415608F8 TTK title identity remains unresolved.",
+    "Title ID 41560907 is independently labeled DestinyPreRelease by Sunrise tooling, while 415608F8 is labeled Destiny retail. Exact pre-release XEX build/version and byte identity remain unresolved.",
     "Dynamic stack order is preserved as a trace observation and is not automatically promoted to a static CALLS graph."
   ]
 }
