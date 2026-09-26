@@ -2,12 +2,6 @@ name: D1 003B SDye_D1 class census
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'tools/d1_ps4_dye_class_census.py'
-      - '.github/workflows/d1-003b-dye-class-census.yml'
-
 permissions: {contents: read, actions: read}
 
 env:
