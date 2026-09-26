@@ -1,0 +1,55 @@
+{
+  "schema": "d1_executable_evidence/v1",
+  "subject": "Destiny 1 PS4 CUSA00219 executable build anchors",
+  "updated_utc": "2026-09-26T12:00:00Z",
+  "canonical_target": {
+    "game": "Destiny 1",
+    "platform": "PS4",
+    "title_id": "CUSA00219",
+    "app_version": "01.33",
+    "content_id": "UP0002-CUSA00219_00-DESTINYTHEGAME01",
+    "role": "final retail PS4 executable target"
+  },
+  "known_builds": [
+    {
+      "title_id": "CUSA00219",
+      "app_version": "01.29",
+      "artifact": "decrypted eboot.bin",
+      "sha256": "7271fcb926401df8defb126cb8eb2b247134138b81e401bbacb2ab60791b795",
+      "status": "PUBLICLY_REPORTED_FINGERPRINT",
+      "source": "https://gbatemp.net/threads/looking-for-destiny-1-usa-cusa00219-specific-patch-version-up-to-v1-29.683928/"
+    },
+    {
+      "title_id": "CUSA00219",
+      "app_version": "01.33",
+      "artifact": "owner-dumped executable/runtime",
+      "sha256": null,
+      "status": "TARGET",
+      "source": "https://github.com/shadps4-compatibility/shadps4-game-compatibility/issues/994"
+    }
+  ],
+  "runtime_anchors": [
+    {
+      "name": "graphics_heartbeat_failure_neighborhood",
+      "code_offset": "0xFAAF4",
+      "status": "PUBLIC_RUNTIME_OBSERVATION",
+      "scope": "CUSA00219",
+      "source": "https://github.com/shadps4-compatibility/shadps4-game-compatibility/issues/994",
+      "caution": "Use as a cross-version anchor only. It is not a recovered function name or proof of identical function boundaries between builds."
+    }
+  ],
+  "container_signatures": {
+    "ps4_self_magic_hex": "4f153d1d",
+    "elf_magic_hex": "7f454c46"
+  },
+  "tooling": {
+    "probe": "tools/d1_executable_probe.py",
+    "purpose": "Fingerprint any acquired executable and preserve exact build identity before disassembly or graph ingestion."
+  },
+  "policy": [
+    "Do not store retail executable bytes in Git.",
+    "Every address, pseudocode function, call edge, import, string xref, or recovered semantic must retain its exact executable build identity.",
+    "Do not transfer raw offsets across builds without a demonstrated content/function match.",
+    "PS3/Xbox observations may be semantic hints but do not prove PS4 addresses or implementations."
+  ]
+}
