@@ -16,22 +16,54 @@
     "frontiers"
   ],
   "properties": {
-    "schema": {"const": "d1_knowledge_record/v1"},
-    "record_id": {"type": "string", "minLength": 1},
-    "title": {"type": "string", "minLength": 1},
-    "updated_utc": {"type": "string", "minLength": 1},
-    "scope": {"type": "object"},
+    "schema": {
+      "const": "d1_knowledge_record/v1"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_utc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "object"
+    },
     "nodes": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "status"],
+        "required": [
+          "id",
+          "kind",
+          "status"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "kind": {"type": "string", "minLength": 1},
-          "status": {"$ref": "#/$defs/status"},
-          "label": {"type": ["string", "null"]},
-          "attrs": {"type": "object"}
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/$defs/status"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attrs": {
+            "type": "object"
+          }
         },
         "additionalProperties": true
       }
@@ -40,19 +72,43 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "subject", "predicate", "object", "status"],
+        "required": [
+          "id",
+          "subject",
+          "predicate",
+          "object",
+          "status"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "subject": {"type": "string", "minLength": 1},
-          "predicate": {"type": "string", "minLength": 1},
-          "object": {"type": "string", "minLength": 1},
-          "status": {"$ref": "#/$defs/status"},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "predicate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "object": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/$defs/status"
+          },
           "assertion_ids": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "uniqueItems": true
           },
-          "attrs": {"type": "object"}
+          "attrs": {
+            "type": "object"
+          }
         },
         "additionalProperties": true
       }
@@ -61,17 +117,34 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "status", "claim", "source_ids"],
+        "required": [
+          "id",
+          "status",
+          "claim",
+          "source_ids"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "status": {"$ref": "#/$defs/status"},
-          "claim": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/$defs/status"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
           "source_ids": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "uniqueItems": true
           },
-          "details": {"type": "object"}
+          "details": {
+            "type": "object"
+          }
         },
         "additionalProperties": true
       }
@@ -80,16 +153,34 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "locator"],
+        "required": [
+          "id",
+          "kind",
+          "locator"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "kind": {"type": "string", "minLength": 1},
-          "locator": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1
+          },
           "sha256": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^[0-9a-fA-F]{64}$"
           },
-          "details": {"type": "object"}
+          "details": {
+            "type": "object"
+          }
         },
         "additionalProperties": true
       }
@@ -98,15 +189,35 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "candidate_node", "rejected_as", "reason", "assertion_ids"],
+        "required": [
+          "id",
+          "candidate_node",
+          "rejected_as",
+          "reason",
+          "assertion_ids"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "candidate_node": {"type": "string", "minLength": 1},
-          "rejected_as": {"type": "string", "minLength": 1},
-          "reason": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_node": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rejected_as": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
           "assertion_ids": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "uniqueItems": true
           }
         },
@@ -117,15 +228,59 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "question", "next_proof"],
+        "required": [
+          "id",
+          "question",
+          "next_proof"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "question": {"type": "string", "minLength": 1},
-          "next_proof": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "next_proof": {
+            "type": "string",
+            "minLength": 1
+          },
           "related_nodes": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "uniqueItems": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "external_nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": true
