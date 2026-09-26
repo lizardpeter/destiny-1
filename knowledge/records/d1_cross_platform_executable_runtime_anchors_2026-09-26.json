@@ -1,0 +1,178 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "d1_cross_platform_executable_runtime_anchors_2026_09_26",
+  "title": "Destiny executable cross-platform runtime semantic anchors",
+  "updated_utc": "2026-09-26T13:15:00Z",
+  "scope": {
+    "game": "Destiny 1",
+    "purpose": "Cross-platform code-side semantic anchors for PS4 executable reversal"
+  },
+  "nodes": [
+    {
+      "id": "executable:xbox360:ttk:415608F8",
+      "kind": "executable_build",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "Destiny TTK Xbox 360 default.xex",
+      "attrs": {
+        "platform": "Xbox 360",
+        "title_id": "415608F8",
+        "original_pe_name": "tiger_release_final.exe",
+        "load_address": "0x82000000",
+        "image_size": "0x01790000",
+        "entry_point": "0x82CD5E10",
+        "exact_binary_sha256": null
+      }
+    },
+    {
+      "id": "semantic:thread:TIME_CONTROL",
+      "kind": "thread_semantic",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "TIME_CONTROL",
+      "attrs": {
+        "cross_platform_name_observed": true,
+        "ps4_address_identity_proven": false
+      }
+    },
+    {
+      "id": "semantic:build_name:tiger_release_final.exe",
+      "kind": "build_identity_string",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "tiger_release_final.exe",
+      "attrs": {
+        "observed_platform": "Xbox 360",
+        "candidate_ps4_string_anchor": true
+      }
+    }
+  ],
+  "external_nodes": [
+    {
+      "id": "executable:CUSA00219:01.29:eboot",
+      "record_id": "d1_ps4_executable_build_anchors_2026_09_26",
+      "note": "Canonical PS4 01.29 executable node owned by the PS4 build-anchor record."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:xbox_time_control",
+      "subject": "executable:xbox360:ttk:415608F8",
+      "predicate": "HAS_REPORTED_THREAD_NAME",
+      "object": "semantic:thread:TIME_CONTROL",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:xbox_time_control"
+      ],
+      "attrs": {}
+    },
+    {
+      "id": "edge:ps4_time_control",
+      "subject": "executable:CUSA00219:01.29:eboot",
+      "predicate": "HAS_REPORTED_THREAD_NAME",
+      "object": "semantic:thread:TIME_CONTROL",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:ps4_time_control"
+      ],
+      "attrs": {}
+    },
+    {
+      "id": "edge:xbox_original_pe_name",
+      "subject": "executable:xbox360:ttk:415608F8",
+      "predicate": "HAS_REPORTED_ORIGINAL_PE_NAME",
+      "object": "semantic:build_name:tiger_release_final.exe",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:xbox_pe_name"
+      ],
+      "attrs": {}
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:xbox_time_control",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "A public Destiny TTK Xenia runtime log explicitly calls SetThreadName with TIME_CONTROL and then records time/config/region/file/crypto initialization activity on the same logged thread.",
+      "source_ids": [
+        "source:xenia_ttk_log"
+      ],
+      "details": {
+        "immediate_apis": [
+          "KeQuerySystemTime",
+          "ExGetXConfigSetting",
+          "XGetGameRegion",
+          "XeCryptAesKey",
+          "XeCryptAesCbc"
+        ]
+      }
+    },
+    {
+      "id": "assert:ps4_time_control",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "A public verified-dump CUSA00219 01.29 shadPS4 report states that TIME_CONTROL remains active doing RetrieveIp/STUN work near the deterministic Graphics Heartbeat crash.",
+      "source_ids": [
+        "source:shadps4_issue994"
+      ],
+      "details": {
+        "limitation": "Public report/comment evidence; raw attached log was not retrievable in the current analysis environment."
+      }
+    },
+    {
+      "id": "assert:xbox_pe_name",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "The public Xenia log reports XEX_HEADER_ORIGINAL_PE_NAME as tiger_release_final.exe for the Destiny TTK Xbox 360 executable.",
+      "source_ids": [
+        "source:xenia_ttk_log"
+      ],
+      "details": {}
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:xenia_ttk_log",
+      "kind": "public_runtime_log",
+      "locator": "https://gist.github.com/Nukem9/b5701699bf5d73545f5e",
+      "sha256": null,
+      "details": {
+        "platform": "Xbox 360",
+        "observed_title_id": "415608F8"
+      }
+    },
+    {
+      "id": "source:shadps4_issue994",
+      "kind": "public_compatibility_report",
+      "locator": "https://github.com/shadps4-compatibility/shadps4-game-compatibility/issues/994",
+      "sha256": null,
+      "details": {
+        "platform": "PS4",
+        "title_id": "CUSA00219"
+      }
+    },
+    {
+      "id": "source:cross_platform_evidence",
+      "kind": "repository_evidence",
+      "locator": "evidence/d1_cross_platform_executable_runtime_anchors_2026-09-26.json",
+      "sha256": null,
+      "details": {}
+    }
+  ],
+  "rejections": [],
+  "frontiers": [
+    {
+      "id": "frontier:ps4_time_control_xrefs",
+      "question": "Where is TIME_CONTROL created/named in the PS4 CUSA00219 executable and which functions implement its network/time responsibilities?",
+      "next_proof": "Obtain any exact PS4 eboot, search defined/raw strings and xrefs for TIME_CONTROL, RetrieveIp and STUN, then retain exact function boundaries/call edges under that executable SHA-256.",
+      "related_nodes": [
+        "executable:CUSA00219:01.29:eboot",
+        "semantic:thread:TIME_CONTROL"
+      ]
+    },
+    {
+      "id": "frontier:graphics_heartbeat_relation",
+      "question": "What code/data relationship exists between TIME_CONTROL and the Graphics Heartbeat eboot+0xFAAF4 failure path?",
+      "next_proof": "Recover both thread creation/call graphs from an exact executable and trace shared initialization state or synchronization dependencies; do not infer a relationship from temporal proximity alone.",
+      "related_nodes": [
+        "executable:CUSA00219:01.29:eboot",
+        "semantic:thread:TIME_CONTROL"
+      ]
+    }
+  ]
+}
