@@ -31,8 +31,10 @@ def graph():
             "external_functions": 0,
             "external_libraries": 0,
             "defined_strings": 1,
+            "d1_hash_literals": 0,
             "call_edges": 0,
             "string_xref_edges": 1,
+            "hash_literal_xref_edges": 0,
         },
     }
     nodes = [
