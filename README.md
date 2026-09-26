@@ -1,6 +1,6 @@
 # Destiny 1 Reversal
 
-A loss-preserving reverse-engineering workspace for Destiny 1 Tiger packages and asset export.
+A loss-preserving reverse-engineering workspace for Destiny 1 Tiger packages, executable/code-side analysis, graph knowledge, and asset export.
 
 ## Canonical repository
 
@@ -49,13 +49,13 @@ Canonical PS4 `arch_cabal_005b_1` currently yields:
 - `findings/UNKNOWN_FIELD_LEDGER.md` — unresolved items.
 - `corpus/CORPUS.json` — sample inventory and fingerprints/status.
 - `notes/OODLE_RUNTIME.md` — Oodle runtime/bridge policy and validation.
-- `evidence/` — reproducible outputs derived from package bytes.
+- `evidence/` — reproducible outputs derived from package bytes and build-specific executable observations; retail executable bytes are not committed.
 - `knowledge/` — canonical structured asset/entity/relation/evidence knowledge records; generated SQLite is built from these records.
 - `knowledge/README.md` — knowledge-base policy, proof states, negative-knowledge rules, and query examples.
 - `knowledge/schema_v1.json` — machine-readable knowledge record schema.
 - `tools/d1_knowledge_db.py` — validator and deterministic JSON-to-SQLite materializer.
 - `exports/` — converted preview assets and proof geometry.
-- `tools/` — parsers, extractors and comparators.
+- `tools/d1_executable_probe.py` — build-specific SHA-256/SELF/ELF fingerprinting for any already-available Destiny PS4 executable artifact.\n- `tools/` — parsers, extractors and comparators.
 - `tests/` — regression vectors and self-tests.
 
 ## Reproducibility
