@@ -97,7 +97,7 @@ def function_knowledge_node(node: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": node["id"],
         "kind": "function",
-        "status": "CANDIDATE",
+        "status": "PROVEN",
         "label": attrs.get("name") or node["id"],
         "attrs": promoted,
     }
@@ -211,7 +211,6 @@ def build_record(
         previous = local_nodes.get(function_id)
         if previous is not None and previous["attrs"] != fn_node["attrs"]:
             raise ValueError(f"function {function_id} promoted with conflicting attrs")
-        fn_node["status"] = status
         local_nodes[function_id] = fn_node
 
         ext_key = (target_id, target_record_id)
