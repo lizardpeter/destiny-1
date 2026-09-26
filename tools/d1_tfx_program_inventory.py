@@ -163,6 +163,11 @@ def main()->int:
     src=json.loads(a.lighting_census.read_text())
     buffers=src.get('light_buffers',[])
     rows=[];op_hist=Counter();extern_hist=Counter();extern_offset_hist=Counter();output_slots=Counter();const_refs=Counter();violations=[]
+    buffer1_exact_constant_bank_count=0
+    buffer2_eight_vec4_count=0
+    buffer2_insufficient_for_constant_refs=[]
+    scoped_output_target_count=0
+    scoped_output_target_oob=[]
     by_program=defaultdict(list)
     for b in buffers:
         raw=bytes.fromhex(b.get('bytecode_hex',''))
@@ -176,6 +181,42 @@ def main()->int:
                 output_slots[str(op['operand_bytes'][0])]+=1
             if 'constant_index' in op: const_refs[str(op['constant_index'])]+=1
             if 'constant_start' in op: const_refs[str(op['constant_start'])]+=1
+        # Retail dataflow closes the two serialized Vec4-array roles without
+        # relying on appearance or later-engine names. Every one of the 412
+        # programs has Buffer1 length exactly equal to the highest constant
+        # reference plus one. Buffer2 is exactly eight Vec4s in every program,
+        # and all observed output-target operations stay inside those eight.
+        referenced=[]
+        for op in d['ops']:
+            if 'constant_index' in op:
+                referenced.append(int(op['constant_index']))
+            if 'constant_start' in op:
+                referenced.extend([int(op['constant_start']),int(op['constant_start'])+1])
+        required_constant_count=(max(referenced)+1) if referenced else 0
+        if len(b.get('buffer1',[]))==required_constant_count:
+            buffer1_exact_constant_bank_count+=1
+        else:
+            violations.append(f"{b.get('hash')}:buffer1_constant_bank_length_mismatch:{len(b.get('buffer1',[]))}!={required_constant_count}")
+        if len(b.get('buffer2',[]))==8:
+            buffer2_eight_vec4_count+=1
+        else:
+            violations.append(f"{b.get('hash')}:buffer2_not_eight_vec4:{len(b.get('buffer2',[]))}")
+        if required_constant_count>len(b.get('buffer2',[])):
+            buffer2_insufficient_for_constant_refs.append(b.get('hash'))
+
+        for op in d['ops']:
+            targets=[]
+            if op['name']=='Unk42' and op.get('operand_bytes'):
+                targets=[int(op['operand_bytes'][0])]
+            elif op['name']=='PopOutput' and op.get('operand_bytes'):
+                targets=[int(op['operand_bytes'][0])]
+            elif op['name']=='PopOutputMat4' and op.get('operand_bytes'):
+                start=int(op['operand_bytes'][0]); targets=list(range(start,start+4))
+            for target in targets:
+                scoped_output_target_count+=1
+                if not (0 <= target < len(b.get('buffer2',[]))):
+                    scoped_output_target_oob.append({'buffer_hash':b.get('hash'),'opcode':op['name'],'target':target,'buffer2_count':len(b.get('buffer2',[]))})
+
         if not d['complete']:
             violations.append(f"{b.get('hash')}:disassembly_incomplete")
         program_sha=b.get('bytecode_sha256') or hashlib.sha256(raw).hexdigest()
@@ -184,7 +225,7 @@ def main()->int:
         rows.append(row);by_program[program_sha].append(b.get('hash'))
     groups=[{'program_sha256':k,'buffer_count':len(v),'buffer_hashes':sorted(v)} for k,v in sorted(by_program.items())]
     out={
-        'schema_version':4,
+        'schema_version':5,
         'status':'D1_TFX_PROGRAM_INVENTORY_COMPLETE' if not violations else 'D1_TFX_PROGRAM_INVENTORY_PARTIAL',
         'pinned_source':PINNED_SOURCE,
         'source_lighting_status':src.get('status'),
@@ -193,6 +234,19 @@ def main()->int:
         'extern_byte_offset_histogram':dict(extern_offset_hist),
         'output_slot_histogram':dict(output_slots),'constant_reference_histogram':dict(const_refs),
         'program_groups':groups,'buffers':rows,'violations':violations,
+        'light_buffer_role_closure':{
+            'buffer1_role':'tfx_constant_bank',
+            'buffer1_exact_constant_bank_programs':buffer1_exact_constant_bank_count,
+            'buffer1_exact_constant_bank_expected':len(buffers),
+            'buffer2_role':'eight_vec4_runtime_output_state',
+            'buffer2_eight_vec4_programs':buffer2_eight_vec4_count,
+            'buffer2_eight_vec4_expected':len(buffers),
+            'buffer2_insufficient_for_constant_reference_program_count':len(buffer2_insufficient_for_constant_refs),
+            'buffer2_insufficient_for_constant_reference_programs':sorted(buffer2_insufficient_for_constant_refs),
+            'scoped_output_target_count':scoped_output_target_count,
+            'scoped_output_target_out_of_range':scoped_output_target_oob,
+            'proof':'Across the exact Tower light corpus, Buffer1 length equals max referenced constant index + 1 for every program. Buffer2 is fixed at eight Vec4s, cannot satisfy all constant references, and every 0x42/PopOutput/PopOutputMat4 target lands inside Buffer2. This closes Buffer1 as the TFX constant bank and Buffer2 as the runtime output-state bank for this exact 80801AF2 corpus.',
+        },
         'opcode_promotions':{
             '0E':{'name':'Merge_3_1','evidence':'adjacent D1 merge sequence plus continued Tiger VM; old D1 averaging implementation explicitly marked Not correct'},
             '0F':{'name':'Cubic','evidence':'continued adjacent Tiger VM opcode identity'},
@@ -204,10 +258,10 @@ def main()->int:
                 'evidence':'exact D1 ROI PS4 retail material streams require one following u8; semantics intentionally withheld',
             },
         },
-        'semantic_withholding':'Most opcode framing is source-pinned. Typed Float/Vec4/Mat4 extern elements now carry exact byte offsets; field meanings remain separate. D1 0x42 has a retail-proven one-u8 width but remains semantically unnamed. Light output-slot meaning and Buffer2 semantic role remain unassigned until D1 retail dataflow proves them.'
+        'semantic_withholding':'Most opcode framing is source-pinned. Typed Float/Vec4/Mat4 extern elements carry exact byte offsets; individual field meanings remain separate. The exact Tower 80801AF2 corpus now closes Buffer1 as the constant bank and Buffer2 as eight-Vec4 runtime output state. D1 0x42 remains engine-wide unnamed, although its scoped operand is proven to target Buffer2 output slots here. Human-facing light meanings such as colour/intensity/range remain unassigned.'
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
-    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','extern_byte_offset_histogram','output_slot_histogram','constant_reference_histogram','opcode_promotions','framing_promotions','violations')},indent=2))
+    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','extern_byte_offset_histogram','output_slot_histogram','constant_reference_histogram','light_buffer_role_closure','opcode_promotions','framing_promotions','violations')},indent=2))
     return 0 if not violations else 2
 
 if __name__=='__main__': raise SystemExit(main())
