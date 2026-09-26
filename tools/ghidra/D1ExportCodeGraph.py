@@ -17,6 +17,7 @@
 # This script intentionally uses Python-2-compatible syntax for classic Ghidra
 # Jython script execution.
 
+import hashlib
 import json
 import os
 
@@ -54,6 +55,30 @@ def function_key(function):
     return address_text(function.getEntryPoint())
 
 
+def function_code_fingerprints(function):
+    byte_hash = hashlib.sha256()
+    mnemonic_hash = hashlib.sha256()
+    instruction_count = 0
+    byte_count = 0
+    instructions = listing.getInstructions(function.getBody(), True)
+    while instructions.hasNext():
+        instruction = instructions.next()
+        raw = instruction.getBytes()
+        byte_text = "".join(chr(int(value) & 0xFF) for value in raw)
+        byte_hash.update(byte_text)
+        mnemonic = str(instruction.getMnemonicString()).encode("utf-8")
+        mnemonic_hash.update(mnemonic)
+        mnemonic_hash.update("\x00")
+        instruction_count += 1
+        byte_count += len(raw)
+    return {
+        "instruction_count": instruction_count,
+        "instruction_byte_count": byte_count,
+        "instruction_bytes_sha256": byte_hash.hexdigest(),
+        "mnemonic_sequence_sha256": mnemonic_hash.hexdigest(),
+    }
+
+
 def function_record(function):
     body = function.getBody()
     entry = function.getEntryPoint()
@@ -72,7 +97,7 @@ def function_record(function):
     except Exception:
         pass
 
-    return {
+    record = {
         "entry": address_text(entry),
         "image_offset": image_offset(entry),
         "name": str(function.getName()),
@@ -88,6 +113,8 @@ def function_record(function):
         "prototype": str(function.getPrototypeString(False, True)),
         "called_function_entries": sorted(called),
     }
+    record.update(function_code_fingerprints(function))
+    return record
 
 
 functions = []
