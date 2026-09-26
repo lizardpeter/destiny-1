@@ -71,6 +71,7 @@ def test_plain_elf64_header_and_executable_segment():
     assert ph[0]["writable"] is False
     assert ph[0]["executable"] is True
     assert ph[0]["file_offset"] == 0x100
+    assert ph[0]["absolute_file_offset"] == 0x100
 
 
 def test_self_can_locate_embedded_elf():
@@ -93,6 +94,7 @@ def test_self_can_locate_embedded_elf():
     assert elf_header["entry"] == "0x400100"
     ph = mod.parse_elf64_program_headers(raw, elf_header)
     assert ph[0]["executable"] is True
+    assert ph[0]["absolute_file_offset"] == 0x200
 
 
 def test_printable_strings_preserve_file_offsets():
