@@ -21,6 +21,8 @@ import hashlib
 import json
 import os
 
+from ghidra.program.model.scalar import Scalar
+
 args = getScriptArgs()
 if len(args) < 1:
     printerr("usage: D1ExportCodeGraph.py <out.json> [title_id] [app_version]")
@@ -93,6 +95,35 @@ def function_body_ranges(body):
     return out
 
 
+def d1_hash_literal_candidates(function):
+    out = []
+    instructions = listing.getInstructions(function.getBody(), True)
+    while instructions.hasNext():
+        instruction = instructions.next()
+        for operand_index in range(instruction.getNumOperands()):
+            for obj in instruction.getOpObjects(operand_index):
+                if not isinstance(obj, Scalar):
+                    continue
+                bit_length = int(obj.bitLength())
+                if bit_length <= 0 or bit_length > 32:
+                    continue
+                value = int(obj.getUnsignedValue()) & 0xFFFFFFFF
+                # D1 FileHash/TagHash encodings and many 0x8080-class hashes
+                # occupy this bounded region. Keep this as literal evidence;
+                # semantic classification happens later in the graph.
+                if value < 0x80800000 or value > 0x827FFFFF:
+                    continue
+                out.append({
+                    "instruction": address_text(instruction.getAddress()),
+                    "instruction_image_offset": image_offset(instruction.getAddress()),
+                    "operand_index": operand_index,
+                    "bit_length": bit_length,
+                    "value_u32": value,
+                    "value_hex": "0x%08X" % value,
+                })
+    return out
+
+
 def function_record(function):
     body = function.getBody()
     entry = function.getEntryPoint()
@@ -129,6 +160,7 @@ def function_record(function):
         "called_function_entries": sorted(called),
     }
     record.update(function_code_fingerprints(function))
+    record["d1_hash_literals"] = d1_hash_literal_candidates(function)
     return record
 
 
@@ -244,6 +276,9 @@ report = {
         "external_libraries": len(external_libraries),
         "defined_strings": len(strings),
         "string_xrefs": sum(len(item["xrefs"]) for item in strings),
+        "d1_hash_literal_occurrences": sum(
+            len(function.get("d1_hash_literals", [])) for function in functions
+        ),
     },
     "functions": functions,
     "calls": calls,
@@ -265,12 +300,13 @@ with open(out_path, "wb") as fh:
 
 print("D1 code graph export: %s" % out_path)
 print(
-    "functions=%d calls=%d externals=%d strings=%d xrefs=%d"
+    "functions=%d calls=%d externals=%d strings=%d xrefs=%d d1_hash_literals=%d"
     % (
         report["counts"]["functions"],
         report["counts"]["calls"],
         report["counts"]["external_functions"],
         report["counts"]["defined_strings"],
         report["counts"]["string_xrefs"],
+        report["counts"]["d1_hash_literal_occurrences"],
     )
 )
