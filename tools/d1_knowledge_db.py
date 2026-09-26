@@ -233,6 +233,7 @@ def validate_all(records: list[tuple[Path, dict]]) -> None:
     errors: list[str] = []
     record_ids: dict[str, Path] = {}
     node_records: dict[str, set[str]] = {}
+    node_kinds_global: dict[str, set[str]] = {}
     nodes_by_record: dict[str, set[str]] = {}
 
     for path, doc in records:
@@ -250,8 +251,20 @@ def validate_all(records: list[tuple[Path, dict]]) -> None:
                 if isinstance(row, dict) and isinstance(row.get("id"), str)
             }
             nodes_by_record[rid] = local_ids
-            for node_id in local_ids:
-                node_records.setdefault(node_id, set()).add(rid)
+            for row in doc.get("nodes", []):
+                if not isinstance(row, dict):
+                    continue
+                node_id = row.get("id")
+                kind = row.get("kind")
+                if isinstance(node_id, str) and isinstance(kind, str):
+                    node_records.setdefault(node_id, set()).add(rid)
+                    node_kinds_global.setdefault(node_id, set()).add(kind)
+
+    for node_id, kinds in sorted(node_kinds_global.items()):
+        if len(kinds) > 1:
+            errors.append(
+                f"global node {node_id!r} is declared with conflicting kinds {sorted(kinds)}"
+            )
 
     for path, doc in records:
         if not isinstance(doc, dict):
