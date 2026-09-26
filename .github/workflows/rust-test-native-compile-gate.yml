@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lizardpeter/Rust-test
-          ref: 5f012e4944eb35f1111c3307882c68ed906c9039
+          ref: 6699ad6e5098b2efc6b334ea355357b3e22d9a1a
           path: rust-test
           fetch-depth: 1
 
