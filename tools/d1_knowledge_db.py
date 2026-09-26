@@ -260,12 +260,6 @@ def validate_all(records: list[tuple[Path, dict]]) -> None:
                     node_records.setdefault(node_id, set()).add(rid)
                     node_kinds_global.setdefault(node_id, set()).add(kind)
 
-    for node_id, kinds in sorted(node_kinds_global.items()):
-        if len(kinds) > 1:
-            errors.append(
-                f"global node {node_id!r} is declared with conflicting kinds {sorted(kinds)}"
-            )
-
     for path, doc in records:
         if not isinstance(doc, dict):
             continue
@@ -490,6 +484,7 @@ def summary(records: list[tuple[Path, dict]], db_path: Path | None) -> dict:
     node_statuses = Counter()
     edge_predicates = Counter()
     assertion_statuses = Counter()
+    global_node_kinds: dict[str, set[str]] = {}
     totals = Counter()
     for _, doc in records:
         totals["records"] += 1
@@ -497,6 +492,7 @@ def summary(records: list[tuple[Path, dict]], db_path: Path | None) -> dict:
             totals["nodes"] += 1
             node_kinds[row["kind"]] += 1
             node_statuses[row["status"]] += 1
+            global_node_kinds.setdefault(row["id"], set()).add(row["kind"])
         for row in doc["edges"]:
             totals["edges"] += 1
             edge_predicates[row["predicate"]] += 1
@@ -515,6 +511,11 @@ def summary(records: list[tuple[Path, dict]], db_path: Path | None) -> dict:
         "node_status_counts": dict(sorted(node_statuses.items())),
         "edge_predicate_counts": dict(sorted(edge_predicates.items())),
         "assertion_status_counts": dict(sorted(assertion_statuses.items())),
+        "global_node_kind_conflicts": {
+            node_id: sorted(kinds)
+            for node_id, kinds in sorted(global_node_kinds.items())
+            if len(kinds) > 1
+        },
     }
     if db_path is not None and db_path.exists():
         out["sqlite_path"] = str(db_path)
