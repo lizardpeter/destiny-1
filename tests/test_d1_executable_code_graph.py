@@ -85,6 +85,16 @@ def test_graph_normalizer_emits_stable_function_call_and_string_edges():
     a = fn("0080001000", 0x1000, "FUN_1000", "1" * 64, "2" * 64)
     b = fn("0080002000", 0x2000, "FUN_2000", "3" * 64, "4" * 64)
     a["called_function_entries"] = [b["entry"]]
+    a["d1_hash_literals"] = [
+        {
+            "instruction": "0080001018",
+            "instruction_image_offset": 0x1018,
+            "operand_index": 1,
+            "bit_length": 32,
+            "value_u32": 0x80801AD7,
+            "value_hex": "0x80801AD7",
+        }
+    ]
     doc = report(SHA_A, "01.29", [a, b])
     doc["calls"] = [{"caller": a["entry"], "callee": b["entry"]}]
     doc["strings"] = [
@@ -111,9 +121,14 @@ def test_graph_normalizer_emits_stable_function_call_and_string_edges():
     assert manifest["counts"]["call_edges"] == 1
     assert manifest["counts"]["defined_strings"] == 1
     assert manifest["counts"]["string_xref_edges"] == 1
+    assert manifest["counts"]["d1_hash_literals"] == 1
+    assert manifest["counts"]["hash_literal_xref_edges"] == 1
     assert any(e["predicate"] == "CALLS" for e in edges)
     assert any(e["predicate"] == "REFERENCES_STRING" for e in edges)
+    assert any(e["predicate"] == "REFERENCES_D1_HASH_LITERAL" for e in edges)
     assert any(n["kind"] == "defined_string" for n in nodes)
+    literal = next(n for n in nodes if n["kind"] == "d1_hash_literal")
+    assert literal["attrs"]["value_hex"] == "0x80801AD7"
 
 
 def test_compare_uses_exact_then_mnemonic_then_name_tiers():
