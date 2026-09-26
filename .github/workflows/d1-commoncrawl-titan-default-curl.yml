@@ -1,10 +1,6 @@
 name: D1 Common Crawl Titan defaultArmor IPv4 recovery
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-commoncrawl-titan-default-curl.yml'
-      - 'tools/d1_commoncrawl_armory_curl_probe.py'
   workflow_dispatch:
 
 permissions:
