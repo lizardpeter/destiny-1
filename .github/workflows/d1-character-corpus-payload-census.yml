@@ -2,10 +2,6 @@ name: D1 character corpus payload census
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ['D1 archive character candidate index']
-    types: [completed]
-
 permissions:
   contents: read
   actions: read
