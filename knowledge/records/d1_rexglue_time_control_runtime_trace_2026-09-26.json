@@ -2,7 +2,7 @@
   "schema": "d1_knowledge_record/v1",
   "record_id": "d1_rexglue_time_control_runtime_trace_2026_09_26",
   "title": "ReXGlue Destiny TIME_CONTROL runtime guest stack",
-  "updated_utc": "2026-09-26T13:30:00Z",
+  "updated_utc": "2026-09-26T13:42:00Z",
   "scope": {
     "game": "Destiny 1",
     "platform": "Xbox 360",
@@ -201,6 +201,20 @@
         "generated_line": 6518,
         "exact_function_bytes_sha256": null,
         "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "version_family:d1_devalpha",
+      "kind": "destiny_version_family",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "Destiny X360 Internal Alpha (d1_devalpha)",
+      "attrs": {
+        "platform": "Xbox 360",
+        "source_comment": "X360 december 2013 internal alpha version of Destiny",
+        "engine_version": "TigerD1Indev",
+        "package_parser": "PackageD1InternalAlpha",
+        "endianness": "Big",
+        "tiger_pkg_enum_value": 10500
       }
     }
   ],
@@ -404,6 +418,17 @@
         "depth": 10,
         "generated_line": 6518
       }
+    },
+    {
+      "id": "edge:candidate_devalpha_family",
+      "subject": "executable:xbox360:reported:41560907",
+      "predicate": "CANDIDATE_VERSION_FAMILY",
+      "object": "version_family:d1_devalpha",
+      "status": "CANDIDATE",
+      "assertion_ids": [
+        "assert:candidate_devalpha_family"
+      ],
+      "attrs": {}
     }
   ],
   "assertions": [
@@ -448,6 +473,19 @@
         "exact_prerelease_build_sha256": null,
         "do_not_merge_builds": true
       }
+    },
+    {
+      "id": "assert:candidate_devalpha_family",
+      "status": "CANDIDATE",
+      "claim": "The ReXGlue 41560907 build is an Xbox 360 Destiny pre-release title. tiger-pkg separately defines d1_devalpha as the Xbox 360 December 2013 Internal Alpha and maps it to TigerD1Indev/PackageD1InternalAlpha. This makes d1_devalpha the leading package-family candidate, but no exact XEX/package fingerprint yet proves the ReXGlue input belongs to it.",
+      "source_ids": [
+        "source:rexglue_issue404",
+        "source:sunrise_title_ids",
+        "source:tiger_pkg_version"
+      ],
+      "details": {
+        "required_next_proof": "Exact XEX build metadata or a package header/file known to come from the same ReXGlue game root."
+      }
     }
   ],
   "sources": [
@@ -487,6 +525,17 @@
         "commit": "a1d15e49c8e103c5ba93e759aaccfac71ed021ff",
         "evidence": "DestinyPreRelease=0x41560907; Destiny=0x415608F8; pre-release branch spoofs to retail."
       }
+    },
+    {
+      "id": "source:tiger_pkg_version",
+      "kind": "source_pinned_external_implementation",
+      "locator": "https://github.com/v4nguard/tiger-pkg/blob/657f41c0851001b2d371592b2f7a5cb9c686ddb4/src/version.rs",
+      "sha256": null,
+      "details": {
+        "commit": "657f41c0851001b2d371592b2f7a5cb9c686ddb4",
+        "version_code": "d1_devalpha",
+        "engine_version": "TigerD1Indev"
+      }
     }
   ],
   "rejections": [],
@@ -516,6 +565,15 @@
       "related_nodes": [
         "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
         "semantic:thread:TIME_CONTROL"
+      ]
+    },
+    {
+      "id": "frontier:close_devalpha_family",
+      "question": "Does the 41560907 ReXGlue game root use the d1_devalpha December 2013 Internal Alpha package family?",
+      "next_proof": "Fingerprint any Tiger package from the exact ReXGlue game root and test its header/layout against PackageD1InternalAlpha, or obtain the XEX build string/timestamp that independently identifies the December 2013 internal-alpha build.",
+      "related_nodes": [
+        "executable:xbox360:reported:41560907",
+        "version_family:d1_devalpha"
       ]
     }
   ]
