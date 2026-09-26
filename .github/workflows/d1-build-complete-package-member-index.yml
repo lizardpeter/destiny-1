@@ -2,11 +2,6 @@ name: D1 build complete remote package member index
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/d1-build-complete-package-member-index.yml'
-      - 'tools/d1_split_tar_index.py'
-
 permissions:
   contents: read
 
