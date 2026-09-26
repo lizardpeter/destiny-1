@@ -1,10 +1,6 @@
 name: D1 Common Crawl Titan Armory default composition
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-armory-commoncrawl-titan-default.yml'
-      - 'tools/d1_commoncrawl_armory_page_probe.py'
   workflow_dispatch:
 
 permissions:
