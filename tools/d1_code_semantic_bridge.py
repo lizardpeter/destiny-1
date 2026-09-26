@@ -129,7 +129,7 @@ def build_record(
         raise ValueError("bridge spec requires a non-empty bridges array")
 
     local_nodes: dict[str, dict[str, Any]] = {}
-    external_nodes: dict[tuple[str, str | None], dict[str, Any]] = {}
+    external_nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     assertions: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = [
@@ -213,8 +213,12 @@ def build_record(
             raise ValueError(f"function {function_id} promoted with conflicting attrs")
         local_nodes[function_id] = fn_node
 
-        ext_key = (target_id, target_record_id)
-        external_nodes[ext_key] = {
+        previous_external = external_nodes.get(target_id)
+        if previous_external is not None and previous_external.get("record_id") != target_record_id:
+            raise ValueError(
+                f"target node {target_id!r} was assigned conflicting target_record_id values"
+            )
+        external_nodes[target_id] = {
             "id": target_id,
             "record_id": target_record_id,
             "note": bridge.get("target_note"),
@@ -264,7 +268,7 @@ def build_record(
         "nodes": sorted(local_nodes.values(), key=lambda row: row["id"]),
         "external_nodes": sorted(
             external_nodes.values(),
-            key=lambda row: (row["id"], row.get("record_id") or ""),
+            key=lambda row: row["id"],
         ),
         "edges": edges,
         "assertions": assertions,
