@@ -1,0 +1,178 @@
+{
+  "schema": "d1_executable_code_graph_contract/v1",
+  "purpose": "Loss-preserving exact-build code graph for Destiny 1 executable reverse engineering",
+  "identity": {
+    "executable_namespace": "exact executable SHA-256",
+    "function_identity": "executable SHA-256 + image-relative entry/body evidence",
+    "raw_version_label_is_identity": false,
+    "raw_offset_is_cross_version_identity": false
+  },
+  "normalized_graph": {
+    "schema": "d1_normalized_code_graph/v1",
+    "files": {
+      "manifest": "manifest.json",
+      "nodes": "nodes.jsonl",
+      "edges": "edges.jsonl"
+    }
+  },
+  "node_kinds": {
+    "executable_build": {
+      "required_attrs": [
+        "sha256",
+        "title_id",
+        "app_version",
+        "image_base",
+        "language_id",
+        "compiler_spec",
+        "executable_format"
+      ]
+    },
+    "function": {
+      "required_attrs": [
+        "executable_sha256",
+        "entry",
+        "image_offset",
+        "body_ranges",
+        "instruction_count",
+        "instruction_byte_count",
+        "instruction_bytes_sha256",
+        "mnemonic_sequence_sha256",
+        "name",
+        "source"
+      ]
+    },
+    "external_library": {
+      "required_attrs": [
+        "executable_sha256",
+        "name"
+      ]
+    },
+    "external_function": {
+      "required_attrs": [
+        "executable_sha256",
+        "name",
+        "library"
+      ]
+    },
+    "defined_string": {
+      "required_attrs": [
+        "executable_sha256",
+        "address",
+        "image_offset",
+        "text",
+        "data_type"
+      ]
+    }
+  },
+  "edge_predicates": {
+    "HAS_FUNCTION": {
+      "subject_kind": [
+        "executable_build"
+      ],
+      "object_kind": [
+        "function"
+      ]
+    },
+    "IMPORTS_LIBRARY": {
+      "subject_kind": [
+        "executable_build"
+      ],
+      "object_kind": [
+        "external_library"
+      ]
+    },
+    "IMPORTS_FUNCTION": {
+      "subject_kind": [
+        "executable_build"
+      ],
+      "object_kind": [
+        "external_function"
+      ]
+    },
+    "BELONGS_TO_LIBRARY": {
+      "subject_kind": [
+        "external_function"
+      ],
+      "object_kind": [
+        "external_library"
+      ]
+    },
+    "CALLS": {
+      "subject_kind": [
+        "function"
+      ],
+      "object_kind": [
+        "function",
+        "external_function"
+      ]
+    },
+    "HAS_DEFINED_STRING": {
+      "subject_kind": [
+        "executable_build"
+      ],
+      "object_kind": [
+        "defined_string"
+      ]
+    },
+    "REFERENCES_STRING": {
+      "subject_kind": [
+        "function"
+      ],
+      "object_kind": [
+        "defined_string"
+      ]
+    }
+  },
+  "semantic_bridge_predicates": [
+    "PARSES_TIGER_STRUCTURE",
+    "RESOLVES_TAG_HASH",
+    "CONSUMES_RESOURCE_CLASS",
+    "DECODES_TEXTURE",
+    "DECODES_ANIMATION",
+    "SELECTS_MATERIAL",
+    "BINDS_SHADER_RESOURCE",
+    "EVALUATES_SHADER_PROGRAM",
+    "LOADS_WORLD_GRAPH",
+    "OWNS_RUNTIME_BEHAVIOR_FOR",
+    "IMPLEMENTS_SEMANTIC_ASSET_BEHAVIOR"
+  ],
+  "cross_version_match_policy": [
+    {
+      "evidence": "unique exact instruction-byte SHA-256 + instruction count under recovered function boundaries",
+      "status": "PROVEN",
+      "meaning": "function body bytes are equal under the exported boundaries"
+    },
+    {
+      "evidence": "unique mnemonic-sequence SHA-256 + instruction count",
+      "status": "STRONGLY_SUPPORTED",
+      "meaning": "structural correspondence candidate; operands/immediates may differ"
+    },
+    {
+      "evidence": "unique non-generated preserved function/symbol name",
+      "status": "CANDIDATE",
+      "meaning": "name-based correspondence only"
+    },
+    {
+      "evidence": "matching image-relative offset only",
+      "status": "UNRESOLVED",
+      "meaning": "no function identity promotion"
+    }
+  ],
+  "required_invariants": [
+    "Every node except the executable root is tied to exactly one executable SHA-256.",
+    "Every edge endpoint exists in the normalized node stream.",
+    "Function exact-byte fingerprints are 64 lowercase hexadecimal characters.",
+    "Function body ranges are image-relative and remain tied to the executable image base used by analysis.",
+    "Cross-version equivalence never overwrites either source function node.",
+    "Retail executable bytes are referenced by hash/object locator and are not embedded in graph JSON."
+  ],
+  "current_runtime_anchors": [
+    {
+      "title_id": "CUSA00219",
+      "image_relative_offset": "0xFAAF4",
+      "label": "Graphics Heartbeat failure neighborhood",
+      "status": "STRONGLY_SUPPORTED",
+      "limitation": "relocation-stable runtime anchor, not yet a recovered function identity"
+    }
+  ]
+}
