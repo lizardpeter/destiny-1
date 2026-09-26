@@ -196,6 +196,7 @@ def parse_elf64_program_headers(
                 "writable": bool(p_flags & 2),
                 "executable": bool(p_flags & 1),
                 "file_offset": p_offset,
+                "absolute_file_offset": base + p_offset,
                 "virtual_address": f"0x{p_vaddr:X}",
                 "physical_address": f"0x{p_paddr:X}",
                 "file_size": p_filesz,
