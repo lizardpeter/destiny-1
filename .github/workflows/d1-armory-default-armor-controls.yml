@@ -1,10 +1,6 @@
 name: D1 archived Armory default-armor control pages
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-armory-default-armor-controls.yml'
-      - 'tools/d1_wayback_armory_page_probe.py'
   workflow_dispatch:
 
 permissions:
