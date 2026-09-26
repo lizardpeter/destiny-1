@@ -225,3 +225,37 @@ QuickTag also has a distinct ROI Xbox One header beginning with DXGI format + `t
 The private repository `lizardpeter/destiny-1` is now the durable source of truth. Runtime copies under `/mnt/data/Destiny1_Reversal/` are working mirrors for binary analysis and generated assets. The repository was initialized with safety ignores that exclude raw game package bytes, proprietary Oodle DLLs, compiled runtime bridges, caches, and bulk generated exports.
 
 During migration, stale documentation was corrected before commit: the Xbox corpus is no longer marked pending mount, Oodle decompression is no longer treated as a blocker, the Xbox texture tail is retired as an unknown, and subtype 7 is promoted from loose hypothesis to `STRONGLY_SUPPORTED` ConstantBuffer role while retaining the neutral project name `GpuSubtype7`.
+
+
+## 2026-09-26 — PS4 executable/code-graph track established
+
+Executable reversal was explicitly separated from the Rust game repository and
+made part of this canonical Destiny reversal workspace.
+
+Public build evidence currently closes:
+
+- CUSA00219 01.29 decrypted eboot SHA-256 is publicly reported as
+  `7271fcb926401df8defb126cb8eb2b247134138b81e401bbacb2ab60791b795`.
+- CUSA00219 01.33 is represented by an owner-dumped, unmodified shadPS4
+  compatibility report.
+- Multiple 01.33 emulator mappings crash in the Graphics Heartbeat thread at
+  different absolute addresses but normalize to `eboot+0xFAAF4`.
+- A verified 01.29 dump independently reports the same relative offset from a
+  different load base. This is retained as a relocation-stable runtime anchor,
+  not a proven function identity.
+
+New code-side tooling now covers:
+
+1. exact executable fingerprinting and SELF/ELF structural intake;
+2. embedded ELF64/program-segment recovery;
+3. offset-stable printable-string extraction;
+4. Ghidra export of functions, exact body ranges, calls, imports, strings/xrefs;
+5. per-function exact instruction-byte and mnemonic-sequence fingerprints;
+6. graph-native deterministic node/edge normalization;
+7. conservative promotion into the durable knowledge schema;
+8. cross-version function matching with explicit proof tiers.
+
+No retail executable bytes are committed. The immediate next evidence target is
+any already-decrypted D1 PS4 executable from a known build; 01.29 is sufficient
+to begin code-side function recovery while 01.33 remains the canonical final
+target.
