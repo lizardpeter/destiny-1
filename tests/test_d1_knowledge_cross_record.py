@@ -180,7 +180,7 @@ def test_target_record_must_own_external_node(tmp_path):
         raise AssertionError("target record ownership mismatch must fail closed")
 
 
-def test_global_node_kind_conflict_fails(tmp_path):
+def test_global_node_kind_variants_are_reported_not_rejected(tmp_path):
     a = base_record(
         "a_record",
         [
@@ -207,9 +207,8 @@ def test_global_node_kind_conflict_fails(tmp_path):
         write(tmp_path / "a.json", a),
         write(tmp_path / "b.json", b),
     ]
-    try:
-        mod.validate_all(records)
-    except ValueError as exc:
-        assert "conflicting kinds" in str(exc)
-    else:
-        raise AssertionError("global semantic node ID must keep a stable kind")
+    mod.validate_all(records)
+    summary = mod.summary(records, None)
+    assert summary["global_node_kind_conflicts"] == {
+        "shared:identity": ["function", "material"]
+    }
