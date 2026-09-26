@@ -1,0 +1,101 @@
+{
+  "schema": "d1_runtime_code_trace_contract/v1",
+  "purpose": "Loss-preserving runtime code observations from emulators, recompilers, debuggers and native traces",
+  "identity_policy": {
+    "exact_binary_sha256": "preferred build identity when available",
+    "reported_title_id": "retained literally but never sufficient to merge builds",
+    "addresses": "always platform/build scoped",
+    "dynamic_stack": "runtime observation, not automatically static CALLS evidence"
+  },
+  "required_trace_fields": [
+    "trace_id",
+    "platform",
+    "source_kind",
+    "source_locator",
+    "observed_at_or_reported_at",
+    "frames"
+  ],
+  "frame_fields": [
+    "depth",
+    "address",
+    "symbol",
+    "generated_line",
+    "module",
+    "attrs"
+  ],
+  "optional_observations": {
+    "thread": {
+      "fields": [
+        "name",
+        "handle",
+        "creation_context",
+        "is_thread_start"
+      ]
+    },
+    "fault": {
+      "fields": [
+        "exception",
+        "access",
+        "address",
+        "instruction",
+        "registers"
+      ]
+    },
+    "globals": {
+      "fields": [
+        "address",
+        "access",
+        "instruction",
+        "source_function"
+      ]
+    },
+    "imports": {
+      "fields": [
+        "library",
+        "symbol",
+        "ordinal",
+        "caller"
+      ]
+    },
+    "runtime_events": {
+      "fields": [
+        "sequence",
+        "kind",
+        "name",
+        "attrs"
+      ]
+    }
+  },
+  "graph_mapping": {
+    "runtime_trace_node_kind": "runtime_code_trace",
+    "function_node_kind": "function",
+    "guest_global_node_kind": "guest_global",
+    "predicates": [
+      "HAS_RUNTIME_TRACE",
+      "OBSERVED_ON_THREAD",
+      "HAS_RUNTIME_STACK_FRAME",
+      "READS_GUEST_GLOBAL",
+      "WRITES_GUEST_GLOBAL",
+      "OBSERVED_RUNTIME_EVENT",
+      "OBSERVED_IMPORT_CALL"
+    ]
+  },
+  "proof_policy": [
+    "A frame reported with symbols/addresses in a retained trace may be STRONGLY_SUPPORTED as a runtime function-boundary observation.",
+    "Function byte identity remains unresolved until backed by exact executable bytes or derived code fingerprints.",
+    "Adjacent stack frames preserve dynamic caller/callee stack order but do not automatically create a static CALLS edge.",
+    "A fixed-address read/write is evidence of a global access, not of the global's semantic meaning.",
+    "Cross-platform names such as TIME_CONTROL may form semantic anchors, never address equivalence."
+  ],
+  "current_fixtures": [
+    {
+      "trace_id": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "platform": "Xbox 360",
+      "reported_title_id": "41560907",
+      "build_family": "Destiny pre-release",
+      "frame_count": 11,
+      "top_frame": "0x8365B858",
+      "observed_global": "0x83FF3B84"
+    }
+  ]
+}
