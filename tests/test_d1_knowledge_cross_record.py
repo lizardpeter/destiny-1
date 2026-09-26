@@ -178,3 +178,38 @@ def test_target_record_must_own_external_node(tmp_path):
         assert "is not declared by target record" in str(exc)
     else:
         raise AssertionError("target record ownership mismatch must fail closed")
+
+
+def test_global_node_kind_conflict_fails(tmp_path):
+    a = base_record(
+        "a_record",
+        [
+            {
+                "id": "shared:identity",
+                "kind": "material",
+                "status": "PROVEN",
+                "attrs": {},
+            }
+        ],
+    )
+    b = base_record(
+        "b_record",
+        [
+            {
+                "id": "shared:identity",
+                "kind": "function",
+                "status": "CANDIDATE",
+                "attrs": {},
+            }
+        ],
+    )
+    records = [
+        write(tmp_path / "a.json", a),
+        write(tmp_path / "b.json", b),
+    ]
+    try:
+        mod.validate_all(records)
+    except ValueError as exc:
+        assert "conflicting kinds" in str(exc)
+    else:
+        raise AssertionError("global semantic node ID must keep a stable kind")
