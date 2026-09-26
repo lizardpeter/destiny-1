@@ -2,12 +2,6 @@ name: D1 animation selector v2 unit regression
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/d1-animation-selector-v2-unit.yml'
-      - 'tools/d1_animation_control_state_map_v2.py'
-      - 'tests/test_animation_control_state_map_v2.py'
-
 permissions:
   contents: read
 
