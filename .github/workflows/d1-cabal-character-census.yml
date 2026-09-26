@@ -1,11 +1,6 @@
 name: D1 Cabal articulated character census
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-cabal-character-census.yml'
-      - 'tools/d1_character_family_census.py'
-      - 'tools/d1_character_owner_backlinks.py'
   workflow_dispatch:
 
 permissions:
