@@ -1,10 +1,6 @@
 name: D1 00EC 67-bone humanoid rig bank match
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-00ec-67bone-rig-match.yml'
-      - 'tools/d1_skeleton_rig_bank_match.py'
   workflow_dispatch:
 
 permissions:
