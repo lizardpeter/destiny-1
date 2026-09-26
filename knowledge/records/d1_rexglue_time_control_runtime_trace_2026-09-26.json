@@ -1,0 +1,505 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "d1_rexglue_time_control_runtime_trace_2026_09_26",
+  "title": "ReXGlue Destiny TIME_CONTROL runtime guest stack",
+  "updated_utc": "2026-09-26T13:20:00Z",
+  "scope": {
+    "game": "Destiny 1",
+    "platform": "Xbox 360",
+    "reported_title_id": "41560907",
+    "purpose": "Cross-platform executable runtime code-boundary evidence"
+  },
+  "nodes": [
+    {
+      "id": "executable:xbox360:reported:41560907",
+      "kind": "executable_build",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "Author-reported Destiny Xbox 360 ReXGlue build 41560907",
+      "attrs": {
+        "platform": "Xbox 360",
+        "reported_title_id": "41560907",
+        "exact_binary_sha256": null,
+        "recomp_executable": "destiny_recomp.exe",
+        "rexglue_build_preset": "win-amd64-relwithdebinfo",
+        "relation_to_415608F8": "UNRESOLVED"
+      }
+    },
+    {
+      "id": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "kind": "runtime_code_trace",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "ReXGlue TIME_CONTROL startup crash stack",
+      "attrs": {
+        "guest_thread_handle": "F8000030",
+        "exception": "0xC0000005",
+        "fault_read_address": "0x0000000200000000",
+        "very_start_of_thread_execution": true
+      }
+    },
+    {
+      "id": "global:xbox360:reported41560907:83FF3B84",
+      "kind": "guest_global",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "Fixed guest global 0x83FF3B84",
+      "attrs": {
+        "guest_address": "0x83FF3B84",
+        "semantic_role": null
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:8365B858",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_8365B858",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x8365B858",
+        "generated_symbol": "sub_8365B858",
+        "generated_line": 48741,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:8365B938",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_8365B938",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x8365B938",
+        "generated_symbol": "sub_8365B938",
+        "generated_line": 48866,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:83247438",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_83247438",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x83247438",
+        "generated_symbol": "sub_83247438",
+        "generated_line": 65348,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:827D18B8",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_827D18B8",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x827D18B8",
+        "generated_symbol": "sub_827D18B8",
+        "generated_line": 16261,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:827D1928",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_827D1928",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x827D1928",
+        "generated_symbol": "sub_827D1928",
+        "generated_line": 16431,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:82A7A5D8",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_82A7A5D8",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x82A7A5D8",
+        "generated_symbol": "sub_82A7A5D8",
+        "generated_line": 65894,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:82DB4E28",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_82DB4E28",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x82DB4E28",
+        "generated_symbol": "sub_82DB4E28",
+        "generated_line": 56236,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:82D5EE10",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_82D5EE10",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x82D5EE10",
+        "generated_symbol": "sub_82D5EE10",
+        "generated_line": 51876,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:825E06C0",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_825E06C0",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x825E06C0",
+        "generated_symbol": "sub_825E06C0",
+        "generated_line": 1611,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:825E1160",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_825E1160",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x825E1160",
+        "generated_symbol": "sub_825E1160",
+        "generated_line": 2950,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    },
+    {
+      "id": "function:xbox360:reported41560907:825E29B0",
+      "kind": "function",
+      "status": "STRONGLY_SUPPORTED",
+      "label": "sub_825E29B0",
+      "attrs": {
+        "platform": "Xbox 360",
+        "guest_address": "0x825E29B0",
+        "generated_symbol": "sub_825E29B0",
+        "generated_line": 6518,
+        "exact_function_bytes_sha256": null,
+        "evidence_kind": "ReXGlue relwithdebinfo runtime stack"
+      }
+    }
+  ],
+  "external_nodes": [
+    {
+      "id": "semantic:thread:TIME_CONTROL",
+      "record_id": "d1_cross_platform_executable_runtime_anchors_2026_09_26",
+      "note": "Canonical thread semantic node from the cross-platform executable-runtime record."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge:build_has_trace",
+      "subject": "executable:xbox360:reported:41560907",
+      "predicate": "HAS_RUNTIME_TRACE",
+      "object": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {}
+    },
+    {
+      "id": "edge:trace_thread_semantic",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "OBSERVED_ON_THREAD",
+      "object": "semantic:thread:TIME_CONTROL",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {}
+    },
+    {
+      "id": "edge:top_reads_global",
+      "subject": "function:xbox360:reported41560907:8365B858",
+      "predicate": "READS_GUEST_GLOBAL",
+      "object": "global:xbox360:reported41560907:83FF3B84",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:top_frame_global_read"
+      ],
+      "attrs": {
+        "sequence": [
+          "lis r31,-31745",
+          "lwz r11,15236(r31)",
+          "lwz r3,0(r11)"
+        ]
+      }
+    },
+    {
+      "id": "edge:trace_frame:0",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:8365B858",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 0,
+        "generated_line": 48741
+      }
+    },
+    {
+      "id": "edge:trace_frame:1",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:8365B938",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 1,
+        "generated_line": 48866
+      }
+    },
+    {
+      "id": "edge:trace_frame:2",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:83247438",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 2,
+        "generated_line": 65348
+      }
+    },
+    {
+      "id": "edge:trace_frame:3",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:827D18B8",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 3,
+        "generated_line": 16261
+      }
+    },
+    {
+      "id": "edge:trace_frame:4",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:827D1928",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 4,
+        "generated_line": 16431
+      }
+    },
+    {
+      "id": "edge:trace_frame:5",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:82A7A5D8",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 5,
+        "generated_line": 65894
+      }
+    },
+    {
+      "id": "edge:trace_frame:6",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:82DB4E28",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 6,
+        "generated_line": 56236
+      }
+    },
+    {
+      "id": "edge:trace_frame:7",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:82D5EE10",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 7,
+        "generated_line": 51876
+      }
+    },
+    {
+      "id": "edge:trace_frame:8",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:825E06C0",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 8,
+        "generated_line": 1611
+      }
+    },
+    {
+      "id": "edge:trace_frame:9",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:825E1160",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 9,
+        "generated_line": 2950
+      }
+    },
+    {
+      "id": "edge:trace_frame:10",
+      "subject": "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+      "predicate": "HAS_RUNTIME_STACK_FRAME",
+      "object": "function:xbox360:reported41560907:825E29B0",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "assert:trace_identity"
+      ],
+      "attrs": {
+        "depth": 10,
+        "generated_line": 6518
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert:trace_identity",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "ReXGlue issue 404 reports a Destiny Xbox 360 guest thread named TIME_CONTROL whose crash stack begins in guest function sub_8365B858 and contains eleven symbolized guest frames before entering rexruntime thread-entry code.",
+      "source_ids": [
+        "source:rexglue_issue404",
+        "source:local_trace_evidence"
+      ],
+      "details": {
+        "frame_count": 11,
+        "reported_title_id": "41560907"
+      }
+    },
+    {
+      "id": "assert:top_frame_global_read",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "The issue shows sub_8365B858 loading r11 from fixed guest address 0x83FF3B84 and then executing guest lwz r3,0(r11), with r11 observed as zero at the fault.",
+      "source_ids": [
+        "source:rexglue_issue404"
+      ],
+      "details": {
+        "global_address": "0x83FF3B84",
+        "guest_instruction": "lwz r3,0(r11)",
+        "r31_setup": "lis r31,-31745; lwz r11,15236(r31)"
+      }
+    },
+    {
+      "id": "assert:build_identity_limit",
+      "status": "UNRESOLVED",
+      "claim": "Issue 404 reports Xbox 360 title ID 41560907, while a separate public Destiny TTK Xenia log reports 415608F8. Their exact build/content relationship has not been established.",
+      "source_ids": [
+        "source:rexglue_issue404",
+        "source:xenia_ttk_log"
+      ],
+      "details": {
+        "do_not_merge_builds": true
+      }
+    }
+  ],
+  "sources": [
+    {
+      "id": "source:rexglue_issue404",
+      "kind": "public_recompiler_runtime_report",
+      "locator": "https://github.com/rexglue/rexglue-sdk/issues/404",
+      "sha256": null,
+      "details": {
+        "reporter": "WhatWasMissing",
+        "created_at": "2026-08-06T11:24:53Z",
+        "issue_title": "New guest thread (TIME_CONTROL) receives invalid base pointer, causing 0xC0000005 crash on first memory access"
+      }
+    },
+    {
+      "id": "source:xenia_ttk_log",
+      "kind": "public_runtime_log",
+      "locator": "https://gist.github.com/Nukem9/b5701699bf5d73545f5e",
+      "sha256": null,
+      "details": {
+        "reported_title_id": "415608F8"
+      }
+    },
+    {
+      "id": "source:local_trace_evidence",
+      "kind": "repository_evidence",
+      "locator": "evidence/d1_rexglue_time_control_runtime_trace_2026-09-26.json",
+      "sha256": null,
+      "details": {}
+    }
+  ],
+  "rejections": [],
+  "frontiers": [
+    {
+      "id": "frontier:rexglue_generated_source",
+      "question": "Is the generated source containing sub_8365B858 and the other TIME_CONTROL guest functions publicly available or reproducible from a lawful XEX?",
+      "next_proof": "Locate a public generated-source artifact or reproduce codegen from an exact owned XEX; then fingerprint function bodies and promote runtime-only function observations to byte-backed code nodes.",
+      "related_nodes": [
+        "executable:xbox360:reported:41560907",
+        "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+        "function:xbox360:reported41560907:8365B858"
+      ]
+    },
+    {
+      "id": "frontier:reported_title_relationship",
+      "question": "What is the exact relationship between the author-reported 41560907 ReXGlue title and the separately observed 415608F8 Destiny TTK title?",
+      "next_proof": "Obtain exact XEX metadata/fingerprints or authoritative title metadata for both identifiers before creating any SAME_BUILD or SAME_EXECUTABLE relation.",
+      "related_nodes": [
+        "executable:xbox360:reported:41560907"
+      ]
+    },
+    {
+      "id": "frontier:time_control_cross_platform_mapping",
+      "question": "Which PS4 functions correspond to the Xbox TIME_CONTROL startup chain?",
+      "next_proof": "Once a PS4 eboot is available, locate TIME_CONTROL/string/network anchors, recover its thread entry call graph, and compare semantics rather than guest addresses.",
+      "related_nodes": [
+        "runtime_trace:rexglue:TIME_CONTROL:2026-08-06",
+        "semantic:thread:TIME_CONTROL"
+      ]
+    }
+  ]
+}
