@@ -1,7 +1,7 @@
 {
   "schema": "d1_executable_evidence/v1",
   "subject": "Destiny 1 PS4 CUSA00219 executable build anchors",
-  "updated_utc": "2026-09-26T12:00:00Z",
+  "updated_utc": "2026-09-26T13:05:00Z",
   "canonical_target": {
     "game": "Destiny 1",
     "platform": "PS4",
@@ -35,7 +35,39 @@
       "status": "PUBLIC_RUNTIME_OBSERVATION",
       "scope": "CUSA00219",
       "source": "https://github.com/shadps4-compatibility/shadps4-game-compatibility/issues/994",
-      "caution": "Use as a cross-version anchor only. It is not a recovered function name or proof of identical function boundaries between builds."
+      "caution": "Use as a cross-version anchor only. It is not a recovered function name or proof of identical function boundaries between builds.",
+      "observations": [
+        {
+          "app_version": "01.33",
+          "emulator_version": "0.9.0/0.11.0/0.12.5/0.15.0",
+          "absolute_code_address": "0x8000FAAF4",
+          "normalized_eboot_offset": "0xFAAF4",
+          "implied_load_base": "0x800000000",
+          "thread": "Graphics Heartbeat",
+          "fault": "read from 0x8"
+        },
+        {
+          "app_version": "01.33",
+          "emulator_version": "0.18.1",
+          "absolute_code_address": "0x548AAF4",
+          "normalized_eboot_offset": "0xFAAF4",
+          "implied_load_base": "0x5390000",
+          "thread": "Graphics Heartbeat",
+          "fault": "0xc0000005"
+        },
+        {
+          "app_version": "01.29",
+          "emulator_version": "0.17/0.18 and SESSION2 fork",
+          "absolute_code_address": "0x523AAF4",
+          "normalized_eboot_offset": "0xFAAF4",
+          "reported_load_base": "0x5140000",
+          "thread": "Graphics Heartbeat",
+          "fault": "0xc0000005 target=0x8",
+          "repetitions": "8/8"
+        }
+      ],
+      "normalization": "absolute_code_address - load_base = 0xFAAF4",
+      "interpretation": "Relocation/load-base changes leave the same eboot-relative code offset. This strengthens the offset as a stable cross-run anchor, but does not prove identical function bytes between 01.29 and 01.33."
     }
   ],
   "container_signatures": {
