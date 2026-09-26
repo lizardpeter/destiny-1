@@ -374,6 +374,61 @@ Reusable classifier:
 
 `tools/d1_animation_bundle_probe.py`
 
+
+## PS4 executable / code-side reversal
+
+Code-side reversal is now a first-class project track, separate from the Rust game/runtime repository.
+
+Canonical target:
+
+```text
+Destiny 1 US PS4
+title ID CUSA00219
+final application version 01.33
+content ID UP0002-CUSA00219_00-DESTINYTHEGAME01
+```
+
+Current durable evidence:
+
+- public 01.29 decrypted `eboot.bin` fingerprint:
+  `7271fcb926401df8defb126cb8eb2b247134138b81e401bbacb2ab60791b795`;
+- owner-dumped unmodified 01.33 runtime report exists in shadPS4 compatibility issue 994;
+- Graphics Heartbeat failure repeatedly normalizes to `eboot + 0xFAAF4`;
+- observed 01.33 placements include absolute `0x8000FAAF4` from base
+  `0x800000000` and absolute `0x548AAF4` from implied base `0x5390000`;
+- verified-dump 01.29 report gives base `0x5140000` and the same
+  `eboot + 0xFAAF4` offset, with deterministic 8/8 reproduction;
+- this promotes `0xFAAF4` to a relocation-stable runtime anchor, not to a
+  recovered function identity.
+
+Committed executable RE tooling:
+
+- `tools/d1_executable_probe.py`: SHA-256, SELF/ELF, embedded ELF64 header,
+  program segments, optional offset-stable printable strings;
+- `tools/d1_executable_knowledge.py`: exact-build promotion into
+  `d1_knowledge_record/v1` with conservative proof states;
+- `tools/ghidra/D1ExportCodeGraph.py`: functions, exact body ranges, call graph,
+  externals/libraries, defined strings/xrefs, instruction-byte SHA-256 and
+  mnemonic-sequence SHA-256 per function;
+- `tools/d1_ghidra_graph_normalize.py`: deterministic graph-native node/edge
+  JSONL tied to executable SHA-256;
+- `tools/d1_executable_compare.py`: cross-version matching tiers:
+  exact instruction bytes = `PROVEN`, unique mnemonic sequence =
+  `STRONGLY_SUPPORTED`, unique non-auto name = `CANDIDATE`;
+- raw address equality alone never transfers function identity between builds.
+
+Current blocker is artifact acquisition, not analysis architecture: no
+legitimately redistributable D1 PS4 executable, Ghidra database, IDA database or
+full public disassembly has been found in indexed public sources. Any
+already-decrypted executable from any known build is immediately useful because
+the new pipeline can fingerprint, graph and compare it before 01.33 is obtained.
+
+Durable records:
+
+- `evidence/d1_ps4_executable_build_anchors_2026-09-26.json`
+- `knowledge/records/d1_ps4_executable_build_anchors_2026-09-26.json`
+
+
 ## Current active frontier
 
 The target owner/model/material problem is solved. The active question is now:
