@@ -106,3 +106,38 @@ WHERE status IN ('CANDIDATE','UNRESOLVED','STRONGLY_SUPPORTED');
 ## Project policy
 
 Every future asset reversal should update this layer when it establishes durable knowledge. That includes maps, entities, enemies, NPCs, Guardians, weapons, materials, shaders, textures, skeletons, animation controllers, clips, package schemas, class layouts, and rejected hypotheses.
+
+
+## Cross-record graph edges
+
+Semantic node IDs are global identifiers even though knowledge is authored in small,
+reviewable records. When one record needs to point at a node canonically declared by
+another record, declare it explicitly in `external_nodes`:
+
+```json
+{
+  "external_nodes": [
+    {
+      "id": "material:80AAE14B",
+      "record_id": "material_record_id",
+      "note": "canonical material node owned by another record"
+    }
+  ]
+}
+```
+
+Edges, rejections and frontier references may then use that external node ID without
+duplicating the node locally.
+
+Validation remains fail-closed:
+
+- every external node must exist in at least one loaded knowledge record;
+- when `record_id` is supplied, that exact record must declare the node;
+- a record may not declare the same ID both locally and as an external reference;
+- dangling code-to-asset edges therefore cannot enter the generated database.
+
+The SQLite materializer uses schema/user-version 2 for this capability. The
+`external_node_refs` table preserves explicit ownership hints, while edge endpoints
+remain global semantic node IDs. This allows an executable function record to point
+directly to an existing Tiger resource, material, shader, model, animation or semantic
+asset node.
