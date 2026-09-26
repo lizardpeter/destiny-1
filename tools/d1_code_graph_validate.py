@@ -49,6 +49,11 @@ NODE_REQUIRED = {
         "text",
         "data_type",
     },
+    "d1_hash_literal": {
+        "executable_sha256",
+        "value_u32",
+        "value_hex",
+    },
 }
 
 EDGE_KINDS = {
@@ -59,6 +64,8 @@ EDGE_KINDS = {
     "CALLS": ({"function"}, {"function", "external_function"}),
     "HAS_DEFINED_STRING": ({"executable_build"}, {"defined_string"}),
     "REFERENCES_STRING": ({"function"}, {"defined_string"}),
+    "HAS_D1_HASH_LITERAL": ({"executable_build"}, {"d1_hash_literal"}),
+    "REFERENCES_D1_HASH_LITERAL": ({"function"}, {"d1_hash_literal"}),
 }
 
 
@@ -150,6 +157,14 @@ def validate_graph(
                 f"{where}: node executable_sha256 does not match manifest exact build"
             )
 
+        if kind == "d1_hash_literal":
+            value = attrs.get("value_u32")
+            expected_hex = attrs.get("value_hex")
+            if not isinstance(value, int) or not (0x80800000 <= value <= 0x827FFFFF):
+                errors.append(f"{where}: value_u32 is outside the bounded D1 hash range")
+            elif expected_hex != f"0x{value:08X}":
+                errors.append(f"{where}: value_hex does not match value_u32")
+
         if kind == "function":
             for field in ("instruction_bytes_sha256", "mnemonic_sequence_sha256"):
                 value = attrs.get(field)
@@ -239,8 +254,14 @@ def validate_graph(
         "defined_strings": sum(
             1 for kind in node_kind.values() if kind == "defined_string"
         ),
+        "d1_hash_literals": sum(
+            1 for kind in node_kind.values() if kind == "d1_hash_literal"
+        ),
         "call_edges": predicate_counts.get("CALLS", 0),
         "string_xref_edges": predicate_counts.get("REFERENCES_STRING", 0),
+        "hash_literal_xref_edges": predicate_counts.get(
+            "REFERENCES_D1_HASH_LITERAL", 0
+        ),
     }
 
     manifest_counts = manifest.get("counts")
