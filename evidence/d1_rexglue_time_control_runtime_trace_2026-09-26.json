@@ -1,135 +1,190 @@
 {
   "schema": "d1_runtime_code_trace/v1",
-  "updated_utc": "2026-09-26T13:30:00Z",
-  "source": {
-    "kind": "public_issue_report",
-    "locator": "https://github.com/rexglue/rexglue-sdk/issues/404",
-    "issue_number": 404,
-    "reporter": "WhatWasMissing",
-    "created_at": "2026-08-06T11:24:53Z"
-  },
-  "reported_build": {
-    "game": "Destiny",
+  "trace_id": "rexglue:TIME_CONTROL:2026-08-06",
+  "record_id": "d1_rexglue_time_control_runtime_trace_2026_09_26",
+  "title": "ReXGlue Destiny pre-release TIME_CONTROL runtime guest stack",
+  "label": "Destiny pre-release TIME_CONTROL startup crash stack",
+  "updated_utc": "2026-09-26T13:35:00Z",
+  "build": {
     "platform": "Xbox 360",
     "title_id": "41560907",
+    "build_label": "Destiny pre-release",
+    "label": "Destiny pre-release Xbox 360 title 41560907",
+    "sha256": null,
+    "identity_status": "STRONGLY_SUPPORTED_PRERELEASE_TITLE",
     "executable": "destiny_recomp.exe",
-    "source_xex": "reported only; exact XEX SHA-256 not supplied",
+    "source_binary_kind": "XEX input to ReXGlue; exact XEX SHA-256 not supplied",
     "rexglue_sdk": "main branch around 2026-08-06",
     "build_preset": "win-amd64-relwithdebinfo",
-    "identity_status": "STRONGLY_SUPPORTED_PRERELEASE_TITLE",
-    "relation_to_public_ttk_title_415608F8": "STRONGLY_SUPPORTED_DISTINCT_PRERELEASE_VS_RETAIL_TITLE_IDS",
     "title_identity_corroboration": {
       "source": "https://github.com/Blam-Network/sunrise_plugin/blob/a1d15e49c8e103c5ba93e759aaccfac71ed021ff/Sunrise2/Sunrise3.cpp",
       "commit": "a1d15e49c8e103c5ba93e759aaccfac71ed021ff",
-      "evidence": [
-        "DestinyPreRelease = 0x41560907",
-        "Destiny = 0x415608F8",
-        "41560907 path logs 'Destiny Pre Release detected! Spoofing...' and rewrites execution ID to retail Destiny"
-      ]
+      "prerelease_title_id": "41560907",
+      "retail_title_id": "415608F8",
+      "exact_prerelease_build": "UNRESOLVED"
     }
   },
-  "trace": {
-    "thread_name": "TIME_CONTROL",
-    "guest_thread_handle": "F8000030",
-    "timing": "very start of TIME_CONTROL guest-thread execution",
-    "fault": {
-      "exception": "0xC0000005",
-      "read_address": "0x0000000200000000",
-      "guest_r11_u32": 0,
-      "interpretation_limit": "Issue attributes the host fault to an invalid guest-memory base parameter, not to the guest r11 value itself."
+  "source": {
+    "kind": "public_recompiler_runtime_report",
+    "locator": "https://github.com/rexglue/rexglue-sdk/issues/404",
+    "sha256": null,
+    "details": {
+      "reporter": "WhatWasMissing",
+      "created_at": "2026-08-06T11:24:53Z",
+      "issue_number": 404
+    }
+  },
+  "thread": {
+    "name": "TIME_CONTROL",
+    "handle": "F8000030",
+    "is_thread_start": true,
+    "semantic_node_id": "semantic:thread:TIME_CONTROL",
+    "semantic_record_id": "d1_cross_platform_executable_runtime_anchors_2026_09_26"
+  },
+  "fault": {
+    "exception": "0xC0000005",
+    "access": "read",
+    "address": "0x0000000200000000",
+    "guest_registers": {
+      "r11_u32": 0
     },
-    "ordered_guest_frames_top_to_bottom": [
-      {
-        "depth": 0,
-        "function": "sub_8365B858",
-        "guest_address": "0x8365B858",
-        "generated_line": 48741
-      },
-      {
-        "depth": 1,
-        "function": "sub_8365B938",
-        "guest_address": "0x8365B938",
-        "generated_line": 48866
-      },
-      {
-        "depth": 2,
-        "function": "sub_83247438",
-        "guest_address": "0x83247438",
-        "generated_line": 65348
-      },
-      {
-        "depth": 3,
-        "function": "sub_827D18B8",
-        "guest_address": "0x827D18B8",
-        "generated_line": 16261
-      },
-      {
-        "depth": 4,
-        "function": "sub_827D1928",
-        "guest_address": "0x827D1928",
-        "generated_line": 16431
-      },
-      {
-        "depth": 5,
-        "function": "sub_82A7A5D8",
-        "guest_address": "0x82A7A5D8",
-        "generated_line": 65894
-      },
-      {
-        "depth": 6,
-        "function": "sub_82DB4E28",
-        "guest_address": "0x82DB4E28",
-        "generated_line": 56236
-      },
-      {
-        "depth": 7,
-        "function": "sub_82D5EE10",
-        "guest_address": "0x82D5EE10",
-        "generated_line": 51876
-      },
-      {
-        "depth": 8,
-        "function": "sub_825E06C0",
-        "guest_address": "0x825E06C0",
-        "generated_line": 1611
-      },
-      {
-        "depth": 9,
-        "function": "sub_825E1160",
-        "guest_address": "0x825E1160",
-        "generated_line": 2950
-      },
-      {
-        "depth": 10,
-        "function": "sub_825E29B0",
-        "guest_address": "0x825E29B0",
-        "generated_line": 6518
-      }
-    ]
+    "interpretation_limit": "Issue attributes the host fault to an invalid guest-memory base parameter, not to the guest r11 value itself."
   },
-  "top_frame_code_evidence": {
-    "function": "sub_8365B858",
-    "guest_address": "0x8365B858",
-    "crashing_guest_instruction": "lwz r3,0(r11)",
-    "generated_expression": "ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);",
-    "r11_source": {
-      "fixed_guest_global_address": "0x83FF3B84",
-      "setup": [
-        "lis r31,-31745",
-        "lwz r11,15236(r31)"
-      ],
-      "arithmetic": "0x83FF0000 + 15236 = 0x83FF3B84"
+  "frames": [
+    {
+      "depth": 0,
+      "address": "0x8365B858",
+      "symbol": "sub_8365B858",
+      "generated_line": 48741,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 1,
+      "address": "0x8365B938",
+      "symbol": "sub_8365B938",
+      "generated_line": 48866,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 2,
+      "address": "0x83247438",
+      "symbol": "sub_83247438",
+      "generated_line": 65348,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 3,
+      "address": "0x827D18B8",
+      "symbol": "sub_827D18B8",
+      "generated_line": 16261,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 4,
+      "address": "0x827D1928",
+      "symbol": "sub_827D1928",
+      "generated_line": 16431,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 5,
+      "address": "0x82A7A5D8",
+      "symbol": "sub_82A7A5D8",
+      "generated_line": 65894,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 6,
+      "address": "0x82DB4E28",
+      "symbol": "sub_82DB4E28",
+      "generated_line": 56236,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 7,
+      "address": "0x82D5EE10",
+      "symbol": "sub_82D5EE10",
+      "generated_line": 51876,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 8,
+      "address": "0x825E06C0",
+      "symbol": "sub_825E06C0",
+      "generated_line": 1611,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 9,
+      "address": "0x825E1160",
+      "symbol": "sub_825E1160",
+      "generated_line": 2950,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
+    },
+    {
+      "depth": 10,
+      "address": "0x825E29B0",
+      "symbol": "sub_825E29B0",
+      "generated_line": 6518,
+      "module": "destiny_recomp.exe",
+      "attrs": {}
     }
-  },
-  "other_reported_observations": [
-    "Two ExCreateThread-created guest threads reportedly exited with code 0x83FC1054.",
-    "GPU backend initialization was reported successful and the failure reproduced independently of GPU-plugin success.",
-    "cache0:/cache1: lookups and d:\\\\memory_override_xenon.txt open failures were reported earlier but not established as causal."
   ],
+  "globals": [
+    {
+      "address": "0x83FF3B84",
+      "access": "read",
+      "source_function_address": "0x8365B858",
+      "instruction": "lis r31,-31745; lwz r11,15236(r31); later lwz r3,0(r11)",
+      "attrs": {
+        "crashing_guest_instruction": "lwz r3,0(r11)",
+        "generated_expression": "ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);",
+        "address_arithmetic": "0x83FF0000 + 15236 = 0x83FF3B84"
+      }
+    }
+  ],
+  "runtime_events": [
+    {
+      "sequence": 0,
+      "kind": "thread_start",
+      "name": "TIME_CONTROL",
+      "attrs": {
+        "handle": "F8000030"
+      }
+    },
+    {
+      "sequence": 1,
+      "kind": "guest_fault",
+      "name": "access_violation",
+      "attrs": {
+        "exception": "0xC0000005",
+        "read_address": "0x0000000200000000"
+      }
+    }
+  ],
+  "claim": "ReXGlue issue 404 reports an eleven-frame symbolized guest stack at the very start of the Destiny pre-release TIME_CONTROL thread, with top frame sub_8365B858 reading a fixed guest global at 0x83FF3B84 before the reported host-memory-base fault.",
   "policy": [
-    "This is runtime/recompiler evidence, not an independently verified original XEX disassembly.",
-    "Guest function addresses are Xbox 360 build-specific and must never be transferred to PS4.",
-    "Title ID 41560907 is independently labeled DestinyPreRelease by Sunrise tooling, while 415608F8 is labeled Destiny retail. Exact pre-release XEX build/version and byte identity remain unresolved.",
-    "Dynamic stack order is preserved as a trace observation and is not automatically promoted to a static CALLS graph."
+    "Runtime/recompiler evidence is not independently verified original XEX disassembly.",
+    "Guest addresses remain Xbox 360 pre-release build-scoped and must never be transferred to PS4.",
+    "Dynamic stack order is preserved as trace evidence, not automatically promoted to static CALLS edges.",
+    "41560907 is strongly supported as the Destiny pre-release title ID; the exact pre-release XEX build/version and SHA-256 remain unresolved."
+  ],
+  "frontiers": [
+    {
+      "id": "frontier:generated_source",
+      "question": "Can the ReXGlue-generated source or exact 41560907 XEX be obtained lawfully?",
+      "next_proof": "Obtain generated source or exact XEX bytes, fingerprint the build, and upgrade runtime-only function nodes with byte-backed code fingerprints.",
+      "related_nodes": []
+    }
   ]
 }
