@@ -65,12 +65,17 @@ def make_record(
     )
     executable_id = f"executable:{title_id}:{app_version}:{short}"
     elf_id = f"elf_image:{title_id}:{app_version}:{short}"
+    executable_status = (
+        "STRONGLY_SUPPORTED"
+        if identity_basis == "known_build_fingerprint"
+        else "CANDIDATE"
+    )
 
     nodes: list[dict[str, Any]] = [
         {
             "id": executable_id,
             "kind": "executable_build",
-            "status": "PROVEN",
+            "status": executable_status,
             "label": f"{title_id} {app_version} executable {short}",
             "attrs": {
                 "sha256": sha,
@@ -88,7 +93,8 @@ def make_record(
             "status": "PROVEN",
             "claim": (
                 f"The analyzed executable artifact has exact SHA-256 {sha} and "
-                f"size {probe.get('file_size')} bytes."
+                f"size {probe.get('file_size')} bytes. Build labeling remains "
+                f"{executable_status} under {identity_basis}."
             ),
             "source_ids": ["src_probe_report", "src_external_executable"],
             "details": {
