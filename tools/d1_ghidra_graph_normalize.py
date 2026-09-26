@@ -52,6 +52,10 @@ def string_id(exe_sha: str, offset: int | None, address: str) -> str:
     return f"string:{exe_sha[:16]}:addr_{digest}"
 
 
+def d1_hash_literal_id(exe_sha: str, value: int) -> str:
+    return f"d1hash:{exe_sha[:16]}:{value & 0xFFFFFFFF:08x}"
+
+
 def normalize(doc: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     program = doc["program"]
     exe_sha = program["executable_sha256"].lower()
@@ -77,21 +81,25 @@ def normalize(doc: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]
     edges: list[dict[str, Any]] = []
 
     internal_by_entry: dict[str, str] = {}
+    literal_nodes: dict[int, str] = {}
     for fn in doc.get("functions", []):
         if not isinstance(fn, dict):
             continue
         node_id = function_id(exe_sha, fn.get("image_offset"), str(fn.get("entry")))
         internal_by_entry[str(fn.get("entry"))] = node_id
+        function_attrs = {key: value for key, value in fn.items() if key != "d1_hash_literals"}
+        function_attrs.update(
+            {
+                "executable_sha256": exe_sha,
+                "title_id": title_id,
+                "app_version": app_version,
+            }
+        )
         nodes.append(
             {
                 "id": node_id,
                 "kind": "function",
-                "attrs": {
-                    **fn,
-                    "executable_sha256": exe_sha,
-                    "title_id": title_id,
-                    "app_version": app_version,
-                },
+                "attrs": function_attrs,
             }
         )
         edges.append(
@@ -99,6 +107,49 @@ def normalize(doc: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]
                 "subject": executable_id,
                 "predicate": "HAS_FUNCTION",
                 "object": node_id,
+                "attrs": {},
+            }
+        )
+        for literal in fn.get("d1_hash_literals", []):
+            if not isinstance(literal, dict):
+                continue
+            value = literal.get("value_u32")
+            if not isinstance(value, int) or not (0x80800000 <= value <= 0x827FFFFF):
+                continue
+            literal_node = literal_nodes.setdefault(
+                value, d1_hash_literal_id(exe_sha, value)
+            )
+            edges.append(
+                {
+                    "subject": node_id,
+                    "predicate": "REFERENCES_D1_HASH_LITERAL",
+                    "object": literal_node,
+                    "attrs": {
+                        "instruction": literal.get("instruction"),
+                        "instruction_image_offset": literal.get("instruction_image_offset"),
+                        "operand_index": literal.get("operand_index"),
+                        "bit_length": literal.get("bit_length"),
+                    },
+                }
+            )
+
+    for value, literal_node in sorted(literal_nodes.items()):
+        nodes.append(
+            {
+                "id": literal_node,
+                "kind": "d1_hash_literal",
+                "attrs": {
+                    "executable_sha256": exe_sha,
+                    "value_u32": value,
+                    "value_hex": f"0x{value:08X}",
+                },
+            }
+        )
+        edges.append(
+            {
+                "subject": executable_id,
+                "predicate": "HAS_D1_HASH_LITERAL",
+                "object": literal_node,
                 "attrs": {},
             }
         )
@@ -234,8 +285,12 @@ def normalize(doc: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]
             "external_functions": sum(1 for n in nodes if n["kind"] == "external_function"),
             "external_libraries": sum(1 for n in nodes if n["kind"] == "external_library"),
             "defined_strings": sum(1 for n in nodes if n["kind"] == "defined_string"),
+            "d1_hash_literals": sum(1 for n in nodes if n["kind"] == "d1_hash_literal"),
             "call_edges": sum(1 for e in edges if e["predicate"] == "CALLS"),
             "string_xref_edges": sum(1 for e in edges if e["predicate"] == "REFERENCES_STRING"),
+            "hash_literal_xref_edges": sum(
+                1 for e in edges if e["predicate"] == "REFERENCES_D1_HASH_LITERAL"
+            ),
         },
     }
     return manifest, nodes, edges
