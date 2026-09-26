@@ -2,26 +2,29 @@
   "schema": "d1_knowledge_record/v1",
   "record_id": "d1_rexglue_time_control_runtime_trace_2026_09_26",
   "title": "ReXGlue Destiny TIME_CONTROL runtime guest stack",
-  "updated_utc": "2026-09-26T13:20:00Z",
+  "updated_utc": "2026-09-26T13:30:00Z",
   "scope": {
     "game": "Destiny 1",
     "platform": "Xbox 360",
     "reported_title_id": "41560907",
-    "purpose": "Cross-platform executable runtime code-boundary evidence"
+    "purpose": "Cross-platform executable runtime code-boundary evidence",
+    "build_family": "Destiny pre-release"
   },
   "nodes": [
     {
       "id": "executable:xbox360:reported:41560907",
       "kind": "executable_build",
       "status": "STRONGLY_SUPPORTED",
-      "label": "Author-reported Destiny Xbox 360 ReXGlue build 41560907",
+      "label": "Destiny pre-release Xbox 360 title 41560907 (ReXGlue trace)",
       "attrs": {
         "platform": "Xbox 360",
         "reported_title_id": "41560907",
         "exact_binary_sha256": null,
         "recomp_executable": "destiny_recomp.exe",
         "rexglue_build_preset": "win-amd64-relwithdebinfo",
-        "relation_to_415608F8": "UNRESOLVED"
+        "relation_to_415608F8": "DISTINCT_PRERELEASE_VS_RETAIL_TITLE_ID",
+        "title_identity": "DestinyPreRelease",
+        "exact_prerelease_build": "UNRESOLVED"
       }
     },
     {
@@ -431,14 +434,18 @@
       }
     },
     {
-      "id": "assert:build_identity_limit",
-      "status": "UNRESOLVED",
-      "claim": "Issue 404 reports Xbox 360 title ID 41560907, while a separate public Destiny TTK Xenia log reports 415608F8. Their exact build/content relationship has not been established.",
+      "id": "assert:prerelease_title_identity",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "Independent Sunrise Xbox tooling defines 0x41560907 as DestinyPreRelease and 0x415608F8 as Destiny, and its 41560907 code path logs 'Destiny Pre Release detected! Spoofing...' before rewriting the execution ID to retail Destiny. This strongly supports the ReXGlue trace being from a pre-release Destiny title; the exact pre-release XEX build/version remains unresolved.",
       "source_ids": [
         "source:rexglue_issue404",
+        "source:sunrise_title_ids",
         "source:xenia_ttk_log"
       ],
       "details": {
+        "prerelease_title_id": "41560907",
+        "retail_title_id": "415608F8",
+        "exact_prerelease_build_sha256": null,
         "do_not_merge_builds": true
       }
     }
@@ -470,6 +477,16 @@
       "locator": "evidence/d1_rexglue_time_control_runtime_trace_2026-09-26.json",
       "sha256": null,
       "details": {}
+    },
+    {
+      "id": "source:sunrise_title_ids",
+      "kind": "public_xbox_tool_source",
+      "locator": "https://github.com/Blam-Network/sunrise_plugin/blob/a1d15e49c8e103c5ba93e759aaccfac71ed021ff/Sunrise2/Sunrise3.cpp",
+      "sha256": null,
+      "details": {
+        "commit": "a1d15e49c8e103c5ba93e759aaccfac71ed021ff",
+        "evidence": "DestinyPreRelease=0x41560907; Destiny=0x415608F8; pre-release branch spoofs to retail."
+      }
     }
   ],
   "rejections": [],
@@ -485,9 +502,9 @@
       ]
     },
     {
-      "id": "frontier:reported_title_relationship",
-      "question": "What is the exact relationship between the author-reported 41560907 ReXGlue title and the separately observed 415608F8 Destiny TTK title?",
-      "next_proof": "Obtain exact XEX metadata/fingerprints or authoritative title metadata for both identifiers before creating any SAME_BUILD or SAME_EXECUTABLE relation.",
+      "id": "frontier:exact_prerelease_build",
+      "question": "Which exact Destiny pre-release XEX build/version is represented by the ReXGlue 41560907 trace?",
+      "next_proof": "Obtain exact XEX execution metadata, timestamp/build string and SHA-256 for the 41560907 input. The pre-release-vs-retail title distinction is strongly supported; the specific pre-release build is not.",
       "related_nodes": [
         "executable:xbox360:reported:41560907"
       ]
