@@ -36,7 +36,7 @@ from pathlib import Path
 PINNED_SOURCE = (
     'MontagueM/Charm@50d36ee1f9ecadad7522504c20b1f3f9c97e30af '
     'Tiger/Schema/Shaders/TFX Bytecode/OpCodes.cs + Externs.cs; '
-    'cohaereo/alkahest expression VM opcode continuity used only to close 0x0E Merge_3_1 and 0x0F Cubic; '
+    'cohaereo/alkahest expression VM opcode continuity used to close 0x0E Merge_3_1/0x0F Cubic and cross-check extern element addressing; '
     'D1 ROI PS4 retail material corpus independently closes only 0x42 operand width as one u8'
 )
 
@@ -91,6 +91,18 @@ EXTERNS = {
     96:'SoftDeform',
 }
 
+# Exact D1 addressing closure for typed extern operands. Charm's D1
+# Interpreter.cs exposes raw elements (for example Frame Vec4 element 26 and
+# Atmosphere Vec4 element 7), while the same fields are byte offsets 0x1A0 and
+# 0x70 respectively. The continued Tiger VM independently implements the same
+# Float *4 / Vec4 *16 / Mat4 *16 addressing rule. Keep U64/U32 variants raw
+# until their D1 byte-address scaling is independently checked.
+EXTERN_TYPED_BYTE_SCALE = {
+    0x3C: 4,   # PushExternInputFloat
+    0x3D: 16,  # PushExternInputVec4
+    0x3E: 16,  # PushExternInputMat4
+}
+
 
 def candidate(arr, idx):
     return arr[idx] if 0 <= idx < len(arr) else None
@@ -127,6 +139,10 @@ def disassemble(raw: bytes, buffer1: list, buffer2: list) -> dict:
         if op in range(0x3C,0x42) and len(args)==2:
             row['extern_id']=args[0];row['extern_name']=EXTERNS.get(args[0],f'UNKNOWN_EXTERN_{args[0]}')
             row['extern_element']=args[1]
+            if op in EXTERN_TYPED_BYTE_SCALE:
+                byte_offset=args[1]*EXTERN_TYPED_BYTE_SCALE[op]
+                row['extern_byte_offset']=byte_offset
+                row['extern_byte_offset_hex']=f'0x{byte_offset:X}'
         if op==0x42 and args:
             row['d1_unk42_u8']=args[0]
         if op in (0x43,0x44,0x45,0x46,0x47) and args:
@@ -146,7 +162,7 @@ def main()->int:
     a=ap.parse_args()
     src=json.loads(a.lighting_census.read_text())
     buffers=src.get('light_buffers',[])
-    rows=[];op_hist=Counter();extern_hist=Counter();output_slots=Counter();const_refs=Counter();violations=[]
+    rows=[];op_hist=Counter();extern_hist=Counter();extern_offset_hist=Counter();output_slots=Counter();const_refs=Counter();violations=[]
     by_program=defaultdict(list)
     for b in buffers:
         raw=bytes.fromhex(b.get('bytecode_hex',''))
@@ -154,6 +170,8 @@ def main()->int:
         for op in d['ops']:
             op_hist[op['name']]+=1
             if 'extern_name' in op: extern_hist[op['extern_name']]+=1
+            if 'extern_byte_offset' in op:
+                extern_offset_hist[f"{op['extern_name']}@{op['extern_byte_offset_hex']}:{op['name']}"]+=1
             if op['name'] in ('PopOutput','PopOutputMat4') and op.get('operand_bytes'):
                 output_slots[str(op['operand_bytes'][0])]+=1
             if 'constant_index' in op: const_refs[str(op['constant_index'])]+=1
@@ -166,12 +184,13 @@ def main()->int:
         rows.append(row);by_program[program_sha].append(b.get('hash'))
     groups=[{'program_sha256':k,'buffer_count':len(v),'buffer_hashes':sorted(v)} for k,v in sorted(by_program.items())]
     out={
-        'schema_version':3,
+        'schema_version':4,
         'status':'D1_TFX_PROGRAM_INVENTORY_COMPLETE' if not violations else 'D1_TFX_PROGRAM_INVENTORY_PARTIAL',
         'pinned_source':PINNED_SOURCE,
         'source_lighting_status':src.get('status'),
         'buffer_count':len(buffers),'unique_program_count':len(groups),
         'opcode_histogram':dict(op_hist),'extern_histogram':dict(extern_hist),
+        'extern_byte_offset_histogram':dict(extern_offset_hist),
         'output_slot_histogram':dict(output_slots),'constant_reference_histogram':dict(const_refs),
         'program_groups':groups,'buffers':rows,'violations':violations,
         'opcode_promotions':{
@@ -185,10 +204,10 @@ def main()->int:
                 'evidence':'exact D1 ROI PS4 retail material streams require one following u8; semantics intentionally withheld',
             },
         },
-        'semantic_withholding':'Most opcode framing is source-pinned. D1 0x42 has a retail-proven one-u8 width but remains semantically unnamed. Light output-slot meaning and Buffer2 semantic role remain unassigned until D1 retail dataflow proves them.'
+        'semantic_withholding':'Most opcode framing is source-pinned. Typed Float/Vec4/Mat4 extern elements now carry exact byte offsets; field meanings remain separate. D1 0x42 has a retail-proven one-u8 width but remains semantically unnamed. Light output-slot meaning and Buffer2 semantic role remain unassigned until D1 retail dataflow proves them.'
     }
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(out,indent=2)+'\n')
-    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','output_slot_histogram','constant_reference_histogram','opcode_promotions','framing_promotions','violations')},indent=2))
+    print(json.dumps({k:out[k] for k in ('status','buffer_count','unique_program_count','opcode_histogram','extern_histogram','extern_byte_offset_histogram','output_slot_histogram','constant_reference_histogram','opcode_promotions','framing_promotions','violations')},indent=2))
     return 0 if not violations else 2
 
 if __name__=='__main__': raise SystemExit(main())
