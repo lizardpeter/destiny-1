@@ -1,0 +1,111 @@
+{
+  "schema": "d1_cross_platform_executable_runtime_anchors/v1",
+  "updated_utc": "2026-09-26T13:15:00Z",
+  "scope": {
+    "purpose": "Cross-platform executable/runtime semantic anchors for later PS4 code identification",
+    "policy": "Xbox 360 addresses and import layouts never prove PS4 addresses or implementations."
+  },
+  "sources": [
+    {
+      "id": "xenia_ttk_log",
+      "kind": "public_runtime_log",
+      "locator": "https://gist.github.com/Nukem9/b5701699bf5d73545f5e",
+      "platform": "Xbox 360",
+      "game": "Destiny: The Taken King"
+    },
+    {
+      "id": "shadps4_cusa00219_issue994",
+      "kind": "public_compatibility_report",
+      "locator": "https://github.com/shadps4-compatibility/shadps4-game-compatibility/issues/994",
+      "platform": "PS4",
+      "title_id": "CUSA00219"
+    }
+  ],
+  "xbox360_ttk_executable": {
+    "title_id": "415608F8",
+    "module": "game:\\\\default.xex",
+    "original_pe_name": "tiger_release_final.exe",
+    "load_address": "0x82000000",
+    "image_size": "0x01790000",
+    "entry_point": "0x82CD5E10",
+    "observed_import_libraries": [
+      {
+        "name": "xam.xex",
+        "count": 116,
+        "version": "0.0.16537.32"
+      },
+      {
+        "name": "xboxkrnl.exe",
+        "count": 379,
+        "version": "0.0.21250.32"
+      },
+      {
+        "name": "xam.xex",
+        "count": 152,
+        "version": "0.0.21250.32"
+      }
+    ],
+    "observed_static_libraries": [
+      "XNET",
+      "XONLINE",
+      "RTDMP",
+      "XBOXKRNL",
+      "XPARTY",
+      "XAPOBA",
+      "XAUDIO2",
+      "XHV2",
+      "XMCORE",
+      "LIBCPMT",
+      "XAPILIB",
+      "D3D9",
+      "D3DX9",
+      "XGRAPHC",
+      "XGSVCEP",
+      "XWMAD",
+      "XHTTP",
+      "XAUTH",
+      "LINK",
+      "C2",
+      "C1"
+    ]
+  },
+  "semantic_anchors": [
+    {
+      "name": "TIME_CONTROL",
+      "kind": "thread_name",
+      "xbox360_observation": {
+        "api": "SetThreadName",
+        "thread_number_argument": 7,
+        "immediate_following_same_log_thread_activity": [
+          "KeQuerySystemTime",
+          "ExGetXConfigSetting",
+          "XGetGameRegion",
+          "file reads",
+          "XeCryptAesKey",
+          "XeCryptAesCbc",
+          "graphics-engine initialization later in the same startup trace"
+        ]
+      },
+      "ps4_public_report": {
+        "app_version": "01.29",
+        "context": "At the Graphics Heartbeat crash, TIME_CONTROL was reported as still doing RetrieveIp/STUN work."
+      },
+      "status": "STRONGLY_SUPPORTED_CROSS_PLATFORM_SEMANTIC_ANCHOR",
+      "use": "Search exact PS4 strings/xrefs/thread-creation paths once an eboot is available; do not reuse Xbox code addresses."
+    },
+    {
+      "name": "tiger_release_final.exe",
+      "kind": "original_pe_name",
+      "platform": "Xbox 360",
+      "status": "PUBLIC_RUNTIME_LOG_OBSERVATION",
+      "use": "Engine/build naming anchor only; candidate PS4 string search when executable arrives."
+    }
+  ],
+  "candidate_ps4_search_terms": [
+    "TIME_CONTROL",
+    "Graphics Heartbeat",
+    "tiger_release_final",
+    "RetrieveIp",
+    "STUN"
+  ]
+}
