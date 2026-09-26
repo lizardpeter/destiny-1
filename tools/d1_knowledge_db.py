@@ -95,6 +95,15 @@ def validate_record(path: Path, doc: dict) -> list[str]:
             errors.append(f"{prefix}: {key} must be an array")
 
     node_ids = unique_ids(doc.get("nodes", []), "id", errors, f"{prefix}:nodes")
+    external_node_ids = unique_ids(
+        doc.get("external_nodes", []), "id", errors, f"{prefix}:external_nodes"
+    )
+    overlap = node_ids & external_node_ids
+    if overlap:
+        errors.append(
+            f"{prefix}: external_nodes duplicates locally declared nodes {sorted(overlap)}"
+        )
+    available_node_ids = node_ids | external_node_ids
     edge_ids = unique_ids(doc.get("edges", []), "id", errors, f"{prefix}:edges")
     assertion_ids = unique_ids(doc.get("assertions", []), "id", errors, f"{prefix}:assertions")
     source_ids = unique_ids(doc.get("sources", []), "id", errors, f"{prefix}:sources")
@@ -111,6 +120,19 @@ def validate_record(path: Path, doc: dict) -> list[str]:
         attrs = row.get("attrs", {})
         if not isinstance(attrs, dict):
             errors.append(f"{where}: attrs must be an object when present")
+
+    for i, row in enumerate(doc.get("external_nodes", [])):
+        if not isinstance(row, dict):
+            continue
+        where = f"{prefix}:external_nodes[{i}]"
+        target_record = row.get("record_id")
+        if target_record is not None and (
+            not isinstance(target_record, str) or not target_record
+        ):
+            errors.append(f"{where}: record_id must be a non-empty string or null")
+        note = row.get("note")
+        if note is not None and not isinstance(note, str):
+            errors.append(f"{where}: note must be a string or null")
 
     for i, row in enumerate(doc.get("assertions", [])):
         if not isinstance(row, dict):
@@ -149,10 +171,14 @@ def validate_record(path: Path, doc: dict) -> list[str]:
         obj = require_string(row, "object", errors, where)
         _ = predicate
         validate_status(row, errors, where)
-        if subject and subject not in node_ids:
-            errors.append(f"{where}: subject {subject!r} is not a node in this record")
-        if obj and obj not in node_ids:
-            errors.append(f"{where}: object {obj!r} is not a node in this record")
+        if subject and subject not in available_node_ids:
+            errors.append(
+                f"{where}: subject {subject!r} is neither a local node nor an explicit external_node"
+            )
+        if obj and obj not in available_node_ids:
+            errors.append(
+                f"{where}: object {obj!r} is neither a local node nor an explicit external_node"
+            )
         refs = row.get("assertion_ids", [])
         if not isinstance(refs, list):
             errors.append(f"{where}: assertion_ids must be an array")
@@ -170,10 +196,14 @@ def validate_record(path: Path, doc: dict) -> list[str]:
         candidate = require_string(row, "candidate_node", errors, where)
         rejected_as = require_string(row, "rejected_as", errors, where)
         require_string(row, "reason", errors, where)
-        if candidate and candidate not in node_ids:
-            errors.append(f"{where}: candidate_node {candidate!r} is not a node in this record")
-        if rejected_as and rejected_as not in node_ids:
-            errors.append(f"{where}: rejected_as {rejected_as!r} is not a node in this record")
+        if candidate and candidate not in available_node_ids:
+            errors.append(
+                f"{where}: candidate_node {candidate!r} is neither local nor external"
+            )
+        if rejected_as and rejected_as not in available_node_ids:
+            errors.append(
+                f"{where}: rejected_as {rejected_as!r} is neither local nor external"
+            )
         refs = row.get("assertion_ids")
         if not isinstance(refs, list):
             errors.append(f"{where}: assertion_ids must be an array")
@@ -193,7 +223,7 @@ def validate_record(path: Path, doc: dict) -> list[str]:
             errors.append(f"{where}: related_nodes must be an array")
         else:
             for node_id in refs:
-                if node_id not in node_ids:
+                if node_id not in available_node_ids:
                     errors.append(f"{where}: unknown related node {node_id!r}")
 
     return errors
@@ -202,6 +232,9 @@ def validate_record(path: Path, doc: dict) -> list[str]:
 def validate_all(records: list[tuple[Path, dict]]) -> None:
     errors: list[str] = []
     record_ids: dict[str, Path] = {}
+    node_records: dict[str, set[str]] = {}
+    nodes_by_record: dict[str, set[str]] = {}
+
     for path, doc in records:
         errors.extend(validate_record(path, doc))
         rid = doc.get("record_id") if isinstance(doc, dict) else None
@@ -211,6 +244,39 @@ def validate_all(records: list[tuple[Path, dict]]) -> None:
                 errors.append(f"duplicate record_id {rid!r}: {old} and {path}")
             else:
                 record_ids[rid] = path
+            local_ids = {
+                row.get("id")
+                for row in doc.get("nodes", [])
+                if isinstance(row, dict) and isinstance(row.get("id"), str)
+            }
+            nodes_by_record[rid] = local_ids
+            for node_id in local_ids:
+                node_records.setdefault(node_id, set()).add(rid)
+
+    for path, doc in records:
+        if not isinstance(doc, dict):
+            continue
+        for i, ref in enumerate(doc.get("external_nodes", [])):
+            if not isinstance(ref, dict):
+                continue
+            node_id = ref.get("id")
+            if not isinstance(node_id, str) or not node_id:
+                continue
+            target_record = ref.get("record_id")
+            if target_record is None:
+                if node_id not in node_records:
+                    errors.append(
+                        f"{path}:external_nodes[{i}]: node {node_id!r} is not declared by any knowledge record"
+                    )
+            elif target_record not in record_ids:
+                errors.append(
+                    f"{path}:external_nodes[{i}]: target record {target_record!r} does not exist"
+                )
+            elif node_id not in nodes_by_record.get(target_record, set()):
+                errors.append(
+                    f"{path}:external_nodes[{i}]: node {node_id!r} is not declared by target record {target_record!r}"
+                )
+
     if errors:
         raise ValueError("knowledge validation failed:\n" + "\n".join(f"- {x}" for x in errors))
 
@@ -228,7 +294,7 @@ def build_db(records: list[tuple[Path, dict]], db_path: Path) -> None:
         con.executescript(
             """
             PRAGMA foreign_keys=ON;
-            PRAGMA user_version=1;
+            PRAGMA user_version=2;
             CREATE TABLE records(
               record_id TEXT PRIMARY KEY,
               title TEXT NOT NULL,
@@ -244,6 +310,14 @@ def build_db(records: list[tuple[Path, dict]], db_path: Path) -> None:
               status TEXT NOT NULL,
               label TEXT,
               attrs_json TEXT NOT NULL,
+              PRIMARY KEY(record_id,node_id),
+              FOREIGN KEY(record_id) REFERENCES records(record_id) ON DELETE CASCADE
+            );
+            CREATE TABLE external_node_refs(
+              record_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              target_record_id TEXT,
+              note TEXT,
               PRIMARY KEY(record_id,node_id),
               FOREIGN KEY(record_id) REFERENCES records(record_id) ON DELETE CASCADE
             );
@@ -283,8 +357,7 @@ def build_db(records: list[tuple[Path, dict]], db_path: Path) -> None:
               status TEXT NOT NULL,
               attrs_json TEXT NOT NULL,
               PRIMARY KEY(record_id,edge_id),
-              FOREIGN KEY(record_id,subject_id) REFERENCES nodes(record_id,node_id),
-              FOREIGN KEY(record_id,object_id) REFERENCES nodes(record_id,node_id)
+              FOREIGN KEY(record_id) REFERENCES records(record_id) ON DELETE CASCADE
             );
             CREATE TABLE edge_assertions(
               record_id TEXT NOT NULL,
@@ -301,8 +374,7 @@ def build_db(records: list[tuple[Path, dict]], db_path: Path) -> None:
               rejected_as TEXT NOT NULL,
               reason TEXT NOT NULL,
               PRIMARY KEY(record_id,rejection_id),
-              FOREIGN KEY(record_id,candidate_node_id) REFERENCES nodes(record_id,node_id),
-              FOREIGN KEY(record_id,rejected_as) REFERENCES nodes(record_id,node_id)
+              FOREIGN KEY(record_id) REFERENCES records(record_id) ON DELETE CASCADE
             );
             CREATE TABLE rejection_assertions(
               record_id TEXT NOT NULL,
@@ -325,12 +397,13 @@ def build_db(records: list[tuple[Path, dict]], db_path: Path) -> None:
               frontier_id TEXT NOT NULL,
               node_id TEXT NOT NULL,
               PRIMARY KEY(record_id,frontier_id,node_id),
-              FOREIGN KEY(record_id,frontier_id) REFERENCES frontiers(record_id,frontier_id) ON DELETE CASCADE,
-              FOREIGN KEY(record_id,node_id) REFERENCES nodes(record_id,node_id)
+              FOREIGN KEY(record_id,frontier_id) REFERENCES frontiers(record_id,frontier_id) ON DELETE CASCADE
             );
             CREATE INDEX idx_nodes_node_id ON nodes(node_id);
             CREATE INDEX idx_nodes_kind ON nodes(kind);
             CREATE INDEX idx_nodes_status ON nodes(status);
+            CREATE INDEX idx_external_node_refs_node_id ON external_node_refs(node_id);
+            CREATE INDEX idx_external_node_refs_target_record ON external_node_refs(target_record_id);
             CREATE INDEX idx_edges_subject ON edges(subject_id);
             CREATE INDEX idx_edges_object ON edges(object_id);
             CREATE INDEX idx_edges_predicate ON edges(predicate);
@@ -351,6 +424,11 @@ def build_db(records: list[tuple[Path, dict]], db_path: Path) -> None:
                 con.execute(
                     "INSERT INTO nodes VALUES (?,?,?,?,?,?)",
                     (rid, row["id"], row["kind"], row["status"], row.get("label"), jd(row.get("attrs", {}))),
+                )
+            for row in doc.get("external_nodes", []):
+                con.execute(
+                    "INSERT INTO external_node_refs VALUES (?,?,?,?)",
+                    (rid, row["id"], row.get("record_id"), row.get("note")),
                 )
             for row in doc["assertions"]:
                 con.execute(
@@ -412,6 +490,7 @@ def summary(records: list[tuple[Path, dict]], db_path: Path | None) -> dict:
         for row in doc["assertions"]:
             totals["assertions"] += 1
             assertion_statuses[row["status"]] += 1
+        totals["external_node_refs"] += len(doc.get("external_nodes", []))
         totals["sources"] += len(doc["sources"])
         totals["rejections"] += len(doc["rejections"])
         totals["frontiers"] += len(doc["frontiers"])
