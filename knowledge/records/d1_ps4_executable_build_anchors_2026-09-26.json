@@ -2,7 +2,7 @@
   "schema": "d1_knowledge_record/v1",
   "record_id": "d1_ps4_executable_build_anchors_2026_09_26",
   "title": "Destiny 1 PS4 executable build identity and code-side RE frontier",
-  "updated_utc": "2026-09-26T12:00:00Z",
+  "updated_utc": "2026-09-26T13:05:00Z",
   "scope": {
     "game": "Destiny 1",
     "platform": "PS4",
@@ -47,7 +47,18 @@
       "label": "Graphics Heartbeat code-offset neighborhood 0xFAAF4",
       "attrs": {
         "offset": "0xFAAF4",
-        "function_name_proven": false
+        "function_name_proven": false,
+        "relocation_normalized": true,
+        "observed_0133_load_bases": [
+          "0x800000000",
+          "0x5390000"
+        ],
+        "observed_0129_load_base": "0x5140000",
+        "observed_absolute_addresses": [
+          "0x8000FAAF4",
+          "0x548AAF4",
+          "0x523AAF4"
+        ]
       }
     },
     {
@@ -64,7 +75,9 @@
       "predicate": "HAS_EXECUTABLE_BUILD",
       "object": "executable:CUSA00219:01.29:eboot",
       "status": "STRONGLY_SUPPORTED",
-      "assertion_ids": ["assert_0129_fingerprint"]
+      "assertion_ids": [
+        "assert_0129_fingerprint"
+      ]
     },
     {
       "id": "edge:title_0133",
@@ -72,7 +85,9 @@
       "predicate": "HAS_TARGET_EXECUTABLE_BUILD",
       "object": "executable:CUSA00219:01.33:eboot",
       "status": "TARGET",
-      "assertion_ids": ["assert_0133_target"]
+      "assertion_ids": [
+        "assert_0133_target"
+      ]
     },
     {
       "id": "edge:anchor_0129",
@@ -80,7 +95,9 @@
       "predicate": "HAS_RUNTIME_CODE_ANCHOR",
       "object": "code_anchor:CUSA00219:graphics_heartbeat:FAAF4",
       "status": "STRONGLY_SUPPORTED",
-      "assertion_ids": ["assert_graphics_anchor"]
+      "assertion_ids": [
+        "assert_graphics_anchor"
+      ]
     },
     {
       "id": "edge:probe_target",
@@ -88,7 +105,9 @@
       "predicate": "FINGERPRINTS",
       "object": "executable:CUSA00219:01.33:eboot",
       "status": "TARGET",
-      "assertion_ids": ["assert_probe_role"]
+      "assertion_ids": [
+        "assert_probe_role"
+      ]
     }
   ],
   "assertions": [
@@ -96,7 +115,9 @@
       "id": "assert_0129_fingerprint",
       "status": "STRONGLY_SUPPORTED",
       "claim": "A public Destiny 1 CUSA00219 01.29 preservation/emulation report identifies a decrypted eboot.bin with SHA-256 7271fcb926401df8defb126cb8eb2b247134138b81e401bbacb2ab60791b795.",
-      "source_ids": ["src_gbatemp_0129"],
+      "source_ids": [
+        "src_gbatemp_0129"
+      ],
       "details": {
         "verification_limit": "The binary itself is not stored in this repository and the hash has not yet been independently recomputed here."
       }
@@ -105,19 +126,48 @@
       "id": "assert_0133_target",
       "status": "STRONGLY_SUPPORTED",
       "claim": "CUSA00219 application version 01.33 is publicly represented by an owner-dumped unmodified build in the shadPS4 compatibility record and is the code-side canonical final-build target for this repository.",
-      "source_ids": ["src_shadps4_issue_994", "src_local_executable_evidence"]
+      "source_ids": [
+        "src_shadps4_issue_994",
+        "src_local_executable_evidence"
+      ]
     },
     {
       "id": "assert_graphics_anchor",
       "status": "STRONGLY_SUPPORTED",
-      "claim": "Public CUSA00219 runtime reports associate code offset 0xFAAF4 with the Graphics Heartbeat failure path; the offset is retained only as a code-side anchor and not as a proven function identity.",
-      "source_ids": ["src_shadps4_issue_994"]
+      "claim": "Public CUSA00219 runtime reports repeatedly normalize different absolute crash addresses/load bases to eboot-relative offset 0xFAAF4 in the Graphics Heartbeat thread. This makes 0xFAAF4 a relocation-stable runtime anchor across reported 01.29 and 01.33 runs, but does not yet prove identical function bytes or boundaries between builds.",
+      "source_ids": [
+        "src_shadps4_issue_994"
+      ],
+      "details": {
+        "observations": [
+          {
+            "app_version": "01.33",
+            "absolute": "0x8000FAAF4",
+            "load_base": "0x800000000",
+            "normalized": "0xFAAF4"
+          },
+          {
+            "app_version": "01.33",
+            "absolute": "0x548AAF4",
+            "load_base": "0x5390000",
+            "normalized": "0xFAAF4"
+          },
+          {
+            "app_version": "01.29",
+            "absolute": "0x523AAF4",
+            "load_base": "0x5140000",
+            "normalized": "0xFAAF4"
+          }
+        ]
+      }
     },
     {
       "id": "assert_probe_role",
       "status": "PROVEN",
       "claim": "tools/d1_executable_probe.py computes SHA-256 and classifies an already-available executable as PS4 SELF, ELF, or unknown before build-specific RE evidence is attached.",
-      "source_ids": ["src_probe_tool"]
+      "source_ids": [
+        "src_probe_tool"
+      ]
     }
   ],
   "sources": [
@@ -168,12 +218,14 @@
       "id": "frontier_0133_fingerprint",
       "question": "What is the independently verified SHA-256 of the decrypted CUSA00219 01.33 eboot.bin?",
       "next_proof": "Fingerprint a verified 01.33 owner dump and promote the executable node from TARGET once exact identity evidence is retained.",
-      "related_nodes": ["executable:CUSA00219:01.33:eboot"]
+      "related_nodes": [
+        "executable:CUSA00219:01.33:eboot"
+      ]
     },
     {
       "id": "frontier_cross_version_anchor",
-      "question": "Does the Graphics Heartbeat 0xFAAF4 neighborhood correspond to the same function/content across 01.29 and 01.33?",
-      "next_proof": "Compare bytes, CFG, imports/xrefs, or stable signatures in both exact builds; do not infer equality from matching runtime offsets alone.",
+      "question": "Do the relocation-stable 0xFAAF4 neighborhoods in 01.29 and 01.33 contain the same function/content?",
+      "next_proof": "Acquire both exact executables and compare bytes, function boundaries, CFG, imports/xrefs, and stable signatures around eboot+0xFAAF4. Runtime normalization alone proves the offset is stable across the reported runs, not that the underlying function is byte-identical.",
       "related_nodes": [
         "code_anchor:CUSA00219:graphics_heartbeat:FAAF4",
         "executable:CUSA00219:01.29:eboot",
