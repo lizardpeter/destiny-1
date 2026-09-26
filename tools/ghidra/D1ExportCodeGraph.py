@@ -79,6 +79,20 @@ def function_code_fingerprints(function):
     }
 
 
+def function_body_ranges(body):
+    out = []
+    ranges = body.getAddressRanges()
+    while ranges.hasNext():
+        current = ranges.next()
+        out.append({
+            "min": address_text(current.getMinAddress()),
+            "max": address_text(current.getMaxAddress()),
+            "min_image_offset": image_offset(current.getMinAddress()),
+            "max_image_offset": image_offset(current.getMaxAddress()),
+        })
+    return out
+
+
 def function_record(function):
     body = function.getBody()
     entry = function.getEntryPoint()
@@ -108,6 +122,7 @@ def function_record(function):
         "body_min": address_text(body.getMinAddress()),
         "body_max": address_text(body.getMaxAddress()),
         "body_address_count": int(body.getNumAddresses()),
+        "body_ranges": function_body_ranges(body),
         "parameter_count": int(function.getParameterCount()),
         "calling_convention": str(function.getCallingConventionName()),
         "prototype": str(function.getPrototypeString(False, True)),
