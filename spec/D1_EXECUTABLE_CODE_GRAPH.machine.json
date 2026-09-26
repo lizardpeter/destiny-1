@@ -62,6 +62,15 @@
         "text",
         "data_type"
       ]
+    },
+    "d1_hash_literal": {
+      "required_attrs": [
+        "executable_sha256",
+        "value_u32",
+        "value_hex"
+      ],
+      "bounded_range": "0x80800000..0x827FFFFF",
+      "meaning": "Literal 32-bit immediate in the D1 FileHash/TagHash/class-hash candidate range; semantics unresolved until bridged by evidence."
     }
   },
   "edge_predicates": {
@@ -121,6 +130,22 @@
       "object_kind": [
         "defined_string"
       ]
+    },
+    "HAS_D1_HASH_LITERAL": {
+      "subject_kind": [
+        "executable_build"
+      ],
+      "object_kind": [
+        "d1_hash_literal"
+      ]
+    },
+    "REFERENCES_D1_HASH_LITERAL": {
+      "subject_kind": [
+        "function"
+      ],
+      "object_kind": [
+        "d1_hash_literal"
+      ]
     }
   },
   "semantic_bridge_predicates": [
@@ -164,7 +189,8 @@
     "Function exact-byte fingerprints are 64 lowercase hexadecimal characters.",
     "Function body ranges are image-relative and remain tied to the executable image base used by analysis.",
     "Cross-version equivalence never overwrites either source function node.",
-    "Retail executable bytes are referenced by hash/object locator and are not embedded in graph JSON."
+    "Retail executable bytes are referenced by hash/object locator and are not embedded in graph JSON.",
+    "D1 hash-literal nodes are literal code evidence only; matching an existing TagHash/class value creates a candidate bridge, not automatic semantic ownership."
   ],
   "current_runtime_anchors": [
     {
