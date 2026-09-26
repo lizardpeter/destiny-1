@@ -1,11 +1,6 @@
 name: D1 00EC humanoid animation compatibility census
 
 on:
-  push:
-    paths:
-      - '.github/workflows/d1-00ec-humanoid-animation-census.yml'
-      - 'tools/d1_animation_rig_clip_census.py'
-      - 'tools/d1_animation_retarget_probe.py'
   workflow_dispatch:
 
 permissions:
