@@ -133,7 +133,6 @@ jobs:
             build/smg-ghidra/project SMG_RMGE01 \
             -import build/smg-ghidra/main.dol \
             -overwrite \
-            -loader "Nintendo GameCube/Wii Binary (Executable)" \
             -analysisTimeoutPerFile 3600 \
             -scriptPath "$PWD/tools/ghidra" \
             -postScript SMGExportUnmatchedSlices.py \
