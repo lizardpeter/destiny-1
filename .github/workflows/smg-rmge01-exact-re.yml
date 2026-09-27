@@ -1,0 +1,141 @@
+name: SMG RMGE01 Exact DOL RE
+
+on:
+  push:
+    paths:
+      - ".github/workflows/smg-rmge01-exact-re.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rmge01:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DOL_URL: https://r2.houseofkublai.com/super-mario-galaxy/DATA/sys/main.dol
+      DOL_SIZE: "6283264"
+      DOL_SHA256: 2c680585a8f58e1cc9c5521b579057f12b124ff0ef409e470a57606c50a93c09
+      DTK_URL: https://github.com/encounter/decomp-toolkit/releases/download/v1.8.4/dtk-linux-x86_64
+      DTK_SHA256: 7c86b1994401bde0cad1d308e6c04cccb65e85453ccc5062ac12baab3b03d320
+
+    steps:
+      - name: Checkout reversal bridge
+        uses: actions/checkout@v4
+
+      - name: Download and verify exact RMGE01 main.dol
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/rmge01
+          curl --fail --location --retry 5 --retry-delay 2 "$DOL_URL" -o build/rmge01/main.dol
+          test "$(stat -c %s build/rmge01/main.dol)" = "$DOL_SIZE"
+          echo "$DOL_SHA256  build/rmge01/main.dol" | sha256sum --check -
+          sha1sum build/rmge01/main.dol | tee build/rmge01/main.dol.sha1
+          md5sum build/rmge01/main.dol | tee build/rmge01/main.dol.md5
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          p=Path("build/rmge01/main.dol")
+          b=p.read_bytes()
+          out={
+            "source_url":"https://r2.houseofkublai.com/super-mario-galaxy/DATA/sys/main.dol",
+            "size":len(b),
+            "sha256":hashlib.sha256(b).hexdigest(),
+            "sha1":hashlib.sha1(b).hexdigest(),
+            "md5":hashlib.md5(b).hexdigest(),
+            "expected_doldecomp_us_sha1":"9a71008ae1ee9010e267fa67d1f0b0d4f0e895dd",
+          }
+          out["matches_doldecomp_us_sha1"]=out["sha1"]==out["expected_doldecomp_us_sha1"]
+          Path("build/rmge01/identity.json").write_text(json.dumps(out,indent=2)+"\n")
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Install decomp-toolkit 1.8.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 "$DTK_URL" -o build/rmge01/dtk
+          echo "$DTK_SHA256  build/rmge01/dtk" | sha256sum --check -
+          chmod +x build/rmge01/dtk
+
+      - name: Analyze exact DOL with DTK
+        shell: bash
+        run: |
+          set -euo pipefail
+          build/rmge01/dtk dol info build/rmge01/main.dol > build/rmge01/dol-info.txt 2>&1
+          build/rmge01/dtk dol config build/rmge01/main.dol -o build/rmge01/config.yml > build/rmge01/dol-config.log 2>&1
+          cat build/rmge01/dol-info.txt
+          echo "==== CONFIG ===="
+          cat build/rmge01/config.yml
+
+      - name: Split exact DOL and recover symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/rmge01/split
+          build/rmge01/dtk dol split build/rmge01/config.yml build/rmge01/split > build/rmge01/dol-split.log 2>&1
+          find build/rmge01 -type f -printf '%p %s\n' | sort > build/rmge01/file-list.txt
+          tail -200 build/rmge01/dol-split.log
+
+      - name: Build machine-readable function inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          root=Path("build/rmge01")
+          symbol_files=list(root.rglob("symbols.txt"))
+          split_files=list(root.rglob("splits.txt"))
+          functions=[]
+          other=[]
+          for p in symbol_files:
+              for i,line in enumerate(p.read_text(errors="replace").splitlines(),1):
+                  m=re.match(r"^(.*?)\s*=\s*([^:]+):(0x[0-9A-Fa-f]+);\s*//\s*(.*)$",line)
+                  if not m:
+                      continue
+                  meta=m.group(4)
+                  tm=re.search(r"\btype:([^\s]+)",meta)
+                  typ=tm.group(1) if tm else None
+                  sm=re.search(r"\bsize:(0x[0-9A-Fa-f]+)",meta)
+                  row={"name":m.group(1).strip(),"section":m.group(2).strip(),"address":m.group(3),
+                       "type":typ,"size":int(sm.group(1),16) if sm else None,
+                       "source_file":str(p.relative_to(root)),"line":i}
+                  (functions if typ=="function" else other).append(row)
+          out={"symbol_files":[str(x.relative_to(root)) for x in symbol_files],
+               "split_files":[str(x.relative_to(root)) for x in split_files],
+               "function_count":len(functions),"other_symbol_count":len(other),
+               "functions":functions}
+          (root/"function-inventory.json").write_text(json.dumps(out,indent=2)+"\n")
+          print("functions",len(functions),"other symbols",len(other))
+          for f in functions[:100]:
+              print(f["address"],f["size"],f["name"])
+          PY
+
+      - name: Remove raw binaries before upload
+        if: always()
+        shell: bash
+        run: |
+          rm -f build/rmge01/main.dol build/rmge01/dtk
+
+      - name: Upload exact RMGE01 derived evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smg-rmge01-exact-re
+          path: |
+            build/rmge01/identity.json
+            build/rmge01/main.dol.sha1
+            build/rmge01/main.dol.md5
+            build/rmge01/dol-info.txt
+            build/rmge01/config.yml
+            build/rmge01/dol-config.log
+            build/rmge01/dol-split.log
+            build/rmge01/file-list.txt
+            build/rmge01/function-inventory.json
+            build/rmge01/**/symbols.txt
+            build/rmge01/**/splits.txt
+          if-no-files-found: warn
+          retention-days: 7
