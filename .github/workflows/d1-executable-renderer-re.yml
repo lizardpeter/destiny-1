@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/d1-executable-renderer-re.yml"
       - "tools/d1_executable_renderer_strings.py"
+      - "tools/d1_executable_renderer_xref_context.py"
       - "tools/d1_elf_rip_string_xrefs.py"
       - "tools/d1_executable_probe.py"
 
@@ -53,6 +54,19 @@ jobs:
         run: |
           set -euo pipefail
           python tools/d1_executable_renderer_strings.py             build/d1-executable-renderer/eboot.bin             -o build/d1-executable-renderer/renderer_strings.json
+
+      - name: Install exact x86 disassembler
+        shell: bash
+        run: python -m pip install --disable-pip-version-check --quiet capstone==5.0.6
+
+      - name: Disassemble renderer xref neighborhoods
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_renderer_xref_context.py \
+            build/d1-executable-renderer/eboot.bin \
+            --renderer-strings build/d1-executable-renderer/renderer_strings.json \
+            -o build/d1-executable-renderer/renderer_xref_context.json
 
       - name: Summarize renderer frontier
         shell: bash
