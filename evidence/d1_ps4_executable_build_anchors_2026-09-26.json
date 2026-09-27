@@ -26,6 +26,14 @@
       "sha256": null,
       "status": "TARGET",
       "source": "https://github.com/shadps4-compatibility/shadps4-game-compatibility/issues/994"
+    },
+    {
+      "title_id": "CUSA00219",
+      "app_version": "01.33 (reported source directory; unverified in ELF)",
+      "artifact": "user-provided plain ELF eboot.bin",
+      "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+      "status": "OWNER_PROVIDED_FINGERPRINT_VERSION_UNVERIFIED",
+      "source": "evidence/d1_ps4_eboot_672f03411c0503df_probe.json"
     }
   ],
   "runtime_anchors": [
