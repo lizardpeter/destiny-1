@@ -120,6 +120,130 @@ jobs:
               print(f["address"],f["size"],f["name"])
           PY
 
+      - name: Align actual RMGE01 functions to Petari RMGK01
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/petari
+          git init -q build/petari
+          git -C build/petari remote add origin https://github.com/SMGCommunity/Petari.git
+          git -C build/petari fetch -q --depth=1 origin c287189fe91c0a6f53e36aaafda3f91b57eefc17
+          git -C build/petari checkout -q FETCH_HEAD -- config/RMGK01/symbols.txt
+          python3 - <<'PY'
+          import json,re,collections
+          from pathlib import Path
+
+          def parse_symbols(path):
+              out=[]
+              for i,line in enumerate(Path(path).read_text(errors="replace").splitlines(),1):
+                  m=re.match(r"^(.*?)\\s*=\\s*([^:]+):(0x[0-9A-Fa-f]+);\\s*//\\s*(.*)$",line)
+                  if not m:
+                      continue
+                  meta=m.group(4)
+                  if not re.search(r"\\btype:function\\b",meta):
+                      continue
+                  sm=re.search(r"\\bsize:(0x[0-9A-Fa-f]+)",meta)
+                  if not sm:
+                      continue
+                  out.append({
+                      "name":m.group(1).strip(),
+                      "section":m.group(2).strip(),
+                      "address":int(m.group(3),16),
+                      "size":int(sm.group(1),16),
+                      "line":i,
+                  })
+              out.sort(key=lambda x:(x["section"]!=".init",x["address"]))
+              return out
+
+          usa=parse_symbols("build/rmge01/symbols.txt")
+          kor=parse_symbols("build/petari/config/RMGK01/symbols.txt")
+
+          votes=[collections.Counter() for _ in usa]
+          evidence=[collections.defaultdict(list) for _ in usa]
+          for w in (5,6,7,8,10):
+              um=collections.defaultdict(list)
+              km=collections.defaultdict(list)
+              for i in range(len(usa)-w+1):
+                  key=tuple(x["size"] for x in usa[i:i+w])
+                  um[key].append(i)
+              for j in range(len(kor)-w+1):
+                  key=tuple(x["size"] for x in kor[j:j+w])
+                  km[key].append(j)
+              for key,ui in um.items():
+                  if len(ui)!=1:
+                      continue
+                  kj=km.get(key)
+                  if not kj or len(kj)!=1:
+                      continue
+                  i=ui[0]; j=kj[0]
+                  for k in range(w):
+                      votes[i+k][j+k]+=1
+                      evidence[i+k][j+k].append(w)
+
+          mappings=[]
+          for i,c in enumerate(votes):
+              if not c:
+                  continue
+              (j,n),=c.most_common(1)
+              second=c.most_common(2)[1][1] if len(c)>1 else 0
+              if n < 3 or n <= second:
+                  continue
+              u=usa[i]; k=kor[j]
+              if u["size"]!=k["size"]:
+                  continue
+              mappings.append({
+                  "usa_index":i,
+                  "kor_index":j,
+                  "usa_address":f"0x{u['address']:08X}",
+                  "kor_address":f"0x{k['address']:08X}",
+                  "usa_name":u["name"],
+                  "petari_name":k["name"],
+                  "size":u["size"],
+                  "votes":n,
+                  "runner_up_votes":second,
+                  "window_evidence":sorted(evidence[i][j]),
+                  "address_delta":k["address"]-u["address"],
+                  "confidence":"high" if n>=5 and second==0 else "medium-high",
+              })
+
+          # Local consistency: require neighbors to preserve order when available.
+          by_i={m["usa_index"]:m for m in mappings}
+          filtered=[]
+          for m in mappings:
+              i=m["usa_index"]; j=m["kor_index"]
+              neighbors=[]
+              for d in (-2,-1,1,2):
+                  x=by_i.get(i+d)
+                  if x:
+                      neighbors.append((d,x["kor_index"]-j))
+              good=sum(1 for d,dj in neighbors if d==dj)
+              if neighbors and good==0 and m["votes"]<5:
+                  continue
+              m["neighbor_consistency"]=good
+              filtered.append(m)
+
+          named=[m for m in filtered if not re.match(r"^(fn|func|lbl)_",m["petari_name"])]
+          deltas=collections.Counter(m["address_delta"] for m in filtered)
+          summary={
+              "usa_function_count":len(usa),
+              "petari_function_count":len(kor),
+              "high_confidence_mapping_count":len(filtered),
+              "petari_named_mapping_count":len(named),
+              "coverage_pct":round(100*len(filtered)/len(usa),4) if usa else 0,
+              "named_coverage_pct":round(100*len(named)/len(usa),4) if usa else 0,
+              "top_address_deltas":[{"delta":d,"count":n} for d,n in deltas.most_common(30)],
+              "method":"unique exact function-size windows (5/6/7/8/10), multi-window voting, local order consistency",
+              "usa_source":"exact owner-provided RMGE01 main.dol analyzed with decomp-toolkit 1.8.4",
+              "petari_source":"SMGCommunity/Petari c287189fe91c0a6f53e36aaafda3f91b57eefc17 RMGK01 symbols",
+          }
+          Path("build/rmge01/crossbuild-alignment-summary.json").write_text(json.dumps(summary,indent=2)+"\\n")
+          Path("build/rmge01/crossbuild-size-alignment.json").write_text(json.dumps({"summary":summary,"mappings":filtered},indent=2)+"\\n")
+          print(json.dumps(summary,indent=2))
+          print("Top mapped names:")
+          for m in named[:100]:
+              print(m["usa_address"],"->",m["kor_address"],m["petari_name"],"votes",m["votes"],"delta",m["address_delta"])
+          PY
+
       - name: Remove raw binaries before upload
         if: always()
         shell: bash
@@ -141,6 +265,8 @@ jobs:
             build/rmge01/dol-split.log
             build/rmge01/file-list.txt
             build/rmge01/function-inventory.json
+            build/rmge01/crossbuild-alignment-summary.json
+            build/rmge01/crossbuild-size-alignment.json
             build/rmge01/**/symbols.txt
             build/rmge01/**/splits.txt
           if-no-files-found: warn
