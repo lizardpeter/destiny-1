@@ -328,6 +328,76 @@ The pass strings themselves remain exact executable evidence. Runtime pass
 ownership/order must instead come from mapped code/data references and the
 Ghidra call graph.
 
+## Renderer job-system executable path
+
+A contiguous setup function around `0x811115..0x8113DC` registers separate
+source-backed jobs for:
+
+- `render_setup_extract_and_prepare_and_allocate_nodes_for_view_job`
+- `render_submit_view_job`
+- `render_submit_lights_view_job`
+- `render_submit_transparents_view_job`
+- `render_submit_speedtree_view_job`
+
+For the lights/transparents/SpeedTree job records, the exact code repeatedly:
+
+1. calls `0xF97B0`,
+2. stores the returned 32-bit value,
+3. decomposes that value with the same package/entry bit operations used by D1
+   FileHash resolution (`sar 13`, package-mask logic, `& 0x1FFF`),
+4. resolves the corresponding package entry record,
+5. writes the shared job/setup pointer into `[resolved_entry + 8]`.
+
+After these registrations, the same function allocates and zeroes two large
+parameter blocks:
+
+```text
+render_submit_view_per_stage_job_parameters: 0x148840 bytes
+render_submit_view_per_job_job_parameters:   0x0D1880 bytes
+```
+
+The allocation call is `0xAF600`; the zero/fill helper is `0x12AA980`.
+
+The next diagnostic helper at `0x8113E0` reports
+`render_setup_extract_and_prepare_jobs_and_allocate_nodes_for_view_packet job
+(view: %s)`.
+
+A function beginning at `0x811400` reads view fields at offsets `+0x10660`
+and `+0x10698`, calls `0x7ED380`, then reports
+`render_submit_view job (view: %s, render stage: %s)`.
+
+This is direct executable evidence that retail D1 separates scene extraction /
+prepare work from per-view submission and maintains distinct submission jobs for
+lights, transparents and SpeedTree. Exact scheduler types, job argument schemas
+and stage ordering remain pending decompilation.
+
+## Surface descriptor ABI frontier
+
+The G-buffer initializer around `0x80A3CA` writes the named render surfaces
+into compact global records. Consecutive records for the color/normal/accumulation
+family are spaced by exactly `0x28` bytes, establishing a source-executable
+surface-descriptor record size for this registry.
+
+Observed record fields include:
+
+```text
++0x00  authored name pointer
++0x08  dword
++0x0C  dword
++0x10  word
++0x12  dword/word region
++0x16  word
++0x18  dword
++0x1C  dword
++0x20  dword
+```
+
+Examples retain exact values such as `0x2001`, `0xFAC90A`, `0xFAC00A`,
+`0xFAC00C`, and `0x4000`. These field values are not yet named as PS4 pixel
+format, tiling, usage, sample-count or bind flags. The next proof is to decompile
+the consumers/allocator helpers and map those fields to actual Orbis surface
+creation behavior.
+
 ## Current executable RE frontier
 
 The highest-value next proofs are:
