@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/smg-rmge01-ghidra-unmatched.yml"
-      - "tools/ghidra/SMGExportUnmatchedSlices.py"
+      - "tools/ghidra/SMGExportUnmatchedSlices.java"
   workflow_dispatch:
 
 permissions:
@@ -153,7 +153,7 @@ jobs:
           from pathlib import Path
           p=Path("build/smg-ghidra/ghidra-unmatched-slices.json")
           d=json.loads(p.read_text())
-          complete=[x for x in d["functions"] if x["decompilation"]["completed"]]
+          complete=[x for x in d["functions"] if x.get("decompile_completed")]
           summary={
               "schema":"smg_rmge01_ghidra_unmatched_summary/v1",
               "program":d["program"],
@@ -162,8 +162,8 @@ jobs:
               "missing":d["missing"],
               "decompiled":len(complete),
               "largest_examples":[{
-                  "address":x["frontier"]["address"],
-                  "size":x["frontier"]["size"],
+                  "address":x["frontier_address"],
+                  "size":x["frontier_size"],
                   "ghidra_name":x["ghidra_name"],
                   "prototype":x["prototype"],
                   "instruction_count":x["instruction_count"],
@@ -188,6 +188,7 @@ jobs:
           name: smg-rmge01-ghidra-unmatched
           path: |
             build/smg-ghidra/unmatched-frontier.json
+            build/smg-ghidra/unmatched-frontier.tsv
             build/smg-ghidra/ghidra-unmatched-slices.json
             build/smg-ghidra/ghidra-unmatched-summary.json
             build/smg-ghidra/ghidra.log
