@@ -45,6 +45,18 @@ PT_NAMES = {
     5: "PT_SHLIB",
     6: "PT_PHDR",
     7: "PT_TLS",
+    # Sony/Orbis ELF extensions. PT_SCE_DYNLIBDATA contains loader/linker
+    # metadata (string/symbol/relocation/hash/dynamic tables), not ordinary
+    # Bungie runtime renderer data.
+    0x60000000: "PT_SCE_RELA",
+    0x61000000: "PT_SCE_DYNLIBDATA",
+    0x61000001: "PT_SCE_PROCPARAM",
+    0x61000002: "PT_SCE_MODULEPARAM",
+    0x61000010: "PT_SCE_RELRO",
+    0x6474E550: "PT_GNU_EH_FRAME",
+    0x6474E551: "PT_GNU_STACK",
+    0x6FFFFF00: "PT_SCE_COMMENT",
+    0x6FFFFF01: "PT_SCE_VERSION",
 }
 
 
