@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -83,12 +83,22 @@ jobs:
           test -n "$GHIDRA_DIR"
           echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
 
+      - name: Install Ghidra bundled PyGhidra
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet \
+            --no-index \
+            --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist" \
+            pyghidra
+          python3 -c "import pyghidra; print('PyGhidra ready', pyghidra.__version__)"
+
       - name: Recover full exact-build code graph
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/d1-ghidra-renderer/project
-          "$GHIDRA_DIR/support/analyzeHeadless" \
+          "$GHIDRA_DIR/support/pyghidraRun" --headless \
             build/d1-ghidra-renderer/project D1Exec \
             -import build/d1-ghidra-renderer/eboot.bin \
             -overwrite \
@@ -143,7 +153,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$GHIDRA_DIR/support/analyzeHeadless" \
+          "$GHIDRA_DIR/support/pyghidraRun" --headless \
             build/d1-ghidra-renderer/project D1Exec \
             -process eboot.bin \
             -noanalysis \
