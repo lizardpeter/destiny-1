@@ -42,6 +42,8 @@ STRONG_PATTERNS = (
     re.compile(r"^gbuffer_", re.I),
     re.compile(r"^autoexposure$", re.I),
     re.compile(r"^render_submit_lights_view_job$", re.I),
+    re.compile(r"^render_submit_", re.I),
+    re.compile(r"^render_setup_", re.I),
     re.compile(r"^final_combine_output_surface$", re.I),
     re.compile(r"^shadow_depth_stencil$", re.I),
     re.compile(r"^stencil$", re.I),
