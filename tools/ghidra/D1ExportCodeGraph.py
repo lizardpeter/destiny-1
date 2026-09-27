@@ -66,11 +66,10 @@ def function_code_fingerprints(function):
     while instructions.hasNext():
         instruction = instructions.next()
         raw = instruction.getBytes()
-        byte_text = "".join(chr(int(value) & 0xFF) for value in raw)
-        byte_hash.update(byte_text)
+        byte_hash.update(bytes((int(value) & 0xFF) for value in raw))
         mnemonic = str(instruction.getMnemonicString()).encode("utf-8")
         mnemonic_hash.update(mnemonic)
-        mnemonic_hash.update("\x00")
+        mnemonic_hash.update(b"\x00")
         instruction_count += 1
         byte_count += len(raw)
     return {
