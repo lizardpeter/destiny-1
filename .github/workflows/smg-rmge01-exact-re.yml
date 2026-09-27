@@ -136,13 +136,13 @@ jobs:
           def parse_symbols(path):
               out=[]
               for i,line in enumerate(Path(path).read_text(errors="replace").splitlines(),1):
-                  m=re.match(r"^(.*?)\\s*=\\s*([^:]+):(0x[0-9A-Fa-f]+);\\s*//\\s*(.*)$",line)
+                  m=re.match(r"^(.*?)\s*=\s*([^:]+):(0x[0-9A-Fa-f]+);\s*//\s*(.*)$",line)
                   if not m:
                       continue
                   meta=m.group(4)
-                  if not re.search(r"\\btype:function\\b",meta):
+                  if not re.search(r"\btype:function\b",meta):
                       continue
-                  sm=re.search(r"\\bsize:(0x[0-9A-Fa-f]+)",meta)
+                  sm=re.search(r"\bsize:(0x[0-9A-Fa-f]+)",meta)
                   if not sm:
                       continue
                   out.append({
@@ -236,8 +236,8 @@ jobs:
               "usa_source":"exact owner-provided RMGE01 main.dol analyzed with decomp-toolkit 1.8.4",
               "petari_source":"SMGCommunity/Petari c287189fe91c0a6f53e36aaafda3f91b57eefc17 RMGK01 symbols",
           }
-          Path("build/rmge01/crossbuild-alignment-summary.json").write_text(json.dumps(summary,indent=2)+"\\n")
-          Path("build/rmge01/crossbuild-size-alignment.json").write_text(json.dumps({"summary":summary,"mappings":filtered},indent=2)+"\\n")
+          Path("build/rmge01/crossbuild-alignment-summary.json").write_text(json.dumps(summary,indent=2)+"\n")
+          Path("build/rmge01/crossbuild-size-alignment.json").write_text(json.dumps({"summary":summary,"mappings":filtered},indent=2)+"\n")
           print(json.dumps(summary,indent=2))
           print("Top mapped names:")
           for m in named[:100]:
