@@ -196,10 +196,35 @@ def scan(
             "unique_label_count": len(labels_here),
             "hit_count": len(cluster),
             "hits": cluster,
+            "segment_type_names": sorted({
+                next(
+                    (
+                        segment["type_name"]
+                        for segment in segments
+                        if segment["index"] == row["segment_index"]
+                    ),
+                    "UNKNOWN",
+                )
+                for row in cluster
+            }),
             "status": (
-                "MULTI_LABEL_RENDER_METADATA_TABLE_CANDIDATE"
-                if len(labels_here) >= 2
-                else "SINGLE_LABEL_POINTER_CANDIDATE"
+                "SCE_DYNLIBDATA_POINTER_CLUSTER_NOT_RUNTIME_RENDER_TABLE"
+                if all(
+                    next(
+                        (
+                            segment["type"]
+                            for segment in segments
+                            if segment["index"] == row["segment_index"]
+                        ),
+                        None,
+                    ) == 0x61000000
+                    for row in cluster
+                )
+                else (
+                    "MULTI_LABEL_RENDER_METADATA_TABLE_CANDIDATE"
+                    if len(labels_here) >= 2
+                    else "SINGLE_LABEL_POINTER_CANDIDATE"
+                )
             ),
         })
 
@@ -229,8 +254,10 @@ def scan(
         "clusters": cluster_rows,
         "policy": (
             "Exact pointer/rel32 matches and physical clustering are discovery "
-            "evidence. Table schema, ownership, pass order and runtime semantics "
-            "require disassembly/decompiler proof."
+            "evidence. PT_SCE_DYNLIBDATA hits are loader/dynamic-link metadata "
+            "and are explicitly not promoted as Bungie runtime render tables. "
+            "Table schema, ownership, pass order and runtime semantics require "
+            "mapped runtime data plus disassembly/decompiler proof."
         ),
     }
 
