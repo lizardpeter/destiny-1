@@ -1,0 +1,96 @@
+name: D1 Executable Renderer RE
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/d1-executable-renderer-re.yml"
+      - "tools/d1_executable_renderer_strings.py"
+      - "tools/d1_elf_rip_string_xrefs.py"
+      - "tools/d1_executable_probe.py"
+
+permissions:
+  contents: read
+
+jobs:
+  renderer-frontier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+
+    steps:
+      - name: Checkout reversal tools
+        uses: actions/checkout@v4
+
+      - name: Download exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-executable-renderer
+          curl --fail --location --retry 4 --retry-delay 2             "$EBOOT_URL"             --output build/d1-executable-renderer/eboot.bin
+
+      - name: Verify exact executable identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/d1-executable-renderer
+          actual_size="$(stat -c %s eboot.bin)"
+          test "$actual_size" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  eboot.bin" | sha256sum --check -
+          printf '{"url":"%s","size":%s,"sha256":"%s","status":"EXACT_OWNER_PROVIDED_EBOOT_VERIFIED"}\n'             "$EBOOT_URL" "$actual_size" "$EBOOT_SHA256"             > identity.json
+
+      - name: Run exact executable probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_probe.py             build/d1-executable-renderer/eboot.bin             --strings             -o build/d1-executable-renderer/executable_probe.json
+
+      - name: Build renderer string/xref frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_renderer_strings.py             build/d1-executable-renderer/eboot.bin             -o build/d1-executable-renderer/renderer_strings.json
+
+      - name: Summarize renderer frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("build/d1-executable-renderer/renderer_strings.json")
+          d=json.loads(p.read_text())
+          print(json.dumps(d["counts"], indent=2))
+          print("\nTop renderer strings with RIP-relative candidates:")
+          for row in d["strings"][:100]:
+              if row["candidate_lea_xref_count"]:
+                  print(
+                      row["candidate_lea_xref_count"],
+                      ",".join(row["categories"]),
+                      repr(row["text"]),
+                      [
+                          hex(x["virtual_address"])
+                          for x in row["candidate_lea_xrefs"][:8]
+                      ],
+                  )
+          PY
+
+      - name: Remove raw executable before artifact upload
+        if: always()
+        shell: bash
+        run: rm -f build/d1-executable-renderer/eboot.bin
+
+      - name: Upload derived renderer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-eboot-renderer-frontier
+          path: |
+            build/d1-executable-renderer/identity.json
+            build/d1-executable-renderer/executable_probe.json
+            build/d1-executable-renderer/renderer_strings.json
+          if-no-files-found: error
+          retention-days: 7
