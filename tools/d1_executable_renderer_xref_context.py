@@ -201,6 +201,26 @@ def disassemble_window(
             "operands": operands,
         })
 
+    # Independently decode from the exact validated xref address. The broad
+    # window can begin mid-instruction and Capstone stops at the first invalid
+    # byte; the center-forward stream guarantees the xref and following control
+    # flow are still available.
+    center_file = va_to_file(center_va, segments)
+    center_forward = []
+    if center_file is not None:
+        center_data = raw[center_file : min(len(raw), center_file + after)]
+        for insn in md.disasm(center_data, center_va):
+            center_forward.append({
+                "address": insn.address,
+                "address_hex": hex(insn.address),
+                "offset_from_xref": insn.address - center_va,
+                "mnemonic": insn.mnemonic,
+                "op_str": insn.op_str,
+                "size": insn.size,
+            })
+            if len(center_forward) >= 160:
+                break
+
     return {
         "status": "DISASSEMBLED",
         "window": {
@@ -212,6 +232,8 @@ def disassemble_window(
         },
         "instruction_count": len(rows),
         "instructions": rows,
+        "center_forward_instruction_count": len(center_forward),
+        "center_forward_instructions": center_forward,
         "direct_calls": direct_calls,
         "direct_jumps": direct_jumps,
         "rip_references": rip_refs,
