@@ -133,7 +133,7 @@ jobs:
             build/smg-ghidra/project SMG_RMGE01 \
             -import build/smg-ghidra/main.dol \
             -overwrite \
-            -loader-autoloadMaps false \\
+            -loader-autoloadMaps false \
             -analysisTimeoutPerFile 3600 \
             -scriptPath "$PWD/tools/ghidra" \
             -postScript SMGExportUnmatchedSlices.py \
