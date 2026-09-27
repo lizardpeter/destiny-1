@@ -1,0 +1,195 @@
+name: SMG RMGE01 Ghidra Unmatched RE
+
+on:
+  push:
+    paths:
+      - ".github/workflows/smg-rmge01-ghidra-unmatched.yml"
+      - "tools/ghidra/SMGExportUnmatchedSlices.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DOL_URL: https://r2.houseofkublai.com/super-mario-galaxy/DATA/sys/main.dol
+      DOL_SIZE: "6283264"
+      DOL_SHA256: 2c680585a8f58e1cc9c5521b579057f12b124ff0ef409e470a57606c50a93c09
+      GHIDRA_URL: https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1_build/ghidra_12.1_PUBLIC_20260513.zip
+      GHIDRA_SHA256: aa5cbcbbf48f41ca185fce900e19592f1ade4cd5994eb6e0ede468dac8a6f302
+      GC_LOADER_URL: https://github.com/Cuyler36/Ghidra-GameCube-Loader/releases/download/1.3.1/GameCubeLoader-1.3.0-921504c-Ghidra_12.1.zip
+      GC_LOADER_SHA256: 9892f28fc1e7f19bb3fcec7cfb4ad2ab7504503b571d93de8b142a6f7bec8ed0
+      ANALYSIS_RUN_ID: "36359041943"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Download and verify exact RMGE01 DOL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/smg-ghidra
+          curl --fail --location --retry 5 --retry-delay 2 "$DOL_URL" -o build/smg-ghidra/main.dol
+          test "$(stat -c %s build/smg-ghidra/main.dol)" = "$DOL_SIZE"
+          echo "$DOL_SHA256  build/smg-ghidra/main.dol" | sha256sum --check -
+
+      - name: Download exact-DOL DTK alignment artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/smg-ghidra/analysis
+          gh run download "$ANALYSIS_RUN_ID" --repo "${{ github.repository }}" \
+            --name smg-rmge01-exact-re --dir build/smg-ghidra/analysis
+          test -s build/smg-ghidra/analysis/function-inventory.json
+          test -s build/smg-ghidra/analysis/crossbuild-size-alignment.json
+
+      - name: Build prioritized unmatched-USA frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          base=Path("build/smg-ghidra/analysis")
+          inv=json.loads((base/"function-inventory.json").read_text())
+          ali=json.loads((base/"crossbuild-size-alignment.json").read_text())
+          mapped={m["usa_address"].upper() for m in ali["mappings"]}
+
+          unmatched=[]
+          for f in inv["functions"]:
+              addr=f["address"].upper()
+              if addr in mapped:
+                  continue
+              row={
+                  "address":addr,
+                  "size":f.get("size") or 0,
+                  "name":f.get("name"),
+                  "section":f.get("section"),
+                  "dtk_source_file":f.get("source_file"),
+                  "dtk_line":f.get("line"),
+              }
+              unmatched.append(row)
+
+          # Large functions first, then stable address order. Tiny thunks can wait.
+          unmatched.sort(key=lambda x:(-(x["size"] or 0), int(x["address"],16)))
+          prioritized=[x for x in unmatched if (x["size"] or 0) >= 24]
+          out={
+              "schema":"smg_rmge01_unmatched_frontier/v1",
+              "executable_sha256":"2c680585a8f58e1cc9c5521b579057f12b124ff0ef409e470a57606c50a93c09",
+              "total_rmge01_functions":inv["function_count"],
+              "petari_high_confidence_mapped":len(mapped),
+              "unmatched_total":len(unmatched),
+              "unmatched_ge_24_bytes":len(prioritized),
+              "selection":"largest unmatched functions first",
+              "functions":prioritized,
+          }
+          Path("build/smg-ghidra/unmatched-frontier.json").write_text(json.dumps(out,indent=2)+"\n")
+          print("RMGE01 functions:",inv["function_count"])
+          print("mapped to Petari:",len(mapped))
+          print("unmatched:",len(unmatched))
+          print("unmatched >=24 bytes:",len(prioritized))
+          for x in prioritized[:40]:
+              print(x["address"],x["size"],x["name"])
+          PY
+
+      - name: Install Ghidra 12.1 and GameCube-Wii loader
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 "$GHIDRA_URL" -o build/smg-ghidra/ghidra.zip
+          echo "$GHIDRA_SHA256  build/smg-ghidra/ghidra.zip" | sha256sum --check -
+          unzip -q build/smg-ghidra/ghidra.zip -d build/smg-ghidra/
+          GHIDRA_DIR="$(find build/smg-ghidra -maxdepth 1 -type d -name 'ghidra_*_PUBLIC' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "$GHIDRA_DIR" > build/smg-ghidra/ghidra-dir.txt
+
+          curl --fail --location --retry 4 "$GC_LOADER_URL" -o build/smg-ghidra/gamecube-loader.zip
+          echo "$GC_LOADER_SHA256  build/smg-ghidra/gamecube-loader.zip" | sha256sum --check -
+          mkdir -p "$GHIDRA_DIR/Ghidra/Extensions"
+          unzip -q build/smg-ghidra/gamecube-loader.zip -d "$GHIDRA_DIR/Ghidra/Extensions"
+          find "$GHIDRA_DIR/Ghidra/Extensions" -maxdepth 3 -type f | head -50
+
+      - name: Headless analyze and decompile unmatched RMGE01 functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          GHIDRA_DIR="$(cat build/smg-ghidra/ghidra-dir.txt)"
+          mkdir -p build/smg-ghidra/project
+          "$GHIDRA_DIR/support/analyzeHeadless" \
+            build/smg-ghidra/project SMG_RMGE01 \
+            -import build/smg-ghidra/main.dol \
+            -overwrite \
+            -loader "Nintendo GameCube/Wii Binary (Executable)" \
+            -analysisTimeoutPerFile 3600 \
+            -scriptPath "$PWD/tools/ghidra" \
+            -postScript SMGExportUnmatchedSlices.py \
+              "$PWD/build/smg-ghidra/unmatched-frontier.json" \
+              "$PWD/build/smg-ghidra/ghidra-unmatched-slices.json" \
+              128 \
+            > build/smg-ghidra/ghidra.log 2>&1
+          tail -250 build/smg-ghidra/ghidra.log
+          test -s build/smg-ghidra/ghidra-unmatched-slices.json
+
+      - name: Summarize decompiler result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("build/smg-ghidra/ghidra-unmatched-slices.json")
+          d=json.loads(p.read_text())
+          complete=[x for x in d["functions"] if x["decompilation"]["completed"]]
+          summary={
+              "schema":"smg_rmge01_ghidra_unmatched_summary/v1",
+              "program":d["program"],
+              "requested":d["requested"],
+              "exported":d["exported"],
+              "missing":d["missing"],
+              "decompiled":len(complete),
+              "largest_examples":[{
+                  "address":x["frontier"]["address"],
+                  "size":x["frontier"]["size"],
+                  "ghidra_name":x["ghidra_name"],
+                  "prototype":x["prototype"],
+                  "instruction_count":x["instruction_count"],
+                  "call_count":len(x["calls"]),
+              } for x in complete[:32]],
+          }
+          Path("build/smg-ghidra/ghidra-unmatched-summary.json").write_text(json.dumps(summary,indent=2)+"\n")
+          print(json.dumps(summary,indent=2))
+          PY
+
+      - name: Remove raw executable and tool distributions
+        if: always()
+        shell: bash
+        run: |
+          rm -f build/smg-ghidra/main.dol build/smg-ghidra/ghidra.zip build/smg-ghidra/gamecube-loader.zip
+          rm -rf build/smg-ghidra/ghidra_*_PUBLIC build/smg-ghidra/project
+
+      - name: Upload derived Ghidra evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smg-rmge01-ghidra-unmatched
+          path: |
+            build/smg-ghidra/unmatched-frontier.json
+            build/smg-ghidra/ghidra-unmatched-slices.json
+            build/smg-ghidra/ghidra-unmatched-summary.json
+            build/smg-ghidra/ghidra.log
+          if-no-files-found: warn
+          retention-days: 7
