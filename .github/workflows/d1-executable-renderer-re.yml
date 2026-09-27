@@ -8,6 +8,7 @@ on:
       - "tools/d1_executable_renderer_strings.py"
       - "tools/d1_executable_renderer_xref_context.py"
       - "tools/d1_executable_renderer_label_tables.py"
+      - "tools/d1_executable_code_windows.py"
       - "tools/d1_elf_rip_string_xrefs.py"
       - "tools/d1_executable_probe.py"
 
@@ -69,6 +70,39 @@ jobs:
             --renderer-strings build/d1-executable-renderer/renderer_strings.json \
             -o build/d1-executable-renderer/renderer_xref_context.json
 
+      - name: Follow high-value renderer helper targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_code_windows.py \
+            build/d1-executable-renderer/eboot.bin \
+            --address 0x8186C0 \
+            --address 0x818930 \
+            --address 0x818A30 \
+            --address 0x818A90 \
+            --address 0x807DB0 \
+            --address 0x807DF0 \
+            --address 0x89C5B0 \
+            --address 0x89FC90 \
+            --address 0x8095D0 \
+            --address 0x8A2360 \
+            --address 0x7E0F70 \
+            --address 0x7DE710 \
+            --address 0x7E1110 \
+            --address 0x8A5660 \
+            --address 0x816780 \
+            --address 0x831DA0 \
+            --address 0x8363F0 \
+            --address 0x83F100 \
+            --address 0x7EA930 \
+            --address 0x82D970 \
+            --address 0x106F6A0 \
+            --address 0x7E58F0 \
+            --address 0xF97B0 \
+            --address 0x7ED380 \
+            --address 0xAF600 \
+            -o build/d1-executable-renderer/renderer_helper_windows.json
+
       - name: Trace indirect renderer pass-label tables
         shell: bash
         run: |
@@ -117,5 +151,6 @@ jobs:
             build/d1-executable-renderer/renderer_strings.json
             build/d1-executable-renderer/renderer_xref_context.json
             build/d1-executable-renderer/renderer_label_tables.json
+            build/d1-executable-renderer/renderer_helper_windows.json
           if-no-files-found: error
           retention-days: 7
