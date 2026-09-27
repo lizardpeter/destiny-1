@@ -136,8 +136,8 @@ jobs:
             -loader-autoloadMaps false \
             -analysisTimeoutPerFile 3600 \
             -scriptPath "$PWD/tools/ghidra" \
-            -postScript SMGExportUnmatchedSlices.py \
-              "$PWD/build/smg-ghidra/unmatched-frontier.json" \
+            -postScript SMGExportUnmatchedSlices.java \
+              "$PWD/build/smg-ghidra/unmatched-frontier.tsv" \
               "$PWD/build/smg-ghidra/ghidra-unmatched-slices.json" \
               128 \
             > build/smg-ghidra/ghidra.log 2>&1
