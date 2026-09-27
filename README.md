@@ -96,6 +96,56 @@ python tools/d1_executable_knowledge.py evidence/<build>.executable.json \
   -o knowledge/records/<build>_executable.json
 ```
 
+Exact owner-provided CUSA00219 executable renderer pass from the configured R2 remote:
+
+```bash
+python tools/d1_r2_renderer_re_pass.py
+```
+
+The launcher pulls only:
+
+```text
+R2:houseofkublai/destiny/CUSA00219_01.33/eboot.bin
+```
+
+and refuses to analyze it unless both the known size (29,249,016 bytes) and
+SHA-256
+`672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833`
+match. It then emits the generic executable probe plus the renderer-oriented
+string/xref frontier. Raw executable bytes remain outside Git.
+
+Renderer-focused executable analysis after Ghidra auto-analysis:
+
+```bash
+python tools/d1_executable_renderer_strings.py <eboot.bin> \
+  -o build/executable_renderer/<build>/renderer_strings.json
+
+analyzeHeadless <project-dir> D1Exec \
+  -import <eboot.bin> -overwrite \
+  -scriptPath <destiny-1>/tools/ghidra \
+  -postScript D1ExportCodeGraph.py evidence/<build>.ghidra.json CUSA00219 01.33
+
+python tools/d1_ghidra_graph_normalize.py evidence/<build>.ghidra.json \
+  --out-dir build/codegraph/<build>
+
+python tools/d1_executable_renderer_frontier.py build/codegraph/<build> \
+  --renderer-strings build/executable_renderer/<build>/renderer_strings.json \
+  -o build/executable_renderer/<build>/renderer_frontier.json
+
+analyzeHeadless <project-dir> D1ExecExisting \
+  -process eboot.bin \
+  -scriptPath <destiny-1>/tools/ghidra \
+  -postScript D1ExportRendererSlices.py \
+    build/executable_renderer/<build>/renderer_frontier.json \
+    build/executable_renderer/<build>/renderer_slices.json 48
+```
+
+The renderer frontier is explicitly a decompilation priority list, not a semantic
+promotion. The focused slices preserve exact-build disassembly operands, call/data
+references, P-code and decompiler output so material-state tables, shader/resource
+binding, draw submission, G-buffer/deferred lighting, sky/fog and post-processing
+can be proven from executable control/data flow rather than inferred from previews.
+
 Ghidra code graph after normal auto-analysis:
 
 ```bash
