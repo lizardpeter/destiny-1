@@ -1,0 +1,98 @@
+{
+  "schema": "d1_elf_rip_string_xrefs/v1",
+  "executable_sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "file_size": 29249016,
+  "elf_entry": "0xC2E200",
+  "terms": {
+    "spawn point globals": [
+      {
+        "file_offset": 23181672,
+        "virtual_address": 23165288,
+        "candidate_lea_xrefs": [
+          {
+            "file_offset": 1268515,
+            "virtual_address": 1252131,
+            "target_virtual_address": 23165288,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          }
+        ]
+      }
+    ],
+    "activity loader": [
+      {
+        "file_offset": 23261903,
+        "virtual_address": 23245519,
+        "candidate_lea_xrefs": [
+          {
+            "file_offset": 3426803,
+            "virtual_address": 3410419,
+            "target_virtual_address": 23245519,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          }
+        ]
+      }
+    ],
+    "Change world (activity_name='%s', symbol='%s', rebuild_omaha_options='%s', random_seed='%c 0x%08X').": [
+      {
+        "file_offset": 23389349,
+        "virtual_address": 23372965,
+        "candidate_lea_xrefs": [
+          {
+            "file_offset": 7706458,
+            "virtual_address": 7690074,
+            "target_virtual_address": 23372965,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          }
+        ]
+      }
+    ],
+    "Change slice-set (slice-set='%d', spawn='%s').": [
+      {
+        "file_offset": 23389473,
+        "virtual_address": 23373089,
+        "candidate_lea_xrefs": [
+          {
+            "file_offset": 7703538,
+            "virtual_address": 7687154,
+            "target_virtual_address": 23373089,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          }
+        ]
+      }
+    ],
+    "payload spawn identifier unavailable in this build": [
+      {
+        "file_offset": 23389520,
+        "virtual_address": 23373136,
+        "candidate_lea_xrefs": [
+          {
+            "file_offset": 7703545,
+            "virtual_address": 7687161,
+            "target_virtual_address": 23373136,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          }
+        ]
+      }
+    ],
+    "activities:spawn_volumes: fp_ref list overflow in activity 0x%08X": [
+      {
+        "file_offset": 23186818,
+        "virtual_address": 23170434,
+        "candidate_lea_xrefs": [
+          {
+            "file_offset": 1550036,
+            "virtual_address": 1533652,
+            "target_virtual_address": 23170434,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          },
+          {
+            "file_offset": 1550079,
+            "virtual_address": 1533695,
+            "target_virtual_address": 23170434,
+            "status": "BYTE_PATTERN_CANDIDATE_REQUIRES_DISASSEMBLY"
+          }
+        ]
+      }
+    ]
+  }
+}
