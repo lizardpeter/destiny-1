@@ -7,6 +7,7 @@ on:
       - ".github/workflows/d1-executable-renderer-re.yml"
       - "tools/d1_executable_renderer_strings.py"
       - "tools/d1_executable_renderer_xref_context.py"
+      - "tools/d1_executable_renderer_label_tables.py"
       - "tools/d1_elf_rip_string_xrefs.py"
       - "tools/d1_executable_probe.py"
 
@@ -68,6 +69,14 @@ jobs:
             --renderer-strings build/d1-executable-renderer/renderer_strings.json \
             -o build/d1-executable-renderer/renderer_xref_context.json
 
+      - name: Trace indirect renderer pass-label tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_renderer_label_tables.py \
+            build/d1-executable-renderer/eboot.bin \
+            -o build/d1-executable-renderer/renderer_label_tables.json
+
       - name: Summarize renderer frontier
         shell: bash
         run: |
@@ -107,5 +116,6 @@ jobs:
             build/d1-executable-renderer/executable_probe.json
             build/d1-executable-renderer/renderer_strings.json
             build/d1-executable-renderer/renderer_xref_context.json
+            build/d1-executable-renderer/renderer_label_tables.json
           if-no-files-found: error
           retention-days: 7
