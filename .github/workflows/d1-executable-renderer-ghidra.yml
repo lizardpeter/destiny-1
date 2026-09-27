@@ -2,13 +2,6 @@ name: D1 Executable Renderer Ghidra
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/d1-executable-renderer-ghidra.yml"
-      - "tools/ghidra/D1ExportCodeGraph.py"
-      - "tools/ghidra/D1ExportRendererSlices.py"
-      - "tools/d1_ghidra_graph_normalize.py"
-      - "tools/d1_executable_renderer_frontier.py"
 
 permissions:
   contents: read
