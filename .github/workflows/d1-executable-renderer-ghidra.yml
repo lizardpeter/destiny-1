@@ -1,0 +1,207 @@
+name: D1 Executable Renderer Ghidra
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/d1-executable-renderer-ghidra.yml"
+      - "tools/ghidra/D1ExportCodeGraph.py"
+      - "tools/ghidra/D1ExportRendererSlices.py"
+      - "tools/d1_ghidra_graph_normalize.py"
+      - "tools/d1_executable_renderer_frontier.py"
+
+permissions:
+  contents: read
+
+jobs:
+  ghidra-renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+
+    steps:
+      - name: Checkout reversal tools
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Download exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-ghidra-renderer
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "$EBOOT_URL" \
+            --output build/d1-ghidra-renderer/eboot.bin
+          test "$(stat -c %s build/d1-ghidra-renderer/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-ghidra-renderer/eboot.bin" | sha256sum --check -
+
+      - name: Download latest official Ghidra
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request
+          request=urllib.request.Request(
+              "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest",
+              headers={
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "d1-renderer-re",
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              release=json.load(response)
+          assets=[
+              asset for asset in release.get("assets", [])
+              if asset.get("name","").endswith(".zip")
+              and "PUBLIC" in asset.get("name","")
+          ]
+          if not assets:
+              raise SystemExit("latest Ghidra release has no PUBLIC zip asset")
+          asset=assets[0]
+          print(release["tag_name"], asset["name"], asset["browser_download_url"])
+          pathlib=None
+          open("build/d1-ghidra-renderer/ghidra_url.txt","w").write(
+              asset["browser_download_url"]+"\n"
+          )
+          PY
+          curl --fail --location --retry 4 \
+            "$(cat build/d1-ghidra-renderer/ghidra_url.txt)" \
+            --output build/d1-ghidra-renderer/ghidra.zip
+          unzip -q build/d1-ghidra-renderer/ghidra.zip -d build/d1-ghidra-renderer/
+          GHIDRA_DIR="$(find build/d1-ghidra-renderer -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Recover full exact-build code graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-ghidra-renderer/project
+          "$GHIDRA_DIR/support/analyzeHeadless" \
+            build/d1-ghidra-renderer/project D1Exec \
+            -import build/d1-ghidra-renderer/eboot.bin \
+            -overwrite \
+            -analysisTimeoutPerFile 3600 \
+            -scriptPath "$GITHUB_WORKSPACE/tools/ghidra" \
+            -postScript D1ExportCodeGraph.py \
+              "$GITHUB_WORKSPACE/build/d1-ghidra-renderer/ghidra_code_graph.json" \
+              CUSA00219 01.33
+
+      - name: Normalize exact-build graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_ghidra_graph_normalize.py \
+            build/d1-ghidra-renderer/ghidra_code_graph.json \
+            --out-dir build/d1-ghidra-renderer/codegraph
+
+      - name: Rebuild renderer string frontier from exact binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_renderer_strings.py \
+            build/d1-ghidra-renderer/eboot.bin \
+            -o build/d1-ghidra-renderer/renderer_strings.json
+
+      - name: Rank renderer functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_renderer_frontier.py \
+            build/d1-ghidra-renderer/codegraph \
+            --renderer-strings build/d1-ghidra-renderer/renderer_strings.json \
+            --radius 2 \
+            --top 128 \
+            -o build/d1-ghidra-renderer/renderer_frontier.json
+          python - <<'PY'
+          import json
+          p="build/d1-ghidra-renderer/renderer_frontier.json"
+          d=json.load(open(p))
+          print(json.dumps(d["counts"],indent=2))
+          for row in d["candidates"][:40]:
+              print(
+                  row["score"],
+                  hex(row["image_offset"]) if isinstance(row.get("image_offset"),int) else None,
+                  row["name"],
+                  ",".join(row["domains"]),
+                  [e.get("text") for e in row["evidence"] if e["kind"]=="renderer_string_xref"][:3],
+              )
+          PY
+
+      - name: Export focused renderer decompilation slices
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GHIDRA_DIR/support/analyzeHeadless" \
+            build/d1-ghidra-renderer/project D1Exec \
+            -process eboot.bin \
+            -noanalysis \
+            -scriptPath "$GITHUB_WORKSPACE/tools/ghidra" \
+            -postScript D1ExportRendererSlices.py \
+              "$GITHUB_WORKSPACE/build/d1-ghidra-renderer/renderer_frontier.json" \
+              "$GITHUB_WORKSPACE/build/d1-ghidra-renderer/renderer_slices.json" \
+              64
+
+      - name: Summarize decompiler output
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open("build/d1-ghidra-renderer/renderer_slices.json"))
+          print("exported",d["exported_function_count"],"missing",d["missing_function_count"])
+          for row in d["functions"][:30]:
+              f=row["frontier"]
+              dec=row["decompilation"]
+              print(
+                  hex(row["image_offset"]),
+                  row["name"],
+                  "score",f["score"],
+                  "domains",f["domains"],
+                  "calls",sum(1 for ins in row["instructions"] for ref in ins["references"] if ref["is_call"]),
+                  "decompiled",dec["completed"],
+              )
+          PY
+
+      - name: Compress full code graph
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f build/d1-ghidra-renderer/ghidra_code_graph.json; then
+            gzip -9 build/d1-ghidra-renderer/ghidra_code_graph.json
+          fi
+
+      - name: Remove executable and Ghidra binaries before upload
+        if: always()
+        shell: bash
+        run: |
+          rm -f build/d1-ghidra-renderer/eboot.bin
+          rm -f build/d1-ghidra-renderer/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-ghidra-renderer/project
+
+      - name: Upload derived exact-build renderer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-eboot-ghidra-renderer
+          path: |
+            build/d1-ghidra-renderer/ghidra_code_graph.json.gz
+            build/d1-ghidra-renderer/codegraph/manifest.json
+            build/d1-ghidra-renderer/renderer_strings.json
+            build/d1-ghidra-renderer/renderer_frontier.json
+            build/d1-ghidra-renderer/renderer_slices.json
+            build/d1-ghidra-renderer/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 7
