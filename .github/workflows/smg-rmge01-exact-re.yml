@@ -66,6 +66,12 @@ jobs:
           set -euo pipefail
           build/rmge01/dtk dol info build/rmge01/main.dol > build/rmge01/dol-info.txt 2>&1
           build/rmge01/dtk dol config build/rmge01/main.dol -o build/rmge01/config.yml > build/rmge01/dol-config.log 2>&1
+          cat >> build/rmge01/config.yml <<'EOF'
+          symbols: build/rmge01/symbols.txt
+          splits: build/rmge01/splits.txt
+          detect_strings: false
+          write_asm: false
+          EOF
           cat build/rmge01/dol-info.txt
           echo "==== CONFIG ===="
           cat build/rmge01/config.yml
