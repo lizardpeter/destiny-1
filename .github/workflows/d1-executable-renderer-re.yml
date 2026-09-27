@@ -92,5 +92,6 @@ jobs:
             build/d1-executable-renderer/identity.json
             build/d1-executable-renderer/executable_probe.json
             build/d1-executable-renderer/renderer_strings.json
+            build/d1-executable-renderer/renderer_xref_context.json
           if-no-files-found: error
           retention-days: 7
