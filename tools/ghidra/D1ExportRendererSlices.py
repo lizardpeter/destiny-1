@@ -222,7 +222,7 @@ records = []
 missing = []
 for frontier_row in frontier.get("candidates", [])[:max_functions]:
     offset = frontier_row.get("image_offset")
-    if not isinstance(offset, (int, long)):
+    if not isinstance(offset, int):
         missing.append({
             "function_id": frontier_row.get("function_id"),
             "reason": "candidate has no integer image_offset",
