@@ -77,6 +77,9 @@ jobs:
           set -euo pipefail
           python tools/d1_executable_renderer_state4_xrefs.py \
             build/d1-executable-renderer/eboot.bin \
+            --extra-disp 0x24 \
+            --extra-disp 0x25b0 \
+            --extra-disp 0x25e8 \
             -o build/d1-executable-renderer/renderer_state4_xrefs.json
 
       - name: Follow high-value renderer helper targets
@@ -102,6 +105,17 @@ jobs:
             --address 0xF7E7C0 \
             --address 0xF80790 \
             --address 0xF80640 \
+            --address 0xF81A90 \
+            --address 0xF7E100 \
+            --address 0xF81C50 \
+            --address 0xF81B40 \
+            --address 0xF81D60 \
+            --address 0xF81B30 \
+            --address 0xF81B80 \
+            --address 0xF81EC0 \
+            --address 0xF81D90 \
+            --address 0xF81E50 \
+            --address 0xF81E70 \
             --address 0xF808A0 \
             --address 0xF80910 \
             --address 0x7DE590 \
