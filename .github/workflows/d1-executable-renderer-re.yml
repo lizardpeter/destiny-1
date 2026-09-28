@@ -96,6 +96,9 @@ jobs:
             --address 0x7DE4A0 \
             --address 0x7E0DE0 \
             --address 0x7E0F70 \
+            --address 0xF7E840 \
+            --address 0xF7E950 \
+            --address 0xF7E9B0 \
             --address 0xF7E7C0 \
             --address 0xF80790 \
             --address 0xF80640 \
