@@ -25,6 +25,12 @@ from d1_executable_probe import (
 )
 
 
+FIXED_FUNCTION_DATA_WINDOWS = (
+    ("pipeline_state_tables", 0x15D16C0, 0xE00),
+    ("depth_stencil_selector_remaps", 0x18DEC70, 0x400),
+    ("depth_stencil_aux_table_pointer", 0x1A1F4C0, 0x20),
+)
+
 DEFAULT_LABELS = (
     "generate_gbuffer",
     "lighting apply",
@@ -62,6 +68,54 @@ def segment_for_file(offset: int, segments: list[dict]) -> dict | None:
         if base <= offset < base + size:
             return segment
     return None
+
+
+def virtual_to_file(virtual_address: int, segments: list[dict]) -> int | None:
+    for segment in segments:
+        base_va = int(segment["virtual_address"], 16)
+        size = int(segment["file_size"])
+        if base_va <= virtual_address < base_va + size:
+            return int(segment["absolute_file_offset"]) + virtual_address - base_va
+    return None
+
+
+def dump_exact_data_window(
+    raw: bytes,
+    segments: list[dict],
+    name: str,
+    virtual_address: int,
+    size: int,
+) -> dict:
+    file_offset = virtual_to_file(virtual_address, segments)
+    if file_offset is None:
+        return {
+            "name": name,
+            "virtual_address": virtual_address,
+            "virtual_address_hex": hex(virtual_address),
+            "size": size,
+            "status": "UNMAPPED_VIRTUAL_ADDRESS",
+        }
+    end = file_offset + size
+    if end > len(raw):
+        return {
+            "name": name,
+            "virtual_address": virtual_address,
+            "virtual_address_hex": hex(virtual_address),
+            "file_offset": file_offset,
+            "size": size,
+            "status": "WINDOW_EXCEEDS_FILE",
+        }
+    payload = raw[file_offset:end]
+    return {
+        "name": name,
+        "virtual_address": virtual_address,
+        "virtual_address_hex": hex(virtual_address),
+        "file_offset": file_offset,
+        "size": size,
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "hex": payload.hex(),
+        "status": "EXACT_BUILD_DATA_WINDOW",
+    }
 
 
 def find_labels(raw: bytes, segments: list[dict], labels: tuple[str, ...]) -> dict[str, list[dict]]:
@@ -228,6 +282,11 @@ def scan(
             ),
         })
 
+    fixed_function_data_windows = [
+        dump_exact_data_window(raw, segments, name, virtual_address, size)
+        for name, virtual_address, size in FIXED_FUNCTION_DATA_WINDOWS
+    ]
+
     per_label = {}
     for label in labels:
         rows = [row for row in hits if row["label"] == label]
@@ -252,6 +311,7 @@ def scan(
             ),
         },
         "clusters": cluster_rows,
+        "fixed_function_data_windows": fixed_function_data_windows,
         "policy": (
             "Exact pointer/rel32 matches and physical clustering are discovery "
             "evidence. PT_SCE_DYNLIBDATA hits are loader/dynamic-link metadata "
