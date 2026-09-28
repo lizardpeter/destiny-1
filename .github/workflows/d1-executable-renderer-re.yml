@@ -91,6 +91,14 @@ jobs:
             --address 0x80A280 \
             --address 0x80AA80 \
             --address 0x80B9F0 \
+            --address 0x88A680 \
+            --address 0x88A7A0 \
+            --address 0x82B3F0 \
+            --address 0x82B490 \
+            --address 0x82B5C0 \
+            --address 0x82B730 \
+            --address 0x8B5A70 \
+            --address 0x822350 \
             --address 0x811A90 \
             --address 0x811AB0 \
             --address 0x812800 \
