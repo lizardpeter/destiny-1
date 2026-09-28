@@ -7,6 +7,7 @@ on:
       - ".github/workflows/d1-executable-renderer-re.yml"
       - "tools/d1_executable_renderer_strings.py"
       - "tools/d1_executable_renderer_xref_context.py"
+      - "tools/d1_executable_renderer_state4_xrefs.py"
       - "tools/d1_executable_renderer_label_tables.py"
       - "tools/d1_executable_code_windows.py"
       - "tools/d1_elf_rip_string_xrefs.py"
@@ -69,6 +70,14 @@ jobs:
             build/d1-executable-renderer/eboot.bin \
             --renderer-strings build/d1-executable-renderer/renderer_strings.json \
             -o build/d1-executable-renderer/renderer_xref_context.json
+
+      - name: Scan renderer state-vector reads and writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_renderer_state4_xrefs.py \
+            build/d1-executable-renderer/eboot.bin \
+            -o build/d1-executable-renderer/renderer_state4_xrefs.json
 
       - name: Follow high-value renderer helper targets
         shell: bash
@@ -168,6 +177,7 @@ jobs:
             build/d1-executable-renderer/executable_probe.json
             build/d1-executable-renderer/renderer_strings.json
             build/d1-executable-renderer/renderer_xref_context.json
+            build/d1-executable-renderer/renderer_state4_xrefs.json
             build/d1-executable-renderer/renderer_label_tables.json
             build/d1-executable-renderer/renderer_helper_windows.json
           if-no-files-found: error
