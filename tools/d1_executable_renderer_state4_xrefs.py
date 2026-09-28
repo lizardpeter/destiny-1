@@ -98,6 +98,13 @@ def main() -> int:
         pending = []
 
         for insn in md.disasm(data, va):
+            # Capstone emits synthetic data pseudo-instructions when SKIPDATA
+            # crosses embedded data. Detail/operands are intentionally unavailable
+            # for those records, so preserve them only as disassembly boundaries.
+            if insn.id == 0:
+                history.clear()
+                continue
+
             base_row = {
                 "address": int(insn.address),
                 "address_hex": hex(int(insn.address)),
