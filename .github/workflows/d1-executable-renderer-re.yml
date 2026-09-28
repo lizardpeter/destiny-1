@@ -76,6 +76,13 @@ jobs:
           set -euo pipefail
           python tools/d1_executable_code_windows.py \
             build/d1-executable-renderer/eboot.bin \
+            --address 0x80A280 \
+            --address 0x80AA80 \
+            --address 0x80B070 \
+            --address 0x80CB10 \
+            --address 0x818FD0 \
+            --address 0x89C8F0 \
+            --address 0x88F42C \
             --address 0x8186C0 \
             --address 0x818930 \
             --address 0x818A30 \
