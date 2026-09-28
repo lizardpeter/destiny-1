@@ -147,3 +147,82 @@ The next proof target is the **read-side consumer** of `+0x15D0..+0x15D4`, follo
 through its table lookups/native API writes. That is the point at which individual
 selector lanes and indices can be promoted from structural identities into exact D1
 fixed-function semantics.
+
+## Exact merge consumer and selector application
+
+Retail function `0x82B3F0` closes the selector-composition rule directly from D1 code.
+It loads three four-byte vectors:
+
+1. renderer base/pass state from `[renderer + 0x15D0]`;
+2. source/material state from `[source + 0x20]`;
+3. renderer runtime override from `[renderer + 0x15D4]`.
+
+For both overlays, the function performs the same bytewise high-bit select:
+
+```text
+mask   = (((override >> 7) & 0x01010101) * 0xFF)
+result = base XOR (mask AND (base XOR override))
+```
+
+It first composes source/material over renderer base/pass, then composes the
+`+0x15D4` runtime override over that result. This is exact D1 executable behavior,
+not a continued-Tiger inference.
+
+The final low-seven-bit selector bytes are dispatched in this exact order:
+
+- byte 0 -> `0x7DE4A0`;
+- byte 1 -> `0x7E0F70` / `0x7E0DE0`;
+- byte 2 -> `0x7DE590`;
+- byte 3 -> `0x7DE640`.
+
+### Byte 0: blend state
+
+`0x7DE4A0` selects a table record and applies the resulting state to render targets
+0, 1, 2 and 3 through repeated `0xF7E7C0` calls. This independently agrees with the
+already cross-fixture-promoted D1 Material byte0 `0x88` -> blend-state index 8 proof.
+
+### Byte 2: rasterizer / clip-cull state
+
+`0x7DE590` selects 16-byte records from table `0x15D2390`. The next state table starts
+at `0x15D2420`, so the exact D1 table span is `0x90 = 9 * 16` bytes.
+
+The selected record is emitted through packet helpers that target exact GFX7 context
+registers:
+
+- `0xF80640` -> context register `0x204` = `PA_CL_CLIP_CNTL`;
+- `0xF80790` -> context register `0x205` = `PA_SU_SC_MODE_CNTL`.
+
+This closes byte 2 as the rasterizer / clip-cull state lane from D1 executable behavior.
+The continued Tiger nine-state rasterizer table is useful independent convergence, but
+its serialized record layout is not imported into D1.
+
+### Byte 3: depth-bias / polygon-offset state
+
+`0x7DE640` selects 12-byte records from table `0x15D2420`, converts the selected
+values, and emits exact GFX7 polygon-offset registers:
+
+- `0xF808A0` -> `0x2E0 = PA_SU_POLY_OFFSET_FRONT_SCALE` (+ adjacent front offset);
+- `0xF80910` -> `0x2E2 = PA_SU_POLY_OFFSET_BACK_SCALE` (+ adjacent back offset).
+
+This closes byte 3 as the depth-bias / polygon-offset state lane from D1 executable
+behavior.
+
+### Byte 1
+
+Byte 1 is dispatched through `0x7E0F70` into the larger `0x7E0DE0` state builder,
+which emits three GPU state packets. Its exact register targets are being used as the
+final D1-native naming gate; until those packet registers are pinned, the category is
+not promoted solely from continued Tiger nomenclature.
+
+## Importer consequence
+
+The importer/runtime exact contract now preserves the native three-layer order rather
+than flattening material state into a single guessed pipeline descriptor:
+
+`renderer pass/base -> source/material -> renderer runtime override -> low7 state tables`.
+
+The Rust importer implements the same bytewise high-bit merge in
+`merge_pipeline_state_selector_bytes` and exposes a draw-time
+`D1FixedFunctionRuntimeStateProvider` for the two renderer-owned vectors. The old
+pass+material helper is retained only as a structural helper for cases where the
+`+0x15D4` runtime override is independently proven inactive.
