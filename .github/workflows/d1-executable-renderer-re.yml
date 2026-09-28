@@ -82,6 +82,13 @@ jobs:
             --address 0x80A280 \
             --address 0x80AA80 \
             --address 0x80B9F0 \
+            --address 0x811A90 \
+            --address 0x811AB0 \
+            --address 0x812800 \
+            --address 0x818DB0 \
+            --address 0x82B940 \
+            --address 0x82BA20 \
+            --address 0x80BC70 \
             --address 0x80B070 \
             --address 0x80CB10 \
             --address 0x818FD0 \
