@@ -28,7 +28,7 @@ from capstone.x86 import X86_OP_MEM
 
 from d1_executable_probe import parse_elf64_header, parse_elf64_program_headers
 
-TARGET_DISPS = {0x15D0, 0x15D1, 0x15D2, 0x15D3, 0x15D4}
+DEFAULT_TARGET_DISPS = {0x15D0, 0x15D1, 0x15D2, 0x15D3, 0x15D4}
 
 
 def access_name(access: int) -> str:
@@ -40,10 +40,10 @@ def access_name(access: int) -> str:
     return "+".join(parts) if parts else "unknown"
 
 
-def row_for(insn) -> dict:
+def row_for(insn, target_disps: set[int]) -> dict:
     refs = []
     for oi, op in enumerate(insn.operands):
-        if op.type != X86_OP_MEM or int(op.mem.disp) not in TARGET_DISPS:
+        if op.type != X86_OP_MEM or int(op.mem.disp) not in target_disps:
             continue
         refs.append({
             "operand_index": oi,
@@ -71,7 +71,15 @@ def main() -> int:
     ap.add_argument("-o", "--output", type=Path, required=True)
     ap.add_argument("--context-before", type=int, default=10)
     ap.add_argument("--context-after", type=int, default=16)
+    ap.add_argument(
+        "--extra-disp",
+        action="append",
+        default=[],
+        help="additional exact memory displacement to scan, e.g. 0x25b0",
+    )
     args = ap.parse_args()
+    target_disps = set(DEFAULT_TARGET_DISPS)
+    target_disps.update(int(value, 0) for value in args.extra_disp)
 
     raw = args.executable.read_bytes()
     header = parse_elf64_header(raw)
@@ -127,7 +135,7 @@ def main() -> int:
                 if op.type != X86_OP_MEM:
                     continue
                 disp = int(op.mem.disp)
-                if disp not in TARGET_DISPS:
+                if disp not in target_disps:
                     continue
                 acc = access_name(int(op.access))
                 refs.append({
@@ -164,7 +172,7 @@ def main() -> int:
         "schema": "d1_executable_renderer_state4_xrefs/v1",
         "executable_sha256": hashlib.sha256(raw).hexdigest(),
         "file_size": len(raw),
-        "target_displacements": [hex(x) for x in sorted(TARGET_DISPS)],
+        "target_displacements": [hex(x) for x in sorted(target_disps)],
         "hit_count": len(hits),
         "access_counts": dict(access_counts),
         "displacement_counts": dict(disp_counts),
