@@ -1,0 +1,180 @@
+{
+  "schema": "d1_fixed_function_selector_evidence/v1",
+  "status": "D1_EXACT_FIXED_FUNCTION_SELECTOR_RECORDS_DURABLE",
+  "source": {
+    "repository": "lizardpeter/destiny-1",
+    "capture_commit": "ab4bb9909fce8e03880c9f575b9b021d07385856",
+    "extractor_commit": "b7a7ab7363f0d71f45ec551436395f531fdd2615",
+    "workflow_run_id": 36491237038,
+    "workflow_artifact_id": 11001169232,
+    "workflow_artifact_name": "d1-eboot-renderer-frontier",
+    "workflow_artifact_digest": "sha256:20afc457a646fcb659a1d5efb09d511aa9895b89f0c43e370169c71898d5d296",
+    "executable_sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+    "executable_size": 29249016
+  },
+  "exact_windows": {
+    "pipeline_state_tables": {
+      "virtual_address": "0x15D16C0",
+      "size": 3584,
+      "sha256": "b9826be9db0315403c07dcfe59864b3748146376659571853d407686bd82b2d5"
+    },
+    "depth_stencil_selector_remaps": {
+      "virtual_address": "0x18DEC70",
+      "size": 1024,
+      "sha256": "fcdb933553c61a3107bdbed5ec988520ea05823cc02082473ea625fb6731d04e"
+    },
+    "depth_stencil_aux_table_pointer": {
+      "virtual_address": "0x1A1F4C0",
+      "size": 32,
+      "sha256": "1735904b9abf44bcb6085f06ae34caa671263d992bf5f031295606ef0e44cd7c"
+    }
+  },
+  "gbuffer_pass": {
+    "exact_pass_state4": "81 82 82 81",
+    "selector_indices": {
+      "blend": 1,
+      "depth_stencil": 2,
+      "rasterizer_clip_cull": 2,
+      "depth_bias_polygon_offset": 1
+    }
+  },
+  "exact_records": {
+    "blend_1": {
+      "selector_index": 1,
+      "table_va": "0x15D16C0",
+      "record_stride": 36,
+      "record_va": "0x15D16E4",
+      "raw_hex": "0100000000000000010000000000000000000000010000000000000000000000FFFF0000",
+      "dwords_hex": [
+        "00000001",
+        "00000000",
+        "00000001",
+        "00000000",
+        "00000000",
+        "00000001",
+        "00000000",
+        "00000000",
+        "0000FFFF"
+      ]
+    },
+    "blend_8_cross_fixture_anchor": {
+      "selector_index": 8,
+      "record_va": "0x15D17E0",
+      "raw_hex": "0800000001000000010000000500000000000000010000000500000000000000FFFF0000",
+      "dwords_hex": [
+        "00000008",
+        "00000001",
+        "00000001",
+        "00000005",
+        "00000000",
+        "00000001",
+        "00000005",
+        "00000000",
+        "0000FFFF"
+      ],
+      "purpose": "field-layout anchor for already promoted blend state 8"
+    },
+    "rasterizer_1": {
+      "selector_index": 1,
+      "table_va": "0x15D2390",
+      "record_stride": 16,
+      "record_va": "0x15D23A0",
+      "raw_hex": "01000000020000000000000001000000",
+      "dwords_hex": [
+        "00000001",
+        "00000002",
+        "00000000",
+        "00000001"
+      ]
+    },
+    "rasterizer_2": {
+      "selector_index": 2,
+      "table_va": "0x15D2390",
+      "record_stride": 16,
+      "record_va": "0x15D23B0",
+      "raw_hex": "02000000020000000200000001000000",
+      "dwords_hex": [
+        "00000002",
+        "00000002",
+        "00000002",
+        "00000001"
+      ]
+    },
+    "depth_bias_1": {
+      "selector_index": 1,
+      "table_va": "0x15D2420",
+      "record_stride": 12,
+      "record_va": "0x15D242C",
+      "raw_hex": "010000000000000000000000",
+      "dwords_hex": [
+        "00000001",
+        "00000000",
+        "00000000"
+      ]
+    },
+    "depth_selector_2_renderer_flag_0x24_nonzero": {
+      "selector_index": 2,
+      "remapped_depth_index": 2,
+      "table_va": "0x15D1CD0",
+      "record_stride": 12,
+      "record_va": "0x15D1CE8",
+      "raw_hex": "020000000101000006000000",
+      "dwords_hex": [
+        "00000002",
+        "00000101",
+        "00000006"
+      ]
+    },
+    "depth_selector_2_renderer_flag_0x24_zero": {
+      "selector_index": 2,
+      "remapped_depth_index": 2,
+      "table_va": "0x15D1D70",
+      "record_stride": 12,
+      "record_va": "0x15D1D88",
+      "raw_hex": "020000000101000003000000",
+      "dwords_hex": [
+        "00000002",
+        "00000101",
+        "00000003"
+      ]
+    },
+    "default_stencil_record": {
+      "branch_condition": "renderer +0x25B0 != 1",
+      "record_va": "0x15D1E38",
+      "record_stride": 40,
+      "raw_hex": "01000000000000000700000000000000000000000000000007000000000000000000000000000000",
+      "dwords_hex": [
+        "00000001",
+        "00000000",
+        "00000007",
+        "00000000",
+        "00000000",
+        "00000000",
+        "00000007",
+        "00000000",
+        "00000000",
+        "00000000"
+      ]
+    }
+  },
+  "exact_helper_dataflow": {
+    "blend": "0x7DE4A0 indexes 36-byte records at 0x15D16C0; selected fields feed 0xF819F0/0xF81A10/0xF81A30 and the four-target packet path; final +0x20 dword feeds 0xF7E740",
+    "depth_stencil": "0x7E0DE0 remaps selector through 0x18DEC70, selects compact depth record from 0x15D1CD0 or 0x15D1D70 by renderer byte +0x24, and emits DB_DEPTH_CONTROL / stencil packets",
+    "rasterizer": "0x7DE590 indexes 16-byte records at 0x15D2390; +4/+8/+0xC fields build PA_SU_SC_MODE_CNTL and PA_CL_CLIP_CNTL",
+    "depth_bias": "0x7DE640 indexes 12-byte records at 0x15D2420; +4 is doubled and controls enable; +8 is scaled before front/back polygon-offset packet writes"
+  },
+  "semantic_policy": {
+    "exact_from_d1_alone": [
+      "GBuffer selector identities and record bytes",
+      "depth-bias index 1 has zero numeric scale/offset inputs and its helper disables polygon offset",
+      "depth selector 2 has both compact enable/write bytes set (0x01,0x01) and comparison codes 6/3 selected by renderer depth convention"
+    ],
+    "cross_source_promotions_require_independent_convergence": [
+      "blend factor/op enum names",
+      "rasterizer fill/cull enum names",
+      "human-readable depth compare names",
+      "portable front-face convention"
+    ],
+    "prohibited_inference": "Do not translate an enum or record field to Vulkan solely from its numeric value."
+  }
+}
