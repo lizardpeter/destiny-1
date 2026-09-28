@@ -207,12 +207,30 @@ values, and emits exact GFX7 polygon-offset registers:
 This closes byte 3 as the depth-bias / polygon-offset state lane from D1 executable
 behavior.
 
-### Byte 1
+### Byte 1: depth / stencil state
 
-Byte 1 is dispatched through `0x7E0F70` into the larger `0x7E0DE0` state builder,
-which emits three GPU state packets. Its exact register targets are being used as the
-final D1-native naming gate; until those packet registers are pinned, the category is
-not promoted solely from continued Tiger nomenclature.
+Byte 1 is dispatched through `0x7E0F70` into the larger `0x7E0DE0` state builder.
+The builder emits three exact GFX7 DB packet groups:
+
+- `0xF7E950` -> context register `0x200 = DB_DEPTH_CONTROL`;
+- `0xF7E9B0` -> context register `0x10B = DB_STENCIL_CONTROL`;
+- `0xF7E840` -> two-register write beginning at
+  `0x10C = DB_STENCILREFMASK`, followed by
+  `0x10D = DB_STENCILREFMASK_BF`.
+
+This closes byte 1 as the depth/stencil state lane from exact D1 executable behavior.
+
+### Final lane ordering
+
+All four selector categories are now independently closed from the retail D1 binary:
+
+1. byte 0 — blend;
+2. byte 1 — depth/stencil;
+3. byte 2 — rasterizer / clip-cull;
+4. byte 3 — depth-bias / polygon-offset.
+
+The lane order agrees with continued Tiger lineage, but no lane category now depends
+on that lineage for its D1 promotion.
 
 ## Importer consequence
 
