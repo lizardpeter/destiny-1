@@ -126,7 +126,10 @@ jobs:
             --address 0x88F42C \
             --address 0x8186C0 \
             --address 0x819F20 \
+            --address 0x819F80 \
+            --address 0x81A0E0 \
             --address 0x81A330 \
+            --address 0x81A480 \
             --address 0x81BD90 \
             --address 0x818930 \
             --address 0x818A30 \
