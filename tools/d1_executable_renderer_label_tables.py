@@ -29,6 +29,9 @@ FIXED_FUNCTION_DATA_WINDOWS = (
     ("pipeline_state_tables", 0x15D16C0, 0xE00),
     ("depth_stencil_selector_remaps", 0x18DEC70, 0x400),
     ("depth_stencil_aux_table_pointer", 0x1A1F4C0, 0x20),
+    ("fixed_function_setter_code", 0xF819F0, 0x600),
+    ("fixed_function_packet_code", 0xF7E100, 0x700),
+    ("depth_bias_scale_constant", 0x165FE70, 0x20),
 )
 
 DEFAULT_LABELS = (
