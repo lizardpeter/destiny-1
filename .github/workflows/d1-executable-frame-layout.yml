@@ -1,0 +1,83 @@
+name: D1 Executable Frame Layout Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/d1-executable-frame-layout.yml"
+      - "tools/d1_executable_frame_layout_candidates.py"
+      - "tools/d1_executable_probe.py"
+
+permissions:
+  contents: write
+
+jobs:
+  frame-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-frame-layout
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "$EBOOT_URL" \
+            --output build/d1-frame-layout/eboot.bin
+
+      - name: Verify exact executable identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/d1-frame-layout
+          test "$(stat -c %s eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  eboot.bin" | sha256sum --check -
+
+      - name: Install exact x86 disassembler
+        shell: bash
+        run: python -m pip install --disable-pip-version-check --quiet capstone==5.0.6
+
+      - name: Rank exact D1 Frame-layout candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_frame_layout_candidates.py \
+            build/d1-frame-layout/eboot.bin \
+            -o build/d1-frame-layout/frame_layout_candidates.json
+
+      - name: Persist derived evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/generated
+          cp build/d1-frame-layout/frame_layout_candidates.json \
+            evidence/generated/d1_ps4_0133_frame_layout_candidates.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/generated/d1_ps4_0133_frame_layout_candidates.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record exact D1 Frame-layout candidates"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Remove raw executable
+        if: always()
+        shell: bash
+        run: rm -f build/d1-frame-layout/eboot.bin
+
+      - name: Upload derived evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-frame-layout-candidates
+          path: build/d1-frame-layout/frame_layout_candidates.json
+          if-no-files-found: error
+          retention-days: 7
