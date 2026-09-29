@@ -8,13 +8,14 @@ on:
       - "tools/d1_executable_renderer_strings.py"
       - "tools/d1_executable_renderer_xref_context.py"
       - "tools/d1_executable_renderer_state4_xrefs.py"
+      - "tools/d1_executable_frame_layout_candidates.py"
       - "tools/d1_executable_renderer_label_tables.py"
       - "tools/d1_executable_code_windows.py"
       - "tools/d1_elf_rip_string_xrefs.py"
       - "tools/d1_executable_probe.py"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   renderer-frontier:
@@ -83,6 +84,14 @@ jobs:
             --extra-disp 0x25d4 \
             --extra-disp 0x25e8 \
             -o build/d1-executable-renderer/renderer_state4_xrefs.json
+
+      - name: Rank D1 Frame-layout candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_frame_layout_candidates.py \
+            build/d1-executable-renderer/eboot.bin \
+            -o build/d1-executable-renderer/frame_layout_candidates.json
 
       - name: Follow high-value renderer helper targets
         shell: bash
@@ -205,6 +214,22 @@ jobs:
                   )
           PY
 
+      - name: Persist derived Frame-layout evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/generated
+          cp build/d1-executable-renderer/frame_layout_candidates.json \
+            evidence/generated/d1_ps4_0133_frame_layout_candidates.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/generated/d1_ps4_0133_frame_layout_candidates.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record exact D1 Frame-layout candidates"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
       - name: Remove raw executable before artifact upload
         if: always()
         shell: bash
@@ -221,6 +246,7 @@ jobs:
             build/d1-executable-renderer/renderer_strings.json
             build/d1-executable-renderer/renderer_xref_context.json
             build/d1-executable-renderer/renderer_state4_xrefs.json
+            build/d1-executable-renderer/frame_layout_candidates.json
             build/d1-executable-renderer/renderer_label_tables.json
             build/d1-executable-renderer/renderer_helper_windows.json
           if-no-files-found: error
