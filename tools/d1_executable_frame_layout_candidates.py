@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from collections import Counter, defaultdict, deque
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from capstone import (
@@ -84,8 +84,6 @@ def main() -> int:
     ap.add_argument("executable", type=Path)
     ap.add_argument("-o", "--output", type=Path, required=True)
     ap.add_argument("--cluster-span", type=lambda x: int(x, 0), default=0x180)
-    ap.add_argument("--context-before", type=int, default=20)
-    ap.add_argument("--context-after", type=int, default=28)
     ap.add_argument("--min-distinct-offsets", type=int, default=3)
     ap.add_argument("--max-candidates", type=int, default=500)
     args = ap.parse_args()
@@ -104,7 +102,11 @@ def main() -> int:
     md.detail = True
     md.skipdata = True
 
-    hits: list[dict] = []
+    # First pass deliberately stores only compact matching references.  The
+    # previous implementation retained disassembly context for every matching
+    # instruction, which turned a forensic filter into an unnecessary
+    # whole-executable memory/time sink.  Detailed code windows are a follow-up
+    # operation on the ranked candidates.
     all_refs: list[dict] = []
     offset_counts = Counter()
     access_counts = Counter()
@@ -116,27 +118,12 @@ def main() -> int:
         va = int(segment["virtual_address"], 16)
         data = raw[file_offset:file_offset + size]
 
-        history = deque(maxlen=max(0, args.context_before))
-        pending: list[dict] = []
-
         for insn in md.disasm(data, va):
             if insn.id == 0:
-                history.clear()
-                pending.clear()
                 region_id += 1
                 continue
 
-            row = base_row(insn)
-
-            for item in list(pending):
-                item["context_after"].append(row)
-                item["_remaining"] -= 1
-                if item["_remaining"] <= 0:
-                    del item["_remaining"]
-                    pending.remove(item)
-
-            refs = []
-            for oi, op in enumerate(insn.operands):
+            for op in insn.operands:
                 if op.type != X86_OP_MEM:
                     continue
                 disp = int(op.mem.disp)
@@ -146,16 +133,6 @@ def main() -> int:
                     continue
                 base = insn.reg_name(op.mem.base)
                 access = access_name(int(op.access))
-                ref = {
-                    "operand_index": oi,
-                    "disp": disp,
-                    "disp_hex": hex(disp),
-                    "base_reg": base,
-                    "index_reg": insn.reg_name(op.mem.index) if op.mem.index else None,
-                    "scale": int(op.mem.scale),
-                    "access": access,
-                }
-                refs.append(ref)
                 all_refs.append({
                     "address": int(insn.address),
                     "address_hex": hex(int(insn.address)),
@@ -171,28 +148,10 @@ def main() -> int:
                 offset_counts[hex(disp)] += 1
                 access_counts[access] += 1
 
-            if refs:
-                item = dict(row)
-                item["region_id"] = region_id
-                item["segment_index"] = segment_index
-                item["frame_oracle_refs"] = refs
-                item["context_before"] = list(history)
-                item["context_after"] = []
-                item["_remaining"] = max(0, args.context_after)
-                hits.append(item)
-                if item["_remaining"]:
-                    pending.append(item)
-                else:
-                    del item["_remaining"]
-
-            history.append(row)
+            # A return is a conservative local-region boundary.  This is not a
+            # claim that every decoded span starts at a true function entry.
             if insn.mnemonic.startswith("ret"):
-                history.clear()
-                pending.clear()
                 region_id += 1
-
-    for item in hits:
-        item.pop("_remaining", None)
 
     by_region_base: dict[tuple[int, int, str], list[dict]] = defaultdict(list)
     for ref in all_refs:
@@ -201,10 +160,6 @@ def main() -> int:
         ].append(ref)
     for refs in by_region_base.values():
         refs.sort(key=lambda row: row["address"])
-
-    hit_by_address: dict[int, list[dict]] = defaultdict(list)
-    for hit in hits:
-        hit_by_address[hit["address"]].append(hit)
 
     candidates = []
     seen = set()
@@ -236,16 +191,6 @@ def main() -> int:
             ref["access"] for ref in nearby
             if ref["address"] == center["address"] and ref["disp"] == 0x1C
         ]
-        context = next(
-            (
-                hit for hit in hit_by_address.get(center["address"], [])
-                if any(
-                    r["disp"] == 0x1C and r["base_reg"] == center["base_reg"]
-                    for r in hit["frame_oracle_refs"]
-                )
-            ),
-            None,
-        )
         candidates.append({
             "score": candidate_score(offsets, center_accesses, len(nearby)),
             "center_address": center["address"],
@@ -257,12 +202,10 @@ def main() -> int:
             "span_start_hex": hex(min(ref["address"] for ref in nearby)),
             "span_end_hex": hex(max(ref["address"] for ref in nearby)),
             "refs": nearby,
-            "context_before": context["context_before"] if context else [],
             "center_instruction": {
                 "mnemonic": center["mnemonic"],
                 "op_str": center["op_str"],
             },
-            "context_after": context["context_after"] if context else [],
         })
 
     candidates.sort(
@@ -285,8 +228,10 @@ def main() -> int:
             "core_neighbor_offsets": [hex(x) for x in sorted(CORE_NEIGHBORS)],
         },
         "policy": (
-            "Exact D1 retail x86 memory-access evidence is reported. Continued-Tiger "
-            "offsets are used only to rank structural candidates. No candidate is "
+            "Exact D1 retail x86 memory-access evidence is reported. The initial "
+            "ranker intentionally omits broad disassembly context; detailed windows "
+            "must be captured only for selected candidates. Continued-Tiger offsets "
+            "are used only to rank structural candidates. No candidate is "
             "identified as D1 Frame, and no D1 field meaning (including exposure) "
             "is promoted without independent D1 producer/consumer proof."
         ),
