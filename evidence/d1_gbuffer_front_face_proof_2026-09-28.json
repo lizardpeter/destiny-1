@@ -1,0 +1,91 @@
+{
+  "format": "d1-gbuffer-front-face-proof-v1",
+  "date": "2026-09-28",
+  "authority": "SHA-pinned D1 PS4 executable state/dataflow plus AMD CIK register definition",
+  "executable": {
+    "title_id": "CUSA00219",
+    "version_label": "01.33",
+    "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+    "bytes": 29249016
+  },
+  "workflow_evidence": {
+    "run_id": 36499050714,
+    "artifact_id": 11004572780,
+    "artifact_sha256": "09f6ee7b656a1368b38841bd00c07ea34d0d4628ce89423a131cdd62ed01ff07",
+    "reports": [
+      "renderer_helper_windows.json",
+      "renderer_label_tables.json",
+      "renderer_state4_xrefs.json"
+    ],
+    "source_commit": "c1f3102e86db481890effa15b9742021783dbd62"
+  },
+  "renderer_state": {
+    "pa_su_sc_mode_cntl_cache_offset": "renderer+0x25D4",
+    "initializer": {
+      "caller_va": "0x7DC3A3",
+      "call_va": "0x7DC3AA",
+      "helper_va": "0xF81A70",
+      "helper_effect": "dword = 0x00000240",
+      "face_bit_2": 0
+    },
+    "raster_selector": {
+      "function_va": "0x7DE590",
+      "table_va": "0x15D2390",
+      "record_stride": 16,
+      "gbuffer_index": 2,
+      "gbuffer_record_u32": [2, 2, 2, 1],
+      "record_hex": "02000000020000000200000001000000",
+      "field_use": [
+        {
+          "record_offset": 4,
+          "value": 2,
+          "helper": "0xF81A90",
+          "effect": "updates POLY_MODE / front and back polygon-type fields while preserving FACE bit 2"
+        },
+        {
+          "record_offset": 8,
+          "value": 2,
+          "helper": "0xF7E100",
+          "effect": "updates PA_SU_SC_MODE_CNTL bits 0..1 only; value 2 sets CULL_BACK=1 and CULL_FRONT=0 while preserving FACE bit 2"
+        },
+        {
+          "record_offset": 12,
+          "value": 1,
+          "caller_transform": "xor 1 => 0",
+          "helper": "0xF81C50",
+          "effect": "updates PA_CL_CLIP_CNTL bits 26..27; does not touch PA_SU_SC_MODE_CNTL.FACE"
+        }
+      ]
+    },
+    "depth_bias_selector": {
+      "function_va": "0x7DE640",
+      "state_helper": "0xF81AD0",
+      "effect": "updates PA_SU_SC_MODE_CNTL bits 11..12 only and preserves FACE bit 2"
+    },
+    "direct_xref_census_for_0x25d4": {
+      "references": 9,
+      "important_alias_sites": [
+        "0x7DC3A3 -> initializer 0xF81A70",
+        "0x7DE5C1 -> raster selector helper chain",
+        "0x7DE69D -> depth-bias helper chain",
+        "0x7E2E2B -> raster selector helper chain"
+      ],
+      "snapshot_restore_write": "0x7DDBEB"
+    }
+  },
+  "register_definition": {
+    "register": "PA_SU_SC_MODE_CNTL",
+    "amd_cik_gpu_mmreg": "0x28814",
+    "face_field_bit": 2,
+    "face_0": "Positive cross product is front (CCW)",
+    "face_1": "Negative cross product is front (CW)",
+    "source": "AMD CIK 3D Registers, PA_SU_SC_MODE_CNTL"
+  },
+  "conclusion": {
+    "gbuffer_cull_mode": "back",
+    "gbuffer_front_face": "counter_clockwise",
+    "proof_state": "exact-build-plus-authoritative-register-definition",
+    "rationale": "The active renderer-state initializer establishes FACE=0, the G-buffer raster selector sets back-face culling while preserving FACE, and the observed polygon-offset/raster update helpers do not alter bit 2."
+  },
+  "proof_boundary": "This proof is scoped to the SHA-pinned executable and the active renderer-state path represented by the retained exact helper/xref artifact. It does not infer unrelated passes, alternate renderer implementations, or cross-build identity."
+}
