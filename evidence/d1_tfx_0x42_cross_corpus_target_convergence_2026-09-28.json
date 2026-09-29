@@ -1,0 +1,112 @@
+{
+  "format": "d1-tfx-0x42-cross-corpus-target-convergence-v1",
+  "date": "2026-09-28",
+  "status": "TARGET_SEMANTICS_CROSS_CORPUS_STACK_SEMANTICS_WITHHELD",
+  "claim": {
+    "opcode": "0x42",
+    "operand_width_bytes": 1,
+    "promoted_behavior": "The following u8 is an output-vector target index in every independently closed D1 retail corpus examined here.",
+    "not_promoted": [
+      "an official human-facing opcode name",
+      "engine-wide stack mutation semantics (pop/peek/clear)",
+      "unconditional exact replay for unclassified material/program families"
+    ]
+  },
+  "independent_corpora": [
+    {
+      "scope": "Tower light BufferData / 80801AF2",
+      "source": "Rust-test @ 252e20f9ba011377d3cbd4a6f93d705802a45dd2",
+      "facts": {
+        "unique_programs": 412,
+        "light_records": 737,
+        "buffer2_programs_with_exact_eight_vec4_output_state": 412,
+        "all_output_bank_targets": 989,
+        "all_output_bank_targets_in_range": true,
+        "structurally_executable_programs": 326,
+        "structurally_executable_light_records": 549,
+        "opcode_0x42_occurrences_in_executable_subset": 698
+      },
+      "evidence": [
+        "src/native_vulkan_destiny1_light_provider.rs",
+        "src/native_vulkan_destiny1_light_program_contract.rs",
+        "src/native_vulkan_destiny1_light_program_eval.rs",
+        "lizardpeter/destiny-1 tools/d1_tfx_program_inventory.py"
+      ],
+      "boundary": "The 989 count includes all scoped output-bank target opcodes represented by the BufferData contract, not only 0x42. The 698 count is specifically 0x42 in the structurally executable subset."
+    },
+    {
+      "scope": "Tower light material TFX + native light pixel shaders",
+      "source": "Rust-test @ 252e20f9ba011377d3cbd4a6f93d705802a45dd2",
+      "facts": {
+        "materials": 497,
+        "materials_parsed": 497,
+        "framed_0x42_targets_outside_material_b0": 0,
+        "framed_0x42_targets_without_native_api0_consumer": 0,
+        "native_pixel_shader_families": 32,
+        "material_b0_validated": 497
+      },
+      "evidence": [
+        "src/native_vulkan_destiny1_light_tfx_contract.rs",
+        "src/native_vulkan_destiny1_light_provider.rs"
+      ],
+      "boundary": "This proves target correlation, not a universal opcode name or stack effect."
+    },
+    {
+      "scope": "Tower 809DCD66 dynamic material family",
+      "facts": {
+        "visible_family_materials": 24,
+        "dynamic_program_families": 5,
+        "suffix": "42 06",
+        "target": 6,
+        "serialized_dynamic_c6": "zero",
+        "native_consumer": "pixel shader 809DCD66 consumes c6.x"
+      },
+      "evidence": [
+        "notes/D1_TOWER_809DCD66_NATIVE_SHADER_PROOF.md",
+        "tools/d1_tower_809dcd66_tfx_eval.py",
+        "Rust-test asset_import/importers/destiny1/src/tfx_809dcd66.rs"
+      ]
+    },
+    {
+      "scope": "Xur PS 80876579",
+      "facts": {
+        "materials": ["808761EC", "80876227", "8087623F", "80876411"],
+        "tfx_sha256": "f289262cbd7c731a1c28d3abe64d44f980775078cd55939c874b85a8a0651b6e",
+        "suffix": "42 0A",
+        "target": 10,
+        "native_consumer": "PS b0 vector c10 / dword 40 alpha-test path"
+      },
+      "evidence": ["tools/d1_xur_ps_80876579_semantic_proof.py"]
+    },
+    {
+      "scope": "Xur PS 80876952",
+      "facts": {
+        "materials": ["808764C9", "808767AE", "808767AF"],
+        "tfx_sha256": "1fc1ac8ad02087effe3c122378609bebc95b55f3acab412e2e8722a0b404c876",
+        "targets": [13, 14, 17],
+        "serialized_target_vectors": "zero",
+        "native_consumers": {
+          "13": "c13 controls t6 affine UV",
+          "14": "c14 controls t7 affine UV",
+          "17": "c17 controls base/reflection modulation"
+        }
+      },
+      "evidence": ["tools/d1_xur_ps_80876952_semantic_proof.py"]
+    }
+  ],
+  "stack_effect_assessment": {
+    "current_replay_behavior": "Scoped evaluators pop the top Vec4 and write it to operand-indexed output state.",
+    "supporting_observation": "326 Tower light programs dry-run under that behavior and 549 light records are structurally executable; the evaluator reports 698 0x42 stores and rejects non-empty final stacks.",
+    "promotion_decision": "Do not promote the pop behavior to an engine-wide D1 opcode definition from corpus consistency alone. Retain it as evidence-scoped executable behavior until the D1 VM implementation or equivalent authoritative dataflow closes stack mutation."
+  },
+  "official_opcode_context": {
+    "source": "Bungie GDC 2017 Destiny Shader Pipeline bytecode example retained by existing D1 proof tooling",
+    "independently_closed_neighbor_identities": {
+      "0x43": "pop_output",
+      "0x45": "push_temp",
+      "0x46": "pop_temp"
+    },
+    "policy": "Neighbor opcode names do not authorize guessing 0x42."
+  },
+  "conclusion": "Promote 0x42's one-byte operand as a cross-corpus D1 output-vector target relation. Keep the opcode globally unnamed and keep its engine-wide stack effect fail-closed outside independently admitted families/corpora."
+}
