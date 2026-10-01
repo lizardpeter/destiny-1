@@ -1,0 +1,152 @@
+name: D1 Tower Light TFX Opcode Audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-light-tfx-opcode-audit.yml'
+      - 'tools/d1_roi_tfx_opcode_revision_audit.py'
+      - 'tools/d1_tower_light_unk4b_census.py'
+      - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_world_activity_root_dependency_closure.py'
+      - 'tools/d1_world_map_data_layer_census.py'
+      - 'tools/d1_close_map_lighting_dependencies.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+      LINOODLE_SKIP_DLLMAIN: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current retail archive index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p index reports packages runtime work/root work/lighting
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          cp "$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$(find index -name packages.txt -print -quit)" reports/packages.txt
+          python - <<'PY'
+          import hashlib,json
+          d=json.load(open('reports/D1_CURRENT_ACTIVITY_INDEX.json'))
+          h=hashlib.sha256(open('reports/packages.txt','rb').read()).hexdigest()
+          assert d['status']=='D1_REMOTE_ACTIVITY_INDEX_COMPLETE',d.get('status')
+          assert h==(d.get('source') or {}).get('package_list_sha256'),(h,d.get('source'))
+          print('CURRENT_RETAIL_ARCHIVE',h)
+          PY
+
+      - name: Install exact Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Close Tower Activity roots
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --activity 80C98019 \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir work/root \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+
+      - name: Census Activity map resource classes
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/activity_map_roots.json \
+            --out reports/map_data_layer_census.json
+
+      - name: Close exact Tower light dependencies
+        run: |
+          set -euo pipefail
+          python tools/d1_close_map_lighting_dependencies.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --layer-census reports/map_data_layer_census.json \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir work/lighting \
+            --out reports/tower_map_lighting_census.json \
+            --report reports/tower_map_lighting_dependency_closure.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_map_lighting_census.json'))
+          assert d['status']=='D1_WORLD_MAP_LIGHTING_CENSUS_COMPLETE',d.get('violations')
+          assert d['light_record_count']==737,d['light_record_count']
+          assert d['decoded_light_buffer_count']==d['light_buffer_hash_count']==412,d
+          print('TOWER_LIGHT_CORPUS',d['light_record_count'],d['decoded_light_buffer_count'])
+          PY
+
+      - name: Inventory raw Tower light TFX
+        run: |
+          set -euo pipefail
+          python tools/d1_tfx_program_inventory.py \
+            --lighting-census reports/tower_map_lighting_census.json \
+            --out reports/tower_light_tfx_program_inventory.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_light_tfx_program_inventory.json'))
+          assert d['status']=='D1_TFX_PROGRAM_INVENTORY_COMPLETE',d['violations']
+          assert d['unique_program_count']==412,d['unique_program_count']
+          print('RAW_OPCODE_HISTOGRAM',json.dumps(d['opcode_histogram'],sort_keys=True))
+          PY
+
+      - name: Audit bytecode revision and opcode block
+        run: |
+          set -euo pipefail
+          python tools/d1_roi_tfx_opcode_revision_audit.py \
+            --inventory reports/tower_light_tfx_program_inventory.json \
+            --out reports/tower_light_tfx_opcode_revision_audit.json
+
+      - name: Audit raw 0x4B stack/context behavior
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_unk4b_census.py \
+            --inventory reports/tower_light_tfx_program_inventory.json \
+            --out reports/tower_light_unk4b_forensic_census.json
+
+      - name: Commit exact generated opcode evidence
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/generated
+          cp reports/tower_light_tfx_opcode_revision_audit.json evidence/generated/d1_tower_light_tfx_opcode_revision_audit.json
+          cp reports/tower_light_unk4b_forensic_census.json evidence/generated/d1_tower_light_unk4b_forensic_census.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add evidence/generated/d1_tower_light_tfx_opcode_revision_audit.json \
+                  evidence/generated/d1_tower_light_unk4b_forensic_census.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record exact D1 Tower TFX opcode audit'
+          git push
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-light-tfx-opcode-audit
+          path: reports/
+          retention-days: 14
+          compression-level: 6
