@@ -213,7 +213,6 @@ def main() -> int:
                 for name, effect in HYPOTHESES.items()
             },
             "compatible_across_every_blocked_program": compatible_all,
-        "push_global_channel_vector_lineage_stack_compatible": "push_one" in compatible_all,
             "push_global_channel_vector_lineage_stack_compatible": "push_one" in compatible_all,
             "policy": (
                 "Stack-depth compatibility is necessary but not sufficient evidence. "
