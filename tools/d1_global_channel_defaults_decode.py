@@ -72,6 +72,11 @@ def main() -> int:
     ap.add_argument("payload", type=Path)
     ap.add_argument("--tag-hash")
     ap.add_argument("--index", action="append", default=[])
+    ap.add_argument(
+        "--require-requested-in-range",
+        action="store_true",
+        help="fail if any --index value is outside the exact retail channel table",
+    )
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
 
@@ -109,6 +114,14 @@ def main() -> int:
         else:
             requested.append({"in_range": True, **rows[idx]})
 
+    if a.require_requested_in_range:
+        missing = [row for row in requested if not row["in_range"]]
+        if missing:
+            raise ValueError(
+                "requested channel indices outside exact retail table: "
+                + ", ".join(row["index_hex"] for row in missing)
+            )
+
     out = {
         "schema": "d1_global_channel_defaults_exact/v1",
         "status": "EXACT_RETAIL_PARALLEL_ARRAYS_CLOSED",
@@ -123,6 +136,7 @@ def main() -> int:
             "channel_count": count,
         },
         "requested_indices": requested,
+        "requested_indices_all_in_range": all(row["in_range"] for row in requested),
         "channels": rows,
         "proof_boundary": (
             "Exact D1 retail bytes independently validate two parallel DynamicArray "
