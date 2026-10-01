@@ -40,6 +40,7 @@ ENTITY_CLASS = "80800734"
 #   S79818080: source bytes "10068080" -> parsed little-endian class 0x80800610
 #   SD1918080: source bytes "07058080" -> parsed class 0x80800507
 #   S6F818080 ID row: source bytes "88078080", embedded array row
+D1_GLOBAL_CHANNEL_DISCRIMINATOR_CLASS = "8080079A"
 D1_GLOBAL_CHANNEL_PARENT_CLASS = "80800610"
 D1_GLOBAL_CHANNEL_ENTRY_CLASS = "80800507"
 REQUESTED_LIGHT_CHANNELS = {0x11, 0x28, 0x30, 0x60}
@@ -465,7 +466,11 @@ def main() -> int:
         if not parsed:
             continue
         p18 = parsed.get("unk18") or {}
-        if p18.get("class_hash") != D1_GLOBAL_CHANNEL_PARENT_CLASS:
+        p10 = parsed.get("unk10") or {}
+        if (
+            p10.get("class_hash") != D1_GLOBAL_CHANNEL_DISCRIMINATOR_CLASS
+            or p18.get("class_hash") != D1_GLOBAL_CHANNEL_PARENT_CLASS
+        ):
             continue
         target = p18.get("target_offset")
         try:
@@ -525,6 +530,8 @@ def main() -> int:
         "global_channel_parent_class_source_lead": {
             "repository": "Rhys-Kovacevic/charm_exporter",
             "commit": "4bdce74798549f50d3687732d47ec5183a516069",
+            "discriminator_struct": "S79948080",
+            "d1_discriminator_class": D1_GLOBAL_CHANNEL_DISCRIMINATOR_CLASS,
             "parent_struct": "S79818080",
             "d1_parent_class": D1_GLOBAL_CHANNEL_PARENT_CLASS,
             "d1_program_entry_class": D1_GLOBAL_CHANNEL_ENTRY_CLASS,
@@ -533,6 +540,7 @@ def main() -> int:
             "entry_channel_index": "+0x20",
             "entry_bytecode_array": "+0x28",
             "entry_vec4_constants_array": "+0x38",
+            "source_export_behavior": "GlobalExporter accepts S79948080 discriminator, casts Unk18 to S79818080, and joins SD1918080.ChannelIndex through S79818080.Array3 IDs.",
         },
         "global_channel_parents": global_channel_parents,
         "requested_tower_light_channel_indices": [
