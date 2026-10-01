@@ -110,7 +110,8 @@ jobs:
           import json
           d=json.load(open('reports/tower_light_tfx_program_inventory.json'))
           assert d['status']=='D1_TFX_PROGRAM_INVENTORY_COMPLETE',d['violations']
-          assert d['unique_program_count']==412,d['unique_program_count']
+          assert d['buffer_count']==412,d['buffer_count']
+          assert d['unique_program_count']==34,d['unique_program_count']
           print('RAW_OPCODE_HISTOGRAM',json.dumps(d['opcode_histogram'],sort_keys=True))
           PY
 
