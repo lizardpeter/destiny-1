@@ -269,6 +269,7 @@ def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
         })
 
     programs = []
+    d1_array3_program_like = []
     unknown_target_classes = Counter()
     for wrapper in wrappers:
         ptr = wrapper["pointer"]
@@ -303,7 +304,7 @@ def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
             for i in range(value_count)
         ]
         bytecode = payload[byte_data:byte_end]
-        programs.append({
+        program_row = {
             "channel_index": channel_index,
             "channel_index_hex": f"0x{channel_index:02X}",
             "channel_id_string_hash": channel_id,
@@ -324,7 +325,12 @@ def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
                 "S6F818080 ID array. Raw TFX 0x4B indexes the ordered global defaults "
                 "table. Join by channel_id_string_hash before comparing indices."
             ),
-        })
+            "source_program_array": wrapper["array"],
+        }
+        if wrapper["array"] in {"array1", "array2"}:
+            programs.append(program_row)
+        else:
+            d1_array3_program_like.append(program_row)
 
     # Do not compare local ChannelIndex to raw TFX 0x4B global-table indices.
     # GlobalExporter source joins the local Array3 ID StringHash to
@@ -347,6 +353,13 @@ def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
         "channel_ids": ids,
         "program_count": len(programs),
         "programs": programs,
+        "d1_array3_program_like_count": len(d1_array3_program_like),
+        "d1_array3_program_like": d1_array3_program_like,
+        "global_program_array_policy": (
+            "GlobalExporter source uses Array1 + Array2 for global-channel sequencer "
+            "entries and does not include D1Array3. D1Array3 program-like rows are "
+            "preserved separately and excluded from the global-channel join."
+        ),
         "requested_tower_light_programs": requested,
         "tower_light_join_policy": (
             "requested_tower_light_programs intentionally remains empty until an "
