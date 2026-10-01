@@ -316,13 +316,20 @@ def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
             "constant_vec4_count": value_count,
             "constant_vec4s": values,
             "is_dynamic_lineage_rule": byte_count > 4,
-            "requested_by_tower_light_0x4b": channel_index in REQUESTED_LIGHT_CHANNELS,
+            "local_channel_index": channel_index,
+            "local_channel_index_hex": f"0x{channel_index:02X}",
+            "requested_by_tower_light_0x4b": False,
+            "requested_by_tower_light_0x4b_note": (
+                "Withheld here: SD1918080.ChannelIndex indexes the sequencer-local "
+                "S6F818080 ID array. Raw TFX 0x4B indexes the ordered global defaults "
+                "table. Join by channel_id_string_hash before comparing indices."
+            ),
         })
 
-    requested = [
-        p for p in programs
-        if p["channel_index"] in REQUESTED_LIGHT_CHANNELS
-    ]
+    # Do not compare local ChannelIndex to raw TFX 0x4B global-table indices.
+    # GlobalExporter source joins the local Array3 ID StringHash to
+    # GlobalChannelDefaults, then derives the global ordered index.
+    requested = []
     return {
         "parent_class": D1_GLOBAL_CHANNEL_PARENT_CLASS,
         "parent_offset": parent,
@@ -341,6 +348,11 @@ def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
         "program_count": len(programs),
         "programs": programs,
         "requested_tower_light_programs": requested,
+        "tower_light_join_policy": (
+            "requested_tower_light_programs intentionally remains empty until an "
+            "exact StringHash join against GlobalChannelDefaults maps each local "
+            "program ID to its global ordered index."
+        ),
         "unknown_wrapper_target_class_counts": dict(unknown_target_classes),
     }
 
@@ -574,13 +586,12 @@ def main() -> int:
                 "semantic_role_counts": out["semantic_role_counts"],
                 "unk10_class_counts": out["unk10_class_counts"],
                 "global_channel_parent_count": len(global_channel_parents),
-                "requested_global_channel_programs": [
-                    {
-                        "resource_hash": parent["resource_hash"],
-                        "programs": parent["decoded"]["requested_tower_light_programs"],
-                    }
-                    for parent in global_channel_parents
-                ],
+                "requested_global_channel_programs": [],
+                "requested_global_channel_programs_note": (
+                    "Requires exact StringHash join from local sequencer Array3 IDs "
+                    "to ordered GlobalChannelDefaults; local ChannelIndex is not the "
+                    "raw TFX 0x4B global index."
+                ),
                 "violations": violations[:20],
                 "violation_count": len(violations),
             },
