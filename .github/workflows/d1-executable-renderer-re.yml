@@ -193,6 +193,53 @@ jobs:
             --windows build/d1-executable-renderer/runtime_snapshot_getter_windows.json \
             --out build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
 
+      - name: Trace backing storage returned by snapshot getters
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t getter_storage < <(
+            python - <<'PY'
+          import json
+          d=json.load(open('build/d1-executable-renderer/runtime_snapshot_getter_analysis.json'))
+          for row in d.get('targets',[]):
+              value=row.get('returned_storage_target')
+              if value is not None:
+                  print(hex(int(value)))
+          PY
+          )
+          if [ "${#getter_storage[@]}" -gt 0 ]; then
+            args=()
+            for address in "${getter_storage[@]}"; do
+              args+=(--target "$address")
+              # For getters returning an address directly, nearby field traffic
+              # is often more useful than the base itself. A broad +0x80 range
+              # remains structural evidence only.
+              end="$(python - "$address" <<'PY'
+          import sys
+          x=int(sys.argv[1],0)
+          print(hex(x+0x80))
+          PY
+              )"
+              args+=(--range "$address:$end")
+            done
+            python tools/d1_executable_rip_target_xrefs.py \
+              build/d1-executable-renderer/eboot.bin \
+              "${args[@]}" \
+              -o build/d1-executable-renderer/runtime_snapshot_getter_storage_xrefs.json
+          else
+            python - <<'PY'
+          import json
+          open('build/d1-executable-renderer/runtime_snapshot_getter_storage_xrefs.json','w').write(
+              json.dumps({
+                  'schema':'d1_executable_rip_target_xrefs/v1',
+                  'status':'NO_CLASSIFIED_GETTER_STORAGE',
+                  'hits':[],
+                  'policy':'No getter storage target was structurally classified; semantics remain withheld.'
+              },indent=2)+'\n'
+          )
+          PY
+          fi
+
       - name: Trace exact runtime snapshot storage consumers
         shell: bash
         run: |
@@ -348,6 +395,7 @@ jobs:
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_storage_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_storage_summary.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json \
@@ -356,6 +404,8 @@ jobs:
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_analysis.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json
+          cp build/d1-executable-renderer/runtime_snapshot_getter_storage_xrefs.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_storage_xrefs.json
           cp build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json
           cp build/d1-executable-renderer/runtime_snapshot_storage_summary.json \
@@ -394,6 +444,7 @@ jobs:
             build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json
             build/d1-executable-renderer/runtime_snapshot_getter_windows.json
             build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
+            build/d1-executable-renderer/runtime_snapshot_getter_storage_xrefs.json
             build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json
             build/d1-executable-renderer/runtime_snapshot_storage_summary.json
             build/d1-executable-renderer/renderer_label_tables.json
