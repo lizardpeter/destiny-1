@@ -207,6 +207,11 @@ jobs:
             --range 0x27BDE68:0x27BDEAC \
             --range 0x27BE440:0x27BE474 \
             -o build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json
+          python tools/d1_runtime_snapshot_storage_summarize.py \
+            --xrefs build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json \
+            --base snapshot_root=0x27BD1D0 \
+            --base copied_block=0x27BE440 \
+            --out build/d1-executable-renderer/runtime_snapshot_storage_summary.json
 
       - name: Follow high-value renderer helper targets
         shell: bash
@@ -343,7 +348,8 @@ jobs:
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json \
-            evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json
+            evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_storage_summary.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_windows.json \
@@ -352,6 +358,8 @@ jobs:
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json
           cp build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json
+          cp build/d1-executable-renderer/runtime_snapshot_storage_summary.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_storage_summary.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -387,6 +395,7 @@ jobs:
             build/d1-executable-renderer/runtime_snapshot_getter_windows.json
             build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
             build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json
+            build/d1-executable-renderer/runtime_snapshot_storage_summary.json
             build/d1-executable-renderer/renderer_label_tables.json
             build/d1-executable-renderer/renderer_helper_windows.json
           if-no-files-found: error
