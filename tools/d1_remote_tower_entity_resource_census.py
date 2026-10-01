@@ -30,12 +30,19 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource
+from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource, resource_ptr
 from d1_investment_arrangement_probe import dyn_header, filehash_pkg_index
 from d1_remote_investment_parent_probe import RemoteLogicalPackage, parse_member
 from d1_split_tar_extract import SplitHttpTar
 
 ENTITY_CLASS = "80800734"
+# Rhys-Kovacevic/charm_exporter@4bdce747... D1-specific schemas:
+#   S79818080: source bytes "10068080" -> parsed little-endian class 0x80800610
+#   SD1918080: source bytes "07058080" -> parsed class 0x80800507
+#   S6F818080 ID row: source bytes "88078080", embedded array row
+D1_GLOBAL_CHANNEL_PARENT_CLASS = "80800610"
+D1_GLOBAL_CHANNEL_ENTRY_CLASS = "80800507"
+REQUESTED_LIGHT_CHANNELS = {0x11, 0x28, 0x30, 0x60}
 NULLS = {"00000000", "FFFFFFFF"}
 
 
@@ -194,6 +201,149 @@ def parse_entity_resources(payload: bytes) -> dict:
     }
 
 
+def decode_vec4(payload: bytes, off: int) -> list[float]:
+    if off < 0 or off + 16 > len(payload):
+        raise ValueError(f"Vec4 OOB at 0x{off:X}")
+    return list(struct.unpack_from("<4f", payload, off))
+
+
+def decode_global_channel_parent(payload: bytes, parent: int) -> dict:
+    """Decode source-pinned D1 global-channel parent arrays from one EntityResource."""
+    if parent < 0 or parent + 0x150 > len(payload):
+        raise ValueError(
+            f"global-channel parent header OOB: 0x{parent:X}/0x{len(payload):X}"
+        )
+
+    arrays = []
+    wrappers = []
+    for name, rel_off in (
+        ("array1", 0x110),
+        ("array2", 0x120),
+        ("d1_array3", 0x130),
+    ):
+        field = parent + rel_off
+        count, data = dyn_header(payload, field)
+        end = data + count * 8
+        if count < 0 or data < 0 or end > len(payload):
+            raise ValueError(
+                f"{name} OOB count={count} data=0x{data:X} end=0x{end:X}"
+            )
+        arr = {
+            "name": name,
+            "field_offset": field,
+            "field_offset_hex": f"0x{field:X}",
+            "count": count,
+            "data_offset": data,
+            "data_offset_hex": f"0x{data:X}",
+            "stride": 8,
+        }
+        arrays.append(arr)
+        for i in range(count):
+            off = data + i * 8
+            ptr = resource_ptr(payload, off)
+            wrappers.append({
+                "array": name,
+                "index": i,
+                "record_offset": off,
+                "record_offset_hex": f"0x{off:X}",
+                "pointer": ptr,
+            })
+
+    id_field = parent + 0x140
+    id_count, id_data = dyn_header(payload, id_field)
+    id_end = id_data + id_count * 0x30
+    if id_count < 0 or id_data < 0 or id_end > len(payload):
+        raise ValueError(
+            f"channel ID array OOB count={id_count} data=0x{id_data:X} end=0x{id_end:X}"
+        )
+    ids = []
+    for i in range(id_count):
+        off = id_data + i * 0x30
+        channel_id = struct.unpack_from("<I", payload, off + 0x28)[0]
+        ids.append({
+            "index": i,
+            "string_hash": f"{channel_id:08X}",
+            "record_offset": off,
+            "record_offset_hex": f"0x{off:X}",
+        })
+
+    programs = []
+    unknown_target_classes = Counter()
+    for wrapper in wrappers:
+        ptr = wrapper["pointer"]
+        cls = ptr.get("class_hash")
+        if cls != D1_GLOBAL_CHANNEL_ENTRY_CLASS:
+            if cls:
+                unknown_target_classes[cls] += 1
+            continue
+        target = ptr.get("target_offset")
+        if not isinstance(target, int) or target + 0x48 > len(payload):
+            raise ValueError(f"global channel entry target invalid: {ptr}")
+
+        channel_index = struct.unpack_from("<I", payload, target + 0x20)[0]
+        unk14 = struct.unpack_from("<f", payload, target + 0x14)[0]
+
+        byte_count, byte_data = dyn_header(payload, target + 0x28)
+        byte_end = byte_data + byte_count
+        if byte_count < 0 or byte_data < 0 or byte_end > len(payload):
+            raise ValueError(
+                f"channel {channel_index} bytecode OOB count={byte_count} data=0x{byte_data:X}"
+            )
+        value_count, value_data = dyn_header(payload, target + 0x38)
+        value_end = value_data + value_count * 16
+        if value_count < 0 or value_data < 0 or value_end > len(payload):
+            raise ValueError(
+                f"channel {channel_index} values OOB count={value_count} data=0x{value_data:X}"
+            )
+
+        channel_id = ids[channel_index]["string_hash"] if channel_index < len(ids) else None
+        values = [
+            decode_vec4(payload, value_data + i * 16)
+            for i in range(value_count)
+        ]
+        bytecode = payload[byte_data:byte_end]
+        programs.append({
+            "channel_index": channel_index,
+            "channel_index_hex": f"0x{channel_index:02X}",
+            "channel_id_string_hash": channel_id,
+            "entry_offset": target,
+            "entry_offset_hex": f"0x{target:X}",
+            "unk14": unk14,
+            "bytecode_count": byte_count,
+            "bytecode_hex": bytecode.hex().upper(),
+            "bytecode_sha256": hashlib.sha256(bytecode).hexdigest(),
+            "constant_vec4_count": value_count,
+            "constant_vec4s": values,
+            "is_dynamic_lineage_rule": byte_count > 4,
+            "requested_by_tower_light_0x4b": channel_index in REQUESTED_LIGHT_CHANNELS,
+        })
+
+    requested = [
+        p for p in programs
+        if p["channel_index"] in REQUESTED_LIGHT_CHANNELS
+    ]
+    return {
+        "parent_class": D1_GLOBAL_CHANNEL_PARENT_CLASS,
+        "parent_offset": parent,
+        "parent_offset_hex": f"0x{parent:X}",
+        "program_arrays": arrays,
+        "wrapper_count": len(wrappers),
+        "id_array": {
+            "field_offset": id_field,
+            "field_offset_hex": f"0x{id_field:X}",
+            "count": id_count,
+            "data_offset": id_data,
+            "data_offset_hex": f"0x{id_data:X}",
+            "stride": 0x30,
+        },
+        "channel_ids": ids,
+        "program_count": len(programs),
+        "programs": programs,
+        "requested_tower_light_programs": requested,
+        "unknown_wrapper_target_class_counts": dict(unknown_target_classes),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--map-data-layer", type=Path, required=True)
@@ -309,6 +459,32 @@ def main() -> int:
         violations.extend(f"{h}:{x}" for x in row["violations"])
         resources.append(row)
 
+    global_channel_parents = []
+    for row in resources:
+        parsed = row.get("entity_resource")
+        if not parsed:
+            continue
+        p18 = parsed.get("unk18") or {}
+        if p18.get("class_hash") != D1_GLOBAL_CHANNEL_PARENT_CLASS:
+            continue
+        target = p18.get("target_offset")
+        try:
+            decoded = decode_global_channel_parent(
+                # Recover the already fetched payload exactly once more through corpus.
+                corpus.payload(row["resource_hash"])[1],
+                int(target),
+            )
+            global_channel_parents.append({
+                "resource_hash": row["resource_hash"],
+                "owners": row["owners"],
+                "decoded": decoded,
+            })
+        except Exception as ex:
+            row["violations"].append("global_channel_parent_decode:" + repr(ex))
+            violations.append(
+                f'{row["resource_hash"]}:global_channel_parent_decode:{repr(ex)}'
+            )
+
     candidate_classes = []
     for cls, count in sorted(unk10.items(), key=lambda kv: (-kv[1], kv[0])):
         rhs = sorted(set(class_to_resources.get(cls, [])))
@@ -346,6 +522,22 @@ def main() -> int:
         "unk10_class_counts": dict(unk10),
         "unk18_class_counts": dict(unk18),
         "unk10_class_candidates": candidate_classes,
+        "global_channel_parent_class_source_lead": {
+            "repository": "Rhys-Kovacevic/charm_exporter",
+            "commit": "4bdce74798549f50d3687732d47ec5183a516069",
+            "parent_struct": "S79818080",
+            "d1_parent_class": D1_GLOBAL_CHANNEL_PARENT_CLASS,
+            "d1_program_entry_class": D1_GLOBAL_CHANNEL_ENTRY_CLASS,
+            "d1_program_arrays": ["+0x110", "+0x120", "+0x130"],
+            "d1_channel_id_array": "+0x140",
+            "entry_channel_index": "+0x20",
+            "entry_bytecode_array": "+0x28",
+            "entry_vec4_constants_array": "+0x38",
+        },
+        "global_channel_parents": global_channel_parents,
+        "requested_tower_light_channel_indices": [
+            f"0x{x:02X}" for x in sorted(REQUESTED_LIGHT_CHANNELS)
+        ],
         "entities": entities,
         "resources": resources,
         "packages": [
@@ -373,6 +565,14 @@ def main() -> int:
                 ],
                 "semantic_role_counts": out["semantic_role_counts"],
                 "unk10_class_counts": out["unk10_class_counts"],
+                "global_channel_parent_count": len(global_channel_parents),
+                "requested_global_channel_programs": [
+                    {
+                        "resource_hash": parent["resource_hash"],
+                        "programs": parent["decoded"]["requested_tower_light_programs"],
+                    }
+                    for parent in global_channel_parents
+                ],
                 "violations": violations[:20],
                 "violation_count": len(violations),
             },
