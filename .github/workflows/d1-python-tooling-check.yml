@@ -10,6 +10,7 @@ on:
       - 'tools/d1_tower_global_channel_join.py'
       - 'tools/d1_tower_global_channel_sequencer_symbolic.py'
       - 'tools/d1_runtime_snapshot_storage_summarize.py'
+      - 'tools/d1_tower_light_unk4b_census.py'
 
 permissions:
   contents: read
@@ -28,7 +29,8 @@ jobs:
             tools/d1_remote_tower_entity_resource_census.py \
             tools/d1_tower_global_channel_join.py \
             tools/d1_tower_global_channel_sequencer_symbolic.py \
-            tools/d1_runtime_snapshot_storage_summarize.py
+            tools/d1_runtime_snapshot_storage_summarize.py \
+            tools/d1_tower_light_unk4b_census.py
 
       - name: Exercise exact channel index and StringHash join contracts
         run: |
