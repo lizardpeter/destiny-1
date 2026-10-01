@@ -1,0 +1,175 @@
+name: D1 Render Globals Channel Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-render-globals-channel-probe.yml'
+      - 'tools/d1_remote_filehash_probe.py'
+      - 'tools/d1_tower_light_unk4b_census.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover current package list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p source reports runtime
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D source
+          plist="$(find source -name packages.txt -print -quit)"
+          test -n "$plist" -a -f "$plist"
+          cp "$plist" reports/packages.txt
+
+      - name: Install exact Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Probe exact D1 bootstrap tag
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          # Charm D1 FileHash display literal 0020AF80 corresponds to exact
+          # on-disk little-endian FileHash 80AF2000.
+          python tools/d1_remote_filehash_probe.py \
+            --tag-hash 80AF2000 \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/bootstrap_80AF2000.json
+
+      - name: Follow bootstrap RenderGlobals tag at +0x3C
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          render_tag="$(python - <<'PY'
+          import json
+          d=json.load(open('reports/bootstrap_80AF2000.json'))
+          e=d['entries'][0]
+          hit=[x for x in e['aligned_resolved_tag_matches'] if int(x['offset'])==0x3c]
+          if len(hit)!=1:
+              raise SystemExit(f'expected one exact bootstrap +0x3C tag, got {hit}')
+          print(hit[0]['tag_hash'])
+          PY
+          )"
+          echo "$render_tag" > reports/render_globals_tag.txt
+          python tools/d1_remote_filehash_probe.py \
+            --tag-hash "$render_tag" \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/render_globals.json
+
+      - name: Follow RenderGlobals GlobalChannelDefaults tag at +0x34
+        env:
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          channels_tag="$(python - <<'PY'
+          import json
+          d=json.load(open('reports/render_globals.json'))
+          e=d['entries'][0]
+          hit=[x for x in e['aligned_resolved_tag_matches'] if int(x['offset'])==0x34]
+          if len(hit)!=1:
+              raise SystemExit(f'expected one exact RenderGlobals +0x34 tag, got {hit}')
+          print(hit[0]['tag_hash'])
+          PY
+          )"
+          echo "$channels_tag" > reports/global_channel_defaults_tag.txt
+          python tools/d1_remote_filehash_probe.py \
+            --tag-hash "$channels_tag" \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/global_channel_defaults.json
+
+      - name: Record exact channel-table header census
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,struct
+          def entry(path):
+              return json.load(open(path))['entries'][0]
+          b=entry('bootstrap_80AF2000.json')
+          r=entry('render_globals.json')
+          g=entry('global_channel_defaults.json')
+          raw=bytes.fromhex(g['prefix128'])
+          words=[struct.unpack_from('<I',raw,o)[0] for o in range(0,len(raw)-3,4)]
+          qwords=[struct.unpack_from('<Q',raw,o)[0] for o in range(0,len(raw)-7,8)]
+          out={
+            'schema':'d1_render_globals_global_channel_probe/v1',
+            'status':'EXACT_RETAIL_CHAIN_CLOSED_HEADER_ONLY',
+            'bootstrap':{
+              'tag_hash':b['tag_hash'],'entry':b['entry'],'sha256':b['payload_sha256'],
+              'render_globals_field_offset':'0x3C'
+            },
+            'render_globals':{
+              'tag_hash':r['tag_hash'],'entry':r['entry'],'sha256':r['payload_sha256'],
+              'global_channel_defaults_field_offset':'0x34'
+            },
+            'global_channel_defaults':{
+              'tag_hash':g['tag_hash'],'entry':g['entry'],'sha256':g['payload_sha256'],
+              'payload_size':g['payload_size'],'prefix128':g['prefix128'],
+              'u32_words_first_128':[f'{x:08X}' for x in words],
+              'u64_words_first_128':[f'{x:016X}' for x in qwords],
+            },
+            'external_schema_lead':{
+              'repository':'Rhys-Kovacevic/charm_exporter',
+              'commit':'4bdce74798549f50d3687732d47ec5183a516069',
+              'claim':'D1 RoI raw opcode 0x4B maps to PushGlobalChannelVector; runtime table is ordered GlobalChannelDefaults',
+              'promotion':'withheld_pending_exact_table_and_Tower_operand_dataflow'
+            },
+            'proof_boundary':'This closes the exact retail bootstrap -> RenderGlobals -> GlobalChannelDefaults FileHash chain and preserves the channel-table payload header. It does not yet assert the DynamicArray layout, channel count, channel names, or that TFX 0x4B indexes this table.'
+          }
+          open('reports/render_globals_global_channel_probe.json','w').write(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Commit exact generated evidence
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/generated
+          cp reports/bootstrap_80AF2000.json evidence/generated/d1_bootstrap_80AF2000_probe.json
+          cp reports/render_globals.json evidence/generated/d1_render_globals_probe.json
+          cp reports/global_channel_defaults.json evidence/generated/d1_global_channel_defaults_probe.json
+          cp reports/render_globals_global_channel_probe.json evidence/generated/d1_render_globals_global_channel_probe.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add evidence/generated/d1_bootstrap_80AF2000_probe.json \
+                  evidence/generated/d1_render_globals_probe.json \
+                  evidence/generated/d1_global_channel_defaults_probe.json \
+                  evidence/generated/d1_render_globals_global_channel_probe.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Record exact D1 render-global channel chain'
+          git push
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-render-globals-channel-probe
+          path: reports/
+          retention-days: 14
+          compression-level: 6
