@@ -8,6 +8,7 @@ on:
       - 'tools/d1_remote_filehash_probe.py'
       - 'tools/d1_tower_light_unk4b_census.py'
       - 'tools/d1_global_channel_defaults_decode.py'
+      - 'tools/d1_remote_tower_entity_resource_census.py'
 
 permissions:
   contents: write
@@ -43,6 +44,46 @@ jobs:
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover current Tower Activity map-data graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINOODLE_SKIP_DLLMAIN: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p current-index packages reports/root_closure
+          gh run download "$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')" \
+            -n d1-global-activity-index -D current-index
+          idx="$(find current-index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
+          test -n "$idx" -a -f "$idx"
+          cp "$idx" reports/D1_CURRENT_ACTIVITY_INDEX.json
+
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt \
+            --activity 80C98019 \
+            --runtime runtime \
+            --package-dir packages \
+            --work-dir reports/root_closure \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          test "${#files[@]}" -gt 0
+          args=()
+          for file in "${files[@]}"; do args+=(--snapshot "$file"); done
+          python tools/d1_world_map_data_layer_census.py \
+            "${args[@]}" \
+            --runtime runtime \
+            --map-root-json reports/activity_map_roots.json \
+            --out reports/map_data_layer_census.json
+
+          python tools/d1_remote_tower_entity_resource_census.py \
+            --map-data-layer reports/map_data_layer_census.json \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/tower_entity_resource_census.json
 
       - name: Probe exact D1 bootstrap tag
         env:
@@ -162,6 +203,7 @@ jobs:
           cp reports/render_globals.json evidence/generated/d1_render_globals_probe.json
           cp reports/global_channel_defaults.json evidence/generated/d1_global_channel_defaults_probe.json
           cp reports/global_channel_defaults_decoded.json evidence/generated/d1_global_channel_defaults_decoded.json
+          cp reports/tower_entity_resource_census.json evidence/generated/d1_tower_entity_resource_census.json
           cp reports/render_globals_global_channel_probe.json evidence/generated/d1_render_globals_global_channel_probe.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -169,6 +211,7 @@ jobs:
                   evidence/generated/d1_render_globals_probe.json \
                   evidence/generated/d1_global_channel_defaults_probe.json \
                   evidence/generated/d1_global_channel_defaults_decoded.json \
+                  evidence/generated/d1_tower_entity_resource_census.json \
                   evidence/generated/d1_render_globals_global_channel_probe.json
           if git diff --cached --quiet; then
             exit 0
