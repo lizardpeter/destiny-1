@@ -184,6 +184,15 @@ jobs:
             --size 0x180 --max-instructions 96 \
             -o build/d1-executable-renderer/runtime_snapshot_getter_windows.json
 
+      - name: Classify runtime snapshot getters
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_runtime_snapshot_getter_analyze.py \
+            --xrefs build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json \
+            --windows build/d1-executable-renderer/runtime_snapshot_getter_windows.json \
+            --out build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
+
       - name: Follow high-value renderer helper targets
         shell: bash
         run: |
@@ -317,11 +326,14 @@ jobs:
           cp build/d1-executable-renderer/frame_candidate_region_windows.json \
             evidence/generated/d1_ps4_0133_frame_candidate_region_windows.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json \
-            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json
+            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_windows.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json
+          cp build/d1-executable-renderer/runtime_snapshot_getter_analysis.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -355,6 +367,7 @@ jobs:
             build/d1-executable-renderer/frame_candidate_region_windows.json
             build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json
             build/d1-executable-renderer/runtime_snapshot_getter_windows.json
+            build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
             build/d1-executable-renderer/renderer_label_tables.json
             build/d1-executable-renderer/renderer_helper_windows.json
           if-no-files-found: error
