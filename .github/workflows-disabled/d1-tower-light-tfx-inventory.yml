@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/workflows/d1-tower-light-tfx-inventory.yml'
       - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_tower_light_unk4b_census.py'
 
 permissions:
   contents: read
@@ -51,6 +52,26 @@ jobs:
           print('LIGHT_TFX_PROGRAMS',json.dumps({k:d[k] for k in (
             'buffer_count','unique_program_count','opcode_histogram','extern_histogram',
             'output_slot_histogram','constant_reference_histogram')},indent=2))
+          PY
+
+      - name: Narrow unresolved Tower light opcode 0x4B from exact corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_unk4b_census.py \
+            --inventory reports/tower_light_tfx_program_inventory.json \
+            --out reports/tower_light_unk4b_forensic_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_light_unk4b_forensic_census.json'))
+          assert d['status']=='FORENSIC_HYPOTHESES_ONLY_SEMANTICS_WITHHELD',d
+          assert d['unk4b_program_count']>0,d
+          print('UNK4B_FRONTIER',json.dumps({
+              'programs':d['unk4b_program_count'],
+              'occurrences':d['unk4b_occurrence_count'],
+              'operands':d['operand_histogram'],
+              'neighbors':d['neighbor_histogram'],
+              'stack_hypotheses':d['stack_effect_hypotheses']['compatible_across_every_blocked_program'],
+          },indent=2))
           PY
 
       - uses: actions/upload-artifact@v4
