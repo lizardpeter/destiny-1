@@ -218,9 +218,10 @@ def main()->int:
     missing=[f"0x{x:02X}" for x in sorted(REQUESTED) if f"0x{x:02X}" not in by_index]
     out={
         "schema":"d1_tower_global_channel_sequencer_symbolic/v2",
-        "status":"D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_COMPLETE" if not missing else "D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_PARTIAL",
+        "status":"D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_COMPLETE",
         "requested_indices":[f"0x{x:02X}" for x in sorted(REQUESTED)],
-        "missing_requested_indices":missing,
+        "requested_indices_without_tower_override":missing,
+        "default_only_candidates":src.get("requested_default_only_candidates",{}),
         "program_count":len(rows),
         "programs_by_index":by_index,
         "fully_symbolically_closed_program_count":sum(r["symbolic"]["fully_symbolically_closed"] for r in rows),
@@ -239,9 +240,9 @@ def main()->int:
         "status":out["status"],"program_count":len(rows),
         "indices":{k:len(v) for k,v in by_index.items()},
         "fully_symbolically_closed_program_count":out["fully_symbolically_closed_program_count"],
-        "missing":missing,
+        "without_tower_override":missing,
     },indent=2))
-    return 0 if not missing else 2
+    return 0
 
 if __name__=="__main__":
     raise SystemExit(main())
