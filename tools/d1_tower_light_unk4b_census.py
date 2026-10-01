@@ -37,10 +37,27 @@ STACK = {
 }
 
 HYPOTHESES = {
+    # A strategy-aware D1 Rise of Iron lineage table maps raw D1 0x4B to
+    # PushGlobalChannelVector. That would be a one-Vec4 push. Keep the generic
+    # structural name here so corpus compatibility remains separate from the
+    # external semantic lead.
     "push_one": (0, +1),
     "side_effect_no_stack": (0, 0),
     "replace_top": (1, 0),
     "consume_one": (1, -1),
+}
+
+D1_LINEAGE_LEAD = {
+    "repository": "Rhys-Kovacevic/charm_exporter",
+    "commit": "4bdce74798549f50d3687732d47ec5183a516069",
+    "path": "Tiger/Schema/Shaders/TFX/OpCodes.cs",
+    "strategy_table": "TfxBytecode_D1 / Destiny 1 Rise of Iron",
+    "raw_opcode": "0x4B",
+    "mapped_name": "PushGlobalChannelVector",
+    "operand_width": 1,
+    "expected_stack_effect": "push_one_vec4",
+    "runtime_table_source": "D1 render globals loaded from bootstrap FileHash 0020AF80; ordered GlobalChannelDefaults",
+    "authority": "corroborating lineage only; exact D1 retail Tower corpus must independently validate stack behavior and operand/index domain",
 }
 
 
@@ -182,12 +199,15 @@ def main() -> int:
             )
         },
         "instruction_index_histogram": dict(sorted(positions.items())),
+        "d1_lineage_lead": D1_LINEAGE_LEAD,
         "stack_effect_hypotheses": {
             "definitions": {
                 name: {"minimum_depth": effect[0], "delta": effect[1]}
                 for name, effect in HYPOTHESES.items()
             },
             "compatible_across_every_blocked_program": compatible_all,
+        "push_global_channel_vector_lineage_stack_compatible": "push_one" in compatible_all,
+            "push_global_channel_vector_lineage_stack_compatible": "push_one" in compatible_all,
             "policy": (
                 "Stack-depth compatibility is necessary but not sufficient evidence. "
                 "Do not assign a D1 opcode name or runtime source from this test alone."
@@ -197,8 +217,10 @@ def main() -> int:
         "proof_boundary": (
             "The D1 corpus independently fixes 0x4B framing at one following u8. "
             "This report only narrows stack effect and operand/context structure. "
-            "Later Tiger/Alkahest resource/sampler opcode neighborhoods are leads, "
-            "not D1 semantic authority."
+            "A strategy-aware D1 Rise of Iron lineage table specifically maps raw "
+            "D1 0x4B to PushGlobalChannelVector and uses an ordered render-global "
+            "channel table. That is stronger than generic later-Tiger opcode proximity, "
+            "but it is still not promoted without exact Tower stack/index/dataflow proof."
         ),
     }
 
