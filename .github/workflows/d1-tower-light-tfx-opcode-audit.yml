@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-tower-light-tfx-opcode-audit.yml'
       - 'tools/d1_roi_tfx_opcode_revision_audit.py'
       - 'tools/d1_tower_light_unk4b_census.py'
+      - 'tools/d1_tower_light_global_channel_influence.py'
       - 'tools/d1_tfx_program_inventory.py'
       - 'tools/d1_world_activity_root_dependency_closure.py'
       - 'tools/d1_world_map_data_layer_census.py'
@@ -129,6 +130,14 @@ jobs:
             --inventory reports/tower_light_tfx_program_inventory.json \
             --out reports/tower_light_unk4b_forensic_census.json
 
+      - name: Close raw 0x4B downstream influence
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_light_global_channel_influence.py \
+            --inventory reports/tower_light_tfx_program_inventory.json \
+            --lighting-census reports/tower_map_lighting_census.json \
+            --out reports/tower_light_global_channel_influence.json
+
       - name: Commit exact generated opcode evidence
         if: github.ref == 'refs/heads/main'
         run: |
@@ -136,10 +145,12 @@ jobs:
           mkdir -p evidence/generated
           cp reports/tower_light_tfx_opcode_revision_audit.json evidence/generated/d1_tower_light_tfx_opcode_revision_audit.json
           cp reports/tower_light_unk4b_forensic_census.json evidence/generated/d1_tower_light_unk4b_forensic_census.json
+          cp reports/tower_light_global_channel_influence.json evidence/generated/d1_tower_light_global_channel_influence.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add evidence/generated/d1_tower_light_tfx_opcode_revision_audit.json \
-                  evidence/generated/d1_tower_light_unk4b_forensic_census.json
+                  evidence/generated/d1_tower_light_unk4b_forensic_census.json \
+                  evidence/generated/d1_tower_light_global_channel_influence.json
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Record exact D1 Tower TFX opcode audit'
           git push
