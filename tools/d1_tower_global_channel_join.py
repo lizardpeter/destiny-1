@@ -87,6 +87,16 @@ def main()->int:
     requested=[j for j in joins if j["requested_by_tower_light_0x4b"]]
     by_requested={f"0x{x:02X}":[j for j in requested if j["global_index"]==x] for x in sorted(REQUESTED)}
     missing=[k for k,v in by_requested.items() if not v]
+    default_only_candidates = {
+        k: next(
+            (
+                row for row in rows
+                if int(row["index"]) == int(k, 16)
+            ),
+            None,
+        )
+        for k in missing
+    }
 
     out={
         "schema":"d1_tower_global_channel_exact_join/v1",
@@ -100,14 +110,16 @@ def main()->int:
         "requested_global_indices":[f"0x{x:02X}" for x in sorted(REQUESTED)],
         "requested_global_programs":by_requested,
         "requested_global_indices_without_tower_program":missing,
+        "requested_default_only_candidates":default_only_candidates,
         "joins":joins,
         "unmatched":unmatched,
         "ambiguous":ambiguous,
         "proof_boundary":(
             "The join uses exact StringHash identity between sequencer-local Array3 IDs "
             "and exact ordered GlobalChannelDefaults rows. This closes local->global "
-            "index mapping. It does not prove that every global channel is dynamically "
-            "updated, nor assign a human-facing semantic name."
+            "index mapping. A requested index without a Tower program is retained as an "
+            "exact default-only candidate, not treated as an error. This does not prove "
+            "that no other runtime system can update it, nor assign a human-facing semantic name."
         ),
     }
     a.out.parent.mkdir(parents=True,exist_ok=True)
