@@ -51,6 +51,60 @@ def access_name(access: int) -> str:
     return "+".join(parts) if parts else "unknown"
 
 
+def effective_memory_access(insn, operand_index: int, access: int) -> str:
+    """Correct the common Capstone store-direction blind spot for MOV-family ops."""
+    mnemonic = insn.mnemonic.lower()
+    if operand_index == 0 and (mnemonic.startswith("mov") or mnemonic.startswith("vmov")):
+        return "write"
+    if mnemonic.startswith(("cmp", "test", "comis", "ucomis", "vcomis", "vucomis")):
+        return "read"
+    return access_name(access)
+
+
+def plausible_frame_ref(ref: dict) -> bool:
+    """Reject byte-oriented/data-like decode while retaining scalar/vector structure traffic."""
+    if ref["mem_size"] < 4:
+        return False
+    mnemonic = ref["mnemonic"].lower()
+    if mnemonic in {"add", "adc", "sub", "sbb", "and", "or", "xor", "inc", "dec"}:
+        return False
+    return mnemonic.startswith((
+        "mov", "vmov",
+        "addss", "vaddss", "subss", "vsubss", "mulss", "vmulss",
+        "divss", "vdivss", "minss", "vminss", "maxss", "vmaxss",
+        "sqrtss", "vsqrtss", "rsqrtss", "vrsqrtss", "rcpss", "vrcpss",
+        "comiss", "ucomiss", "vcomiss", "vucomiss",
+        "cvt", "vcvt", "cmp", "test",
+    ))
+
+
+def floatish_frame_ref(ref: dict) -> bool:
+    mnemonic = ref["mnemonic"].lower()
+    return (
+        "ss" in mnemonic
+        or mnemonic.startswith(("vmovaps", "vmovups", "movaps", "movups"))
+    )
+
+
+def candidate_score(refs: list[dict], offsets: set[int], center_accesses: list[str]) -> int:
+    core_count = len(offsets & (CORE_NEIGHBORS | {0x1C}))
+    read_count = sum("read" in ref["access"] for ref in refs)
+    write_count = sum("write" in ref["access"] for ref in refs)
+    float_count = sum(floatish_frame_ref(ref) for ref in refs)
+    score = len(offsets) * 5 + core_count * 8 + min(len(refs), 32)
+    score += min(read_count, 24) * 2 + min(write_count, 16)
+    score += min(float_count, 24) * 6
+    if read_count and write_count:
+        score += 12
+    if write_count and not read_count:
+        score -= 8
+    if any("read" in access for access in center_accesses):
+        score += 8
+    if any("write" in access for access in center_accesses):
+        score += 4
+    return score
+
+
 def base_row(insn) -> dict:
     return {
         "address": int(insn.address),
@@ -62,29 +116,13 @@ def base_row(insn) -> dict:
     }
 
 
-def candidate_score(offsets: set[int], center_accesses: list[str], ref_count: int) -> int:
-    score = len(offsets) * 3 + ref_count
-    if 0x14 in offsets:
-        score += 7
-    if 0x18 in offsets:
-        score += 9
-    if 0x28 in offsets:
-        score += 9
-    if 0x20 in offsets:
-        score += 3
-    if 0x24 in offsets:
-        score += 3
-    if any("write" in access for access in center_accesses):
-        score += 6
-    return score
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("executable", type=Path)
     ap.add_argument("-o", "--output", type=Path, required=True)
     ap.add_argument("--cluster-span", type=lambda x: int(x, 0), default=0x180)
     ap.add_argument("--min-distinct-offsets", type=int, default=3)
+    ap.add_argument("--min-core-neighbors", type=int, default=2)
     ap.add_argument("--max-candidates", type=int, default=500)
     args = ap.parse_args()
 
@@ -123,7 +161,7 @@ def main() -> int:
                 region_id += 1
                 continue
 
-            for op in insn.operands:
+            for operand_index, op in enumerate(insn.operands):
                 if op.type != X86_OP_MEM:
                     continue
                 disp = int(op.mem.disp)
@@ -132,13 +170,15 @@ def main() -> int:
                 if op.mem.base in (0, X86_REG_RIP, X86_REG_RSP, X86_REG_RBP):
                     continue
                 base = insn.reg_name(op.mem.base)
-                access = access_name(int(op.access))
+                access = effective_memory_access(insn, operand_index, int(op.access))
                 all_refs.append({
                     "address": int(insn.address),
                     "address_hex": hex(int(insn.address)),
                     "region_id": region_id,
                     "segment_index": segment_index,
                     "base_reg": base,
+                    "operand_index": operand_index,
+                    "mem_size": int(op.size),
                     "disp": disp,
                     "disp_hex": hex(disp),
                     "access": access,
@@ -153,8 +193,10 @@ def main() -> int:
             if insn.mnemonic.startswith("ret"):
                 region_id += 1
 
+    qualified_refs = [ref for ref in all_refs if plausible_frame_ref(ref)]
+
     by_region_base: dict[tuple[int, int, str], list[dict]] = defaultdict(list)
-    for ref in all_refs:
+    for ref in qualified_refs:
         by_region_base[
             (ref["segment_index"], ref["region_id"], ref["base_reg"])
         ].append(ref)
@@ -163,7 +205,7 @@ def main() -> int:
 
     candidates = []
     seen = set()
-    for center in all_refs:
+    for center in qualified_refs:
         if center["disp"] != 0x1C:
             continue
         key = (
@@ -185,18 +227,23 @@ def main() -> int:
         offsets = {ref["disp"] for ref in nearby}
         if len(offsets) < args.min_distinct_offsets:
             continue
-        if not (offsets & CORE_NEIGHBORS):
+        if len(offsets & CORE_NEIGHBORS) < args.min_core_neighbors:
             continue
         center_accesses = [
             ref["access"] for ref in nearby
             if ref["address"] == center["address"] and ref["disp"] == 0x1C
         ]
         candidates.append({
-            "score": candidate_score(offsets, center_accesses, len(nearby)),
+            "score": candidate_score(nearby, offsets, center_accesses),
             "center_address": center["address"],
             "center_address_hex": center["address_hex"],
+            "segment_index": center["segment_index"],
+            "region_id": center["region_id"],
             "base_reg": center["base_reg"],
             "center_accesses": center_accesses,
+            "float_ref_count": sum(floatish_frame_ref(ref) for ref in nearby),
+            "read_ref_count": sum("read" in ref["access"] for ref in nearby),
+            "write_ref_count": sum("write" in ref["access"] for ref in nearby),
             "distinct_offsets": [hex(value) for value in sorted(offsets)],
             "ref_count": len(nearby),
             "span_start_hex": hex(min(ref["address"] for ref in nearby)),
@@ -215,10 +262,25 @@ def main() -> int:
             row["center_address"],
         )
     )
-    candidates = candidates[:args.max_candidates]
+    # Collapse overlapping centers from the same local base-register cluster.
+    deduped = []
+    for row in candidates:
+        center = row["center_address"]
+        if any(
+            prior["segment_index"] == row["segment_index"]
+            and prior["region_id"] == row["region_id"]
+            and prior["base_reg"] == row["base_reg"]
+            and abs(prior["center_address"] - center) <= args.cluster_span // 2
+            for prior in deduped
+        ):
+            continue
+        deduped.append(row)
+        if len(deduped) >= args.max_candidates:
+            break
+    candidates = deduped
 
     report = {
-        "schema": "d1_executable_frame_layout_candidates/v1",
+        "schema": "d1_executable_frame_layout_candidates/v2",
         "executable_sha256": hashlib.sha256(raw).hexdigest(),
         "file_size": len(raw),
         "oracle": {
@@ -232,13 +294,17 @@ def main() -> int:
             "ranker intentionally omits broad disassembly context; detailed windows "
             "must be captured only for selected candidates. Continued-Tiger offsets "
             "are used only to rank structural candidates. No candidate is "
-            "identified as D1 Frame, and no D1 field meaning (including exposure) "
+            "identified as D1 Frame. Byte-oriented arithmetic/data-like decode is excluded " 
+            "from ranking, and scalar/vector accesses are prioritized only as forensic candidates. "
+            "No D1 field meaning (including exposure) "
             "is promoted without independent D1 producer/consumer proof."
         ),
         "scan": {
             "cluster_span": args.cluster_span,
             "min_distinct_offsets": args.min_distinct_offsets,
+            "min_core_neighbors": args.min_core_neighbors,
             "raw_matching_ref_count": len(all_refs),
+            "qualified_matching_ref_count": len(qualified_refs),
             "candidate_count": len(candidates),
             "offset_counts": dict(offset_counts),
             "access_counts": dict(access_counts),
