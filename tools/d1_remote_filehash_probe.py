@@ -45,7 +45,10 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument('--tag-hash',action='append',required=True)
  ap.add_argument('--package-list',type=Path,required=True);ap.add_argument('--runtime',type=Path,required=True)
  ap.add_argument('--base-url',default='https://crypt.cohae.dev/destiny/ps4/packages/latest');ap.add_argument('--part-count',type=int,default=10)
+ ap.add_argument('--payload-out-dir',type=Path,default=None,help='optionally preserve exact decoded payload bytes as <TAG>.bin')
  ap.add_argument('--out',type=Path,required=True);a=ap.parse_args()
+ if a.payload_out_dir is not None:
+  a.payload_out_dir.mkdir(parents=True,exist_ok=True)
  wanted=[norm(x) for x in a.tag_hash if norm(x) not in NULLS]
  by_pkg=defaultdict(list)
  for h in wanted:
@@ -80,6 +83,10 @@ def main():
   try:b=view.entry(idx)
   except Exception as ex:row['violations'].append('payload_read:'+repr(ex));rows.append(row);continue
   row['payload_size']=len(b);row['payload_sha256']=hashlib.sha256(b).hexdigest();row['prefix128']=b[:128].hex();row['suffix64']=b[-64:].hex()
+  if a.payload_out_dir is not None:
+   payload_path=a.payload_out_dir/f'{h}.bin'
+   payload_path.write_bytes(b)
+   row['payload_file']=payload_path.name
   if row['entry']['reference']==ENTITY_RESOURCE_CLASS:
    try:row['entity_resource']=parse_resource(b,'PS4')
    except Exception as ex:row['entity_resource_error']=repr(ex);row['violations'].append('entity_resource_parse:'+repr(ex))
