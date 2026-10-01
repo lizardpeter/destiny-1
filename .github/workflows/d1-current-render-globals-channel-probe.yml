@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-current-render-globals-channel-probe.yml'
       - 'tools/d1_remote_entry_reference_class_scan.py'
       - 'tools/d1_remote_filehash_probe.py'
+      - 'tools/d1_global_channel_defaults_decode.py'
 
 permissions:
   contents: write
@@ -108,12 +109,19 @@ jobs:
         run: |
           set -euo pipefail
           channels_tag="$(tr -d '\r\n' < reports/global_channel_defaults_tag.txt)"
+          mkdir -p reports/payloads
           python tools/d1_remote_filehash_probe.py \
             --tag-hash "$channels_tag" \
             --package-list reports/packages.txt \
             --runtime runtime \
             --base-url "$BASE_URL" \
+            --payload-out-dir reports/payloads \
             --out reports/current_global_channel_defaults.json
+          python tools/d1_global_channel_defaults_decode.py \
+            "reports/payloads/$channels_tag.bin" \
+            --tag-hash "$channels_tag" \
+            --index 0x11 --index 0x28 --index 0x30 --index 0x60 \
+            --out reports/current_global_channel_defaults_decoded.json
           python - <<'PY'
           import json,struct
           b=json.load(open('reports/current_bootstrap_class_scan.json'))['hits'][0]
@@ -144,12 +152,14 @@ jobs:
           cp reports/current_bootstrap_class_scan.json evidence/generated/d1_current_bootstrap_class_scan.json
           cp reports/current_render_globals.json evidence/generated/d1_current_render_globals_probe.json
           cp reports/current_global_channel_defaults.json evidence/generated/d1_current_global_channel_defaults_probe.json
+          cp reports/current_global_channel_defaults_decoded.json evidence/generated/d1_current_global_channel_defaults_decoded.json
           cp reports/current_render_globals_channel_chain.json evidence/generated/d1_current_render_globals_channel_chain.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add evidence/generated/d1_current_bootstrap_class_scan.json \
                   evidence/generated/d1_current_render_globals_probe.json \
                   evidence/generated/d1_current_global_channel_defaults_probe.json \
+                  evidence/generated/d1_current_global_channel_defaults_decoded.json \
                   evidence/generated/d1_current_render_globals_channel_chain.json
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Record current D1 render-global channel chain'
