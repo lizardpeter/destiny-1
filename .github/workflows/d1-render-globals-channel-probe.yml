@@ -10,6 +10,7 @@ on:
       - 'tools/d1_global_channel_defaults_decode.py'
       - 'tools/d1_remote_tower_entity_resource_census.py'
       - 'tools/d1_tower_global_channel_sequencer_symbolic.py'
+      - 'tools/d1_tower_global_channel_join.py'
 
 permissions:
   contents: write
@@ -85,9 +86,6 @@ jobs:
             --runtime runtime \
             --base-url "$BASE_URL" \
             --out reports/tower_entity_resource_census.json
-          python tools/d1_tower_global_channel_sequencer_symbolic.py \
-            --census reports/tower_entity_resource_census.json \
-            --out reports/tower_global_channel_sequencer_symbolic.json
 
       - name: Probe exact D1 bootstrap tag
         env:
@@ -156,6 +154,13 @@ jobs:
             --index 0x11 --index 0x28 --index 0x30 --index 0x60 \
             --require-requested-in-range \
             --out reports/global_channel_defaults_decoded.json
+          python tools/d1_tower_global_channel_join.py \
+            --defaults reports/global_channel_defaults_decoded.json \
+            --tower-census reports/tower_entity_resource_census.json \
+            --out reports/tower_global_channel_join.json
+          python tools/d1_tower_global_channel_sequencer_symbolic.py \
+            --join reports/tower_global_channel_join.json \
+            --out reports/tower_global_channel_sequencer_symbolic.json
 
       - name: Record exact channel-table header census
         run: |
@@ -209,6 +214,7 @@ jobs:
           cp reports/global_channel_defaults.json evidence/generated/d1_global_channel_defaults_probe.json
           cp reports/global_channel_defaults_decoded.json evidence/generated/d1_global_channel_defaults_decoded.json
           cp reports/tower_entity_resource_census.json evidence/generated/d1_tower_entity_resource_census.json
+          cp reports/tower_global_channel_join.json evidence/generated/d1_tower_global_channel_join.json
           cp reports/tower_global_channel_sequencer_symbolic.json evidence/generated/d1_tower_global_channel_sequencer_symbolic.json
           cp reports/render_globals_global_channel_probe.json evidence/generated/d1_render_globals_global_channel_probe.json
           git config user.name 'github-actions[bot]'
@@ -218,6 +224,7 @@ jobs:
                   evidence/generated/d1_global_channel_defaults_probe.json \
                   evidence/generated/d1_global_channel_defaults_decoded.json \
                   evidence/generated/d1_tower_entity_resource_census.json \
+                  evidence/generated/d1_tower_global_channel_join.json \
                   evidence/generated/d1_tower_global_channel_sequencer_symbolic.json \
                   evidence/generated/d1_render_globals_global_channel_probe.json
           if git diff --cached --quiet; then
