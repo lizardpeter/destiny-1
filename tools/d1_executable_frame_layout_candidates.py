@@ -149,6 +149,7 @@ def main() -> int:
     offset_counts = Counter()
     access_counts = Counter()
     region_id = 0
+    region_bounds: dict[tuple[int, int], dict[str, int]] = {}
 
     for segment_index, segment in enumerate(executable):
         file_offset = int(segment["absolute_file_offset"])
@@ -160,6 +161,13 @@ def main() -> int:
             if insn.id == 0:
                 region_id += 1
                 continue
+
+            bounds = region_bounds.setdefault(
+                (segment_index, region_id),
+                {"start": int(insn.address), "end": int(insn.address + insn.size)},
+            )
+            bounds["start"] = min(bounds["start"], int(insn.address))
+            bounds["end"] = max(bounds["end"], int(insn.address + insn.size))
 
             for operand_index, op in enumerate(insn.operands):
                 if op.type != X86_OP_MEM:
@@ -233,12 +241,20 @@ def main() -> int:
             ref["access"] for ref in nearby
             if ref["address"] == center["address"] and ref["disp"] == 0x1C
         ]
+        region = region_bounds[
+            (center["segment_index"], center["region_id"])
+        ]
         candidates.append({
             "score": candidate_score(nearby, offsets, center_accesses),
             "center_address": center["address"],
             "center_address_hex": center["address_hex"],
             "segment_index": center["segment_index"],
             "region_id": center["region_id"],
+            "region_start": region["start"],
+            "region_start_hex": hex(region["start"]),
+            "region_end": region["end"],
+            "region_end_hex": hex(region["end"]),
+            "region_size": region["end"] - region["start"],
             "base_reg": center["base_reg"],
             "center_accesses": center_accesses,
             "float_ref_count": sum(floatish_frame_ref(ref) for ref in nearby),
@@ -306,6 +322,7 @@ def main() -> int:
             "raw_matching_ref_count": len(all_refs),
             "qualified_matching_ref_count": len(qualified_refs),
             "candidate_count": len(candidates),
+            "ret_bounded_region_count": len(region_bounds),
             "offset_counts": dict(offset_counts),
             "access_counts": dict(access_counts),
         },
