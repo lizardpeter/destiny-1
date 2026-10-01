@@ -1,0 +1,2400 @@
+{
+  "schema": "d1_tower_light_global_channel_influence/v1",
+  "status": "EXACT_RETAIL_0X4B_DOWNSTREAM_INFLUENCE_CLOSED",
+  "source_inventory_sha256": "719c61b102a1cee8d1a23bf5ebe4c9116d5a211f38aca43ee619d238cb3347b9",
+  "source_lighting_census_sha256": "0cce42f6355661e9c75fc41dd5388163e2ead55a9018c47885c865a0b2469bb0",
+  "corpus": {
+    "tower_bufferdata_count": 412,
+    "tower_light_record_count": 737,
+    "raw_0x4b_buffer_count": 86,
+    "raw_0x4b_light_record_count": 188,
+    "raw_0x4b_indices": [
+      "0x11",
+      "0x28",
+      "0x30",
+      "0x60"
+    ],
+    "clean_single_channel_partition": true
+  },
+  "channels": {
+    "0x11": {
+      "buffer_count": 3,
+      "unique_program_count": 3,
+      "light_record_count": 4,
+      "unique_material_count": 3,
+      "material_hashes": [
+        "80C99820",
+        "80C998B0",
+        "80C998C9"
+      ],
+      "volume_kind_counts": {
+        "AFFINE": 3,
+        "PROJECTIVE": 1
+      },
+      "output_target_counts": {
+        "2": 3,
+        "3": 2
+      },
+      "output_target_patterns": {
+        "2": 1,
+        "2,3": 2
+      },
+      "lane_use": {
+        "classification": "VECTOR_XYZ_LIKE",
+        "x_only_formula_count": 0,
+        "xyz_formula_count": 5,
+        "other_formula_count": 0,
+        "proof_boundary": "This is only lane-use structure. SCALAR_X_LIKE does not assign an intensity/exposure semantic; VECTOR_XYZ_LIKE does not assign a direction/position/color semantic."
+      },
+      "program_templates": [
+        {
+          "program_sha256": "89b4f189b4a864c1e6dc6d7ddd75c8f02875c58310d7e645424ff2f79cf8ed92",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80C998B1"
+          ],
+          "output_targets": [
+            2,
+            3
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute(G11,.xyzz),dot(merge3_1(permute(G11,.xyzz),C1[0.0, 0.0, 0.0, 0.0]),C2[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C3[1.2000000476837158, 1.2000000476837158, 1.2000000476837158, 1.2000000476837158]),.xyzz),C4[0.30000001192092896, 1.0, 1.0, 1.0])",
+            "merge3_1(permute((merge3_1(permute(G11,.xyzz),dot(merge3_1(permute(G11,.xyzz),C7[0.0, 0.0, 0.0, 0.0]),C8[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C9[0.20000000298023224, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224]),.xyzz),C10[1.0, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "983fe4d4bc42fdb8e31b5bcd973677742043a95f68c46cfb8f7dc4cfee0faed3",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80C998CA"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute(G11,.xyzz),dot(merge3_1(permute(G11,.xyzz),C3[0.0, 0.0, 0.0, 0.0]),C4[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C5[120.0, 120.0, 120.0, 120.0]),.xyzz),C6[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "d229e0a37f96ca7f509db773ffaf6bdd06dc4bfe99ce5e8809e874ab7ac8ca3f",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80C99821"
+          ],
+          "output_targets": [
+            2,
+            3
+          ],
+          "formulas": [
+            "merge3_1(permute(merge3_1(permute(G11,.xyzz),dot(merge3_1(permute(G11,.xyzz),C1[0.0, 0.0, 0.0, 0.0]),C2[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0])),.xyzz),C3[0.30000001192092896, 1.0, 1.0, 1.0])",
+            "merge3_1(permute((merge3_1(permute(G11,.xyzz),dot(merge3_1(permute(G11,.xyzz),C6[0.0, 0.0, 0.0, 0.0]),C7[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C8[0.5, 0.5, 0.5, 0.5]),.xyzz),C9[1.0, 1.0, 1.0, 1.0])"
+          ]
+        }
+      ],
+      "records": [
+        {
+          "collection_hash": "80C997EF",
+          "record_index": 13,
+          "record_sha256": "2e1af40db273d890cf733fb6170d0ae7f2703c63f39e3e29210a9008048a8e01",
+          "material_hash": "80C998B0",
+          "buffer_hash": "80C998B1",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C997EF",
+          "record_index": 19,
+          "record_sha256": "53c1758c3ca8d8f8b895f60a284dad8761c023dd0a9c1bf18b16cd9e6d7056a9",
+          "material_hash": "80C998C9",
+          "buffer_hash": "80C998CA",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C997EF",
+          "record_index": 36,
+          "record_sha256": "53c1758c3ca8d8f8b895f60a284dad8761c023dd0a9c1bf18b16cd9e6d7056a9",
+          "material_hash": "80C998C9",
+          "buffer_hash": "80C998CA",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C997EF",
+          "record_index": 42,
+          "record_sha256": "82a64dfd545d31366e06009815385f9ee22d8c3234208652da1f18ba91db4feb",
+          "material_hash": "80C99820",
+          "buffer_hash": "80C99821",
+          "flags88": "0200000C",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        }
+      ]
+    },
+    "0x28": {
+      "buffer_count": 62,
+      "unique_program_count": 3,
+      "light_record_count": 160,
+      "unique_material_count": 98,
+      "material_hashes": [
+        "80C98247",
+        "80C98257",
+        "80C9825B",
+        "80C9825E",
+        "80C98266",
+        "80C98268",
+        "80C98271",
+        "80C98272",
+        "80C98279",
+        "80C98281",
+        "80C98286",
+        "80C98290",
+        "80C98294",
+        "80C98295",
+        "80C98297",
+        "80C98299",
+        "80C982A2",
+        "80C982A3",
+        "80C982AF",
+        "80C982B5",
+        "80C982B6",
+        "80C982B7",
+        "80C982BF",
+        "80C982C1",
+        "80C982C3",
+        "80C982D5",
+        "80C982D7",
+        "80C982DD",
+        "80C982E3",
+        "80C982E7",
+        "80C982EB",
+        "80C993CC",
+        "80C993D0",
+        "80C993D2",
+        "80C993DA",
+        "80C993DD",
+        "80C993E8",
+        "80C993EC",
+        "80C999B5",
+        "80C999C4",
+        "80C999FE",
+        "80C99A17",
+        "80C99A18",
+        "80C99A1D",
+        "80C99A1E",
+        "80C99A1F",
+        "80C99A20",
+        "80C99A21",
+        "80C99A23",
+        "80C99A25",
+        "80C99A26",
+        "80C99A27",
+        "80C99A2C",
+        "80C99A7E",
+        "80C99AF9",
+        "80C99B04",
+        "80C99B0C",
+        "80C99B0F",
+        "80C99B13",
+        "80C99B16",
+        "80C99B1D",
+        "80C99B3B",
+        "80C99B3E",
+        "80C99B42",
+        "80C99B44",
+        "80C99B4D",
+        "80C99B50",
+        "80C99B52",
+        "80C99B55",
+        "80C99B59",
+        "80C99B68",
+        "80C99B69",
+        "80C99B82",
+        "80C99B86",
+        "80C99B8E",
+        "80C99B92",
+        "80C99B9C",
+        "80C99BB3",
+        "80C99BB5",
+        "80C99BB6",
+        "80C99BB8",
+        "80C99BBF",
+        "80C99BC1",
+        "80C99BC8",
+        "80C99BDA",
+        "80C99BDC",
+        "80C99BE0",
+        "80C99BE8",
+        "80C99BEC",
+        "80C99BF1",
+        "80C99BF2",
+        "80C99BFC",
+        "80C99C07",
+        "80C99C09",
+        "80C99C16",
+        "80C99C18",
+        "80C99C24",
+        "80C99C28"
+      ],
+      "volume_kind_counts": {
+        "AFFINE": 102,
+        "PROJECTIVE": 58
+      },
+      "output_target_counts": {
+        "2": 62,
+        "3": 1
+      },
+      "output_target_patterns": {
+        "2": 61,
+        "2,3": 1
+      },
+      "lane_use": {
+        "classification": "SCALAR_X_DOMINANT",
+        "x_only_formula_count": 63,
+        "xyz_formula_count": 0,
+        "other_formula_count": 63,
+        "proof_boundary": "This is only lane-use structure. SCALAR_X_LIKE does not assign an intensity/exposure semantic; VECTOR_XYZ_LIKE does not assign a direction/position/color semantic."
+      },
+      "program_templates": [
+        {
+          "program_sha256": "16d989b7bf2ad638d36620b6d4e952063ea3b5ea534386fbbe56aeeeffae0304",
+          "buffer_count": 53,
+          "buffer_hashes": [
+            "80C98263",
+            "80C98275",
+            "80C98283",
+            "80C9828F",
+            "80C98298",
+            "80C982B0",
+            "80C982B4",
+            "80C982CE",
+            "80C982D4",
+            "80C982DC",
+            "80C982DE",
+            "80C9897D",
+            "80C9897E",
+            "80C98983",
+            "80C98986",
+            "80C98988",
+            "80C99A0A",
+            "80C99A19",
+            "80C99A1C",
+            "80C99A22",
+            "80C99B01",
+            "80C99B03",
+            "80C99B06",
+            "80C99B0D",
+            "80C99B10",
+            "80C99B18",
+            "80C99B1B",
+            "80C99B20",
+            "80CA1333",
+            "80CA1337",
+            "80CA1338",
+            "80CA1339",
+            "80CA133B",
+            "80CA1341",
+            "80CA1344",
+            "80CA134E",
+            "80CA1350",
+            "80CA1356",
+            "80CA1360",
+            "80CA1364",
+            "80CA1365",
+            "80CA136E",
+            "80CA136F",
+            "80CA1370",
+            "80CA1375",
+            "80CA1379",
+            "80CA1382",
+            "80CA1383",
+            "80CA1384",
+            "80CA1388",
+            "80CA138C",
+            "80CA1392",
+            "80CA1394"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((C3[0.27000001072883606, 0.6700000166893005, 1.0, 0.5863000154495239]*splatX(permute(((C4[5.0, 5.0, 5.0, 5.0]*C5[70.0, 70.0, 70.0, 70.0])*G28),.xxxx))),.xyzz),C6[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "3620bda63963a8e9f2491eb1ff02d196018467c05ac02823e3065ff8d594db08",
+          "buffer_count": 8,
+          "buffer_hashes": [
+            "80C9827A",
+            "80C982A6",
+            "80C982B8",
+            "80C982C2",
+            "80C982E0",
+            "80C9898A",
+            "80CA134C",
+            "80CA138B"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((C2[1.0, 0.4107072055339813, 0.13732390105724335, 0.5574228763580322]*splatX(permute(((C3[5.0, 5.0, 5.0, 5.0]*C4[15.0, 15.0, 15.0, 15.0])*G28),.xxxx))),.xyzz),C5[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "737d13ce2f67867401403fcce394f525056556738a55ecac088a5aed65d1e0c6",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80CA1352"
+          ],
+          "output_targets": [
+            2,
+            3
+          ],
+          "formulas": [
+            "merge3_1(permute((C1[0.27049779891967773, 0.6653872728347778, 1.0, 0.5837278366088867]*splatX(permute(((C2[5.0, 5.0, 5.0, 5.0]*C3[30.0, 30.0, 30.0, 30.0])*G28),.xxxx))),.xyzz),C4[0.30000001192092896, 1.0, 1.0, 1.0])",
+            "merge3_1(permute((C7[0.27049779891967773, 0.6653872728347778, 1.0, 0.5837278366088867]*splatX(permute(((C8[5.0, 5.0, 5.0, 5.0]*C9[0.75, 0.75, 0.75, 0.75])*G28),.xxxx))),.xyzz),C10[1.0, 1.0, 1.0, 1.0])"
+          ]
+        }
+      ],
+      "records": [
+        {
+          "collection_hash": "80C98190",
+          "record_index": 0,
+          "record_sha256": "f0ee03a84979dc1eb0e37c34f1bda241530ae53f901c17328b8d139f2076dabd",
+          "material_hash": "80C98247",
+          "buffer_hash": "80C98263",
+          "flags88": "02000408",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 5,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 6,
+          "record_sha256": "71d63d5faaefc49e306b21e3f832af7fd4df9100d6f37d747e50d02534776f03",
+          "material_hash": "80C98272",
+          "buffer_hash": "80C9828F",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 10,
+          "record_sha256": "398c2bc3c01ce1c1706ad0391fcfe724b86343d7efbf07f0f9619ff5969e3ae7",
+          "material_hash": "80C982B6",
+          "buffer_hash": "80C982E0",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 12,
+          "record_sha256": "398c2bc3c01ce1c1706ad0391fcfe724b86343d7efbf07f0f9619ff5969e3ae7",
+          "material_hash": "80C982B6",
+          "buffer_hash": "80C982E0",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 17,
+          "record_sha256": "affcaa57b3d2969d850c4d54de061b9252ddc9968d3ac6f59e436439e08e1d47",
+          "material_hash": "80C98257",
+          "buffer_hash": "80C98275",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 21,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 22,
+          "record_sha256": "20d9de777723c494d5ebd6556ab0b2a1b4c40707c2ca0cb57365e72c069df98c",
+          "material_hash": "80C9825B",
+          "buffer_hash": "80C982DC",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 25,
+          "record_sha256": "7f60d62dcaa868726bff723d7d495122dca060a6d1d528f5559b696de51e73f9",
+          "material_hash": "80C9825E",
+          "buffer_hash": "80C9827A",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 28,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 29,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 31,
+          "record_sha256": "8f120ae13d50013e757199f888074172f454a7340fbba9b9c8ad53891358ffa1",
+          "material_hash": "80C98266",
+          "buffer_hash": "80C98283",
+          "flags88": "02000408",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 32,
+          "record_sha256": "66da84dd9afcf210cfd6bb4cf5a08cddf1b5ce470c4217b14cf5e99cbcb3dfc8",
+          "material_hash": "80C98268",
+          "buffer_hash": "80C982DC",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 35,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 38,
+          "record_sha256": "fbb5ee9b05f38fb4389cefd183c1847322d81812152cebf164892e88b5f3286a",
+          "material_hash": "80C982B7",
+          "buffer_hash": "80C982D4",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 41,
+          "record_sha256": "a033f2f29077f00a14bc7be575ef9791bf4c69be8028e87f4528c65550e25682",
+          "material_hash": "80C98271",
+          "buffer_hash": "80C982DC",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 42,
+          "record_sha256": "71d63d5faaefc49e306b21e3f832af7fd4df9100d6f37d747e50d02534776f03",
+          "material_hash": "80C98272",
+          "buffer_hash": "80C9828F",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 47,
+          "record_sha256": "e5525a34cb411b7aa370d3707196437a8ff495bff8a020825ccdb192f5eb8bb9",
+          "material_hash": "80C98279",
+          "buffer_hash": "80C98298",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 48,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 52,
+          "record_sha256": "475b86033939162ab29e7d0cd7f55e34fde4f21bf90a9c159544d92f0f4398fb",
+          "material_hash": "80C98281",
+          "buffer_hash": "80C982DC",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 55,
+          "record_sha256": "439f491f94a4daf68fbd86f057e758b175ea6cf10b8d3b620478e6f78a6ecfe3",
+          "material_hash": "80C98286",
+          "buffer_hash": "80C982A6",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 56,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 62,
+          "record_sha256": "e1d5415527f2b16fdf4d85389ad9bef7b06a4a2a01e184a517d5506174efcf9f",
+          "material_hash": "80C98290",
+          "buffer_hash": "80C982B0",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 64,
+          "record_sha256": "b694f4e81978cbefd44ab991e040d75b015e8f78f879ee3b0e114545e31a01f6",
+          "material_hash": "80C98294",
+          "buffer_hash": "80C9898A",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 65,
+          "record_sha256": "2d3ddce8c6c141273b523fdcef60cf2abf11c46be0cdfc7ad5f05283bb165e01",
+          "material_hash": "80C98295",
+          "buffer_hash": "80C982B4",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 66,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 67,
+          "record_sha256": "9b0903a74a8272b06f62c839494307798a51ff87255746408cac94538133457c",
+          "material_hash": "80C98297",
+          "buffer_hash": "80C982B8",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 68,
+          "record_sha256": "ebf9e6e5dd6facade909eb116c712f3979f5137da6a7140d6cc3444862bf53ac",
+          "material_hash": "80C98299",
+          "buffer_hash": "80C982DE",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 69,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 71,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 74,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 76,
+          "record_sha256": "e5d587d9615641e6d4a18604fd4210a98a6a2ca950f618093994b252230a9f03",
+          "material_hash": "80C982A2",
+          "buffer_hash": "80C982DE",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 77,
+          "record_sha256": "5df70cb8d04c2128af949db3c48f02b18288ad656535f690d2667df7c7d0a5b1",
+          "material_hash": "80C982A3",
+          "buffer_hash": "80C982C2",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 83,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 84,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 85,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 87,
+          "record_sha256": "f29dde300cca8d7e769e8b7d073544f61f1605dfaf88133fdcf1bacf6db7aaee",
+          "material_hash": "80C982AF",
+          "buffer_hash": "80C982CE",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 92,
+          "record_sha256": "1696a950b0bc305dc5c1d4f162606a187998094602486794633f9461dae71ba7",
+          "material_hash": "80C982B5",
+          "buffer_hash": "80C982DC",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 93,
+          "record_sha256": "398c2bc3c01ce1c1706ad0391fcfe724b86343d7efbf07f0f9619ff5969e3ae7",
+          "material_hash": "80C982B6",
+          "buffer_hash": "80C982E0",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 94,
+          "record_sha256": "fbb5ee9b05f38fb4389cefd183c1847322d81812152cebf164892e88b5f3286a",
+          "material_hash": "80C982B7",
+          "buffer_hash": "80C982D4",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 98,
+          "record_sha256": "27922ee21b754d997511c366a1460771d34103155bb56bea086038fb47463eef",
+          "material_hash": "80C982D7",
+          "buffer_hash": "80C9897E",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 101,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 102,
+          "record_sha256": "f5ca99f764b452ba6773148084bb5aefc39d93f2fa1c3a5d17d488d9c669266d",
+          "material_hash": "80C982BF",
+          "buffer_hash": "80C982DC",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 103,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 104,
+          "record_sha256": "283b0d10aa718969116be3259eb069d2eb4baf3123543ecfe659178b473f706a",
+          "material_hash": "80C982C1",
+          "buffer_hash": "80C982DE",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 105,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 106,
+          "record_sha256": "ed12cf7040f28ca9883402c1dc3b25d8877423fb2368cdb900a05cb341839da7",
+          "material_hash": "80C982C3",
+          "buffer_hash": "80C982E0",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 109,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 118,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 119,
+          "record_sha256": "9d5c35202e6d8f28e31451b0cfa5ddee4a1ba04efa211871d2d01be8b74ec099",
+          "material_hash": "80C982D5",
+          "buffer_hash": "80C9897D",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 120,
+          "record_sha256": "27922ee21b754d997511c366a1460771d34103155bb56bea086038fb47463eef",
+          "material_hash": "80C982D7",
+          "buffer_hash": "80C9897E",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 122,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 124,
+          "record_sha256": "64ef3d30529a22dbe4a25997ab78bde3d8b9a9d9871239c43bd75467905aa5da",
+          "material_hash": "80C982DD",
+          "buffer_hash": "80C98983",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 127,
+          "record_sha256": "a670fd4bbee9cbaeb25e7a7a57b467bf533e8787736b139add0a924a53fa6cab",
+          "material_hash": "80C982E3",
+          "buffer_hash": "80C98986",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 129,
+          "record_sha256": "2ee09ad44dbcdb0304074871ba4347fbbe48913f7de7be19595f7d6623e0d0eb",
+          "material_hash": "80C982E7",
+          "buffer_hash": "80C98988",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C98190",
+          "record_index": 131,
+          "record_sha256": "2128cec571040941e781e2db5102515c04e9e8336c5bc841fe1069556e0b93e7",
+          "material_hash": "80C982EB",
+          "buffer_hash": "80C9898A",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 59,
+          "record_sha256": "fb3faa8ad3ff2e9a40e05d95e741b977274ae62ea1f3016d97fc96967c0bfb26",
+          "material_hash": "80C99B44",
+          "buffer_hash": "80CA1388",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 60,
+          "record_sha256": "07cfdc774e0b85c387f637af867ad59be60ca2dd92a92f605495fef2faf3fd1d",
+          "material_hash": "80C99B8E",
+          "buffer_hash": "80CA1350",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 65,
+          "record_sha256": "ef491ad184e8466e8e93e2b24bf379cba9032545a765f962e4f1b5b969388b97",
+          "material_hash": "80C999B5",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 68,
+          "record_sha256": "00337c153a6d0831795b428009e212f1701438db74e9db961d579ca310b07ad7",
+          "material_hash": "80C999C4",
+          "buffer_hash": "80C99B06",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 69,
+          "record_sha256": "36dc0bc04e4c46c25b1f518c05f02bc6ea855a841e9a1f803521942bb1261210",
+          "material_hash": "80C99C07",
+          "buffer_hash": "80CA1383",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 71,
+          "record_sha256": "acfafd7532fd52ffc637967192ea83e879ec855e5dd262304fb7e83e64d873dd",
+          "material_hash": "80C99B3E",
+          "buffer_hash": "80CA1333",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 73,
+          "record_sha256": "f00e31dbbcabb4607adc3c89e20dbcdfcae2166b00ab2a4826f85bb6bca48d1b",
+          "material_hash": "80C999FE",
+          "buffer_hash": "80C99A0A",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 79,
+          "record_sha256": "f1d029f874c891d30868a46578994b1cc85d32d2285ecfde1409481e6b81f452",
+          "material_hash": "80C99A17",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 81,
+          "record_sha256": "050bd1ebfb4b0529d3e97f777ddea2d49e06ae085a84813a36daba2955764a5f",
+          "material_hash": "80C99B42",
+          "buffer_hash": "80CA1337",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 87,
+          "record_sha256": "f637f06aef96fad4ae995d0d433847dc064e6ae10451ff5daeda1a60169e74ff",
+          "material_hash": "80C99BF2",
+          "buffer_hash": "80CA1379",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 88,
+          "record_sha256": "3a0f1b2ad51a4d3c4f1f909524d075642060c18f030070954538897f764e4288",
+          "material_hash": "80C99A18",
+          "buffer_hash": "80C99A19",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 90,
+          "record_sha256": "050bd1ebfb4b0529d3e97f777ddea2d49e06ae085a84813a36daba2955764a5f",
+          "material_hash": "80C99B42",
+          "buffer_hash": "80CA1337",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 93,
+          "record_sha256": "36dc0bc04e4c46c25b1f518c05f02bc6ea855a841e9a1f803521942bb1261210",
+          "material_hash": "80C99C07",
+          "buffer_hash": "80CA1383",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 97,
+          "record_sha256": "8badd7c79e4238f47eeaafac89113ff896a15db7b747f5eb62ee5b20a2e91f75",
+          "material_hash": "80C99BB3",
+          "buffer_hash": "80CA1356",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 100,
+          "record_sha256": "5e277e806351f76f138e59d977dfe3d1f8d17ebded217e5aa1a2d7a21cb355e1",
+          "material_hash": "80C99BB6",
+          "buffer_hash": "80CA1360",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 101,
+          "record_sha256": "600b3d1b404813215b75896a6dfb85ed8b29fe3de1b14a9433005bf47805390d",
+          "material_hash": "80C99B52",
+          "buffer_hash": "80CA1339",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 103,
+          "record_sha256": "022597792e05b661dd96d27dd858c79e34f4a4d59d18b0c629d6297f9ed03237",
+          "material_hash": "80C99C18",
+          "buffer_hash": "80CA138C",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 104,
+          "record_sha256": "704bf0e3db3df768c3f280d4a34909e605cdfcf65353434cac773bdb5746e802",
+          "material_hash": "80C99A1D",
+          "buffer_hash": "80C99B06",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 107,
+          "record_sha256": "055698ac91a942f0b3540eff19dd01cbdad3fd483a971e71be3128b6eac5a47d",
+          "material_hash": "80C99B55",
+          "buffer_hash": "80CA1338",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 109,
+          "record_sha256": "e727da256735948837b4c5d707e66578ac5235b4c7fa0ef8eee1b0dd132c1492",
+          "material_hash": "80C99A1E",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 110,
+          "record_sha256": "164336c1c7acd5c73a1790e0e983d0a0270b5a981a4f55122cfbd9fffe54b473",
+          "material_hash": "80C993D2",
+          "buffer_hash": "80CA1388",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 111,
+          "record_sha256": "d4923a1c78ffd5171917db85a727a3eedf281697e0d993a0fc6f44aa78623298",
+          "material_hash": "80C99B3B",
+          "buffer_hash": "80CA1339",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 113,
+          "record_sha256": "89cfe1c7f315d8c87b3448f254ff5e0f7567bdedeafa882ed57aafeeade0328a",
+          "material_hash": "80C99B59",
+          "buffer_hash": "80CA133B",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 120,
+          "record_sha256": "16b41623237f12105fcca7986669f5bed5d6f7b199358a86b41c02b950c92c69",
+          "material_hash": "80C99A1F",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 121,
+          "record_sha256": "5e277e806351f76f138e59d977dfe3d1f8d17ebded217e5aa1a2d7a21cb355e1",
+          "material_hash": "80C99BB6",
+          "buffer_hash": "80CA1360",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 125,
+          "record_sha256": "36dc0bc04e4c46c25b1f518c05f02bc6ea855a841e9a1f803521942bb1261210",
+          "material_hash": "80C99C07",
+          "buffer_hash": "80CA1383",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 126,
+          "record_sha256": "f637f06aef96fad4ae995d0d433847dc064e6ae10451ff5daeda1a60169e74ff",
+          "material_hash": "80C99BF2",
+          "buffer_hash": "80CA1379",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 127,
+          "record_sha256": "18b5726d2bfde819659aeb88618c2f1a38cc03f58aeb40cfcfe59f33d5871bf1",
+          "material_hash": "80C99A20",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 129,
+          "record_sha256": "8a00d8713b60b657681430f39fa064b3fd6f7fc6a80c49d382227dc44f735d4f",
+          "material_hash": "80C993CC",
+          "buffer_hash": "80C99A22",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 130,
+          "record_sha256": "6e5767c713649bb54dd17312d868a06d4b34ba896931fadb8ba7d8851f665f1d",
+          "material_hash": "80C99A21",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 131,
+          "record_sha256": "8a00d8713b60b657681430f39fa064b3fd6f7fc6a80c49d382227dc44f735d4f",
+          "material_hash": "80C993CC",
+          "buffer_hash": "80C99A22",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 134,
+          "record_sha256": "0648baede7fc35e85419a347226b834a43cc6abf3b0466759b0b6435fe608b9c",
+          "material_hash": "80C99B0C",
+          "buffer_hash": "80C99B0D",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 136,
+          "record_sha256": "1256977d84ad16274315b7635957958388e47417c377fcb233e7527422d44b31",
+          "material_hash": "80C99A23",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 141,
+          "record_sha256": "5e277e806351f76f138e59d977dfe3d1f8d17ebded217e5aa1a2d7a21cb355e1",
+          "material_hash": "80C99BB6",
+          "buffer_hash": "80CA1360",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 142,
+          "record_sha256": "b3421786dc2a1577e20583a1b5d36604390649ce5616be6afafd99cc6be6fa47",
+          "material_hash": "80C99B4D",
+          "buffer_hash": "80CA1341",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 143,
+          "record_sha256": "128d4170ecd13cb0c773156580e7c3b2f372def66ca94204506f93ae573c78c1",
+          "material_hash": "80C99B86",
+          "buffer_hash": "80CA134E",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 144,
+          "record_sha256": "da41f4d4cfeef1bf7b0160b6b1c0bf7ec84b1f6777052f30292249a38152498c",
+          "material_hash": "80C99B68",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 147,
+          "record_sha256": "8badd7c79e4238f47eeaafac89113ff896a15db7b747f5eb62ee5b20a2e91f75",
+          "material_hash": "80C99BB3",
+          "buffer_hash": "80CA1356",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 155,
+          "record_sha256": "7cc04277dd96f8a3120b0dd92f7edee0d9c0ba6ea6d5ea409468d535e1123e7c",
+          "material_hash": "80C99A25",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 159,
+          "record_sha256": "6d2d4e6f6a9edf3d1c9f687de6913f9adad915965c14434a43e130e9dc3efc7c",
+          "material_hash": "80C993E8",
+          "buffer_hash": "80C99B1B",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 160,
+          "record_sha256": "5f00caebdb86bbac20b53583259716da0ec907d07a09c5f834d1a75e23c6a0ce",
+          "material_hash": "80C99BEC",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 162,
+          "record_sha256": "dcad2603634895bd38c14d6323736aeaecba21c32c50642a5ae7ff7d88f8d103",
+          "material_hash": "80C993D0",
+          "buffer_hash": "80C99A1C",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 164,
+          "record_sha256": "128d4170ecd13cb0c773156580e7c3b2f372def66ca94204506f93ae573c78c1",
+          "material_hash": "80C99B86",
+          "buffer_hash": "80CA134E",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 165,
+          "record_sha256": "49d578e0cfbbe7eb6f5abd441b88d57d0617a8c564b97740b91fa4472a8540e9",
+          "material_hash": "80C99B9C",
+          "buffer_hash": "80CA1382",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 166,
+          "record_sha256": "36dc0bc04e4c46c25b1f518c05f02bc6ea855a841e9a1f803521942bb1261210",
+          "material_hash": "80C99C07",
+          "buffer_hash": "80CA1383",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 168,
+          "record_sha256": "27bd423b1f6d621d2f70f78348de8df1e28a3c388054434e7d77c5f475c21a94",
+          "material_hash": "80C99B50",
+          "buffer_hash": "80CA1344",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 171,
+          "record_sha256": "f637f06aef96fad4ae995d0d433847dc064e6ae10451ff5daeda1a60169e74ff",
+          "material_hash": "80C99BF2",
+          "buffer_hash": "80CA1379",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 175,
+          "record_sha256": "975fe1697762d0e3b5c8359318db56c935db7b051b02ffff4d2e84274cab11ac",
+          "material_hash": "80C99BBF",
+          "buffer_hash": "80CA1364",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 177,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 181,
+          "record_sha256": "e0190fefb66ff50916e96e9b91fc8987be993af5b0452bfaaa6685f4c034b96c",
+          "material_hash": "80C99BC1",
+          "buffer_hash": "80CA1365",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 182,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 188,
+          "record_sha256": "f8324b2bda61904533a9cd45a823099ca94219060ca29078300ae498f442ad02",
+          "material_hash": "80C99B82",
+          "buffer_hash": "80CA134C",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 191,
+          "record_sha256": "01fa3a95dab33fb58d1120ea74eebfcf9e25eae2bc0492398d4f84be8fc93d60",
+          "material_hash": "80C99A26",
+          "buffer_hash": "80C99B20",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 194,
+          "record_sha256": "128d4170ecd13cb0c773156580e7c3b2f372def66ca94204506f93ae573c78c1",
+          "material_hash": "80C99B86",
+          "buffer_hash": "80CA134E",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 197,
+          "record_sha256": "833f5db7beb1ce10bb398f13d14a20413087cdfc125c4c7a1b63bf8b3f9de816",
+          "material_hash": "80C99A27",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 202,
+          "record_sha256": "4b325e6fda4f2ae28af6850eb6dece77c15f57ea46aa45728849f867a33e4d82",
+          "material_hash": "80C99A2C",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 208,
+          "record_sha256": "07cfdc774e0b85c387f637af867ad59be60ca2dd92a92f605495fef2faf3fd1d",
+          "material_hash": "80C99B8E",
+          "buffer_hash": "80CA1350",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 210,
+          "record_sha256": "813abc392c8d690ae64dfe80ffcf70097ce53b90e6cb8b27d0ca7555147c0b7e",
+          "material_hash": "80C99B92",
+          "buffer_hash": "80CA1352",
+          "flags88": "0300000C",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 214,
+          "record_sha256": "4103d391388caabe1327325870fceeb9e4ab610f2f73c7ff9006161a99c60241",
+          "material_hash": "80C99BE8",
+          "buffer_hash": "80CA1375",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 215,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 219,
+          "record_sha256": "6017cddbb9a355c33a1480a3af2f69ca02d14556bc813a74f7903ae79b9194fd",
+          "material_hash": "80C99A7E",
+          "buffer_hash": "80C99B06",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 220,
+          "record_sha256": "49d578e0cfbbe7eb6f5abd441b88d57d0617a8c564b97740b91fa4472a8540e9",
+          "material_hash": "80C99B9C",
+          "buffer_hash": "80CA1382",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 221,
+          "record_sha256": "8badd7c79e4238f47eeaafac89113ff896a15db7b747f5eb62ee5b20a2e91f75",
+          "material_hash": "80C99BB3",
+          "buffer_hash": "80CA1356",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 226,
+          "record_sha256": "9ca2d8c619638fdf5d497815ad60e4055ed34d6c7ff64d3070bd3c27b259b575",
+          "material_hash": "80C99AF9",
+          "buffer_hash": "80C99B01",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 227,
+          "record_sha256": "42afb9c2687b78f8ddfffc7d7df139fb23e87fcac302b31848b58808922afa28",
+          "material_hash": "80C993DA",
+          "buffer_hash": "80C99B03",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 234,
+          "record_sha256": "6c5299c7790e4e97b179e47f7f68d98b91571ab9c65d25e49a5bdf60adc921af",
+          "material_hash": "80C99B04",
+          "buffer_hash": "80C99B06",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 244,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 245,
+          "record_sha256": "6d2d4e6f6a9edf3d1c9f687de6913f9adad915965c14434a43e130e9dc3efc7c",
+          "material_hash": "80C993E8",
+          "buffer_hash": "80C99B1B",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 246,
+          "record_sha256": "63cf1d729ca10724c3a90f2e21d14552c6408a6b27e85f9b26bcb0533d682798",
+          "material_hash": "80C99BB5",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 248,
+          "record_sha256": "5e277e806351f76f138e59d977dfe3d1f8d17ebded217e5aa1a2d7a21cb355e1",
+          "material_hash": "80C99BB6",
+          "buffer_hash": "80CA1360",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 249,
+          "record_sha256": "02b466d4aec7eaa5a114fb602be6e7eb1f07d6fba04740dd476c69b79a4e7bc2",
+          "material_hash": "80C99BB8",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 252,
+          "record_sha256": "032554b5011c60cb89a6a4ddfe032116dcc6322255c18904a8ad932df1c75020",
+          "material_hash": "80C993DD",
+          "buffer_hash": "80CA1388",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 255,
+          "record_sha256": "975fe1697762d0e3b5c8359318db56c935db7b051b02ffff4d2e84274cab11ac",
+          "material_hash": "80C99BBF",
+          "buffer_hash": "80CA1364",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 256,
+          "record_sha256": "e0190fefb66ff50916e96e9b91fc8987be993af5b0452bfaaa6685f4c034b96c",
+          "material_hash": "80C99BC1",
+          "buffer_hash": "80CA1365",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 264,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 267,
+          "record_sha256": "8b9a8c875abcd2b279e693e7b1eb75273917c409cdf184fd2281daf47039d380",
+          "material_hash": "80C99BC8",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 274,
+          "record_sha256": "0648baede7fc35e85419a347226b834a43cc6abf3b0466759b0b6435fe608b9c",
+          "material_hash": "80C99B0C",
+          "buffer_hash": "80C99B0D",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 275,
+          "record_sha256": "005a771ecafa742dc68cea0206c2dc22b89b1f272234927f0349da6944904d63",
+          "material_hash": "80C99BDC",
+          "buffer_hash": "80CA136F",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 279,
+          "record_sha256": "36dc0bc04e4c46c25b1f518c05f02bc6ea855a841e9a1f803521942bb1261210",
+          "material_hash": "80C99C07",
+          "buffer_hash": "80CA1383",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 280,
+          "record_sha256": "326f5ac520fb013814b8b485b16ba1f8d638f734a9695c013c1795e4bed4ec1c",
+          "material_hash": "80C99B69",
+          "buffer_hash": "80CA138B",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 281,
+          "record_sha256": "404b360dcf49cd7d2ca712c362d9babeb35e47de7d7c7b0e2bd4221a995da405",
+          "material_hash": "80C99B0F",
+          "buffer_hash": "80C99B10",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 282,
+          "record_sha256": "6f427147606a30bf2843b1daef7f110dbc84da284d9868f8cc1b35f6f32d2c3c",
+          "material_hash": "80C99B13",
+          "buffer_hash": "80C99B18",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 284,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 286,
+          "record_sha256": "7e3916e38720a9315b19d9c57391d0352f69c1ecea7eba81f3ada18e57254304",
+          "material_hash": "80C99BDA",
+          "buffer_hash": "80CA136E",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 287,
+          "record_sha256": "005a771ecafa742dc68cea0206c2dc22b89b1f272234927f0349da6944904d63",
+          "material_hash": "80C99BDC",
+          "buffer_hash": "80CA136F",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 289,
+          "record_sha256": "fd98cd1c613dc96cac1a72801c7aefd6ee4ffa585da0dac6987176cd4aafee67",
+          "material_hash": "80C99BE0",
+          "buffer_hash": "80CA1370",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 294,
+          "record_sha256": "6d2d4e6f6a9edf3d1c9f687de6913f9adad915965c14434a43e130e9dc3efc7c",
+          "material_hash": "80C993E8",
+          "buffer_hash": "80C99B1B",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 300,
+          "record_sha256": "4103d391388caabe1327325870fceeb9e4ab610f2f73c7ff9006161a99c60241",
+          "material_hash": "80C99BE8",
+          "buffer_hash": "80CA1375",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 302,
+          "record_sha256": "a972d495ad57666c4344fe7a35e392c89884b239767a5b5550a9350468aad3e1",
+          "material_hash": "80C99B16",
+          "buffer_hash": "80C99B18",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 307,
+          "record_sha256": "08418cfbd08cc3df77f270fc34e426f84516586e3bcc991eb5349f6a591b518b",
+          "material_hash": "80C99BF1",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 308,
+          "record_sha256": "f637f06aef96fad4ae995d0d433847dc064e6ae10451ff5daeda1a60169e74ff",
+          "material_hash": "80C99BF2",
+          "buffer_hash": "80CA1379",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 313,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 315,
+          "record_sha256": "5b0d1b15cc05e74542ccfcf88ae766660c4fb013e3205a70134457ceb4656ce1",
+          "material_hash": "80C99BFC",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 320,
+          "record_sha256": "36dc0bc04e4c46c25b1f518c05f02bc6ea855a841e9a1f803521942bb1261210",
+          "material_hash": "80C99C07",
+          "buffer_hash": "80CA1383",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 322,
+          "record_sha256": "0648baede7fc35e85419a347226b834a43cc6abf3b0466759b0b6435fe608b9c",
+          "material_hash": "80C99B0C",
+          "buffer_hash": "80C99B0D",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 324,
+          "record_sha256": "6d2d4e6f6a9edf3d1c9f687de6913f9adad915965c14434a43e130e9dc3efc7c",
+          "material_hash": "80C993E8",
+          "buffer_hash": "80C99B1B",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 325,
+          "record_sha256": "7e17b7b558d4084a03bbd42db172319711201aa035fa5393ce5a64b959cce7c0",
+          "material_hash": "80C99B1D",
+          "buffer_hash": "80C99B20",
+          "flags88": "02000408",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 326,
+          "record_sha256": "19d87be5d93afcceee7c2a61f807416c7b749baa347def10a0a53a12c8c4ac30",
+          "material_hash": "80C99C09",
+          "buffer_hash": "80CA1384",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 329,
+          "record_sha256": "128d4170ecd13cb0c773156580e7c3b2f372def66ca94204506f93ae573c78c1",
+          "material_hash": "80C99B86",
+          "buffer_hash": "80CA134E",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 330,
+          "record_sha256": "846f832a2ca9469a66c0d644c3e65f832354537c4e906820662c1e36576eef56",
+          "material_hash": "80C993EC",
+          "buffer_hash": "80CA1388",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 333,
+          "record_sha256": "a425e552e27a220d7ba15b53fe5798e9eb5700c13eb2e6bba60faad1a95a791a",
+          "material_hash": "80C99C16",
+          "buffer_hash": "80CA138B",
+          "flags88": "02000008",
+          "flags8c": "00000001",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 334,
+          "record_sha256": "022597792e05b661dd96d27dd858c79e34f4a4d59d18b0c629d6297f9ed03237",
+          "material_hash": "80C99C18",
+          "buffer_hash": "80CA138C",
+          "flags88": "02000008",
+          "flags8c": "00000000",
+          "volume_kind": "PROJECTIVE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 340,
+          "record_sha256": "69d7a54d7fb6bdf187c9aa05941d017b4b356b0cf2fb61eae4eded5da65f4959",
+          "material_hash": "80C99C24",
+          "buffer_hash": "80CA1392",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C9936F",
+          "record_index": 342,
+          "record_sha256": "94563fe2942dd5297e87e59f47d12d5ddda570a0e5f94da8d2c4b1ee2a211c73",
+          "material_hash": "80C99C28",
+          "buffer_hash": "80CA1394",
+          "flags88": "03000008",
+          "flags8c": "00000001",
+          "volume_kind": "AFFINE"
+        }
+      ]
+    },
+    "0x30": {
+      "buffer_count": 20,
+      "unique_program_count": 5,
+      "light_record_count": 23,
+      "unique_material_count": 20,
+      "material_hashes": [
+        "80C98596",
+        "80C98598",
+        "80C9859E",
+        "80C985A4",
+        "80C985A8",
+        "80C985B0",
+        "80C985B4",
+        "80C985B8",
+        "80C985C8",
+        "80C985D2",
+        "80C985D4",
+        "80C985D8",
+        "80C985DC",
+        "80C985E0",
+        "80C985E6",
+        "80C985EE",
+        "80C985F0",
+        "80C985F4",
+        "80C985FE",
+        "80C98600"
+      ],
+      "volume_kind_counts": {
+        "AFFINE": 23
+      },
+      "output_target_counts": {
+        "2": 18,
+        "3": 1,
+        "5": 1
+      },
+      "output_target_patterns": {
+        "2": 18,
+        "3": 1,
+        "5": 1
+      },
+      "lane_use": {
+        "classification": "VECTOR_XYZ_DOMINANT",
+        "x_only_formula_count": 0,
+        "xyz_formula_count": 17,
+        "other_formula_count": 3,
+        "proof_boundary": "This is only lane-use structure. SCALAR_X_LIKE does not assign an intensity/exposure semantic; VECTOR_XYZ_LIKE does not assign a direction/position/color semantic."
+      },
+      "program_templates": [
+        {
+          "program_sha256": "4fd35ea129177a0c976f5380d8f802f3fe74fce855eb4f40c320478d67688192",
+          "buffer_count": 5,
+          "buffer_hashes": [
+            "80C9859F",
+            "80C985D3",
+            "80C985DD",
+            "80C985EF",
+            "80C985F1"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute(G30,.xyzz),dot(merge3_1(permute(G30,.xyzz),C2[0.0, 0.0, 0.0, 0.0]),C3[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C4[2.8910858631134033, 2.8910858631134033, 2.8910858631134033, 2.8910858631134033]),.xyzz),C5[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "664236b6667c88d9c01339f4f0d3da349b4dccb64656111568d13b018eee8d20",
+          "buffer_count": 11,
+          "buffer_hashes": [
+            "80C98597",
+            "80C98599",
+            "80C985A9",
+            "80C985B1",
+            "80C985B5",
+            "80C985C9",
+            "80C985D9",
+            "80C985E1",
+            "80C985F5",
+            "80C985FF",
+            "80C98601"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute(G30,.xyzz),dot(merge3_1(permute(G30,.xyzz),C3[0.0, 0.0, 0.0, 0.0]),C4[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C5[0.9836065173149109, 0.9836065173149109, 0.9836065173149109, 0.9836065173149109]),.xyzz),C6[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "86ea3b9b31860cb4313c30a7c2a4d9f2820db7ff39af079d46cd477349743415",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80C985A5"
+          ],
+          "output_targets": [
+            5
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute(G30,.xyzz),dot(merge3_1(permute(G30,.xyzz),C10[0.0, 0.0, 0.0, 0.0]),C11[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C12[0.7651245594024658, 0.7651245594024658, 0.7651245594024658, 0.7651245594024658]),.xyzz),(Extern[4:64]*Extern[1:7]))"
+          ]
+        },
+        {
+          "program_sha256": "9a3642cf92f5341cee3fcfcf3ffc757b1e44929b73a0a1fcb16c0a94bd4b106f",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80C985E7"
+          ],
+          "output_targets": [
+            3
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute((G30+C1[0.0, 0.12733229994773865, 1.0, 1.0]),.xyzz),dot(merge3_1(permute((G30+C1[0.0, 0.12733229994773865, 1.0, 1.0]),.xyzz),C3[0.0, 0.0, 0.0, 0.0]),C4[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C5[0.2049180269241333, 0.2049180269241333, 0.2049180269241333, 0.2049180269241333]),.xyzz),C6[1.0, 1.0, 1.0, 1.0])"
+          ]
+        },
+        {
+          "program_sha256": "b2656d3b2b4f879fb4f69f3fb45da8664ca7a31a83337eaa61df23a347a7d959",
+          "buffer_count": 2,
+          "buffer_hashes": [
+            "80C985B9",
+            "80C985D5"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((merge3_1(permute((G30+C1[0.9822505712509155, 0.17144109308719635, 0.054480280727148056, 1.0]),.xyzz),dot(merge3_1(permute((G30+C1[0.9822505712509155, 0.17144109308719635, 0.054480280727148056, 1.0]),.xyzz),C4[0.0, 0.0, 0.0, 0.0]),C5[0.30000001192092896, 0.5899999737739563, 0.10999999940395355, 0.0]))*C6[5.0, 5.0, 5.0, 5.0]),.xyzz),C7[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        }
+      ],
+      "records": [
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 7,
+          "record_sha256": "37130a0da8d15297655bfa87b3089663a3b9424f6218860fb4015e9567f03fd8",
+          "material_hash": "80C98596",
+          "buffer_hash": "80C98597",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 9,
+          "record_sha256": "41550bb6ca6a7f50f3771b9ed9cc467009f7d6d7dc39bc3996defc349731d615",
+          "material_hash": "80C98598",
+          "buffer_hash": "80C98599",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 13,
+          "record_sha256": "bdc5b1fbd6bbb615006e6131f97b10c0083344e70fbaf072ec7bbc32a478f4d3",
+          "material_hash": "80C9859E",
+          "buffer_hash": "80C9859F",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 16,
+          "record_sha256": "bd25585b2b6252ce42a80907aac45f565f349ce55c2aab2629c54b4e029c59b5",
+          "material_hash": "80C985A4",
+          "buffer_hash": "80C985A5",
+          "flags88": "0000000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 18,
+          "record_sha256": "174cabd947e80aa94932a7eb0842a0644552c753d47064b416753216063aa0bb",
+          "material_hash": "80C985A8",
+          "buffer_hash": "80C985A9",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 20,
+          "record_sha256": "edbb2198e4b5512eabfe4a0e324c0bf942265d4a56aa0915c2872865bd1fa6e9",
+          "material_hash": "80C985B0",
+          "buffer_hash": "80C985B1",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 24,
+          "record_sha256": "edbb2198e4b5512eabfe4a0e324c0bf942265d4a56aa0915c2872865bd1fa6e9",
+          "material_hash": "80C985B0",
+          "buffer_hash": "80C985B1",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 27,
+          "record_sha256": "abec2a5322320312c9e1318571d56bf88cb90aa6df652ef3b7387006dee7303a",
+          "material_hash": "80C985B4",
+          "buffer_hash": "80C985B5",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 30,
+          "record_sha256": "f9c37e4105ace8b24ddc61e795aab3dc6df0118ab97c1556d9b05d24d5e888dd",
+          "material_hash": "80C985B8",
+          "buffer_hash": "80C985B9",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 41,
+          "record_sha256": "20527d51971e80f475c762cab113c077bbaf760fb8111d97be0f4e951a0fe2d4",
+          "material_hash": "80C985E6",
+          "buffer_hash": "80C985E7",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 42,
+          "record_sha256": "2a9bf0b31ce835f8402a8bc7189d1ece754933916c175eb0c80700303ad55a8d",
+          "material_hash": "80C985C8",
+          "buffer_hash": "80C985C9",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 47,
+          "record_sha256": "8b7025defaeefd6387b749414026069ae93dc2eeccd48e4d5687ae18a6ca070c",
+          "material_hash": "80C985D2",
+          "buffer_hash": "80C985D3",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 49,
+          "record_sha256": "e932b99e74ba8722dbcd1c45209574ff71e7a1516ede16966550e3d96cd3d155",
+          "material_hash": "80C985D4",
+          "buffer_hash": "80C985D5",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 51,
+          "record_sha256": "96a95d4c5d6944ee2c5e220c9fb24a51baf3f3d4f5b4301590b095350263993b",
+          "material_hash": "80C985D8",
+          "buffer_hash": "80C985D9",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 54,
+          "record_sha256": "659222169f23e9323499e6e5e510f53429fe3c6ee201cbb4aa7a989c87df65aa",
+          "material_hash": "80C985DC",
+          "buffer_hash": "80C985DD",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 56,
+          "record_sha256": "8cc8c91fc92c93e5588cdd7bd30ad9c17fe22d8b9c46f6708a1e06a9a97071ac",
+          "material_hash": "80C985E0",
+          "buffer_hash": "80C985E1",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 59,
+          "record_sha256": "20527d51971e80f475c762cab113c077bbaf760fb8111d97be0f4e951a0fe2d4",
+          "material_hash": "80C985E6",
+          "buffer_hash": "80C985E7",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 63,
+          "record_sha256": "50d35ca441fe6b80a9521f05ab6bcb80e94140961b809b8397dfef0f1940cba9",
+          "material_hash": "80C985F4",
+          "buffer_hash": "80C985F5",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 64,
+          "record_sha256": "3107c2eae65d7377662c145ec092b204c7b23731e66064785991d1eee59667ef",
+          "material_hash": "80C985EE",
+          "buffer_hash": "80C985EF",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 65,
+          "record_sha256": "23c8341b5ad7448a2756fc6a116e5401988e08836eb57f398ae5988818be4523",
+          "material_hash": "80C985F0",
+          "buffer_hash": "80C985F1",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 67,
+          "record_sha256": "50d35ca441fe6b80a9521f05ab6bcb80e94140961b809b8397dfef0f1940cba9",
+          "material_hash": "80C985F4",
+          "buffer_hash": "80C985F5",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 72,
+          "record_sha256": "73e5100ec4ed7b3a43e5ae278508c7dfe47f5950e4481392fc2002f4e43c8e7a",
+          "material_hash": "80C985FE",
+          "buffer_hash": "80C985FF",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        },
+        {
+          "collection_hash": "80C984C6",
+          "record_index": 73,
+          "record_sha256": "512ce6f43cde9c1ab35e6f1f1426490d61a5069aaa5657b5bf76cc26b7967e3c",
+          "material_hash": "80C98600",
+          "buffer_hash": "80C98601",
+          "flags88": "03000008",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        }
+      ]
+    },
+    "0x60": {
+      "buffer_count": 1,
+      "unique_program_count": 1,
+      "light_record_count": 1,
+      "unique_material_count": 1,
+      "material_hashes": [
+        "80C98A78"
+      ],
+      "volume_kind_counts": {
+        "AFFINE": 1
+      },
+      "output_target_counts": {
+        "2": 1
+      },
+      "output_target_patterns": {
+        "2": 1
+      },
+      "lane_use": {
+        "classification": "SCALAR_X_DOMINANT",
+        "x_only_formula_count": 1,
+        "xyz_formula_count": 0,
+        "other_formula_count": 1,
+        "proof_boundary": "This is only lane-use structure. SCALAR_X_LIKE does not assign an intensity/exposure semantic; VECTOR_XYZ_LIKE does not assign a direction/position/color semantic."
+      },
+      "program_templates": [
+        {
+          "program_sha256": "2a18993901b83585ef63fb3ea4ff5b20954ba4bf31f1a5b8d23be1fcc510dbd3",
+          "buffer_count": 1,
+          "buffer_hashes": [
+            "80C98D8A"
+          ],
+          "output_targets": [
+            2
+          ],
+          "formulas": [
+            "merge3_1(permute((C3[0.7852113246917725, 0.8828359842300415, 1.0, 0.8664366006851196]*splatX(permute((G60*C4[50.0, 50.0, 50.0, 50.0]),.xxxx))),.xyzz),C5[0.30000001192092896, 1.0, 1.0, 1.0])"
+          ]
+        }
+      ],
+      "records": [
+        {
+          "collection_hash": "80C989DE",
+          "record_index": 72,
+          "record_sha256": "e6d7bacdc530e5678194f9fe292583df19a9f90887388fb05052bd74b9029400",
+          "material_hash": "80C98A78",
+          "buffer_hash": "80C98D8A",
+          "flags88": "0300000C",
+          "flags8c": "00000000",
+          "volume_kind": "AFFINE"
+        }
+      ]
+    }
+  },
+  "priority": [
+    {
+      "index": "0x28",
+      "reason": "62 BufferData / 160 LightData records / 98 materials; dominant exact 0x4B fanout"
+    },
+    {
+      "index": "0x30",
+      "reason": "20 BufferData / 23 LightData records / 20 materials; exact affine-only fanout"
+    },
+    {
+      "index": "0x11",
+      "reason": "3 BufferData / 4 LightData records / 3 materials"
+    },
+    {
+      "index": "0x60",
+      "reason": "1 BufferData / 1 LightData record / 1 material"
+    }
+  ],
+  "proof_boundary": "Exact current-retail Tower bytecode closes channel dependency, output slot, LightData ownership, material ownership, and affine/projective volume class. Lane-use classifications describe only how raw Vec4 lanes participate in the TFX math. No human-facing channel name or live runtime producer/value is assigned by this report."
+}
