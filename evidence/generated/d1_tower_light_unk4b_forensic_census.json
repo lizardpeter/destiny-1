@@ -170,9 +170,11 @@
         "delta": -1
       }
     },
-    "compatible_across_every_blocked_program": [],
-    "push_global_channel_vector_lineage_stack_compatible": false,
-    "policy": "Stack-depth compatibility is necessary but not sufficient evidence. Do not assign a D1 opcode name or runtime source from this test alone."
+    "compatible_across_every_blocked_program": [
+      "push_one"
+    ],
+    "push_global_channel_vector_lineage_stack_compatible": true,
+    "policy": "Stack-depth compatibility is necessary but not sufficient evidence. Raw 0x44/0x45 are modeled only as RoI push-temp/pop-temp stack deltas, not as fully promoted temp-bank semantics. Do not assign a D1 opcode name or runtime source from this test alone."
   },
   "blocked_programs": [
     {
@@ -2665,18 +2667,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -2704,10 +2699,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -2739,14 +2741,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -2789,10 +2784,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -2824,14 +2826,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -2874,10 +2869,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -2909,14 +2911,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -2947,18 +2942,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -2986,10 +2974,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3021,14 +3016,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -3071,10 +3059,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3106,14 +3101,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -3156,10 +3144,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3191,14 +3186,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -3229,18 +3217,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -3268,10 +3249,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3303,14 +3291,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -3353,10 +3334,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3388,14 +3376,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -3438,10 +3419,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3473,14 +3461,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -3511,320 +3492,20 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
-          "max_depth": 5,
+          "final_depth": 0,
+          "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 5,
-              "offset": 9,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 11,
-              "offset": 20,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 12,
-              "offset": 22,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 14,
-              "offset": 26,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 19,
-              "offset": 35,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 42,
-              "offset": 73,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 52,
-              "offset": 90,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 54,
-              "offset": 94,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 59,
-              "offset": 103,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
-          "max_depth": 4,
-          "underflow": [
-            {
-              "index": 53,
-              "offset": 92,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 55,
-              "offset": 96,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 57,
-              "offset": 100,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 60,
-              "offset": 104,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 68,
-              "offset": 117,
-              "opcode": "0x03",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 69,
-              "offset": 118,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 73,
-              "offset": 127,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 74,
-              "offset": 128,
-              "opcode": "0x42",
-              "depth_before": 0,
-              "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 5,
-              "offset": 9,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 11,
-              "offset": 20,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 12,
-              "offset": 22,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 14,
-              "offset": 26,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 19,
-              "offset": 35,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 42,
-              "offset": 73,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 52,
-              "offset": 90,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 54,
-              "offset": 94,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 59,
-              "offset": 103,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
-        },
-        "replace_top": {
-          "final_depth": 0,
-          "max_depth": 4,
-          "underflow": [
-            {
-              "index": 53,
-              "offset": 92,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 55,
-              "offset": 96,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 57,
-              "offset": 100,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 60,
-              "offset": 104,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 68,
-              "offset": 117,
-              "opcode": "0x03",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 69,
-              "offset": 118,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 73,
-              "offset": 127,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 74,
-              "offset": 128,
-              "opcode": "0x42",
-              "depth_before": 0,
-              "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 5,
-              "offset": 9,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 11,
-              "offset": 20,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 12,
-              "offset": 22,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 14,
-              "offset": 26,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 19,
-              "offset": 35,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 42,
-              "offset": 73,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 52,
-              "offset": 90,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 54,
-              "offset": 94,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 59,
-              "offset": 103,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
-        },
-        "consume_one": {
-          "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 36,
               "offset": 62,
               "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 37,
-              "offset": 64,
-              "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
             },
@@ -3843,10 +3524,17 @@
               "required": 2
             },
             {
+              "index": 42,
+              "offset": 73,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 43,
               "offset": 74,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -3876,120 +3564,179 @@
               "opcode": "0x42",
               "depth_before": 0,
               "required": 1
-            },
-            {
-              "index": 53,
-              "offset": 92,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 55,
-              "offset": 96,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 57,
-              "offset": 100,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 60,
-              "offset": 104,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 68,
-              "offset": 117,
-              "opcode": "0x03",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 69,
-              "offset": 118,
-              "opcode": "0x22",
-              "depth_before": 0,
-              "required": 1
-            },
-            {
-              "index": 73,
-              "offset": 127,
-              "opcode": "0x0E",
-              "depth_before": 1,
-              "required": 2
-            },
-            {
-              "index": 74,
-              "offset": 128,
-              "opcode": "0x42",
-              "depth_before": 0,
-              "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": false
+        },
+        "replace_top": {
+          "final_depth": 0,
+          "max_depth": 3,
+          "underflow": [
             {
-              "index": 5,
-              "offset": 9,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
+              "index": 35,
+              "offset": 60,
+              "opcode": "0x4B",
+              "depth_before": 0,
+              "required": 1
             },
             {
-              "index": 11,
-              "offset": 20,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
+              "index": 36,
+              "offset": 62,
+              "opcode": "0x22",
+              "depth_before": 0,
+              "required": 1
             },
             {
-              "index": 12,
-              "offset": 22,
-              "opcode": "0x44",
-              "name": "PopOutput"
+              "index": 37,
+              "offset": 64,
+              "opcode": "0x4B",
+              "depth_before": 0,
+              "required": 1
             },
             {
-              "index": 14,
-              "offset": 26,
-              "opcode": "0x44",
-              "name": "PopOutput"
+              "index": 38,
+              "offset": 66,
+              "opcode": "0x22",
+              "depth_before": 0,
+              "required": 1
             },
             {
-              "index": 19,
-              "offset": 35,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "index": 40,
+              "offset": 70,
+              "opcode": "0x0E",
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 42,
               "offset": 73,
               "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 1,
+              "required": 2
             },
             {
-              "index": 52,
-              "offset": 90,
-              "opcode": "0x44",
-              "name": "PopOutput"
+              "index": 43,
+              "offset": 74,
+              "opcode": "0x0E",
+              "depth_before": 0,
+              "required": 2
             },
             {
-              "index": 54,
-              "offset": 94,
-              "opcode": "0x44",
-              "name": "PopOutput"
+              "index": 45,
+              "offset": 77,
+              "opcode": "0x03",
+              "depth_before": 1,
+              "required": 2
             },
             {
-              "index": 59,
-              "offset": 103,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "index": 46,
+              "offset": 78,
+              "opcode": "0x22",
+              "depth_before": 0,
+              "required": 1
+            },
+            {
+              "index": 50,
+              "offset": 87,
+              "opcode": "0x0E",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
+              "index": 51,
+              "offset": 88,
+              "opcode": "0x42",
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": false
+        },
+        "consume_one": {
+          "final_depth": 0,
+          "max_depth": 3,
+          "underflow": [
+            {
+              "index": 35,
+              "offset": 60,
+              "opcode": "0x4B",
+              "depth_before": 0,
+              "required": 1
+            },
+            {
+              "index": 36,
+              "offset": 62,
+              "opcode": "0x22",
+              "depth_before": 0,
+              "required": 1
+            },
+            {
+              "index": 37,
+              "offset": 64,
+              "opcode": "0x4B",
+              "depth_before": 0,
+              "required": 1
+            },
+            {
+              "index": 38,
+              "offset": 66,
+              "opcode": "0x22",
+              "depth_before": 0,
+              "required": 1
+            },
+            {
+              "index": 40,
+              "offset": 70,
+              "opcode": "0x0E",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
+              "index": 42,
+              "offset": 73,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
+              "index": 43,
+              "offset": 74,
+              "opcode": "0x0E",
+              "depth_before": 0,
+              "required": 2
+            },
+            {
+              "index": 45,
+              "offset": 77,
+              "opcode": "0x03",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
+              "index": 46,
+              "offset": 78,
+              "opcode": "0x22",
+              "depth_before": 0,
+              "required": 1
+            },
+            {
+              "index": 50,
+              "offset": 87,
+              "opcode": "0x0E",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
+              "index": 51,
+              "offset": 88,
+              "opcode": "0x42",
+              "depth_before": 0,
+              "required": 1
+            }
+          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -4020,18 +3767,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -4059,10 +3799,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4094,14 +3841,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -4144,10 +3884,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4179,14 +3926,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -4229,10 +3969,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4264,14 +4011,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -4302,18 +4042,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -4341,10 +4074,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4376,14 +4116,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -4426,10 +4159,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4461,14 +4201,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -4511,10 +4244,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4546,14 +4286,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -4584,18 +4317,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -4623,10 +4349,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4658,14 +4391,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -4708,10 +4434,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4743,14 +4476,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -4793,10 +4519,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -4828,14 +4561,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -4857,84 +4583,37 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
-          "max_depth": 5,
+          "final_depth": 0,
+          "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 8,
-              "offset": 16,
-              "opcode": "0x01",
-              "name": "Add"
-            },
-            {
-              "index": 9,
-              "offset": 17,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
-          "max_depth": 4,
-          "underflow": [],
-          "other_unmodeled_opcodes": [
+          "max_depth": 3,
+          "underflow": [
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
           "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 6,
@@ -4942,45 +4621,28 @@
               "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
+            },
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
           "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 6,
@@ -4988,40 +4650,23 @@
               "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
+            },
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -5052,18 +4697,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -5091,10 +4729,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5126,14 +4771,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -5176,10 +4814,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5211,14 +4856,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -5261,10 +4899,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5296,14 +4941,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -5334,18 +4972,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -5373,10 +5004,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5408,14 +5046,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -5458,10 +5089,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5493,14 +5131,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -5543,10 +5174,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5578,14 +5216,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -5607,84 +5238,37 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
-          "max_depth": 5,
+          "final_depth": 0,
+          "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 8,
-              "offset": 16,
-              "opcode": "0x01",
-              "name": "Add"
-            },
-            {
-              "index": 9,
-              "offset": 17,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
-          "max_depth": 4,
-          "underflow": [],
-          "other_unmodeled_opcodes": [
+          "max_depth": 3,
+          "underflow": [
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
           "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 6,
@@ -5692,45 +5276,28 @@
               "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
+            },
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
           "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 6,
@@ -5738,40 +5305,23 @@
               "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
+            },
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 18,
-              "offset": 34,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 20,
-              "offset": 38,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 25,
-              "offset": 47,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -5802,18 +5352,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -5841,10 +5384,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5876,14 +5426,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -5926,10 +5469,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -5961,14 +5511,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -6011,10 +5554,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6046,14 +5596,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -6084,18 +5627,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -6123,10 +5659,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6158,14 +5701,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -6208,10 +5744,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6243,14 +5786,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -6293,10 +5829,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6328,14 +5871,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -6366,18 +5902,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -6405,10 +5934,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6440,14 +5976,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -6490,10 +6019,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6525,14 +6061,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -6575,10 +6104,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6610,14 +6146,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -6639,84 +6168,37 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
-          "max_depth": 5,
+          "final_depth": 0,
+          "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 8,
-              "offset": 16,
-              "opcode": "0x01",
-              "name": "Add"
-            },
-            {
-              "index": 9,
-              "offset": 17,
-              "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 16,
-              "offset": 31,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 18,
-              "offset": 35,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 23,
-              "offset": 44,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
-          "max_depth": 4,
-          "underflow": [],
-          "other_unmodeled_opcodes": [
+          "max_depth": 3,
+          "underflow": [
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 16,
-              "offset": 31,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 18,
-              "offset": 35,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 23,
-              "offset": 44,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
           "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 6,
@@ -6724,45 +6206,28 @@
               "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
+            },
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 16,
-              "offset": 31,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 18,
-              "offset": 35,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 23,
-              "offset": 44,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
           "final_depth": 0,
-          "max_depth": 4,
+          "max_depth": 3,
           "underflow": [
             {
               "index": 6,
@@ -6770,40 +6235,23 @@
               "opcode": "0x4B",
               "depth_before": 0,
               "required": 1
-            }
-          ],
-          "other_unmodeled_opcodes": [
+            },
             {
               "index": 8,
               "offset": 16,
               "opcode": "0x01",
-              "name": "Add"
+              "depth_before": 1,
+              "required": 2
             },
             {
               "index": 9,
               "offset": 17,
               "opcode": "0x45",
-              "name": "PopOutputMat4"
-            },
-            {
-              "index": 16,
-              "offset": 31,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 18,
-              "offset": 35,
-              "opcode": "0x44",
-              "name": "PopOutput"
-            },
-            {
-              "index": 23,
-              "offset": 44,
-              "opcode": "0x0B",
-              "name": "Dot"
+              "depth_before": 0,
+              "required": 1
             }
           ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -6834,18 +6282,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -6873,10 +6314,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6908,14 +6356,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -6958,10 +6399,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -6993,14 +6441,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -7043,10 +6484,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7078,14 +6526,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -7116,18 +6557,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -7155,10 +6589,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7190,14 +6631,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -7240,10 +6674,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7275,14 +6716,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -7325,10 +6759,17 @@
               "required": 2
             },
             {
+              "index": 19,
+              "offset": 37,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 20,
               "offset": 38,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7360,14 +6801,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 19,
-              "offset": 37,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -7398,18 +6832,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -7437,10 +6864,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7472,14 +6906,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -7522,10 +6949,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7557,14 +6991,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -7607,10 +7034,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7642,14 +7076,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -7680,18 +7107,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -7719,10 +7139,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7754,14 +7181,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -7804,10 +7224,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7839,14 +7266,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -7889,10 +7309,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -7924,14 +7351,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -7962,18 +7382,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -8001,10 +7414,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -8036,14 +7456,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -8086,10 +7499,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -8121,14 +7541,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -8171,10 +7584,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -8206,14 +7626,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -9340,24 +8753,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 2,
-          "max_depth": 4,
+          "final_depth": 0,
+          "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 34,
-              "offset": 62,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -9385,10 +8785,17 @@
               "required": 2
             },
             {
+              "index": 13,
+              "offset": 25,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 14,
               "offset": 26,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9434,10 +8841,17 @@
               "required": 2
             },
             {
+              "index": 34,
+              "offset": 62,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 35,
               "offset": 63,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9469,20 +8883,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 34,
-              "offset": 62,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -9525,10 +8926,17 @@
               "required": 2
             },
             {
+              "index": 13,
+              "offset": 25,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 14,
               "offset": 26,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9588,10 +8996,17 @@
               "required": 2
             },
             {
+              "index": 34,
+              "offset": 62,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 35,
               "offset": 63,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9623,20 +9038,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 34,
-              "offset": 62,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -9679,10 +9081,17 @@
               "required": 2
             },
             {
+              "index": 13,
+              "offset": 25,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 14,
               "offset": 26,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9742,10 +9151,17 @@
               "required": 2
             },
             {
+              "index": 34,
+              "offset": 62,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 35,
               "offset": 63,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9777,20 +9193,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 34,
-              "offset": 62,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -9839,24 +9242,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 2,
-          "max_depth": 4,
+          "final_depth": 0,
+          "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 36,
-              "offset": 65,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -9884,10 +9274,17 @@
               "required": 2
             },
             {
+              "index": 13,
+              "offset": 25,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 14,
               "offset": 26,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9940,10 +9337,17 @@
               "required": 2
             },
             {
+              "index": 36,
+              "offset": 65,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 37,
               "offset": 66,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -9975,20 +9379,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 36,
-              "offset": 65,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -10031,10 +9422,17 @@
               "required": 2
             },
             {
+              "index": 13,
+              "offset": 25,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 14,
               "offset": 26,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10101,10 +9499,17 @@
               "required": 2
             },
             {
+              "index": 36,
+              "offset": 65,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 37,
               "offset": 66,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10136,20 +9541,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 36,
-              "offset": 65,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -10192,10 +9584,17 @@
               "required": 2
             },
             {
+              "index": 13,
+              "offset": 25,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 14,
               "offset": 26,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10262,10 +9661,17 @@
               "required": 2
             },
             {
+              "index": 36,
+              "offset": 65,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 37,
               "offset": 66,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10297,20 +9703,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 13,
-              "offset": 25,
-              "opcode": "0x0B",
-              "name": "Dot"
-            },
-            {
-              "index": 36,
-              "offset": 65,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
@@ -10341,18 +9734,11 @@
       ],
       "hypotheses": {
         "push_one": {
-          "final_depth": 1,
+          "final_depth": 0,
           "max_depth": 3,
           "underflow": [],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
-          "structurally_closed": false
+          "other_unmodeled_opcodes": [],
+          "structurally_closed": true
         },
         "side_effect_no_stack": {
           "final_depth": 0,
@@ -10380,10 +9766,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10415,14 +9808,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "replace_top": {
@@ -10465,10 +9851,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10500,14 +9893,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         },
         "consume_one": {
@@ -10550,10 +9936,17 @@
               "required": 2
             },
             {
+              "index": 21,
+              "offset": 40,
+              "opcode": "0x0B",
+              "depth_before": 1,
+              "required": 2
+            },
+            {
               "index": 22,
               "offset": 41,
               "opcode": "0x0E",
-              "depth_before": 1,
+              "depth_before": 0,
               "required": 2
             },
             {
@@ -10585,14 +9978,7 @@
               "required": 1
             }
           ],
-          "other_unmodeled_opcodes": [
-            {
-              "index": 21,
-              "offset": 40,
-              "opcode": "0x0B",
-              "name": "Dot"
-            }
-          ],
+          "other_unmodeled_opcodes": [],
           "structurally_closed": false
         }
       }
