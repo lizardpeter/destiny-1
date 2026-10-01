@@ -150,6 +150,7 @@ jobs:
             "reports/payloads/$channels_tag.bin" \
             --tag-hash "$channels_tag" \
             --index 0x11 --index 0x28 --index 0x30 --index 0x60 \
+            --require-requested-in-range \
             --out reports/global_channel_defaults_decoded.json
 
       - name: Record exact channel-table header census
