@@ -1,0 +1,153 @@
+name: D1 Python Tooling Check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-python-tooling-check.yml'
+      - 'tools/d1_global_channel_defaults_decode.py'
+      - 'tools/d1_remote_tower_entity_resource_census.py'
+      - 'tools/d1_tower_global_channel_join.py'
+      - 'tools/d1_tower_global_channel_sequencer_symbolic.py'
+      - 'tools/d1_runtime_snapshot_storage_summarize.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile D1 research tooling
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/d1_global_channel_defaults_decode.py \
+            tools/d1_remote_tower_entity_resource_census.py \
+            tools/d1_tower_global_channel_join.py \
+            tools/d1_tower_global_channel_sequencer_symbolic.py \
+            tools/d1_runtime_snapshot_storage_summarize.py
+
+      - name: Exercise exact channel index and StringHash join contracts
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-tooling-check
+          python - <<'PY'
+          import json, struct
+          from pathlib import Path
+
+          root=Path('build/d1-tooling-check')
+          count=0x61
+          b=bytearray(0xA00)
+
+          # d1_global_channel_defaults_decode.py:
+          # +0x08 DynamicArray<StringHash>, data at 0x100
+          # +0x18 DynamicArray<Vec4>, data at 0x300
+          struct.pack_into('<IIq', b, 0x08, count, 0, 0x100-0x08-0x18)
+          struct.pack_into('<IIq', b, 0x18, count, 0, 0x300-0x18-0x18)
+          hashes=[]
+          requested={0x11:0x11111111,0x28:0x28282828,0x30:0x30303030,0x60:0x60606060}
+          for i in range(count):
+              h=requested.get(i,0xA0000000+i)
+              hashes.append(h)
+              struct.pack_into('<I',b,0x100+i*4,h)
+              struct.pack_into('<4f',b,0x300+i*16,float(i),float(i)+.1,float(i)+.2,float(i)+.3)
+          (root/'defaults.bin').write_bytes(b)
+
+          # Local sequencer indices intentionally do NOT equal global indices.
+          local_global=[(2,0x11),(7,0x28),(1,0x30)]
+          programs=[]
+          for local,glob in local_global:
+              programs.append({
+                  'channel_index':local,
+                  'channel_index_hex':f'0x{local:02X}',
+                  'local_channel_index':local,
+                  'local_channel_index_hex':f'0x{local:02X}',
+                  'channel_id_string_hash':f'{requested[glob]:08X}',
+                  'source_program_array':'array1',
+                  # PushConstantVec4 C0; sequencer-special raw 0x3E output slot 0.
+                  'bytecode_hex':'34003E00',
+                  'bytecode_sha256':f'fixture-{glob:02X}',
+                  'constant_vec4s':[[float(glob),1.0,2.0,3.0]],
+                  'is_dynamic_lineage_rule':False,
+                  'entry_offset_hex':'0x100',
+              })
+          census={
+              'global_channel_parents':[{
+                  'resource_hash':'80FFFFFF',
+                  'owners':[{'fixture':True}],
+                  'decoded':{'programs':programs},
+              }]
+          }
+          (root/'tower.json').write_text(json.dumps(census))
+          PY
+
+          python tools/d1_global_channel_defaults_decode.py \
+            build/d1-tooling-check/defaults.bin \
+            --tag-hash 80FFFFFF \
+            --index 0x11 --index 0x28 --index 0x30 --index 0x60 \
+            --require-requested-in-range \
+            --out build/d1-tooling-check/defaults.json
+
+          python tools/d1_tower_global_channel_join.py \
+            --defaults build/d1-tooling-check/defaults.json \
+            --tower-census build/d1-tooling-check/tower.json \
+            --out build/d1-tooling-check/join.json
+
+          python tools/d1_tower_global_channel_sequencer_symbolic.py \
+            --join build/d1-tooling-check/join.json \
+            --out build/d1-tooling-check/symbolic.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('build/d1-tooling-check/defaults.json'))
+          assert d['layout']['channel_count']==0x61
+          assert d['requested_indices_all_in_range'] is True
+
+          j=json.load(open('build/d1-tooling-check/join.json'))
+          # Proves local indices 2/7/1 are joined by StringHash to globals 0x11/0x28/0x30.
+          got={(x['local_channel_index'],x['global_index']) for x in j['joins']}
+          assert got=={(2,0x11),(7,0x28),(1,0x30)},got
+          assert j['requested_global_indices_without_tower_program']==['0x60']
+          assert j['requested_default_only_candidates']['0x60']['index']==0x60
+
+          s=json.load(open('build/d1-tooling-check/symbolic.json'))
+          assert s['status']=='D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_COMPLETE'
+          assert set(s['programs_by_index'])=={'0x11','0x28','0x30'}
+          assert s['requested_indices_without_tower_override']==['0x60']
+          for rows in s['programs_by_index'].values():
+              assert rows[0]['symbolic']['fully_symbolically_closed'] is True
+              assert rows[0]['symbolic']['outputs']['0'].startswith('C[0]=')
+          print('D1_TOOLING_JOIN_FIXTURE_OK')
+          PY
+
+      - name: Exercise snapshot offset summarizer
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d={
+            'executable_sha256':'fixture',
+            'hits':[
+              {'address_hex':'0x1000','mnemonic':'vmovss','op_str':'xmm0, dword ptr [rip+X]',
+               'rip_refs':[{'resolved_target':0x27BE45C,'resolved_target_hex':'0x27be45c','access':'read'}]},
+              {'address_hex':'0x1008','mnemonic':'mov','op_str':'eax, dword ptr [rip+X]',
+               'rip_refs':[{'resolved_target':0x27BE440,'resolved_target_hex':'0x27be440','access':'read'}]},
+            ],
+          }
+          open('build/d1-tooling-check/xrefs.json','w').write(json.dumps(d))
+          PY
+          python tools/d1_runtime_snapshot_storage_summarize.py \
+            --xrefs build/d1-tooling-check/xrefs.json \
+            --base copied_block=0x27BE440 \
+            --out build/d1-tooling-check/snapshot.json
+          python - <<'PY'
+          import json
+          d=json.load(open('build/d1-tooling-check/snapshot.json'))
+          rows={x['offset']:x for x in d['blocks']['copied_block']['all_offsets']}
+          assert rows[0x1c]['scalar_floatish_xref_count']==1
+          assert rows[0]['xref_count']==1
+          print('D1_TOOLING_SNAPSHOT_FIXTURE_OK')
+          PY
