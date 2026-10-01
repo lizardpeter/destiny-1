@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Symbolically decode exact D1 RoI global-channel sequencer programs.
 
-Input is the current-retail Tower entity-resource census produced by
-d1_remote_tower_entity_resource_census.py.  The decoder follows the D1-specific
+Input is the exact StringHash-joined Tower/global-channel report produced by
+d1_tower_global_channel_join.py.  The decoder follows the D1-specific
 RoI opcode revision and the sequencer framing behavior documented by the
 strategy-aware Charm lineage, but it promotes no runtime semantic names.
 
@@ -175,32 +175,36 @@ def symbolic(ops:list[dict], constants:list[list[float]]) -> dict:
 
 def iter_requested(doc:dict):
     seen=set()
-    for parent in doc.get("global_channel_parents",[]):
-        rh=parent.get("resource_hash")
-        dec=parent.get("decoded",{})
-        for p in dec.get("requested_tower_light_programs",[]):
-            key=(rh,p.get("channel_index"),p.get("bytecode_sha256"))
-            if key in seen: continue
-            seen.add(key); yield rh,p
+    for global_hex, programs in doc.get("requested_global_programs",{}).items():
+        for p in programs:
+            key=(p.get("resource_hash"),p.get("global_index"),p.get("bytecode_sha256"))
+            if key in seen:
+                continue
+            seen.add(key)
+            yield p
 
 def main()->int:
     ap=argparse.ArgumentParser()
-    ap.add_argument("--census",type=Path,required=True)
+    ap.add_argument("--join",type=Path,required=True)
     ap.add_argument("--out",type=Path,required=True)
     a=ap.parse_args()
-    src=json.loads(a.census.read_text())
+    src=json.loads(a.join.read_text())
     rows=[]
-    for resource_hash,p in iter_requested(src):
-        idx=int(p["channel_index"])
+    for p in iter_requested(src):
+        resource_hash=p.get("resource_hash")
+        idx=int(p["global_index"])
         bytecode=bytes.fromhex(p["bytecode_hex"])
         constants=p.get("constant_vec4s",[])
         ops=parse(bytecode)
         sym=symbolic(ops,constants)
         rows.append({
             "resource_hash":resource_hash,
-            "channel_index":idx,
-            "channel_index_hex":f"0x{idx:02X}",
+            "global_index":idx,
+            "global_index_hex":f"0x{idx:02X}",
+            "local_channel_index":p.get("local_channel_index"),
+            "local_channel_index_hex":p.get("local_channel_index_hex"),
             "channel_id_string_hash":p.get("channel_id_string_hash"),
+            "global_default_vec4":p.get("global_default_vec4"),
             "bytecode_hex":p["bytecode_hex"],
             "bytecode_sha256":p.get("bytecode_sha256"),
             "constant_vec4s":constants,
@@ -210,10 +214,10 @@ def main()->int:
         })
     by_index={}
     for r in rows:
-        by_index.setdefault(r["channel_index_hex"],[]).append(r)
+        by_index.setdefault(r["global_index_hex"],[]).append(r)
     missing=[f"0x{x:02X}" for x in sorted(REQUESTED) if f"0x{x:02X}" not in by_index]
     out={
-        "schema":"d1_tower_global_channel_sequencer_symbolic/v1",
+        "schema":"d1_tower_global_channel_sequencer_symbolic/v2",
         "status":"D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_COMPLETE" if not missing else "D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_PARTIAL",
         "requested_indices":[f"0x{x:02X}" for x in sorted(REQUESTED)],
         "missing_requested_indices":missing,
@@ -221,7 +225,8 @@ def main()->int:
         "programs_by_index":by_index,
         "fully_symbolically_closed_program_count":sum(r["symbolic"]["fully_symbolically_closed"] for r in rows),
         "proof_boundary":(
-            "Raw current-retail bytecode/constants are exact evidence. Opcode names/framing use "
+            "Raw current-retail bytecode/constants and the local-ID to global-index "
+            "StringHash join are exact evidence. Opcode names/framing use "
             "the D1 RoI strategy-aware lineage and sequencer special cases. Symbolic formulas "
             "promote stack/data dependencies only where the implemented operation is already "
             "corroborated by D1 material work. SequencerScalar indices retain raw identity; "
