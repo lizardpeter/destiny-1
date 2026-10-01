@@ -1,0 +1,386 @@
+#!/usr/bin/env python3
+"""Census exact current-retail D1 Tower map-owned entity resources remotely.
+
+Traversal is source-pinned and loss-preserving:
+
+  SMapDataEntry.entity_hash
+    -> D1 SEntity / canonical 80800734
+       +0x20 DynamicArray<D1 entity-resource entry>, stride 0x0C
+          +0x00 FileHash Resource
+    -> D1 EntityResource / canonical 80800861
+       -> exact ResourcePointer classes at +0x08/+0x10/+0x18
+
+This tool does not guess which discriminator is the global-channel sequencer.
+It reports every raw current-retail Unk10/Unk18 class with owner entities so a
+later structural/source join can identify the relevant family.
+
+Input map-data-layer JSON should be produced by d1_world_map_data_layer_census.py.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import struct
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+from d1_entity_resource_probe import ENTITY_RESOURCE_CLASS, parse_resource
+from d1_investment_arrangement_probe import dyn_header, filehash_pkg_index
+from d1_remote_investment_parent_probe import RemoteLogicalPackage, parse_member
+from d1_split_tar_extract import SplitHttpTar
+
+ENTITY_CLASS = "80800734"
+NULLS = {"00000000", "FFFFFFFF"}
+
+
+def norm(x: object) -> str:
+    s = str(x).upper().removeprefix("0X").zfill(8)
+    int(s, 16)
+    return s
+
+
+def current_family_names(package_list: Path, pkgid: int) -> list[str]:
+    token = f"{pkgid:04x}"
+    out = []
+    for line in package_list.read_text(errors="replace").splitlines():
+        name = Path(line.strip()).name
+        if re.search(rf"_{token}_[0-9]+\.pkg$", name, re.I):
+            out.append(name)
+    return sorted(set(out))
+
+
+class RemoteCorpus:
+    def __init__(
+        self,
+        archive: SplitHttpTar,
+        package_list: Path,
+        runtime: Path,
+    ) -> None:
+        self.archive = archive
+        self.package_list = package_list
+        self.runtime = runtime
+        self.views: dict[int, RemoteLogicalPackage] = {}
+        self.package_rows: dict[int, dict] = {}
+
+    def ensure(self, pkgids: set[int]) -> None:
+        missing_ids = sorted(pkg for pkg in pkgids if pkg not in self.views)
+        if not missing_ids:
+            return
+
+        names_by_pkg: dict[int, list[str]] = {}
+        all_names: set[str] = set()
+        for pkg in missing_ids:
+            names = current_family_names(self.package_list, pkg)
+            row = {
+                "package_id": f"{pkg:04X}",
+                "current_members": names,
+                "member_locations": {},
+                "violations": [],
+            }
+            self.package_rows[pkg] = row
+            if not names:
+                row["violations"].append("package_family_absent_from_packages_list")
+                continue
+            names_by_pkg[pkg] = names
+            all_names.update(names)
+
+        if not all_names:
+            return
+
+        found, headers = self.archive.find(all_names)
+        for pkg, names in names_by_pkg.items():
+            row = self.package_rows[pkg]
+            row["tar_headers_scanned"] = headers
+            missing = sorted(set(names) - set(found))
+            if missing:
+                row["violations"].append(
+                    "archive_members_missing:" + ",".join(missing)
+                )
+                continue
+            specs = []
+            for name in names:
+                loc = found[name]
+                row["member_locations"][name] = loc
+                specs.append(
+                    parse_member(
+                        f"{name}:0x{int(loc['data_offset']):X}:{int(loc['size'])}"
+                    )
+                )
+            try:
+                view = RemoteLogicalPackage(
+                    self.archive,
+                    {m.patch_id: m for m in specs},
+                    self.runtime,
+                )
+                self.views[pkg] = view
+                row["logical_view"] = view.view.name
+                row["entry_count"] = len(view.entries)
+                row["block_count"] = len(view.blocks)
+            except Exception as ex:
+                row["violations"].append("logical_package_build:" + repr(ex))
+
+    def payload(self, tag_hash: str) -> tuple[dict | None, bytes | None, str | None]:
+        h = norm(tag_hash)
+        pkg, idx = filehash_pkg_index(int(h, 16))
+        view = self.views.get(pkg)
+        if view is None:
+            return None, None, "package_view_unavailable"
+        if idx >= len(view.entries):
+            return None, None, "file_index_outside_current_entry_table"
+        e = view.entries[idx]
+        if norm(e["tag_hash"]) != h:
+            return e, None, "logical_tag_hash_mismatch"
+        try:
+            return e, view.entry(idx), None
+        except Exception as ex:
+            return e, None, "payload_read:" + repr(ex)
+
+
+def map_entity_owners(doc: dict) -> dict[str, list[dict]]:
+    owners: dict[str, list[dict]] = defaultdict(list)
+    for table in doc.get("tables", []):
+        table_hash = norm(table.get("map_data_table", "0"))
+        for row in table.get("entries", []):
+            h = norm(row.get("entity_hash", "0"))
+            if h in NULLS:
+                continue
+            owners[h].append(
+                {
+                    "map_data_table": table_hash,
+                    "map_entry_index": row.get("index"),
+                    "world_id": row.get("world_id"),
+                    "translation": row.get("translation"),
+                    "resource_class": row.get("resource_class"),
+                }
+            )
+    return dict(owners)
+
+
+def parse_entity_resources(payload: bytes) -> dict:
+    count, data = dyn_header(payload, 0x20)
+    end = data + count * 0x0C
+    if count < 0 or data < 0 or end > len(payload):
+        raise ValueError(
+            f"EntityResources out of bounds: count={count} data=0x{data:X} "
+            f"end=0x{end:X} size=0x{len(payload):X}"
+        )
+    rows = []
+    for i in range(count):
+        off = data + i * 0x0C
+        resource = struct.unpack_from("<I", payload, off)[0]
+        rows.append(
+            {
+                "index": i,
+                "record_offset": off,
+                "record_offset_hex": f"0x{off:X}",
+                "resource_hash": f"{resource:08X}",
+                "record_hex": payload[off : off + 0x0C].hex().upper(),
+            }
+        )
+    return {
+        "count": count,
+        "data_offset": data,
+        "data_offset_hex": f"0x{data:X}",
+        "end_offset": end,
+        "end_offset_hex": f"0x{end:X}",
+        "stride": 0x0C,
+        "rows": rows,
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--map-data-layer", type=Path, required=True)
+    ap.add_argument("--package-list", type=Path, required=True)
+    ap.add_argument("--runtime", type=Path, required=True)
+    ap.add_argument(
+        "--base-url",
+        default="https://crypt.cohae.dev/destiny/ps4/packages/latest",
+    )
+    ap.add_argument("--part-count", type=int, default=10)
+    ap.add_argument("--out", type=Path, required=True)
+    a = ap.parse_args()
+
+    layer = json.loads(a.map_data_layer.read_text())
+    owners = map_entity_owners(layer)
+    entity_hashes = sorted(owners)
+
+    base = a.base_url.rstrip("/")
+    archive = SplitHttpTar(
+        [f"{base}/packages.tar.{i:03d}" for i in range(1, a.part_count + 1)],
+        retries=6,
+        timeout=120,
+    )
+    corpus = RemoteCorpus(archive, a.package_list, a.runtime)
+
+    entity_pkgids = {filehash_pkg_index(int(h, 16))[0] for h in entity_hashes}
+    corpus.ensure(entity_pkgids)
+
+    entities = []
+    resource_owners: dict[str, list[dict]] = defaultdict(list)
+    violations = []
+
+    for h in entity_hashes:
+        meta, payload, error = corpus.payload(h)
+        row = {
+            "entity_hash": h,
+            "map_owners": owners[h],
+            "entry": meta,
+            "violations": [],
+        }
+        if error:
+            row["violations"].append(error)
+        elif norm(meta.get("reference", "0")) != ENTITY_CLASS:
+            row["violations"].append(
+                f"class_mismatch:{norm(meta.get('reference','0'))}!={ENTITY_CLASS}"
+            )
+        else:
+            row["payload_size"] = len(payload)
+            row["payload_sha256"] = hashlib.sha256(payload).hexdigest()
+            try:
+                parsed = parse_entity_resources(payload)
+                row["entity_resources"] = parsed
+                for rr in parsed["rows"]:
+                    rh = rr["resource_hash"]
+                    if rh in NULLS:
+                        continue
+                    resource_owners[rh].append(
+                        {
+                            "entity_hash": h,
+                            "entity_resource_index": rr["index"],
+                            "map_owners": owners[h],
+                        }
+                    )
+            except Exception as ex:
+                row["violations"].append("entity_resource_array:" + repr(ex))
+        violations.extend(f"{h}:{x}" for x in row["violations"])
+        entities.append(row)
+
+    resource_hashes = sorted(resource_owners)
+    resource_pkgids = {filehash_pkg_index(int(h, 16))[0] for h in resource_hashes}
+    corpus.ensure(resource_pkgids)
+
+    resources = []
+    unk08 = Counter()
+    unk10 = Counter()
+    unk18 = Counter()
+    roles = Counter()
+    class_to_resources: dict[str, list[str]] = defaultdict(list)
+
+    for h in resource_hashes:
+        meta, payload, error = corpus.payload(h)
+        row = {
+            "resource_hash": h,
+            "owners": resource_owners[h],
+            "entry": meta,
+            "violations": [],
+        }
+        if error:
+            row["violations"].append(error)
+        elif norm(meta.get("reference", "0")) != ENTITY_RESOURCE_CLASS:
+            row["violations"].append(
+                f"class_mismatch:{norm(meta.get('reference','0'))}!={ENTITY_RESOURCE_CLASS}"
+            )
+        else:
+            row["payload_size"] = len(payload)
+            row["payload_sha256"] = hashlib.sha256(payload).hexdigest()
+            try:
+                parsed = parse_resource(payload, "PS4")
+                row["entity_resource"] = parsed
+                roles[parsed.get("semantic_role", "other_or_unknown")] += 1
+                for field, counter in (
+                    ("unk08", unk08),
+                    ("unk10", unk10),
+                    ("unk18", unk18),
+                ):
+                    cls = (parsed.get(field) or {}).get("class_hash")
+                    if cls:
+                        counter[cls] += 1
+                        if field == "unk10":
+                            class_to_resources[cls].append(h)
+            except Exception as ex:
+                row["violations"].append("entity_resource_parse:" + repr(ex))
+        violations.extend(f"{h}:{x}" for x in row["violations"])
+        resources.append(row)
+
+    candidate_classes = []
+    for cls, count in sorted(unk10.items(), key=lambda kv: (-kv[1], kv[0])):
+        rhs = sorted(set(class_to_resources.get(cls, [])))
+        owner_entities = sorted(
+            {
+                owner["entity_hash"]
+                for rh in rhs
+                for owner in resource_owners.get(rh, [])
+            }
+        )
+        candidate_classes.append(
+            {
+                "unk10_class": cls,
+                "resource_count": count,
+                "resource_hashes": rhs,
+                "owner_entity_count": len(owner_entities),
+                "owner_entities": owner_entities,
+            }
+        )
+
+    out = {
+        "schema": "d1_remote_tower_entity_resource_census/v1",
+        "status": (
+            "D1_TOWER_ENTITY_RESOURCE_CENSUS_COMPLETE"
+            if not violations
+            else "D1_TOWER_ENTITY_RESOURCE_CENSUS_PARTIAL"
+        ),
+        "source_map_data_layer": str(a.map_data_layer),
+        "map_entry_entity_count": len(entity_hashes),
+        "unique_entity_resource_hash_count": len(resource_hashes),
+        "entity_class": ENTITY_CLASS,
+        "entity_resource_class": ENTITY_RESOURCE_CLASS,
+        "semantic_role_counts": dict(roles),
+        "unk08_class_counts": dict(unk08),
+        "unk10_class_counts": dict(unk10),
+        "unk18_class_counts": dict(unk18),
+        "unk10_class_candidates": candidate_classes,
+        "entities": entities,
+        "resources": resources,
+        "packages": [
+            corpus.package_rows[p] for p in sorted(corpus.package_rows)
+        ],
+        "violations": violations,
+        "policy": (
+            "Map ownership comes only from the supplied exact SMapDataTable census. "
+            "Entity resources are read only through source-pinned D1 SEntity +0x20 "
+            "DynamicArray framing and exact current logical package views. Every "
+            "raw ResourcePointer class is preserved. No unknown discriminator is "
+            "named from frequency, owner location, or later-engine class names."
+        ),
+    }
+
+    a.out.parent.mkdir(parents=True, exist_ok=True)
+    a.out.write_text(json.dumps(out, indent=2) + "\n")
+    print(
+        json.dumps(
+            {
+                "status": out["status"],
+                "map_entry_entity_count": out["map_entry_entity_count"],
+                "unique_entity_resource_hash_count": out[
+                    "unique_entity_resource_hash_count"
+                ],
+                "semantic_role_counts": out["semantic_role_counts"],
+                "unk10_class_counts": out["unk10_class_counts"],
+                "violations": violations[:20],
+                "violation_count": len(violations),
+            },
+            indent=2,
+        )
+    )
+    return 0 if not violations else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
