@@ -36,6 +36,7 @@
     "raw_matching_ref_count": 2302085,
     "qualified_matching_ref_count": 452417,
     "candidate_count": 500,
+    "ret_bounded_region_count": 272792,
     "offset_counts": {
       "0x0": 2076502,
       "0x10": 64729,
@@ -65,6 +66,11 @@
       "center_address_hex": "0xf30e82",
       "segment_index": 0,
       "region_id": 73627,
+      "region_start": 15927397,
+      "region_start_hex": "0xf30865",
+      "region_end": 15931582,
+      "region_end_hex": "0xf318be",
+      "region_size": 4185,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -509,6 +515,11 @@
       "center_address_hex": "0xadf245",
       "segment_index": 0,
       "region_id": 56392,
+      "region_start": 11398187,
+      "region_start_hex": "0xadec2b",
+      "region_end": 11400883,
+      "region_end_hex": "0xadf6b3",
+      "region_size": 2696,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -1189,6 +1200,11 @@
       "center_address_hex": "0xf6588d",
       "segment_index": 0,
       "region_id": 74896,
+      "region_start": 16144439,
+      "region_start_hex": "0xf65837",
+      "region_end": 16145118,
+      "region_end_hex": "0xf65ade",
+      "region_size": 679,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -1687,6 +1703,11 @@
       "center_address_hex": "0xf659db",
       "segment_index": 0,
       "region_id": 74896,
+      "region_start": 16144439,
+      "region_start_hex": "0xf65837",
+      "region_end": 16145118,
+      "region_end_hex": "0xf65ade",
+      "region_size": 679,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -2311,6 +2332,11 @@
       "center_address_hex": "0x7c6db1",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -2694,6 +2720,11 @@
       "center_address_hex": "0x7c6db7",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -3077,6 +3108,11 @@
       "center_address_hex": "0x5fc48b",
       "segment_index": 0,
       "region_id": 33282,
+      "region_start": 6276121,
+      "region_start_hex": "0x5fc419",
+      "region_end": 6276359,
+      "region_end_hex": "0x5fc507",
+      "region_size": 238,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -3421,6 +3457,11 @@
       "center_address_hex": "0xf57ee7",
       "segment_index": 0,
       "region_id": 74762,
+      "region_start": 16088531,
+      "region_start_hex": "0xf57dd3",
+      "region_end": 16090139,
+      "region_end_hex": "0xf5841b",
+      "region_size": 1608,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -3765,6 +3806,11 @@
       "center_address_hex": "0xf57fd5",
       "segment_index": 0,
       "region_id": 74762,
+      "region_start": 16088531,
+      "region_start_hex": "0xf57dd3",
+      "region_end": 16090139,
+      "region_end_hex": "0xf5841b",
+      "region_size": 1608,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -4109,6 +4155,11 @@
       "center_address_hex": "0xadf3b8",
       "segment_index": 0,
       "region_id": 56392,
+      "region_start": 11398187,
+      "region_start_hex": "0xadec2b",
+      "region_end": 11400883,
+      "region_end_hex": "0xadf6b3",
+      "region_size": 2696,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -4608,6 +4659,11 @@
       "center_address_hex": "0x8a8f1e",
       "segment_index": 0,
       "region_id": 46432,
+      "region_start": 9080434,
+      "region_start_hex": "0x8a8e72",
+      "region_end": 9081362,
+      "region_end_hex": "0x8a9212",
+      "region_size": 928,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -4926,6 +4982,11 @@
       "center_address_hex": "0xadf11e",
       "segment_index": 0,
       "region_id": 56392,
+      "region_start": 11398187,
+      "region_start_hex": "0xadec2b",
+      "region_end": 11400883,
+      "region_end_hex": "0xadf6b3",
+      "region_size": 2696,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -5440,6 +5501,11 @@
       "center_address_hex": "0x8177c1",
       "segment_index": 0,
       "region_id": 44019,
+      "region_start": 8484545,
+      "region_start_hex": "0x8176c1",
+      "region_end": 8484992,
+      "region_end_hex": "0x817880",
+      "region_size": 447,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -5783,6 +5849,11 @@
       "center_address_hex": "0xe7bcbf",
       "segment_index": 0,
       "region_id": 69342,
+      "region_start": 15186370,
+      "region_start_hex": "0xe7b9c2",
+      "region_end": 15187534,
+      "region_end_hex": "0xe7be4e",
+      "region_size": 1164,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -6345,6 +6416,11 @@
       "center_address_hex": "0xe883e6",
       "segment_index": 0,
       "region_id": 69727,
+      "region_start": 15236870,
+      "region_start_hex": "0xe87f06",
+      "region_end": 15241429,
+      "region_end_hex": "0xe890d5",
+      "region_size": 4559,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -6713,6 +6789,11 @@
       "center_address_hex": "0xf5226e",
       "segment_index": 0,
       "region_id": 74513,
+      "region_start": 16065023,
+      "region_start_hex": "0xf521ff",
+      "region_end": 16065364,
+      "region_end_hex": "0xf52354",
+      "region_size": 341,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -7015,6 +7096,11 @@
       "center_address_hex": "0x7c67cd",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -7315,6 +7401,11 @@
       "center_address_hex": "0x7c6ebe",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -7615,6 +7706,11 @@
       "center_address_hex": "0x7c6ec4",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -7915,6 +8011,11 @@
       "center_address_hex": "0xf31173",
       "segment_index": 0,
       "region_id": 73627,
+      "region_start": 15927397,
+      "region_start_hex": "0xf30865",
+      "region_end": 15931582,
+      "region_end_hex": "0xf318be",
+      "region_size": 4185,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -8191,6 +8292,11 @@
       "center_address_hex": "0xf6660a",
       "segment_index": 0,
       "region_id": 74920,
+      "region_start": 16146554,
+      "region_start_hex": "0xf6607a",
+      "region_end": 16148179,
+      "region_end_hex": "0xf666d3",
+      "region_size": 1625,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -8535,6 +8641,11 @@
       "center_address_hex": "0x50485c",
       "segment_index": 0,
       "region_id": 27604,
+      "region_start": 5260953,
+      "region_start_hex": "0x504699",
+      "region_end": 5261583,
+      "region_end_hex": "0x50490f",
+      "region_size": 630,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -8821,6 +8932,11 @@
       "center_address_hex": "0x7c67c7",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -9107,6 +9223,11 @@
       "center_address_hex": "0xf629ee",
       "segment_index": 0,
       "region_id": 74815,
+      "region_start": 16131862,
+      "region_start_hex": "0xf62716",
+      "region_end": 16133478,
+      "region_end_hex": "0xf62d66",
+      "region_size": 1616,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -9395,6 +9516,11 @@
       "center_address_hex": "0xf65a38",
       "segment_index": 0,
       "region_id": 74896,
+      "region_start": 16144439,
+      "region_start_hex": "0xf65837",
+      "region_end": 16145118,
+      "region_end_hex": "0xf65ade",
+      "region_size": 679,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -9667,6 +9793,11 @@
       "center_address_hex": "0xe7bb89",
       "segment_index": 0,
       "region_id": 69342,
+      "region_start": 15186370,
+      "region_start_hex": "0xe7b9c2",
+      "region_end": 15187534,
+      "region_end_hex": "0xe7be4e",
+      "region_size": 1164,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -10077,6 +10208,11 @@
       "center_address_hex": "0xf57eec",
       "segment_index": 0,
       "region_id": 74762,
+      "region_start": 16088531,
+      "region_start_hex": "0xf57dd3",
+      "region_end": 16090139,
+      "region_end_hex": "0xf5841b",
+      "region_size": 1608,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -10325,6 +10461,11 @@
       "center_address_hex": "0x8174c1",
       "segment_index": 0,
       "region_id": 44017,
+      "region_start": 8483864,
+      "region_start_hex": "0x817418",
+      "region_end": 8484536,
+      "region_end_hex": "0x8176b8",
+      "region_size": 672,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -10572,6 +10713,11 @@
       "center_address_hex": "0xadf5e5",
       "segment_index": 0,
       "region_id": 56392,
+      "region_start": 11398187,
+      "region_start_hex": "0xadec2b",
+      "region_end": 11400883,
+      "region_end_hex": "0xadf6b3",
+      "region_size": 2696,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -10987,6 +11133,11 @@
       "center_address_hex": "0x1001e20",
       "segment_index": 0,
       "region_id": 79432,
+      "region_start": 16780895,
+      "region_start_hex": "0x1000e5f",
+      "region_end": 16785332,
+      "region_end_hex": "0x1001fb4",
+      "region_size": 4437,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -11300,6 +11451,11 @@
       "center_address_hex": "0xf5407a",
       "segment_index": 0,
       "region_id": 74640,
+      "region_start": 16072090,
+      "region_start_hex": "0xf53d9a",
+      "region_end": 16073473,
+      "region_end_hex": "0xf54301",
+      "region_size": 1383,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -11520,6 +11676,11 @@
       "center_address_hex": "0x4f689d",
       "segment_index": 0,
       "region_id": 27372,
+      "region_start": 5202350,
+      "region_start_hex": "0x4f61ae",
+      "region_end": 5204482,
+      "region_end_hex": "0x4f6a02",
+      "region_size": 2132,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -11766,6 +11927,11 @@
       "center_address_hex": "0x7e8301",
       "segment_index": 0,
       "region_id": 43053,
+      "region_start": 8290515,
+      "region_start_hex": "0x7e80d3",
+      "region_end": 8293281,
+      "region_end_hex": "0x7e8ba1",
+      "region_size": 2766,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -11998,6 +12164,11 @@
       "center_address_hex": "0xe7bdda",
       "segment_index": 0,
       "region_id": 69342,
+      "region_start": 15186370,
+      "region_start_hex": "0xe7b9c2",
+      "region_end": 15187534,
+      "region_end_hex": "0xe7be4e",
+      "region_size": 1164,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -12378,6 +12549,11 @@
       "center_address_hex": "0x65d31d",
       "segment_index": 0,
       "region_id": 34777,
+      "region_start": 6673076,
+      "region_start_hex": "0x65d2b4",
+      "region_end": 6673705,
+      "region_end_hex": "0x65d529",
+      "region_size": 629,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -12637,6 +12813,11 @@
       "center_address_hex": "0xf65e90",
       "segment_index": 0,
       "region_id": 74912,
+      "region_start": 16145969,
+      "region_start_hex": "0xf65e31",
+      "region_end": 16146105,
+      "region_end_hex": "0xf65eb9",
+      "region_size": 136,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -12894,6 +13075,11 @@
       "center_address_hex": "0x1007264",
       "segment_index": 0,
       "region_id": 79575,
+      "region_start": 16806373,
+      "region_start_hex": "0x10071e5",
+      "region_end": 16806711,
+      "region_end_hex": "0x1007337",
+      "region_size": 338,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -13151,6 +13337,11 @@
       "center_address_hex": "0x10074f2",
       "segment_index": 0,
       "region_id": 79577,
+      "region_start": 16807029,
+      "region_start_hex": "0x1007475",
+      "region_end": 16807369,
+      "region_end_hex": "0x10075c9",
+      "region_size": 340,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -13408,6 +13599,11 @@
       "center_address_hex": "0x6c0711",
       "segment_index": 0,
       "region_id": 36137,
+      "region_start": 7079476,
+      "region_start_hex": "0x6c0634",
+      "region_end": 7080008,
+      "region_end_hex": "0x6c0848",
+      "region_size": 532,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -13613,6 +13809,11 @@
       "center_address_hex": "0x6c0717",
       "segment_index": 0,
       "region_id": 36137,
+      "region_start": 7079476,
+      "region_start_hex": "0x6c0634",
+      "region_end": 7080008,
+      "region_end_hex": "0x6c0848",
+      "region_size": 532,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -13818,6 +14019,11 @@
       "center_address_hex": "0x864ef1",
       "segment_index": 0,
       "region_id": 45511,
+      "region_start": 8801809,
+      "region_start_hex": "0x864e11",
+      "region_end": 8802358,
+      "region_end_hex": "0x865036",
+      "region_size": 549,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -14023,6 +14229,11 @@
       "center_address_hex": "0x864ef6",
       "segment_index": 0,
       "region_id": 45511,
+      "region_start": 8801809,
+      "region_start_hex": "0x864e11",
+      "region_end": 8802358,
+      "region_end_hex": "0x865036",
+      "region_size": 549,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -14228,6 +14439,11 @@
       "center_address_hex": "0xeb4919",
       "segment_index": 0,
       "region_id": 70449,
+      "region_start": 15419562,
+      "region_start_hex": "0xeb48aa",
+      "region_end": 15420389,
+      "region_end_hex": "0xeb4be5",
+      "region_size": 827,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -14433,6 +14649,11 @@
       "center_address_hex": "0xf3d866",
       "segment_index": 0,
       "region_id": 74124,
+      "region_start": 15980361,
+      "region_start_hex": "0xf3d749",
+      "region_end": 15981490,
+      "region_end_hex": "0xf3dbb2",
+      "region_size": 1129,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -14638,6 +14859,11 @@
       "center_address_hex": "0x1007326",
       "segment_index": 0,
       "region_id": 79575,
+      "region_start": 16806373,
+      "region_start_hex": "0x10071e5",
+      "region_end": 16806711,
+      "region_end_hex": "0x1007337",
+      "region_size": 338,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -14895,6 +15121,11 @@
       "center_address_hex": "0x10075b8",
       "segment_index": 0,
       "region_id": 79577,
+      "region_start": 16807029,
+      "region_start_hex": "0x1007475",
+      "region_end": 16807369,
+      "region_end_hex": "0x10075c9",
+      "region_size": 340,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -15152,6 +15383,11 @@
       "center_address_hex": "0x1223995",
       "segment_index": 0,
       "region_id": 92184,
+      "region_start": 19019960,
+      "region_start_hex": "0x12238b8",
+      "region_end": 19020494,
+      "region_end_hex": "0x1223ace",
+      "region_size": 534,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -15398,6 +15634,11 @@
       "center_address_hex": "0x4ad2b7",
       "segment_index": 0,
       "region_id": 25885,
+      "region_start": 4903160,
+      "region_start_hex": "0x4ad0f8",
+      "region_end": 4903955,
+      "region_end_hex": "0x4ad413",
+      "region_size": 795,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -15741,6 +15982,11 @@
       "center_address_hex": "0x672c70",
       "segment_index": 0,
       "region_id": 35095,
+      "region_start": 6761280,
+      "region_start_hex": "0x672b40",
+      "region_end": 6761706,
+      "region_end_hex": "0x672cea",
+      "region_size": 426,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -16126,6 +16372,11 @@
       "center_address_hex": "0x8b0703",
       "segment_index": 0,
       "region_id": 46528,
+      "region_start": 9110941,
+      "region_start_hex": "0x8b059d",
+      "region_end": 9112294,
+      "region_end_hex": "0x8b0ae6",
+      "region_size": 1353,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -16368,6 +16619,11 @@
       "center_address_hex": "0xe88096",
       "segment_index": 0,
       "region_id": 69727,
+      "region_start": 15236870,
+      "region_start_hex": "0xe87f06",
+      "region_end": 15241429,
+      "region_end_hex": "0xe890d5",
+      "region_size": 4559,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -16572,6 +16828,11 @@
       "center_address_hex": "0xf54080",
       "segment_index": 0,
       "region_id": 74640,
+      "region_start": 16072090,
+      "region_start_hex": "0xf53d9a",
+      "region_end": 16073473,
+      "region_end_hex": "0xf54301",
+      "region_size": 1383,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -16792,6 +17053,11 @@
       "center_address_hex": "0x1ca74e",
       "segment_index": 0,
       "region_id": 11803,
+      "region_start": 1877596,
+      "region_start_hex": "0x1ca65c",
+      "region_end": 1877924,
+      "region_end_hex": "0x1ca7a4",
+      "region_size": 328,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -16982,6 +17248,11 @@
       "center_address_hex": "0x1ca8b2",
       "segment_index": 0,
       "region_id": 11804,
+      "region_start": 1877924,
+      "region_start_hex": "0x1ca7a4",
+      "region_end": 1878360,
+      "region_end_hex": "0x1ca958",
+      "region_size": 436,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -17172,6 +17443,11 @@
       "center_address_hex": "0x90233c",
       "segment_index": 0,
       "region_id": 48075,
+      "region_start": 9445636,
+      "region_start_hex": "0x902104",
+      "region_end": 9446451,
+      "region_end_hex": "0x902433",
+      "region_size": 815,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -17488,6 +17764,11 @@
       "center_address_hex": "0xf54a36",
       "segment_index": 0,
       "region_id": 74649,
+      "region_start": 16075175,
+      "region_start_hex": "0xf549a7",
+      "region_end": 16077355,
+      "region_end_hex": "0xf5522b",
+      "region_size": 2180,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -17692,6 +17973,11 @@
       "center_address_hex": "0xa75fa",
       "segment_index": 0,
       "region_id": 3877,
+      "region_start": 685341,
+      "region_start_hex": "0xa751d",
+      "region_end": 685661,
+      "region_end_hex": "0xa765d",
+      "region_size": 320,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -17882,6 +18168,11 @@
       "center_address_hex": "0xa7d44",
       "segment_index": 0,
       "region_id": 3900,
+      "region_start": 687342,
+      "region_start_hex": "0xa7cee",
+      "region_end": 688046,
+      "region_end_hex": "0xa7fae",
+      "region_size": 704,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -18072,6 +18363,11 @@
       "center_address_hex": "0xa7fd0",
       "segment_index": 0,
       "region_id": 3901,
+      "region_start": 688046,
+      "region_start_hex": "0xa7fae",
+      "region_end": 688168,
+      "region_end_hex": "0xa8028",
+      "region_size": 122,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -18262,6 +18558,11 @@
       "center_address_hex": "0xa81ff",
       "segment_index": 0,
       "region_id": 3905,
+      "region_start": 688446,
+      "region_start_hex": "0xa813e",
+      "region_end": 688666,
+      "region_end_hex": "0xa821a",
+      "region_size": 220,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -18452,6 +18753,11 @@
       "center_address_hex": "0x5fc486",
       "segment_index": 0,
       "region_id": 33282,
+      "region_start": 6276121,
+      "region_start_hex": "0x5fc419",
+      "region_end": 6276359,
+      "region_end_hex": "0x5fc507",
+      "region_size": 238,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -18642,6 +18948,11 @@
       "center_address_hex": "0x90234c",
       "segment_index": 0,
       "region_id": 48075,
+      "region_start": 9445636,
+      "region_start_hex": "0x902104",
+      "region_end": 9446451,
+      "region_end_hex": "0x902433",
+      "region_size": 815,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -18832,6 +19143,11 @@
       "center_address_hex": "0xf3f6b6",
       "segment_index": 0,
       "region_id": 74186,
+      "region_start": 15987704,
+      "region_start_hex": "0xf3f3f8",
+      "region_end": 15990211,
+      "region_end_hex": "0xf3fdc3",
+      "region_size": 2507,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -19022,6 +19338,11 @@
       "center_address_hex": "0xf52269",
       "segment_index": 0,
       "region_id": 74513,
+      "region_start": 16065023,
+      "region_start_hex": "0xf521ff",
+      "region_end": 16065364,
+      "region_end_hex": "0xf52354",
+      "region_size": 341,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -19212,6 +19533,11 @@
       "center_address_hex": "0xf64e56",
       "segment_index": 0,
       "region_id": 74872,
+      "region_start": 16141524,
+      "region_start_hex": "0xf64cd4",
+      "region_end": 16142420,
+      "region_end_hex": "0xf65054",
+      "region_size": 896,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -19402,6 +19728,11 @@
       "center_address_hex": "0xf65b4d",
       "segment_index": 0,
       "region_id": 74899,
+      "region_start": 16145150,
+      "region_start_hex": "0xf65afe",
+      "region_end": 16145337,
+      "region_end_hex": "0xf65bb9",
+      "region_size": 187,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -19592,6 +19923,11 @@
       "center_address_hex": "0xf65d1a",
       "segment_index": 0,
       "region_id": 74909,
+      "region_start": 16145519,
+      "region_start_hex": "0xf65c6f",
+      "region_end": 16145933,
+      "region_end_hex": "0xf65e0d",
+      "region_size": 414,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -19782,6 +20118,11 @@
       "center_address_hex": "0xf65f3a",
       "segment_index": 0,
       "region_id": 74913,
+      "region_start": 16146105,
+      "region_start_hex": "0xf65eb9",
+      "region_end": 16146375,
+      "region_end_hex": "0xf65fc7",
+      "region_size": 270,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -19972,6 +20313,11 @@
       "center_address_hex": "0x1006a91",
       "segment_index": 0,
       "region_id": 79554,
+      "region_start": 16804376,
+      "region_start_hex": "0x1006a18",
+      "region_end": 16804804,
+      "region_end_hex": "0x1006bc4",
+      "region_size": 428,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -20162,6 +20508,11 @@
       "center_address_hex": "0xc773a8",
       "segment_index": 0,
       "region_id": 64183,
+      "region_start": 13069970,
+      "region_start_hex": "0xc76e92",
+      "region_end": 13072134,
+      "region_end_hex": "0xc77706",
+      "region_size": 2164,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -20430,6 +20781,11 @@
       "center_address_hex": "0xf3eba6",
       "segment_index": 0,
       "region_id": 74165,
+      "region_start": 15985482,
+      "region_start_hex": "0xf3eb4a",
+      "region_end": 15986167,
+      "region_end_hex": "0xf3edf7",
+      "region_size": 685,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -20605,6 +20961,11 @@
       "center_address_hex": "0x8da3db",
       "segment_index": 0,
       "region_id": 47322,
+      "region_start": 9282474,
+      "region_start_hex": "0x8da3aa",
+      "region_end": 9282890,
+      "region_end_hex": "0x8da54a",
+      "region_size": 416,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -20876,6 +21237,11 @@
       "center_address_hex": "0x66ed2a",
       "segment_index": 0,
       "region_id": 35033,
+      "region_start": 6745130,
+      "region_start_hex": "0x66ec2a",
+      "region_end": 6745581,
+      "region_end_hex": "0x66eded",
+      "region_size": 451,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -21066,6 +21432,11 @@
       "center_address_hex": "0x93512a",
       "segment_index": 0,
       "region_id": 49514,
+      "region_start": 9654369,
+      "region_start_hex": "0x935061",
+      "region_end": 9654938,
+      "region_end_hex": "0x93529a",
+      "region_size": 569,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -21256,6 +21627,11 @@
       "center_address_hex": "0xe7babb",
       "segment_index": 0,
       "region_id": 69342,
+      "region_start": 15186370,
+      "region_start_hex": "0xe7b9c2",
+      "region_end": 15187534,
+      "region_end_hex": "0xe7be4e",
+      "region_size": 1164,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -21568,6 +21944,11 @@
       "center_address_hex": "0x8da3c1",
       "segment_index": 0,
       "region_id": 47322,
+      "region_start": 9282474,
+      "region_start_hex": "0x8da3aa",
+      "region_end": 9282890,
+      "region_end_hex": "0x8da54a",
+      "region_size": 416,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -21867,6 +22248,11 @@
       "center_address_hex": "0x70787f",
       "segment_index": 0,
       "region_id": 37378,
+      "region_start": 7370605,
+      "region_start_hex": "0x70776d",
+      "region_end": 7370971,
+      "region_end_hex": "0x7078db",
+      "region_size": 366,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -22107,6 +22493,11 @@
       "center_address_hex": "0x6c0727",
       "segment_index": 0,
       "region_id": 36137,
+      "region_start": 7079476,
+      "region_start_hex": "0x6c0634",
+      "region_end": 7080008,
+      "region_end_hex": "0x6c0848",
+      "region_size": 532,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -22312,6 +22703,11 @@
       "center_address_hex": "0x864f06",
       "segment_index": 0,
       "region_id": 45511,
+      "region_start": 8801809,
+      "region_start_hex": "0x864e11",
+      "region_end": 8802358,
+      "region_end_hex": "0x865036",
+      "region_size": 549,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -22517,6 +22913,11 @@
       "center_address_hex": "0x2297f6",
       "segment_index": 0,
       "region_id": 13618,
+      "region_start": 2266535,
+      "region_start_hex": "0x2295a7",
+      "region_end": 2267392,
+      "region_end_hex": "0x229900",
+      "region_size": 857,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -22762,6 +23163,11 @@
       "center_address_hex": "0xe7f6b5",
       "segment_index": 0,
       "region_id": 69465,
+      "region_start": 15201872,
+      "region_start_hex": "0xe7f650",
+      "region_end": 15202125,
+      "region_end_hex": "0xe7f74d",
+      "region_size": 253,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -22952,6 +23358,11 @@
       "center_address_hex": "0x7c6555",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -23179,6 +23590,11 @@
       "center_address_hex": "0x7c655b",
       "segment_index": 0,
       "region_id": 42108,
+      "region_start": 8151003,
+      "region_start_hex": "0x7c5fdb",
+      "region_end": 8155453,
+      "region_end_hex": "0x7c713d",
+      "region_size": 4450,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -23406,6 +23822,11 @@
       "center_address_hex": "0xffb10c",
       "segment_index": 0,
       "region_id": 79204,
+      "region_start": 16756835,
+      "region_start_hex": "0xffb063",
+      "region_end": 16757226,
+      "region_end_hex": "0xffb1ea",
+      "region_size": 391,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -23633,6 +24054,11 @@
       "center_address_hex": "0xa73edc",
       "segment_index": 0,
       "region_id": 55041,
+      "region_start": 10958966,
+      "region_start_hex": "0xa73876",
+      "region_end": 10960961,
+      "region_end_hex": "0xa74041",
+      "region_size": 1995,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -23933,6 +24359,11 @@
       "center_address_hex": "0x82825c",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -24418,6 +24849,11 @@
       "center_address_hex": "0x8283c8",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -25057,6 +25493,11 @@
       "center_address_hex": "0x828588",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -25612,6 +26053,11 @@
       "center_address_hex": "0x8286a4",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -26153,6 +26599,11 @@
       "center_address_hex": "0x8287f3",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -26694,6 +27145,11 @@
       "center_address_hex": "0x82891f",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -27235,6 +27691,11 @@
       "center_address_hex": "0x828ba3",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -27734,6 +28195,11 @@
       "center_address_hex": "0x828d0f",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -28485,6 +28951,11 @@
       "center_address_hex": "0x828e7b",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -29124,6 +29595,11 @@
       "center_address_hex": "0x828f5b",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -29679,6 +30155,11 @@
       "center_address_hex": "0x90447",
       "segment_index": 0,
       "region_id": 3285,
+      "region_start": 590825,
+      "region_start_hex": "0x903e9",
+      "region_end": 591065,
+      "region_end_hex": "0x904d9",
+      "region_size": 240,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -29854,6 +30335,11 @@
       "center_address_hex": "0xa7d84",
       "segment_index": 0,
       "region_id": 3900,
+      "region_start": 687342,
+      "region_start_hex": "0xa7cee",
+      "region_end": 688046,
+      "region_end_hex": "0xa7fae",
+      "region_size": 704,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -30029,6 +30515,11 @@
       "center_address_hex": "0x6a0249",
       "segment_index": 0,
       "region_id": 35674,
+      "region_start": 6947110,
+      "region_start_hex": "0x6a0126",
+      "region_end": 6947513,
+      "region_end_hex": "0x6a02b9",
+      "region_size": 403,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -30204,6 +30695,11 @@
       "center_address_hex": "0x6a03e1",
       "segment_index": 0,
       "region_id": 35675,
+      "region_start": 6947513,
+      "region_start_hex": "0x6a02b9",
+      "region_end": 6947913,
+      "region_end_hex": "0x6a0449",
+      "region_size": 400,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -30379,6 +30875,11 @@
       "center_address_hex": "0x89ea87",
       "segment_index": 0,
       "region_id": 46315,
+      "region_start": 9037847,
+      "region_start_hex": "0x89e817",
+      "region_end": 9041632,
+      "region_end_hex": "0x89f6e0",
+      "region_size": 3785,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -30554,6 +31055,11 @@
       "center_address_hex": "0xf661bb",
       "segment_index": 0,
       "region_id": 74920,
+      "region_start": 16146554,
+      "region_start_hex": "0xf6607a",
+      "region_end": 16148179,
+      "region_end_hex": "0xf666d3",
+      "region_size": 1625,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -30729,6 +31235,11 @@
       "center_address_hex": "0x11c8ddb",
       "segment_index": 0,
       "region_id": 91268,
+      "region_start": 18648393,
+      "region_start_hex": "0x11c8d49",
+      "region_end": 18648678,
+      "region_end_hex": "0x11c8e66",
+      "region_size": 285,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -30904,6 +31415,11 @@
       "center_address_hex": "0xeb114c",
       "segment_index": 0,
       "region_id": 70430,
+      "region_start": 15405067,
+      "region_start_hex": "0xeb100b",
+      "region_end": 15405587,
+      "region_end_hex": "0xeb1213",
+      "region_size": 520,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -31105,6 +31621,11 @@
       "center_address_hex": "0xf3d3ba",
       "segment_index": 0,
       "region_id": 74113,
+      "region_start": 15979421,
+      "region_start_hex": "0xf3d39d",
+      "region_end": 15979615,
+      "region_end_hex": "0xf3d45f",
+      "region_size": 194,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -31306,6 +31827,11 @@
       "center_address_hex": "0x59403e",
       "segment_index": 0,
       "region_id": 31523,
+      "region_start": 5848821,
+      "region_start_hex": "0x593ef5",
+      "region_end": 5849949,
+      "region_end_hex": "0x59435d",
+      "region_size": 1128,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -31552,6 +32078,11 @@
       "center_address_hex": "0x4b2380",
       "segment_index": 0,
       "region_id": 26006,
+      "region_start": 4924234,
+      "region_start_hex": "0x4b234a",
+      "region_end": 4924507,
+      "region_end_hex": "0x4b245b",
+      "region_size": 273,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -31864,6 +32395,11 @@
       "center_address_hex": "0x4b9c00",
       "segment_index": 0,
       "region_id": 26137,
+      "region_start": 4955082,
+      "region_start_hex": "0x4b9bca",
+      "region_end": 4955355,
+      "region_end_hex": "0x4b9cdb",
+      "region_size": 273,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -32176,6 +32712,11 @@
       "center_address_hex": "0xf4fccf",
       "segment_index": 0,
       "region_id": 74473,
+      "region_start": 16055360,
+      "region_start_hex": "0xf4fc40",
+      "region_end": 16055633,
+      "region_end_hex": "0xf4fd51",
+      "region_size": 273,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -32381,6 +32922,11 @@
       "center_address_hex": "0x85b2ca",
       "segment_index": 0,
       "region_id": 45388,
+      "region_start": 8761105,
+      "region_start_hex": "0x85af11",
+      "region_end": 8763556,
+      "region_end_hex": "0x85b8a4",
+      "region_size": 2451,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -32739,6 +33285,11 @@
       "center_address_hex": "0xf1dbf8",
       "segment_index": 0,
       "region_id": 73178,
+      "region_start": 15850328,
+      "region_start_hex": "0xf1db58",
+      "region_end": 15850661,
+      "region_end_hex": "0xf1dca5",
+      "region_size": 333,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -32929,6 +33480,11 @@
       "center_address_hex": "0xe7f6a9",
       "segment_index": 0,
       "region_id": 69465,
+      "region_start": 15201872,
+      "region_start_hex": "0xe7f650",
+      "region_end": 15202125,
+      "region_end_hex": "0xe7f74d",
+      "region_size": 253,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -33146,6 +33702,11 @@
       "center_address_hex": "0xb18cd1",
       "segment_index": 0,
       "region_id": 57538,
+      "region_start": 11635570,
+      "region_start_hex": "0xb18b72",
+      "region_end": 11636022,
+      "region_end_hex": "0xb18d36",
+      "region_size": 452,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -33403,6 +33964,11 @@
       "center_address_hex": "0x644691",
       "segment_index": 0,
       "region_id": 34430,
+      "region_start": 6571559,
+      "region_start_hex": "0x644627",
+      "region_end": 6572006,
+      "region_end_hex": "0x6447e6",
+      "region_size": 447,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -33622,6 +34188,11 @@
       "center_address_hex": "0x82878f",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -34176,6 +34747,11 @@
       "center_address_hex": "0x8289f0",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -34577,6 +35153,11 @@
       "center_address_hex": "0x828897",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -35047,6 +35628,11 @@
       "center_address_hex": "0x85b45a",
       "segment_index": 0,
       "region_id": 45388,
+      "region_start": 8761105,
+      "region_start_hex": "0x85af11",
+      "region_end": 8763556,
+      "region_end_hex": "0x85b8a4",
+      "region_size": 2451,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -35433,6 +36019,11 @@
       "center_address_hex": "0x82909f",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -35820,6 +36411,11 @@
       "center_address_hex": "0xa75ff",
       "segment_index": 0,
       "region_id": 3877,
+      "region_start": 685341,
+      "region_start_hex": "0xa751d",
+      "region_end": 685661,
+      "region_end_hex": "0xa765d",
+      "region_size": 320,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -36024,6 +36620,11 @@
       "center_address_hex": "0x4ed8c0",
       "segment_index": 0,
       "region_id": 27167,
+      "region_start": 5167168,
+      "region_start_hex": "0x4ed840",
+      "region_end": 5167657,
+      "region_end_hex": "0x4eda29",
+      "region_size": 489,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -36229,6 +36830,11 @@
       "center_address_hex": "0xffbc96",
       "segment_index": 0,
       "region_id": 79220,
+      "region_start": 16759583,
+      "region_start_hex": "0xffbb1f",
+      "region_end": 16759992,
+      "region_end_hex": "0xffbcb8",
+      "region_size": 409,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -36434,6 +37040,11 @@
       "center_address_hex": "0x6fae16",
       "segment_index": 0,
       "region_id": 37170,
+      "region_start": 7318582,
+      "region_start_hex": "0x6fac36",
+      "region_end": 7319229,
+      "region_end_hex": "0x6faebd",
+      "region_size": 647,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -36624,6 +37235,11 @@
       "center_address_hex": "0xeb4909",
       "segment_index": 0,
       "region_id": 70449,
+      "region_start": 15419562,
+      "region_start_hex": "0xeb48aa",
+      "region_end": 15420389,
+      "region_end_hex": "0xeb4be5",
+      "region_size": 827,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -36814,6 +37430,11 @@
       "center_address_hex": "0xeb4d64",
       "segment_index": 0,
       "region_id": 70450,
+      "region_start": 15420389,
+      "region_start_hex": "0xeb4be5",
+      "region_end": 15421520,
+      "region_end_hex": "0xeb5050",
+      "region_size": 1131,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -37004,6 +37625,11 @@
       "center_address_hex": "0xf53ce4",
       "segment_index": 0,
       "region_id": 74639,
+      "region_start": 16071276,
+      "region_start_hex": "0xf53a6c",
+      "region_end": 16072090,
+      "region_end_hex": "0xf53d9a",
+      "region_size": 814,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -37194,6 +37820,11 @@
       "center_address_hex": "0xf6495f",
       "segment_index": 0,
       "region_id": 74852,
+      "region_start": 16140389,
+      "region_start_hex": "0xf64865",
+      "region_end": 16140693,
+      "region_end_hex": "0xf64995",
+      "region_size": 304,
       "base_reg": "rdx",
       "center_accesses": [
         "write"
@@ -37384,6 +38015,11 @@
       "center_address_hex": "0xf65b52",
       "segment_index": 0,
       "region_id": 74899,
+      "region_start": 16145150,
+      "region_start_hex": "0xf65afe",
+      "region_end": 16145337,
+      "region_end_hex": "0xf65bb9",
+      "region_size": 187,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -37574,6 +38210,11 @@
       "center_address_hex": "0xf65de8",
       "segment_index": 0,
       "region_id": 74909,
+      "region_start": 16145519,
+      "region_start_hex": "0xf65c6f",
+      "region_end": 16145933,
+      "region_end_hex": "0xf65e0d",
+      "region_size": 414,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -37764,6 +38405,11 @@
       "center_address_hex": "0x82862c",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -38317,6 +38963,11 @@
       "center_address_hex": "0x4b0f03",
       "segment_index": 0,
       "region_id": 25972,
+      "region_start": 4919006,
+      "region_start_hex": "0x4b0ede",
+      "region_end": 4919279,
+      "region_end_hex": "0x4b0fef",
+      "region_size": 273,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -38615,6 +39266,11 @@
       "center_address_hex": "0x4b5da3",
       "segment_index": 0,
       "region_id": 26076,
+      "region_start": 4939134,
+      "region_start_hex": "0x4b5d7e",
+      "region_end": 4939407,
+      "region_end_hex": "0x4b5e8f",
+      "region_size": 273,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -38913,6 +39569,11 @@
       "center_address_hex": "0xe8135a",
       "segment_index": 0,
       "region_id": 69555,
+      "region_start": 15209206,
+      "region_start_hex": "0xe812f6",
+      "region_end": 15209614,
+      "region_end_hex": "0xe8148e",
+      "region_size": 408,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -39103,6 +39764,11 @@
       "center_address_hex": "0x642951",
       "segment_index": 0,
       "region_id": 34395,
+      "region_start": 6564143,
+      "region_start_hex": "0x64292f",
+      "region_end": 6564397,
+      "region_end_hex": "0x642a2d",
+      "region_size": 254,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -39558,6 +40224,11 @@
       "center_address_hex": "0x6bf1a1",
       "segment_index": 0,
       "region_id": 36116,
+      "region_start": 7073694,
+      "region_start_hex": "0x6bef9e",
+      "region_end": 7074583,
+      "region_end_hex": "0x6bf317",
+      "region_size": 889,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -39718,6 +40389,11 @@
       "center_address_hex": "0x71a403",
       "segment_index": 0,
       "region_id": 37612,
+      "region_start": 7446781,
+      "region_start_hex": "0x71a0fd",
+      "region_end": 7450844,
+      "region_end_hex": "0x71b0dc",
+      "region_size": 4063,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -39878,6 +40554,11 @@
       "center_address_hex": "0xe80809",
       "segment_index": 0,
       "region_id": 69534,
+      "region_start": 15206336,
+      "region_start_hex": "0xe807c0",
+      "region_end": 15206701,
+      "region_end_hex": "0xe8092d",
+      "region_size": 365,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -40077,6 +40758,11 @@
       "center_address_hex": "0xf51caf",
       "segment_index": 0,
       "region_id": 74494,
+      "region_start": 16063506,
+      "region_start_hex": "0xf51c12",
+      "region_end": 16063738,
+      "region_end_hex": "0xf51cfa",
+      "region_size": 232,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -40267,6 +40953,11 @@
       "center_address_hex": "0x4b4bc5",
       "segment_index": 0,
       "region_id": 26047,
+      "region_start": 4934467,
+      "region_start_hex": "0x4b4b43",
+      "region_end": 4934707,
+      "region_end_hex": "0x4b4c33",
+      "region_size": 240,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -40526,6 +41217,11 @@
       "center_address_hex": "0x4b4ccc",
       "segment_index": 0,
       "region_id": 26048,
+      "region_start": 4934707,
+      "region_start_hex": "0x4b4c33",
+      "region_end": 4934947,
+      "region_end_hex": "0x4b4d23",
+      "region_size": 240,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -40785,6 +41481,11 @@
       "center_address_hex": "0x8da2ca",
       "segment_index": 0,
       "region_id": 47319,
+      "region_start": 9282165,
+      "region_start_hex": "0x8da275",
+      "region_end": 9282311,
+      "region_end_hex": "0x8da307",
+      "region_size": 146,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -40960,6 +41661,11 @@
       "center_address_hex": "0x8da35a",
       "segment_index": 0,
       "region_id": 47320,
+      "region_start": 9282311,
+      "region_start_hex": "0x8da307",
+      "region_end": 9282455,
+      "region_end_hex": "0x8da397",
+      "region_size": 144,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -41135,6 +41841,11 @@
       "center_address_hex": "0x4b9faa",
       "segment_index": 0,
       "region_id": 26142,
+      "region_start": 4955994,
+      "region_start_hex": "0x4b9f5a",
+      "region_end": 4956262,
+      "region_end_hex": "0x4ba066",
+      "region_size": 268,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -41419,6 +42130,11 @@
       "center_address_hex": "0xe80915",
       "segment_index": 0,
       "region_id": 69534,
+      "region_start": 15206336,
+      "region_start_hex": "0xe807c0",
+      "region_end": 15206701,
+      "region_end_hex": "0xe8092d",
+      "region_size": 365,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -41618,6 +42334,11 @@
       "center_address_hex": "0x99b675",
       "segment_index": 0,
       "region_id": 51933,
+      "region_start": 10073198,
+      "region_start_hex": "0x99b46e",
+      "region_end": 10073986,
+      "region_end_hex": "0x99b782",
+      "region_size": 788,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -41777,6 +42498,11 @@
       "center_address_hex": "0x843336",
       "segment_index": 0,
       "region_id": 44903,
+      "region_start": 8663755,
+      "region_start_hex": "0x8432cb",
+      "region_end": 8664144,
+      "region_end_hex": "0x843450",
+      "region_size": 389,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -41937,6 +42663,11 @@
       "center_address_hex": "0xb18ecd",
       "segment_index": 0,
       "region_id": 57539,
+      "region_start": 11636022,
+      "region_start_hex": "0xb18d36",
+      "region_end": 11636875,
+      "region_end_hex": "0xb1908b",
+      "region_size": 853,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -42166,6 +42897,11 @@
       "center_address_hex": "0x4b6b98",
       "segment_index": 0,
       "region_id": 26091,
+      "region_start": 4942565,
+      "region_start_hex": "0x4b6ae5",
+      "region_end": 4942855,
+      "region_end_hex": "0x4b6c07",
+      "region_size": 290,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -42353,6 +43089,11 @@
       "center_address_hex": "0x14fd06",
       "segment_index": 0,
       "region_id": 9007,
+      "region_start": 1374399,
+      "region_start_hex": "0x14f8bf",
+      "region_end": 1375874,
+      "region_end_hex": "0x14fe82",
+      "region_size": 1475,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -42805,6 +43546,11 @@
       "center_address_hex": "0x672c26",
       "segment_index": 0,
       "region_id": 35095,
+      "region_start": 6761280,
+      "region_start_hex": "0x672b40",
+      "region_end": 6761706,
+      "region_end_hex": "0x672cea",
+      "region_size": 426,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -43038,6 +43784,11 @@
       "center_address_hex": "0xe650a5",
       "segment_index": 0,
       "region_id": 68782,
+      "region_start": 15093418,
+      "region_start_hex": "0xe64eaa",
+      "region_end": 15095071,
+      "region_end_hex": "0xe6551f",
+      "region_size": 1653,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -43383,6 +44134,11 @@
       "center_address_hex": "0xa7f83",
       "segment_index": 0,
       "region_id": 3900,
+      "region_start": 687342,
+      "region_start_hex": "0xa7cee",
+      "region_end": 688046,
+      "region_end_hex": "0xa7fae",
+      "region_size": 704,
       "base_reg": "rdx",
       "center_accesses": [
         "write"
@@ -43558,6 +44314,11 @@
       "center_address_hex": "0x11c8d1c",
       "segment_index": 0,
       "region_id": 91267,
+      "region_start": 18648207,
+      "region_start_hex": "0x11c8c8f",
+      "region_end": 18648393,
+      "region_end_hex": "0x11c8d49",
+      "region_size": 186,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -43733,6 +44494,11 @@
       "center_address_hex": "0xa8068",
       "segment_index": 0,
       "region_id": 3902,
+      "region_start": 688168,
+      "region_start_hex": "0xa8028",
+      "region_end": 688305,
+      "region_end_hex": "0xa80b1",
+      "region_size": 137,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -43893,6 +44659,11 @@
       "center_address_hex": "0xa82d0",
       "segment_index": 0,
       "region_id": 3906,
+      "region_start": 688666,
+      "region_start_hex": "0xa821a",
+      "region_end": 688875,
+      "region_end_hex": "0xa82eb",
+      "region_size": 209,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -44053,6 +44824,11 @@
       "center_address_hex": "0x89dd1a",
       "segment_index": 0,
       "region_id": 46312,
+      "region_start": 9034417,
+      "region_start_hex": "0x89dab1",
+      "region_end": 9035823,
+      "region_end_hex": "0x89e02f",
+      "region_size": 1406,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -44213,6 +44989,11 @@
       "center_address_hex": "0x934093",
       "segment_index": 0,
       "region_id": 49470,
+      "region_start": 9650230,
+      "region_start_hex": "0x934036",
+      "region_end": 9650467,
+      "region_end_hex": "0x934123",
+      "region_size": 237,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -44415,6 +45196,11 @@
       "center_address_hex": "0x11ca9bb",
       "segment_index": 0,
       "region_id": 91393,
+      "region_start": 18655532,
+      "region_start_hex": "0x11ca92c",
+      "region_end": 18655751,
+      "region_end_hex": "0x11caa07",
+      "region_size": 219,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -44575,6 +45361,11 @@
       "center_address_hex": "0x817594",
       "segment_index": 0,
       "region_id": 44017,
+      "region_start": 8483864,
+      "region_start_hex": "0x817418",
+      "region_end": 8484536,
+      "region_end_hex": "0x8176b8",
+      "region_size": 672,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -44765,6 +45556,11 @@
       "center_address_hex": "0xeb87e0",
       "segment_index": 0,
       "region_id": 70766,
+      "region_start": 15435511,
+      "region_start_hex": "0xeb86f7",
+      "region_end": 15437531,
+      "region_end_hex": "0xeb8edb",
+      "region_size": 2020,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -45164,6 +45960,11 @@
       "center_address_hex": "0xa7194d",
       "segment_index": 0,
       "region_id": 55016,
+      "region_start": 10950483,
+      "region_start_hex": "0xa71753",
+      "region_end": 10951226,
+      "region_end_hex": "0xa71a3a",
+      "region_size": 743,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -45480,6 +46281,11 @@
       "center_address_hex": "0x82f5d6",
       "segment_index": 0,
       "region_id": 44523,
+      "region_start": 8582225,
+      "region_start_hex": "0x82f451",
+      "region_end": 8582667,
+      "region_end_hex": "0x82f60b",
+      "region_size": 442,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -45751,6 +46557,11 @@
       "center_address_hex": "0x4ad824",
       "segment_index": 0,
       "region_id": 25888,
+      "region_start": 4904883,
+      "region_start_hex": "0x4ad7b3",
+      "region_end": 4906125,
+      "region_end_hex": "0x4adc8d",
+      "region_size": 1242,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -45926,6 +46737,11 @@
       "center_address_hex": "0xf3b651",
       "segment_index": 0,
       "region_id": 73938,
+      "region_start": 15971702,
+      "region_start_hex": "0xf3b576",
+      "region_end": 15972511,
+      "region_end_hex": "0xf3b89f",
+      "region_size": 809,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -46101,6 +46917,11 @@
       "center_address_hex": "0x807837",
       "segment_index": 0,
       "region_id": 43757,
+      "region_start": 8419137,
+      "region_start_hex": "0x807741",
+      "region_end": 8419764,
+      "region_end_hex": "0x8079b4",
+      "region_size": 627,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -46291,6 +47112,11 @@
       "center_address_hex": "0x109e1a7",
       "segment_index": 0,
       "region_id": 82983,
+      "region_start": 17424656,
+      "region_start_hex": "0x109e110",
+      "region_end": 17425129,
+      "region_end_hex": "0x109e2e9",
+      "region_size": 473,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -46717,6 +47543,11 @@
       "center_address_hex": "0xe7f802",
       "segment_index": 0,
       "region_id": 69466,
+      "region_start": 15202125,
+      "region_start_hex": "0xe7f74d",
+      "region_end": 15202488,
+      "region_end_hex": "0xe7f8b8",
+      "region_size": 363,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -46892,6 +47723,11 @@
       "center_address_hex": "0x1cb161",
       "segment_index": 0,
       "region_id": 11843,
+      "region_start": 1880260,
+      "region_start_hex": "0x1cb0c4",
+      "region_end": 1880658,
+      "region_end_hex": "0x1cb252",
+      "region_size": 398,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -47037,6 +47873,11 @@
       "center_address_hex": "0x8f231a",
       "segment_index": 0,
       "region_id": 47833,
+      "region_start": 9380459,
+      "region_start_hex": "0x8f226b",
+      "region_end": 9381372,
+      "region_end_hex": "0x8f25fc",
+      "region_size": 913,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -47182,6 +48023,11 @@
       "center_address_hex": "0xe652e1",
       "segment_index": 0,
       "region_id": 68782,
+      "region_start": 15093418,
+      "region_start_hex": "0xe64eaa",
+      "region_end": 15095071,
+      "region_end_hex": "0xe6551f",
+      "region_size": 1653,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -47485,6 +48331,11 @@
       "center_address_hex": "0xa717f0",
       "segment_index": 0,
       "region_id": 55016,
+      "region_start": 10950483,
+      "region_start_hex": "0xa71753",
+      "region_end": 10951226,
+      "region_end_hex": "0xa71a3a",
+      "region_size": 743,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -47800,6 +48651,11 @@
       "center_address_hex": "0x7cccc5",
       "segment_index": 0,
       "region_id": 42329,
+      "region_start": 8178854,
+      "region_start_hex": "0x7ccca6",
+      "region_end": 8178938,
+      "region_end_hex": "0x7cccfa",
+      "region_size": 84,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -48102,6 +48958,11 @@
       "center_address_hex": "0x507d19",
       "segment_index": 0,
       "region_id": 27637,
+      "region_start": 5273802,
+      "region_start_hex": "0x5078ca",
+      "region_end": 5278868,
+      "region_end_hex": "0x508c94",
+      "region_size": 5066,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -48260,6 +49121,11 @@
       "center_address_hex": "0xf5956c",
       "segment_index": 0,
       "region_id": 74775,
+      "region_start": 16094060,
+      "region_start_hex": "0xf5936c",
+      "region_end": 16096383,
+      "region_end_hex": "0xf59c7f",
+      "region_size": 2323,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -48390,6 +49256,11 @@
       "center_address_hex": "0xf66b69",
       "segment_index": 0,
       "region_id": 74946,
+      "region_start": 16148705,
+      "region_start_hex": "0xf668e1",
+      "region_end": 16150216,
+      "region_end_hex": "0xf66ec8",
+      "region_size": 1511,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -48678,6 +49549,11 @@
       "center_address_hex": "0xc42199",
       "segment_index": 0,
       "region_id": 63166,
+      "region_start": 12852584,
+      "region_start_hex": "0xc41d68",
+      "region_end": 12854087,
+      "region_end_hex": "0xc42347",
+      "region_size": 1503,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -48951,6 +49827,11 @@
       "center_address_hex": "0xf80403",
       "segment_index": 0,
       "region_id": 75612,
+      "region_start": 16253755,
+      "region_start_hex": "0xf8033b",
+      "region_end": 16253998,
+      "region_end_hex": "0xf8042e",
+      "region_size": 243,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -49141,6 +50022,11 @@
       "center_address_hex": "0xf887f5",
       "segment_index": 0,
       "region_id": 76467,
+      "region_start": 16287438,
+      "region_start_hex": "0xf886ce",
+      "region_end": 16288414,
+      "region_end_hex": "0xf88a9e",
+      "region_size": 976,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -49497,6 +50383,11 @@
       "center_address_hex": "0x7bf9db",
       "segment_index": 0,
       "region_id": 41888,
+      "region_start": 8124637,
+      "region_start_hex": "0x7bf8dd",
+      "region_end": 8125157,
+      "region_end_hex": "0x7bfae5",
+      "region_size": 520,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -49687,6 +50578,11 @@
       "center_address_hex": "0xa78e3",
       "segment_index": 0,
       "region_id": 3882,
+      "region_start": 685992,
+      "region_start_hex": "0xa77a8",
+      "region_end": 686344,
+      "region_end_hex": "0xa7908",
+      "region_size": 352,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -49862,6 +50758,11 @@
       "center_address_hex": "0x876113",
       "segment_index": 0,
       "region_id": 45746,
+      "region_start": 8872050,
+      "region_start_hex": "0x876072",
+      "region_end": 8872235,
+      "region_end_hex": "0x87612b",
+      "region_size": 185,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -50037,6 +50938,11 @@
       "center_address_hex": "0x8761d4",
       "segment_index": 0,
       "region_id": 45747,
+      "region_start": 8872235,
+      "region_start_hex": "0x87612b",
+      "region_end": 8872437,
+      "region_end_hex": "0x8761f5",
+      "region_size": 202,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -50212,6 +51118,11 @@
       "center_address_hex": "0x3a335f",
       "segment_index": 0,
       "region_id": 21587,
+      "region_start": 3814157,
+      "region_start_hex": "0x3a330d",
+      "region_end": 3814502,
+      "region_end_hex": "0x3a3466",
+      "region_size": 345,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -50382,6 +51293,11 @@
       "center_address_hex": "0x793875",
       "segment_index": 0,
       "region_id": 40306,
+      "region_start": 7944136,
+      "region_start_hex": "0x7937c8",
+      "region_end": 7944538,
+      "region_end_hex": "0x79395a",
+      "region_size": 402,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -50602,6 +51518,11 @@
       "center_address_hex": "0xf7f6af",
       "segment_index": 0,
       "region_id": 75533,
+      "region_start": 16250259,
+      "region_start_hex": "0xf7f593",
+      "region_end": 16250610,
+      "region_end_hex": "0xf7f6f2",
+      "region_size": 351,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -50822,6 +51743,11 @@
       "center_address_hex": "0xa80dc",
       "segment_index": 0,
       "region_id": 3903,
+      "region_start": 688305,
+      "region_start_hex": "0xa80b1",
+      "region_end": 688421,
+      "region_end_hex": "0xa8125",
+      "region_size": 116,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -50967,6 +51893,11 @@
       "center_address_hex": "0x9bc70d",
       "segment_index": 0,
       "region_id": 52605,
+      "region_start": 10208765,
+      "region_start_hex": "0x9bc5fd",
+      "region_end": 10209351,
+      "region_end_hex": "0x9bc847",
+      "region_size": 586,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -51166,6 +52097,11 @@
       "center_address_hex": "0xc8c883",
       "segment_index": 0,
       "region_id": 64381,
+      "region_start": 13158463,
+      "region_start_hex": "0xc8c83f",
+      "region_end": 13158985,
+      "region_end_hex": "0xc8ca49",
+      "region_size": 522,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -51577,6 +52513,11 @@
       "center_address_hex": "0x85b45d",
       "segment_index": 0,
       "region_id": 45388,
+      "region_start": 8761105,
+      "region_start_hex": "0x85af11",
+      "region_end": 8763556,
+      "region_end_hex": "0x85b8a4",
+      "region_size": 2451,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -51822,6 +52763,11 @@
       "center_address_hex": "0x3a3921",
       "segment_index": 0,
       "region_id": 21600,
+      "region_start": 3815647,
+      "region_start_hex": "0x3a38df",
+      "region_end": 3815780,
+      "region_end_hex": "0x3a3964",
+      "region_size": 133,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -51982,6 +52928,11 @@
       "center_address_hex": "0x97ae0a",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -52594,6 +53545,11 @@
       "center_address_hex": "0x97af88",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -53248,6 +54204,11 @@
       "center_address_hex": "0x97b331",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -53902,6 +54863,11 @@
       "center_address_hex": "0x97b415",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -54724,6 +55690,11 @@
       "center_address_hex": "0x97b50c",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -55504,6 +56475,11 @@
       "center_address_hex": "0x97b5d9",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -56284,6 +57260,11 @@
       "center_address_hex": "0x97b756",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -57050,6 +58031,11 @@
       "center_address_hex": "0x97b875",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -57802,6 +58788,11 @@
       "center_address_hex": "0x97b99f",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -58512,6 +59503,11 @@
       "center_address_hex": "0x97c53a",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -59362,6 +60358,11 @@
       "center_address_hex": "0x97c610",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -60114,6 +61115,11 @@
       "center_address_hex": "0x97c72f",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -60866,6 +61872,11 @@
       "center_address_hex": "0x97c859",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -61576,6 +62587,11 @@
       "center_address_hex": "0xf87c4f",
       "segment_index": 0,
       "region_id": 76431,
+      "region_start": 16284527,
+      "region_start_hex": "0xf87b6f",
+      "region_end": 16285088,
+      "region_end_hex": "0xf87da0",
+      "region_size": 561,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -61933,6 +62949,11 @@
       "center_address_hex": "0xf87d1a",
       "segment_index": 0,
       "region_id": 76431,
+      "region_start": 16284527,
+      "region_start_hex": "0xf87b6f",
+      "region_end": 16285088,
+      "region_end_hex": "0xf87da0",
+      "region_size": 561,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -62290,6 +63311,11 @@
       "center_address_hex": "0xf6a2dd",
       "segment_index": 0,
       "region_id": 74984,
+      "region_start": 16163225,
+      "region_start_hex": "0xf6a199",
+      "region_end": 16163590,
+      "region_end_hex": "0xf6a306",
+      "region_size": 365,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -62548,6 +63574,11 @@
       "center_address_hex": "0xf29cb8",
       "segment_index": 0,
       "region_id": 73467,
+      "region_start": 15899539,
+      "region_start_hex": "0xf29b93",
+      "region_end": 15900717,
+      "region_end_hex": "0xf2a02d",
+      "region_size": 1178,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -62789,6 +63820,11 @@
       "center_address_hex": "0xf1dbeb",
       "segment_index": 0,
       "region_id": 73178,
+      "region_start": 15850328,
+      "region_start_hex": "0xf1db58",
+      "region_end": 15850661,
+      "region_end_hex": "0xf1dca5",
+      "region_size": 333,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -62964,6 +64000,11 @@
       "center_address_hex": "0xf1de0c",
       "segment_index": 0,
       "region_id": 73179,
+      "region_start": 15850661,
+      "region_start_hex": "0xf1dca5",
+      "region_end": 15851112,
+      "region_end_hex": "0xf1de68",
+      "region_size": 451,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -63139,6 +64180,11 @@
       "center_address_hex": "0x8da2cf",
       "segment_index": 0,
       "region_id": 47319,
+      "region_start": 9282165,
+      "region_start_hex": "0x8da275",
+      "region_end": 9282311,
+      "region_end_hex": "0x8da307",
+      "region_size": 146,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -63299,6 +64345,11 @@
       "center_address_hex": "0x8da35f",
       "segment_index": 0,
       "region_id": 47320,
+      "region_start": 9282311,
+      "region_start_hex": "0x8da307",
+      "region_end": 9282455,
+      "region_end_hex": "0x8da397",
+      "region_size": 144,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -63459,6 +64510,11 @@
       "center_address_hex": "0xb06acf",
       "segment_index": 0,
       "region_id": 57222,
+      "region_start": 11561211,
+      "region_start_hex": "0xb068fb",
+      "region_end": 11562049,
+      "region_end_hex": "0xb06c41",
+      "region_size": 838,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -63647,6 +64703,11 @@
       "center_address_hex": "0x4c67fd",
       "segment_index": 0,
       "region_id": 26361,
+      "region_start": 5007138,
+      "region_start_hex": "0x4c6722",
+      "region_end": 5007498,
+      "region_end_hex": "0x4c688a",
+      "region_size": 360,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -63834,6 +64895,11 @@
       "center_address_hex": "0xc6e146",
       "segment_index": 0,
       "region_id": 63978,
+      "region_start": 13033593,
+      "region_start_hex": "0xc6e079",
+      "region_end": 13034641,
+      "region_end_hex": "0xc6e491",
+      "region_size": 1048,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -64006,6 +65072,11 @@
       "center_address_hex": "0x91f4f3",
       "segment_index": 0,
       "region_id": 48657,
+      "region_start": 9563791,
+      "region_start_hex": "0x91ee8f",
+      "region_end": 9568537,
+      "region_end_hex": "0x920119",
+      "region_size": 4746,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -64202,6 +65273,11 @@
       "center_address_hex": "0xa6812d",
       "segment_index": 0,
       "region_id": 54873,
+      "region_start": 10911239,
+      "region_start_hex": "0xa67e07",
+      "region_end": 10912398,
+      "region_end_hex": "0xa6828e",
+      "region_size": 1159,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -64377,6 +65453,11 @@
       "center_address_hex": "0xf3c0d8",
       "segment_index": 0,
       "region_id": 73947,
+      "region_start": 15974526,
+      "region_start_hex": "0xf3c07e",
+      "region_end": 15975057,
+      "region_end_hex": "0xf3c291",
+      "region_size": 531,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -64552,6 +65633,11 @@
       "center_address_hex": "0x12715d8",
       "segment_index": 0,
       "region_id": 93435,
+      "region_start": 19337545,
+      "region_start_hex": "0x1271149",
+      "region_end": 19338996,
+      "region_end_hex": "0x12716f4",
+      "region_size": 1451,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -64850,6 +65936,11 @@
       "center_address_hex": "0x9d43db",
       "segment_index": 0,
       "region_id": 52912,
+      "region_start": 10306263,
+      "region_start_hex": "0x9d42d7",
+      "region_end": 10307795,
+      "region_end_hex": "0x9d48d3",
+      "region_size": 1532,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -65082,6 +66173,11 @@
       "center_address_hex": "0x6eed9c",
       "segment_index": 0,
       "region_id": 36927,
+      "region_start": 7269687,
+      "region_start_hex": "0x6eed37",
+      "region_end": 7269820,
+      "region_end_hex": "0x6eedbc",
+      "region_size": 133,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -65242,6 +66338,11 @@
       "center_address_hex": "0x6f34f4",
       "segment_index": 0,
       "region_id": 37038,
+      "region_start": 7287893,
+      "region_start_hex": "0x6f3455",
+      "region_end": 7288084,
+      "region_end_hex": "0x6f3514",
+      "region_size": 191,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -65402,6 +66503,11 @@
       "center_address_hex": "0xf5ba3f",
       "segment_index": 0,
       "region_id": 74783,
+      "region_start": 16103816,
+      "region_start_hex": "0xf5b988",
+      "region_end": 16105621,
+      "region_end_hex": "0xf5c095",
+      "region_size": 1805,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -65576,6 +66682,11 @@
       "center_address_hex": "0x11ca90c",
       "segment_index": 0,
       "region_id": 91392,
+      "region_start": 18655395,
+      "region_start_hex": "0x11ca8a3",
+      "region_end": 18655532,
+      "region_end_hex": "0x11ca92c",
+      "region_size": 137,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -65736,6 +66847,11 @@
       "center_address_hex": "0xe961b3",
       "segment_index": 0,
       "region_id": 69772,
+      "region_start": 15294772,
+      "region_start_hex": "0xe96134",
+      "region_end": 15294987,
+      "region_end_hex": "0xe9620b",
+      "region_size": 215,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -65895,6 +67011,11 @@
       "center_address_hex": "0xc6fb2b",
       "segment_index": 0,
       "region_id": 64004,
+      "region_start": 13039480,
+      "region_start_hex": "0xc6f778",
+      "region_end": 13041123,
+      "region_end_hex": "0xc6fde3",
+      "region_size": 1643,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -66053,6 +67174,11 @@
       "center_address_hex": "0xfeb547",
       "segment_index": 0,
       "region_id": 78988,
+      "region_start": 16676705,
+      "region_start_hex": "0xfe7761",
+      "region_end": 16696737,
+      "region_end_hex": "0xfec5a1",
+      "region_size": 20032,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -66210,6 +67336,11 @@
       "center_address_hex": "0x4f4c7c",
       "segment_index": 0,
       "region_id": 27341,
+      "region_start": 5196847,
+      "region_start_hex": "0x4f4c2f",
+      "region_end": 5197037,
+      "region_end_hex": "0x4f4ced",
+      "region_size": 190,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -66415,6 +67546,11 @@
       "center_address_hex": "0x4f4c7f",
       "segment_index": 0,
       "region_id": 27341,
+      "region_start": 5196847,
+      "region_start_hex": "0x4f4c2f",
+      "region_end": 5197037,
+      "region_end_hex": "0x4f4ced",
+      "region_size": 190,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -66620,6 +67756,11 @@
       "center_address_hex": "0x82825f",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -67203,6 +68344,11 @@
       "center_address_hex": "0x828387",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -68066,6 +69212,11 @@
       "center_address_hex": "0x82846f",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -68971,6 +70122,11 @@
       "center_address_hex": "0x82858b",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -69848,6 +71004,11 @@
       "center_address_hex": "0x8286a7",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -70781,6 +71942,11 @@
       "center_address_hex": "0x828792",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -71728,6 +72894,11 @@
       "center_address_hex": "0x82889a",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -72689,6 +73860,11 @@
       "center_address_hex": "0x8289f3",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -73650,6 +74826,11 @@
       "center_address_hex": "0x828abb",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -74527,6 +75708,11 @@
       "center_address_hex": "0x828ba6",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -75488,6 +76674,11 @@
       "center_address_hex": "0x828cce",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -76421,6 +77612,11 @@
       "center_address_hex": "0x828d96",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -77368,6 +78564,11 @@
       "center_address_hex": "0x828e7e",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -78273,6 +79474,11 @@
       "center_address_hex": "0x828f5e",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -79192,6 +80398,11 @@
       "center_address_hex": "0x82905e",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -80083,6 +81294,11 @@
       "center_address_hex": "0x829143",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -80288,6 +81504,11 @@
       "center_address_hex": "0x829146",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -80955,6 +82176,11 @@
       "center_address_hex": "0x97c078",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -81888,6 +83114,11 @@
       "center_address_hex": "0x97c16a",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -82751,6 +83982,11 @@
       "center_address_hex": "0x97c281",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -83628,6 +84864,11 @@
       "center_address_hex": "0xa01eed",
       "segment_index": 0,
       "region_id": 53496,
+      "region_start": 10492998,
+      "region_start_hex": "0xa01c46",
+      "region_end": 10503406,
+      "region_end_hex": "0xa044ee",
+      "region_size": 10408,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -84127,6 +85368,11 @@
       "center_address_hex": "0xa02001",
       "segment_index": 0,
       "region_id": 53496,
+      "region_start": 10492998,
+      "region_start_hex": "0xa01c46",
+      "region_end": 10503406,
+      "region_end_hex": "0xa044ee",
+      "region_size": 10408,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -84878,6 +86124,11 @@
       "center_address_hex": "0xa73921",
       "segment_index": 0,
       "region_id": 55041,
+      "region_start": 10958966,
+      "region_start_hex": "0xa73876",
+      "region_end": 10960961,
+      "region_end_hex": "0xa74041",
+      "region_size": 1995,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -85053,6 +86304,11 @@
       "center_address_hex": "0xaddae5",
       "segment_index": 0,
       "region_id": 56389,
+      "region_start": 11393576,
+      "region_start_hex": "0xadda28",
+      "region_end": 11396349,
+      "region_end_hex": "0xade4fd",
+      "region_size": 2773,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -85228,6 +86484,11 @@
       "center_address_hex": "0xa797a",
       "segment_index": 0,
       "region_id": 3885,
+      "region_start": 686376,
+      "region_start_hex": "0xa7928",
+      "region_end": 686812,
+      "region_end_hex": "0xa7adc",
+      "region_size": 436,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -85373,6 +86634,11 @@
       "center_address_hex": "0xa9cdd",
       "segment_index": 0,
       "region_id": 3997,
+      "region_start": 695453,
+      "region_start_hex": "0xa9c9d",
+      "region_end": 697509,
+      "region_end_hex": "0xaa4a5",
+      "region_size": 2056,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -85518,6 +86784,11 @@
       "center_address_hex": "0x2c6a4f",
       "segment_index": 0,
       "region_id": 17743,
+      "region_start": 2910483,
+      "region_start_hex": "0x2c6913",
+      "region_end": 2910916,
+      "region_end_hex": "0x2c6ac4",
+      "region_size": 433,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -85691,6 +86962,11 @@
       "center_address_hex": "0xede64a",
       "segment_index": 0,
       "region_id": 71762,
+      "region_start": 15589391,
+      "region_start_hex": "0xede00f",
+      "region_end": 15592143,
+      "region_end_hex": "0xedeacf",
+      "region_size": 2752,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -85836,6 +87112,11 @@
       "center_address_hex": "0xf2bb24",
       "segment_index": 0,
       "region_id": 73548,
+      "region_start": 15907495,
+      "region_start_hex": "0xf2baa7",
+      "region_end": 15907733,
+      "region_end_hex": "0xf2bb95",
+      "region_size": 238,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -86009,6 +87290,11 @@
       "center_address_hex": "0xf65321",
       "segment_index": 0,
       "region_id": 74873,
+      "region_start": 16142420,
+      "region_start_hex": "0xf65054",
+      "region_end": 16144128,
+      "region_end_hex": "0xf65700",
+      "region_size": 1708,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -86154,6 +87440,11 @@
       "center_address_hex": "0x3a3926",
       "segment_index": 0,
       "region_id": 21600,
+      "region_start": 3815647,
+      "region_start_hex": "0x3a38df",
+      "region_end": 3815780,
+      "region_end_hex": "0x3a3964",
+      "region_size": 133,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -86344,6 +87635,11 @@
       "center_address_hex": "0x1214079",
       "segment_index": 0,
       "region_id": 91951,
+      "region_start": 18956004,
+      "region_start_hex": "0x1213ee4",
+      "region_end": 18956591,
+      "region_end_hex": "0x121412f",
+      "region_size": 587,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -86534,6 +87830,11 @@
       "center_address_hex": "0x85b2cd",
       "segment_index": 0,
       "region_id": 45388,
+      "region_start": 8761105,
+      "region_start_hex": "0x85af11",
+      "region_end": 8763556,
+      "region_end_hex": "0x85b8a4",
+      "region_size": 2451,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -86779,6 +88080,11 @@
       "center_address_hex": "0xf62a82",
       "segment_index": 0,
       "region_id": 74815,
+      "region_start": 16131862,
+      "region_start_hex": "0xf62716",
+      "region_end": 16133478,
+      "region_end_hex": "0xf62d66",
+      "region_size": 1616,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -86923,6 +88229,11 @@
       "center_address_hex": "0x44dfb5",
       "segment_index": 0,
       "region_id": 24472,
+      "region_start": 4509599,
+      "region_start_hex": "0x44cf9f",
+      "region_end": 4514410,
+      "region_end_hex": "0x44e26a",
+      "region_size": 4811,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -87080,6 +88391,11 @@
       "center_address_hex": "0xf29871",
       "segment_index": 0,
       "region_id": 73465,
+      "region_start": 15898224,
+      "region_start_hex": "0xf29670",
+      "region_end": 15898827,
+      "region_end_hex": "0xf298cb",
+      "region_size": 603,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -87293,6 +88609,11 @@
       "center_address_hex": "0xf299cb",
       "segment_index": 0,
       "region_id": 73466,
+      "region_start": 15898827,
+      "region_start_hex": "0xf298cb",
+      "region_end": 15899539,
+      "region_end_hex": "0xf29b93",
+      "region_size": 712,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -87506,6 +88827,11 @@
       "center_address_hex": "0x10943e3",
       "segment_index": 0,
       "region_id": 82765,
+      "region_start": 17383933,
+      "region_start_hex": "0x10941fd",
+      "region_end": 17384597,
+      "region_end_hex": "0x1094495",
+      "region_size": 664,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -87677,6 +89003,11 @@
       "center_address_hex": "0x12218d3",
       "segment_index": 0,
       "region_id": 92171,
+      "region_start": 19011641,
+      "region_start_hex": "0x1221839",
+      "region_end": 19011996,
+      "region_end_hex": "0x122199c",
+      "region_size": 355,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -87837,6 +89168,11 @@
       "center_address_hex": "0x13a748",
       "segment_index": 0,
       "region_id": 8558,
+      "region_start": 1287576,
+      "region_start_hex": "0x13a598",
+      "region_end": 1288217,
+      "region_end_hex": "0x13a819",
+      "region_size": 641,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -88023,6 +89359,11 @@
       "center_address_hex": "0x62c969",
       "segment_index": 0,
       "region_id": 34011,
+      "region_start": 6474015,
+      "region_start_hex": "0x62c91f",
+      "region_end": 6474436,
+      "region_end_hex": "0x62cac4",
+      "region_size": 421,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -88166,6 +89507,11 @@
       "center_address_hex": "0x9034e6",
       "segment_index": 0,
       "region_id": 48086,
+      "region_start": 9450652,
+      "region_start_hex": "0x90349c",
+      "region_end": 9451073,
+      "region_end_hex": "0x903641",
+      "region_size": 421,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -88309,6 +89655,11 @@
       "center_address_hex": "0xeb4755",
       "segment_index": 0,
       "region_id": 70448,
+      "region_start": 15419159,
+      "region_start_hex": "0xeb4717",
+      "region_end": 15419562,
+      "region_end_hex": "0xeb48aa",
+      "region_size": 403,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -88514,6 +89865,11 @@
       "center_address_hex": "0xeaed2f",
       "segment_index": 0,
       "region_id": 70389,
+      "region_start": 15396008,
+      "region_start_hex": "0xeaeca8",
+      "region_end": 15396204,
+      "region_end_hex": "0xeaed6c",
+      "region_size": 196,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -88674,6 +90030,11 @@
       "center_address_hex": "0xeaee20",
       "segment_index": 0,
       "region_id": 70390,
+      "region_start": 15396204,
+      "region_start_hex": "0xeaed6c",
+      "region_end": 15396487,
+      "region_end_hex": "0xeaee87",
+      "region_size": 283,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -88834,6 +90195,11 @@
       "center_address_hex": "0x81fc03",
       "segment_index": 0,
       "region_id": 44238,
+      "region_start": 8518513,
+      "region_start_hex": "0x81fb71",
+      "region_end": 8518927,
+      "region_end_hex": "0x81fd0f",
+      "region_size": 414,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -89090,6 +90456,11 @@
       "center_address_hex": "0x932fe9",
       "segment_index": 0,
       "region_id": 49415,
+      "region_start": 9645345,
+      "region_start_hex": "0x932d21",
+      "region_end": 9646254,
+      "region_end_hex": "0x9330ae",
+      "region_size": 909,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -89486,6 +90857,11 @@
       "center_address_hex": "0x9922fc",
       "segment_index": 0,
       "region_id": 51776,
+      "region_start": 10033954,
+      "region_start_hex": "0x991b22",
+      "region_end": 10036115,
+      "region_end_hex": "0x992393",
+      "region_size": 2161,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -89676,6 +91052,11 @@
       "center_address_hex": "0xcd032a",
       "segment_index": 0,
       "region_id": 65964,
+      "region_start": 13435545,
+      "region_start_hex": "0xcd0299",
+      "region_end": 13435722,
+      "region_end_hex": "0xcd034a",
+      "region_size": 177,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -89848,6 +91229,11 @@
       "center_address_hex": "0x9267b9",
       "segment_index": 0,
       "region_id": 48848,
+      "region_start": 9594368,
+      "region_start_hex": "0x926600",
+      "region_end": 9595110,
+      "region_end_hex": "0x9268e6",
+      "region_size": 742,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -90068,6 +91454,11 @@
       "center_address_hex": "0x3a2a04",
       "segment_index": 0,
       "region_id": 21574,
+      "region_start": 3811550,
+      "region_start_hex": "0x3a28de",
+      "region_end": 3812103,
+      "region_end_hex": "0x3a2b07",
+      "region_size": 553,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -90552,6 +91943,11 @@
       "center_address_hex": "0x3a2ac9",
       "segment_index": 0,
       "region_id": 21574,
+      "region_start": 3811550,
+      "region_start_hex": "0x3a28de",
+      "region_end": 3812103,
+      "region_end_hex": "0x3a2b07",
+      "region_size": 553,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -91036,6 +92432,11 @@
       "center_address_hex": "0x3a2b98",
       "segment_index": 0,
       "region_id": 21575,
+      "region_start": 3812103,
+      "region_start_hex": "0x3a2b07",
+      "region_end": 3812496,
+      "region_end_hex": "0x3a2c90",
+      "region_size": 393,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -91520,6 +92921,11 @@
       "center_address_hex": "0x3a2c59",
       "segment_index": 0,
       "region_id": 21575,
+      "region_start": 3812103,
+      "region_start_hex": "0x3a2b07",
+      "region_end": 3812496,
+      "region_end_hex": "0x3a2c90",
+      "region_size": 393,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -92004,6 +93410,11 @@
       "center_address_hex": "0x3a2f64",
       "segment_index": 0,
       "region_id": 21577,
+      "region_start": 3812944,
+      "region_start_hex": "0x3a2e50",
+      "region_end": 3813479,
+      "region_end_hex": "0x3a3067",
+      "region_size": 535,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -92488,6 +93899,11 @@
       "center_address_hex": "0x3a3029",
       "segment_index": 0,
       "region_id": 21577,
+      "region_start": 3812944,
+      "region_start_hex": "0x3a2e50",
+      "region_end": 3813479,
+      "region_end_hex": "0x3a3067",
+      "region_size": 535,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -92972,6 +94388,11 @@
       "center_address_hex": "0x3a30f8",
       "segment_index": 0,
       "region_id": 21578,
+      "region_start": 3813479,
+      "region_start_hex": "0x3a3067",
+      "region_end": 3813874,
+      "region_end_hex": "0x3a31f2",
+      "region_size": 395,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -93456,6 +94877,11 @@
       "center_address_hex": "0x3a31bb",
       "segment_index": 0,
       "region_id": 21578,
+      "region_start": 3813479,
+      "region_start_hex": "0x3a3067",
+      "region_end": 3813874,
+      "region_end_hex": "0x3a31f2",
+      "region_size": 395,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -93940,6 +95366,11 @@
       "center_address_hex": "0x97c37c",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -94858,6 +96289,11 @@
       "center_address_hex": "0x9c3d2d",
       "segment_index": 0,
       "region_id": 52676,
+      "region_start": 10232657,
+      "region_start_hex": "0x9c2351",
+      "region_end": 10257595,
+      "region_end_hex": "0x9c84bb",
+      "region_size": 24938,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -95538,6 +96974,11 @@
       "center_address_hex": "0x9c3e0f",
       "segment_index": 0,
       "region_id": 52676,
+      "region_start": 10232657,
+      "region_start_hex": "0x9c2351",
+      "region_end": 10257595,
+      "region_end_hex": "0x9c84bb",
+      "region_size": 24938,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -96414,6 +97855,11 @@
       "center_address_hex": "0x9c3ee5",
       "segment_index": 0,
       "region_id": 52676,
+      "region_start": 10232657,
+      "region_start_hex": "0x9c2351",
+      "region_end": 10257595,
+      "region_end_hex": "0x9c84bb",
+      "region_size": 24938,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -97024,6 +98470,11 @@
       "center_address_hex": "0xa71d69",
       "segment_index": 0,
       "region_id": 55019,
+      "region_start": 10951414,
+      "region_start_hex": "0xa71af6",
+      "region_end": 10955622,
+      "region_end_hex": "0xa72b66",
+      "region_size": 4208,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -97522,6 +98973,11 @@
       "center_address_hex": "0xa71e53",
       "segment_index": 0,
       "region_id": 55019,
+      "region_start": 10951414,
+      "region_start_hex": "0xa71af6",
+      "region_end": 10955622,
+      "region_end_hex": "0xa72b66",
+      "region_size": 4208,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -98020,6 +99476,11 @@
       "center_address_hex": "0xe60168",
       "segment_index": 0,
       "region_id": 68706,
+      "region_start": 15073459,
+      "region_start_hex": "0xe600b3",
+      "region_end": 15074350,
+      "region_end_hex": "0xe6042e",
+      "region_size": 891,
       "base_reg": "r8",
       "center_accesses": [
         "read"
@@ -98224,6 +99685,11 @@
       "center_address_hex": "0xf66c7b",
       "segment_index": 0,
       "region_id": 74946,
+      "region_start": 16148705,
+      "region_start_hex": "0xf668e1",
+      "region_end": 16150216,
+      "region_end_hex": "0xf66ec8",
+      "region_size": 1511,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -98428,6 +99894,11 @@
       "center_address_hex": "0x11e55ab",
       "segment_index": 0,
       "region_id": 91720,
+      "region_start": 18763888,
+      "region_start_hex": "0x11e5070",
+      "region_end": 18765333,
+      "region_end_hex": "0x11e5615",
+      "region_size": 1445,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -98756,6 +100227,11 @@
       "center_address_hex": "0x828b3b",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -99236,6 +100712,11 @@
       "center_address_hex": "0x4f69c0",
       "segment_index": 0,
       "region_id": 27372,
+      "region_start": 5202350,
+      "region_start_hex": "0x4f61ae",
+      "region_end": 5204482,
+      "region_end_hex": "0x4f6a02",
+      "region_size": 2132,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -99393,6 +100874,11 @@
       "center_address_hex": "0x7dbb3c",
       "segment_index": 0,
       "region_id": 42804,
+      "region_start": 8239358,
+      "region_start_hex": "0x7db8fe",
+      "region_end": 8241471,
+      "region_end_hex": "0x7dc13f",
+      "region_size": 2113,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -99598,6 +101084,11 @@
       "center_address_hex": "0xa7541c",
       "segment_index": 0,
       "region_id": 55061,
+      "region_start": 10965510,
+      "region_start_hex": "0xa75206",
+      "region_end": 10968267,
+      "region_end_hex": "0xa75ccb",
+      "region_size": 2757,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -99999,6 +101490,11 @@
       "center_address_hex": "0x3a2818",
       "segment_index": 0,
       "region_id": 21573,
+      "region_start": 3810781,
+      "region_start_hex": "0x3a25dd",
+      "region_end": 3811550,
+      "region_end_hex": "0x3a28de",
+      "region_size": 769,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -100385,6 +101881,11 @@
       "center_address_hex": "0x76e928",
       "segment_index": 0,
       "region_id": 39528,
+      "region_start": 7792843,
+      "region_start_hex": "0x76e8cb",
+      "region_end": 7793061,
+      "region_end_hex": "0x76e9a5",
+      "region_size": 218,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -100575,6 +102076,11 @@
       "center_address_hex": "0x11e50e3",
       "segment_index": 0,
       "region_id": 91720,
+      "region_start": 18763888,
+      "region_start_hex": "0x11e5070",
+      "region_end": 18765333,
+      "region_end_hex": "0x11e5615",
+      "region_size": 1445,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -100875,6 +102381,11 @@
       "center_address_hex": "0x991ebf",
       "segment_index": 0,
       "region_id": 51776,
+      "region_start": 10033954,
+      "region_start_hex": "0x991b22",
+      "region_end": 10036115,
+      "region_end_hex": "0x992393",
+      "region_size": 2161,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -101216,6 +102727,11 @@
       "center_address_hex": "0xf2bb30",
       "segment_index": 0,
       "region_id": 73548,
+      "region_start": 15907495,
+      "region_start_hex": "0xf2baa7",
+      "region_end": 15907733,
+      "region_end_hex": "0xf2bb95",
+      "region_size": 238,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -101361,6 +102877,11 @@
       "center_address_hex": "0x1a92ba",
       "segment_index": 0,
       "region_id": 11014,
+      "region_start": 1739934,
+      "region_start_hex": "0x1a8c9e",
+      "region_end": 1741779,
+      "region_end_hex": "0x1a93d3",
+      "region_size": 1845,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -101491,6 +103012,11 @@
       "center_address_hex": "0x8dc6ac",
       "segment_index": 0,
       "region_id": 47356,
+      "region_start": 9290922,
+      "region_start_hex": "0x8dc4aa",
+      "region_end": 9292993,
+      "region_end_hex": "0x8dccc1",
+      "region_size": 2071,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -101619,6 +103145,11 @@
       "center_address_hex": "0x1c5c56",
       "segment_index": 0,
       "region_id": 11629,
+      "region_start": 1858145,
+      "region_start_hex": "0x1c5a61",
+      "region_end": 1859142,
+      "region_end_hex": "0x1c5e46",
+      "region_size": 997,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -101937,6 +103468,11 @@
       "center_address_hex": "0x98925d",
       "segment_index": 0,
       "region_id": 51674,
+      "region_start": 9997274,
+      "region_start_hex": "0x988bda",
+      "region_end": 10005084,
+      "region_end_hex": "0x98aa5c",
+      "region_size": 7810,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -102255,6 +103791,11 @@
       "center_address_hex": "0x8ca96a",
       "segment_index": 0,
       "region_id": 46965,
+      "region_start": 9218359,
+      "region_start_hex": "0x8ca937",
+      "region_end": 9218442,
+      "region_end_hex": "0x8ca98a",
+      "region_size": 83,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -102445,6 +103986,11 @@
       "center_address_hex": "0x3fe651",
       "segment_index": 0,
       "region_id": 23104,
+      "region_start": 4186446,
+      "region_start_hex": "0x3fe14e",
+      "region_end": 4188553,
+      "region_end_hex": "0x3fe989",
+      "region_size": 2107,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -102647,6 +104193,11 @@
       "center_address_hex": "0xb4f37e",
       "segment_index": 0,
       "region_id": 59061,
+      "region_start": 11858629,
+      "region_start_hex": "0xb4f2c5",
+      "region_end": 11859080,
+      "region_end_hex": "0xb4f488",
+      "region_size": 451,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -102835,6 +104386,11 @@
       "center_address_hex": "0xe80158",
       "segment_index": 0,
       "region_id": 69533,
+      "region_start": 15204589,
+      "region_start_hex": "0xe800ed",
+      "region_end": 15206336,
+      "region_end_hex": "0xe807c0",
+      "region_size": 1747,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -102994,6 +104550,11 @@
       "center_address_hex": "0x216de5",
       "segment_index": 0,
       "region_id": 13329,
+      "region_start": 2190479,
+      "region_start_hex": "0x216c8f",
+      "region_end": 2193564,
+      "region_end_hex": "0x21789c",
+      "region_size": 3085,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -103194,6 +104755,11 @@
       "center_address_hex": "0x828a74",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -103646,6 +105212,11 @@
       "center_address_hex": "0xabd0d8",
       "segment_index": 0,
       "region_id": 55936,
+      "region_start": 11257424,
+      "region_start_hex": "0xabc650",
+      "region_end": 11260668,
+      "region_end_hex": "0xabd2fc",
+      "region_size": 3244,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -104056,6 +105627,11 @@
       "center_address_hex": "0xa4da83",
       "segment_index": 0,
       "region_id": 54651,
+      "region_start": 10800057,
+      "region_start_hex": "0xa4cbb9",
+      "region_end": 10806600,
+      "region_end_hex": "0xa4e548",
+      "region_size": 6543,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -104429,6 +106005,11 @@
       "center_address_hex": "0x8cb373",
       "segment_index": 0,
       "region_id": 46975,
+      "region_start": 9220880,
+      "region_start_hex": "0x8cb310",
+      "region_end": 9221156,
+      "region_end_hex": "0x8cb424",
+      "region_size": 276,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -104619,6 +106200,11 @@
       "center_address_hex": "0x991c03",
       "segment_index": 0,
       "region_id": 51776,
+      "region_start": 10033954,
+      "region_start_hex": "0x991b22",
+      "region_end": 10036115,
+      "region_end_hex": "0x992393",
+      "region_size": 2161,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -104823,6 +106409,11 @@
       "center_address_hex": "0x9d3582",
       "segment_index": 0,
       "region_id": 52911,
+      "region_start": 10302694,
+      "region_start_hex": "0x9d34e6",
+      "region_end": 10306263,
+      "region_end_hex": "0x9d42d7",
+      "region_size": 3569,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -105013,6 +106604,11 @@
       "center_address_hex": "0xcc6969",
       "segment_index": 0,
       "region_id": 65520,
+      "region_start": 13396150,
+      "region_start_hex": "0xcc68b6",
+      "region_end": 13397378,
+      "region_end_hex": "0xcc6d82",
+      "region_size": 1228,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -105203,6 +106799,11 @@
       "center_address_hex": "0xcc696d",
       "segment_index": 0,
       "region_id": 65520,
+      "region_start": 13396150,
+      "region_start_hex": "0xcc68b6",
+      "region_end": 13397378,
+      "region_end_hex": "0xcc6d82",
+      "region_size": 1228,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -105407,6 +107008,11 @@
       "center_address_hex": "0x9643f4",
       "segment_index": 0,
       "region_id": 51024,
+      "region_start": 9847240,
+      "region_start_hex": "0x9641c8",
+      "region_end": 9849771,
+      "region_end_hex": "0x964bab",
+      "region_size": 2531,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -105697,6 +107303,11 @@
       "center_address_hex": "0x7ddcf1",
       "segment_index": 0,
       "region_id": 42823,
+      "region_start": 8246925,
+      "region_start_hex": "0x7dd68d",
+      "region_end": 8250188,
+      "region_end_hex": "0x7de34c",
+      "region_size": 3263,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -105886,6 +107497,11 @@
       "center_address_hex": "0xb19059",
       "segment_index": 0,
       "region_id": 57539,
+      "region_start": 11636022,
+      "region_start_hex": "0xb18d36",
+      "region_end": 11636875,
+      "region_end_hex": "0xb1908b",
+      "region_size": 853,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -106045,6 +107661,11 @@
       "center_address_hex": "0x216cfc",
       "segment_index": 0,
       "region_id": 13329,
+      "region_start": 2190479,
+      "region_start_hex": "0x216c8f",
+      "region_end": 2193564,
+      "region_end_hex": "0x21789c",
+      "region_size": 3085,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -106231,6 +107852,11 @@
       "center_address_hex": "0x828eff",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -106655,6 +108281,11 @@
       "center_address_hex": "0xcb7df4",
       "segment_index": 0,
       "region_id": 65160,
+      "region_start": 13335987,
+      "region_start_hex": "0xcb7db3",
+      "region_end": 13336402,
+      "region_end_hex": "0xcb7f52",
+      "region_size": 415,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -106839,6 +108470,11 @@
       "center_address_hex": "0x753927",
       "segment_index": 0,
       "region_id": 38640,
+      "region_start": 7681952,
+      "region_start_hex": "0x7537a0",
+      "region_end": 7682470,
+      "region_end_hex": "0x7539a6",
+      "region_size": 518,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -107184,6 +108820,11 @@
       "center_address_hex": "0x9baa7e",
       "segment_index": 0,
       "region_id": 52592,
+      "region_start": 10201217,
+      "region_start_hex": "0x9ba881",
+      "region_end": 10204851,
+      "region_end_hex": "0x9bb6b3",
+      "region_size": 3634,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -107529,6 +109170,11 @@
       "center_address_hex": "0xe601ec",
       "segment_index": 0,
       "region_id": 68706,
+      "region_start": 15073459,
+      "region_start_hex": "0xe600b3",
+      "region_end": 15074350,
+      "region_end_hex": "0xe6042e",
+      "region_size": 891,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -107790,6 +109436,11 @@
       "center_address_hex": "0x3a268d",
       "segment_index": 0,
       "region_id": 21573,
+      "region_start": 3810781,
+      "region_start_hex": "0x3a25dd",
+      "region_end": 3811550,
+      "region_end_hex": "0x3a28de",
+      "region_size": 769,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -108120,6 +109771,11 @@
       "center_address_hex": "0x7bf623",
       "segment_index": 0,
       "region_id": 41885,
+      "region_start": 8123428,
+      "region_start_hex": "0x7bf424",
+      "region_end": 8124090,
+      "region_end_hex": "0x7bf6ba",
+      "region_size": 662,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -108337,6 +109993,11 @@
       "center_address_hex": "0x11e8f66",
       "segment_index": 0,
       "region_id": 91731,
+      "region_start": 18779035,
+      "region_start_hex": "0x11e8b9b",
+      "region_end": 18780118,
+      "region_end_hex": "0x11e8fd6",
+      "region_size": 1083,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -108637,6 +110298,11 @@
       "center_address_hex": "0xf4c319",
       "segment_index": 0,
       "region_id": 74428,
+      "region_start": 16040455,
+      "region_start_hex": "0xf4c207",
+      "region_end": 16041192,
+      "region_end_hex": "0xf4c4e8",
+      "region_size": 737,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -108782,6 +110448,11 @@
       "center_address_hex": "0x13a573",
       "segment_index": 0,
       "region_id": 8557,
+      "region_start": 1287467,
+      "region_start_hex": "0x13a52b",
+      "region_end": 1287576,
+      "region_end_hex": "0x13a598",
+      "region_size": 109,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -108912,6 +110583,11 @@
       "center_address_hex": "0x11b2840",
       "segment_index": 0,
       "region_id": 90665,
+      "region_start": 18556734,
+      "region_start_hex": "0x11b273e",
+      "region_end": 18557307,
+      "region_end_hex": "0x11b297b",
+      "region_size": 573,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -109321,6 +110997,11 @@
       "center_address_hex": "0x11b2923",
       "segment_index": 0,
       "region_id": 90665,
+      "region_start": 18556734,
+      "region_start_hex": "0x11b273e",
+      "region_end": 18557307,
+      "region_end_hex": "0x11b297b",
+      "region_size": 573,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -109730,6 +111411,11 @@
       "center_address_hex": "0x19212f",
       "segment_index": 0,
       "region_id": 10745,
+      "region_start": 1646371,
+      "region_start_hex": "0x191f23",
+      "region_end": 1647036,
+      "region_end_hex": "0x1921bc",
+      "region_size": 665,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -109975,6 +111661,11 @@
       "center_address_hex": "0x7c8d8d",
       "segment_index": 0,
       "region_id": 42172,
+      "region_start": 8162462,
+      "region_start_hex": "0x7c8c9e",
+      "region_end": 8163635,
+      "region_end_hex": "0x7c9133",
+      "region_size": 1173,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -110132,6 +111823,11 @@
       "center_address_hex": "0x8da239",
       "segment_index": 0,
       "region_id": 47318,
+      "region_start": 9282033,
+      "region_start_hex": "0x8da1f1",
+      "region_end": 9282165,
+      "region_end_hex": "0x8da275",
+      "region_size": 132,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -110321,6 +112017,11 @@
       "center_address_hex": "0x9cd283",
       "segment_index": 0,
       "region_id": 52774,
+      "region_start": 10276930,
+      "region_start_hex": "0x9cd042",
+      "region_end": 10278749,
+      "region_end_hex": "0x9cd75d",
+      "region_size": 1819,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -110776,6 +112477,11 @@
       "center_address_hex": "0x9cd34f",
       "segment_index": 0,
       "region_id": 52774,
+      "region_start": 10276930,
+      "region_start_hex": "0x9cd042",
+      "region_end": 10278749,
+      "region_end_hex": "0x9cd75d",
+      "region_size": 1819,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -111231,6 +112937,11 @@
       "center_address_hex": "0xf5778f",
       "segment_index": 0,
       "region_id": 74737,
+      "region_start": 16086762,
+      "region_start_hex": "0xf576ea",
+      "region_end": 16087084,
+      "region_end_hex": "0xf5782c",
+      "region_size": 322,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -111346,6 +113057,11 @@
       "center_address_hex": "0x96f57b",
       "segment_index": 0,
       "region_id": 51137,
+      "region_start": 9889173,
+      "region_start_hex": "0x96e595",
+      "region_end": 9895493,
+      "region_end_hex": "0x96fe45",
+      "region_size": 6320,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -111487,6 +113203,11 @@
       "center_address_hex": "0xaaed0b",
       "segment_index": 0,
       "region_id": 55738,
+      "region_start": 11201654,
+      "region_start_hex": "0xaaec76",
+      "region_end": 11202616,
+      "region_end_hex": "0xaaf038",
+      "region_size": 962,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -111628,6 +113349,11 @@
       "center_address_hex": "0x97bbed",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -111876,6 +113602,11 @@
       "center_address_hex": "0xf898b1",
       "segment_index": 0,
       "region_id": 76495,
+      "region_start": 16291518,
+      "region_start_hex": "0xf896be",
+      "region_end": 16292225,
+      "region_end_hex": "0xf89981",
+      "region_size": 707,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -112148,6 +113879,11 @@
       "center_address_hex": "0x5048e7",
       "segment_index": 0,
       "region_id": 27604,
+      "region_start": 5260953,
+      "region_start_hex": "0x504699",
+      "region_end": 5261583,
+      "region_end_hex": "0x50490f",
+      "region_size": 630,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -112292,6 +114028,11 @@
       "center_address_hex": "0x828510",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -112660,6 +114401,11 @@
       "center_address_hex": "0x82905b",
       "segment_index": 0,
       "region_id": 44300,
+      "region_start": 8552997,
+      "region_start_hex": "0x828225",
+      "region_end": 8557224,
+      "region_end_hex": "0x8292a8",
+      "region_size": 4227,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -113028,6 +114774,11 @@
       "center_address_hex": "0x4d82cc",
       "segment_index": 0,
       "region_id": 26899,
+      "region_start": 5078816,
+      "region_start_hex": "0x4d7f20",
+      "region_end": 5079810,
+      "region_end_hex": "0x4d8302",
+      "region_size": 994,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -113243,6 +114994,11 @@
       "center_address_hex": "0x4dbdce",
       "segment_index": 0,
       "region_id": 26930,
+      "region_start": 5094033,
+      "region_start_hex": "0x4dba91",
+      "region_end": 5094891,
+      "region_end_hex": "0x4dbdeb",
+      "region_size": 858,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -113458,6 +115214,11 @@
       "center_address_hex": "0x4e161a",
       "segment_index": 0,
       "region_id": 26979,
+      "region_start": 5116882,
+      "region_start_hex": "0x4e13d2",
+      "region_end": 5117486,
+      "region_end_hex": "0x4e162e",
+      "region_size": 604,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -113673,6 +115434,11 @@
       "center_address_hex": "0x89d90f",
       "segment_index": 0,
       "region_id": 46311,
+      "region_start": 9033350,
+      "region_start_hex": "0x89d686",
+      "region_end": 9034417,
+      "region_end_hex": "0x89dab1",
+      "region_size": 1067,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -113803,6 +115569,11 @@
       "center_address_hex": "0x89e1ca",
       "segment_index": 0,
       "region_id": 46313,
+      "region_start": 9035823,
+      "region_start_hex": "0x89e02f",
+      "region_end": 9036632,
+      "region_end_hex": "0x89e358",
+      "region_size": 809,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -113933,6 +115704,11 @@
       "center_address_hex": "0x991f96",
       "segment_index": 0,
       "region_id": 51776,
+      "region_start": 10033954,
+      "region_start_hex": "0x991b22",
+      "region_end": 10036115,
+      "region_end_hex": "0x992393",
+      "region_size": 2161,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -114259,6 +116035,11 @@
       "center_address_hex": "0xf3e59d",
       "segment_index": 0,
       "region_id": 74149,
+      "region_start": 15983911,
+      "region_start_hex": "0xf3e527",
+      "region_end": 15984463,
+      "region_end_hex": "0xf3e74f",
+      "region_size": 552,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -114389,6 +116170,11 @@
       "center_address_hex": "0xa3547c",
       "segment_index": 0,
       "region_id": 54377,
+      "region_start": 10703362,
+      "region_start_hex": "0xa35202",
+      "region_end": 10705623,
+      "region_end_hex": "0xa35ad7",
+      "region_size": 2261,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -114664,6 +116450,11 @@
       "center_address_hex": "0x485e56",
       "segment_index": 0,
       "region_id": 25166,
+      "region_start": 4742373,
+      "region_start_hex": "0x485ce5",
+      "region_end": 4744263,
+      "region_end_hex": "0x486447",
+      "region_size": 1890,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -114838,6 +116629,11 @@
       "center_address_hex": "0x11e503f",
       "segment_index": 0,
       "region_id": 91719,
+      "region_start": 18762716,
+      "region_start_hex": "0x11e4bdc",
+      "region_end": 18763888,
+      "region_end_hex": "0x11e5070",
+      "region_size": 1172,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -115137,6 +116933,11 @@
       "center_address_hex": "0xf4d544",
       "segment_index": 0,
       "region_id": 74449,
+      "region_start": 16044855,
+      "region_start_hex": "0xf4d337",
+      "region_end": 16045594,
+      "region_end_hex": "0xf4d61a",
+      "region_size": 739,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -115309,6 +117110,11 @@
       "center_address_hex": "0x12716ac",
       "segment_index": 0,
       "region_id": 93435,
+      "region_start": 19337545,
+      "region_start_hex": "0x1271149",
+      "region_end": 19338996,
+      "region_end_hex": "0x12716f4",
+      "region_size": 1451,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -115564,6 +117370,11 @@
       "center_address_hex": "0x1c5bee",
       "segment_index": 0,
       "region_id": 11629,
+      "region_start": 1858145,
+      "region_start_hex": "0x1c5a61",
+      "region_end": 1859142,
+      "region_end_hex": "0x1c5e46",
+      "region_size": 997,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -115894,6 +117705,11 @@
       "center_address_hex": "0x10006cd",
       "segment_index": 0,
       "region_id": 79413,
+      "region_start": 16778490,
+      "region_start_hex": "0x10004fa",
+      "region_end": 16779159,
+      "region_end_hex": "0x1000797",
+      "region_size": 669,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -116098,6 +117914,11 @@
       "center_address_hex": "0x1003f7",
       "segment_index": 0,
       "region_id": 6941,
+      "region_start": 1049544,
+      "region_start_hex": "0x1003c8",
+      "region_end": 1050030,
+      "region_end_hex": "0x1005ae",
+      "region_size": 486,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -116273,6 +118094,11 @@
       "center_address_hex": "0x7bf61f",
       "segment_index": 0,
       "region_id": 41885,
+      "region_start": 8123428,
+      "region_start_hex": "0x7bf424",
+      "region_end": 8124090,
+      "region_end_hex": "0x7bf6ba",
+      "region_size": 662,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -116448,6 +118274,11 @@
       "center_address_hex": "0xae7bac",
       "segment_index": 0,
       "region_id": 56762,
+      "region_start": 11419324,
+      "region_start_hex": "0xae3ebc",
+      "region_end": 11436053,
+      "region_end_hex": "0xae8015",
+      "region_size": 16729,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -116623,6 +118454,11 @@
       "center_address_hex": "0xf2bc4c",
       "segment_index": 0,
       "region_id": 73549,
+      "region_start": 15907733,
+      "region_start_hex": "0xf2bb95",
+      "region_end": 15908008,
+      "region_end_hex": "0xf2bca8",
+      "region_size": 275,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -116768,6 +118604,11 @@
       "center_address_hex": "0xf2a931",
       "segment_index": 0,
       "region_id": 73470,
+      "region_start": 15902758,
+      "region_start_hex": "0xf2a826",
+      "region_end": 15903910,
+      "region_end_hex": "0xf2aca6",
+      "region_size": 1152,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -116911,6 +118752,11 @@
       "center_address_hex": "0x91e4f8",
       "segment_index": 0,
       "region_id": 48650,
+      "region_start": 9560054,
+      "region_start_hex": "0x91dff6",
+      "region_end": 9563424,
+      "region_end_hex": "0x91ed20",
+      "region_size": 3370,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -117249,6 +119095,11 @@
       "center_address_hex": "0xf046fe",
       "segment_index": 0,
       "region_id": 72563,
+      "region_start": 15745936,
+      "region_start_hex": "0xf04390",
+      "region_end": 15746949,
+      "region_end_hex": "0xf04785",
+      "region_size": 1013,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -117391,6 +119242,11 @@
       "center_address_hex": "0x96f8e7",
       "segment_index": 0,
       "region_id": 51137,
+      "region_start": 9889173,
+      "region_start_hex": "0x96e595",
+      "region_end": 9895493,
+      "region_end_hex": "0x96fe45",
+      "region_size": 6320,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -117532,6 +119388,11 @@
       "center_address_hex": "0x4acc6c",
       "segment_index": 0,
       "region_id": 25873,
+      "region_start": 4901958,
+      "region_start_hex": "0x4acc46",
+      "region_end": 4902211,
+      "region_end_hex": "0x4acd43",
+      "region_size": 253,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -117752,6 +119613,11 @@
       "center_address_hex": "0x988f47",
       "segment_index": 0,
       "region_id": 51674,
+      "region_start": 9997274,
+      "region_start_hex": "0x988bda",
+      "region_end": 10005084,
+      "region_end_hex": "0x98aa5c",
+      "region_size": 7810,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -117972,6 +119838,11 @@
       "center_address_hex": "0xa120e0",
       "segment_index": 0,
       "region_id": 53712,
+      "region_start": 10556281,
+      "region_start_hex": "0xa11379",
+      "region_end": 10562307,
+      "region_end_hex": "0xa12b03",
+      "region_size": 6026,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -118192,6 +120063,11 @@
       "center_address_hex": "0xada915",
       "segment_index": 0,
       "region_id": 56367,
+      "region_start": 11380894,
+      "region_start_hex": "0xada89e",
+      "region_end": 11388465,
+      "region_end_hex": "0xadc631",
+      "region_size": 7571,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -118412,6 +120288,11 @@
       "center_address_hex": "0xe7557b",
       "segment_index": 0,
       "region_id": 69101,
+      "region_start": 15160465,
+      "region_start_hex": "0xe75491",
+      "region_end": 15160760,
+      "region_end_hex": "0xe755b8",
+      "region_size": 295,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -118632,6 +120513,11 @@
       "center_address_hex": "0xe78ce5",
       "segment_index": 0,
       "region_id": 69282,
+      "region_start": 15174401,
+      "region_start_hex": "0xe78b01",
+      "region_end": 15177190,
+      "region_end_hex": "0xe795e6",
+      "region_size": 2789,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -118852,6 +120738,11 @@
       "center_address_hex": "0xf7f6be",
       "segment_index": 0,
       "region_id": 75533,
+      "region_start": 16250259,
+      "region_start_hex": "0xf7f593",
+      "region_end": 16250610,
+      "region_end_hex": "0xf7f6f2",
+      "region_size": 351,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -119072,6 +120963,11 @@
       "center_address_hex": "0x104d24a",
       "segment_index": 0,
       "region_id": 81418,
+      "region_start": 17093130,
+      "region_start_hex": "0x104d20a",
+      "region_end": 17094157,
+      "region_end_hex": "0x104d60d",
+      "region_size": 1027,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -119292,6 +121188,11 @@
       "center_address_hex": "0x231d82",
       "segment_index": 0,
       "region_id": 13790,
+      "region_start": 2300980,
+      "region_start_hex": "0x231c34",
+      "region_end": 2301496,
+      "region_end_hex": "0x231e38",
+      "region_size": 516,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -119436,6 +121337,11 @@
       "center_address_hex": "0x97324e",
       "segment_index": 0,
       "region_id": 51182,
+      "region_start": 9908298,
+      "region_start_hex": "0x97304a",
+      "region_end": 9909497,
+      "region_end_hex": "0x9734f9",
+      "region_size": 1199,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -119683,6 +121589,11 @@
       "center_address_hex": "0xa02d70",
       "segment_index": 0,
       "region_id": 53496,
+      "region_start": 10492998,
+      "region_start_hex": "0xa01c46",
+      "region_end": 10503406,
+      "region_end_hex": "0xa044ee",
+      "region_size": 10408,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -119930,6 +121841,11 @@
       "center_address_hex": "0xade6b2",
       "segment_index": 0,
       "region_id": 56390,
+      "region_start": 11396349,
+      "region_start_hex": "0xade4fd",
+      "region_end": 11396831,
+      "region_end_hex": "0xade6df",
+      "region_size": 482,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -120105,6 +122021,11 @@
       "center_address_hex": "0xf03825",
       "segment_index": 0,
       "region_id": 72505,
+      "region_start": 15742703,
+      "region_start_hex": "0xf036ef",
+      "region_end": 15743148,
+      "region_end_hex": "0xf038ac",
+      "region_size": 445,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -120349,6 +122270,11 @@
       "center_address_hex": "0xb190ba",
       "segment_index": 0,
       "region_id": 57541,
+      "region_start": 11636890,
+      "region_start_hex": "0xb1909a",
+      "region_end": 11636991,
+      "region_end_hex": "0xb190ff",
+      "region_size": 101,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -120494,6 +122420,11 @@
       "center_address_hex": "0xe81c17",
       "segment_index": 0,
       "region_id": 69566,
+      "region_start": 15211464,
+      "region_start_hex": "0xe81bc8",
+      "region_end": 15211908,
+      "region_end_hex": "0xe81d84",
+      "region_size": 444,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -120639,6 +122570,11 @@
       "center_address_hex": "0x67feef",
       "segment_index": 0,
       "region_id": 35263,
+      "region_start": 6815226,
+      "region_start_hex": "0x67fdfa",
+      "region_end": 6815489,
+      "region_end_hex": "0x67ff01",
+      "region_size": 263,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -120796,6 +122732,11 @@
       "center_address_hex": "0xf1c1b0",
       "segment_index": 0,
       "region_id": 73136,
+      "region_start": 15843745,
+      "region_start_hex": "0xf1c1a1",
+      "region_end": 15843914,
+      "region_end_hex": "0xf1c24a",
+      "region_size": 169,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -121079,6 +123020,11 @@
       "center_address_hex": "0x843e41",
       "segment_index": 0,
       "region_id": 44907,
+      "region_start": 8665548,
+      "region_start_hex": "0x8439cc",
+      "region_end": 8667336,
+      "region_end_hex": "0x8440c8",
+      "region_size": 1788,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -121207,6 +123153,11 @@
       "center_address_hex": "0xa081d3",
       "segment_index": 0,
       "region_id": 53582,
+      "region_start": 10518503,
+      "region_start_hex": "0xa07fe7",
+      "region_end": 10519814,
+      "region_end_hex": "0xa08506",
+      "region_size": 1311,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -121495,6 +123446,11 @@
       "center_address_hex": "0xa02100",
       "segment_index": 0,
       "region_id": 53496,
+      "region_start": 10492998,
+      "region_start_hex": "0xa01c46",
+      "region_end": 10503406,
+      "region_end_hex": "0xa044ee",
+      "region_size": 10408,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -121964,6 +123920,11 @@
       "center_address_hex": "0x523953",
       "segment_index": 0,
       "region_id": 27984,
+      "region_start": 5388289,
+      "region_start_hex": "0x523801",
+      "region_end": 5389384,
+      "region_end_hex": "0x523c48",
+      "region_size": 1095,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -122208,6 +124169,11 @@
       "center_address_hex": "0xccbe1b",
       "segment_index": 0,
       "region_id": 65694,
+      "region_start": 13417584,
+      "region_start_hex": "0xccbc70",
+      "region_end": 13418158,
+      "region_end_hex": "0xccbeae",
+      "region_size": 574,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -122353,6 +124319,11 @@
       "center_address_hex": "0xcf5c21",
       "segment_index": 0,
       "region_id": 66410,
+      "region_start": 13589478,
+      "region_start_hex": "0xcf5be6",
+      "region_end": 13590101,
+      "region_end_hex": "0xcf5e55",
+      "region_size": 623,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -122624,6 +124595,11 @@
       "center_address_hex": "0x12262b6",
       "segment_index": 0,
       "region_id": 92287,
+      "region_start": 19030551,
+      "region_start_hex": "0x1226217",
+      "region_end": 19030971,
+      "region_end_hex": "0x12263bb",
+      "region_size": 420,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -122852,6 +124828,11 @@
       "center_address_hex": "0xf2a4ec",
       "segment_index": 0,
       "region_id": 73469,
+      "region_start": 15901676,
+      "region_start_hex": "0xf2a3ec",
+      "region_end": 15902758,
+      "region_end_hex": "0xf2a826",
+      "region_size": 1082,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -122981,6 +124962,11 @@
       "center_address_hex": "0x1143427",
       "segment_index": 0,
       "region_id": 87750,
+      "region_start": 18100802,
+      "region_start_hex": "0x1143242",
+      "region_end": 18101451,
+      "region_end_hex": "0x11434cb",
+      "region_size": 649,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -123250,6 +125236,11 @@
       "center_address_hex": "0xffb08f",
       "segment_index": 0,
       "region_id": 79204,
+      "region_start": 16756835,
+      "region_start_hex": "0xffb063",
+      "region_end": 16757226,
+      "region_end_hex": "0xffb1ea",
+      "region_size": 391,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -123405,6 +125396,11 @@
       "center_address_hex": "0xffb168",
       "segment_index": 0,
       "region_id": 79204,
+      "region_start": 16756835,
+      "region_start_hex": "0xffb063",
+      "region_end": 16757226,
+      "region_end_hex": "0xffb1ea",
+      "region_size": 391,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -123560,6 +125556,11 @@
       "center_address_hex": "0xa68131",
       "segment_index": 0,
       "region_id": 54873,
+      "region_start": 10911239,
+      "region_start_hex": "0xa67e07",
+      "region_end": 10912398,
+      "region_end_hex": "0xa6828e",
+      "region_size": 1159,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -123735,6 +125736,11 @@
       "center_address_hex": "0x1be721",
       "segment_index": 0,
       "region_id": 11437,
+      "region_start": 1828476,
+      "region_start_hex": "0x1be67c",
+      "region_end": 1828734,
+      "region_end_hex": "0x1be77e",
+      "region_size": 258,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -123936,6 +125942,11 @@
       "center_address_hex": "0xf11ab1",
       "segment_index": 0,
       "region_id": 72934,
+      "region_start": 15800725,
+      "region_start_hex": "0xf11995",
+      "region_end": 15801049,
+      "region_end_hex": "0xf11ad9",
+      "region_size": 324,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -124081,6 +126092,11 @@
       "center_address_hex": "0x7d696a",
       "segment_index": 0,
       "region_id": 42680,
+      "region_start": 8218479,
+      "region_start_hex": "0x7d676f",
+      "region_end": 8219165,
+      "region_end_hex": "0x7d6a1d",
+      "region_size": 686,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -124267,6 +126283,11 @@
       "center_address_hex": "0xe7b94b",
       "segment_index": 0,
       "region_id": 69337,
+      "region_start": 15186001,
+      "region_start_hex": "0xe7b851",
+      "region_end": 15186272,
+      "region_end_hex": "0xe7b960",
+      "region_size": 271,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -124411,6 +126432,11 @@
       "center_address_hex": "0xf285ca",
       "segment_index": 0,
       "region_id": 73428,
+      "region_start": 15893794,
+      "region_start_hex": "0xf28522",
+      "region_end": 15894734,
+      "region_end_hex": "0xf288ce",
+      "region_size": 940,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -124597,6 +126623,11 @@
       "center_address_hex": "0x675cad",
       "segment_index": 0,
       "region_id": 35189,
+      "region_start": 6773906,
+      "region_start_hex": "0x675c92",
+      "region_end": 6774015,
+      "region_end_hex": "0x675cff",
+      "region_size": 109,
       "base_reg": "rdi",
       "center_accesses": [
         "read"
@@ -124712,6 +126743,11 @@
       "center_address_hex": "0x744f59",
       "segment_index": 0,
       "region_id": 38122,
+      "region_start": 7620776,
+      "region_start_hex": "0x7448a8",
+      "region_end": 7623641,
+      "region_end_hex": "0x7453d9",
+      "region_size": 2865,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -124827,6 +126863,11 @@
       "center_address_hex": "0x870b81",
       "segment_index": 0,
       "region_id": 45680,
+      "region_start": 8849405,
+      "region_start_hex": "0x8707fd",
+      "region_end": 8851696,
+      "region_end_hex": "0x8710f0",
+      "region_size": 2291,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -124942,6 +126983,11 @@
       "center_address_hex": "0x9175df",
       "segment_index": 0,
       "region_id": 48515,
+      "region_start": 9530338,
+      "region_start_hex": "0x916be2",
+      "region_end": 9533034,
+      "region_end_hex": "0x91766a",
+      "region_size": 2696,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -125057,6 +127103,11 @@
       "center_address_hex": "0xcd0325",
       "segment_index": 0,
       "region_id": 65964,
+      "region_start": 13435545,
+      "region_start_hex": "0xcd0299",
+      "region_end": 13435722,
+      "region_end_hex": "0xcd034a",
+      "region_size": 177,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -125172,6 +127223,11 @@
       "center_address_hex": "0xeb81a7",
       "segment_index": 0,
       "region_id": 70747,
+      "region_start": 15434111,
+      "region_start_hex": "0xeb817f",
+      "region_end": 15434338,
+      "region_end_hex": "0xeb8262",
+      "region_size": 227,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -125357,6 +127413,11 @@
       "center_address_hex": "0x626799",
       "segment_index": 0,
       "region_id": 33902,
+      "region_start": 6448688,
+      "region_start_hex": "0x626630",
+      "region_end": 6449156,
+      "region_end_hex": "0x626804",
+      "region_size": 468,
       "base_reg": "r9",
       "center_accesses": [
         "read"
@@ -125499,6 +127560,11 @@
       "center_address_hex": "0x4a8d29",
       "segment_index": 0,
       "region_id": 25773,
+      "region_start": 4885645,
+      "region_start_hex": "0x4a8c8d",
+      "region_end": 4885952,
+      "region_end_hex": "0x4a8dc0",
+      "region_size": 307,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -125640,6 +127706,11 @@
       "center_address_hex": "0xe80732",
       "segment_index": 0,
       "region_id": 69533,
+      "region_start": 15204589,
+      "region_start_hex": "0xe800ed",
+      "region_end": 15206336,
+      "region_end_hex": "0xe807c0",
+      "region_size": 1747,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -125781,6 +127852,11 @@
       "center_address_hex": "0xa6d96a",
       "segment_index": 0,
       "region_id": 54959,
+      "region_start": 10933995,
+      "region_start_hex": "0xa6d6eb",
+      "region_end": 10935281,
+      "region_end_hex": "0xa6dbf1",
+      "region_size": 1286,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -126041,6 +128117,11 @@
       "center_address_hex": "0xe7861c",
       "segment_index": 0,
       "region_id": 69270,
+      "region_start": 15172360,
+      "region_start_hex": "0xe78308",
+      "region_end": 15173522,
+      "region_end_hex": "0xe78792",
+      "region_size": 1162,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -126301,6 +128382,11 @@
       "center_address_hex": "0x7edf22",
       "segment_index": 0,
       "region_id": 43194,
+      "region_start": 8314289,
+      "region_start_hex": "0x7eddb1",
+      "region_end": 8314739,
+      "region_end_hex": "0x7edf73",
+      "region_size": 450,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -126630,6 +128716,11 @@
       "center_address_hex": "0x231cc3",
       "segment_index": 0,
       "region_id": 13790,
+      "region_start": 2300980,
+      "region_start_hex": "0x231c34",
+      "region_end": 2301496,
+      "region_end_hex": "0x231e38",
+      "region_size": 516,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -126818,6 +128909,11 @@
       "center_address_hex": "0x34a34b",
       "segment_index": 0,
       "region_id": 20576,
+      "region_start": 3449190,
+      "region_start_hex": "0x34a166",
+      "region_end": 3450234,
+      "region_end_hex": "0x34a57a",
+      "region_size": 1044,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -126978,6 +129074,11 @@
       "center_address_hex": "0x66edb0",
       "segment_index": 0,
       "region_id": 35033,
+      "region_start": 6745130,
+      "region_start_hex": "0x66ec2a",
+      "region_end": 6745581,
+      "region_end_hex": "0x66eded",
+      "region_size": 451,
       "base_reg": "r13",
       "center_accesses": [
         "write"
@@ -127150,6 +129251,11 @@
       "center_address_hex": "0x70f54a",
       "segment_index": 0,
       "region_id": 37503,
+      "region_start": 7402474,
+      "region_start_hex": "0x70f3ea",
+      "region_end": 7404104,
+      "region_end_hex": "0x70fa48",
+      "region_size": 1630,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -127392,6 +129498,11 @@
       "center_address_hex": "0x8daa93",
       "segment_index": 0,
       "region_id": 47327,
+      "region_start": 9284034,
+      "region_start_hex": "0x8da9c2",
+      "region_end": 9284663,
+      "region_end_hex": "0x8dac37",
+      "region_size": 629,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -127620,6 +129731,11 @@
       "center_address_hex": "0x8dabdc",
       "segment_index": 0,
       "region_id": 47327,
+      "region_start": 9284034,
+      "region_start_hex": "0x8da9c2",
+      "region_end": 9284663,
+      "region_end_hex": "0x8dac37",
+      "region_size": 629,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -127848,6 +129964,11 @@
       "center_address_hex": "0xec9993",
       "segment_index": 0,
       "region_id": 71259,
+      "region_start": 15505051,
+      "region_start_hex": "0xec969b",
+      "region_end": 15505950,
+      "region_end_hex": "0xec9a1e",
+      "region_size": 899,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -128090,6 +130211,11 @@
       "center_address_hex": "0xf12219",
       "segment_index": 0,
       "region_id": 72968,
+      "region_start": 15802841,
+      "region_start_hex": "0xf121d9",
+      "region_end": 15803195,
+      "region_end_hex": "0xf1233b",
+      "region_size": 354,
       "base_reg": "r12",
       "center_accesses": [
         "write"
@@ -128248,6 +130374,11 @@
       "center_address_hex": "0x3fdf63",
       "segment_index": 0,
       "region_id": 23103,
+      "region_start": 4185595,
+      "region_start_hex": "0x3fddfb",
+      "region_end": 4186446,
+      "region_end_hex": "0x3fe14e",
+      "region_size": 851,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -128507,6 +130638,11 @@
       "center_address_hex": "0x3fe08a",
       "segment_index": 0,
       "region_id": 23103,
+      "region_start": 4185595,
+      "region_start_hex": "0x3fddfb",
+      "region_end": 4186446,
+      "region_end_hex": "0x3fe14e",
+      "region_size": 851,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -128766,6 +130902,11 @@
       "center_address_hex": "0x4a8d4c",
       "segment_index": 0,
       "region_id": 25773,
+      "region_start": 4885645,
+      "region_start_hex": "0x4a8c8d",
+      "region_end": 4885952,
+      "region_end_hex": "0x4a8dc0",
+      "region_size": 307,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -128939,6 +131080,11 @@
       "center_address_hex": "0x89e6eb",
       "segment_index": 0,
       "region_id": 46314,
+      "region_start": 9036632,
+      "region_start_hex": "0x89e358",
+      "region_end": 9037847,
+      "region_end_hex": "0x89e817",
+      "region_size": 1215,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -129069,6 +131215,11 @@
       "center_address_hex": "0xffb73d",
       "segment_index": 0,
       "region_id": 79213,
+      "region_start": 16758472,
+      "region_start_hex": "0xffb6c8",
+      "region_end": 16759405,
+      "region_end_hex": "0xffba6d",
+      "region_size": 933,
       "base_reg": "r10",
       "center_accesses": [
         "read"
@@ -129199,6 +131350,11 @@
       "center_address_hex": "0x11ca61b",
       "segment_index": 0,
       "region_id": 91373,
+      "region_start": 18654594,
+      "region_start_hex": "0x11ca582",
+      "region_end": 18654792,
+      "region_end_hex": "0x11ca648",
+      "region_size": 198,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -129329,6 +131485,11 @@
       "center_address_hex": "0x4b4af7",
       "segment_index": 0,
       "region_id": 26045,
+      "region_start": 4934290,
+      "region_start_hex": "0x4b4a92",
+      "region_end": 4934453,
+      "region_end_hex": "0x4b4b35",
+      "region_size": 163,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -129472,6 +131633,11 @@
       "center_address_hex": "0xe807a6",
       "segment_index": 0,
       "region_id": 69533,
+      "region_start": 15204589,
+      "region_start_hex": "0xe800ed",
+      "region_end": 15206336,
+      "region_end_hex": "0xe807c0",
+      "region_size": 1747,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -129587,6 +131753,11 @@
       "center_address_hex": "0xa0ab8",
       "segment_index": 0,
       "region_id": 3684,
+      "region_start": 657921,
+      "region_start_hex": "0xa0a01",
+      "region_end": 658178,
+      "region_end_hex": "0xa0b02",
+      "region_size": 257,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -129833,6 +132004,11 @@
       "center_address_hex": "0x3a24c8",
       "segment_index": 0,
       "region_id": 21570,
+      "region_start": 3810369,
+      "region_start_hex": "0x3a2441",
+      "region_end": 3810530,
+      "region_end_hex": "0x3a24e2",
+      "region_size": 161,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -130079,6 +132255,11 @@
       "center_address_hex": "0xb062c0",
       "segment_index": 0,
       "region_id": 57218,
+      "region_start": 11559201,
+      "region_start_hex": "0xb06121",
+      "region_end": 11560063,
+      "region_end_hex": "0xb0647f",
+      "region_size": 862,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -130380,6 +132561,11 @@
       "center_address_hex": "0x97be38",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -130946,6 +133132,11 @@
       "center_address_hex": "0x97bf17",
       "segment_index": 0,
       "region_id": 51368,
+      "region_start": 9939864,
+      "region_start_hex": "0x97ab98",
+      "region_end": 9948178,
+      "region_end_hex": "0x97cc12",
+      "region_size": 8314,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -131778,6 +133969,11 @@
       "center_address_hex": "0xe7ffd0",
       "segment_index": 0,
       "region_id": 69529,
+      "region_start": 15204192,
+      "region_start_hex": "0xe7ff60",
+      "region_end": 15204381,
+      "region_end_hex": "0xe8001d",
+      "region_size": 189,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -131938,6 +134134,11 @@
       "center_address_hex": "0x485e50",
       "segment_index": 0,
       "region_id": 25166,
+      "region_start": 4742373,
+      "region_start_hex": "0x485ce5",
+      "region_end": 4744263,
+      "region_end_hex": "0x486447",
+      "region_size": 1890,
       "base_reg": "r13",
       "center_accesses": [
         "read"
@@ -132082,6 +134283,11 @@
       "center_address_hex": "0x8ff5b3",
       "segment_index": 0,
       "region_id": 48042,
+      "region_start": 9433537,
+      "region_start_hex": "0x8ff1c1",
+      "region_end": 9435314,
+      "region_end_hex": "0x8ff8b2",
+      "region_size": 1777,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -132226,6 +134432,11 @@
       "center_address_hex": "0xabd0b1",
       "segment_index": 0,
       "region_id": 55936,
+      "region_start": 11257424,
+      "region_start_hex": "0xabc650",
+      "region_end": 11260668,
+      "region_end_hex": "0xabd2fc",
+      "region_size": 3244,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -132566,6 +134777,11 @@
       "center_address_hex": "0xeb80af",
       "segment_index": 0,
       "region_id": 70744,
+      "region_start": 15433665,
+      "region_start_hex": "0xeb7fc1",
+      "region_end": 15433926,
+      "region_end_hex": "0xeb80c6",
+      "region_size": 261,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -132724,6 +134940,11 @@
       "center_address_hex": "0x11e45ee",
       "segment_index": 0,
       "region_id": 91715,
+      "region_start": 18760419,
+      "region_start_hex": "0x11e42e3",
+      "region_end": 18761252,
+      "region_end_hex": "0x11e4624",
+      "region_size": 833,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -133008,6 +135229,11 @@
       "center_address_hex": "0x11e464f",
       "segment_index": 0,
       "region_id": 91716,
+      "region_start": 18761252,
+      "region_start_hex": "0x11e4624",
+      "region_end": 18762361,
+      "region_end_hex": "0x11e4a79",
+      "region_size": 1109,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -133292,6 +135518,11 @@
       "center_address_hex": "0xecace0",
       "segment_index": 0,
       "region_id": 71296,
+      "region_start": 15510680,
+      "region_start_hex": "0xecac98",
+      "region_end": 15511125,
+      "region_end_hex": "0xecae55",
+      "region_size": 445,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -133603,6 +135834,11 @@
       "center_address_hex": "0xecadef",
       "segment_index": 0,
       "region_id": 71296,
+      "region_start": 15510680,
+      "region_start_hex": "0xecac98",
+      "region_end": 15511125,
+      "region_end_hex": "0xecae55",
+      "region_size": 445,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -133914,6 +136150,11 @@
       "center_address_hex": "0x4197c3",
       "segment_index": 0,
       "region_id": 23476,
+      "region_start": 4298641,
+      "region_start_hex": "0x419791",
+      "region_end": 4298974,
+      "region_end_hex": "0x4198de",
+      "region_size": 333,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -134119,6 +136360,11 @@
       "center_address_hex": "0x644002",
       "segment_index": 0,
       "region_id": 34422,
+      "region_start": 6569883,
+      "region_start_hex": "0x643f9b",
+      "region_end": 6570047,
+      "region_end_hex": "0x64403f",
+      "region_size": 164,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -134324,6 +136570,11 @@
       "center_address_hex": "0x88cc5b",
       "segment_index": 0,
       "region_id": 46137,
+      "region_start": 8964934,
+      "region_start_hex": "0x88cb46",
+      "region_end": 8965687,
+      "region_end_hex": "0x88ce37",
+      "region_size": 753,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -134529,6 +136780,11 @@
       "center_address_hex": "0x95a7bd",
       "segment_index": 0,
       "region_id": 50869,
+      "region_start": 9807359,
+      "region_start_hex": "0x95a5ff",
+      "region_end": 9809744,
+      "region_end_hex": "0x95af50",
+      "region_size": 2385,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -134734,6 +136990,11 @@
       "center_address_hex": "0x95f091",
       "segment_index": 0,
       "region_id": 50913,
+      "region_start": 9825982,
+      "region_start_hex": "0x95eebe",
+      "region_end": 9826802,
+      "region_end_hex": "0x95f1f2",
+      "region_size": 820,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -134939,6 +137200,11 @@
       "center_address_hex": "0x9acb78",
       "segment_index": 0,
       "region_id": 52268,
+      "region_start": 10143880,
+      "region_start_hex": "0x9ac888",
+      "region_end": 10145146,
+      "region_end_hex": "0x9acd7a",
+      "region_size": 1266,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -135144,6 +137410,11 @@
       "center_address_hex": "0xa30d72",
       "segment_index": 0,
       "region_id": 54281,
+      "region_start": 10685294,
+      "region_start_hex": "0xa30b6e",
+      "region_end": 10686453,
+      "region_end_hex": "0xa30ff5",
+      "region_size": 1159,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -135349,6 +137620,11 @@
       "center_address_hex": "0xa5d2f1",
       "segment_index": 0,
       "region_id": 54798,
+      "region_start": 10866982,
+      "region_start_hex": "0xa5d126",
+      "region_end": 10873168,
+      "region_end_hex": "0xa5e950",
+      "region_size": 6186,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -135554,6 +137830,11 @@
       "center_address_hex": "0xa6f9c1",
       "segment_index": 0,
       "region_id": 54975,
+      "region_start": 10942451,
+      "region_start_hex": "0xa6f7f3",
+      "region_end": 10944105,
+      "region_end_hex": "0xa6fe69",
+      "region_size": 1654,
       "base_reg": "rsi",
       "center_accesses": [
         "write"
@@ -135759,6 +138040,11 @@
       "center_address_hex": "0xb40dde",
       "segment_index": 0,
       "region_id": 58645,
+      "region_start": 11799601,
+      "region_start_hex": "0xb40c31",
+      "region_end": 11800363,
+      "region_end_hex": "0xb40f2b",
+      "region_size": 762,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -135964,6 +138250,11 @@
       "center_address_hex": "0xb413e4",
       "segment_index": 0,
       "region_id": 58650,
+      "region_start": 11801186,
+      "region_start_hex": "0xb41262",
+      "region_end": 11801680,
+      "region_end_hex": "0xb41450",
+      "region_size": 494,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -136169,6 +138460,11 @@
       "center_address_hex": "0xe793e0",
       "segment_index": 0,
       "region_id": 69282,
+      "region_start": 15174401,
+      "region_start_hex": "0xe78b01",
+      "region_end": 15177190,
+      "region_end_hex": "0xe795e6",
+      "region_size": 2789,
       "base_reg": "rcx",
       "center_accesses": [
         "write"
@@ -136374,6 +138670,11 @@
       "center_address_hex": "0xffc714",
       "segment_index": 0,
       "region_id": 79235,
+      "region_start": 16761757,
+      "region_start_hex": "0xffc39d",
+      "region_end": 16762718,
+      "region_end_hex": "0xffc75e",
+      "region_size": 961,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -136579,6 +138880,11 @@
       "center_address_hex": "0x11c5e9d",
       "segment_index": 0,
       "region_id": 91151,
+      "region_start": 18636216,
+      "region_start_hex": "0x11c5db8",
+      "region_end": 18636658,
+      "region_end_hex": "0x11c5f72",
+      "region_size": 442,
       "base_reg": "r14",
       "center_accesses": [
         "write"
@@ -136784,6 +139090,11 @@
       "center_address_hex": "0xf37e6",
       "segment_index": 0,
       "region_id": 6528,
+      "region_start": 997003,
+      "region_start_hex": "0xf368b",
+      "region_end": 997473,
+      "region_end_hex": "0xf3861",
+      "region_size": 470,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -136944,6 +139255,11 @@
       "center_address_hex": "0x231c18",
       "segment_index": 0,
       "region_id": 13789,
+      "region_start": 2300779,
+      "region_start_hex": "0x231b6b",
+      "region_end": 2300980,
+      "region_end_hex": "0x231c34",
+      "region_size": 201,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -137118,6 +139434,11 @@
       "center_address_hex": "0x7ba9ad",
       "segment_index": 0,
       "region_id": 41830,
+      "region_start": 8103758,
+      "region_start_hex": "0x7ba74e",
+      "region_end": 8105103,
+      "region_end_hex": "0x7bac8f",
+      "region_size": 1345,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -137278,6 +139599,11 @@
       "center_address_hex": "0xa71a89",
       "segment_index": 0,
       "region_id": 55017,
+      "region_start": 10951226,
+      "region_start_hex": "0xa71a3a",
+      "region_end": 10951411,
+      "region_end_hex": "0xa71af3",
+      "region_size": 185,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -137438,6 +139764,11 @@
       "center_address_hex": "0xf2ba75",
       "segment_index": 0,
       "region_id": 73547,
+      "region_start": 15907387,
+      "region_start_hex": "0xf2ba3b",
+      "region_end": 15907495,
+      "region_end_hex": "0xf2baa7",
+      "region_size": 108,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -137598,6 +139929,11 @@
       "center_address_hex": "0xe84216",
       "segment_index": 0,
       "region_id": 69646,
+      "region_start": 15221224,
+      "region_start_hex": "0xe841e8",
+      "region_end": 15221562,
+      "region_end_hex": "0xe8433a",
+      "region_size": 338,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -137743,6 +140079,11 @@
       "center_address_hex": "0xe843ff",
       "segment_index": 0,
       "region_id": 69647,
+      "region_start": 15221562,
+      "region_start_hex": "0xe8433a",
+      "region_end": 15222009,
+      "region_end_hex": "0xe844f9",
+      "region_size": 447,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -137888,6 +140229,11 @@
       "center_address_hex": "0x121d76e",
       "segment_index": 0,
       "region_id": 92100,
+      "region_start": 18995029,
+      "region_start_hex": "0x121d755",
+      "region_end": 18995334,
+      "region_end_hex": "0x121d886",
+      "region_size": 305,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -138157,6 +140503,11 @@
       "center_address_hex": "0x99a9bf",
       "segment_index": 0,
       "region_id": 51927,
+      "region_start": 10070162,
+      "region_start_hex": "0x99a892",
+      "region_end": 10070734,
+      "region_end_hex": "0x99aace",
+      "region_size": 572,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -138285,6 +140636,11 @@
       "center_address_hex": "0xeda204",
       "segment_index": 0,
       "region_id": 71626,
+      "region_start": 15573325,
+      "region_start_hex": "0xeda14d",
+      "region_end": 15573751,
+      "region_end_hex": "0xeda2f7",
+      "region_size": 426,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -138475,6 +140831,11 @@
       "center_address_hex": "0x231d7d",
       "segment_index": 0,
       "region_id": 13790,
+      "region_start": 2300980,
+      "region_start_hex": "0x231c34",
+      "region_end": 2301496,
+      "region_end_hex": "0x231e38",
+      "region_size": 516,
       "base_reg": "rdx",
       "center_accesses": [
         "write"
@@ -138605,6 +140966,11 @@
       "center_address_hex": "0x6ba070",
       "segment_index": 0,
       "region_id": 36042,
+      "region_start": 7052852,
+      "region_start_hex": "0x6b9e34",
+      "region_end": 7053677,
+      "region_end_hex": "0x6ba16d",
+      "region_size": 825,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -138735,6 +141101,11 @@
       "center_address_hex": "0x9238e6",
       "segment_index": 0,
       "region_id": 48795,
+      "region_start": 9582642,
+      "region_start_hex": "0x923832",
+      "region_end": 9582893,
+      "region_end_hex": "0x92392d",
+      "region_size": 251,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -139047,6 +141418,11 @@
       "center_address_hex": "0x11c03d7",
       "segment_index": 0,
       "region_id": 90982,
+      "region_start": 18613182,
+      "region_start_hex": "0x11c03be",
+      "region_end": 18613514,
+      "region_end_hex": "0x11c050a",
+      "region_size": 332,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -139387,6 +141763,11 @@
       "center_address_hex": "0x15293c",
       "segment_index": 0,
       "region_id": 9087,
+      "region_start": 1386463,
+      "region_start_hex": "0x1527df",
+      "region_end": 1387811,
+      "region_end_hex": "0x152d23",
+      "region_size": 1348,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -139516,6 +141897,11 @@
       "center_address_hex": "0x1e541c",
       "segment_index": 0,
       "region_id": 12536,
+      "region_start": 1987460,
+      "region_start_hex": "0x1e5384",
+      "region_end": 1988007,
+      "region_end_hex": "0x1e55a7",
+      "region_size": 547,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -139785,6 +142171,11 @@
       "center_address_hex": "0x1e5508",
       "segment_index": 0,
       "region_id": 12536,
+      "region_start": 1987460,
+      "region_start_hex": "0x1e5384",
+      "region_end": 1988007,
+      "region_end_hex": "0x1e55a7",
+      "region_size": 547,
       "base_reg": "r12",
       "center_accesses": [
         "read"
@@ -140054,6 +142445,11 @@
       "center_address_hex": "0x62baa8",
       "segment_index": 0,
       "region_id": 33990,
+      "region_start": 6468739,
+      "region_start_hex": "0x62b483",
+      "region_end": 6470773,
+      "region_end_hex": "0x62bc75",
+      "region_size": 2034,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -140197,6 +142593,11 @@
       "center_address_hex": "0x670973",
       "segment_index": 0,
       "region_id": 35058,
+      "region_start": 6752556,
+      "region_start_hex": "0x67092c",
+      "region_end": 6752924,
+      "region_end_hex": "0x670a9c",
+      "region_size": 368,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -140372,6 +142773,11 @@
       "center_address_hex": "0xf85d07",
       "segment_index": 0,
       "region_id": 76305,
+      "region_start": 16276655,
+      "region_start_hex": "0xf85caf",
+      "region_end": 16280720,
+      "region_end_hex": "0xf86c90",
+      "region_size": 4065,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
@@ -140546,6 +142952,11 @@
       "center_address_hex": "0x234fd2",
       "segment_index": 0,
       "region_id": 13837,
+      "region_start": 2314056,
+      "region_start_hex": "0x234f48",
+      "region_end": 2314290,
+      "region_end_hex": "0x235032",
+      "region_size": 234,
       "base_reg": "rbx",
       "center_accesses": [
         "read"
@@ -140775,6 +143186,11 @@
       "center_address_hex": "0x66fc11",
       "segment_index": 0,
       "region_id": 35041,
+      "region_start": 6749136,
+      "region_start_hex": "0x66fbd0",
+      "region_end": 6749246,
+      "region_end_hex": "0x66fc3e",
+      "region_size": 110,
       "base_reg": "rdx",
       "center_accesses": [
         "read"
@@ -140920,6 +143336,11 @@
       "center_address_hex": "0x85cadc",
       "segment_index": 0,
       "region_id": 45400,
+      "region_start": 8767915,
+      "region_start_hex": "0x85c9ab",
+      "region_end": 8770036,
+      "region_end_hex": "0x85d1f4",
+      "region_size": 2121,
       "base_reg": "r15",
       "center_accesses": [
         "read"
@@ -141050,6 +143471,11 @@
       "center_address_hex": "0x1909f3",
       "segment_index": 0,
       "region_id": 10739,
+      "region_start": 1639568,
+      "region_start_hex": "0x190490",
+      "region_end": 1644006,
+      "region_end_hex": "0x1915e6",
+      "region_size": 4438,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -141238,6 +143664,11 @@
       "center_address_hex": "0x190c94",
       "segment_index": 0,
       "region_id": 10739,
+      "region_start": 1639568,
+      "region_start_hex": "0x190490",
+      "region_end": 1644006,
+      "region_end_hex": "0x1915e6",
+      "region_size": 4438,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -141426,6 +143857,11 @@
       "center_address_hex": "0x190fdf",
       "segment_index": 0,
       "region_id": 10739,
+      "region_start": 1639568,
+      "region_start_hex": "0x190490",
+      "region_end": 1644006,
+      "region_end_hex": "0x1915e6",
+      "region_size": 4438,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -141614,6 +144050,11 @@
       "center_address_hex": "0x191287",
       "segment_index": 0,
       "region_id": 10739,
+      "region_start": 1639568,
+      "region_start_hex": "0x190490",
+      "region_end": 1644006,
+      "region_end_hex": "0x1915e6",
+      "region_size": 4438,
       "base_reg": "r15",
       "center_accesses": [
         "write"
@@ -141802,6 +144243,11 @@
       "center_address_hex": "0x4acd63",
       "segment_index": 0,
       "region_id": 25876,
+      "region_start": 4902230,
+      "region_start_hex": "0x4acd56",
+      "region_end": 4902342,
+      "region_end_hex": "0x4acdc6",
+      "region_size": 112,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -141962,6 +144408,11 @@
       "center_address_hex": "0x4acde1",
       "segment_index": 0,
       "region_id": 25877,
+      "region_start": 4902342,
+      "region_start_hex": "0x4acdc6",
+      "region_end": 4902454,
+      "region_end_hex": "0x4ace36",
+      "region_size": 112,
       "base_reg": "rbx",
       "center_accesses": [
         "write"
@@ -142122,6 +144573,11 @@
       "center_address_hex": "0xeb8f1a",
       "segment_index": 0,
       "region_id": 70767,
+      "region_start": 15437531,
+      "region_start_hex": "0xeb8edb",
+      "region_end": 15438822,
+      "region_end_hex": "0xeb93e6",
+      "region_size": 1291,
       "base_reg": "rdi",
       "center_accesses": [
         "write"
@@ -142310,6 +144766,11 @@
       "center_address_hex": "0x9bc723",
       "segment_index": 0,
       "region_id": 52605,
+      "region_start": 10208765,
+      "region_start_hex": "0x9bc5fd",
+      "region_end": 10209351,
+      "region_end_hex": "0x9bc847",
+      "region_size": 586,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -142469,6 +144930,11 @@
       "center_address_hex": "0xa848f8",
       "segment_index": 0,
       "region_id": 55326,
+      "region_start": 11025998,
+      "region_start_hex": "0xa83e4e",
+      "region_end": 11029354,
+      "region_end_hex": "0xa84b6a",
+      "region_size": 3356,
       "base_reg": "rax",
       "center_accesses": [
         "read"
@@ -142683,6 +145149,11 @@
       "center_address_hex": "0x11e9e68",
       "segment_index": 0,
       "region_id": 91738,
+      "region_start": 18783407,
+      "region_start_hex": "0x11e9caf",
+      "region_end": 18783903,
+      "region_end_hex": "0x11e9e9f",
+      "region_size": 496,
       "base_reg": "r14",
       "center_accesses": [
         "read"
@@ -142925,6 +145396,11 @@
       "center_address_hex": "0xeaec30",
       "segment_index": 0,
       "region_id": 70387,
+      "region_start": 15395806,
+      "region_start_hex": "0xeaebde",
+      "region_end": 15395992,
+      "region_end_hex": "0xeaec98",
+      "region_size": 186,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -143170,6 +145646,11 @@
       "center_address_hex": "0xa29b63",
       "segment_index": 0,
       "region_id": 54082,
+      "region_start": 10656080,
+      "region_start_hex": "0xa29950",
+      "region_end": 10658317,
+      "region_end_hex": "0xa2a20d",
+      "region_size": 2237,
       "base_reg": "rdx",
       "center_accesses": [
         "write"
@@ -143386,6 +145867,11 @@
       "center_address_hex": "0xa4367b",
       "segment_index": 0,
       "region_id": 54605,
+      "region_start": 10761340,
+      "region_start_hex": "0xa4347c",
+      "region_end": 10762887,
+      "region_end_hex": "0xa43a87",
+      "region_size": 1547,
       "base_reg": "rdx",
       "center_accesses": [
         "write"
@@ -143602,6 +146088,11 @@
       "center_address_hex": "0x109e1aa",
       "segment_index": 0,
       "region_id": 82983,
+      "region_start": 17424656,
+      "region_start_hex": "0x109e110",
+      "region_end": 17425129,
+      "region_end_hex": "0x109e2e9",
+      "region_size": 473,
       "base_reg": "rax",
       "center_accesses": [
         "write"
@@ -144014,6 +146505,11 @@
       "center_address_hex": "0x2dbcb5",
       "segment_index": 0,
       "region_id": 18262,
+      "region_start": 2993931,
+      "region_start_hex": "0x2daf0b",
+      "region_end": 2998136,
+      "region_end_hex": "0x2dbf78",
+      "region_size": 4205,
       "base_reg": "rcx",
       "center_accesses": [
         "read"
@@ -144157,6 +146653,11 @@
       "center_address_hex": "0x8c9af9",
       "segment_index": 0,
       "region_id": 46957,
+      "region_start": 9214645,
+      "region_start_hex": "0x8c9ab5",
+      "region_end": 9214740,
+      "region_end_hex": "0x8c9b14",
+      "region_size": 95,
       "base_reg": "rsi",
       "center_accesses": [
         "read"
