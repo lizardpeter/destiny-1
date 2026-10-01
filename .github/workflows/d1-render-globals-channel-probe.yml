@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-render-globals-channel-probe.yml'
       - 'tools/d1_remote_filehash_probe.py'
       - 'tools/d1_tower_light_unk4b_census.py'
+      - 'tools/d1_global_channel_defaults_decode.py'
 
 permissions:
   contents: write
@@ -96,12 +97,19 @@ jobs:
           PY
           )"
           echo "$channels_tag" > reports/global_channel_defaults_tag.txt
+          mkdir -p reports/payloads
           python tools/d1_remote_filehash_probe.py \
             --tag-hash "$channels_tag" \
             --package-list reports/packages.txt \
             --runtime runtime \
             --base-url "$BASE_URL" \
+            --payload-out-dir reports/payloads \
             --out reports/global_channel_defaults.json
+          python tools/d1_global_channel_defaults_decode.py \
+            "reports/payloads/$channels_tag.bin" \
+            --tag-hash "$channels_tag" \
+            --index 0x11 --index 0x28 --index 0x30 --index 0x60 \
+            --out reports/global_channel_defaults_decoded.json
 
       - name: Record exact channel-table header census
         run: |
@@ -153,12 +161,14 @@ jobs:
           cp reports/bootstrap_80AF2000.json evidence/generated/d1_bootstrap_80AF2000_probe.json
           cp reports/render_globals.json evidence/generated/d1_render_globals_probe.json
           cp reports/global_channel_defaults.json evidence/generated/d1_global_channel_defaults_probe.json
+          cp reports/global_channel_defaults_decoded.json evidence/generated/d1_global_channel_defaults_decoded.json
           cp reports/render_globals_global_channel_probe.json evidence/generated/d1_render_globals_global_channel_probe.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add evidence/generated/d1_bootstrap_80AF2000_probe.json \
                   evidence/generated/d1_render_globals_probe.json \
                   evidence/generated/d1_global_channel_defaults_probe.json \
+                  evidence/generated/d1_global_channel_defaults_decoded.json \
                   evidence/generated/d1_render_globals_global_channel_probe.json
           if git diff --cached --quiet; then
             exit 0
