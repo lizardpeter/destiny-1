@@ -18,7 +18,9 @@ from pathlib import Path
 # (minimum stack depth, stack delta) for the exact evaluator subset in
 # Rust-test/src/native_vulkan_destiny1_light_program_eval.rs.
 STACK = {
+    0x01: (2, -1),  # Add
     0x03: (2, -1),  # Multiply
+    0x0B: (2, -1),  # Dot
     0x0E: (2, -1),  # Merge_3_1
     0x10: (3, -2),  # Lerp
     0x12: (3, -2),  # MultiplyAdd
@@ -33,7 +35,12 @@ STACK = {
     0x34: (0, +1),  # PushConstantVec4
     0x35: (1, 0),   # LerpConstant
     0x3C: (0, +1),  # PushExternInputFloat
-    0x42: (1, -1),  # evidence-scoped output store
+    0x42: (1, -1),  # exact RoI output store
+    # Strategy-aware RoI table plus exact one-byte framing. These two are used
+    # here only to close stack-depth accounting; value/address semantics remain
+    # a separate promotion gate.
+    0x44: (0, +1),  # PushTemp
+    0x45: (1, -1),  # PopTemp
 }
 
 HYPOTHESES = {
@@ -210,6 +217,8 @@ def main() -> int:
             "push_global_channel_vector_lineage_stack_compatible": "push_one" in compatible_all,
             "policy": (
                 "Stack-depth compatibility is necessary but not sufficient evidence. "
+                "Raw 0x44/0x45 are modeled only as RoI push-temp/pop-temp stack deltas, "
+                "not as fully promoted temp-bank semantics. "
                 "Do not assign a D1 opcode name or runtime source from this test alone."
             ),
         },
