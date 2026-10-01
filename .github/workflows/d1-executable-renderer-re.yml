@@ -193,6 +193,21 @@ jobs:
             --windows build/d1-executable-renderer/runtime_snapshot_getter_windows.json \
             --out build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
 
+      - name: Trace exact runtime snapshot storage consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ADEC4F: lea rbx,[rip+0x1CDE57A] -> exact 01.33 snapshot base 0x27BD1D0.
+          # 34E520 block copied to +0x1270; its +0x1C scalar is 0x27BE45C.
+          python tools/d1_executable_rip_target_xrefs.py \
+            build/d1-executable-renderer/eboot.bin \
+            --target 0x27BD1D0 \
+            --target 0x27BE440 \
+            --target 0x27BE45C \
+            --range 0x27BDE68:0x27BDEAC \
+            --range 0x27BE440:0x27BE474 \
+            -o build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json
+
       - name: Follow high-value renderer helper targets
         shell: bash
         run: |
@@ -327,13 +342,16 @@ jobs:
             evidence/generated/d1_ps4_0133_frame_candidate_region_windows.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json \
-            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json
+            evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_xrefs.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_windows.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_windows.json
           cp build/d1-executable-renderer/runtime_snapshot_getter_analysis.json \
             evidence/generated/d1_ps4_0133_runtime_snapshot_getter_analysis.json
+          cp build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json \
+            evidence/generated/d1_ps4_0133_runtime_snapshot_storage_xrefs.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -368,6 +386,7 @@ jobs:
             build/d1-executable-renderer/runtime_snapshot_getter_xrefs.json
             build/d1-executable-renderer/runtime_snapshot_getter_windows.json
             build/d1-executable-renderer/runtime_snapshot_getter_analysis.json
+            build/d1-executable-renderer/runtime_snapshot_storage_xrefs.json
             build/d1-executable-renderer/renderer_label_tables.json
             build/d1-executable-renderer/renderer_helper_windows.json
           if-no-files-found: error
