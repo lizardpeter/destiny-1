@@ -1,0 +1,164 @@
+name: D1 Current Render Globals Channel Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-current-render-globals-channel-probe.yml'
+      - 'tools/d1_remote_entry_reference_class_scan.py'
+      - 'tools/d1_remote_filehash_probe.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BASE_URL: https://crypt.cohae.dev/destiny/ps4/packages/latest
+      LINOODLE_SKIP_DLLMAIN: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover current package list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p source reports runtime
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D source
+          cp "$(find source -name packages.txt -print -quit)" reports/packages.txt
+
+      - name: Install exact Oodle runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Find current D1 client bootstrap by exact entry class
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_entry_reference_class_scan.py \
+            --package-id 0x01A3 \
+            --package-id 0x0172 \
+            --package-id 0x018D \
+            --package-id 0x0151 \
+            --reference 41038080 \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/current_bootstrap_class_scan.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/current_bootstrap_class_scan.json'))
+          print('BOOTSTRAP_HITS',[(x['package_id'],x['tag_hash'],x['declared_size']) for x in d['hits']])
+          if not d['hits']:
+              raise SystemExit('no current class 41038080 bootstrap hit')
+          candidates=[x for x in d['hits'] if x.get('available') and x.get('payload_size',0)>=0x40]
+          if len(candidates)!=1:
+              raise SystemExit(f'expected one readable >=0x40 bootstrap candidate, got {[(x["package_id"],x["tag_hash"],x.get("payload_size")) for x in candidates]}')
+          x=candidates[0]
+          raw=bytes.fromhex(x['prefix256'])
+          tag=int.from_bytes(raw[0x3c:0x40],'little')
+          if tag in (0,0xffffffff):
+              raise SystemExit(f'bootstrap +0x3C is null: {tag:08X}')
+          open('reports/current_bootstrap_tag.txt','w').write(x['tag_hash']+'\n')
+          open('reports/render_globals_tag.txt','w').write(f'{tag:08X}\n')
+          print('CURRENT_BOOTSTRAP',x['package_id'],x['tag_hash'],'RENDER_GLOBALS',f'{tag:08X}')
+          PY
+
+      - name: Probe exact current RenderGlobals
+        run: |
+          set -euo pipefail
+          render_tag="$(tr -d '\r\n' < reports/render_globals_tag.txt)"
+          python tools/d1_remote_filehash_probe.py \
+            --tag-hash "$render_tag" \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/current_render_globals.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/current_render_globals.json'))
+          e=d['entries'][0]
+          if e.get('violations'):
+              raise SystemExit(e['violations'])
+          meta=e['entry']
+          print('RENDER_GLOBALS_ENTRY',meta)
+          if meta['reference'].upper()!='B01B8080':
+              raise SystemExit(f'current bootstrap +0x3C target class {meta["reference"]} != lineage SRenderGlobals B01B8080')
+          raw=bytes.fromhex(e['prefix128'])
+          if len(raw)<0x38:
+              raise SystemExit(f'RenderGlobals payload too short: {len(raw)}')
+          tag=int.from_bytes(raw[0x34:0x38],'little')
+          if tag in (0,0xffffffff):
+              raise SystemExit(f'RenderGlobals +0x34 is null: {tag:08X}')
+          open('reports/global_channel_defaults_tag.txt','w').write(f'{tag:08X}\n')
+          print('GLOBAL_CHANNEL_DEFAULTS_TAG',f'{tag:08X}')
+          PY
+
+      - name: Probe exact current GlobalChannelDefaults payload
+        run: |
+          set -euo pipefail
+          channels_tag="$(tr -d '\r\n' < reports/global_channel_defaults_tag.txt)"
+          python tools/d1_remote_filehash_probe.py \
+            --tag-hash "$channels_tag" \
+            --package-list reports/packages.txt \
+            --runtime runtime \
+            --base-url "$BASE_URL" \
+            --out reports/current_global_channel_defaults.json
+          python - <<'PY'
+          import json,struct
+          b=json.load(open('reports/current_bootstrap_class_scan.json'))['hits'][0]
+          r=json.load(open('reports/current_render_globals.json'))['entries'][0]
+          g=json.load(open('reports/current_global_channel_defaults.json'))['entries'][0]
+          if g.get('violations'):
+              raise SystemExit(g['violations'])
+          raw=bytes.fromhex(g['prefix128'])
+          report={
+            'schema':'d1_current_render_globals_channel_chain/v1',
+            'status':'EXACT_CURRENT_RETAIL_RENDER_GLOBAL_CHAIN_CLOSED',
+            'bootstrap':{'tag_hash':b['tag_hash'],'reference':b['reference'],'package_id':b['package_id'],'sha256':b['payload_sha256'],'render_globals_offset':'0x3C'},
+            'render_globals':{'tag_hash':r['tag_hash'],'reference':r['entry']['reference'],'package_id':r['package_id'],'sha256':r['payload_sha256'],'global_channel_defaults_offset':'0x34'},
+            'global_channel_defaults':{'tag_hash':g['tag_hash'],'reference':g['entry']['reference'],'package_id':g['package_id'],'sha256':g['payload_sha256'],'payload_size':g['payload_size'],'prefix128':g['prefix128'],
+              'u32_first_128':[f'{struct.unpack_from("<I",raw,o)[0]:08X}' for o in range(0,len(raw)-(len(raw)%4),4)]},
+            'tfx_0x4b_operands':['0x11','0x28','0x30','0x60'],
+            'proof_boundary':'The exact current-retail bootstrap->RenderGlobals->GlobalChannelDefaults chain is closed only if all asserted class/offset checks above passed. DynamicArray element layout/count and mapping from raw TFX 0x4B operand to this table remain separate proof gates.'
+          }
+          open('reports/current_render_globals_channel_chain.json','w').write(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Commit exact generated evidence
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/generated
+          cp reports/current_bootstrap_class_scan.json evidence/generated/d1_current_bootstrap_class_scan.json
+          cp reports/current_render_globals.json evidence/generated/d1_current_render_globals_probe.json
+          cp reports/current_global_channel_defaults.json evidence/generated/d1_current_global_channel_defaults_probe.json
+          cp reports/current_render_globals_channel_chain.json evidence/generated/d1_current_render_globals_channel_chain.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add evidence/generated/d1_current_bootstrap_class_scan.json \
+                  evidence/generated/d1_current_render_globals_probe.json \
+                  evidence/generated/d1_current_global_channel_defaults_probe.json \
+                  evidence/generated/d1_current_render_globals_channel_chain.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record current D1 render-global channel chain'
+          git push
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-current-render-globals-channel-probe
+          path: reports/
+          retention-days: 14
+          compression-level: 6
