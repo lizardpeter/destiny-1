@@ -1,0 +1,89 @@
+name: D1 PS Texture Caller Decompile
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-ps-texture-caller-decompile.yml'
+      - 'tools/ghidra/D1ExportFunctionOffsets.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Recover exact eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-ps-texture-callers
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL" -o build/d1-ps-texture-callers/eboot.bin
+          test "$(stat -c %s build/d1-ps-texture-callers/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-ps-texture-callers/eboot.bin" | sha256sum --check --strict
+      - name: Download latest official Ghidra
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request("https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest",
+            headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","User-Agent":"d1-ps-texture-callers"})
+          with urllib.request.urlopen(req) as r: rel=json.load(r)
+          assets=[x for x in rel.get("assets",[]) if x.get("name","").endswith(".zip") and "PUBLIC" in x.get("name","")]
+          if not assets: raise SystemExit("no Ghidra PUBLIC zip")
+          open("build/d1-ps-texture-callers/ghidra_url.txt","w").write(assets[0]["browser_download_url"]+"\n")
+          PY
+          curl --fail --location --retry 4 "$(cat build/d1-ps-texture-callers/ghidra_url.txt)" -o build/d1-ps-texture-callers/ghidra.zip
+          unzip -q build/d1-ps-texture-callers/ghidra.zip -d build/d1-ps-texture-callers/
+          GHIDRA_DIR="$(find build/d1-ps-texture-callers -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+      - name: Install bundled PyGhidra
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet             --no-index --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist" pyghidra
+      - name: Decompile callers and one-hop neighborhood
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-ps-texture-callers/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless             build/d1-ps-texture-callers/project D1PsTextureCallers             -import build/d1-ps-texture-callers/eboot.bin -overwrite             -analysisTimeoutPerFile 3600             -scriptPath "$GITHUB_WORKSPACE/tools/ghidra"             -postScript D1ExportFunctionOffsets.py               "$GITHUB_WORKSPACE/build/d1-ps-texture-callers/ps_texture_callers.json"               1               0x7CAD10 0x820940 0x8209F0 0x820AA0 0x89C660 0x8B3980 0x829300               0x7DF310 0x7DF250 0x7DEF20 0x7DE8C0
+      - name: Summarize direct setter calls
+        run: |
+          python - <<'PY'
+          import json,re
+          d=json.load(open("build/d1-ps-texture-callers/ps_texture_callers.json"))
+          direct={0x7CAD10,0x820940,0x8209F0,0x820AA0,0x89C660,0x8B3980,0x829300}
+          for f in d["functions"]:
+            if f["image_offset"] not in direct: continue
+            print("\n==",hex(f["image_offset"]),f["name"],"==")
+            c=f["decompilation"].get("c") or ""
+            print(c[:18000])
+          PY
+      - name: Remove executable and Ghidra
+        if: always()
+        run: |
+          rm -f build/d1-ps-texture-callers/eboot.bin build/d1-ps-texture-callers/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-ps-texture-callers/project
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-ps-texture-caller-decompile
+          path: |
+            build/d1-ps-texture-callers/ps_texture_callers.json
+            build/d1-ps-texture-callers/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 30
