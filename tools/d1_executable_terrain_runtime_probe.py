@@ -41,6 +41,191 @@ LABELS = (
 
 INTERESTING_IMMEDIATES = {0xE, 0xE0, 0x1C0, 14, 224, 448}
 
+# Sony/Orbis dynamic table tags.  DT_SCE_* table addresses are file offsets
+# relative to PT_SCE_DYNLIBDATA, not runtime virtual addresses.
+DT_NULL = 0
+DT_SCE_JMPREL = 0x61000029
+DT_SCE_PLTRELSZ = 0x6100002D
+DT_SCE_RELA = 0x6100002F
+DT_SCE_RELASZ = 0x61000031
+DT_SCE_RELAENT = 0x61000033
+DT_SCE_STRTAB = 0x61000035
+DT_SCE_STRSZ = 0x61000037
+DT_SCE_SYMTAB = 0x61000039
+DT_SCE_SYMENT = 0x6100003B
+DT_SCE_SYMTABSZ = 0x6100003F
+
+STT_NAMES = {
+    0: "NOTYPE",
+    1: "OBJECT",
+    2: "FUNC",
+    3: "SECTION",
+    4: "FILE",
+}
+STB_NAMES = {0: "LOCAL", 1: "GLOBAL", 2: "WEAK"}
+
+
+def _segment(segments: list[dict], p_type: int) -> dict | None:
+    return next((row for row in segments if int(row["type"]) == p_type), None)
+
+
+def _cstr(table: bytes, offset: int) -> str:
+    if offset < 0 or offset >= len(table):
+        return ""
+    end = table.find(b"\0", offset)
+    if end < 0:
+        end = len(table)
+    return table[offset:end].decode("utf-8", errors="replace")
+
+
+def parse_orbis_dynlib(raw: bytes, segments: list[dict]) -> dict:
+    """Parse the exact Orbis dynsym/rela metadata without treating it as runtime data."""
+    dynamic = _segment(segments, 2)  # PT_DYNAMIC
+    dynlib = _segment(segments, 0x61000000)  # PT_SCE_DYNLIBDATA
+    if dynamic is None or dynlib is None:
+        return {
+            "status": "MISSING_DYNAMIC_OR_DYNLIBDATA",
+            "dynamic_present": dynamic is not None,
+            "dynlib_present": dynlib is not None,
+        }
+
+    doff = int(dynamic["absolute_file_offset"])
+    dsize = int(dynamic["file_size"])
+    dend = min(len(raw), doff + dsize)
+    tags: dict[int, list[int]] = {}
+    entries = []
+    for off in range(doff, dend - 15, 16):
+        tag, value = struct.unpack_from("<QQ", raw, off)
+        entries.append({"file_offset": off, "tag": tag, "tag_hex": hex(tag), "value": value, "value_hex": hex(value)})
+        tags.setdefault(tag, []).append(value)
+        if tag == DT_NULL:
+            break
+
+    def one(tag: int, default: int = 0) -> int:
+        rows = tags.get(tag, [])
+        return int(rows[-1]) if rows else default
+
+    liboff = int(dynlib["absolute_file_offset"])
+    libsize = int(dynlib["file_size"])
+
+    str_rel = one(DT_SCE_STRTAB)
+    str_size = one(DT_SCE_STRSZ)
+    sym_rel = one(DT_SCE_SYMTAB)
+    sym_size = one(DT_SCE_SYMTABSZ)
+    sym_ent = one(DT_SCE_SYMENT, 0x18) or 0x18
+
+    def dyn_slice(relative: int, size: int, label: str) -> bytes:
+        if relative < 0 or size < 0 or relative + size > libsize:
+            raise ValueError(
+                f"{label} relative span 0x{relative:X}+0x{size:X} exceeds PT_SCE_DYNLIBDATA 0x{libsize:X}"
+            )
+        start = liboff + relative
+        end = start + size
+        if end > len(raw):
+            raise ValueError(f"{label} file span exceeds executable")
+        return raw[start:end]
+
+    strtab = dyn_slice(str_rel, str_size, "DT_SCE_STRTAB") if str_size else b""
+    symtab = dyn_slice(sym_rel, sym_size, "DT_SCE_SYMTAB") if sym_size else b""
+    if sym_ent < 0x18:
+        raise ValueError(f"DT_SCE_SYMENT 0x{sym_ent:X} is smaller than ELF64 symbol size")
+    if sym_size % sym_ent:
+        raise ValueError(f"DT_SCE_SYMTABSZ 0x{sym_size:X} not divisible by entry 0x{sym_ent:X}")
+
+    symbols = []
+    for index in range(sym_size // sym_ent):
+        off = index * sym_ent
+        st_name = struct.unpack_from("<I", symtab, off)[0]
+        st_info = symtab[off + 4]
+        st_other = symtab[off + 5]
+        st_shndx = struct.unpack_from("<H", symtab, off + 6)[0]
+        st_value = struct.unpack_from("<Q", symtab, off + 8)[0]
+        st_size = struct.unpack_from("<Q", symtab, off + 0x10)[0]
+        symbols.append({
+            "index": index,
+            "name_offset": st_name,
+            "name": _cstr(strtab, st_name),
+            "info": st_info,
+            "bind": st_info >> 4,
+            "bind_name": STB_NAMES.get(st_info >> 4, f"BIND_{st_info >> 4}"),
+            "type": st_info & 0xF,
+            "type_name": STT_NAMES.get(st_info & 0xF, f"TYPE_{st_info & 0xF}"),
+            "other": st_other,
+            "shndx": st_shndx,
+            "value": st_value,
+            "value_hex": hex(st_value),
+            "size": st_size,
+        })
+
+    def parse_rela(rel_tag: int, size_tag: int, name: str) -> list[dict]:
+        rel = one(rel_tag)
+        size = one(size_tag)
+        if not rel or not size:
+            return []
+        payload = dyn_slice(rel, size, name)
+        ent = one(DT_SCE_RELAENT, 0x18) or 0x18
+        if ent < 0x18 or size % ent:
+            raise ValueError(f"{name} size/entry mismatch: 0x{size:X}/0x{ent:X}")
+        out = []
+        for index in range(size // ent):
+            off = index * ent
+            r_offset, r_info, r_addend = struct.unpack_from("<QQq", payload, off)
+            sym_index = r_info >> 32
+            r_type = r_info & 0xFFFFFFFF
+            symbol = symbols[sym_index] if sym_index < len(symbols) else None
+            out.append({
+                "index": index,
+                "offset": r_offset,
+                "offset_hex": hex(r_offset),
+                "info": r_info,
+                "type": r_type,
+                "symbol_index": sym_index,
+                "symbol_name": symbol["name"] if symbol else None,
+                "addend": r_addend,
+                "addend_hex": hex(r_addend & 0xFFFFFFFFFFFFFFFF),
+            })
+        return out
+
+    relas = parse_rela(DT_SCE_RELA, DT_SCE_RELASZ, "DT_SCE_RELA")
+    jmprels = parse_rela(DT_SCE_JMPREL, DT_SCE_PLTRELSZ, "DT_SCE_JMPREL")
+    terrain_symbols = [
+        row for row in symbols
+        if "terrain" in row["name"].lower()
+        or row["name"] in LABELS
+    ]
+    terrain_indices = {row["index"] for row in terrain_symbols}
+    terrain_relocations = [
+        {**row, "table": table_name}
+        for table_name, rows in (("rela", relas), ("jmprel", jmprels))
+        for row in rows
+        if row["symbol_index"] in terrain_indices
+    ]
+
+    return {
+        "status": "ORBIS_DYNLIB_PARSED",
+        "dynamic_segment": dynamic,
+        "dynlib_segment": dynlib,
+        "dynamic_entries": entries,
+        "table_layout": {
+            "strtab_relative": str_rel,
+            "strtab_size": str_size,
+            "symtab_relative": sym_rel,
+            "symtab_size": sym_size,
+            "symbol_entry_size": sym_ent,
+            "symbol_count": len(symbols),
+            "rela_count": len(relas),
+            "jmprel_count": len(jmprels),
+        },
+        "terrain_symbols": terrain_symbols,
+        "terrain_relocations": terrain_relocations,
+        "proof_boundary": (
+            "PT_SCE_DYNLIBDATA is loader metadata. Symbol values and relocations identify "
+            "code/data ownership or import slots, but the metadata bytes themselves are not "
+            "promoted as Bungie runtime renderer tables."
+        ),
+    }
+
+
 
 def v2f(va: int, segments: list[dict]) -> int | None:
     for seg in segments:
@@ -261,6 +446,8 @@ def main() -> int:
     strings = string_va_index(graph)
     fentries = function_entry_index(graph)
 
+    dynlib = parse_orbis_dynlib(raw, segments)
+
     table_report = scan_label_tables(args.executable, LABELS, cluster_distance=0x400)
     terrain_hits = []
     target_vas = []
@@ -284,9 +471,38 @@ def main() -> int:
         raw, segments, sorted(set(target_vas)), ranges, starts, by_entry,
         radius=args.xref_radius,
     )
-    candidate_entries = sorted({
+    candidate_entries = {
         row["function_entry"] for row in code_refs if row["function_entry"] is not None
+    }
+    dynsym_owners = []
+    for symbol in dynlib.get("terrain_symbols", []):
+        value = int(symbol.get("value", 0))
+        if not value:
+            continue
+        owner = by_entry.get(value) or owner_of(value, ranges, starts, by_entry)
+        dynsym_owners.append({
+            "symbol": symbol,
+            "owner_entry": int(owner["entry"], 16) if owner else None,
+            "owner_name": owner.get("name") if owner else None,
+        })
+        if owner is not None:
+            candidate_entries.add(int(owner["entry"], 16))
+
+    relocation_consumers = []
+    relocation_targets = sorted({
+        int(row["offset"])
+        for row in dynlib.get("terrain_relocations", [])
+        if int(row.get("offset", 0))
     })
+    if relocation_targets:
+        rel_refs = scan_code_references(
+            raw, segments, relocation_targets, ranges, starts, by_entry, radius=0,
+        )
+        relocation_consumers = rel_refs
+        for row in rel_refs:
+            if row["function_entry"] is not None:
+                candidate_entries.add(row["function_entry"])
+    candidate_entries = sorted(candidate_entries)
 
     functions = []
     for entry in candidate_entries:
@@ -320,6 +536,9 @@ def main() -> int:
         "terrain_pointer_hit_count": len(terrain_hits),
         "terrain_data_windows": windows,
         "code_references_to_terrain_table_neighborhoods": code_refs,
+        "orbis_dynlib": dynlib,
+        "dynsym_owners": dynsym_owners,
+        "terrain_relocation_consumers": relocation_consumers,
         "candidate_function_count": len(functions),
         "candidate_functions": functions,
         "t14_proof_boundary": (
@@ -338,6 +557,18 @@ def main() -> int:
         "terrain_pointer_hit_count": len(terrain_hits),
         "code_reference_count": len(code_refs),
         "candidate_function_count": len(functions),
+        "terrain_dynsym_count": len(dynlib.get("terrain_symbols", [])),
+        "terrain_relocation_count": len(dynlib.get("terrain_relocations", [])),
+        "dynsym_owners": [
+            {
+                "symbol": row["symbol"]["name"],
+                "type": row["symbol"]["type_name"],
+                "value": row["symbol"]["value_hex"],
+                "size": row["symbol"]["size"],
+                "owner": hex(row["owner_entry"]) if row["owner_entry"] is not None else None,
+            }
+            for row in dynsym_owners
+        ],
         "candidates": [
             {
                 "entry": f["entry_hex"],
