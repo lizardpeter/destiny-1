@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_PIXEL_TFX_CLOSED_EMPTY_EXPRESSION",
+  "date": "2026-10-02",
+  "workflow": {
+    "run_id": 37030755679,
+    "artifact_id": 11237072701,
+    "artifact_zip_sha256": "57cc11a65a9c12667c2017e00b0e254e810eae9dcca5ed5da326c11646b135a4",
+    "commit": "c746b07292289768df347eab6b5137c00b96a81f"
+  },
+  "corpus": {
+    "activity": "810B0002",
+    "selected_material_count": 108,
+    "framed_material_count": 108,
+    "unique_expression_count": 1
+  },
+  "exact_result": {
+    "empty_expression_material_count": 108,
+    "live_extern_material_count": 0,
+    "unknown_42_material_count": 0,
+    "opcode_histogram": {},
+    "extern_histogram": {},
+    "extern_request_histogram": {},
+    "output_target_histogram": {},
+    "violations": []
+  },
+  "interpretation": "After stripping only the independently proven D1 PS TFX 49/index/47/destination resource-assignment prefix, every selected terrain material has an empty executable expression tail. Terrain therefore requires no dynamic TFX extern provider, no opcode 0x42 policy, and no executable TFX evaluator.",
+  "production_consequence": "The exact terrain SurfaceProgram path can use source-resolved static pixel constants directly; TFX is not a remaining terrain admission blocker.",
+  "proof_boundary": "This closure is scoped to the exact selected RoI terrain material corpus. It does not generalize empty TFX expressions to non-terrain D1 materials."
+}
