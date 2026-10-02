@@ -1,0 +1,52 @@
+name: D1 PS Texture Setter Calls
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-ps-texture-setter-calls.yml'
+      - 'tools/d1_ps_texture_setter_calls.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+      CODEGRAPH_ARTIFACT_ID: '10939012869'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Capstone
+        run: python -m pip install --disable-pip-version-check -q capstone
+      - name: Recover exact eboot and code graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ps-texture-setter-calls
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL"             -o build/ps-texture-setter-calls/eboot.bin
+          test "$(stat -c %s build/ps-texture-setter-calls/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/ps-texture-setter-calls/eboot.bin" | sha256sum --check --strict
+          curl -fsSL --retry 4             -H "Authorization: Bearer $GH_TOKEN"             -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CODEGRAPH_ARTIFACT_ID}/zip"             -o build/ps-texture-setter-calls/codegraph.zip
+          unzip -q build/ps-texture-setter-calls/codegraph.zip -d build/ps-texture-setter-calls/codegraph
+          test -f build/ps-texture-setter-calls/codegraph/ghidra_code_graph.json.gz
+      - name: Trace PS texture setter call sites
+        run: |
+          python tools/d1_ps_texture_setter_calls.py             build/ps-texture-setter-calls/eboot.bin             --codegraph build/ps-texture-setter-calls/codegraph/ghidra_code_graph.json.gz             --out build/ps-texture-setter-calls/ps_texture_setter_calls.json
+      - name: Remove executable
+        if: always()
+        run: rm -f build/ps-texture-setter-calls/eboot.bin build/ps-texture-setter-calls/codegraph.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-ps-texture-setter-calls
+          path: build/ps-texture-setter-calls/ps_texture_setter_calls.json
+          if-no-files-found: warn
+          retention-days: 30
