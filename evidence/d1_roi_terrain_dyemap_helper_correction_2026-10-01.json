@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_DYEMAP_HELPER_CORRECTION_PINNED",
+  "date": "2026-10-01",
+  "pinned_d1_source": {
+    "repository": "MontagueM/Charm",
+    "commit": "e5c4c7b0affcc00a988441e8f913dad7d0aa9bb9",
+    "path": "Tiger/Schema/Static/Terrain.cs",
+    "behavior": "Rise of Iron TransformVertexColors appends RGBA=(0,0,0,GroupIndex/15) as an exporter-side helper for dyemap assignment."
+  },
+  "conflicting_later_source": {
+    "repository": "MontagueM/Charm",
+    "ref": "main",
+    "path": "Tiger/Schema/Static/Terrain.cs",
+    "behavior": "Later D2-oriented TransformVertexColors uses GroupIndex%4 -> R/G/B/white. The current file no longer carries D1 SMapTerrainResource/STerrain SchemaStruct declarations."
+  },
+  "correction": {
+    "invalid_for_d1": "GroupIndex%4 R/G/B/white must not be cited as D1 Rise of Iron terrain semantics.",
+    "retained_d1_helper": "RGBA=(0,0,0,GroupIndex/15) may be retained only as the pinned D1 exporter-side helper.",
+    "native_gpu_boundary": "Neither helper is promoted as the retail D1 GPU source attribute without an independent producer/consumer proof from the native terrain VS/input assembler."
+  },
+  "affected_historical_outputs": [
+    "tools/d1_world_terrain_scene_export.py reports produced before correction",
+    "tools/d1_gltf_embed_terrain_dyemaps.py metadata produced before correction",
+    "evidence/d1_crota_810b0002_terrain_t14_external_resource_2026-09-08.json dyemap-control histogram only"
+  ],
+  "unaffected_core_evidence": [
+    "SMapTerrainResource/STerrain ownership and class hashes",
+    "MainGeom0 part selection",
+    "0x08/0x0C terrain vertex stream decode",
+    "position and UV transforms",
+    "u16 restart-aware triangle-strip topology",
+    "effective dyemap last-valid/first-valid fallback identity",
+    "T14 absence from serialized material texture arrays and native shader T14 use",
+    "part/material/effective-dyemap joins"
+  ],
+  "corrective_commits": {
+    "Rust-test": [
+      "bd83c4f5290d1d1874a716f4a1257dabe76be531",
+      "1395fa1f089e429c421a600b2ab92250457c5cfa"
+    ],
+    "destiny-1": [
+      "d4acc054fac1dc3c73498e2e1acff774aaa6951e",
+      "b0314af7d8ed0d64f4dddbc10b9393e44cf2d7ff",
+      "1794af9b6f1bb798581a4a520205699331fb9b63"
+    ]
+  }
+}
