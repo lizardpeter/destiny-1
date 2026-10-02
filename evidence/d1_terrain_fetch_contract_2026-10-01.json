@@ -1,0 +1,182 @@
+{
+  "schema": "d1_terrain_fetch_contract_v1",
+  "generated_utc": "2026-10-02T04:10:00Z",
+  "status": "D1_TERRAIN_FETCH_CONTRACT_SOURCE_CLOSED",
+  "scope": "Destiny 1 Rise of Iron PS4 terrain VS families 0x80D76A8C / 0x80D76A8D",
+  "native_vertex_shader_interface": {
+    "families": [
+      "80D76A8C",
+      "80D76A8D"
+    ],
+    "input_usage_slots": [
+      {
+        "kind": "SubPtrFetchShader",
+        "start_sgpr": 0
+      },
+      {
+        "kind": "PtrVertexBufferTable",
+        "start_sgpr": 2
+      }
+    ],
+    "semantics": [
+      {
+        "semantic": 0,
+        "initial_vgpr": 4,
+        "components": 4
+      },
+      {
+        "semantic": 1,
+        "initial_vgpr": 8,
+        "components": 3
+      },
+      {
+        "semantic": 2,
+        "initial_vgpr": 12,
+        "components": 2
+      },
+      {
+        "semantic": 3,
+        "initial_vgpr": 16,
+        "components": 1
+      }
+    ]
+  },
+  "source_streams": {
+    "vertices1": {
+      "stride_bytes": 8,
+      "header_type": 0,
+      "storage": "little-endian signed int16x4",
+      "selected_fetch": "semantic0 / SINT16x4 -> I32x4",
+      "byte_offset": 0
+    },
+    "vertices2": {
+      "stride_bytes": 12,
+      "header_type": 0,
+      "storage": "signed-normalized int16 normal XYZW followed by IEEE-754 half2 UV",
+      "fetches": [
+        {
+          "semantic": 1,
+          "byte_offset": 0,
+          "storage_format": "SNORM16x4",
+          "fetched_components": "XYZ",
+          "post_fetch": "F32x3"
+        },
+        {
+          "semantic": 2,
+          "byte_offset": 8,
+          "storage_format": "FLOAT16x2",
+          "fetched_components": "XY",
+          "post_fetch": "F32x2"
+        },
+        {
+          "semantic": 3,
+          "byte_offset": 6,
+          "storage_format": "SNORM16",
+          "fetched_components": "X",
+          "post_fetch": "F32"
+        }
+      ]
+    }
+  },
+  "shader_dataflow": {
+    "semantic0": "v4-v7 are consumed by V_CVT_F32_I32 before position transform",
+    "semantic1_and_3": "v8,v9,v10,v16 are exported together as one four-lane varying",
+    "semantic2": "v12,v13 are used as transformed terrain UV"
+  },
+  "gfx7_conversion_opcode": {
+    "mnemonic": "V_CVT_F32_I32",
+    "vop1_opcode_hex": "0x05",
+    "llvm_reference": {
+      "repository": "llvm/llvm-project",
+      "commit": "a675e11f60838997749fe246646fc17aa44221de",
+      "file": "llvm/test/MC/AMDGPU/vop1.s",
+      "encoding_example": "v_cvt_f32_i32_e32 v1, v2 -> [0x02,0x0b,0x02,0x7e]"
+    }
+  },
+  "corpus_validation": {
+    "repository": "lizardpeter/destiny-1",
+    "workflow_run_id": 34228450545,
+    "workflow_head": "7272ca9e6684cdde92fed4214fad07a03c9607ed",
+    "artifact_id": 10056800992,
+    "artifact_name": "D1-CROTA-TERRAIN-BUFFER-LAYOUT-V1",
+    "artifact_sha256": "ce44de0c43089fb9ee94ea01b7474796b1eab6e050aafa43ab39f32a1eb061a0",
+    "terrain_count": 49,
+    "selected_main_geom0_parts": 1582,
+    "triangle_count": 1067552,
+    "vertices1_header_histogram": {
+      "stride=8,type=0": 49
+    },
+    "vertices2_header_histogram": {
+      "stride=12,type=0": 49
+    },
+    "exceptions": 0
+  },
+  "pinned_d1_consumer": {
+    "repository": "MontagueM/Charm",
+    "commit": "e5c4c7b0affcc00a988441e8f913dad7d0aa9bb9",
+    "terrain_file": "Tiger/Schema/Static/Terrain.cs",
+    "vertex_buffer_file": "Tiger/Schema/Model/VertexBuffer.cs",
+    "observations": [
+      "D1 terrain Vertices1 buffer 0 stride 0x08 reads four signed int16 position lanes without normalization",
+      "D1 terrain Vertices2 buffer 1 stride 0x0C reads signed-normalized int16 normal XYZW, then half2 UV",
+      "normal W at byte +6 is source data, not padding"
+    ]
+  },
+  "ps4_fetch_model": {
+    "repository": "PS4-OpenGNM/opengnm",
+    "commit": "4b295ca54c82c83acf308d1c646a2dfa9ae57350",
+    "files": [
+      "src/shader.c",
+      "include/gnm_buffer.h",
+      "include/gnm_types.h"
+    ],
+    "observation": "generated fetch shader loads one 16-byte GnmBuffer descriptor per semantic from PtrVertexBufferTable and emits buffer_load_format_x/xy/xyz/xyzw into the declared semantic VGPR start; descriptor format controls numeric conversion"
+  },
+  "exact_portable_fetch_contract": [
+    {
+      "semantic": 0,
+      "source": "Vertices1",
+      "offset": 0,
+      "stride": 8,
+      "storage": "SINT16x4",
+      "load_width": 4,
+      "post_fetch": "I32x4",
+      "vgprs": "v4-v7"
+    },
+    {
+      "semantic": 1,
+      "source": "Vertices2",
+      "offset": 0,
+      "stride": 12,
+      "storage": "SNORM16x4",
+      "load_width": 3,
+      "post_fetch": "F32x3",
+      "vgprs": "v8-v10"
+    },
+    {
+      "semantic": 2,
+      "source": "Vertices2",
+      "offset": 8,
+      "stride": 12,
+      "storage": "FLOAT16x2",
+      "load_width": 2,
+      "post_fetch": "F32x2",
+      "vgprs": "v12-v13"
+    },
+    {
+      "semantic": 3,
+      "source": "Vertices2",
+      "offset": 6,
+      "stride": 12,
+      "storage": "SNORM16",
+      "load_width": 1,
+      "post_fetch": "F32",
+      "vgprs": "v16"
+    }
+  ],
+  "proof_boundary": [
+    "This closes stream/offset/stride/storage-format/post-fetch-numeric-type/semantic/VGPR behavior for portable reproduction.",
+    "Runtime GPU virtual addresses and the literal 128-bit GnmBuffer descriptor words were not captured and are not claimed.",
+    "The terrain VS still requires portable integer stage-input plumbing plus V_CVT_F32_I32 SPIR-V lowering before exact native shader execution is closed."
+  ]
+}
