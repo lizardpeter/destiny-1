@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_MATERIAL_TERRAIN_FRONTIER_2026_10_01",
+  "date": "2026-10-01",
+  "scope": "Tower visual world readiness. Separates decoded geometry/material ownership, portable visual coverage, instruction-proven material semantics, exact native draw admission, and separate STerrain/natural geometry.",
+  "baked_static": {
+    "source": "evidence/d1_tower_ten_cell_textured_world_2026-09-05.json",
+    "map_owned_cells": 10,
+    "serialized_placements": 50148,
+    "retail_visible_placements": 11728,
+    "visible_materials": 400,
+    "geometry_variants_portable_adapter": 2071,
+    "geometry_decode_failures": 0,
+    "exact_texture_tags_decoded": "506/506",
+    "portable_textured_materials": 321,
+    "portable_textured_material_percent": 80.25,
+    "portable_textured_geometry_variants": 1786,
+    "portable_normal_mapped_geometry_variants": 1469
+  },
+  "shader_semantic_frontier": {
+    "sources": [
+      "notes/TOWER_TOP_SHADER_DATAFLOW.md",
+      "notes/TOWER_TOP_SHADER_DATAFLOW_PHASE2.md"
+    ],
+    "visible_material_corpus": 472,
+    "top_40_pixel_shader_family_material_coverage": 313,
+    "top_40_family_coverage_percent": 66.3135593220339,
+    "instruction_proven_direct_rgb_materials": 207,
+    "instruction_proven_direct_rgb_percent": 43.855932203389834,
+    "instruction_proven_primary_bc5_normal_materials": 95,
+    "instruction_proven_primary_bc5_normal_percent": 20.1271186440678,
+    "note": "Materials without direct RGB/BC5 roles are not necessarily unresolved. Many have exact palette, scalar, mask, cubemap, reflection, alpha-test, or other shader-specific semantics that require native shader replay rather than a portable PBR slot."
+  },
+  "common_layer": {
+    "source": "evidence/d1_tower_common_layer_texture_census_2026-09-05.json",
+    "unique_materials": 99,
+    "pixel_shader_families": 65,
+    "exact_texture_tags_decoded": "50/50",
+    "selected_geometry_parts": 163,
+    "current_live_placement_draws": 709,
+    "note": "Subsequent shader-dataflow work promoted several common families from heuristic preview roles to instruction-proven semantics."
+  },
+  "current_live_renderer": {
+    "source": "Rust-test docs/D1_PARITY_STATUS_2026-09-12.md and uregraph runtime dependency contract",
+    "native_exact_world_draws": 0,
+    "playable_fallback_active": true,
+    "explanation": "Exact SPIR-V/program/runtime binding infrastructure exists, but G-buffer output, fixed-function state, runtime globals/images, deferred lighting and pass composition still gate native draw admission."
+  },
+  "terrain": {
+    "generic_decoder_status": "authoritative decoder already proven on Crota STerrain",
+    "resource_class": "80801C37",
+    "terrain_class": "80801B2E",
+    "tower_census_commit": "033b71f35b393a98589b24c82566b5c4f286fe65",
+    "tower_status": "current-retail exact census launched; Tower-specific occurrence/material counts not yet promoted",
+    "note": "Baked static ground/world geometry is already present separately. STerrain/natural geometry outside the baked/static layer is a distinct source layer."
+  },
+  "fidelity_blockers_ordered": [
+    "native G-buffer outputs for broad proven surface shader families",
+    "Activity-owned light accumulation and global/runtime producers, especially raw 0x4B channel 0x28 plus Frame+0x1C and DeferredLight+0x100",
+    "exact fixed-function state, MRT composition and transparent ordering",
+    "Activity probes/cubemaps, lower texture mips and explicit LOD behavior",
+    "retail sky, shadows, fog/atmosphere, exposure/tonemapping, bloom/post and VFX",
+    "Tower STerrain/natural-geometry integration if the exact census confirms separate terrain resources"
+  ],
+  "proof_boundary": "Portable textured coverage is not exact retail-material coverage. Instruction-proven texture roles are not equivalent to complete shader equations. Exact native admission remains zero until the full draw/runtime/pass contract closes."
+}
