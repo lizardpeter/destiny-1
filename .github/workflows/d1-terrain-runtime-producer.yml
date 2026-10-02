@@ -1,0 +1,180 @@
+name: D1 Terrain Runtime Producer
+
+on:
+  push:
+    paths:
+      - ".github/workflows/d1-terrain-runtime-producer.yml"
+      - "tools/ghidra/D1ExportTerrainRuntime.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terrain-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+
+    steps:
+      - name: Checkout reversal tools
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Download exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-terrain-runtime
+          curl --fail --location --retry 4 --retry-delay 2             "$EBOOT_URL"             --output build/d1-terrain-runtime/eboot.bin
+          test "$(stat -c %s build/d1-terrain-runtime/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-terrain-runtime/eboot.bin" | sha256sum --check -
+
+      - name: Record raw terrain and dynamic-symbol frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "== ELF header =="
+            readelf -h build/d1-terrain-runtime/eboot.bin || true
+            echo
+            echo "== symbols containing terrain/dye =="
+            readelf -Ws build/d1-terrain-runtime/eboot.bin 2>/dev/null | grep -Ei 'terrain|dyemap|dye_map|chunked_terrain' || true
+            echo
+            echo "== dynamic symbols containing terrain/dye =="
+            objdump -T build/d1-terrain-runtime/eboot.bin 2>/dev/null | grep -Ei 'terrain|dyemap|dye_map|chunked_terrain' || true
+            echo
+            echo "== relocations mentioning terrain/dye =="
+            readelf -rW build/d1-terrain-runtime/eboot.bin 2>/dev/null | grep -Ei 'terrain|dyemap|dye_map|chunked_terrain' || true
+          } > build/d1-terrain-runtime/elf_terrain_symbols.txt
+          python - <<'PY'
+          import json,struct
+          from pathlib import Path
+          p=Path("build/d1-terrain-runtime/eboot.bin")
+          b=p.read_bytes()
+          rows={}
+          for name,value in [
+              ("STerrain_class",0x80801B2E),
+              ("SMapTerrainResource_class",0x80801C37),
+              ("slot14_descriptor_offset",0x1C0),
+          ]:
+              pat=struct.pack("<I",value)
+              hits=[]
+              start=0
+              while True:
+                  i=b.find(pat,start)
+                  if i<0: break
+                  hits.append(i)
+                  start=i+1
+              rows[name]={"value_hex":hex(value),"file_offsets":hits,"count":len(hits)}
+          for name,text in [
+              ("terrain_feature_renderer",b"terrain_feature_renderer"),
+              ("editor_terrain_tile_renderer",b"editor_terrain_tile_renderer"),
+              ("chunked_terrain",b"?chunked_terrain"),
+          ]:
+              rows[name]={"file_offsets":[i for i in range(len(b)) if b.startswith(text,i)]}
+              rows[name]["count"]=len(rows[name]["file_offsets"])
+          Path("build/d1-terrain-runtime/raw_terrain_frontier.json").write_text(
+              json.dumps(rows,indent=2,sort_keys=True)+"\n"
+          )
+          print(json.dumps(rows,indent=2,sort_keys=True))
+          PY
+
+      - name: Download latest official Ghidra
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request
+          request=urllib.request.Request(
+              "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest",
+              headers={
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "d1-terrain-runtime-re",
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              release=json.load(response)
+          assets=[
+              asset for asset in release.get("assets", [])
+              if asset.get("name","").endswith(".zip")
+              and "PUBLIC" in asset.get("name","")
+          ]
+          if not assets:
+              raise SystemExit("latest Ghidra release has no PUBLIC zip asset")
+          open("build/d1-terrain-runtime/ghidra_url.txt","w").write(
+              assets[0]["browser_download_url"]+"\n"
+          )
+          PY
+          curl --fail --location --retry 4             "$(cat build/d1-terrain-runtime/ghidra_url.txt)"             --output build/d1-terrain-runtime/ghidra.zip
+          unzip -q build/d1-terrain-runtime/ghidra.zip -d build/d1-terrain-runtime/
+          GHIDRA_DIR="$(find build/d1-terrain-runtime -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Ghidra bundled PyGhidra
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet             --no-index             --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist"             pyghidra
+
+      - name: Recover terrain runtime producer frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-terrain-runtime/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless             build/d1-terrain-runtime/project D1TerrainRuntime             -import build/d1-terrain-runtime/eboot.bin             -overwrite             -analysisTimeoutPerFile 3600             -scriptPath "$GITHUB_WORKSPACE/tools/ghidra"             -postScript D1ExportTerrainRuntime.py               "$GITHUB_WORKSPACE/build/d1-terrain-runtime/terrain_runtime_frontier.json"               160
+
+      - name: Summarize terrain frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p="build/d1-terrain-runtime/terrain_runtime_frontier.json"
+          d=json.load(open(p))
+          print("candidates",d["candidate_count"],"exported",d["exported_function_count"])
+          print("terrain symbols",d["terrain_symbols"])
+          for row in d["functions"][:40]:
+              r=row["rank"]
+              print(
+                  hex(r["image_offset"]) if isinstance(r.get("image_offset"),int) else None,
+                  r["name"],
+                  "score",r["score"],
+                  "classes",len(r["class_hits"]),
+                  "slot14off",len(r["slot14_descriptor_offset_hits"]),
+                  "slot14idx",len(r["slot14_index_hits"]),
+              )
+          PY
+
+      - name: Remove executable and Ghidra binaries
+        if: always()
+        shell: bash
+        run: |
+          rm -f build/d1-terrain-runtime/eboot.bin
+          rm -f build/d1-terrain-runtime/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-terrain-runtime/project
+
+      - name: Upload exact-build terrain runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-terrain-runtime-producer
+          path: |
+            build/d1-terrain-runtime/terrain_runtime_frontier.json
+            build/d1-terrain-runtime/raw_terrain_frontier.json
+            build/d1-terrain-runtime/elf_terrain_symbols.txt
+            build/d1-terrain-runtime/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 7
