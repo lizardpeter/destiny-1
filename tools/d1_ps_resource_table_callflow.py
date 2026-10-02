@@ -67,6 +67,26 @@ def main():
     funcs={int(f['entry'],16):f for f in graph.get('functions',[])}
 
     md=Cs(CS_ARCH_X86,CS_MODE_64); md.detail=True
+    # F8D880 dispatches InputUsageSlot.usage through a 0x25-entry signed
+    # dword-relative jump table based at 0xF8DEB0. Preserve the exact mapping so
+    # Sony usage 0x13 (PtrResourceTable) can be tied to its branch without
+    # assigning switch cases by visual pattern matching.
+    jump_table_base=0xF8DEB0
+    jump_table=[]
+    table_off=v2f(jump_table_base,segs)
+    if table_off is not None:
+        import struct
+        for usage in range(0x25):
+            rel=struct.unpack_from('<i',raw,table_off+usage*4)[0]
+            target=(jump_table_base+rel)&0xffffffffffffffff
+            jump_table.append({
+                'usage':usage,
+                'usage_hex':hex(usage),
+                'relative':rel,
+                'target':target,
+                'target_hex':hex(target),
+            })
+
     rows=[]
     for entry in sorted(TARGETS):
         f=funcs.get(entry)
@@ -106,6 +126,8 @@ def main():
             't14_byte_offset':'0x1C0',
             'pm4_writer':'0xF80210',
         },
+        'input_usage_jump_table':jump_table,
+        'ptr_resource_table_case':next((row for row in jump_table if row['usage']==0x13),None),
         'proof_boundary':'Disassembly proves exact register/call dataflow only. Semantic ownership of the pointer as terrain dyemap requires following its producer back to terrain-owned state.',
         'functions':rows,
     }
