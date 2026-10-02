@@ -78,7 +78,11 @@ def _cstr(table: bytes, offset: int) -> str:
     return table[offset:end].decode("utf-8", errors="replace")
 
 
-def parse_orbis_dynlib(raw: bytes, segments: list[dict]) -> dict:
+def parse_orbis_dynlib(
+    raw: bytes,
+    segments: list[dict],
+    interesting_addends: set[int] | None = None,
+) -> dict:
     """Parse the exact Orbis dynsym/rela metadata without treating it as runtime data."""
     dynamic = _segment(segments, 2)  # PT_DYNAMIC
     dynlib = _segment(segments, 0x61000000)  # PT_SCE_DYNLIBDATA
@@ -200,6 +204,13 @@ def parse_orbis_dynlib(raw: bytes, segments: list[dict]) -> dict:
         for row in rows
         if row["symbol_index"] in terrain_indices
     ]
+    interesting_addends = interesting_addends or set()
+    addend_relocations = [
+        {**row, "table": table_name}
+        for table_name, rows in (("rela", relas), ("jmprel", jmprels))
+        for row in rows
+        if (row["addend"] & 0xFFFFFFFFFFFFFFFF) in interesting_addends
+    ]
 
     return {
         "status": "ORBIS_DYNLIB_PARSED",
@@ -218,6 +229,7 @@ def parse_orbis_dynlib(raw: bytes, segments: list[dict]) -> dict:
         },
         "terrain_symbols": terrain_symbols,
         "terrain_relocations": terrain_relocations,
+        "interesting_addend_relocations": addend_relocations,
         "proof_boundary": (
             "PT_SCE_DYNLIBDATA is loader metadata. Symbol values and relocations identify "
             "code/data ownership or import slots, but the metadata bytes themselves are not "
@@ -446,8 +458,6 @@ def main() -> int:
     strings = string_va_index(graph)
     fentries = function_entry_index(graph)
 
-    dynlib = parse_orbis_dynlib(raw, segments)
-
     table_report = scan_label_tables(args.executable, LABELS, cluster_distance=0x400)
     terrain_hits = []
     target_vas = []
@@ -458,6 +468,12 @@ def main() -> int:
             if va is not None:
                 target_vas.append(int(va))
                 terrain_hits.append(hit)
+
+    terrain_label_targets = {
+        int(hit["target_virtual_address"]) for hit in terrain_hits
+    }
+    dynlib = parse_orbis_dynlib(raw, segments, terrain_label_targets)
+    terrain_loader_relocations = dynlib.get("interesting_addend_relocations", [])
 
     windows = [
         data_window(
@@ -491,18 +507,51 @@ def main() -> int:
     relocation_consumers = []
     relocation_targets = sorted({
         int(row["offset"])
-        for row in dynlib.get("terrain_relocations", [])
+        for row in (
+            dynlib.get("terrain_relocations", [])
+            + terrain_loader_relocations
+        )
         if int(row.get("offset", 0))
     })
     if relocation_targets:
+        # The relocation destination is often one field inside a renderer
+        # registration record. Search a bounded neighborhood so code that
+        # references the record base rather than the name field is retained.
         rel_refs = scan_code_references(
-            raw, segments, relocation_targets, ranges, starts, by_entry, radius=0,
+            raw, segments, relocation_targets, ranges, starts, by_entry, radius=0x400,
         )
         relocation_consumers = rel_refs
         for row in rel_refs:
             if row["function_entry"] is not None:
                 candidate_entries.add(row["function_entry"])
     candidate_entries = sorted(candidate_entries)
+
+    loader_relocation_owners = []
+    for row in terrain_loader_relocations:
+        destination = int(row["offset"])
+        owner = owner_of(destination, ranges, starts, by_entry)
+        loader_relocation_owners.append({
+            "label_target_addend": row["addend"],
+            "label_target_addend_hex": row["addend_hex"],
+            "relocation_table": row["table"],
+            "relocation_index": row["index"],
+            "relocation_type": row["type"],
+            "relocation_symbol_index": row["symbol_index"],
+            "relocation_symbol_name": row["symbol_name"],
+            "runtime_destination": destination,
+            "runtime_destination_hex": row["offset_hex"],
+            "destination_function_owner": int(owner["entry"], 16) if owner else None,
+            "destination_function_name": owner.get("name") if owner else None,
+        })
+
+    relocation_destination_windows = [
+        data_window(
+            raw, segments, int(row["offset"]), radius=args.table_radius,
+            function_entries=fentries, string_vas=strings,
+        )
+        for row in terrain_loader_relocations
+        if int(row.get("offset", 0))
+    ]
 
     functions = []
     for entry in candidate_entries:
@@ -538,6 +587,9 @@ def main() -> int:
         "code_references_to_terrain_table_neighborhoods": code_refs,
         "orbis_dynlib": dynlib,
         "dynsym_owners": dynsym_owners,
+        "terrain_loader_relocations": terrain_loader_relocations,
+        "terrain_loader_relocation_owners": loader_relocation_owners,
+        "terrain_relocation_destination_windows": relocation_destination_windows,
         "terrain_relocation_consumers": relocation_consumers,
         "candidate_function_count": len(functions),
         "candidate_functions": functions,
@@ -559,6 +611,18 @@ def main() -> int:
         "candidate_function_count": len(functions),
         "terrain_dynsym_count": len(dynlib.get("terrain_symbols", [])),
         "terrain_relocation_count": len(dynlib.get("terrain_relocations", [])),
+        "terrain_label_addend_relocation_count": len(terrain_loader_relocations),
+        "terrain_loader_relocations": [
+            {
+                "index": row["index"],
+                "type": row["type"],
+                "offset": row["offset_hex"],
+                "addend": row["addend_hex"],
+                "symbol_index": row["symbol_index"],
+                "symbol_name": row["symbol_name"],
+            }
+            for row in terrain_loader_relocations
+        ],
         "dynsym_owners": [
             {
                 "symbol": row["symbol"]["name"],
