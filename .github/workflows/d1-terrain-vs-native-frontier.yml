@@ -1,0 +1,191 @@
+name: D1 Terrain VS Native Frontier
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-terrain-vs-native-frontier.yml'
+      - 'tools/d1_ps4_vertex_shader_header.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  LINOODLE_SKIP_DLLMAIN: '1'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact current terrain shader family
+        run: |
+          set -euo pipefail
+          mkdir -p runtime packages shader disasm out evidence/generated
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o out/index.json
+          curl -fsSL --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          python tools/d1_recover_indexed_package_families.py             --index out/index.json --package-list out/packages.txt             --package-id 02bb --out-dir packages --report out/recovery.json
+
+      - name: Extract exact terrain vertex shaders
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          from d1_ps4_vertex_shader_header import parse_header
+          from d1_ps4_shader_binary_probe import find_footer,parse_binary_info
+
+          tags=['80D76A8C','80D76A8D']
+          c=v5.v3.base.Corpus([p.resolve() for p in sorted(Path('packages').glob('*.pkg'))],Path('runtime').resolve())
+          rows={}
+          for h in tags:
+              meta=c.entry_meta(h); hb,hsrc=c.payload(h)
+              assert meta and (meta['type'],meta['subtype'])==(32,9),(h,meta)
+              assert hb is not None,(h,'header unavailable')
+              native=str(meta['reference']).upper()
+              nb,nsrc=c.payload(native); assert nb is not None,(h,native)
+              footer,loc=find_footer(nb); assert footer is not None,(h,loc)
+              info=parse_binary_info(nb,footer); assert info['stage']=='VertexShader',(h,info)
+              dec=parse_header(hb,nb)
+              widths=[x['size_in_elements'] for x in dec['gnmx']['input_semantics']]
+              ids=[x['semantic'] for x in dec['gnmx']['input_semantics']]
+              vgprs=[x['vgpr'] for x in dec['gnmx']['input_semantics']]
+              assert widths==[4,3,2,1],(h,widths)
+              assert ids==[0,1,2,3],(h,ids)
+              assert vgprs==[4,8,12,16],(h,vgprs)
+              n=info['code_length_bytes']; code=nb[:n]
+              Path(f'shader/VS_{h}_header.bin').write_bytes(hb)
+              Path(f'shader/VS_{h}_native.bin').write_bytes(nb)
+              Path(f'shader/VS_{h}_gcn.bin').write_bytes(code)
+              rows[h]={
+                'shader':h,'native_shader':native,'header_source':hsrc,'native_source':nsrc,
+                'header_bytes':len(hb),'header_sha256':hashlib.sha256(hb).hexdigest(),
+                'native_bytes':len(nb),'native_sha256':hashlib.sha256(nb).hexdigest(),
+                'gcn_bytes':len(code),'gcn_sha256':hashlib.sha256(code).hexdigest(),
+                'binary_info':info,'gnmx':dec['gnmx'],'table_offsets':dec['table_offsets'],
+                'trailing_bytes_hex':dec['trailing_bytes_hex'],
+              }
+          json.dump({'status':'D1_TERRAIN_VS_EXACT_CURRENT','shaders':rows},open('out/vs_exact.json','w'),indent=2)
+          print(json.dumps({h:{'usage':r['gnmx']['input_usage_slots'],'inputs':r['gnmx']['input_semantics']} for h,r in rows.items()},indent=2))
+          PY
+
+      - name: Disassemble exact GFX700 vertex programs
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          for h in 80D76A8C 80D76A8D; do
+            "$exe" --raw --gpuType=GFX700 --hexcode "shader/VS_${h}_gcn.bin" > "disasm/VS_${h}.s" 2> "disasm/VS_${h}.stderr"
+            test ! -s "disasm/VS_${h}.stderr"
+            grep -q s_endpgm "disasm/VS_${h}.s"
+          done
+
+      - name: Trace native input lanes into terrain VS
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+
+          initial={
+            'semantic0':list(range(4,8)),
+            'semantic1':list(range(8,11)),
+            'semantic2':list(range(12,14)),
+            'semantic3':[16],
+          }
+          all_initial={v for xs in initial.values() for v in xs}
+          reg_re=re.compile(r'(?<![A-Za-z0-9_])v(\d+)(?![A-Za-z0-9_])')
+          range_re=re.compile(r'v\[(\d+):(\d+)\]')
+          rows={}
+          for h in ('80D76A8C','80D76A8D'):
+              lines=Path(f'disasm/VS_{h}.s').read_text().splitlines()
+              instructions=[]
+              uses={str(v):[] for v in sorted(all_initial)}
+              exports=[]
+              for lineno,line in enumerate(lines,1):
+                  m=re.search(r'\*/\s*(.*)$',line)
+                  if not m: continue
+                  ins=m.group(1).strip()
+                  instructions.append(ins)
+                  regs={int(x) for x in reg_re.findall(ins)}
+                  for a,b in range_re.findall(ins):
+                      regs.update(range(int(a),int(b)+1))
+                  for v in sorted(regs & all_initial):
+                      uses[str(v)].append({'line':lineno,'instruction':ins})
+                  if ins.startswith('exp '):
+                      exports.append({'line':lineno,'instruction':ins})
+              rows[h]={
+                'instruction_count':len(instructions),
+                'initial_vgpr_uses':uses,
+                'exports':exports,
+                'full_instruction_stream':instructions,
+              }
+          exact=json.load(open('out/vs_exact.json'))
+          out={
+            'schema_version':1,
+            'status':'D1_TERRAIN_VS_NATIVE_INPUT_DATAFLOW_CAPTURED',
+            'source_corpus':'current PS4 retail package family 02bb',
+            'shaders':{},
+            'source_stream_proof':{
+              'primary_stride':8,
+              'primary':'int16x4 terrain position storage',
+              'secondary_stride':12,
+              'secondary':'int16x4 normalized normal storage followed by half2 UV',
+              'source':'pinned D1 Rise of Iron Terrain/VertexBuffer consumer plus authoritative Crota terrain buffer-layout evidence',
+            },
+            'promotion_policy':'Numeric Gnmx semantic IDs and input VGPR ownership are exact. Role names remain withheld unless native VS dataflow plus independent D1 source-stream consumer uniquely close the mapping. SubPtrFetchShader remains a separate runtime fetch-conversion edge.',
+          }
+          for h,row in rows.items():
+              out['shaders'][h]={
+                'native_shader':exact['shaders'][h]['native_shader'],
+                'gcn_sha256':exact['shaders'][h]['gcn_sha256'],
+                'input_usage_slots':exact['shaders'][h]['gnmx']['input_usage_slots'],
+                'input_semantics':exact['shaders'][h]['gnmx']['input_semantics'],
+                **row,
+              }
+          json.dump(out,open('out/terrain_vs_native_frontier.json','w'),indent=2)
+          print(json.dumps({h:{'uses':{k:len(v) for k,v in r['initial_vgpr_uses'].items()},'exports':r['exports']} for h,r in rows.items()},indent=2))
+          PY
+          cp out/terrain_vs_native_frontier.json evidence/generated/d1_terrain_vs_native_frontier.json
+          cp disasm/VS_80D76A8C.s evidence/generated/d1_terrain_vs_80d76a8c_gfx700.s
+          cp disasm/VS_80D76A8D.s evidence/generated/d1_terrain_vs_80d76a8d_gfx700.s
+
+      - name: Commit exact terrain VS frontier
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add evidence/generated/d1_terrain_vs_native_frontier.json                   evidence/generated/d1_terrain_vs_80d76a8c_gfx700.s                   evidence/generated/d1_terrain_vs_80d76a8d_gfx700.s
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record exact D1 terrain vertex shader frontier'
+          git push
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TERRAIN-VS-NATIVE-FRONTIER
+          path: |
+            out/
+            shader/
+            disasm/
+          retention-days: 30
+          compression-level: 6
