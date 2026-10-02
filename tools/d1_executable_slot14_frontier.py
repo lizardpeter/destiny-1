@@ -112,51 +112,56 @@ def main():
     hits=defaultdict(list)
     global_counts=defaultdict(int)
 
-    for seg in executable_segments(segments):
-        foff=int(seg['absolute_file_offset']); size=int(seg['file_size'])
-        va0=int(seg['virtual_address'],16)
-        blob=raw[foff:foff+size]
-        for insn in md.disasm(blob,va0):
-            owner=owner_of(insn.address,ranges,starts,by_entry)
-            if owner is None:
+    # Use Ghidra's exact function body ranges as disassembly islands.  Whole
+    # PT_LOAD linear disassembly is unsafe on this Orbis executable because a
+    # data island / undecodable byte stops Capstone's streaming decoder before
+    # later code.  The function graph already gives us 46k source-exact code
+    # ranges tied to this executable SHA.
+    for entry,fn in by_entry.items():
+        for body in fn.get('body_ranges',[]):
+            lo=int(body['min'],16)
+            hi=int(body['max'],16)+1
+            foff=v2f(lo,segments)
+            if foff is None:
                 continue
-            sig=[]
-            mem_indices=[]
-            imm_values=[]
-            mem_disps=[]
-            for oi,op in enumerate(insn.operands):
-                if op.type==X86_OP_IMM:
-                    v=int(op.imm)
-                    imm_values.append(v)
-                    if abs(v)==SLOT14_INDEX:
-                        sig.append('literal_index_14')
-                    if abs(v)==SLOT14_OFFSET:
-                        sig.append('literal_offset_0x1c0')
-                    if abs(v)==SECONDARY_OFFSET:
-                        sig.append('literal_0xe0')
-                elif op.type==X86_OP_MEM:
-                    disp=int(op.mem.disp)
-                    mem_disps.append(disp)
-                    if abs(disp)==SLOT14_OFFSET:
-                        sig.append('memory_disp_0x1c0'); mem_indices.append(oi)
-                    if abs(disp)==SECONDARY_OFFSET:
-                        sig.append('memory_disp_0xe0'); mem_indices.append(oi)
-            if not sig:
-                continue
-            entry=int(owner['entry'],16)
-            hit={
-                'address':insn.address,
-                'address_hex':hex(insn.address),
-                'mnemonic':insn.mnemonic,
-                'op_str':insn.op_str,
-                'signals':sorted(set(sig)),
-                'immediates':imm_values,
-                'memory_displacements':mem_disps,
-                'memory_operand_indices':mem_indices,
-            }
-            hits[entry].append(hit)
-            for x in set(sig):
-                global_counts[x]+=1
+            blob=raw[foff:foff+(hi-lo)]
+            for insn in md.disasm(blob,lo):
+                sig=[]
+                mem_indices=[]
+                imm_values=[]
+                mem_disps=[]
+                for oi,op in enumerate(insn.operands):
+                    if op.type==X86_OP_IMM:
+                        v=int(op.imm)
+                        imm_values.append(v)
+                        if abs(v)==SLOT14_INDEX:
+                            sig.append('literal_index_14')
+                        if abs(v)==SLOT14_OFFSET:
+                            sig.append('literal_offset_0x1c0')
+                        if abs(v)==SECONDARY_OFFSET:
+                            sig.append('literal_0xe0')
+                    elif op.type==X86_OP_MEM:
+                        disp=int(op.mem.disp)
+                        mem_disps.append(disp)
+                        if abs(disp)==SLOT14_OFFSET:
+                            sig.append('memory_disp_0x1c0'); mem_indices.append(oi)
+                        if abs(disp)==SECONDARY_OFFSET:
+                            sig.append('memory_disp_0xe0'); mem_indices.append(oi)
+                if not sig:
+                    continue
+                hit={
+                    'address':insn.address,
+                    'address_hex':hex(insn.address),
+                    'mnemonic':insn.mnemonic,
+                    'op_str':insn.op_str,
+                    'signals':sorted(set(sig)),
+                    'immediates':imm_values,
+                    'memory_displacements':mem_disps,
+                    'memory_operand_indices':mem_indices,
+                }
+                hits[entry].append(hit)
+                for x in set(sig):
+                    global_counts[x]+=1
 
     rows=[]
     for entry,fhits in hits.items():
