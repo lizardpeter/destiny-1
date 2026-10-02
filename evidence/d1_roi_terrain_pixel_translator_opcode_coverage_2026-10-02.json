@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_PIXEL_TRANSLATOR_OPCODE_COVERAGE_EXACT",
+  "date": "2026-10-02",
+  "activity": "810B0002",
+  "native_ps_artifact": {
+    "workflow_run": 34231902540,
+    "artifact_id": 10058234988,
+    "artifact_zip_sha256": "458dd3a2a3496760c78b2feaa72be29767c6fb6ec514afb0ec9c67623047d91f",
+    "pixel_shader_families": 95
+  },
+  "rust_translator": {
+    "repository": "lizardpeter/Rust-test",
+    "path": "asset_import/importers/destiny1/src/gcn_translate.rs",
+    "content_sha": "203bbd86f6694eb454e4acb78ae82da92a898262",
+    "integration_commit": "d986d7be5afab0288c44edf6c9ce04e47de32ec0"
+  },
+  "census": {
+    "native_instruction_count": 25490,
+    "native_mnemonic_count": 49,
+    "encoding_opcode_pair_count": 55,
+    "unsupported_pair_count": 0,
+    "encountered": {
+      "Exp": [
+        0
+      ],
+      "Mimg": [
+        32,
+        36,
+        96
+      ],
+      "Smrd": [
+        2,
+        3,
+        8,
+        9,
+        10
+      ],
+      "Sop1": [
+        3,
+        4,
+        10,
+        36
+      ],
+      "Sop2": [
+        15,
+        21
+      ],
+      "Sopp": [
+        1,
+        8,
+        12
+      ],
+      "Vintrp": [
+        0,
+        1
+      ],
+      "Vop1": [
+        1,
+        37,
+        39,
+        42,
+        44,
+        51
+      ],
+      "Vop2": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        16,
+        31,
+        32,
+        33,
+        47
+      ],
+      "Vop3": [
+        4,
+        6,
+        256,
+        259,
+        264,
+        272,
+        320,
+        321,
+        324,
+        325,
+        326,
+        327,
+        426
+      ],
+      "Vopc": [
+        3,
+        4
+      ]
+    }
+  },
+  "notable_native_ops": [
+    "image_sample",
+    "image_sample_l",
+    "image_get_lod",
+    "v_cubeid_f32",
+    "v_cubesc_f32",
+    "v_cubetc_f32",
+    "v_cubema_f32",
+    "v_exp_f32",
+    "v_log_f32",
+    "v_rcp_f32",
+    "v_rsq_clamp_f32",
+    "v_sqrt_f32",
+    "v_readlane_b32",
+    "v_writelane_b32",
+    "v_cvt_pkrtz_f16_f32",
+    "v_interp_p1_f32",
+    "v_interp_p2_f32",
+    "exp"
+  ],
+  "conclusion": "Every encoding/opcode pair executed by the exact selected RoI terrain pixel-shader corpus is represented by the current neutral GCN translator. Native pixel instruction coverage is not a remaining terrain SurfaceProgram blocker.",
+  "proof_boundary": "This is exact for the 95 selected RoI terrain PS families and the cited Rust translator content SHA. It does not claim full D1 GCN coverage outside that corpus."
+}
