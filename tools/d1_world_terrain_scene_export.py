@@ -13,11 +13,11 @@ The vertex decode and transforms reproduce Charm's D1 terrain consumer:
   TransformPositions: STerrain.Unk30 + packed position, 16-bit Z/W height combine,
                       1/64 XY, 1/8192 Z scale, normal-length correction
   TransformTexcoords: mesh-group Unk20 scale/offset
-  TransformVertexColors: GroupIndex % 4 -> R/G/B/white dyemap selector
+  D1 exporter dyemap helper: RGBA = (0,0,0, GroupIndex / 15)
 
-The generated dyemap selector is NOT written to glTF COLOR_0 because portable PBR
-would multiply base color by it. It is losslessly retained in the report and node
-metadata along with the exact group/effective-dyemap identity.
+The generated D1 exporter-side dyemap helper is NOT written to glTF COLOR_0.
+It is retained in report/node metadata only. This helper is not promoted as a
+native GPU vertex semantic without a separate producer/consumer proof.
 
 Terrain is already pre-transformed by the source consumer, so the outer
 SMapDataEntry transform is deliberately ignored. A pure D1 Z-up -> glTF Y-up node
@@ -114,12 +114,9 @@ def transform_uv(uv: np.ndarray, group_vec20: list[float]) -> np.ndarray:
 
 
 def dye_control(group_index: int) -> list[float]:
-    return (
-        [1.0, 0.0, 0.0, 1.0],
-        [0.0, 1.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0],
-    )[group_index % 4]
+    # Pinned D1 Rise of Iron Charm Terrain.TransformVertexColors.
+    # Exporter helper only; not promoted as a native GPU source semantic.
+    return [0.0, 0.0, 0.0, float(group_index) / 15.0]
 
 
 def effective_dyemaps(groups: list[dict]) -> list[str | None]:
@@ -328,7 +325,7 @@ def main() -> int:
         "glb_sha256": sha256(a.out),
         "coordinate_adapter": "Each pre-transformed D1 terrain part receives only D1_ZUP_TO_GLTF_YUP; outer SMapDataEntry transform is intentionally not applied.",
         "vertex_decode": "Vertices1 0x08 = raw int16x4 position; Vertices2 0x0C = SNORM16 XYZ normal with padded int16 W + half2 UV, per pinned Charm terrain reader.",
-        "dyemap_policy": "Exact ordered Charm fallback replay: non-null group dyemap updates last-valid; null uses last-valid, or the first later valid dyemap when no previous valid exists. GroupIndex%4 selector is retained as D1 metadata, not glTF COLOR_0.",
+        "dyemap_policy": "Exact ordered Charm fallback replay: non-null group dyemap updates last-valid; null uses last-valid, or the first later valid dyemap when no previous valid exists. Pinned D1 exporter helper RGBA=(0,0,0,GroupIndex/15) is retained as metadata only and is not promoted as native GPU vertex semantics.",
         "parts": rows,
     }
     a.report.parent.mkdir(parents=True, exist_ok=True)
