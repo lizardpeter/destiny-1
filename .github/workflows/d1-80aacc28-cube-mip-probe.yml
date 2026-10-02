@@ -1,0 +1,50 @@
+name: D1 80AACC28 Cube Mip Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-80aacc28-cube-mip-probe.yml'
+      - 'tools/d1_80aacc28_cube_mip_probe.py'
+      - 'tools/d1_texture_export.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover package index and exact 0156 family
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input packages out
+          curl -fsSL --retry 8             'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json'             -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4             'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt'             -o input/packages.txt
+          python tools/d1_recover_indexed_package_families.py             --index input/D1_CURRENT_ACTIVITY_INDEX.json             --package-list input/packages.txt             --package-id 0156             --out-dir packages             --report out/package_recovery.json
+          find packages -maxdepth 1 -type f -name '*.pkg' -print
+
+      - name: Probe exact cube mip byte layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t pkgs < <(find packages -maxdepth 1 -type f -name '*.pkg' | sort)
+          test "${#pkgs[@]}" -gt 0
+          args=()
+          for p in "${pkgs[@]}"; do args+=(--pkg "$p"); done
+          python tools/d1_80aacc28_cube_mip_probe.py             "${args[@]}"             --out out/D1_80AACC28_CUBE_MIP_FRONTIER.json
+          sha256sum out/D1_80AACC28_CUBE_MIP_FRONTIER.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-80aacc28-cube-mip-probe
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
