@@ -194,7 +194,7 @@ jobs:
             'material_texture_recovered_package_ids':mt['recovered_package_ids'],
             'dyemap_recovered_package_ids':dt['recovered_package_ids'],
             'final_counts':m['final_counts'],'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
-            'proof_boundary':'Terrain geometry reproduces the pinned D1 MainGeom0 TriangleStrip, 0x08/0x0C vertex readers and Charm terrain position/UV transforms. All native selected-material texture resources and all effective STerrain dyemaps are embedded exactly. GroupIndex%4 dyemap control is preserved as D1 metadata rather than COLOR_0. A portable recreation of the native terrain dye blending equation remains a separate shader adapter.'
+            'proof_boundary':'Terrain geometry reproduces the pinned D1 MainGeom0 TriangleStrip, 0x08/0x0C vertex readers and Charm terrain position/UV transforms. All native selected-material texture resources and all effective STerrain dyemaps are embedded exactly. Pinned D1 exporter helper RGBA=(0,0,0,GroupIndex/15) is preserved as metadata rather than COLOR_0 and is not promoted as a native GPU source semantic. A portable recreation of the native terrain dye blending equation remains a separate shader adapter.'
           }
           json.dump(out,open('reports/FINAL_CROTA_WORLD_SKY_TERRAIN.json','w'),indent=2)
           print(json.dumps(out,indent=2))
