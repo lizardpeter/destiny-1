@@ -81,8 +81,63 @@ def main():
         callers.setdefault(y,set()).add(x)
 
     md=Cs(CS_ARCH_X86,CS_MODE_64); md.detail=True
-    candidates=[]
+
+    # Fast prefilter: 0x642 is the exact source-closed per-stage dword stride.
+    # Find its literal little-endian encoding in the executable, map those file
+    # offsets back to VAs/functions, then include one caller/callee hop. This
+    # avoids disassembling the entire program merely to discover the small state
+    # API cluster that owns this layout.
+    import struct,bisect
+    literal=struct.pack('<I',STAGE_STRIDE_DWORDS)
+    file_hits=[]
+    start=0
+    while True:
+        pos=raw.find(literal,start)
+        if pos<0: break
+        file_hits.append(pos)
+        start=pos+1
+
+    ranges=[]
     for entry,fn in funcs.items():
+        for br in fn.get('body_ranges',[]):
+            ranges.append((int(br['min'],16),int(br['max'],16),entry))
+    ranges.sort()
+    range_starts=[x[0] for x in ranges]
+
+    def file_to_va(off):
+        for seg in segs:
+            base_file=int(seg['absolute_file_offset']); size=int(seg['file_size'])
+            if base_file<=off<base_file+size:
+                return int(seg['virtual_address'],16)+(off-base_file)
+        return None
+
+    seed_entries=set()
+    raw_hit_rows=[]
+    for off in file_hits:
+        va=file_to_va(off)
+        owner=None
+        if va is not None:
+            idx=bisect.bisect_right(range_starts,va)-1
+            if idx>=0:
+                lo,hi,entry=ranges[idx]
+                if lo<=va<=hi:
+                    owner=entry
+                    seed_entries.add(entry)
+        raw_hit_rows.append({'file_offset':off,'file_offset_hex':hex(off),'va':va,'va_hex':hex(va) if va is not None else None,'owner_entry':owner,'owner_entry_hex':hex(owner) if owner is not None else None})
+
+    candidate_entries=set(seed_entries)
+    for entry in list(seed_entries):
+        candidate_entries.update(callers.get(entry,set()))
+        fn=funcs.get(entry,{})
+        for target in fn.get('called_function_entries',[]):
+            if isinstance(target,str):
+                try: candidate_entries.add(int(target,16))
+                except ValueError: pass
+
+    candidates=[]
+    for entry in sorted(candidate_entries):
+        fn=funcs.get(entry)
+        if fn is None: continue
         insns=list(dis_fn(md,raw,segs,fn))
         if not insns: continue
         hits=[]; score=0
@@ -160,6 +215,9 @@ def main():
             'resource_table_zero_entry_formula':'stage*0x642 + texture_index*8 dwords',
         },
         'proof_boundary':'Scores identify exact-code writer candidates only. A writer is not terrain/T14 until its source descriptor is tied to the active STerrain mesh-group dyemap.',
+        'raw_stage_stride_literal_hits':raw_hit_rows,
+        'stage_stride_seed_entries':[hex(x) for x in sorted(seed_entries)],
+        'prefilter_candidate_entry_count':len(candidate_entries),
         'candidate_count':len(candidates),
         'candidates':candidates,
     }
