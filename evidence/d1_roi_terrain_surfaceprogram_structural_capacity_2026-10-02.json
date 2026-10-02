@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_SURFACEPROGRAM_STRUCTURAL_CAPACITY_CLOSED",
+  "date": "2026-10-02",
+  "activity": "810B0002",
+  "native_ps_artifact": {
+    "workflow_run": 34231902540,
+    "artifact_id": 10058234988,
+    "artifact_zip_sha256": "458dd3a2a3496760c78b2feaa72be29767c6fb6ec514afb0ec9c67623047d91f",
+    "pixel_shader_families": 95
+  },
+  "rust_contract": {
+    "neutral_program_path": "asset_import/neutral_scene/src/program.rs",
+    "neutral_program_content_sha": "e46f5c48eefbb31d89ac7748f5471ced5ba69e17",
+    "wgsl_path": "src/surface_program_wgsl.rs",
+    "wgsl_content_sha": "183b883e734f37429c15b1d93436c3806f54b694",
+    "max_source_attributes": 6,
+    "max_scalar_varyings": 36,
+    "max_samplers": 16,
+    "max_2d_textures": 16,
+    "max_cube_textures": 2
+  },
+  "terrain_vertex_stage": {
+    "80D76A8C": {
+      "source_attributes": 6,
+      "scalar_varyings": 24,
+      "packed_varying_locations": 6
+    },
+    "80D76A8D": {
+      "source_attributes": 5,
+      "scalar_varyings": 20,
+      "packed_varying_locations": 5
+    }
+  },
+  "terrain_pixel_stage": {
+    "max_input_usage_records": 16,
+    "max_start_sgpr": 60,
+    "max_unique_texture_indices_per_shader": 12,
+    "max_unique_native_samplers_per_shader": 12,
+    "max_serialized_ps_textures_per_material": 11,
+    "cube_texture_count_histogram": {
+      "0": 77,
+      "1": 15,
+      "2": 3
+    },
+    "max_cube_textures_per_shader": 2,
+    "max_cube_shader_families": [
+      "810B1744",
+      "810B1753",
+      "810B1725"
+    ]
+  },
+  "input_usage_histogram": {
+    "ImmSampler": 844,
+    "ImmConstBuffer": 113,
+    "PtrExtendedUserData": 95,
+    "PtrResourceTable": 91,
+    "ImmResource": 8
+  },
+  "conclusion": "Every selected RoI terrain VS/PS family fits the current source-neutral SurfaceProgram structural limits. The largest terrain pixel program uses 12 textures and 12 samplers; no terrain family needs more than 2 cube resources. The two terrain VS families require only 5/6 source attributes and 20/24 scalar varyings, within the universal 6-attribute/36-varying limits.",
+  "proof_boundary": "This closes static IR/descriptor capacity only. It is separate from source texture-format representability and current private-engine compile/runtime validation."
+}
