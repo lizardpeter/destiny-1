@@ -1,0 +1,62 @@
+name: D1 PS ResourceTable Callflow
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-ps-resource-table-callflow.yml'
+      - 'tools/d1_ps_resource_table_callflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+      CODEGRAPH_ARTIFACT_ID: '10939012869'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Capstone
+        run: python -m pip install --disable-pip-version-check -q capstone
+      - name: Recover exact eboot and code graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/ps-resource-callflow
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL" -o build/ps-resource-callflow/eboot.bin
+          test "$(stat -c %s build/ps-resource-callflow/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/ps-resource-callflow/eboot.bin" | sha256sum --check --strict
+          curl -fsSL --retry 4             -H "Authorization: Bearer $GH_TOKEN"             -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CODEGRAPH_ARTIFACT_ID}/zip"             -o build/ps-resource-callflow/codegraph.zip
+          unzip -q build/ps-resource-callflow/codegraph.zip -d build/ps-resource-callflow/codegraph
+          test -f build/ps-resource-callflow/codegraph/ghidra_code_graph.json.gz
+      - name: Trace exact pointer callflow
+        run: |
+          python tools/d1_ps_resource_table_callflow.py             build/ps-resource-callflow/eboot.bin             --codegraph build/ps-resource-callflow/codegraph/ghidra_code_graph.json.gz             --out build/ps-resource-callflow/callflow.json
+      - name: Print focused call sites
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('build/ps-resource-callflow/callflow.json'))
+          for f in d['functions']:
+              for c in f['calls_of_interest']:
+                  print('\nCALLER',f['entry_hex'],'CALL',c['call_address'],'->',c['callee'])
+                  for ins in c['preceding_and_following']:
+                      print(ins['address_hex'],ins['mnemonic'],ins['op_str'])
+          PY
+      - name: Remove executable
+        if: always()
+        run: rm -f build/ps-resource-callflow/eboot.bin build/ps-resource-callflow/codegraph.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-ps-resource-table-callflow
+          path: build/ps-resource-callflow/callflow.json
+          if-no-files-found: warn
+          retention-days: 30
