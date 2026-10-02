@@ -7,10 +7,10 @@ resources produced by ``d1_texture_tag_export.py`` and annotates each exact terr
 part node with:
   * source and effective dyemap TagHash;
   * embedded glTF texture index for the effective dyemap;
-  * GroupIndex and Charm's generated GroupIndex%4 selector RGBA;
+  * GroupIndex and the pinned D1 exporter helper RGBA=(0,0,0,GroupIndex/15);
   * exact terrain/material/part provenance.
 
-The selector is metadata, not COLOR_0, because generic glTF PBR would otherwise
+The helper is metadata, not COLOR_0, because generic glTF PBR would otherwise
 multiply base color by a D1 shader-control value.  No dyemap channel semantics or
 blending equation is invented here.
 """
