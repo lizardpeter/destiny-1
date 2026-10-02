@@ -79,11 +79,21 @@ def graph_indexes(graph: dict):
 
 
 def renderer_entries(frontier: dict) -> set[int]:
-    return {
-        int(row["image_offset"])
-        for row in frontier.get("candidates", [])
-        if isinstance(row.get("image_offset"), int)
-    }
+    # The broad renderer frontier also contains high-scoring D1 hash-literal
+    # and assertion neighborhoods that are useful for discovery but are not
+    # renderer ownership evidence. For proximity here, seed only functions with
+    # direct renderer string xrefs (frame graph / draw submit / lighting/etc.).
+    out = set()
+    for row in frontier.get("candidates", []):
+        offset = row.get("image_offset")
+        if not isinstance(offset, int):
+            continue
+        if any(
+            evidence.get("kind") == "renderer_string_xref"
+            for evidence in row.get("evidence", [])
+        ):
+            out.add(int(offset))
+    return out
 
 
 def renderer_distance(entry: int, seeds: set[int], callers, callees, max_depth=3):
