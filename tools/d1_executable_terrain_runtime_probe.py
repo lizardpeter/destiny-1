@@ -212,6 +212,27 @@ def parse_orbis_dynlib(
         if (row["addend"] & 0xFFFFFFFFFFFFFFFF) in interesting_addends
     ]
 
+    # A terrain renderer-name relocation can be one field of a compact runtime
+    # registration record. Preserve adjacent relocation entries so other pointer
+    # fields in the same record can be identified without assuming the schema.
+    addend_relocation_neighborhoods = []
+    for anchor in addend_relocations:
+        rows = relas if anchor["table"] == "rela" else jmprels
+        lo = max(0, int(anchor["index"]) - 4)
+        hi = min(len(rows), int(anchor["index"]) + 5)
+        addend_relocation_neighborhoods.append({
+            "anchor": anchor,
+            "neighbors": [
+                {
+                    **row,
+                    "table": anchor["table"],
+                    "index_delta": int(row["index"]) - int(anchor["index"]),
+                    "runtime_offset_delta": int(row["offset"]) - int(anchor["offset"]),
+                }
+                for row in rows[lo:hi]
+            ],
+        })
+
     return {
         "status": "ORBIS_DYNLIB_PARSED",
         "dynamic_segment": dynamic,
@@ -230,6 +251,7 @@ def parse_orbis_dynlib(
         "terrain_symbols": terrain_symbols,
         "terrain_relocations": terrain_relocations,
         "interesting_addend_relocations": addend_relocations,
+        "interesting_addend_relocation_neighborhoods": addend_relocation_neighborhoods,
         "proof_boundary": (
             "PT_SCE_DYNLIBDATA is loader metadata. Symbol values and relocations identify "
             "code/data ownership or import slots, but the metadata bytes themselves are not "
@@ -544,6 +566,27 @@ def main() -> int:
             "destination_function_name": owner.get("name") if owner else None,
         })
 
+    terrain_registration_relocation_groups = []
+    for group in dynlib.get("interesting_addend_relocation_neighborhoods", []):
+        anchor = group["anchor"]
+        resolved = []
+        for row in group["neighbors"]:
+            addend = int(row["addend"]) & 0xFFFFFFFFFFFFFFFF
+            function = by_entry.get(addend) or owner_of(addend, ranges, starts, by_entry)
+            resolved.append({
+                **row,
+                "addend_function_owner": int(function["entry"], 16) if function else None,
+                "addend_function_name": function.get("name") if function else None,
+                "addend_is_exact_function_entry": addend in by_entry,
+                "addend_is_mapped_file_address": v2f(addend, segments) is not None,
+            })
+            if function is not None:
+                candidate_entries.add(int(function["entry"], 16))
+        terrain_registration_relocation_groups.append({
+            "anchor": anchor,
+            "neighbors": resolved,
+        })
+
     relocation_destination_windows = [
         data_window(
             raw, segments, int(row["offset"]), radius=args.table_radius,
@@ -589,6 +632,7 @@ def main() -> int:
         "dynsym_owners": dynsym_owners,
         "terrain_loader_relocations": terrain_loader_relocations,
         "terrain_loader_relocation_owners": loader_relocation_owners,
+        "terrain_registration_relocation_groups": terrain_registration_relocation_groups,
         "terrain_relocation_destination_windows": relocation_destination_windows,
         "terrain_relocation_consumers": relocation_consumers,
         "candidate_function_count": len(functions),
@@ -622,6 +666,30 @@ def main() -> int:
                 "symbol_name": row["symbol_name"],
             }
             for row in terrain_loader_relocations
+        ],
+        "terrain_registration_groups": [
+            {
+                "anchor_offset": group["anchor"]["offset_hex"],
+                "anchor_addend": group["anchor"]["addend_hex"],
+                "neighbors": [
+                    {
+                        "index": row["index"],
+                        "index_delta": row["index_delta"],
+                        "offset": row["offset_hex"],
+                        "offset_delta": row["runtime_offset_delta"],
+                        "type": row["type"],
+                        "addend": row["addend_hex"],
+                        "function": (
+                            hex(row["addend_function_owner"])
+                            if row["addend_function_owner"] is not None
+                            else None
+                        ),
+                        "exact_function": row["addend_is_exact_function_entry"],
+                    }
+                    for row in group["neighbors"]
+                ],
+            }
+            for group in terrain_registration_relocation_groups
         ],
         "dynsym_owners": [
             {
