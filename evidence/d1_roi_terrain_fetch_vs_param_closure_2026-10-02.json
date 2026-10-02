@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_FETCH_VS_PARAM_CLOSURE",
+  "date": "2026-10-02",
+  "scope": "Destiny 1 Rise of Iron PS4 terrain MainGeom0 native vertex fetch and VS parameter-export contract",
+  "source_streams": {
+    "vertices1": {
+      "stride_bytes": 8,
+      "storage": "little-endian int16x4 packed position"
+    },
+    "vertices2": {
+      "stride_bytes": 12,
+      "storage": "little-endian int16x4 normal followed by IEEE-754 half2 UV"
+    },
+    "index_stream": "u16 triangle strip with 0xffff primitive restart"
+  },
+  "native_vertex_shader_families": {
+    "80D76A8C": {
+      "input_semantics": [
+        {
+          "semantic_id": 0,
+          "initial_vgpr": 4,
+          "components": 4
+        },
+        {
+          "semantic_id": 1,
+          "initial_vgpr": 8,
+          "components": 3
+        },
+        {
+          "semantic_id": 2,
+          "initial_vgpr": 12,
+          "components": 2
+        },
+        {
+          "semantic_id": 3,
+          "initial_vgpr": 16,
+          "components": 1
+        }
+      ],
+      "exported_param_vec4_count": 6
+    },
+    "80D76A8D": {
+      "input_semantics": [
+        {
+          "semantic_id": 0,
+          "initial_vgpr": 4,
+          "components": 4
+        },
+        {
+          "semantic_id": 1,
+          "initial_vgpr": 8,
+          "components": 3
+        },
+        {
+          "semantic_id": 2,
+          "initial_vgpr": 12,
+          "components": 2
+        },
+        {
+          "semantic_id": 3,
+          "initial_vgpr": 16,
+          "components": 1
+        }
+      ],
+      "exported_param_vec4_count": 5
+    }
+  },
+  "fetch_contract": [
+    {
+      "semantic_id": 0,
+      "source": "Vertices1 + 0x00",
+      "stride_bytes": 8,
+      "storage_format": "SINT16x4",
+      "post_fetch": "sign-extended I32x4 in VGPR4..7",
+      "native_consumer_proof": "VS begins by converting the lanes with V_CVT_F32_I32; feeding float bit-patterns would be incorrect"
+    },
+    {
+      "semantic_id": 1,
+      "source": "Vertices2 + 0x00",
+      "stride_bytes": 12,
+      "storage_format": "SNORM16x4",
+      "post_fetch": "F32 XYZ in VGPR8..10",
+      "role": "normal.xyz"
+    },
+    {
+      "semantic_id": 2,
+      "source": "Vertices2 + 0x08",
+      "stride_bytes": 12,
+      "storage_format": "FLOAT16x2",
+      "post_fetch": "F32 XY in VGPR12..13",
+      "role": "terrain UV"
+    },
+    {
+      "semantic_id": 3,
+      "source": "Vertices2 + 0x06",
+      "stride_bytes": 12,
+      "storage_format": "SNORM16x1",
+      "post_fetch": "F32 X in VGPR16",
+      "role": "normal.w companion lane"
+    }
+  ],
+  "ps4_fetch_shader_model": {
+    "source": "PS4-OpenGNM/opengnm reversed sceGnmCreateFetchShader implementation",
+    "behavior": "one 16-byte GnmBuffer descriptor is loaded from the vertex-buffer table per input semantic and buffer_load_format_x/xy/xyz/xyzw writes directly to the semantic's declared starting VGPR",
+    "vertex_buffer_table_usage": "GNM_SHINPUTUSAGE_PTR_VERTEXBUFFERTABLE (0x17)",
+    "note": "This establishes the descriptor/fetch mechanism independently of Destiny. Exact runtime GPU addresses are draw-time values and are not required to preserve the source-neutral import contract."
+  },
+  "native_constant_contract": {
+    "api_slot_11": {
+      "c0": "STerrain.vector30 packed-position transform",
+      "c1": "selected SMeshGroup.vector20 UV scale/offset"
+    },
+    "api_slot_12": "view/projection matrix used for POS0; terrain PARAM exports are camera-independent"
+  },
+  "implementation": {
+    "rust_test_commits": [
+      "7369e43ca9d8d6787564daeafdf3b40024264ee1",
+      "8ad4dd2ce2bafcb1790b48a54c2c8ef9e5d66a4a",
+      "08fdc9827a7462b50368e87ae754409d0a719652",
+      "1da172033f1a7d64c09601c97329cf335d928917",
+      "27d7449a1790dbe6356a5c7aad3b032dde4ac9d9",
+      "e484342f018d5f7454b524ba61e8aa8e141af385",
+      "60a1856634dce788b104a2764caab166b222b364"
+    ],
+    "production_path": "D1 packed terrain streams -> exact post-fetch words -> native VS PARAM evaluation -> neutral SourceVertexStream/ProgramVertexStage -> translated native PS -> generic renderer",
+    "ci_note": "The isolated Destiny 1 importer cargo check succeeds at 60a18566. The repository's D1 workflow still stops later on a pre-existing TFX opcode 0x43 oracle test failure present before these terrain changes."
+  },
+  "t14_boundary": {
+    "established": "Native terrain PS families consume resource-table T14; T14 is absent from serialized SMaterial_ROI PS texture arrays and correlates exhaustively with effective STerrain dyemaps.",
+    "corroboration": [
+      "Pinned/current Charm Terrain.cs contains terrainTextureIndex = 14 and exports TerrainDyemaps.",
+      "Charm S2ShaderConverter emits g_t14 with the TerrainDyemap attribute for terrain shaders."
+    ],
+    "not_yet_promoted": "T14 == effective STerrain dyemap in the retail PS4 runtime",
+    "reason": "The retail runtime producer/write into resource-table slot 14 has not yet been independently recovered. Exporter/tooling naming is corroboration, not a native producer edge."
+  },
+  "proof_boundary": "The native terrain vertex-fetch and VS PARAM contract is closed for 80D76A8C/80D76A8D. T14 remains deliberately fail-closed until the retail runtime producer edge is independently proven."
+}
