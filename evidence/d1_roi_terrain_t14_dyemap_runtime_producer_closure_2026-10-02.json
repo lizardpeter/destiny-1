@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_T14_DYEMAP_RUNTIME_PRODUCER_CLOSED",
+  "date": "2026-10-02",
+  "exact_executable": {
+    "title_id": "CUSA00219",
+    "source_label": "owner-provided 01.33 object",
+    "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+    "size_bytes": 29249016
+  },
+  "source_schema": {
+    "terrain_class": "80801B2E",
+    "mesh_group_class": "80801A7F",
+    "mesh_group_stride_bytes": "0x60",
+    "mesh_group_vector20_offset": "0x20",
+    "mesh_group_dyemap_offset": "0x58",
+    "mesh_group_dyemap_field": "Texture TagHash / resource handle",
+    "schema_sources": [
+      "tools/d1_world_terrain_census.py",
+      "Rust-test asset_import/importers/destiny1/src/world_terrain.rs"
+    ]
+  },
+  "native_shader_contract": {
+    "ptr_resource_table_input_usage_raw_hex": "13000c10",
+    "ptr_resource_table_usage": "0x13",
+    "ptr_resource_table_api_slot": 0,
+    "ptr_resource_table_start_sgpr": 12,
+    "t14_load": "s_load_dwordx8 ... s[12:13], 0x70",
+    "t14_descriptor_index": 14,
+    "descriptor_size_bytes": 32,
+    "t14_byte_offset": "0x1C0"
+  },
+  "runtime_resource_table_path": {
+    "base_texture_descriptor_writer": {
+      "function": "0xF8AFD0",
+      "formula_dwords": "stage*0x642 + slot*8",
+      "copy_width": "count * 8 dwords",
+      "meaning": "base PtrResourceTable texture-descriptor setter"
+    },
+    "resolved_descriptor_wrapper": {
+      "function": "0x7DF310",
+      "behavior": "validates/caches an already-resolved descriptor and calls F8AFD0(stage=1,slot,count=1)"
+    },
+    "resource_handle_wrapper": {
+      "function": "0x7DF250",
+      "behavior": "resolves a D1 resource handle to its GPU texture descriptor, validates/caches it, and calls F8AFD0(stage=1,slot,count=1)"
+    },
+    "ptr_resource_table_submission": {
+      "input_usage_dispatcher": "0xF8BFF0 usage 0x13",
+      "gpu_submission_dispatcher": "0xF8D880 usage 0x13",
+      "ps_userdata_writer": "0xF80210",
+      "ps_user_sgprs": "s[12:13]"
+    }
+  },
+  "direct_terrain_producer": {
+    "function": "0x8B3980",
+    "recovered_caller": "0x105ABC0",
+    "group_array_behavior": [
+      "loads mesh-group count from owning terrain record",
+      "resolves the mesh-group dynamic-array base",
+      "iterates groups with stride 0x60",
+      "uses selected group index as index*0x60"
+    ],
+    "exact_selected_group_dataflow": [
+      {
+        "source": "group_base + selected_index*0x60 + 0x20",
+        "width": "16 bytes",
+        "consumer": "draw constant allocation/copy",
+        "schema_match": "SMeshGroup.vector20"
+      },
+      {
+        "source": "group_base + selected_index*0x60 + 0x58",
+        "width": "4 bytes",
+        "consumer": "PS texture binding slot 14",
+        "schema_match": "SMeshGroup.dyemap_hash"
+      }
+    ],
+    "t14_branch": [
+      "if dword[group + 0x58] == 0xFFFFFFFF: call 0x7DF310(..., slot=0xE, descriptor=null) to clear T14",
+      "otherwise: call 0x7DF250(..., slot=0xE, resource_handle=dword[group + 0x58]) to resolve and bind T14"
+    ],
+    "conclusion": "Retail executable directly binds the selected SMeshGroup Dyemap field to PS T14. This is a native producer edge, not correlation, exporter naming, or a later-D2 convention."
+  },
+  "corroborating_evidence": {
+    "terrain_ps_census": {
+      "workflow_run": 34231902540,
+      "artifact_id": 10058234988,
+      "t14_shader_count": 91,
+      "non_t14_shader_count": 4,
+      "serialized_material_t14_count": 0,
+      "note": "Previously established T14 externality and exhaustive association with effective STerrain dyemaps; no longer needed as the producer proof itself."
+    },
+    "ps_texture_setter_trace": {
+      "workflow_run": 37026669144,
+      "artifact_id": 11234799100,
+      "commit": "263fedf0d2ef202007ecb886909c1029bacfa8c3",
+      "literal_t14_calls": 2,
+      "note": "Both literal slot-14 writes are the clear/bind branches in 0x8B3980."
+    },
+    "caller_decompile": {
+      "workflow_run": 37026757365,
+      "artifact_id": 11236400274,
+      "commit": "dd129388a5d57f311388a396923f4aca5e764037",
+      "note": "Ghidra confirms 0x8B3980 group-array traversal and 0x105ABC0 caller."
+    },
+    "resource_shadow_api": {
+      "workflow_run": 37025477275,
+      "artifact_id": 11235053889,
+      "commit": "3c1b776f73a69b6a1763b65ce859301bdb6ce7aa"
+    }
+  },
+  "supersedes_proof_boundary": {
+    "previous_evidence": "evidence/d1_roi_terrain_ps_resource_table_runtime_path_2026-10-02.json",
+    "previous_status": "D1_ROI_TERRAIN_PS_RESOURCE_TABLE_RUNTIME_PATH_CLOSED_T14_PRODUCER_PENDING",
+    "now_closed": "exact retail writer/source edge SMeshGroup.dyemap_hash -> PS T14"
+  },
+  "implementation": {
+    "rust_test_commits": [
+      "fcf00213229d427fd62a9047fa54c4ea235206c6",
+      "3958b49df52148df0305c2ac3d6fc299fc47877f"
+    ],
+    "architecture": "D1 importer owns T14 resolution per (material,effective_dyemap) terrain binding; generic renderer receives ordinary neutral texture bindings and remains Destiny-agnostic.",
+    "important_ownership": "T14 is per SMeshGroup/draw, not per serialized material. SurfacePrograms may deduplicate while ProgramBindings vary by effective dyemap."
+  },
+  "non_claims": [
+    "The D1 exporter-side GroupIndex/15 vertex-color helper remains an exporter helper and is not promoted as a native GPU dyemap source.",
+    "This evidence does not assign unrelated resource-table slots or later-D2 terrain semantics to D1."
+  ]
+}
