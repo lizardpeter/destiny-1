@@ -1,0 +1,83 @@
+name: D1 Slot14 Executable Frontier
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-slot14-executable-frontier.yml'
+      - 'tools/d1_executable_slot14_frontier.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+      CODEGRAPH_ARTIFACT_ID: '10939012869'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Capstone
+        run: python -m pip install --disable-pip-version-check -q capstone
+
+      - name: Recover exact owner-provided eboot
+        run: |
+          set -euo pipefail
+          mkdir -p build/slot14
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL" -o build/slot14/eboot.bin
+          test "$(stat -c %s build/slot14/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/slot14/eboot.bin" | sha256sum --check --strict
+
+      - name: Recover exact-build code graph and renderer frontier
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4             -H "Authorization: Bearer $GH_TOKEN"             -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CODEGRAPH_ARTIFACT_ID}/zip"             -o build/slot14/codegraph.zip
+          unzip -q build/slot14/codegraph.zip -d build/slot14/codegraph
+          test -f build/slot14/codegraph/ghidra_code_graph.json.gz
+          test -f build/slot14/codegraph/renderer_frontier.json
+
+      - name: Scan whole executable for slot14-shaped resource-table operations
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_slot14_frontier.py             build/slot14/eboot.bin             --codegraph build/slot14/codegraph/ghidra_code_graph.json.gz             --renderer-frontier build/slot14/codegraph/renderer_frontier.json             --top 300             --out build/slot14/d1_slot14_frontier.json
+
+      - name: Summarize
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('build/slot14/d1_slot14_frontier.json'))
+          print('functions',d['function_hit_count'])
+          print('signals',d['global_signal_counts'])
+          for r in d['functions'][:60]:
+              print(
+                  r['entry_hex'],
+                  'score',r['score'],
+                  r['signal_counts'],
+                  'renderer',r['renderer_frontier_direct'],
+                  'r-callers',r['renderer_frontier_callers'],
+                  'r-callees',r['renderer_frontier_callees'],
+              )
+              for h in r['hits'][:12]:
+                  print(' ',h['address_hex'],h['mnemonic'],h['op_str'],h['signals'])
+          PY
+
+      - name: Remove executable
+        if: always()
+        run: rm -f build/slot14/eboot.bin build/slot14/codegraph.zip
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-slot14-executable-frontier
+          path: build/slot14/d1_slot14_frontier.json
+          if-no-files-found: warn
+          retention-days: 30
