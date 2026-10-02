@@ -1,0 +1,103 @@
+name: D1 Resource Shadow API Decompile
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-resource-shadow-api-decompile.yml'
+      - 'tools/ghidra/D1ExportFunctionOffsets.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Recover exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-resource-shadow-api
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL"             -o build/d1-resource-shadow-api/eboot.bin
+          test "$(stat -c %s build/d1-resource-shadow-api/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-resource-shadow-api/eboot.bin" | sha256sum --check --strict
+
+      - name: Download latest official Ghidra
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request(
+              "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest",
+              headers={
+                  "Authorization":"Bearer "+os.environ["GH_TOKEN"],
+                  "Accept":"application/vnd.github+json",
+                  "User-Agent":"d1-resource-shadow-api",
+              })
+          with urllib.request.urlopen(req) as r: rel=json.load(r)
+          assets=[x for x in rel.get("assets",[]) if x.get("name","").endswith(".zip") and "PUBLIC" in x.get("name","")]
+          if not assets: raise SystemExit("no Ghidra PUBLIC zip")
+          open("build/d1-resource-shadow-api/ghidra_url.txt","w").write(assets[0]["browser_download_url"]+"\n")
+          PY
+          curl --fail --location --retry 4             "$(cat build/d1-resource-shadow-api/ghidra_url.txt)"             -o build/d1-resource-shadow-api/ghidra.zip
+          unzip -q build/d1-resource-shadow-api/ghidra.zip -d build/d1-resource-shadow-api/
+          GHIDRA_DIR="$(find build/d1-resource-shadow-api -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Install bundled PyGhidra
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet             --no-index             --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist"             pyghidra
+
+      - name: Decompile resource-table state API cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-resource-shadow-api/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless             build/d1-resource-shadow-api/project D1ResourceShadowApi             -import build/d1-resource-shadow-api/eboot.bin             -overwrite             -analysisTimeoutPerFile 3600             -scriptPath "$GITHUB_WORKSPACE/tools/ghidra"             -postScript D1ExportFunctionOffsets.py               "$GITHUB_WORKSPACE/build/d1-resource-shadow-api/resource_shadow_api.json"               1               0xF8AFD0 0xF8B0C0 0xF8B1F0 0xF8B2E0 0xF8B410 0xF8B500 0xF8B600               0x7DC270 0x7DD6A0 0x7DE8C0 0x7DEF20 0x7DF250 0x7DF310               0x7E0040 0x7E05C0 0x7E08A0 0x7E0AE0 0x7E1110 0x7E1510               0x7E1960 0x7E1D10 0x7E2480 0x7E2B50 0x7E2CB0
+
+      - name: Summarize state setters
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,re
+          d=json.load(open("build/d1-resource-shadow-api/resource_shadow_api.json"))
+          targets={0xF8AFD0,0xF8B0C0,0xF8B1F0,0xF8B2E0,0xF8B410,0xF8B500,0xF8B600}
+          print("functions",d["function_count"])
+          for f in d["functions"]:
+              if f["image_offset"] not in targets: continue
+              print("\n==",hex(f["image_offset"]),f["name"],"==")
+              print((f["decompilation"].get("c") or "")[:14000])
+          PY
+
+      - name: Remove executable and Ghidra
+        if: always()
+        run: |
+          rm -f build/d1-resource-shadow-api/eboot.bin build/d1-resource-shadow-api/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-resource-shadow-api/project
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-resource-shadow-api-decompile
+          path: |
+            build/d1-resource-shadow-api/resource_shadow_api.json
+            build/d1-resource-shadow-api/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 30
