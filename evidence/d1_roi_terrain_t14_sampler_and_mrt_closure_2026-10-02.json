@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_T14_SAMPLER_AND_MRT_CLOSURE_COMPLETE",
+  "date": "2026-10-02",
+  "terrain_scope": {
+    "activity": "810B0002",
+    "unique_pixel_shader_count": 95,
+    "t14_shader_count": 91,
+    "selected_t14_material_count": 104
+  },
+  "t14_sampler_closure": {
+    "workflow_run": 37029617142,
+    "artifact_id": 11236283349,
+    "artifact_zip_sha256": "4d83df05a9c7177f99631d94ec1e231a068465f382b6e51f03152bbb1c197fe4",
+    "status": "D1_TERRAIN_T14_SAMPLER_CLOSURE_COMPLETE",
+    "closed_materials": 104,
+    "violations": 0,
+    "missing_dependency_package_ids": [],
+    "unique_native_sampler_count": 1,
+    "unique_native_sampler": {
+      "tag_hash": "80AAE176",
+      "class_hash": "80801A42",
+      "package_family": "0157",
+      "payload_bytes": 24,
+      "payload_sha256": "0bcdaa82ea0d8588e313f29998f6c7b9166e7d28d40b13d422348d55ae5dc208",
+      "descriptor_hex": "920000000000f000803f500a00000000",
+      "words_hex": [
+        "00000092",
+        "00F00000",
+        "0A503F80",
+        "00000000"
+      ],
+      "wrap_x": "ClampLastTexel",
+      "wrap_y": "ClampLastTexel",
+      "wrap_z": "ClampLastTexel",
+      "mag_filter": "Bilinear",
+      "min_filter": "Bilinear",
+      "mip_filter": "Linear",
+      "z_filter": "Linear",
+      "min_lod_raw": 0,
+      "max_lod_raw": 3840,
+      "lod_bias_raw_signed14": -128,
+      "lod_bias_f32": -0.5,
+      "max_aniso_ratio_raw": 0,
+      "border_color": "TransBlack"
+    },
+    "material_sampler_api_slot_histogram": {
+      "5": 13,
+      "6": 5,
+      "7": 5,
+      "8": 17,
+      "9": 6,
+      "10": 14,
+      "11": 36,
+      "12": 8
+    },
+    "shader_family_sampler_api_slot_histogram": {
+      "5": 9,
+      "6": 5,
+      "7": 5,
+      "8": 16,
+      "9": 6,
+      "10": 14,
+      "11": 28,
+      "12": 8
+    },
+    "conclusion": "Every selected material whose native terrain PS samples T14 resolves that image_sample's immediate sampler API slot through the exact SMaterial_ROI inline PS sampler record to native sampler 80AAE176. No default or synthetic sampler is required."
+  },
+  "native_t14_sampling": {
+    "shader_families": 91,
+    "exactly_one_t14_image_sample_per_shader": true,
+    "opcode": "image_sample",
+    "dmask_histogram": {
+      "xyz": 50,
+      "yw": 27,
+      "y": 14
+    }
+  },
+  "mrt_closure": {
+    "terrain_pixel_shader_families_checked": 95,
+    "mrt0_and_mrt1_export_count": 95,
+    "other_export_shape_count": 0,
+    "rust_translation_contract": "D1PassKind::Deferred maps MRT0 to base color and decodes MRT1 directly to SurfaceOutputs.world_normal/gloss.",
+    "consequence": "The visible native terrain deferred path does not depend on the neutral mesh placeholder tangent/normal for final shading; the retail pixel shader's MRT1 normal feeds generic lighting directly."
+  },
+  "runtime_producer_dependency": {
+    "evidence": "evidence/d1_roi_terrain_t14_dyemap_runtime_producer_closure_2026-10-02.json",
+    "relation": "SMeshGroup.dyemap_hash +0x58 -> PS T14",
+    "ownership": "per SMeshGroup / draw, not serialized material"
+  },
+  "implementation": {
+    "rust_test_commits": [
+      "fcf00213229d427fd62a9047fa54c4ea235206c6",
+      "3958b49df52148df0305c2ac3d6fc299fc47877f"
+    ],
+    "sampler_path": "native PS immediate sampler API slot -> material_sampler_hash(N) -> PS sampler record N-1 -> decode_ps4_sampler(80801A42) -> neutral ProgramSamplerState",
+    "note": "No additional T14 sampler-specific renderer code is required."
+  },
+  "proof_boundary": {
+    "closed": [
+      "T14 runtime texture producer",
+      "T14 exact native sampler identity and descriptor across all 104 selected T14 materials",
+      "one exact T14 image_sample per T14 shader family",
+      "MRT0+MRT1 exports for all 95 terrain PS families",
+      "placeholder mesh tangent is not a visible-path blocker for these native deferred terrain programs"
+    ],
+    "remaining": [
+      "end-to-end Rust SurfaceProgram compile/admission validation when private Rust-test Actions runners are healthy",
+      "any live TFX/engine-constant blockers that still prevent some terrain material programs from translating"
+    ]
+  }
+}
