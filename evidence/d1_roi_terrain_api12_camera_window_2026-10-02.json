@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_API12_CAMERA_WINDOW_EXACT",
+  "date": "2026-10-02",
+  "activity": "810B0002",
+  "native_ps_artifact": {
+    "workflow_run": 34231902540,
+    "artifact_id": 10058234988,
+    "artifact_zip_sha256": "458dd3a2a3496760c78b2feaa72be29767c6fb6ec514afb0ec9c67623047d91f"
+  },
+  "corpus": {
+    "terrain_pixel_shader_families": 95,
+    "api12_families": 18,
+    "api12_load_shape": "18/18 s_buffer_load_dwordx4 at dword offset 0x1C"
+  },
+  "abi": {
+    "ptr_extended_user_data_start_sgpr": 2,
+    "spilled_descriptor_offset_formula": "logical_start_sgpr - 16 dwords",
+    "api12_window_dwords": [
+      28,
+      29,
+      30,
+      31
+    ]
+  },
+  "exact_dataflow": {
+    "live_camera_words": [
+      28,
+      29,
+      30
+    ],
+    "dead_word": 31,
+    "live_first_use": "Every live word's first use is v_sub_f32(camera_component, interpolated terrain-position component); the resulting 3-vector feeds normalized/view-dependent terrain shading.",
+    "dead_fourth_lane": "18/18 dword31 destinations are overwritten before any read."
+  },
+  "families": [
+    {
+      "ps": "810B1239",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0x320",
+      "camera_first_use_pc": [
+        "0x3C8",
+        "0x3B0",
+        "0x394"
+      ],
+      "dead_word31_event_pc": "0x3FC"
+    },
+    {
+      "ps": "810B123A",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0x20C",
+      "camera_first_use_pc": [
+        "0x2B4",
+        "0x29C",
+        "0x280"
+      ],
+      "dead_word31_event_pc": "0x2F8"
+    },
+    {
+      "ps": "810B123B",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0x58",
+      "camera_first_use_pc": [
+        "0x108",
+        "0xF0",
+        "0xD4"
+      ],
+      "dead_word31_event_pc": "0x14C"
+    },
+    {
+      "ps": "810B123C",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0xC0",
+      "camera_first_use_pc": [
+        "0x168",
+        "0x150",
+        "0x134"
+      ],
+      "dead_word31_event_pc": "0x190"
+    },
+    {
+      "ps": "810B1716",
+      "logical_sgpr": 48,
+      "spill_dword": 32,
+      "load_pc": "0x58",
+      "camera_first_use_pc": [
+        "0x108",
+        "0xF0",
+        "0xD4"
+      ],
+      "dead_word31_event_pc": "0x14C"
+    },
+    {
+      "ps": "810B1721",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0x2BC",
+      "camera_first_use_pc": [
+        "0x364",
+        "0x34C",
+        "0x330"
+      ],
+      "dead_word31_event_pc": "0x3A8"
+    },
+    {
+      "ps": "810B1723",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0x438",
+      "camera_first_use_pc": [
+        "0x4E0",
+        "0x4C8",
+        "0x4AC"
+      ],
+      "dead_word31_event_pc": "0x514"
+    },
+    {
+      "ps": "810B1725",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0xE0",
+      "camera_first_use_pc": [
+        "0x188",
+        "0x170",
+        "0x154"
+      ],
+      "dead_word31_event_pc": "0x1B4"
+    },
+    {
+      "ps": "810B1727",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0x78",
+      "camera_first_use_pc": [
+        "0x128",
+        "0x110",
+        "0xF4"
+      ],
+      "dead_word31_event_pc": "0x170"
+    },
+    {
+      "ps": "810B1729",
+      "logical_sgpr": 48,
+      "spill_dword": 32,
+      "load_pc": "0x328",
+      "camera_first_use_pc": [
+        "0x3D0",
+        "0x3B8",
+        "0x39C"
+      ],
+      "dead_word31_event_pc": "0x404"
+    },
+    {
+      "ps": "810B1734",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0x2A4",
+      "camera_first_use_pc": [
+        "0x34C",
+        "0x334",
+        "0x318"
+      ],
+      "dead_word31_event_pc": "0x390"
+    },
+    {
+      "ps": "810B1735",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0x78",
+      "camera_first_use_pc": [
+        "0x128",
+        "0x110",
+        "0xF4"
+      ],
+      "dead_word31_event_pc": "0x170"
+    },
+    {
+      "ps": "810B1740",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0x404",
+      "camera_first_use_pc": [
+        "0x4AC",
+        "0x494",
+        "0x478"
+      ],
+      "dead_word31_event_pc": "0x4E0"
+    },
+    {
+      "ps": "810B1744",
+      "logical_sgpr": 60,
+      "spill_dword": 44,
+      "load_pc": "0xE0",
+      "camera_first_use_pc": [
+        "0x188",
+        "0x170",
+        "0x154"
+      ],
+      "dead_word31_event_pc": "0x1B4"
+    },
+    {
+      "ps": "810B1751",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0x284",
+      "camera_first_use_pc": [
+        "0x32C",
+        "0x314",
+        "0x2F8"
+      ],
+      "dead_word31_event_pc": "0x370"
+    },
+    {
+      "ps": "810B1753",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0xC0",
+      "camera_first_use_pc": [
+        "0x168",
+        "0x150",
+        "0x134"
+      ],
+      "dead_word31_event_pc": "0x190"
+    },
+    {
+      "ps": "810B1755",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0x58",
+      "camera_first_use_pc": [
+        "0x108",
+        "0xF0",
+        "0xD4"
+      ],
+      "dead_word31_event_pc": "0x14C"
+    },
+    {
+      "ps": "810B1757",
+      "logical_sgpr": 56,
+      "spill_dword": 40,
+      "load_pc": "0x3D0",
+      "camera_first_use_pc": [
+        "0x478",
+        "0x460",
+        "0x444"
+      ],
+      "dead_word31_event_pc": "0x4AC"
+    }
+  ],
+  "conclusion": "All selected RoI terrain PS families that declare ImmConstBuffer API12 source-close that buffer to camera position XYZ at dwords 28..30; dword31 is dead. There are no other API12 terrain families in the 95-family native PS corpus.",
+  "rust_consequence": "source_closed_api12_camera_base may safely return 28 for these 18 terrain PS hashes. Existing word-liveness logic will bind XYZ and elide the dead fourth lane.",
+  "proof_boundary": "Scoped to the selected Rise of Iron terrain pixel-shader corpus; this is not a global API12 claim."
+}
