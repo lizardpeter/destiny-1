@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_ALL_IMAGE_BINDINGS_CLOSED",
+  "date": "2026-10-02",
+  "activity": "810B0002",
+  "workflow": {
+    "run_id": 37078921702,
+    "artifact_id": 11257668117,
+    "artifact_zip_sha256": "ad2f37b191fe2d1a82bbf98513a79c786a87a5bd5e6c2f02059be1a22a610934",
+    "workflow_commit": "7906c3ff9505beb642f8f8df5e661254cde32f74",
+    "tool_commit": "39de67c15450ae5c2883657cf05af36e38dfb80b"
+  },
+  "corpus": {
+    "selected_material_count": 108,
+    "closed_material_count": 108,
+    "pixel_shader_family_count": 95,
+    "total_material_image_bindings": 1582,
+    "closed_material_image_bindings": 1582,
+    "serialized_material_texture_bindings": 1478,
+    "external_t14_dyemap_bindings": 104
+  },
+  "texture_index_histogram": {
+    "0": 185,
+    "1": 185,
+    "2": 178,
+    "3": 178,
+    "4": 156,
+    "5": 148,
+    "6": 140,
+    "7": 113,
+    "8": 101,
+    "9": 78,
+    "10": 16,
+    "14": 104
+  },
+  "image_opcode_histogram": {
+    "image_sample": 1546,
+    "image_sample_l": 18,
+    "image_get_lod": 18
+  },
+  "sampler_api_slot_histogram": {
+    "1": 185,
+    "2": 185,
+    "3": 178,
+    "4": 178,
+    "5": 169,
+    "6": 153,
+    "7": 145,
+    "8": 130,
+    "9": 107,
+    "10": 92,
+    "11": 52,
+    "12": 8
+  },
+  "native_sampler_hash_histogram": {
+    "80AAE176": 140,
+    "80AAE177": 996,
+    "80D76A89": 446
+  },
+  "unique_native_sampler_hash_count": 3,
+  "missing_dependency_package_ids": {},
+  "violations": [],
+  "conclusion": "Every exact native RoI terrain pixel-shader image instruction is joined to an exact texture owner and an exact native sampler: non-T14 resources resolve uniquely through serialized SMaterial_ROI PS textures; T14 resolves through the independently proven selected SMeshGroup effective dyemap producer; every ImmSampler API slot resolves through the material's inline PS sampler record to a native 80801A42 sampler descriptor. No inferred texture identity, default sampler, or synthetic image binding remains in this corpus.",
+  "rust_consequence": "The production terrain SurfaceProgram binding path may fail closed rather than substitute a black/default image. Rust-test c210815e enforces that a translated terrain program is withheld if any program texture cannot be decoded/represented.",
+  "proof_boundary": "Binding identity and sampler state are closed for the selected RoI terrain corpus. This does not by itself prove that every source texture format is representable by the current NeutralTexture decoder or that the private engine currently compiles/renders the complete corpus."
+}
