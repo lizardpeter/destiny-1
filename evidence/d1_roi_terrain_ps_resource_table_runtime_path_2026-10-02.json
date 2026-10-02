@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "status": "D1_ROI_TERRAIN_PS_RESOURCE_TABLE_RUNTIME_PATH_CLOSED_T14_PRODUCER_PENDING",
+  "date": "2026-10-02",
+  "executable": {
+    "title_id": "CUSA00219",
+    "source_label": "01.33 owner-provided exact-build object",
+    "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+    "size": 29249016
+  },
+  "terrain_shader_contract": {
+    "terrain_pixel_shader_families": 95,
+    "ptr_resource_table_record": {
+      "raw_hex": "13000c10",
+      "usage_type": "0x13 PtrResourceTable",
+      "api_slot": 0,
+      "start_register": 12,
+      "chunk_mask": 1
+    },
+    "t14_native_load": {
+      "instruction": "s_load_dwordx8 ... s[12:13], 0x70",
+      "offset_dwords": "0x70",
+      "offset_bytes": "0x1C0",
+      "descriptor_index": 14,
+      "descriptor_size_bytes": 32
+    },
+    "supporting_artifact": {
+      "workflow_run": 34231902540,
+      "artifact_id": 10058234988,
+      "evidence": "terrain_ps_resources_final.json + exact GCN disassemblies"
+    }
+  },
+  "retail_runtime_contract": {
+    "input_usage_dispatch": {
+      "function": "0xF8BFF0",
+      "usage_jump_table_base": "0xF8D570",
+      "ptr_resource_table_usage": "0x13",
+      "ptr_resource_table_target": "0xF8C5A4",
+      "behavior": "resolves a per-stage/api-slot resource-table GPU-visible pointer and stores it for later shader user-data programming"
+    },
+    "gpu_submission_dispatch": {
+      "function": "0xF8D880",
+      "usage_jump_table_base": "0xF8DEB0",
+      "ptr_resource_table_usage": "0x13",
+      "ptr_resource_table_target": "0xF8DAE3",
+      "behavior": "loads the resolved resource-table pointer and forwards it to the two-dword PS user-data writer"
+    },
+    "ps_userdata_writer": {
+      "function": "0xF80210",
+      "helper": "0xF83520",
+      "packet": "PKT3 SET_SH_REG, two data dwords",
+      "terrain_target": "PS USER_DATA 12/13 (SGPR s[12:13])"
+    },
+    "resource_table_shadow": {
+      "per_stage_stride_dwords": "0x642",
+      "api_slot_0_base_dword": 0,
+      "texture_descriptor_dwords": 8,
+      "texture_descriptor_bytes": 32,
+      "t14_dword_offset": "0x70",
+      "t14_byte_offset": "0x1C0",
+      "t14_stage_shadow_formula": "stage*0x642 + 0x70"
+    },
+    "upload_path": {
+      "function": "0x1005960",
+      "role": "copies selected CPU-side state range into the rotating GPU-visible resource-table backing used by the resolved PtrResourceTable pointer",
+      "evidence": "called from the PtrResourceTable case when that table is dirty"
+    }
+  },
+  "important_correction": {
+    "immediate_resource_region": {
+      "writer": "0xF8D5E0",
+      "base_dword": "stage*0x642 + 0x5B1",
+      "note": "This is a separate immediate-resource descriptor region. It is not the API-slot-0 PtrResourceTable base and must not be used as the T14 address."
+    },
+    "terrain_t14_region": "stage*0x642 + 14*8 dwords = stage*0x642 + 0x70"
+  },
+  "workflow_evidence": [
+    {
+      "run_id": 36994479897,
+      "artifact_id": null,
+      "commit": "43cd4a7f6f8fba20a51973ab01abcbd1c074af21",
+      "purpose": "PS USER_DATA12 PM4 packet probe"
+    },
+    {
+      "run_id": 36996224905,
+      "artifact_id": 11221865780,
+      "commit": "0e9f9e346e75d9b0fca4a8f847a7f459a1ec2397",
+      "purpose": "PtrResourceTable callflow and exact jump-table mapping"
+    },
+    {
+      "run_id": 36994945993,
+      "artifact_id": 11221328295,
+      "commit": "ac6aac24619f31ce27715d19a84b798382a02c13",
+      "purpose": "Ghidra decompile of PS resource-table binding chain"
+    },
+    {
+      "run_id": 36997179668,
+      "artifact_id": 11221747295,
+      "commit": "879636127c5232446af63474635321e7f398ccd9",
+      "purpose": "resource shadow writer frontier"
+    }
+  ],
+  "proof_boundary": {
+    "closed": [
+      "terrain PS PtrResourceTable lives in s[12:13]",
+      "T14 is descriptor index 14 at +0x70 dwords / +0x1C0 bytes from that table pointer",
+      "retail InputUsageSlot dispatcher resolves PtrResourceTable through the 0x13 case",
+      "retail submission writes that pointer through the PS user-data path",
+      "resource table backing uses a per-stage 0x642-dword shadow/ring-upload scheme"
+    ],
+    "pending": [
+      "identify the exact retail state-setter call that writes the active STerrain effective dyemap descriptor into API-slot-0 resource-table entry 14",
+      "tie that writer's source object/descriptor back to the active STerrain mesh-group dyemap without relying on Charm naming or correlation"
+    ],
+    "policy": "T14 remains fail-closed and is not renamed/bound as the terrain dyemap until the pending writer-source edge is independently closed."
+  }
+}
