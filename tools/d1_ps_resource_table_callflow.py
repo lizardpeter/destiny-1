@@ -87,6 +87,22 @@ def main():
                 'target_hex':hex(target),
             })
 
+    second_jump_table=[]
+    second_table_base=0xF8D570
+    second_off=v2f(second_table_base,segs)
+    if second_off is not None:
+        import struct
+        for value in range(0x1c):
+            rel=struct.unpack_from('<i',raw,second_off+value*4)[0]
+            target=(second_table_base+rel)&0xffffffffffffffff
+            second_jump_table.append({
+                'usage':value,
+                'usage_hex':hex(value),
+                'relative':rel,
+                'target':target,
+                'target_hex':hex(target),
+            })
+
     rows=[]
     for entry in sorted(TARGETS):
         f=funcs.get(entry)
@@ -128,6 +144,8 @@ def main():
         },
         'input_usage_jump_table':jump_table,
         'ptr_resource_table_case':next((row for row in jump_table if row['usage']==0x13),None),
+        'pointer_resolver_jump_table':second_jump_table,
+        'pointer_resolver_usage_0x13':next((x for x in second_jump_table if x['usage']==0x13),None),
         'proof_boundary':'Disassembly proves exact register/call dataflow only. Semantic ownership of the pointer as terrain dyemap requires following its producer back to terrain-owned state.',
         'functions':rows,
     }
