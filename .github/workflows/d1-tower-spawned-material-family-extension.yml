@@ -155,7 +155,7 @@ jobs:
               ref=norm(m.get('reference','FFFFFFFF'))
               # Sampler records may be terminal. Only a non-null reference is an
               # additional serialized payload dependency.
-              if ref not in NULL:
+              if ref not in NULL and int(ref,16)>=0x80800000:
                   p=pid(ref); extra.add(p)
                   payload_rows.append({'owner':h,'payload':ref,'package_id':p})
           for h in seed['shader_tags']:
