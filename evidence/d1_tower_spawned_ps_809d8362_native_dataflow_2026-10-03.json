@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_SPAWNED_PS_809D8362_NATIVE_DATAFLOW_EXACT",
+  "source_workflow_run_id": 37148346962,
+  "source_workflow_head_sha": "55cf858867e80a668ada9db29308d742eeac2949",
+  "source_material": "80C88638",
+  "spawned_triangle_impact_for_source_pair": 21300,
+  "aggregate_spawned_pixel_shader_triangle_impact": 32028,
+  "shader": "809D8362",
+  "native_shader": "809D83A9",
+  "native_sha256": "ec3a31cc2227e3193603a1d30c520880137c7e87b495186aa95a5eb23f7b0054",
+  "gcn_sha256": "33317570362c7e85dd088259d1f274c215aa7e863070af722bdb1a754a0f35aa",
+  "gcn_bytes": 1328,
+  "material_state4_hex": "00000000",
+  "tfx_program_sha256": "66a31f0aadb49de0029eaa58d28ad838cc05c7a696f5393875f92c883fa193db",
+  "tfx_output_targets": [0,17],
+  "texture_bindings": {
+    "0":"80AB04CD",
+    "1":"80C8866C",
+    "2":"80C8866D",
+    "3":"80AB04C1",
+    "4":"80AA820A",
+    "5":"80C8866E"
+  },
+  "closed_native_equation_summary": {
+    "surface_factor_branch": "t1 RGBA is unchanged for attr3.y>1; for attr3.y<=1 it becomes saturate(c0-0.25)+t1*saturate(4*c0), componentwise",
+    "normal": "t2.xy and transformed-UV t3.xy reconstruct tangent-space normal, then attr0/1/2 form normalized world N",
+    "surface_product": "C = transformed_t1.rgb * t0.rgb",
+    "reflection": "R = 2*dot(N,V)*N - V, with V from API12 camera position and attr4 position",
+    "cube": "t4 is sampled with explicit LOD floor controlled by transformed_t1.a",
+    "palette": "P = saturate(c17.rgb-0.25)+saturate(4*c17.rgb)*(4.594789981842041*C)",
+    "surface_palette_mix": "M = lerp(4.594789981842041*C, P, t5.r)",
+    "mrt0": "Q=b0[44:46]+M+cube.rgb*cube.a*(b0[41]+b0[40]*M); mrt0.rgb=Q+b0[52:54]*saturate((b0[48]+b0[49])-b0[48]*(1-dot(N,V))^2); mrt0.a=attr0.w",
+    "mrt1": "k=0.375+b0[71]*transformed_t1.a; mrt1.rgb=saturate(0.5+k*N); mrt1.a=b0[85] for attr3.y>1 else b0[81]"
+  },
+  "runtime_frontiers": {
+    "tfx_c0_producer_semantics_complete": false,
+    "tfx_c17_producer_semantics_complete": false,
+    "native_pixel_dataflow_complete_given_tfx_outputs": true,
+    "portable_material_recreation_complete": false,
+    "deferred_framebuffer_equivalence_closed": false
+  },
+  "policy": "The native PS arithmetic is source-closed. c0 and c17 remain explicit runtime TFX products and are never replaced by their serialized zero defaults."
+}
