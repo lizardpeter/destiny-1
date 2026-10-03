@@ -43,36 +43,46 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Find current D1 client bootstrap by exact entry class
+      - name: Find current D1 RenderGlobals by exact entry class
         run: |
           set -euo pipefail
+          # Historical bootstrap FileHashes/classes are revision-sensitive. Search
+          # the current renderer/global package families for the exact serialized
+          # SRenderGlobals reference class instead. Package names constrain only
+          # physical discovery; the B01B8080 FileEntry.Reference is the semantic gate.
           python tools/d1_remote_entry_reference_class_scan.py \
-            --package-id 0x01A3 \
-            --package-id 0x0172 \
-            --package-id 0x018D \
             --package-id 0x0151 \
-            --reference 41038080 \
+            --package-id 0x0154 \
+            --package-id 0x0155 \
+            --package-id 0x0156 \
+            --package-id 0x0157 \
+            --package-id 0x0158 \
+            --package-id 0x072B \
+            --package-id 0x072F \
+            --package-id 0x0735 \
+            --package-id 0x018D \
+            --package-id 0x0172 \
+            --package-id 0x01A3 \
+            --reference B01B8080 \
             --package-list reports/packages.txt \
             --runtime runtime \
             --base-url "$BASE_URL" \
-            --out reports/current_bootstrap_class_scan.json
+            --out reports/current_render_globals_class_scan.json
           python - <<'PY'
           import json
-          d=json.load(open('reports/current_bootstrap_class_scan.json'))
-          print('BOOTSTRAP_HITS',[(x['package_id'],x['tag_hash'],x['declared_size']) for x in d['hits']])
-          if not d['hits']:
-              raise SystemExit('no current class 41038080 bootstrap hit')
-          candidates=[x for x in d['hits'] if x.get('available') and x.get('payload_size',0)>=0x40]
-          if len(candidates)!=1:
-              raise SystemExit(f'expected one readable >=0x40 bootstrap candidate, got {[(x["package_id"],x["tag_hash"],x.get("payload_size")) for x in candidates]}')
-          x=candidates[0]
+          d=json.load(open('reports/current_render_globals_class_scan.json'))
+          hits=[x for x in d['hits'] if x.get('available') and x.get('payload_size',0)>=0x38 and not x.get('violations')]
+          print('RENDER_GLOBALS_HITS',[(x['package_id'],x['tag_hash'],x['declared_size']) for x in hits])
+          if len(hits)!=1:
+              raise SystemExit(f'expected one readable exact B01B8080 RenderGlobals candidate, got {[(x["package_id"],x["tag_hash"],x.get("payload_size")) for x in hits]}')
+          x=hits[0]
           raw=bytes.fromhex(x['prefix256'])
-          tag=int.from_bytes(raw[0x3c:0x40],'little')
+          tag=int.from_bytes(raw[0x34:0x38],'little')
           if tag in (0,0xffffffff):
-              raise SystemExit(f'bootstrap +0x3C is null: {tag:08X}')
-          open('reports/current_bootstrap_tag.txt','w').write(x['tag_hash']+'\n')
-          open('reports/render_globals_tag.txt','w').write(f'{tag:08X}\n')
-          print('CURRENT_BOOTSTRAP',x['package_id'],x['tag_hash'],'RENDER_GLOBALS',f'{tag:08X}')
+              raise SystemExit(f'RenderGlobals +0x34 is null: {tag:08X}')
+          open('reports/render_globals_tag.txt','w').write(x['tag_hash']+'\n')
+          open('reports/global_channel_defaults_tag.txt','w').write(f'{tag:08X}\n')
+          print('CURRENT_RENDER_GLOBALS',x['package_id'],x['tag_hash'],'GLOBAL_CHANNEL_DEFAULTS',f'{tag:08X}')
           PY
 
       - name: Probe exact current RenderGlobals
@@ -87,22 +97,19 @@ jobs:
             --out reports/current_render_globals.json
           python - <<'PY'
           import json
-          d=json.load(open('reports/current_render_globals.json'))
-          e=d['entries'][0]
+          e=json.load(open('reports/current_render_globals.json'))['entries'][0]
           if e.get('violations'):
               raise SystemExit(e['violations'])
-          meta=e['entry']
-          print('RENDER_GLOBALS_ENTRY',meta)
-          if meta['reference'].upper()!='B01B8080':
-              raise SystemExit(f'current bootstrap +0x3C target class {meta["reference"]} != lineage SRenderGlobals B01B8080')
+          if e['entry']['reference'].upper()!='B01B8080':
+              raise SystemExit(f'current RenderGlobals target class {e["entry"]["reference"]} != B01B8080')
           raw=bytes.fromhex(e['prefix128'])
           if len(raw)<0x38:
               raise SystemExit(f'RenderGlobals payload too short: {len(raw)}')
           tag=int.from_bytes(raw[0x34:0x38],'little')
-          if tag in (0,0xffffffff):
-              raise SystemExit(f'RenderGlobals +0x34 is null: {tag:08X}')
-          open('reports/global_channel_defaults_tag.txt','w').write(f'{tag:08X}\n')
-          print('GLOBAL_CHANNEL_DEFAULTS_TAG',f'{tag:08X}')
+          expected=tr=open('reports/global_channel_defaults_tag.txt').read().strip().upper()
+          if f'{tag:08X}' != expected:
+              raise SystemExit(f'RenderGlobals +0x34 changed between class scan/probe: {tag:08X} != {expected}')
+          print('RENDER_GLOBALS_ENTRY',e['entry'],'GLOBAL_CHANNEL_DEFAULTS_TAG',expected)
           PY
 
       - name: Probe exact current GlobalChannelDefaults payload
@@ -139,7 +146,7 @@ jobs:
             'global_channel_defaults':{'tag_hash':g['tag_hash'],'reference':g['entry']['reference'],'package_id':g['package_id'],'sha256':g['payload_sha256'],'payload_size':g['payload_size'],'prefix128':g['prefix128'],
               'u32_first_128':[f'{struct.unpack_from("<I",raw,o)[0]:08X}' for o in range(0,len(raw)-(len(raw)%4),4)]},
             'tfx_0x4b_operands':['0x11','0x28','0x30','0x60'],
-            'proof_boundary':'The exact current-retail bootstrap->RenderGlobals->GlobalChannelDefaults chain is closed only if all asserted class/offset checks above passed. DynamicArray element layout/count and mapping from raw TFX 0x4B operand to this table remain separate proof gates.'
+            'proof_boundary':'The exact current-retail RenderGlobals object is selected by serialized B01B8080 FileEntry.Reference from a bounded current global/startup package-family candidate set; +0x34 then closes the GlobalChannelDefaults FileHash. DynamicArray element layout/count and TFX 0x4B operand mapping remain separate proof gates.'
           }
           open('reports/current_render_globals_channel_chain.json','w').write(json.dumps(report,indent=2)+'\n')
           print(json.dumps(report,indent=2))
