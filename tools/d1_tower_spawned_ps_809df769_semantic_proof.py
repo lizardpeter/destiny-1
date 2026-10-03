@@ -54,7 +54,7 @@ ANCHORS=[
  'v_mad_f32       v14, v14, s0, -v3',
  'v_mac_f32       v18, s4, v5',
  'v_subrev_f32    v14, v10, v18',
- 'v_mac_f32       v10, v2, v16',
+ 'v_mac_f32       v10, v2, v14',
  'v_mac_f32       v2, s9, v5',
  'exp             mrt1',
  'exp             mrt0',
