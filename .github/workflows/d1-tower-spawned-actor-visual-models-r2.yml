@@ -1,0 +1,160 @@
+name: D1 Tower spawned actor visual models r2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-spawned-actor-visual-models-r2.yml'
+      - 'tools/d1_remote_spawned_actor_visual_plan.py'
+      - 'tools/d1_expand_world_material_dependencies.py'
+      - 'tools/d1_world_entity_model_material_bindings.py'
+      - 'tools/d1_world_articulated_model_export.py'
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+  RECLASSIFY_ARTIFACT_ID: '10000295087'
+  RECLASSIFY_ZIP_SHA256: 'ba2a1873c3e5a301f57ebcacc7b8afe45bfe9ebabcde315ba64fb765f953a0a7'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover current source reports and runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy trimesh
+          mkdir -p input/catalog input/reclassify runtime corpus material_expanded models reports/material_passes out
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RECLASSIFY_ARTIFACT_ID}/zip" -o input/reclassify.zip
+          echo "${RECLASSIFY_ZIP_SHA256}  input/reclassify.zip" | sha256sum --check --strict
+          unzip -q input/reclassify.zip -d input/reclassify
+          python - <<'PY'
+          import json
+          src='input/reclassify/TOWER_SPAWNED_ENTITY_UNIVERSAL_RECLASSIFY.json'
+          dst='input/reclassify/TOWER_SPAWNED_ENTITY_UNIVERSAL_RECLASSIFY_VISUAL_ADAPTER.json'
+          d=json.load(open(src))
+          assert d['status']=='D1_REMOTE_SPAWNED_ENTITY_RECLASSIFY_COMPLETE',d['status']
+          assert d['entity_count']==57 and d['unresolved_dependency_count']==0 and not d['violations'],d
+          # The visual-plan adapter predates the canonical REMOTE status spelling.
+          # Change only the interface status string; preserve the source value explicitly.
+          d['source_status_before_visual_adapter']=d['status']
+          d['status']='D1_TOWER_SPAWNED_ENTITY_UNIVERSAL_RECLASSIFY_COMPLETE'
+          json.dump(d,open(dst,'w'),indent=2)
+          print('RECLASSIFY_ADAPTER',d['source_status_before_visual_adapter'],'->',d['status'])
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+
+      - name: Build exact 57-actor / 13-model visual plan
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_remote_spawned_actor_visual_plan.py \
+            --reclassify input/reclassify/TOWER_SPAWNED_ENTITY_UNIVERSAL_RECLASSIFY_VISUAL_ADAPTER.json \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' --part-count 10 \
+            --runtime runtime -o reports/tower_spawned_actor_visual_plan.json | tee reports/visual_plan_stdout.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_spawned_actor_visual_plan.json'))
+          assert d['status']=='D1_WORLD_ARTICULATED_ENTITY_PLAN_COMPLETE',d['violations']
+          assert (d['candidate_count'],d['family_count'],d['unique_model_count'])==(57,13,13),d
+          open('reports/required_initial_package_ids.txt','w').write('\n'.join(d['required_initial_package_ids'])+'\n')
+          print('PLAN_CLOSED',d['candidate_count'],d['family_count'],d['unique_model_count'])
+          PY
+
+      - name: Recover exact model and stream package families
+        run: |
+          set -euo pipefail
+          args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/required_initial_package_ids.txt
+          python tools/d1_tower_recover_articulated_visual_corpus.py \
+            --package-list reports/packages.txt "${args[@]}" \
+            --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --out-dir corpus --report reports/tower_spawned_actor_visual_corpus.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_spawned_actor_visual_corpus.json'))
+          assert d['status']=='D1_TOWER_ARTICULATED_VISUAL_CORPUS_RECOVERED',d
+          assert d['split_tar_scanned_package_ids']==[],d['split_tar_scanned_package_ids']
+          print('CORPUS_RECOVERED',d['required_family_count'],d['member_count'])
+          PY
+
+      - name: Close exact owning-parent materials
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          set +e
+          python tools/d1_expand_world_material_dependencies.py "${args[@]}" \
+            --runtime runtime --articulated-plan reports/tower_spawned_actor_visual_plan.json \
+            --package-list reports/packages.txt --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
+            --expansion-dir material_expanded --work-dir reports/material_passes \
+            --out reports/tower_spawned_actor_material_bindings.json \
+            --report reports/tower_spawned_actor_material_expansion.json | tee reports/material_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e
+          test "$rc" -eq 0
+          python - <<'PY'
+          import json
+          b=json.load(open('reports/tower_spawned_actor_material_bindings.json'))
+          e=json.load(open('reports/tower_spawned_actor_material_expansion.json'))
+          assert b['status']=='D1_WORLD_ENTITY_MODEL_MATERIAL_BINDINGS_COMPLETE',b['violations']
+          assert b['model_parent_pair_count']==b['validated_pair_count']==13,b
+          assert e['status']=='D1_WORLD_MATERIAL_DEPENDENCY_EXPANSION_CLOSED',e
+          print('MATERIALS_CLOSED',b['unique_selected_material_count'],'added',e['recovered_package_ids'])
+          PY
+
+      - name: Export all exact retail-visible model GLBs
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus material_expanded -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_articulated_model_export.py "${args[@]}" \
+            --runtime runtime --articulated-plan reports/tower_spawned_actor_visual_plan.json \
+            --material-bindings reports/tower_spawned_actor_material_bindings.json \
+            --out-dir models --summary reports/tower_spawned_actor_model_export.json
+          python - <<'PY'
+          import glob,json,os
+          d=json.load(open('reports/tower_spawned_actor_model_export.json'))
+          assert d['status']=='D1_WORLD_ARTICULATED_MODEL_SET_COMPLETE',d['errors']
+          assert d['requested_model_count']==d['exported_model_count']==13,d
+          glbs=sorted(glob.glob('models/*.glb'));assert len(glbs)==13,glbs
+          print('MODELS_EXPORTED',d['geometry_count'],'ranges',d['triangle_count'],'triangles',d['active_material_count'],'materials')
+          for p in glbs: print('GLB',os.path.basename(p),os.path.getsize(p))
+          PY
+          cp models/*.glb out/
+          cp reports/tower_spawned_actor_visual_plan.json out/
+          cp reports/tower_spawned_actor_material_bindings.json out/
+          cp reports/tower_spawned_actor_material_expansion.json out/
+          cp reports/tower_spawned_actor_model_export.json out/
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-ACTOR-EXACT-VISUAL-MODELS-R2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
