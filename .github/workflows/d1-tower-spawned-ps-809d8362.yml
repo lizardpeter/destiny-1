@@ -128,7 +128,7 @@ jobs:
           for h in seed['dependency_tags']+seed['shader_tags']:
               m=c.entry_meta(h);assert m is not None,h
               ref=norm(m.get('reference','FFFFFFFF'))
-              if ref not in NULL:
+              if ref not in NULL and int(ref,16)>=0x80800000:
                   p=pid(ref);extra.add(p);rows.append({'owner':h,'reference':ref,'package_id':p})
           have={'0244'}|set(seed['dependency_package_ids'])|set(seed['shader_package_ids'])
           extra_ids=sorted(extra-have)
