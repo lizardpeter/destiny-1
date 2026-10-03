@@ -12,11 +12,6 @@ permissions:
   contents: read
   actions: read
 
-env:
-  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
-  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
-  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
-
 jobs:
   close-options:
     runs-on: ubuntu-24.04
@@ -34,11 +29,20 @@ jobs:
           set -euo pipefail
           python -m pip install -q numpy scipy pyglm
           mkdir -p input/catalog runtime out
-          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
-          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
-          unzip -q input/catalog.zip -d input/catalog
-          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o input/catalog/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o input/catalog/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  input/catalog/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          python tools/d1_universal_member_catalog.py \
+            --activity-index input/catalog/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list input/catalog/packages.txt \
+            --out input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          python - <<'PY'
+          import json
+          d=json.load(open('input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          assert d['schema']=='d1_remote_package_member_catalog/v1',d
+          assert d['package_family_count']>0 and d['physical_member_count']>0,d
+          print('CURRENT_UNIVERSAL_CATALOG',d['package_family_count'],d['physical_member_count'])
+          PY
           git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser
           git -C parser checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
           test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
