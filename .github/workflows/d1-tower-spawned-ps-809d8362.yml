@@ -163,13 +163,16 @@ jobs:
       - name: Build CLRX and disassemble exact PS
         run: |
           set -euo pipefail
-          git clone --quiet --depth 1 https://github.com/CLRX/CLRX-mirror.git clrx
-          cmake -S clrx -B clrx/build -DCLRX_BUILD_TESTS=OFF >/dev/null
-          cmake --build clrx/build -j2 >/dev/null
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          test "$(git -C clrx rev-parse HEAD)" = 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
           exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
           test -n "$exe"
-          "$exe" -g 1.1 -r shader/PS_809D8362_gcn.bin > disasm/PS_809D8362.s
-          test -s disasm/PS_809D8362.s
+          "$exe" --raw --gpuType=GFX700 --hexcode shader/PS_809D8362_gcn.bin > disasm/PS_809D8362.s 2> disasm/PS_809D8362.stderr
+          test ! -s disasm/PS_809D8362.stderr
+          grep -q 's_endpgm' disasm/PS_809D8362.s
 
       - name: Map exact native image-resource use
         run: |
