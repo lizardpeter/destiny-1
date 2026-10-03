@@ -1,0 +1,56 @@
+name: D1 Hiveship Terrain API12 Camera Closure
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-hiveship-terrain-api12-camera-closure.yml'
+      - 'tools/d1_terrain_api12_camera_window_proof.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '11260145913'
+  SOURCE_DIGEST: '378c760680f0f9b566bf01e157f61e7cdadd492a16fbf3f14e349771a030c128'
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact Hiveship bubble-0 native PS artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input out
+          curl -fsSL --retry 4             -H "Authorization: Bearer $GH_TOKEN"             -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip"             -o input/source.zip
+          echo "${SOURCE_DIGEST}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          resources="$(find input/source -name HIVESHIP_BUBBLE0_TERRAIN_PS_RESOURCES.json -type f -print -quit)"
+          dataflow="$(find input/source -name FINAL_HIVESHIP_BUBBLE0_TERRAIN_NATIVE_PS_DATAFLOW.json -type f -print -quit)"
+          test -n "$resources" -a -n "$dataflow"
+          python tools/d1_terrain_api12_camera_window_proof.py             --resources "$resources"             --dataflow "$dataflow"             --disasm-dir input/source             --out out/D1_HIVESHIP_BUBBLE0_TERRAIN_API12_CAMERA.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_HIVESHIP_BUBBLE0_TERRAIN_API12_CAMERA.json'))
+          assert d['status']=='D1_TERRAIN_API12_CAMERA_WINDOW_EXACT',d
+          assert d['api12_shader_count']==d['proved_shader_count']==24,d
+          assert d['camera_live_dwords']==[28,29,30] and d['dead_fourth_dword']==31,d
+          assert not d['violations'],d
+          print('HIVESHIP_API12_CAMERA_CLOSED',d['logical_start_register_histogram'])
+          PY
+          sha256sum out/D1_HIVESHIP_BUBBLE0_TERRAIN_API12_CAMERA.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-hiveship-bubble0-terrain-api12-camera
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
