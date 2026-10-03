@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "status": "D1_TERRAIN_VS_CROSS_ACTIVITY_NATIVE_ALIASES_EXACT",
+  "date": "2026-10-02",
+  "source_workflow": {
+    "run_id": 37081823005,
+    "commit": "2dad3c507fff2a181df1bb6699abef6d4dd69dba",
+    "plaguelands_artifact": {
+      "id": 11259097497,
+      "digest": "sha256:7fd9bfdd02bc0322990b0be5024eb02132bdc5db36194f6e08d8f66756fd6024"
+    },
+    "hiveship_artifact": {
+      "id": 11258807885,
+      "digest": "sha256:d06b4acb68b94eac087a729187aa0ef8e18f5f3e3b7e057b586c3066bb67d34d"
+    }
+  },
+  "proven_reference": {
+    "activity": "810B0002",
+    "family": {
+      "80D76A8D": {
+        "params": 5,
+        "gcn_sha256": "21bdf0590142d828ef41ca73a17ed5924deab2a0fb43e5d0758c30ad4400a382"
+      },
+      "80D76A8C": {
+        "params": 6,
+        "gcn_sha256": "6e717fc27e0f44bc77e7b82c4c672d352b5f9d92e04e8802819773277e688554"
+      }
+    }
+  },
+  "aliases": {
+    "plaguelands": {
+      "activity": "817DA002",
+      "80CE93EA": {
+        "params": 5,
+        "native_shader": "80CE93F2",
+        "gcn_sha256": "21bdf0590142d828ef41ca73a17ed5924deab2a0fb43e5d0758c30ad4400a382",
+        "exact_alias_of": "80D76A8D"
+      },
+      "80CE93EB": {
+        "params": 6,
+        "native_shader": "80CE93F3",
+        "gcn_sha256": "6e717fc27e0f44bc77e7b82c4c672d352b5f9d92e04e8802819773277e688554",
+        "exact_alias_of": "80D76A8C"
+      }
+    },
+    "hiveship": {
+      "activity": "8128E008",
+      "812A04DE": {
+        "params": 5,
+        "gcn_sha256": "21bdf0590142d828ef41ca73a17ed5924deab2a0fb43e5d0758c30ad4400a382",
+        "exact_alias_of": "80D76A8D"
+      },
+      "812A04E3": {
+        "params": 6,
+        "gcn_sha256": "6e717fc27e0f44bc77e7b82c4c672d352b5f9d92e04e8802819773277e688554",
+        "exact_alias_of": "80D76A8C"
+      }
+    }
+  },
+  "shared_contract": {
+    "input_component_widths": [
+      4,
+      3,
+      2,
+      1
+    ],
+    "input_semantic_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "input_vgprs": [
+      4,
+      8,
+      12,
+      16
+    ],
+    "input_usage": [
+      "SubPtrFetchShader api0 s0",
+      "PtrVertexBufferTable api0 s2",
+      "ImmConstBuffer api11 s8",
+      "ImmConstBuffer api12 s12"
+    ]
+  },
+  "rust_promotion": {
+    "repository": "lizardpeter/Rust-test",
+    "commit": "a7abfbebf0c5b1318fd2aa05440c032e49882d5e",
+    "path": "asset_import/importers/destiny1/src/world_terrain.rs"
+  },
+  "conclusion": "The Plaguelands and Hiveship terrain VS resources are exact native-program aliases of the already source-closed Crota/RoI terrain programs. Promotion is based on byte-identical GCN plus identical Gnmx fetch/user-data contracts, not visual or hash-family inference."
+}
