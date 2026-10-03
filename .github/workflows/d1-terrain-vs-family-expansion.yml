@@ -1,0 +1,279 @@
+name: D1 Terrain VS Family Expansion
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-terrain-vs-family-expansion.yml'
+      - 'tools/d1_ps4_vertex_shader_header.py'
+      - 'tools/d1_ps4_shader_binary_probe.py'
+
+permissions:
+  contents: read
+
+env:
+  LINOODLE_SKIP_DLLMAIN: '1'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: plaguelands
+            activity: '817DA002'
+            shaders: '80CE93EA 80CE93EB'
+          - scope: hiveship
+            activity: '8128E008'
+            shaders: '812A04DE 812A04E3'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover archive index, runtime, and target shader package families
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime packages expanded shader disasm out
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          curl -fsSL --retry 8             'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json'             -o out/index.json
+          curl -fsSL --retry 4             'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt'             -o out/packages.txt
+          python - <<'PY'
+          import os,sys
+          sys.path.insert(0,'tools')
+          from d1_filehash import package_hex
+          tags=os.environ['TARGET_SHADERS'].split()
+          ids=sorted({package_hex(x).lower() for x in tags})
+          open('out/target_package_ids.txt','w').write(''.join(x+'\n' for x in ids))
+          print('TARGETS',tags,'PACKAGE_IDS',ids)
+          PY
+          args=()
+          while read -r p; do args+=(--package-id "$p"); done < out/target_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py             --index out/index.json --package-list out/packages.txt             "${args[@]}" --out-dir packages --report out/target_package_recovery.json
+        env:
+          TARGET_SHADERS: ${{ matrix.shaders }}
+
+      - name: Recover native shader dependencies and decode exact headers
+        shell: bash
+        env:
+          TARGET_SHADERS: ${{ matrix.shaders }}
+          ACTIVITY: ${{ matrix.activity }}
+          SCOPE: ${{ matrix.scope }}
+        run: |
+          set -euo pipefail
+          for pass in 1 2 3; do
+            mapfile -t pkgs < <(find packages expanded -maxdepth 1 -type f -name '*.pkg' | sort -u)
+            args=(); for p in "${pkgs[@]}"; do args+=(--snapshot "$p"); done
+            set +e
+            python - "${args[@]}" <<'PY'
+          import hashlib,json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          from d1_filehash import package_hex
+          from d1_ps4_vertex_shader_header import parse_header
+          from d1_ps4_shader_binary_probe import find_footer,parse_binary_info
+
+          argv=sys.argv[1:]
+          snaps=[]
+          i=0
+          while i<len(argv):
+              if argv[i]=='--snapshot':
+                  snaps.append(Path(argv[i+1]).resolve()); i+=2
+              else: i+=1
+          c=v5.v3.base.Corpus(snaps,Path('runtime').resolve())
+          rows={}
+          missing=set()
+          for h in os.environ['TARGET_SHADERS'].split():
+              h=h.upper()
+              meta=c.entry_meta(h)
+              hb,hsrc=c.payload(h)
+              if meta is None or hb is None:
+                  missing.add(package_hex(h).lower())
+                  rows[h]={'status':'HEADER_MISSING','package_id':package_hex(h).lower()}
+                  continue
+              native=str(meta.get('reference') or 'FFFFFFFF').upper()
+              nb,nsrc=c.payload(native)
+              if nb is None:
+                  missing.add(package_hex(native).lower())
+                  rows[h]={
+                      'status':'NATIVE_MISSING','native_shader':native,
+                      'native_package_id':package_hex(native).lower()
+                  }
+                  continue
+              footer,loc=find_footer(nb)
+              assert footer is not None,(h,loc)
+              info=parse_binary_info(nb,footer)
+              assert info['stage']=='VertexShader',(h,info)
+              dec=parse_header(hb,nb)
+              sem=dec['gnmx']['input_semantics']
+              n=info['code_length_bytes']
+              code=nb[:n]
+              Path(f'shader/VS_{h}_header.bin').write_bytes(hb)
+              Path(f'shader/VS_{h}_native.bin').write_bytes(nb)
+              Path(f'shader/VS_{h}_gcn.bin').write_bytes(code)
+              rows[h]={
+                  'status':'EXACT',
+                  'shader':h,'native_shader':native,
+                  'header_source':hsrc,'native_source':nsrc,
+                  'header_sha256':hashlib.sha256(hb).hexdigest(),
+                  'native_sha256':hashlib.sha256(nb).hexdigest(),
+                  'gcn_sha256':hashlib.sha256(code).hexdigest(),
+                  'gcn_bytes':len(code),
+                  'binary_info':info,
+                  'input_semantics':sem,
+                  'input_component_widths':[int(x['size_in_elements']) for x in sem],
+                  'input_semantic_ids':[int(x['semantic']) for x in sem],
+                  'input_vgprs':[int(x['vgpr']) for x in sem],
+                  'input_usage_slots':dec['gnmx']['input_usage_slots'],
+                  'num_export_semantics':int(dec['gnmx']['num_export_semantics']),
+                  'table_offsets':dec['table_offsets'],
+              }
+          out={
+              'schema_version':1,
+              'status':'COMPLETE' if not missing else 'DEPENDENCIES_MISSING',
+              'activity':os.environ['ACTIVITY'],
+              'scope':os.environ['SCOPE'],
+              'shaders':rows,
+              'missing_package_ids':sorted(missing),
+          }
+          Path('out/vs_family_exact.json').write_text(json.dumps(out,indent=2)+'\n')
+          Path('out/missing_ids.txt').write_text(''.join(x+'\n' for x in sorted(missing)))
+          print(json.dumps(out,indent=2))
+          raise SystemExit(0 if not missing else 2)
+          PY
+            rc=$?
+            set -e
+            test "$rc" -eq 0 -o "$rc" -eq 2
+            if [ ! -s out/missing_ids.txt ]; then break; fi
+            rargs=()
+            while read -r p; do rargs+=(--package-id "$p"); done < out/missing_ids.txt
+            python tools/d1_recover_indexed_package_families.py               --index out/index.json --package-list out/packages.txt               "${rargs[@]}" --out-dir expanded --report "out/native_recovery_pass${pass}.json"
+          done
+          python - <<'PY'
+          import json
+          d=json.load(open('out/vs_family_exact.json'))
+          assert d['status']=='COMPLETE',d
+          print('VS_HEADERS_CLOSED',d['scope'],{
+            h:{
+              'widths':r['input_component_widths'],
+              'ids':r['input_semantic_ids'],
+              'vgprs':r['input_vgprs'],
+              'exports':r['num_export_semantics'],
+              'usage':r['input_usage_slots'],
+            } for h,r in d['shaders'].items()
+          })
+          PY
+
+      - name: Build CLRX disassembler
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          echo "CLRXDISASM=$exe" >> "$GITHUB_ENV"
+
+      - name: Disassemble and compare exact terrain VS contracts
+        shell: bash
+        env:
+          TARGET_SHADERS: ${{ matrix.shaders }}
+          ACTIVITY: ${{ matrix.activity }}
+          SCOPE: ${{ matrix.scope }}
+        run: |
+          set -euo pipefail
+          for h in $TARGET_SHADERS; do
+            "$CLRXDISASM" --raw --gpuType=GFX700 --hexcode "shader/VS_${h}_gcn.bin" > "disasm/VS_${h}.s" 2> "disasm/VS_${h}.stderr"
+            test ! -s "disasm/VS_${h}.stderr"
+            grep -q s_endpgm "disasm/VS_${h}.s"
+          done
+          python - <<'PY'
+          import json,os,re
+          from pathlib import Path
+
+          exact=json.load(open('out/vs_family_exact.json'))
+          initial={
+            'semantic0':list(range(4,8)),
+            'semantic1':list(range(8,11)),
+            'semantic2':list(range(12,14)),
+            'semantic3':[16],
+          }
+          all_initial={v for xs in initial.values() for v in xs}
+          reg_re=re.compile(r'(?<![A-Za-z0-9_])v(\d+)(?![A-Za-z0-9_])')
+          range_re=re.compile(r'v\[(\d+):(\d+)\]')
+          rows={}
+          for h in os.environ['TARGET_SHADERS'].split():
+              lines=Path(f'disasm/VS_{h}.s').read_text().splitlines()
+              insns=[]
+              uses={str(v):[] for v in sorted(all_initial)}
+              exports=[]
+              cb_reads=[]
+              for lineno,line in enumerate(lines,1):
+                  m=re.search(r'\*/\s*(.*)$',line)
+                  if not m: continue
+                  ins=m.group(1).strip()
+                  insns.append(ins)
+                  regs={int(x) for x in reg_re.findall(ins)}
+                  for a,b in range_re.findall(ins):
+                      regs.update(range(int(a),int(b)+1))
+                  for v in sorted(regs & all_initial):
+                      uses[str(v)].append({'line':lineno,'instruction':ins})
+                  if ins.startswith('exp '):
+                      exports.append({'line':lineno,'instruction':ins})
+                  if 'buffer_load' in ins or 's_load_dword' in ins:
+                      cb_reads.append({'line':lineno,'instruction':ins})
+              hdr=exact['shaders'][h]
+              rows[h]={
+                  **hdr,
+                  'instruction_count':len(insns),
+                  'initial_vgpr_uses':uses,
+                  'exports':exports,
+                  'scalar_or_buffer_loads':cb_reads,
+                  'full_instruction_stream':insns,
+                  'matches_proven_fetch_signature':(
+                      hdr['input_component_widths']==[4,3,2,1]
+                      and hdr['input_semantic_ids']==[0,1,2,3]
+                      and hdr['input_vgprs']==[4,8,12,16]
+                  ),
+              }
+          out={
+            'schema_version':1,
+            'status':'D1_TERRAIN_VS_FAMILY_EXPANSION_CAPTURED',
+            'activity':os.environ['ACTIVITY'],
+            'scope':os.environ['SCOPE'],
+            'shaders':rows,
+            'comparison_family':['80D76A8C','80D76A8D'],
+            'policy':'Matching Gnmx fetch signature is necessary but not sufficient for semantic promotion. Native arithmetic/export dataflow and constant-buffer ownership are retained for exact differential analysis before Rust admission.',
+          }
+          Path('out/terrain_vs_family_expansion.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({h:{
+              'fetch_match':r['matches_proven_fetch_signature'],
+              'widths':r['input_component_widths'],
+              'ids':r['input_semantic_ids'],
+              'vgprs':r['input_vgprs'],
+              'usage':r['input_usage_slots'],
+              'exports':[x['instruction'] for x in r['exports']],
+              'initial_uses':{k:len(v) for k,v in r['initial_vgpr_uses'].items()},
+          } for h,r in rows.items()},indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-terrain-vs-family-expansion-${{ matrix.scope }}
+          path: |
+            out/
+            disasm/
+          if-no-files-found: error
+          retention-days: 30
