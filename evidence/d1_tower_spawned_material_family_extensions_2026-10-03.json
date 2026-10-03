@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_SPAWNED_MATERIAL_FAMILY_EXTENSION_EXACT",
+  "source_workflow_run_id": 37147658430,
+  "source_workflow_head_sha": "d349535bed62e82f0a0e05cf776ea724b0037210",
+  "artifact_sha256": "fcb94a04e201d6a5a7de261c33e3a4e622badec3a9080b2d3e9c1139036e171e",
+  "material_80876681": {
+    "vertex_shader": "8087695B",
+    "pixel_shader": "80876952",
+    "pixel_gcn_sha256": "cd1acacbbf0fa69a229255ab4d21c8f218fb50b3c031d63a6bb3c866d5dc57a7",
+    "tfx_sha256": "1fc1ac8ad02087effe3c122378609bebc95b55f3acab412e2e8722a0b404c876",
+    "tfx_output_targets": [13, 14, 17],
+    "serialized_texture_indices": [0,1,2,3,4,5,6,7],
+    "sampler_tags": ["80AAE177","80AAE177","80AAE177","80AAE177","80AAE176","80AAE177","80AAE177","80AAE177"],
+    "safe_tfx_scope_extension": true
+  },
+  "material_80876DA8": {
+    "vertex_shader": "8087695B",
+    "pixel_shader": "808768C0",
+    "pixel_gcn_sha256": "7d3c95a7d1ce0663ca1d2d715c55cc9e3936d581841c5c7a43ac706bca408fcf",
+    "tfx_sha256": "8ecc42890fb745940080c5304b4e258e1cbe4bb7313c6a50ab1ab4dfa080e784",
+    "serialized_texture_indices": [0,1,2,3,4,5,6],
+    "native_used_texture_indices": [0,1,2,3,4,5,6],
+    "missing_native_used_serialized_texture_indices": [],
+    "fixed_family_bindings": {
+      "t1": "80AB04CD",
+      "t3": "80AB04C1",
+      "t4": "80AB04CF",
+      "t5": "808768AD",
+      "t6": "80876987"
+    },
+    "consumed_constant_contract_matches_xur_808768C0": true,
+    "serialized_texture_binding_complete": true
+  },
+  "policy": "Family reuse is admitted only where current retail reproduces the exact native GCN identity and the material-local source contract needed by that family. No absent descriptor, runtime input, or render state is guessed."
+}
