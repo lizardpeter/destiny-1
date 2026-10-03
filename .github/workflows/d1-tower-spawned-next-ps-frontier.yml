@@ -10,6 +10,7 @@ on:
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
       - 'tools/d1_tower_spawned_ps_809df769_semantic_proof.py'
+      - 'tools/d1_tower_spawned_ps_80876919_semantic_proof.py'
 
 permissions:
   contents: read
@@ -173,6 +174,16 @@ jobs:
             --material-state out/SPAWNED_NEXT_PS_MATERIAL_STATE.json \
             --disassembly disasm/PS_809DF769.s \
             --out out/PS_809DF769_SEMANTIC_PROOF.json
+
+      - name: Prove PS 80876919 native dataflow
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_spawned_ps_80876919_semantic_proof.py \
+            --extract-report out/SPAWNED_NEXT_PS_EXTRACT.json \
+            --image-usage out/SPAWNED_NEXT_PS_IMAGE_USAGE.json \
+            --material-state out/SPAWNED_NEXT_PS_MATERIAL_STATE.json \
+            --disassembly disasm/PS_80876919.s \
+            --out out/PS_80876919_SEMANTIC_PROOF.json
 
       - name: Persist exact next frontier
         run: |
