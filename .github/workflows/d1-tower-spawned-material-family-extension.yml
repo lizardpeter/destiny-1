@@ -218,7 +218,7 @@ jobs:
           assert p52['shader']=='80876952',p52['shader']
           assert pC0['shader']=='808768C0',pC0['shader']
 
-          expected52='4900472149014722490247234903472449044725490547264906472734003c01003401031a230d34020e420d34033c01003404031a230e420e340534063c01043407011f340834091223033c0100340a032923350b0321034211'
+          expected52='490047214901472249024723490347244904472549054726490647274907472834003c01003401031a230d34020e420d34033c01003404031a230e420e340534063c01043407011f340834091223033c0100340a032923350b0321034211'
           assert p52['tfx_bytecode']['bytes_hex'].lower()==expected52,p52['tfx_bytecode']['bytes_hex']
           assert p52['tfx_program_sha256']=='1fc1ac8ad02087effe3c122378609bebc95b55f3acab412e2e8722a0b404c876',p52['tfx_program_sha256']
           targets=[op.get('d1_unk42_u8') for op in p52['tfx_disassembly']['ops'] if op.get('name')=='Unk42']
@@ -229,9 +229,28 @@ jobs:
 
           expectedC0='49004721490147224902472349034724490447254905472649064727'
           assert pC0['tfx_bytecode']['bytes_hex'].lower()==expectedC0,pC0['tfx_bytecode']['bytes_hex']
+          assert pC0['tfx_program_sha256']=='8ecc42890fb745940080c5304b4e258e1cbe4bb7313c6a50ab1ab4dfa080e784',pC0['tfx_program_sha256']
           texC0={int(x['texture_index']):x['texture'] for x in pC0['textures']['items']}
           required=set(range(7))
           missing=sorted(required-set(texC0))
+          assert not missing,missing
+          fixed={1:'80AB04CD',3:'80AB04C1',4:'80AB04CF',5:'808768AD',6:'80876987'}
+          assert all(texC0.get(k)==v for k,v in fixed.items()),texC0
+          sampler_tags=[x['first_dword_hex'] for x in pC0['samplers']['items']]
+          assert sampler_tags==['80AAE177','80AAE177','80AAE177','80AAE177','80AAE176','80AAE177','80AAE177'],sampler_tags
+          sampler_shas=[(r.get('native_sampler') or {}).get('payload_sha256') for r in pC0.get('sampler_references',[])]
+          assert sampler_shas==[
+            '2c670016bbb70b68bd2f69dd4a30145bf7d61a47c1bf4c3acba8321b46976ecb',
+            '2c670016bbb70b68bd2f69dd4a30145bf7d61a47c1bf4c3acba8321b46976ecb',
+            '2c670016bbb70b68bd2f69dd4a30145bf7d61a47c1bf4c3acba8321b46976ecb',
+            '2c670016bbb70b68bd2f69dd4a30145bf7d61a47c1bf4c3acba8321b46976ecb',
+            '0bcdaa82ea0d8588e313f29998f6c7b9166e7d28d40b13d422348d55ae5dc208',
+            '2c670016bbb70b68bd2f69dd4a30145bf7d61a47c1bf4c3acba8321b46976ecb',
+            '2c670016bbb70b68bd2f69dd4a30145bf7d61a47c1bf4c3acba8321b46976ecb',
+          ],sampler_shas
+          vals=[float(v) for row in pC0['cbuffers']['items'] for v in row['value']]
+          expected_constants={8:2.0,9:-1.0,20:2.0,21:-1.0,36:1.0,40:0.0,44:-1.2999999523162842,45:2.299999952316284,48:8.0,49:8.0,50:0.0,51:0.0,52:0.0,53:0.4000000059604645,54:5.0,56:2.0,57:-1.0,60:0.9099999666213989,61:0.39000001549720764,81:0.051960788667201996}
+          assert {i:vals[i] for i in expected_constants}==expected_constants,{i:vals[i] for i in expected_constants}
 
           proof={
             'schema_version':1,
