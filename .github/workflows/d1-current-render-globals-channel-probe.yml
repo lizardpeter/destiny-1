@@ -132,7 +132,7 @@ jobs:
             --out reports/current_global_channel_defaults_decoded.json
           python - <<'PY'
           import json,struct
-          b=json.load(open('reports/current_bootstrap_class_scan.json'))['hits'][0]
+          s=json.load(open('reports/current_render_globals_class_scan.json'))
           r=json.load(open('reports/current_render_globals.json'))['entries'][0]
           g=json.load(open('reports/current_global_channel_defaults.json'))['entries'][0]
           if g.get('violations'):
@@ -141,7 +141,7 @@ jobs:
           report={
             'schema':'d1_current_render_globals_channel_chain/v1',
             'status':'EXACT_CURRENT_RETAIL_RENDER_GLOBAL_CHAIN_CLOSED',
-            'bootstrap':{'tag_hash':b['tag_hash'],'reference':b['reference'],'package_id':b['package_id'],'sha256':b['payload_sha256'],'render_globals_offset':'0x3C'},
+            'render_globals_discovery':{'reference_class':'B01B8080','candidate_package_ids':s['package_ids'],'hit_count':s['hit_count'],'policy':'bounded physical family discovery plus exact FileEntry.Reference semantic gate'},
             'render_globals':{'tag_hash':r['tag_hash'],'reference':r['entry']['reference'],'package_id':r['package_id'],'sha256':r['payload_sha256'],'global_channel_defaults_offset':'0x34'},
             'global_channel_defaults':{'tag_hash':g['tag_hash'],'reference':g['entry']['reference'],'package_id':g['package_id'],'sha256':g['payload_sha256'],'payload_size':g['payload_size'],'prefix128':g['prefix128'],
               'u32_first_128':[f'{struct.unpack_from("<I",raw,o)[0]:08X}' for o in range(0,len(raw)-(len(raw)%4),4)]},
@@ -157,14 +157,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/generated
-          cp reports/current_bootstrap_class_scan.json evidence/generated/d1_current_bootstrap_class_scan.json
+          cp reports/current_render_globals_class_scan.json evidence/generated/d1_current_render_globals_class_scan.json
           cp reports/current_render_globals.json evidence/generated/d1_current_render_globals_probe.json
           cp reports/current_global_channel_defaults.json evidence/generated/d1_current_global_channel_defaults_probe.json
           cp reports/current_global_channel_defaults_decoded.json evidence/generated/d1_current_global_channel_defaults_decoded.json
           cp reports/current_render_globals_channel_chain.json evidence/generated/d1_current_render_globals_channel_chain.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add evidence/generated/d1_current_bootstrap_class_scan.json \
+          git add evidence/generated/d1_current_render_globals_class_scan.json \
                   evidence/generated/d1_current_render_globals_probe.json \
                   evidence/generated/d1_current_global_channel_defaults_probe.json \
                   evidence/generated/d1_current_global_channel_defaults_decoded.json \
