@@ -9,6 +9,7 @@ on:
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_tower_spawned_ps_809d8362_semantic_proof.py'
 
 permissions:
   contents: read
@@ -187,6 +188,16 @@ jobs:
           assert d['unmatched_image_instruction_count']==0,d
           print('IMAGE_USAGE_EXACT',json.dumps(d['shaders'][0],indent=2))
           PY
+
+      - name: Prove exact PS 809D8362 native dataflow
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_spawned_ps_809d8362_semantic_proof.py \
+            --extract-report out/PS_809D8362_EXTRACT.json \
+            --image-usage out/PS_809D8362_IMAGE_USAGE.json \
+            --material-state out/MATERIAL_80C88638_STATE.json \
+            --disassembly disasm/PS_809D8362.s \
+            --out out/PS_809D8362_SEMANTIC_PROOF.json
 
       - name: Persist exact frontier
         run: |
