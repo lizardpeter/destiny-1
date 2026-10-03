@@ -1,0 +1,35 @@
+name: Rust-test Linux bridge probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/rust-test-linux-bridge-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout public bridge repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private Rust-test
+        uses: actions/checkout@v4
+        with:
+          repository: lizardpeter/Rust-test
+          ref: main
+          path: rust-test
+          fetch-depth: 1
+
+      - name: Report checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust-test
+          echo "RUST_TEST_SHA=$(git rev-parse HEAD)"
+          test -f Cargo.toml
+          grep -n "map_capture" README.md | head
