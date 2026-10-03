@@ -48,9 +48,10 @@ jobs:
         run: |
           set -euo pipefail
           # Historical bootstrap FileHashes/classes are revision-sensitive. Search
-          # the current renderer/global package families for the exact serialized
-          # SRenderGlobals reference class instead. Package names constrain only
-          # physical discovery; the B01B8080 FileEntry.Reference is the semantic gate.
+          # the current renderer/global package families for the exact parsed
+          # little-endian SRenderGlobals FileEntry.Reference value instead.
+          # Source bytes B0 1B 80 80 decode to numeric 0x80801BB0. Package names constrain only
+          # physical discovery; the 80801BB0 FileEntry.Reference is the semantic gate.
           python tools/d1_remote_entry_reference_class_scan.py \
             --package-id 0x0151 \
             --package-id 0x0154 \
@@ -64,7 +65,7 @@ jobs:
             --package-id 0x018D \
             --package-id 0x0172 \
             --package-id 0x01A3 \
-            --reference B01B8080 \
+            --reference 80801BB0 \
             --package-list reports/packages.txt \
             --runtime runtime \
             --base-url "$BASE_URL" \
@@ -75,7 +76,7 @@ jobs:
           hits=[x for x in d['hits'] if x.get('available') and x.get('payload_size',0)>=0x38 and not x.get('violations')]
           print('RENDER_GLOBALS_HITS',[(x['package_id'],x['tag_hash'],x['declared_size']) for x in hits])
           if len(hits)!=1:
-              raise SystemExit(f'expected one readable exact B01B8080 RenderGlobals candidate, got {[(x["package_id"],x["tag_hash"],x.get("payload_size")) for x in hits]}')
+              raise SystemExit(f'expected one readable exact 80801BB0 RenderGlobals candidate, got {[(x["package_id"],x["tag_hash"],x.get("payload_size")) for x in hits]}')
           x=hits[0]
           raw=bytes.fromhex(x['prefix256'])
           tag=int.from_bytes(raw[0x34:0x38],'little')
@@ -101,8 +102,8 @@ jobs:
           e=json.load(open('reports/current_render_globals.json'))['entries'][0]
           if e.get('violations'):
               raise SystemExit(e['violations'])
-          if e['entry']['reference'].upper()!='B01B8080':
-              raise SystemExit(f'current RenderGlobals target class {e["entry"]["reference"]} != B01B8080')
+          if e['entry']['reference'].upper()!='80801BB0':
+              raise SystemExit(f'current RenderGlobals target class {e["entry"]["reference"]} != 80801BB0')
           raw=bytes.fromhex(e['prefix128'])
           if len(raw)<0x38:
               raise SystemExit(f'RenderGlobals payload too short: {len(raw)}')
@@ -142,12 +143,12 @@ jobs:
           report={
             'schema':'d1_current_render_globals_channel_chain/v1',
             'status':'EXACT_CURRENT_RETAIL_RENDER_GLOBAL_CHAIN_CLOSED',
-            'render_globals_discovery':{'reference_class':'B01B8080','candidate_package_ids':s['package_ids'],'hit_count':s['hit_count'],'policy':'bounded physical family discovery plus exact FileEntry.Reference semantic gate'},
+            'render_globals_discovery':{'reference_class':'80801BB0','candidate_package_ids':s['package_ids'],'hit_count':s['hit_count'],'policy':'bounded physical family discovery plus exact FileEntry.Reference semantic gate'},
             'render_globals':{'tag_hash':r['tag_hash'],'reference':r['entry']['reference'],'package_id':r['package_id'],'sha256':r['payload_sha256'],'global_channel_defaults_offset':'0x34'},
             'global_channel_defaults':{'tag_hash':g['tag_hash'],'reference':g['entry']['reference'],'package_id':g['package_id'],'sha256':g['payload_sha256'],'payload_size':g['payload_size'],'prefix128':g['prefix128'],
               'u32_first_128':[f'{struct.unpack_from("<I",raw,o)[0]:08X}' for o in range(0,len(raw)-(len(raw)%4),4)]},
             'tfx_0x4b_operands':['0x11','0x28','0x30','0x60'],
-            'proof_boundary':'The exact current-retail RenderGlobals object is selected by serialized B01B8080 FileEntry.Reference from a bounded current global/startup package-family candidate set; +0x34 then closes the GlobalChannelDefaults FileHash. DynamicArray element layout/count and TFX 0x4B operand mapping remain separate proof gates.'
+            'proof_boundary':'The exact current-retail RenderGlobals object is selected by serialized 80801BB0 FileEntry.Reference from a bounded current global/startup package-family candidate set; +0x34 then closes the GlobalChannelDefaults FileHash. DynamicArray element layout/count and TFX 0x4B operand mapping remain separate proof gates.'
           }
           open('reports/current_render_globals_channel_chain.json','w').write(json.dumps(report,indent=2)+'\n')
           print(json.dumps(report,indent=2))
