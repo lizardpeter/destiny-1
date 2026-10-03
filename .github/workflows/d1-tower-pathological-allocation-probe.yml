@@ -1,0 +1,137 @@
+name: D1 Tower Pathological Allocation Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-pathological-allocation-probe.yml'
+      - 'tools/d1_pkg_probe.py'
+      - 'tools/d1_recover_indexed_package_families.py'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact Tower package families
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input packages out
+          curl -fsSL --retry 8             'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json'             -o input/D1_CURRENT_ACTIVITY_INDEX.json
+          curl -fsSL --retry 4             'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt'             -o input/packages.txt
+          python tools/d1_recover_indexed_package_families.py             --index input/D1_CURRENT_ACTIVITY_INDEX.json             --package-list input/packages.txt             --package-id 024c --package-id 0250             --out-dir packages             --report out/package_recovery.json
+          find packages -maxdepth 1 -type f -name '*.pkg' -print
+
+      - name: Scan block tables and exact Tower roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,struct,re
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,'tools')
+          import d1_pkg_probe as p
+
+          roots=[
+            0x80C98019,
+            0x80C98254,0x80C984D8,0x80C98A6B,0x80C993CD,0x80C993CF,
+            0x80C997F5,0x80C99981,0x80CA0B70,0x80CA0B72,0x80CA0C60,
+          ]
+          by_pkg={}
+          rows=[]
+          suspicious=[]
+          all_blocks=[]
+          for path in sorted(Path('packages').glob('*.pkg')):
+            with path.open('rb') as f:
+              h=p.parse_header(f)
+              et=p.read_table(f,h['entry_table_offset'],h['entry_table_count'],16)
+              bt=p.read_table(f,h['block_table_offset'],h['block_table_count'],32)
+            entries=p.parse_entries(et,h['pkg_id'])
+            blocks=p.parse_blocks(bt)
+            by_pkg.setdefault(h['pkg_id'],[]).append({
+              'path':str(path),'patch_id':h['patch_id'],'entries':entries,'blocks':blocks,
+            })
+            for b in blocks:
+              row={
+                'package_id':f"{h['pkg_id']:04X}",'snapshot':path.name,'snapshot_patch_id':h['patch_id'],
+                'block_index':b['index'],'offset':b['offset'],'size':b['size'],'size_hex':f"0x{b['size']:08X}",
+                'patch_id':b['patch_id'],'flags':b['flags'],'flags_hex':f"0x{b['flags']:04X}",
+                'sha1':b['sha1'],
+              }
+              all_blocks.append(row)
+              if b['size']>0x50000 or b['size']==0x84000010:
+                suspicious.append(row)
+
+          # newest snapshot per family, same convention as runtime
+          newest={}
+          for pkg, snaps in by_pkg.items():
+            newest[pkg]=sorted(snaps,key=lambda x:x['patch_id'],reverse=True)[0]
+
+          root_rows=[]
+          for tag in roots:
+            delta=(tag-0x80800000)&0xffffffff
+            pkg=(delta>>13)&0xffff
+            idx=delta&0x1fff
+            snap=newest.get(pkg)
+            rr={'tag':f"{tag:08X}",'package_id':f"{pkg:04X}",'entry_index':idx}
+            if not snap or idx>=len(snap['entries']):
+              rr['status']='MISSING'
+              root_rows.append(rr);continue
+            e=snap['entries'][idx]
+            rr.update({
+              'status':'FOUND',
+              'reference':e['reference'],
+              'file_size':e['file_size'],
+              'file_size_hex':f"0x{e['file_size']:X}",
+              'starting_block':e['starting_block'],
+              'starting_block_offset':e['starting_block_offset'],
+              'snapshot':snap['path'],
+              'snapshot_patch_id':snap['patch_id'],
+            })
+            span=e['starting_block_offset']+e['file_size']
+            needed=max(1,(span+p.BLOCK_SIZE-1)//p.BLOCK_SIZE)
+            block_rows=[]
+            for bi in range(e['starting_block'],e['starting_block']+needed):
+              if bi>=len(snap['blocks']):
+                block_rows.append({'block_index':bi,'status':'OOB'})
+                continue
+              b=snap['blocks'][bi]
+              block_rows.append({
+                'block_index':bi,'offset':b['offset'],'size':b['size'],'size_hex':f"0x{b['size']:08X}",
+                'patch_id':b['patch_id'],'flags':b['flags'],'flags_hex':f"0x{b['flags']:04X}",
+              })
+            rr['blocks']=block_rows
+            root_rows.append(rr)
+
+          report={
+            'schema_version':1,
+            'status':'D1_TOWER_PATHOLOGICAL_ALLOCATION_PROBE',
+            'target_allocation_bytes':2214592528,
+            'target_allocation_hex':'0x84000010',
+            'families':['024C','0250'],
+            'suspicious_block_count':len(suspicious),
+            'suspicious_blocks':suspicious,
+            'tower_root_entries':root_rows,
+            'max_block_size':max((x['size'] for x in all_blocks),default=0),
+            'max_block_rows':sorted(all_blocks,key=lambda x:x['size'],reverse=True)[:40],
+          }
+          Path('out/D1_TOWER_PATHOLOGICAL_ALLOCATION_PROBE.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-pathological-allocation-probe
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
