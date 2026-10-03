@@ -9,6 +9,7 @@ on:
       - 'tools/d1_material_stage_state_resolve.py'
       - 'tools/d1_world_shader_extract.py'
       - 'tools/d1_gcn_image_usage_analyze.py'
+      - 'tools/d1_tower_spawned_ps_809df769_semantic_proof.py'
 
 permissions:
   contents: read
@@ -162,6 +163,16 @@ jobs:
           for r in d['shaders']:
               print('IMAGE_USAGE',r['shader'],r.get('used_texture_indices'),r.get('texture_instruction_counts'))
           PY
+
+      - name: Prove PS 809DF769 native dataflow
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_spawned_ps_809df769_semantic_proof.py \
+            --extract-report out/SPAWNED_NEXT_PS_EXTRACT.json \
+            --image-usage out/SPAWNED_NEXT_PS_IMAGE_USAGE.json \
+            --material-state out/SPAWNED_NEXT_PS_MATERIAL_STATE.json \
+            --disassembly disasm/PS_809DF769.s \
+            --out out/PS_809DF769_SEMANTIC_PROOF.json
 
       - name: Persist exact next frontier
         run: |
