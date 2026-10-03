@@ -177,21 +177,10 @@ jobs:
           print('NATIVE_AND_PAYLOAD_EDGES',json.dumps({'native':native_rows,'extra':extra_ids},indent=2))
           PY
 
-      - name: Recover remaining native payload families
-        run: |
-          set -euo pipefail
-          if [ -s reports/native_payload_package_ids.txt ]; then
-            args=(); while read -r p; do args+=(--required-package-id "$p"); done < reports/native_payload_package_ids.txt
-            python tools/d1_tower_recover_articulated_visual_corpus.py \
-              --package-list reports/packages.txt "${args[@]}" \
-              --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json \
-              --out-dir corpus_native --report reports/native_payload_corpus.json
-          fi
-
       - name: Resolve exact material state and native GCN identity
         run: |
           set -euo pipefail
-          mapfile -t files < <(find corpus_material corpus_deps corpus_shader corpus_native -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          mapfile -t files < <(find corpus_material corpus_deps corpus_shader -maxdepth 1 -name '*.pkg' -type f | sort -u)
           snaps=(); for f in "${files[@]}"; do snaps+=(--snapshot "$f"); done
 
           python tools/d1_material_stage_state_resolve.py \
