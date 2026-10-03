@@ -29,6 +29,9 @@ jobs:
           - scope: hiveship
             activity: '8128E008'
             shaders: '812A04DE 812A04E3'
+          - scope: fenrir_fireworks
+            activity: '81876002'
+            shaders: '8114C83D 8114C842'
 
     steps:
       - uses: actions/checkout@v4
