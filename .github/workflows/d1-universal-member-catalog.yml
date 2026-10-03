@@ -1,0 +1,62 @@
+name: D1 universal member catalog
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-universal-member-catalog.yml'
+      - 'tools/d1_universal_member_catalog.py'
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact package list and archive location index
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o out/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o out/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  out/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+      - name: Build universal member catalog
+        run: |
+          set -euo pipefail
+          python tools/d1_universal_member_catalog.py \
+            --activity-index out/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list out/packages.txt \
+            --out out/D1_UNIVERSAL_MEMBER_CATALOG.json
+      - name: Validate resolver catalog invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          a=json.load(open('out/D1_CURRENT_ACTIVITY_INDEX.json'))
+          d=json.load(open('out/D1_UNIVERSAL_MEMBER_CATALOG.json'))
+          assert d['schema']=='d1_remote_package_member_catalog/v1'
+          assert d['physical_member_count']==a['physical_member_count']
+          assert d['package_family_count']==a['package_family_count']
+          assert len(d['families'])==d['package_family_count']
+          assert sum(map(len,d['families'].values()))==d['physical_member_count']
+          assert d['packages_txt_sha256']==hashlib.sha256(open('out/packages.txt','rb').read()).hexdigest()
+          for pkg,rows in d['families'].items():
+              assert rows
+              for r in rows:
+                  assert r['data_offset']==r['tar_header_offset']+512
+                  assert r['size']>=0
+          print('D1_UNIVERSAL_MEMBER_CATALOG_EXACT',d['physical_member_count'],d['package_family_count'])
+          PY
+          sha256sum out/D1_UNIVERSAL_MEMBER_CATALOG.json > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-UNIVERSAL-MEMBER-CATALOG
+          path: |
+            out/D1_UNIVERSAL_MEMBER_CATALOG.json
+            out/SHA256SUMS.txt
+          retention-days: 14
