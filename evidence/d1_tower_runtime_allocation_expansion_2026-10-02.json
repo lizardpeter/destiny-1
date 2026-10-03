@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "status": "D1_TOWER_RUNTIME_ALLOCATION_EXPANSION_DIAGNOSED_PATCHED_RETEST_PENDING",
+  "date": "2026-10-02",
+  "user_log": {
+    "allocation_bytes": 2214592528,
+    "allocation_hex": "0x84000010",
+    "observed_before": "Destiny 1 import collision installed/report line",
+    "map": "destiny1_tower",
+    "activity": "80C98019"
+  },
+  "package_probe": {
+    "workflow_run": 37082445986,
+    "artifact_id": 11258508645,
+    "artifact_digest": "sha256:f7028c81debfab9a9957dc32f05c5c62567b1a2c11af77772d17d492fb0f9474",
+    "commit": "49eae5436d896a2699c2bd3d61c1fd19eba2f28f",
+    "package_families": [
+      "024C",
+      "0250"
+    ],
+    "suspicious_block_count": 0,
+    "max_stored_block_size": 262144,
+    "conclusion": "The 0x84000010 allocation is not serialized Tiger block size metadata in the Tower package families."
+  },
+  "geometry_context": {
+    "nine_cell_serialized_placements": 40373,
+    "nine_cell_retail_visible_placements": 9360,
+    "note": "Existing exact Tower evidence records a cell whose retail-visible placements span tens of thousands of world units; this is pathological for area-proportional spawn-grid insertion and recursive triangle subdivision."
+  },
+  "rust_patches": [
+    {
+      "commit": "1f11a5e87a74942f2baeb196ab504ee51e83a0c5",
+      "purpose": "make Tiger/TAR/file allocations fallible with source context instead of process abort"
+    },
+    {
+      "commit": "9a30f16ff2afbbf878daceadc9d73bd51f750c72",
+      "purpose": "remove recursive 40m imported-collision triangle subdivision; shared WorldCollisionMesh already has bounded fine/coarse/huge-triangle indexing"
+    },
+    {
+      "commit": "3259d8768b77c59a8c67a78cb8f17040c66f40cb",
+      "purpose": "replace unbounded 4m D1 provisional-spawn grid with linear O(1)-extra-memory nearest walkable centroid scan"
+    },
+    {
+      "commit": "d3c75a55a03fa4632475d616748969d9d602f9bc",
+      "purpose": "restore compile completeness for D1 NeutralTexture constructors after authored-mip ABI extension"
+    }
+  ],
+  "proof_boundary": "The package-side cause is ruled out and two unbounded runtime geometry expansions are removed. A live Windows Tower load after pulling current Rust-test/main is still required before marking the loading bug closed."
+}
