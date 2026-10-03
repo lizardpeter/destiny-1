@@ -23,21 +23,117 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
 
-      - name: Runtime and exact common material manifest
+      - name: Install exact recovery dependencies and runtimes
         run: |
           set -euo pipefail
-          mkdir -p runtime recovered deps prior shader disasm reports
+          python -m pip install --disable-pip-version-check numpy pillow texture2ddecoder trimesh
+          mkdir -p runtime index packages recovered deps reports models textures texture_expanded
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
-          gh run download 33994999358 -n d1-tower-common-layer-texture-census -D prior
-          test -f prior/compact/common_material_texture_manifest.json
+
+      - name: Recover current archive-wide Activity index
+        run: |
+          set -euo pipefail
+          idx_run="$(gh run list --workflow d1-global-activity-index.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$idx_run"
+          gh run download "$idx_run" -n d1-global-activity-index -D index
+          idx="$(find index -name D1_CURRENT_ACTIVITY_INDEX.json -print -quit)"
+          plist="$(find index -name packages.txt -print -quit)"
+          test -n "$idx" -a -f "$idx" -a -n "$plist" -a -f "$plist"
+          cp "$idx" reports/D1_CURRENT_ACTIVITY_INDEX.json
+          cp "$plist" reports/packages.txt
+
+      - name: Rediscover Tower common material ownership from the Activity
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_world_activity_root_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json \
+            --package-list reports/packages.txt --activity 80C98019 \
+            --runtime runtime --package-dir packages \
+            --work-dir reports/root_closure \
+            --root-out reports/activity_map_roots.json \
+            --report reports/activity_root_dependency_closure.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_map_data_layer_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/activity_map_roots.json --out reports/map_data_layer_census.json
+          python tools/d1_world_map_resource_subset_plan.py --census reports/map_data_layer_census.json \
+            --resource-class 80801AEA --out reports/static_map_roots.json
+          python tools/d1_world_static_map_resource_chain_census.py "${args[@]}" --runtime runtime \
+            --map-root-json reports/static_map_roots.json --out reports/static_map_resource_chain_census.json
+          python tools/d1_world_static_map_target_plan.py --chain-json reports/static_map_resource_chain_census.json \
+            --out reports/static_map_target_plan.json --tsv reports/static_map_target_plan.tsv
+          python tools/d1_world_table_scoped_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --target-plan reports/static_map_target_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/common_identity_closure \
+            --out reports/common_layer_source_census.json --report reports/common_identity_closure.json
+          python tools/d1_world_common_model_plan.py \
+            --census reports/common_layer_source_census.json \
+            --out reports/common_layer_model_plan.json \
+            --model-list reports/common_layer_models.txt
+          python tools/d1_world_entity_model_visual_dependency_closure.py \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --model-plan reports/common_layer_model_plan.json --runtime runtime \
+            --package-dir packages --work-dir reports/common_model_dependency_closure \
+            --report reports/common_model_dependency_closure.json
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          mapfile -t models < reports/common_layer_models.txt
+          test "${#models[@]}" -eq 69
+          margs=(); for h in "${models[@]}"; do margs+=(--model "$h"); done
+          python tools/d1_entity_model_corpus_export.py "${args[@]}" --runtime runtime \
+            "${margs[@]}" --mode map-decal --out-dir models \
+            --summary reports/common_layer_model_export.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.load(open('reports/common_layer_model_export.json'))
+          mats=set(); parts=0
+          for model in e.get('models',[]):
+              if not model.get('ok'): continue
+              for mesh in model.get('meshes',[]):
+                  for p in mesh.get('parts',[]):
+                      if not p.get('selected'): continue
+                      parts += 1
+                      h=(p.get('material_info') or {}).get('hash') or p.get('material')
+                      if h: mats.add(str(h).upper())
+          if parts != 163 or len(mats) != 99:
+              raise SystemExit(f'current common ownership regression: {parts=} {len(mats)=}')
+          selector={'status':'D1_CURRENT_COMMON_MATERIAL_SELECTOR','selected_parts':parts,
+                    'material_count':len(mats),'materials':{h:{'visual':True} for h in sorted(mats)}}
+          Path('reports/common_material_selector.json').write_text(json.dumps(selector,indent=2)+'\n')
+          print('CURRENT_COMMON_SELECTOR',parts,len(mats))
+          PY
+
+      - name: Rebuild exact current common material texture manifest
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          python tools/d1_close_world_texture_dependencies_indexed.py \
+            --snapshot-dir packages --runtime runtime \
+            --visual-json reports/common_material_selector.json \
+            --index reports/D1_CURRENT_ACTIVITY_INDEX.json --package-list reports/packages.txt \
+            --expansion-dir texture_expanded --work-dir reports/common_texture_dependency_closure \
+            --out textures --report reports/common_texture_dependency_closure.json
+          test -f textures/material_texture_manifest.json
+          cp textures/material_texture_manifest.json reports/common_material_texture_manifest.json
+          python - <<'PY'
+          import json
+          m=json.load(open('reports/common_material_texture_manifest.json'))
+          expected=(99,0,50,50,0)
+          got=(m['visible_material_count'],m['material_decode_errors'],m['unique_texture_tags'],m['decoded_texture_tags'],m['texture_errors'])
+          if got != expected:
+              raise SystemExit(f'current common manifest regression: {got} != {expected}')
+          print('CURRENT_COMMON_MANIFEST',got)
+          PY
 
       - name: Recover exact current Tower plus shader dependency families
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
           python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
           python tools/d1_recover_member_catalog.py --catalog evidence/d1_tower_texture_dependency_member_catalog.json \
             --package-list reports/packages.txt --family 0154 --family 0155 --family 0156 --family 0157 --family 0158 --family 01db \
@@ -50,12 +146,12 @@ jobs:
         env: {LINOODLE_SKIP_DLLMAIN: '1'}
         run: |
           set -euo pipefail
-          mapfile -t files < <(find recovered deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          mapfile -t files < <(find packages recovered deps -maxdepth 1 -name '*.pkg' -type f | sort -u)
           args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
           sargs=()
           for h in 80AAE1F5 8093E96F 80AAE1F6 80CA08C4 80CA08B0 80CA08B1 8093E8A2 80CA0F50 80CA08C3 80CA08C1 80CA0BFA; do sargs+=(--shader "$h"); done
           python tools/d1_world_shader_extract.py "${args[@]}" --runtime runtime \
-            --manifest prior/compact/common_material_texture_manifest.json "${sargs[@]}" \
+            --manifest reports/common_material_texture_manifest.json "${sargs[@]}" \
             --out-dir shader --report reports/common_top_shader_extract.json
           python - <<'PY'
           import json
