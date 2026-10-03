@@ -1,0 +1,262 @@
+name: D1 Hiveship Bubble0 Terrain Native PS Dataflow
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-hiveship-bubble0-terrain-native-ps.yml'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_ARTIFACT_ID: '11258684382'
+  SOURCE_ARTIFACT_DIGEST: '09f35993112634e6101390a7bd0387aa1b8adafcb4a8e8350dfffc6cae01594d'
+  CLRX_COMMIT: 'fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df'
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  dataflow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover exact completed Hiveship Activity census
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime packages shader disasm out
+          curl -fsSL --retry 4             -H "Authorization: Bearer $GH_TOKEN"             -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip"             -o input/source.zip
+          echo "${SOURCE_ARTIFACT_DIGEST}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for n in activity_map_roots.json terrain_census_final.json terrain_ps_resources_final.json index.json packages.txt; do
+            p="$(find input/source -name "$n" -type f -print -quit)"
+            test -n "$p"
+            cp "$p" "out/$n"
+          done
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Derive exact runtime bubble-0 terrain material and PS subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json
+          root=json.load(open('out/activity_map_roots.json'))
+          terrain=json.load(open('out/terrain_census_final.json'))
+          ps=json.load(open('out/terrain_ps_resources_final.json'))
+
+          activity=root['activities'][0]
+          b0=next(x for x in activity['bubble_references'] if x['bubble_index']==0)
+          bv=b0['bubble_validation']
+          tables=set()
+          for mc in bv['map_containers']:
+              for row in mc['container_validation'].get('map_data_tables',[]):
+                  tables.add(row['map_data_table'])
+
+          occurrences=[x for x in terrain['occurrences'] if x['map_data_table'] in tables]
+          terrain_hashes={x['terrain']['hash'] for x in occurrences}
+          terrain_rows=[x for x in terrain['terrains'] if x['hash'] in terrain_hashes]
+
+          selected=set()
+          selected_parts=0
+          dyemaps=set()
+          for tr in terrain_rows:
+              selected_parts+=tr.get('selected_main_geom0_part_count',0)
+              for part in tr.get('static_parts',[]):
+                  if part.get('selected_main_geom0'):
+                      h=(part.get('material') or {}).get('hash')
+                      if h not in (None,'00000000','FFFFFFFF'):
+                          selected.add(h)
+              for group in tr.get('mesh_groups',[]):
+                  h=(group.get('dyemap') or {}).get('hash')
+                  if h not in (None,'00000000','FFFFFFFF'):
+                      dyemaps.add(h)
+
+          mats={x['material']:x for x in ps['materials']}
+          material_rows=[mats[h] for h in sorted(selected)]
+          freq=collections.Counter(x['pixel_shader'] for x in material_rows)
+          ps_by={x['pixel_shader']:x for x in ps['pixel_shaders']}
+          shader_rows=[ps_by[h] for h in sorted(freq)]
+
+          out={
+              'schema_version':1,
+              'status':'D1_HIVESHIP_BUBBLE0_TERRAIN_PS_RESOURCE_SUBSET_EXACT',
+              'activity':'8128E008',
+              'bubble_index':0,
+              'bubble_definition':b0['bubble_definition'],
+              'map_data_table_count':len(tables),
+              'terrain_occurrence_count':len(occurrences),
+              'terrain_count':len(terrain_hashes),
+              'selected_main_geom0_part_count':selected_parts,
+              'selected_material_count':len(selected),
+              'effective_dyemap_resource_count':len(dyemaps),
+              'unique_pixel_shader_count':len(freq),
+              'pixel_shader_frequency':dict(sorted(freq.items())),
+              'materials':material_rows,
+              'pixel_shaders':shader_rows,
+              'proof_boundary':'Exact subset of the completed Hiveship Activity census selected by runtime bubble index 0. No cross-bubble materials or shaders are included.'
+          }
+          json.dump(out,open('out/HIVESHIP_BUBBLE0_TERRAIN_PS_RESOURCES.json','w'),indent=2)
+          json.dump({'pixel_shader_frequency':out['pixel_shader_frequency']},open('out/terrain_shader_manifest.json','w'),indent=2)
+          ids=set()
+          for row in shader_rows:
+              for key in ('required_package_id','native_required_package_id'):
+                  if row.get(key): ids.add(str(row[key]).lower())
+          open('out/shader_package_ids.txt','w').write(''.join(x+'\n' for x in sorted(ids)))
+          print('HIVESHIP_BUBBLE0',{
+              k:out[k] for k in (
+                'map_data_table_count','terrain_occurrence_count','terrain_count',
+                'selected_main_geom0_part_count','selected_material_count',
+                'effective_dyemap_resource_count','unique_pixel_shader_count'
+              )
+          })
+          print('PACKAGE_IDS',sorted(ids))
+          PY
+
+      - name: Recover exact PS header/native package families
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          while read -r p; do args+=(--package-id "$p"); done < out/shader_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py             --index out/index.json --package-list out/packages.txt             "${args[@]}" --out-dir packages --report out/shader_package_recovery.json
+
+      - name: Extract exact bubble-0 native GCN programs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          n="$(python - <<'PY'
+          import json
+          print(json.load(open('out/HIVESHIP_BUBBLE0_TERRAIN_PS_RESOURCES.json'))['unique_pixel_shader_count'])
+          PY
+          )"
+          python tools/d1_world_shader_extract.py "${args[@]}" --runtime runtime             --manifest out/terrain_shader_manifest.json --top "$n"             --out-dir shader --report out/HIVESHIP_BUBBLE0_SHADER_EXTRACT.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/HIVESHIP_BUBBLE0_SHADER_EXTRACT.json'))
+          r=json.load(open('out/HIVESHIP_BUBBLE0_TERRAIN_PS_RESOURCES.json'))
+          assert d['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and d['error_count']==0,d
+          assert d['selected_count']==r['unique_pixel_shader_count'],(d['selected_count'],r['unique_pixel_shader_count'])
+          print('GCN_EXTRACTED',d['selected_count'])
+          PY
+
+      - name: Build pinned CLRX and disassemble all 58 bubble-0 PS families
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet "$CLRX_COMMIT"
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"; test -n "$exe"
+          shopt -s nullglob
+          n=0
+          for f in shader/PS_*_gcn.bin; do
+            b="$(basename "$f" _gcn.bin)"
+            "$exe" --raw --gpuType=GFX700 --hexcode "$f" > "disasm/${b}.s" 2> "disasm/${b}.stderr"
+            test ! -s "disasm/${b}.stderr"
+            grep -q s_endpgm "disasm/${b}.s"
+            n=$((n+1))
+          done
+          test "$n" -eq 58
+
+      - name: Close image-resource indices and census native instruction/API12 frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py             --extract-report out/HIVESHIP_BUBBLE0_SHADER_EXTRACT.json             --disasm-dir disasm             --out out/HIVESHIP_BUBBLE0_GCN_IMAGE_USAGE.json
+          python - <<'PY'
+          import collections,json,re
+          from pathlib import Path
+
+          resources=json.load(open('out/HIVESHIP_BUBBLE0_TERRAIN_PS_RESOURCES.json'))
+          usage=json.load(open('out/HIVESHIP_BUBBLE0_GCN_IMAGE_USAGE.json'))
+          extract=json.load(open('out/HIVESHIP_BUBBLE0_SHADER_EXTRACT.json'))
+          assert usage['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT',usage
+          urows={x['shader']:x for x in usage['shaders']}
+          assert set(urows)==set(resources['pixel_shader_frequency']),(len(urows),len(resources['pixel_shader_frequency']))
+          assert all(x['unmatched_image_instruction_count']==0 for x in urows.values())
+
+          # Exact text census of the pinned GFX700 disassembly. This does not
+          # assign semantics to constants; it only preserves native instruction
+          # vocabulary and scalar-buffer load offsets for the next proof stage.
+          mnemonic_hist=collections.Counter()
+          per_shader={}
+          api12_headers=set()
+          by_header={x['pixel_shader']:x for x in resources['pixel_shaders']}
+          for h in sorted(urows):
+              lines=Path(f'disasm/PS_{h}.s').read_text().splitlines()
+              mn=collections.Counter()
+              loads=[]
+              for line in lines:
+                  m=re.search(r'\*/\s*([A-Za-z0-9_]+)\s*(.*)$',line)
+                  if not m: continue
+                  op=m.group(1); rest=m.group(2)
+                  mn[op]+=1; mnemonic_hist[op]+=1
+                  if op.startswith('s_buffer_load') or op.startswith('s_load_dword'):
+                      loads.append(op+' '+rest)
+              slots=by_header[h]['usage']['slots']
+              if any(x['usage_name']=='ImmConstBuffer' and int(x['api_slot'])==12 for x in slots):
+                  api12_headers.add(h)
+              per_shader[h]={
+                  'image_instruction_count':urows[h]['image_instruction_count'],
+                  'used_texture_indices':urows[h]['used_texture_indices'],
+                  'image_opcodes':urows[h]['image_opcodes'],
+                  'mnemonic_histogram':dict(sorted(mn.items())),
+                  'scalar_buffer_loads':loads,
+                  'declares_api12':h in api12_headers,
+              }
+
+          t14=[h for h,r in per_shader.items() if 14 in r['used_texture_indices']]
+          out={
+              'schema_version':1,
+              'status':'D1_HIVESHIP_BUBBLE0_TERRAIN_NATIVE_PS_DATAFLOW_EXACT',
+              'activity':'8128E008',
+              'bubble_index':0,
+              'terrain_count':resources['terrain_count'],
+              'selected_main_geom0_part_count':resources['selected_main_geom0_part_count'],
+              'selected_material_count':resources['selected_material_count'],
+              'unique_pixel_shader_count':resources['unique_pixel_shader_count'],
+              't14_shader_count':len(t14),
+              't14_shaders':t14,
+              'api12_shader_count':len(api12_headers),
+              'api12_shaders':sorted(api12_headers),
+              'native_mnemonic_count':len(mnemonic_hist),
+              'native_mnemonic_histogram':dict(sorted(mnemonic_hist.items())),
+              'pixel_shaders':per_shader,
+              'proof_boundary':'Exact runtime bubble-0 material -> PS -> native GCN image/dataflow census. Resource indices, instruction mnemonics and scalar-load text are preserved exactly; constant semantic roles and TFX meanings remain fail-closed until separately proven.'
+          }
+          json.dump(out,open('out/FINAL_HIVESHIP_BUBBLE0_TERRAIN_NATIVE_PS_DATAFLOW.json','w'),indent=2)
+          print('HIVESHIP_PS_FRONTIER',{
+              'shaders':out['unique_pixel_shader_count'],
+              't14':out['t14_shader_count'],
+              'api12':out['api12_shader_count'],
+              'mnemonics':out['native_mnemonic_count'],
+          })
+          print('T14_SHADERS',t14)
+          print('MNEMONICS',sorted(mnemonic_hist))
+          PY
+          cp disasm/PS_*.s out/
+          find out -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-hiveship-bubble0-terrain-native-ps-dataflow
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
