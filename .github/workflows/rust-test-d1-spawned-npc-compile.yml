@@ -1,0 +1,36 @@
+name: Rust-test D1 spawned NPC compile probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rust-test-d1-spawned-npc-compile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact Rust-test main
+        uses: actions/checkout@v4
+        with:
+          repository: lizardpeter/Rust-test
+          ref: 6bae7abfe3b8355fe63889cec864d97945404d06
+          path: rust-test
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check isolated Destiny 1 importer
+        run: cargo check --manifest-path rust-test/asset_import/importers/destiny1/Cargo.toml --lib
+
+      - name: Run D1 animation control and spawned-plan unit tests
+        run: |
+          cargo test --manifest-path rust-test/asset_import/importers/destiny1/Cargo.toml --lib animation_control -- --nocapture
+          cargo test --manifest-path rust-test/asset_import/importers/destiny1/Cargo.toml --lib tower_spawned -- --nocapture
+
+      - name: Type-check full engine with Destiny importer
+        run: cargo check --manifest-path rust-test/Cargo.toml --no-default-features --features import-destiny1 --bin fps_game
