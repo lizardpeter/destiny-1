@@ -1,0 +1,133 @@
+name: D1 Tower eight scenario spawned location manifest
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-eight-scenario-spawned-location-manifest.yml'
+      - 'tools/d1_remote_activity_scripted_entity_census.py'
+      - 'tools/d1_d912_location_tail_group_probe.py'
+      - 'evidence/d1_tower_spawned_entity_seed.json'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIVERSAL_CATALOG_ARTIFACT_ID: '9994811238'
+  UNIVERSAL_CATALOG_ZIP_SHA256: '404a6b4cdc34c7d305eb7b120df3b6f7d3f1121600631c2b3dbc66efd29d144a'
+  UNIVERSAL_CATALOG_JSON_SHA256: '58255411fd53a8c64eb6f55e0da76a103d494ea3606096b2d995a5b5f35eca72'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Recover exact catalog and runtime
+        run: |
+          set -euo pipefail
+          mkdir -p input/catalog runtime out/scenarios
+          curl -fsSL --retry 4 -H "Authorization: Bearer $GH_TOKEN" -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${UNIVERSAL_CATALOG_ARTIFACT_ID}/zip" -o input/catalog.zip
+          echo "${UNIVERSAL_CATALOG_ZIP_SHA256}  input/catalog.zip" | sha256sum --check --strict
+          unzip -q input/catalog.zip -d input/catalog
+          echo "${UNIVERSAL_CATALOG_JSON_SHA256}  input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json" | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+      - name: Parse all eight source-owned scenario scripted tables
+        run: |
+          set -euo pipefail
+          C=input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          run_one() {
+            h="$1"; n="$2"
+            python tools/d1_remote_activity_scripted_entity_census.py \
+              --activity-hash "$h" --activity-name "$n" --activity-class 80800616 \
+              --member-catalog "$C" --base-url 'https://crypt.cohae.dev/destiny/ps4/packages/latest' \
+              --part-count 10 --runtime runtime -o "out/scenarios/${h}.json" | tee "out/scenarios/${h}.txt"
+          }
+          run_one 80C7A005 'city_tower_default1:scenario_client'
+          run_one 80C7A00B 'city_tower_queen:scenario_client'
+          run_one 80C7A013 'city_tower_harvest:scenario_client'
+          run_one 80C7A0A2 'city_tower_srl:scenario_client'
+          run_one 80C7A0A7 'city_tower_fol:scenario_client'
+          run_one 80C7A0F2 'city_tower_crimson:scenario_client'
+          run_one 80C7A9E8 'city_tower_chalice:scenario_client'
+          run_one 80C88003 'ambient_city_tower:scenario_client'
+      - name: Structurally assign D912 locations to SD614 groups
+        run: |
+          set -euo pipefail
+          args=(); for f in out/scenarios/*.json; do args+=(--scenario "$f"); done
+          python tools/d1_d912_location_tail_group_probe.py "${args[@]}" -o out/D1_TOWER_EIGHT_SCENARIO_D912_LOCATION_GROUPS.json | tee out/location_groups.txt
+          python - <<'PY'
+          import json
+          d=json.load(open('out/D1_TOWER_EIGHT_SCENARIO_D912_LOCATION_GROUPS.json'))
+          assert d['status']=='D1_D912_LOCATION_TAIL_GROUPING_STRUCTURALLY_CLOSED',d['violations']
+          assert d['scenario_count']==8,d
+          assert d['candidate_group_index_all_in_range'] and d['candidate_group_index_all_nondecreasing'] and d['cross_scenario_duplicate_tables_identical'],d
+          print('D912_GROUPING_GREEN','unique_d912',d['unique_d912_count'],'unique_locations',d['unique_physical_location_count'],'exact',d['unique_exact_entity_location_count'],'ambiguous',d['unique_ambiguous_entity_location_count'])
+          PY
+      - name: Intersect with the exact 57 spawned actor EntitySK set
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,collections
+          g=json.load(open('out/D1_TOWER_EIGHT_SCENARIO_D912_LOCATION_GROUPS.json'))
+          s=json.load(open('evidence/d1_tower_spawned_entity_seed.json'))
+          assert s['status']=='D1_TOWER_SPAWNED_ENTITY_SEED_FROM_EXACT_AI_CENSUS',s
+          actors=set(s['entity_hashes']);assert len(actors)==57
+          exact=[x for x in g['scenario_expanded_exact_entity_locations'] if x.get('entity_hash') in actors]
+          amb=[]
+          for x in g.get('unique_ambiguous_entity_locations',[]):
+              overlap=sorted(set(x.get('group_entity_hashes',[])) & actors)
+              if overlap: amb.append({**x,'spawned_actor_overlap':overlap})
+          by={}
+          for sc in g['scenarios']:
+              slug=sc['scenario']; rows=[x for x in exact if x['scenario']==slug]
+              by[slug]={
+                'activity_hash':sc['activity_hash'],'activity_name':sc['activity_name'],
+                'source_scripted_table_count':sc['table_count'],'source_scripted_location_count':sc['location_count'],
+                'spawned_actor_exact_location_alternative_count':len(rows),
+                'spawned_actor_entity_count':len({x['entity_hash'] for x in rows}),
+                'spawned_actor_entities':sorted({x['entity_hash'] for x in rows}),
+                'xur_location_alternative_count':sum(x['entity_hash'] in {'80C7ACC8','80C885AA'} for x in rows),
+              }
+          out={
+            'schema_version':1,
+            'status':'D1_TOWER_EIGHT_SCENARIO_SPAWNED_LOCATION_MANIFEST_COMPLETE',
+            'spawned_actor_seed_count':57,
+            'scenario_count':8,
+            'scenario_expanded_exact_actor_location_alternative_count':len(exact),
+            'scenario_expanded_exact_actor_entity_count':len({x['entity_hash'] for x in exact}),
+            'spawned_actor_entities_without_exact_group_location':sorted(actors-{x['entity_hash'] for x in exact}),
+            'ambiguous_location_group_count_with_spawned_actor_overlap':len(amb),
+            'ambiguous_location_groups_with_spawned_actor_overlap':amb,
+            'scenarios':by,
+            'exact_actor_location_alternatives':exact,
+            'activation_gates':{
+              'scenario_runtime_active_variant_selected':False,
+              'per_D912_group_runtime_active_selected':False,
+              'per_actor_animation_state_selected':False
+            },
+            'policy':'Rows are exact source-owned actor/location alternatives, not simultaneous spawn claims. Scenario membership is source-owned; S2B +0x28 structurally indexes the SD614 group; actor identity is promoted only for unique EntitySK groups. Runtime scenario activation, group activation, and animation state remain separate fail-closed gates.'
+          }
+          json.dump(out,open('out/D1_TOWER_EIGHT_SCENARIO_SPAWNED_LOCATION_MANIFEST.json','w'),indent=2)
+          print(json.dumps({k:out[k] for k in ['status','spawned_actor_seed_count','scenario_count','scenario_expanded_exact_actor_location_alternative_count','scenario_expanded_exact_actor_entity_count','spawned_actor_entities_without_exact_group_location','ambiguous_location_group_count_with_spawned_actor_overlap']},indent=2))
+          for k,v in by.items(): print('SCENARIO',k,v['activity_name'],'actors',v['spawned_actor_entity_count'],'alternatives',v['spawned_actor_exact_location_alternative_count'],'xur',v['xur_location_alternative_count'])
+          PY
+      - name: Persist hashes
+        run: |
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: D1-TOWER-EIGHT-SCENARIO-SPAWNED-LOCATION-MANIFEST
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
