@@ -1,0 +1,162 @@
+name: D1 Cross-Activity Bubble0 Terrain TFX
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-cross-activity-bubble0-terrain-tfx.yml'
+      - 'tools/d1_world_terrain_tfx_census.py'
+      - 'tools/d1_tfx_program_inventory.py'
+      - 'tools/d1_roi_tfx_resource_assignment_prefix_proof.py'
+      - 'tools/d1_material_decode.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LINOODLE_SKIP_DLLMAIN: '1'
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: hiveship
+            activity: '8128E008'
+            source_artifact: '11258684382'
+            source_digest: '09f35993112634e6101390a7bd0387aa1b8adafcb4a8e8350dfffc6cae01594d'
+            expected_materials: '58'
+          - scope: plaguelands
+            activity: '817DA002'
+            source_artifact: '11258724356'
+            source_digest: '221ea383c009ec672959e63d1bbb387b60d1bc59e2b57582b8fd7d013021d7ad'
+            expected_materials: '55'
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+
+      - name: Recover completed Activity terrain evidence
+        shell: bash
+        env:
+          SOURCE_ARTIFACT: ${{ matrix.source_artifact }}
+          SOURCE_DIGEST: ${{ matrix.source_digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p input runtime packages out
+          curl -fsSL --retry 4             -H "Authorization: Bearer $GH_TOKEN"             -H 'X-GitHub-Api-Version: 2022-11-28'             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT}/zip"             -o input/source.zip
+          echo "${SOURCE_DIGEST}  input/source.zip" | sha256sum --check --strict
+          unzip -q input/source.zip -d input/source
+          for n in activity_map_roots.json terrain_census_final.json terrain_ps_resources_final.json index.json packages.txt; do
+            p="$(find input/source -name "$n" -type f -print -quit)"
+            test -n "$p"
+            cp "$p" "out/$n"
+          done
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll'             -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Build exact runtime bubble-0 terrain resource subset
+        shell: bash
+        env:
+          ACTIVITY: ${{ matrix.activity }}
+          EXPECTED_MATERIALS: ${{ matrix.expected_materials }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json,os
+          root=json.load(open('out/activity_map_roots.json'))
+          terrain=json.load(open('out/terrain_census_final.json'))
+          ps=json.load(open('out/terrain_ps_resources_final.json'))
+          activity=next(x for x in root['activities'] if x['activity']==os.environ['ACTIVITY'])
+          b0=next(x for x in activity['bubble_references'] if x['bubble_index']==0)
+          tables=set()
+          for mc in b0['bubble_validation']['map_containers']:
+              for row in mc['container_validation'].get('map_data_tables',[]):
+                  tables.add(row['map_data_table'])
+          occurrences=[x for x in terrain['occurrences'] if x['map_data_table'] in tables]
+          terrain_hashes={x['terrain']['hash'] for x in occurrences}
+          terrain_rows=[x for x in terrain['terrains'] if x['hash'] in terrain_hashes]
+          selected=set()
+          for tr in terrain_rows:
+              for part in tr.get('static_parts',[]):
+                  if part.get('selected_main_geom0'):
+                      h=(part.get('material') or {}).get('hash')
+                      if h not in (None,'00000000','FFFFFFFF'): selected.add(h)
+          mats={x['material']:x for x in ps['materials']}
+          rows=[mats[h] for h in sorted(selected)]
+          assert len(rows)==int(os.environ['EXPECTED_MATERIALS']),(len(rows),os.environ['EXPECTED_MATERIALS'])
+          freq=collections.Counter(x['pixel_shader'] for x in rows)
+          out={
+              'schema_version':1,
+              'status':'D1_WORLD_TERRAIN_PS_RESOURCE_CENSUS_COMPLETE',
+              'scope':'runtime_bubble_0_subset',
+              'activity':os.environ['ACTIVITY'],
+              'bubble_index':0,
+              'terrain_count':len(terrain_hashes),
+              'selected_main_geom0_part_count':sum(x.get('selected_main_geom0_part_count',0) for x in terrain_rows),
+              'selected_material_count':len(rows),
+              'resolved_selected_material_count':len(rows),
+              'unique_pixel_shader_count':len(freq),
+              'resolved_pixel_shader_count':len(freq),
+              'pixel_shader_frequency':dict(sorted(freq.items())),
+              'materials':rows,
+              'pixel_shaders':[x for x in ps['pixel_shaders'] if x['pixel_shader'] in freq],
+              'missing_dependency_package_ids':{},
+              'violations':[],
+              'proof_boundary':'Exact runtime bubble-0 subset derived from completed Activity terrain evidence.'
+          }
+          json.dump(out,open('out/BUBBLE0_TERRAIN_PS_RESOURCES.json','w'),indent=2)
+          ids=sorted({str(x.get('required_package_id')).lower() for x in rows if x.get('required_package_id')})
+          open('out/material_package_ids.txt','w').write(''.join(x+'\n' for x in ids))
+          print('BUBBLE0_TFX_SCOPE',out['activity'],'materials',len(rows),'PS',len(freq),'packages',ids)
+          PY
+
+      - name: Recover exact selected material package families
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          while read -r p; do args+=(--package-id "$p"); done < out/material_package_ids.txt
+          python tools/d1_recover_indexed_package_families.py             --index out/index.json --package-list out/packages.txt             "${args[@]}" --out-dir packages --report out/material_package_recovery.json
+
+      - name: Inventory exact post-resource-prefix terrain TFX
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find packages -maxdepth 1 -name '*.pkg' -type f | sort)
+          args=(); for f in "${files[@]}"; do args+=(--snapshot "$f"); done
+          python tools/d1_world_terrain_tfx_census.py             "${args[@]}" --runtime runtime             --terrain-resources out/BUBBLE0_TERRAIN_PS_RESOURCES.json             --out out/BUBBLE0_TERRAIN_TFX_CENSUS.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/BUBBLE0_TERRAIN_TFX_CENSUS.json'))
+          assert d['status']=='D1_TERRAIN_PIXEL_TFX_CENSUS_COMPLETE',d
+          assert d['framed_material_count']==d['selected_material_count'],d
+          assert not d['violations'],d
+          print('BUBBLE0_TFX',{
+            k:d[k] for k in (
+              'selected_material_count','empty_expression_material_count',
+              'live_extern_material_count','unk42_material_count',
+              'unique_expression_count','opcode_histogram','extern_histogram',
+              'unknown42_target_histogram','output_target_histogram'
+            )
+          })
+          PY
+          sha256sum out/BUBBLE0_TERRAIN_TFX_CENSUS.json > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-bubble0-terrain-tfx-${{ matrix.scope }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
