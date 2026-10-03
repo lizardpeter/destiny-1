@@ -1,0 +1,74 @@
+name: D1 Tower B C D animation owner discovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-bcd-animation-owner-discovery.yml'
+      - 'tools/d1_tower_unrigged_animation_owner_discovery.py'
+      - 'tools/d1_tower_recover_current_corpus.py'
+      - 'tools/d1_tower_recover_activity_root_corpus.py'
+      - 'tools/d1_animation_control_state_map.py'
+      - 'tools/d1_entity_resource_probe.py'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies, runtime, parser
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy scipy pygltflib pyglm
+          mkdir -p runtime recovered roots reports parser
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+          git clone --quiet https://github.com/SolUnshadowed/tiger-animation-parser.git parser-src
+          git -C parser-src checkout --quiet b9fdc3a43dd28118113275624fcc9054b75855f4
+          rm -rf parser; mv parser-src parser
+          test "$(git -C parser rev-parse HEAD)" = b9fdc3a43dd28118113275624fcc9054b75855f4
+          curl --fail --location --retry 3 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+      - name: Recover exact Tower dependency and Activity root corpus
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_recover_current_corpus.py --package-list reports/packages.txt --out-dir recovered --report reports/current_corpus.json
+          python tools/d1_tower_recover_activity_root_corpus.py --package-list reports/packages.txt --out-dir roots --report reports/root_corpus.json
+      - name: Discover literal B C D animation-control ownership
+        env: {LINOODLE_SKIP_DLLMAIN: '1'}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find recovered roots -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          args=();for f in "${files[@]}";do args+=(--snapshot "$f");done
+          set +e
+          python tools/d1_tower_unrigged_animation_owner_discovery.py "${args[@]}" --runtime runtime --parser-root parser \
+            --family B:80C7A532:809D8573 \
+            --family C:80C7A9A7:80C7A9AE \
+            --family D:80C7ABCD:80AB0BA0 \
+            -o reports/TOWER_BCD_ANIMATION_OWNER_DISCOVERY.json | tee reports/TOWER_BCD_ANIMATION_OWNER_DISCOVERY_stdout.txt
+          rc=${PIPESTATUS[0]}; set -e
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/TOWER_BCD_ANIMATION_OWNER_DISCOVERY.json'))
+          for r in d['families']:
+              print('\nFAMILY',r['family'],'ENTITY',r['sentity'],'SKELETON_NODES',r.get('skeleton_node_count'))
+              for e in r.get('animation_control_edges',[]): print(' CONTROL_EDGE',e)
+              for h,c in (r.get('controls') or {}).items():
+                  print(' CONTROL',h,'SELECTED',c.get('unique_selected_clips'))
+                  for x in c.get('selected_clips',[]): print('  CLIP',x.get('clip'),'frames',x.get('frame_count'),'nodes',x.get('node_count'),'controls',x.get('rig_control_count'),'node_match',x.get('node_count_matches_skeleton'))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-bcd-animation-owner-discovery
+          path: reports/
+          retention-days: 14
+          compression-level: 6
