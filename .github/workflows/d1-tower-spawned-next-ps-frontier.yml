@@ -1,0 +1,210 @@
+name: D1 Tower spawned next high-impact PS frontier
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/d1-tower-spawned-next-ps-frontier.yml'
+      - 'tools/d1_material_stage_state_resolve.py'
+      - 'tools/d1_world_shader_extract.py'
+      - 'tools/d1_gcn_image_usage_analyze.py'
+
+permissions:
+  contents: read
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      LINOODLE_SKIP_DLLMAIN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Build current catalog and runtime
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy
+          mkdir -p input/catalog runtime reports corpus_material corpus_deps corpus_shader shader disasm out
+          curl --fail --location --retry 4 'https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt' -o reports/packages.txt
+          cp reports/packages.txt input/catalog/packages.txt
+          curl --fail --location --retry 4 'https://github.com/lizardpeter/destiny-1/releases/download/d1-global-activity-index-r1/D1_CURRENT_ACTIVITY_INDEX.json' -o input/catalog/D1_CURRENT_ACTIVITY_INDEX.json
+          echo '6b82da75f2f45852fa8addc58d2f835f914adfb48533e0388b4bd24f949b3f06  input/catalog/D1_CURRENT_ACTIVITY_INDEX.json' | sha256sum --check --strict
+          python tools/d1_universal_member_catalog.py             --activity-index input/catalog/D1_CURRENT_ACTIVITY_INDEX.json             --package-list input/catalog/packages.txt             --out input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o runtime/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll' | sha256sum --check --strict
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so' -o runtime/liblinoodle3.so
+          echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
+
+      - name: Recover representative spawned material families
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_recover_articulated_visual_corpus.py             --package-list reports/packages.txt             --required-package-id 003b --required-package-id 024c             --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json             --out-dir corpus_material --report reports/material_corpus.json
+
+      - name: Derive exact dependencies and shader families
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import d1_tower_map_schema_validate_v5 as v5
+          from d1_material_decode import parse_material
+
+          TARGETS={
+            '80C9923D':('809DF769',17279),
+            '808768F2':('80876919',14468),
+            '808767DB':('80876829',12390),
+          }
+          NULL={'00000000','FFFFFFFF'}
+          def norm(x):return str(x).upper().removeprefix('0X').zfill(8)
+          def pid(h):
+              v=int(norm(h),16);assert v>=0x80800000,h
+              return f'{((v-0x80800000)>>13)&0x7ff:04x}'
+
+          c=v5.v3.base.Corpus([p.resolve() for p in Path('corpus_material').glob('*.pkg')],Path('runtime').resolve())
+          rows={};deps=set();shaders=set()
+          for mh,(expected_ps,impact) in TARGETS.items():
+              meta=c.entry_meta(mh);payload,src=c.payload(mh);assert meta and payload,(mh,meta,src)
+              p=parse_material(payload,'PS4')
+              ps=norm(p['pixel_shader']);vs=norm(p['vertex_shader'])
+              assert ps==expected_ps,(mh,ps,expected_ps)
+              shaders.update([ps,vs])
+              for stage in ('vs','ps'):
+                  ch=norm(p[f'{stage}_vector4_container'])
+                  if ch not in NULL:deps.add(ch)
+                  for rec in p[f'{stage}_samplers']['items']:
+                      sh=norm(rec.get('first_dword_hex','FFFFFFFF'))
+                      if sh not in NULL:deps.add(sh)
+              rows[mh]={
+                'source':src,'vertex_shader':vs,'pixel_shader':ps,
+                'spawned_triangle_impact':impact,
+                'material_state4_hex':p['material_state4_hex'],
+                'vs_vector4_container':norm(p['vs_vector4_container']),
+                'ps_vector4_container':norm(p['ps_vector4_container']),
+              }
+          own={'003b','024c'}
+          dep_ids=sorted({pid(x) for x in deps}-own)
+          shader_ids=sorted({pid(x) for x in shaders}-own)
+          Path('reports/dependency_package_ids.txt').write_text('\n'.join(dep_ids)+('\n' if dep_ids else ''))
+          Path('reports/shader_package_ids.txt').write_text('\n'.join(shader_ids)+('\n' if shader_ids else ''))
+          Path('reports/seeds.json').write_text(json.dumps({
+            'status':'D1_TOWER_SPAWNED_NEXT_PS_SEEDS_EXACT',
+            'materials':rows,'dependency_tags':sorted(deps),'dependency_package_ids':dep_ids,
+            'shader_tags':sorted(shaders),'shader_package_ids':shader_ids,
+          },indent=2)+'\n')
+          print(json.dumps(json.load(open('reports/seeds.json')),indent=2))
+          PY
+
+      - name: Recover exact dependency and shader-header families
+        run: |
+          set -euo pipefail
+          if [ -s reports/dependency_package_ids.txt ]; then
+            args=();while read -r p;do args+=(--required-package-id "$p");done < reports/dependency_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py               --package-list reports/packages.txt "${args[@]}"               --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json               --out-dir corpus_deps --report reports/dependency_corpus.json
+          fi
+          if [ -s reports/shader_package_ids.txt ]; then
+            args=();while read -r p;do args+=(--required-package-id "$p");done < reports/shader_package_ids.txt
+            python tools/d1_tower_recover_articulated_visual_corpus.py               --package-list reports/packages.txt "${args[@]}"               --member-catalog input/catalog/D1_UNIVERSAL_MEMBER_CATALOG.json               --out-dir corpus_shader --report reports/shader_corpus.json
+          fi
+
+      - name: Resolve exact local states and GCN binaries
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find corpus_material corpus_deps corpus_shader -maxdepth 1 -name '*.pkg' -type f | sort -u)
+          snaps=();for f in "${files[@]}";do snaps+=(--snapshot "$f");done
+
+          python tools/d1_material_stage_state_resolve.py "${snaps[@]}" --runtime runtime             --material 80C9923D --material 808768F2 --material 808767DB             --out out/SPAWNED_NEXT_PS_MATERIAL_STATE.json
+
+          cat > reports/shader_manifest.json <<'JSON'
+          {"pixel_shader_frequency":{"809DF769":17279,"80876919":14468,"80876829":12390}}
+          JSON
+          python tools/d1_world_shader_extract.py "${snaps[@]}" --runtime runtime             --manifest reports/shader_manifest.json             --shader 809DF769 --shader 80876919 --shader 80876829             --out-dir shader --report out/SPAWNED_NEXT_PS_EXTRACT.json
+          python - <<'PY'
+          import json
+          s=json.load(open('out/SPAWNED_NEXT_PS_MATERIAL_STATE.json'))
+          e=json.load(open('out/SPAWNED_NEXT_PS_EXTRACT.json'))
+          assert s['status']=='D1_MATERIAL_STAGE_STATE_EXACT' and not s['violations'],s
+          assert s['selected_material_count']==s['resolved_material_count']==3,s
+          assert e['status']=='D1_WORLD_PIXEL_SHADER_GCN_EXACT' and e['selected_count']==3 and e['error_count']==0,e
+          for r in e['shaders']:
+              print('GCN',r['shader'],r['native_shader'],r['gcn_sha256'],r['gcn_bytes'])
+          PY
+
+      - name: Build pinned CLRX and disassemble
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/CLRX/CLRX-mirror.git clrx
+          git -C clrx checkout --quiet fb8fbf972e19ea1fb1f7a9c8d84fdef1bf7cc3df
+          cmake -S clrx -B clrx/build -DCMAKE_BUILD_TYPE=Release -DNO_CLWRAPPER=ON -DBUILD_TESTS=OFF -DBUILD_SAMPLES=OFF -DBUILD_DOCUMENTATION=OFF >/dev/null
+          cmake --build clrx/build --target clrxdisasm -j2 >/dev/null
+          exe="$(find clrx/build -type f -name clrxdisasm -perm -111 | head -1)"
+          test -n "$exe"
+          for h in 809DF769 80876919 80876829; do
+            "$exe" --raw --gpuType=GFX700 --hexcode "shader/PS_${h}_gcn.bin" > "disasm/PS_${h}.s" 2> "disasm/PS_${h}.stderr"
+            test ! -s "disasm/PS_${h}.stderr"
+            grep -q s_endpgm "disasm/PS_${h}.s"
+          done
+
+      - name: Map native image-resource usage
+        run: |
+          set -euo pipefail
+          python tools/d1_gcn_image_usage_analyze.py             --extract-report out/SPAWNED_NEXT_PS_EXTRACT.json             --disasm-dir disasm --out out/SPAWNED_NEXT_PS_IMAGE_USAGE.json
+          python - <<'PY'
+          import json
+          d=json.load(open('out/SPAWNED_NEXT_PS_IMAGE_USAGE.json'))
+          assert d['status']=='D1_GCN_IMAGE_RESOURCE_USAGE_EXACT',d
+          assert d['unmatched_image_instruction_count']==0,d
+          for r in d['shaders']:
+              print('IMAGE_USAGE',r['shader'],r.get('used_texture_indices'),r.get('texture_instruction_counts'))
+          PY
+
+      - name: Persist exact next frontier
+        run: |
+          set -euo pipefail
+          cp disasm/PS_*.s out/
+          cp reports/seeds.json out/
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          st=json.load(open('out/SPAWNED_NEXT_PS_MATERIAL_STATE.json'))
+          ex=json.load(open('out/SPAWNED_NEXT_PS_EXTRACT.json'))
+          iu=json.load(open('out/SPAWNED_NEXT_PS_IMAGE_USAGE.json'))
+          byimg={r['shader']:r for r in iu['shaders']}
+          impact={'809DF769':17279,'80876919':14468,'80876829':12390}
+          rows=[]
+          for r in ex['shaders']:
+              ir=byimg[r['shader']]
+              rows.append({
+                'shader':r['shader'],'native_shader':r['native_shader'],
+                'gcn_sha256':r['gcn_sha256'],'gcn_bytes':r['gcn_bytes'],
+                'spawned_triangle_impact':impact[r['shader']],
+                'used_texture_indices':ir.get('used_texture_indices',[]),
+                'texture_instruction_counts':ir.get('texture_instruction_counts',{}),
+                'semantic_dataflow_complete':False,
+              })
+          out={
+            'schema_version':1,
+            'status':'D1_TOWER_SPAWNED_NEXT_HIGH_IMPACT_PS_FRONTIER_EXACT',
+            'representative_materials':['80C9923D','808768F2','808767DB'],
+            'material_state_exact':st['status']=='D1_MATERIAL_STAGE_STATE_EXACT',
+            'shaders':rows,
+            'next_gate':'Lift constant/interpolant/image arithmetic and MRT packing from exact disassembly before any renderer-specific semantic promotion.',
+          }
+          Path('out/SPAWNED_NEXT_PS_FRONTIER.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(out,indent=2))
+          PY
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: D1-TOWER-SPAWNED-NEXT-HIGH-IMPACT-PS-FRONTIER
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 6
