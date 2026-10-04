@@ -1,0 +1,29 @@
+name: Rust-test D1 importer check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rust-test-d1-importer-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Rust-test main
+        uses: actions/checkout@v4
+        with:
+          repository: lizardpeter/Rust-test
+          ref: main
+          path: Rust-test
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Destiny 1 importer
+        working-directory: Rust-test
+        run: cargo check -p destiny1-importer
