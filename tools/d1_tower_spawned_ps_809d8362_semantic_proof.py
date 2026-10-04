@@ -156,8 +156,11 @@ def main() -> int:
         if ps.get('shader')!=SHADER: viol.append('pixel shader mismatch')
         if ps.get('tfx_program_sha256')!=TFX_SHA or not ps.get('tfx_disassembly',{}).get('complete'):
             viol.append('TFX program mismatch/incomplete')
-        targets=[x.get('d1_unk42_u8') for x in ps.get('tfx_disassembly',{}).get('ops',[]) if x.get('name')=='Unk42']
+        ops=ps.get('tfx_disassembly',{}).get('ops',[])
+        targets=[x.get('d1_unk42_u8') for x in ops if x.get('name')=='Unk42']
         if targets!=[0,17]: viol.append(f'TFX output targets mismatch: {targets!r}')
+        externs=[x for x in ops if 'extern_name' in x]
+        if externs: viol.append(f'809D8362 TFX unexpectedly gained extern dependencies: {externs!r}')
         if texmap(m)!=TEXTURES: viol.append(f'texture map mismatch: {texmap(m)!r}')
         if [x['first_dword_hex'] for x in ps['samplers']['items']]!=SAMPLERS:
             viol.append('sampler-tag sequence mismatch')
@@ -194,6 +197,15 @@ def main() -> int:
         'material_state4_hex':STATE,
         'tfx_program_sha256':TFX_SHA,
         'tfx_output_targets':[0,17],
+        'tfx_producer_contract':{
+          'bytecode_hex':m['ps']['tfx_bytecode'].get('bytes_hex',''),
+          'private_constants':[x.get('value') for x in m['ps']['tfx_private_constants'].get('items',[])],
+          'ops':m['ps']['tfx_disassembly'].get('ops',[]),
+          'extern_histogram':{},
+          'external_vector4_container':m['ps'].get('external_vector4_container'),
+          'vector_storage_relation':m['ps'].get('vector_storage_relation'),
+          'proof':'Exact retail material bytes and the D1 material-state decoder; no producer semantic names are added here.',
+        },
         'tfx_output_semantics':{
           'c0':'runtime-produced vector consumed by the attr3.y<=1 surface-factor branch',
           'c17':'runtime-produced vector whose RGB drives the later palette branch',
