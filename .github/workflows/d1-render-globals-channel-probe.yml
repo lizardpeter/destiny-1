@@ -1,5 +1,5 @@
 name: D1 Render Globals Channel Probe
-# Manual exact-retail rerun requested 2026-10-03 for Tower lighting closure.
+# Manual exact-retail rerun requested 2026-10-04 with current-class RenderGlobals discovery.
 
 on:
   workflow_dispatch:
