@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/d1-render-globals-channel-probe.yml'
       - 'tools/d1_remote_filehash_probe.py'
+      - 'tools/d1_remote_entry_reference_class_scan.py'
       - 'tools/d1_tower_light_unk4b_census.py'
       - 'tools/d1_global_channel_defaults_decode.py'
       - 'tools/d1_remote_tower_entity_resource_census.py'
@@ -89,33 +90,38 @@ jobs:
             --base-url "$BASE_URL" \
             --out reports/tower_entity_resource_census.json
 
-      - name: Probe exact D1 bootstrap tag
+      - name: Discover exact current RenderGlobals by class
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
         run: |
           set -euo pipefail
-          # Charm D1 FileHash display literal 0020AF80 corresponds to exact
-          # on-disk little-endian FileHash 80AF2000.
-          python tools/d1_remote_filehash_probe.py \
-            --tag-hash 80AF2000 \
+          # Source bytes B0 1B 80 80 decode to numeric 0x80801BB0 in the
+          # little-endian Tiger FileEntry.Reference field.
+          python tools/d1_remote_entry_reference_class_scan.py \
+            --package-id 0x0151 \
+            --package-id 0x0154 \
+            --package-id 0x0155 \
+            --package-id 0x0156 \
+            --package-id 0x0157 \
+            --package-id 0x0158 \
+            --package-id 0x072B \
+            --package-id 0x072F \
+            --package-id 0x0735 \
+            --package-id 0x018D \
+            --package-id 0x0172 \
+            --package-id 0x01A3 \
+            --reference 80801BB0 \
             --package-list reports/packages.txt \
             --runtime runtime \
             --base-url "$BASE_URL" \
-            --out reports/bootstrap_80AF2000.json
-
-      - name: Follow bootstrap RenderGlobals tag at +0x3C
-        env:
-          LINOODLE_SKIP_DLLMAIN: '1'
-        run: |
-          set -euo pipefail
+            --out reports/current_render_globals_class_scan.json
           render_tag="$(python - <<'PY'
           import json
-          d=json.load(open('reports/bootstrap_80AF2000.json'))
-          e=d['entries'][0]
-          hit=[x for x in e['aligned_resolved_tag_matches'] if int(x['offset'])==0x3c]
-          if len(hit)!=1:
-              raise SystemExit(f'expected one exact bootstrap +0x3C tag, got {hit}')
-          print(hit[0]['tag_hash'])
+          d=json.load(open('reports/current_render_globals_class_scan.json'))
+          hits=[x for x in d['hits'] if x.get('available') and x.get('payload_size',0)>=0x38 and not x.get('violations')]
+          if len(hits)!=1:
+              raise SystemExit(f'expected one readable exact 80801BB0 RenderGlobals candidate, got {[(x["package_id"],x["tag_hash"],x.get("payload_size")) for x in hits]}')
+          print(hits[0]['tag_hash'])
           PY
           )"
           echo "$render_tag" > reports/render_globals_tag.txt
@@ -125,6 +131,14 @@ jobs:
             --runtime runtime \
             --base-url "$BASE_URL" \
             --out reports/render_globals.json
+          python - <<'PY'
+          import json
+          e=json.load(open('reports/render_globals.json'))['entries'][0]
+          if e.get('violations'):
+              raise SystemExit(e['violations'])
+          if e['entry']['reference'].upper()!='80801BB0':
+              raise SystemExit(f'current RenderGlobals target class {e["entry"]["reference"]} != 80801BB0')
+          PY
 
       - name: Follow RenderGlobals GlobalChannelDefaults tag at +0x34
         env:
@@ -176,7 +190,6 @@ jobs:
           import hashlib,json,struct
           def entry(path):
               return json.load(open(path))['entries'][0]
-          b=entry('bootstrap_80AF2000.json')
           r=entry('render_globals.json')
           g=entry('global_channel_defaults.json')
           raw=bytes.fromhex(g['prefix128'])
@@ -184,11 +197,7 @@ jobs:
           qwords=[struct.unpack_from('<Q',raw,o)[0] for o in range(0,len(raw)-7,8)]
           out={
             'schema':'d1_render_globals_global_channel_probe/v1',
-            'status':'EXACT_RETAIL_CHAIN_CLOSED_HEADER_ONLY',
-            'bootstrap':{
-              'tag_hash':b['tag_hash'],'entry':b['entry'],'sha256':b['payload_sha256'],
-              'render_globals_field_offset':'0x3C'
-            },
+            'status':'EXACT_CURRENT_RETAIL_RENDER_GLOBAL_CHAIN_CLOSED',
             'render_globals':{
               'tag_hash':r['tag_hash'],'entry':r['entry'],'sha256':r['payload_sha256'],
               'global_channel_defaults_field_offset':'0x34'
@@ -205,7 +214,7 @@ jobs:
               'claim':'D1 RoI raw opcode 0x4B maps to PushGlobalChannelVector; runtime table is ordered GlobalChannelDefaults',
               'promotion':'withheld_pending_exact_table_and_Tower_operand_dataflow'
             },
-            'proof_boundary':'This closes the exact retail bootstrap -> RenderGlobals -> GlobalChannelDefaults FileHash chain and preserves the channel-table payload header. It does not yet assert the DynamicArray layout, channel count, channel names, or that TFX 0x4B indexes this table.'
+            'proof_boundary':'This closes the exact current-retail RenderGlobals class -> +0x34 GlobalChannelDefaults FileHash chain and preserves the channel-table payload header. DynamicArray layout and requested raw 0x4B channel rows are decoded separately without assigning human-facing semantics.'
           }
           open('reports/render_globals_global_channel_probe.json','w').write(json.dumps(out,indent=2)+'\n')
           print(json.dumps(out,indent=2))
@@ -216,7 +225,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/generated
-          cp reports/bootstrap_80AF2000.json evidence/generated/d1_bootstrap_80AF2000_probe.json
+          cp reports/current_render_globals_class_scan.json evidence/generated/d1_current_render_globals_class_scan.json
           cp reports/render_globals.json evidence/generated/d1_render_globals_probe.json
           cp reports/global_channel_defaults.json evidence/generated/d1_global_channel_defaults_probe.json
           cp reports/global_channel_defaults_decoded.json evidence/generated/d1_global_channel_defaults_decoded.json
@@ -227,7 +236,7 @@ jobs:
           cp reports/render_globals_global_channel_probe.json evidence/generated/d1_render_globals_global_channel_probe.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add evidence/generated/d1_bootstrap_80AF2000_probe.json \
+          git add evidence/generated/d1_current_render_globals_class_scan.json \
                   evidence/generated/d1_render_globals_probe.json \
                   evidence/generated/d1_global_channel_defaults_probe.json \
                   evidence/generated/d1_global_channel_defaults_decoded.json \
@@ -240,7 +249,8 @@ jobs:
             exit 0
           fi
           git commit -m 'Record exact D1 render-global channel chain'
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - uses: actions/upload-artifact@v4
         if: always()
