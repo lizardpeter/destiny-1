@@ -205,6 +205,12 @@ jobs:
           cp disasm/PS_809D8362.s out/
           cp reports/material_seed.json out/
           cp reports/payload_edges.json out/
+          echo '--- EXACT 809D8362 TFX PRODUCER CONTRACT ---'
+          python - <<'PY'
+          import json
+          d=json.load(open('out/PS_809D8362_SEMANTIC_PROOF.json'))
+          print(json.dumps(d['exact_inputs']['tfx_producer_contract'],indent=2))
+          PY
           python - <<'PY'
           import json
           from pathlib import Path
