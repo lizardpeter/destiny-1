@@ -123,17 +123,20 @@ def main()->int:
                 "package_id":f"{pkg:04X}","entry_index":e["index"],
                 "tag_hash":e["tag_hash"].upper(),"reference":ref,
                 "type":e["type"],"subtype":e["subtype"],"declared_size":e["file_size"],
-                "available":view.available(e["index"]),"violations":[],
+                "available":False,"violations":[],
             }
-            if row["available"]:
-                try:
-                    payload=view.entry(e["index"])
-                    row["payload_size"]=len(payload)
-                    row["payload_sha256"]=hashlib.sha256(payload).hexdigest()
-                    row["prefix256"]=payload[:256].hex()
-                    row["aligned_resolved_tag_matches"]=resolved_words(payload,views)
-                except Exception as ex:
-                    row["violations"].append("payload_read:"+repr(ex))
+            try:
+                payload=view.entry(e["index"])
+                row["available"]=True
+                row["payload_size"]=len(payload)
+                row["payload_sha256"]=hashlib.sha256(payload).hexdigest()
+                row["prefix256"]=payload[:256].hex()
+                row["aligned_resolved_tag_matches"]=resolved_words(payload,views)
+            except Exception as ex:
+                # RemoteLogicalPackage no longer exposes a separate availability
+                # predicate. Exact readability is established by the same
+                # class-stable block resolver used for the payload itself.
+                row["violations"].append("payload_read:"+repr(ex))
             hits.append(row)
 
     violations=[f"{p['package_id']}:{v}" for p in packages for v in p.get("violations",[])]
