@@ -88,7 +88,15 @@ def resolved_words(payload: bytes, views: dict[int,RemoteLogicalPackage]) -> lis
 def main()->int:
     ap=argparse.ArgumentParser()
     ap.add_argument("--package-id",action="append",required=True,type=lambda x:int(x,0))
-    ap.add_argument("--reference",action="append",required=True)
+    ap.add_argument(
+        "--reference",
+        action="append",
+        required=True,
+        help=(
+            "parsed little-endian u32 FileEntry.Reference, e.g. serialized "
+            "source bytes B01B8080 are passed as 80801BB0"
+        ),
+    )
     ap.add_argument("--package-list",type=Path,required=True)
     ap.add_argument("--runtime",type=Path,required=True)
     ap.add_argument("--base-url",default="https://crypt.cohae.dev/destiny/ps4/packages/latest")
