@@ -1,0 +1,76 @@
+name: D1 Animation Control Executable Frontier
+
+on:
+  push:
+    paths:
+      - '.github/workflows/d1-animation-control-executable-frontier.yml'
+      - 'tools/d1_animation_control_executable_frontier.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Capstone
+        run: python -m pip install --disable-pip-version-check -q capstone
+
+      - name: Recover exact owner-provided eboot
+        run: |
+          set -euo pipefail
+          mkdir -p build/animation-control
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL" -o build/animation-control/eboot.bin
+          test "$(stat -c %s build/animation-control/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/animation-control/eboot.bin" | sha256sum --check --strict
+
+      - name: Find 80802C0E executable frontier
+        run: |
+          set -euo pipefail
+          python tools/d1_animation_control_executable_frontier.py             build/animation-control/eboot.bin             -o build/animation-control/d1_animation_control_executable_frontier.json             | tee build/animation-control/stdout.txt
+
+      - name: Summarize candidates
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('build/animation-control/d1_animation_control_executable_frontier.json'))
+          print('counts', d['counts'])
+          print('exact 80802C0E occurrences')
+          for row in d['class_hash_occurrences']:
+              if row['class_hash_hex'] == '80802C0E':
+                  print(row)
+          print('top candidates')
+          for row in d['ranked_code_candidates'][:40]:
+              print(row['code_va_hex'], 'score', row['score'],
+                    'fields', [(x['field_offset_hex'],x['field_name'],x['mnemonic'],x['op_str'])
+                               for x in row['field_hits'][:16]],
+                    'class-immediates', row['class_immediates'][:8],
+                    'sources', row['sources'][:8])
+          print('code-side class immediates', d['executable_xrefs']['class_immediate_hits'][:80])
+          print('near-class RIP refs', d['executable_xrefs']['near_class_rip_hits'][:80])
+          print('direct calls to descriptor-near pointers',
+                d['executable_xrefs']['direct_calls_to_nearby_code_pointers'][:80])
+          PY
+
+      - name: Remove executable
+        if: always()
+        run: rm -f build/animation-control/eboot.bin
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-animation-control-executable-frontier
+          path: |
+            build/animation-control/d1_animation_control_executable_frontier.json
+            build/animation-control/stdout.txt
+          if-no-files-found: warn
+          retention-days: 30
