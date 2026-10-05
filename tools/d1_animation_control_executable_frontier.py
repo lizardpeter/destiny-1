@@ -256,6 +256,163 @@ def disassemble_candidate(
     }
 
 
+
+def scan_structural_control_fields(
+    raw: bytes,
+    segments: list[dict],
+    *,
+    radius: int = 0x180,
+    top: int = 240,
+) -> dict:
+    """Rank code neighborhoods that structurally resemble 80802C0E consumers.
+
+    This is intentionally hash-independent. The strongest signal is one base
+    register used for selector-record +0x14 (float duration) and +0x18 (packed
+    selection) accesses in one tight neighborhood. Control-header +0x68/+0x70
+    and animation-list +0x08/+0x10 accesses add supporting weight.
+    """
+    import bisect
+
+    md = Cs(CS_ARCH_X86, CS_MODE_64)
+    md.detail = True
+    md.skipdata = True
+
+    hits = []
+    decoded = 0
+    for segment in segments:
+        if not segment.get("executable") or int(segment.get("file_size", 0)) <= 0:
+            continue
+        file_offset = int(segment["absolute_file_offset"])
+        size = int(segment["file_size"])
+        va = int(segment["virtual_address"], 16)
+        data = raw[file_offset:file_offset + size]
+        for insn in md.disasm(data, va):
+            if insn.id == 0:
+                continue
+            decoded += 1
+            for operand_index, op in enumerate(insn.operands):
+                if op.type != X86_OP_MEM:
+                    continue
+                disp = int(op.mem.disp)
+                if disp not in CONTROL_FIELD_OFFSETS:
+                    continue
+                base_name = md.reg_name(op.mem.base) if op.mem.base else ""
+                index_name = md.reg_name(op.mem.index) if op.mem.index else ""
+                hits.append({
+                    "address": int(insn.address),
+                    "address_hex": hex(int(insn.address)),
+                    "mnemonic": insn.mnemonic,
+                    "op_str": insn.op_str,
+                    "operand_index": operand_index,
+                    "field_offset": disp,
+                    "field_offset_hex": hex(disp),
+                    "field_name": CONTROL_FIELD_OFFSETS[disp],
+                    "base_register": base_name,
+                    "index_register": index_name,
+                    "scale": int(op.mem.scale),
+                })
+
+    hits.sort(key=lambda row: row["address"])
+    addresses = [row["address"] for row in hits]
+    candidates = {}
+    float_mnemonics = {
+        "movss", "movaps", "movups", "comiss", "ucomiss", "addss", "subss",
+        "mulss", "divss", "minss", "maxss", "cvtss2sd", "cvttss2si",
+    }
+
+    for anchor_hit in hits:
+        if anchor_hit["field_offset"] != 0x14:
+            continue
+        center = anchor_hit["address"]
+        lo = bisect.bisect_left(addresses, center - radius)
+        hi = bisect.bisect_right(addresses, center + radius)
+        nearby = hits[lo:hi]
+        base = anchor_hit["base_register"]
+
+        same_base = [
+            row for row in nearby
+            if base and row["base_register"] == base
+        ]
+        same_offsets = {row["field_offset"] for row in same_base}
+        all_offsets = {row["field_offset"] for row in nearby}
+
+        score = 0
+        reasons = []
+        if 0x18 in same_offsets:
+            score += 40
+            reasons.append("same-base +0x14/+0x18 selector-record pair")
+        if anchor_hit["mnemonic"] in float_mnemonics:
+            score += 18
+            reasons.append("+0x14 consumed by scalar/float-shaped instruction")
+        if {0x68, 0x70}.issubset(all_offsets):
+            score += 18
+            reasons.append("nearby +0x68/+0x70 selector-table header pair")
+        elif 0x68 in all_offsets or 0x70 in all_offsets:
+            score += 7
+            reasons.append("nearby selector-table header field")
+        if {0x08, 0x10}.issubset(all_offsets):
+            score += 10
+            reasons.append("nearby +0x08/+0x10 animation-list header pair")
+        elif 0x08 in all_offsets or 0x10 in all_offsets:
+            score += 4
+            reasons.append("nearby animation-list header field")
+        score += min(len(all_offsets), len(CONTROL_FIELD_OFFSETS)) * 2
+
+        # Reward +0x18 immediately adjacent in code even if compiler register
+        # allocation changed the base register between the two accesses.
+        nearest_18 = min(
+            (abs(row["address"] - center) for row in nearby if row["field_offset"] == 0x18),
+            default=None,
+        )
+        if nearest_18 is not None:
+            if nearest_18 <= 0x20:
+                score += 20
+                reasons.append("+0x18 access within 0x20 bytes")
+            elif nearest_18 <= 0x60:
+                score += 10
+                reasons.append("+0x18 access within 0x60 bytes")
+
+        # Deduplicate multiple +0x14 instructions from the same tight code
+        # neighborhood while retaining the strongest representative.
+        bucket = center >> 7
+        row = {
+            "anchor_va": center,
+            "anchor_va_hex": hex(center),
+            "score": score,
+            "reasons": reasons,
+            "anchor": anchor_hit,
+            "same_base_offsets": sorted(same_offsets),
+            "all_nearby_offsets": sorted(all_offsets),
+            "nearest_18_distance": nearest_18,
+            "nearby_field_hits": nearby[:120],
+        }
+        previous = candidates.get(bucket)
+        if previous is None or (row["score"], -row["anchor_va"]) > (
+            previous["score"], -previous["anchor_va"]
+        ):
+            candidates[bucket] = row
+
+    ranked = sorted(
+        candidates.values(),
+        key=lambda row: (-row["score"], row["anchor_va"]),
+    )[:top]
+
+    return {
+        "decoded_instruction_count": decoded,
+        "field_access_hit_count": len(hits),
+        "duration_field_access_count": sum(row["field_offset"] == 0x14 for row in hits),
+        "selection_field_access_count": sum(row["field_offset"] == 0x18 for row in hits),
+        "candidate_count": len(candidates),
+        "ranked_candidates": ranked,
+        "policy": (
+            "These are hash-independent structural candidates. Matching raw "
+            "displacements is not type proof. Promotion requires a candidate "
+            "to converge with call/data flow, exact object provenance, or "
+            "decompiler evidence."
+        ),
+    }
+
+
 def scan_executable_xrefs(
     raw: bytes,
     segments: list[dict],
@@ -350,6 +507,7 @@ def analyze(executable: Path) -> dict:
     nearby = nearby_code_pointers(raw, segments, occurrences)
     pointer_targets = {row["code_va"] for row in nearby}
     xrefs = scan_executable_xrefs(raw, segments, occurrences, pointer_targets)
+    structural = scan_structural_control_fields(raw, segments)
 
     decoded = []
     for row in nearby:
@@ -403,9 +561,14 @@ def analyze(executable: Path) -> dict:
             "code_side_class_immediate_count": len(xrefs["class_immediate_hits"]),
             "code_side_near_class_rip_count": len(xrefs["near_class_rip_hits"]),
             "ranked_code_candidate_count": len(decoded),
+            "structural_field_access_hit_count": structural["field_access_hit_count"],
+            "structural_duration_field_access_count": structural["duration_field_access_count"],
+            "structural_selection_field_access_count": structural["selection_field_access_count"],
+            "structural_candidate_count": structural["candidate_count"],
         },
         "class_hash_occurrences": occurrences,
         "executable_xrefs": xrefs,
+        "structural_control_field_frontier": structural,
         "ranked_code_candidates": decoded,
         "policy": (
             "This is exact-build discovery evidence for CUSA00219 01.33. "
@@ -436,6 +599,16 @@ def main() -> int:
                 "calls": len(row["direct_calls"]),
             }
             for row in report["ranked_code_candidates"][:20]
+        ],
+        "top_structural_candidates": [
+            {
+                "anchor_va": row["anchor_va_hex"],
+                "score": row["score"],
+                "reasons": row["reasons"],
+                "same_base_offsets": [hex(x) for x in row["same_base_offsets"]],
+                "all_nearby_offsets": [hex(x) for x in row["all_nearby_offsets"]],
+            }
+            for row in report["structural_control_field_frontier"]["ranked_candidates"][:40]
         ],
         "output": str(args.output),
     }, indent=2))
