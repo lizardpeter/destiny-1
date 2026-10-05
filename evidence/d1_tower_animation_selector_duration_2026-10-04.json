@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "status": "D1_TOWER_ANIMATION_SELECTOR_DURATION_CORRELATION_EXACT",
+  "scope": {
+    "game": "Destiny 1",
+    "platform": "PS4",
+    "build": "CUSA00219 01.33",
+    "serialized_control_class": "80802C0E",
+    "semantic_scope": "Current Tower animation-control corpus only; do not generalize to every D1 control without independent validation."
+  },
+  "finding": {
+    "selector_scalar_offset": "0x14",
+    "exact_relation": "scalar_f32 == (selected_clip.frame_count - 1) / 30.0",
+    "total_selector_states_checked": 584,
+    "total_mismatches": 0,
+    "max_absolute_error_seconds": 9.5367431640625e-7,
+    "all_states_select_exactly_one_clip": true,
+    "empty_selector_states": 0,
+    "interpretation": "Within this bounded Tower corpus, +0x14 is source-timed exactly like the selected clip interval. This strongly supports using it as the authored playback interval in the host adapter. The executable-level restart/reselection/blend state machine remains separate proof work."
+  },
+  "spawned_actor_controls": {
+    "809D80FC": {
+      "selector_state_count": 277,
+      "unique_selected_clip_count": 267,
+      "selection_count_distribution": {
+        "1": 277
+      },
+      "conflicting_scalars_for_same_clip": 0,
+      "max_absolute_error_seconds": 9.5367431640625e-7
+    },
+    "80C880D9": {
+      "selector_state_count": 30,
+      "unique_selected_clip_count": 30,
+      "selection_count_distribution": {
+        "1": 30
+      },
+      "conflicting_scalars_for_same_clip": 0,
+      "max_absolute_error_seconds": 6.357828770120477e-7
+    },
+    "80C88439": {
+      "selector_state_count": 277,
+      "unique_selected_clip_count": 267,
+      "selection_count_distribution": {
+        "1": 277
+      },
+      "conflicting_scalars_for_same_clip": 0,
+      "max_absolute_error_seconds": 9.5367431640625e-7
+    }
+  },
+  "articulated_tower_controls": {
+    "family_e": [
+      {
+        "control": "809D856F",
+        "selected_clip": "809D8572",
+        "frame_count": 324,
+        "exact_interval_seconds": 10.766666666666667,
+        "note": "generic sweeper/Family-E owner"
+      },
+      {
+        "control": "80C7AE68",
+        "selected_clip": "80C7AE98",
+        "frame_count": 62,
+        "exact_interval_seconds": 2.033333333333333,
+        "note": "local/snowangel sweeper owner"
+      }
+    ],
+    "family_f": {
+      "control": "80C7AF4E",
+      "states": [
+        {
+          "state_hash": "B71D2CB1",
+          "selected_clip": "80C7AF5A",
+          "frame_count": 66,
+          "scalar_f32": 2.1666667461395264
+        },
+        {
+          "state_hash": "557220AA",
+          "selected_clip": "80C7AF5B",
+          "frame_count": 11,
+          "scalar_f32": 0.3333333432674408
+        },
+        {
+          "state_hash": "8405121A",
+          "selected_clip": "80C7AF5C",
+          "frame_count": 31,
+          "scalar_f32": 1
+        }
+      ]
+    },
+    "family_g": {
+      "control": "80C7AE5B",
+      "states": [
+        {
+          "state_hash": "B71D2CB1",
+          "selected_clip": "80C7AE63",
+          "frame_count": 66,
+          "scalar_f32": 2.1666667461395264
+        },
+        {
+          "state_hash": "557220AA",
+          "selected_clip": "80C7AE64",
+          "frame_count": 11,
+          "scalar_f32": 0.3333333432674408
+        },
+        {
+          "state_hash": "8405121A",
+          "selected_clip": "80C7AE65",
+          "frame_count": 31,
+          "scalar_f32": 1
+        }
+      ]
+    }
+  },
+  "source_artifacts": [
+    {
+      "name": "D1-TOWER-SPAWNED-ACTOR-RUNTIME-CLOSURE",
+      "run_id": 34070859647,
+      "artifact_id": 10000412397,
+      "file": "TOWER_SPAWNED_ACTOR_RUNTIME_CLOSURE.json"
+    },
+    "notes/D1_TOWER_FAMILY_E_ANIMATION_OWNERSHIP_CLOSED_2026-09-06.md",
+    "notes/D1_TOWER_FAMILY_F_ANIMATION_OWNER_CLOSED_2026-09-06.md",
+    "notes/D1_TOWER_FAMILY_G_ANIMATION_OWNER_CLOSED_2026-09-06.md"
+  ],
+  "engine_consumption": {
+    "repository": "lizardpeter/Rust-test",
+    "commits": [
+      "e603dacac0bc36f34dabdc8d2cb2b2f8038bee33",
+      "0f0446c2d7f71da7f6f30e502a70d8ebd1ed10e6",
+      "8418ee1da7b2967f48fcade0eb1b657b69c09e49",
+      "f7d41e650a1f11e603fb66e50b26fc136a1736ee",
+      "46826b58db0e1d1af7fffacf7ebfaedcd698fd0f",
+      "2b944033886df4c20cd9a270797bf5d9edfb3990"
+    ],
+    "behavior": "Host inspection repeats the exact source-selected action using the validated source interval rather than playing once and holding the terminal pose.",
+    "unresolved": "Native startup/default state, external state producer, restart versus state reevaluation, blend/crossfade semantics, initial phase, and cross-instance synchronization."
+  }
+}
