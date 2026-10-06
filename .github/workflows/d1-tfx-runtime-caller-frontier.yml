@@ -1,0 +1,160 @@
+name: D1 TFX Runtime Caller Frontier
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tfx-runtime-caller-frontier.yml'
+      - 'tools/d1_executable_call_xrefs.py'
+      - 'tools/ghidra/D1ExportFunctionOffsets.py'
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact eboot
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-tfx-callers
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL"             -o build/d1-tfx-callers/eboot.bin
+          test "$(stat -c %s build/d1-tfx-callers/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-tfx-callers/eboot.bin" | sha256sum --check --strict
+
+      - name: Install exact x86 disassembler
+        run: python -m pip install --disable-pip-version-check --quiet capstone==5.0.6
+
+      - name: Trace exact direct callers
+        run: |
+          set -euo pipefail
+          python tools/d1_executable_call_xrefs.py             build/d1-tfx-callers/eboot.bin             --target 0x237710             --target 0x111070             --target 0x311390             -o build/d1-tfx-callers/call_xrefs.json
+          cat build/d1-tfx-callers/call_xrefs.json
+
+      - name: Download Ghidra
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request(
+            'https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest',
+            headers={
+              'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+              'Accept':'application/vnd.github+json',
+              'User-Agent':'d1-tfx-runtime-callers',
+            })
+          with urllib.request.urlopen(req) as r: rel=json.load(r)
+          assets=[x for x in rel.get('assets',[]) if x.get('name','').endswith('.zip') and 'PUBLIC' in x.get('name','')]
+          if not assets: raise SystemExit('no Ghidra PUBLIC zip')
+          open('build/d1-tfx-callers/ghidra_url.txt','w').write(assets[0]['browser_download_url']+'\n')
+          PY
+          curl --fail --location --retry 4             "$(cat build/d1-tfx-callers/ghidra_url.txt)"             -o build/d1-tfx-callers/ghidra.zip
+          unzip -q build/d1-tfx-callers/ghidra.zip -d build/d1-tfx-callers/
+          GHIDRA_DIR="$(find build/d1-tfx-callers -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Install bundled PyGhidra
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet --no-index             --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist" pyghidra
+
+      - name: Decompile every caller and one call layer
+        run: |
+          set -euo pipefail
+          mapfile -t callsites < <(
+            python - <<'PY'
+          import json
+          d=json.load(open('build/d1-tfx-callers/call_xrefs.json'))
+          seen=set()
+          for target in d.get('targets',[]):
+              for row in target.get('xrefs',[]):
+                  x=int(row['callsite_va'])
+                  if x not in seen:
+                      seen.add(x); print(hex(x))
+          PY
+          )
+          test "${#callsites[@]}" -gt 0
+          mkdir -p build/d1-tfx-callers/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless             build/d1-tfx-callers/project D1TfxCallers             -import build/d1-tfx-callers/eboot.bin             -overwrite -analysisTimeoutPerFile 3600             -scriptPath "$GITHUB_WORKSPACE/tools/ghidra"             -postScript D1ExportFunctionOffsets.py               "$GITHUB_WORKSPACE/build/d1-tfx-callers/functions.json"               1               "${callsites[@]}"
+
+      - name: Extract compact caller evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.load(open('build/d1-tfx-callers/call_xrefs.json'))
+          f=json.load(open('build/d1-tfx-callers/functions.json'))
+          callsites={}
+          for target in x.get('targets',[]):
+              t=target['target_va_hex']
+              for row in target.get('xrefs',[]):
+                  callsites.setdefault(int(row['callsite_va']),[]).append(t)
+          rows=[]
+          for fn in f.get('functions',[]):
+              ins=fn.get('instructions') or []
+              contained=[]
+              for insn in ins:
+                  off=int(insn.get('image_offset',-1))
+                  if off in callsites:
+                      contained.append({
+                        'callsite':hex(off),
+                        'targets':callsites[off],
+                        'operands':insn.get('operands'),
+                      })
+              if not contained and not fn.get('requested'):
+                  continue
+              rows.append({
+                'image_offset':fn['image_offset'],
+                'image_offset_hex':hex(fn['image_offset']),
+                'name':fn['name'],
+                'prototype':fn.get('prototype'),
+                'requested':fn.get('requested'),
+                'matched_callsites':contained,
+                'c':fn.get('decompilation',{}).get('c'),
+              })
+          out={
+            'schema':'d1_tfx_runtime_caller_frontier/v1',
+            'status':'EXACT_CUSA00219_0133_TFX_CALLERS_DECOMPILED',
+            'executable_sha256':f['program']['executable_sha256'],
+            'direct_call_xrefs':x['targets'],
+            'functions':rows,
+            'proof_boundary':'Direct call edges and decompilation are exact-build evidence. Semantic ownership of caller arguments remains withheld until dataflow closes it.'
+          }
+          Path('build/d1-tfx-callers/compact.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('functions',len(rows))
+          for row in rows:
+              print('\n==',row['image_offset_hex'],row['name'],row['matched_callsites'],'==')
+              print((row['c'] or '')[:30000])
+          PY
+
+      - name: Remove raw binaries
+        if: always()
+        run: |
+          rm -f build/d1-tfx-callers/eboot.bin build/d1-tfx-callers/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-tfx-callers/project
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tfx-runtime-caller-frontier
+          path: |
+            build/d1-tfx-callers/call_xrefs.json
+            build/d1-tfx-callers/compact.json
+            build/d1-tfx-callers/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 30
