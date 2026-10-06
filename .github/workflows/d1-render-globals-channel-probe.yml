@@ -1,5 +1,5 @@
 name: D1 Render Globals Channel Probe
-# Manual exact-retail rerun requested 2026-10-04 with current-class RenderGlobals discovery.
+# Manual exact-retail rerun requested 2026-10-05 for universal-lighting 0x28 runtime diagnosis.
 
 on:
   workflow_dispatch:
