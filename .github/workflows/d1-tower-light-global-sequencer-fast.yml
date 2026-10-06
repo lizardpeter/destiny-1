@@ -45,7 +45,25 @@ jobs:
       - name: Join exact current defaults to Tower Activity sequencers
         run: |
           set -euo pipefail
+          set +e
           python tools/d1_tower_global_channel_join.py             --defaults evidence/generated/d1_current_global_channel_defaults_decoded.json             --tower-census reports/tower_entity_resource_census.json             --out reports/tower_global_channel_join.json
+          join_rc=$?
+          set -e
+          if [ "$join_rc" -ne 0 ] && [ "$join_rc" -ne 2 ]; then
+            exit "$join_rc"
+          fi
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_global_channel_join.json'))
+          if d.get('ambiguous_program_count') != 0:
+              raise SystemExit(f"ambiguous joins: {d.get('ambiguous_program_count')}")
+          got={k:len(v) for k,v in d.get('requested_global_programs',{}).items()}
+          if got.get('0x11',0) < 1 or got.get('0x28',0) != 1 or got.get('0x30',0) != 1:
+              raise SystemExit(f"requested lighting joins changed: {got}")
+          if d.get('requested_global_indices_without_tower_program') != ['0x60']:
+              raise SystemExit(f"unexpected missing requested set: {d.get('requested_global_indices_without_tower_program')}")
+          print('REQUESTED_LIGHTING_JOIN_CLOSED',got)
+          PY
           python tools/d1_tower_global_channel_sequencer_symbolic.py             --join reports/tower_global_channel_join.json             --out reports/tower_global_channel_sequencer_symbolic.json
           python tools/d1_tower_light_runtime_globals_summary.py             --defaults evidence/generated/d1_current_global_channel_defaults_decoded.json             --join reports/tower_global_channel_join.json             --symbolic reports/tower_global_channel_sequencer_symbolic.json             --out reports/tower_light_runtime_global_channels.json
 
