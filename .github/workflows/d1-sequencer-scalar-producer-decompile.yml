@@ -1,0 +1,107 @@
+name: D1 Sequencer Scalar Producer Decompile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-sequencer-scalar-producer-decompile.yml'
+      - 'tools/ghidra/D1ExportFunctionOffsets.py'
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact eboot
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-sequencer-scalar
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL" -o build/d1-sequencer-scalar/eboot.bin
+          test "$(stat -c %s build/d1-sequencer-scalar/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-sequencer-scalar/eboot.bin" | sha256sum --check --strict
+
+      - name: Download Ghidra
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request(
+            'https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest',
+            headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','User-Agent':'d1-sequencer-scalar'})
+          with urllib.request.urlopen(req) as r: rel=json.load(r)
+          assets=[x for x in rel.get('assets',[]) if x.get('name','').endswith('.zip') and 'PUBLIC' in x.get('name','')]
+          if not assets: raise SystemExit('no Ghidra PUBLIC zip')
+          open('build/d1-sequencer-scalar/ghidra_url.txt','w').write(assets[0]['browser_download_url']+'\n')
+          PY
+          curl --fail --location --retry 4 "$(cat build/d1-sequencer-scalar/ghidra_url.txt)" -o build/d1-sequencer-scalar/ghidra.zip
+          unzip -q build/d1-sequencer-scalar/ghidra.zip -d build/d1-sequencer-scalar/
+          GHIDRA_DIR="$(find build/d1-sequencer-scalar -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Install bundled PyGhidra
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet --no-index \
+            --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist" pyghidra
+
+      - name: Decompile retail TFX VM and surrounding call graph
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-sequencer-scalar/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless \
+            build/d1-sequencer-scalar/project D1SequencerScalar \
+            -import build/d1-sequencer-scalar/eboot.bin \
+            -overwrite -analysisTimeoutPerFile 3600 \
+            -scriptPath "$GITHUB_WORKSPACE/tools/ghidra" \
+            -postScript D1ExportFunctionOffsets.py \
+              "$GITHUB_WORKSPACE/build/d1-sequencer-scalar/functions.json" \
+              2 \
+              0x82A764 0x82A7E4 0x82A8DC 0x82A9EF 0x82AB1C
+
+      - name: Extract scalar-handler evidence
+        run: |
+          python - <<'PY'
+          import json,re
+          d=json.load(open('build/d1-sequencer-scalar/functions.json'))
+          print('frontier',d.get('frontier'),'functions',d.get('function_count'))
+          needles=('0x3c','0x3C','60','3600','0x14','0x18','82a764','82a7e4','82a8dc','82a9ef','82ab1c')
+          for f in d.get('functions',[]):
+              c=f.get('decompilation',{}).get('c') or ''
+              ins=f.get('instructions') or []
+              text=c+'\n'+'\n'.join(i.get('mnemonic','')+' '+' '.join(i.get('operands') or []) for i in ins)
+              if f.get('requested') or any(n in text for n in needles):
+                  print('\n==',hex(f['image_offset']),f['name'],f.get('prototype'),'==')
+                  print(c[:50000])
+          PY
+
+      - name: Remove raw binaries
+        if: always()
+        run: |
+          rm -f build/d1-sequencer-scalar/eboot.bin build/d1-sequencer-scalar/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-sequencer-scalar/project
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-sequencer-scalar-producer-decompile
+          path: |
+            build/d1-sequencer-scalar/functions.json
+            build/d1-sequencer-scalar/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 30
