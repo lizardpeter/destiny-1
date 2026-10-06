@@ -160,6 +160,28 @@ def symbolic(ops:list[dict], constants:list[list[float]]) -> dict:
             i=args[0]; t=pop(stack,blockers,row["name"],at)
             sat="saturate(" if op==0x36 else ""; close=")" if op==0x36 else ""
             stack.append(f"{sat}lerp(C[{i}],C[{i+1}],{t}){close}")
+        # Retail D1 VM semantics for constant splines/gradients are closed by
+        # the same exact-build work now implemented in Rust-test's
+        # global_channel_sequencer evaluator. Keep this report symbolic: retain
+        # the raw input and exact constant-bank span instead of inventing a
+        # higher-level semantic name for the curve.
+        elif op==0x37:
+            i=args[0]; x=pop(stack,blockers,row["name"],at)
+            stack.append(f"spline4_const({x},C[{i}..{i+4}])")
+        elif op==0x38:
+            i=args[0]; x=pop(stack,blockers,row["name"],at)
+            stack.append(f"spline8_const({x},C[{i}..{i+9}])")
+        elif op==0x39:
+            i=args[0]
+            x=pop(stack,blockers,row["name"],at)
+            below=pop(stack,blockers,row["name"],at)
+            stack.append(f"spline8_const_chain({below},{x},C[{i}..{i+9}])")
+        elif op==0x3A:
+            i=args[0]; x=pop(stack,blockers,row["name"],at)
+            stack.append(f"gradient4_const({x},C[{i}..{i+5}])")
+        elif op==0x3B:
+            i=args[0]; x=pop(stack,blockers,row["name"],at)
+            stack.append(f"gradient8_const({x},C[{i}..{i+10}])")
         else:
             blockers.append(f"unsupported_symbolic:{row['opcode']}:{row['name']}@0x{at:X}")
             # Fail closed: stop carrying an unproved stack shape past this point.
