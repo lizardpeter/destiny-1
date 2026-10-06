@@ -1,0 +1,114 @@
+name: D1 Lighting Runtime Producer Decompile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-lighting-runtime-producer-decompile.yml'
+      - 'tools/ghidra/D1ExportFunctionOffsets.py'
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-lighting-producer-decompile
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL"             -o build/d1-lighting-producer-decompile/eboot.bin
+          test "$(stat -c %s build/d1-lighting-producer-decompile/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-lighting-producer-decompile/eboot.bin" | sha256sum --check --strict
+
+      - name: Download latest official Ghidra
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request(
+              'https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest',
+              headers={
+                  'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                  'Accept':'application/vnd.github+json',
+                  'User-Agent':'d1-lighting-runtime-producer-decompile',
+              })
+          with urllib.request.urlopen(req) as r: rel=json.load(r)
+          assets=[x for x in rel.get('assets',[]) if x.get('name','').endswith('.zip') and 'PUBLIC' in x.get('name','')]
+          if not assets: raise SystemExit('no Ghidra PUBLIC zip')
+          open('build/d1-lighting-producer-decompile/ghidra_url.txt','w').write(assets[0]['browser_download_url']+'\n')
+          PY
+          curl --fail --location --retry 4             "$(cat build/d1-lighting-producer-decompile/ghidra_url.txt)"             -o build/d1-lighting-producer-decompile/ghidra.zip
+          unzip -q build/d1-lighting-producer-decompile/ghidra.zip -d build/d1-lighting-producer-decompile/
+          GHIDRA_DIR="$(find build/d1-lighting-producer-decompile -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Install bundled PyGhidra
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet             --no-index             --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist"             pyghidra
+
+      - name: Decompile exact lighting producer frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-lighting-producer-decompile/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless             build/d1-lighting-producer-decompile/project D1LightingProducer             -import build/d1-lighting-producer-decompile/eboot.bin             -overwrite             -analysisTimeoutPerFile 3600             -scriptPath "$GITHUB_WORKSPACE/tools/ghidra"             -postScript D1ExportFunctionOffsets.py               "$GITHUB_WORKSPACE/build/d1-lighting-producer-decompile/functions.json"               1               0x34E520               0x80EDAB 0x80EDF1 0x80EF9D               0x5B473D 0x5B4832               0x6CD2D0 0x6CD314               0x892C7B 0x892DCB 0x893055               0xCB5FA3 0xCB6063 0xCB6501               0xCBF4A8 0xCBFC27               0xDE2DDD 0xDE38AB 0xDE64B2               0xD97452 0xCDDE7B 0xCFA95F
+
+      - name: Summarize evidence-bearing functions
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,re
+          d=json.load(open('build/d1-lighting-producer-decompile/functions.json'))
+          requested=set(d['requested_offsets'])
+          print('frontier',d['frontier'])
+          print('functions',d['function_count'])
+          for f in d['functions']:
+              c=f['decompilation'].get('c') or ''
+              ins=f.get('instructions') or []
+              interesting=(
+                  f['image_offset'] in requested
+                  or '+ 0x100' in c or '+0x100' in c
+                  or '+ 0xc0' in c or '+0xc0' in c
+                  or '+ 0x40' in c or '+0x40' in c
+                  or '+ 0x1c' in c or '+0x1c' in c
+                  or any('0x100' in ' '.join(i.get('operands') or []) for i in ins)
+              )
+              if not interesting: continue
+              print('\n==',hex(f['image_offset']),f['name'],f['prototype'],'==')
+              print(c[:24000])
+          PY
+
+      - name: Remove raw executable and Ghidra
+        if: always()
+        run: |
+          rm -f build/d1-lighting-producer-decompile/eboot.bin                 build/d1-lighting-producer-decompile/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-lighting-producer-decompile/project
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-lighting-runtime-producer-decompile
+          path: |
+            build/d1-lighting-producer-decompile/functions.json
+            build/d1-lighting-producer-decompile/ghidra_url.txt
+          if-no-files-found: warn
+          retention-days: 30
