@@ -52,65 +52,70 @@ jobs:
           test -f "payloads/$RESOURCE_HASH.bin"
           echo '8021c009bf65a4b3e6f67ef330eef68205fbd5fabe87a999f9e640f0598129d4  payloads/80AA8F06.bin' | sha256sum --check --strict
 
-      - name: Decode exact input descriptor arrays
+      - name: Census exact program-entry pointer layouts
         run: |
           python - <<'PY'
           import json,struct,hashlib
           from pathlib import Path
 
           raw=Path('payloads/80AA8F06.bin').read_bytes()
-          entries={
-            'G11':'0x36B0',
-            'G28':'0x3B08',
-            'G30':'0x3D38',
-          }
+          entries={'G11':0x36B0,'G28':0x3B08,'G30':0x3D38}
 
           def u32(o): return struct.unpack_from('<I',raw,o)[0]
+          def i32(o): return struct.unpack_from('<i',raw,o)[0]
+          def u64(o): return struct.unpack_from('<Q',raw,o)[0]
           def i64(o): return struct.unpack_from('<q',raw,o)[0]
-          def dyn(field,stride):
-              count=u32(field)
-              unknown=u32(field+4)
-              rel=i64(field+8)
-              # Tiger DynamicArray: data = field + 0x18 + relative.
+
+          def candidate(field,stride=8):
+              if field+0x10>len(raw): return {'field_offset_hex':f'0x{field:X}','valid':False,'reason':'header_oob'}
+              count=i32(field); unknown=u32(field+4); rel=i64(field+8)
               absolute=field+0x18+rel
-              return {
-                  'field_offset':field,'field_offset_hex':f'0x{field:X}',
-                  'count':count,'unknown04':unknown,'relative':rel,
-                  'data_offset':absolute,'data_offset_hex':f'0x{absolute:X}',
-                  'stride':stride,
+              end=absolute + max(count,0)*stride
+              valid=(0 <= count <= 256 and 0 <= absolute <= len(raw) and 0 <= end <= len(raw))
+              out={
+                'field_offset':field,'field_offset_hex':f'0x{field:X}',
+                'count_i32':count,'count_u64_low_header':u64(field),
+                'unknown_04':unknown,'unknown_04_hex':f'{unknown:08X}',
+                'unknown_04_f32':struct.unpack_from('<f',raw,field+4)[0],
+                'relative':rel,'data_offset':absolute,'data_offset_hex':f'0x{absolute:X}',
+                'end_offset':end,'end_offset_hex':f'0x{end:X}',
+                'stride':stride,'valid':valid,
               }
+              if valid:
+                  out['rows_hex']=[raw[absolute+i*stride:absolute+(i+1)*stride].hex().upper() for i in range(count)]
+                  out['rows_as_selector_key']=[
+                    {
+                      'index':i,
+                      'source_selector':raw[absolute+i*stride],
+                      'source_selector_hex':f'0x{raw[absolute+i*stride]:02X}',
+                      'reserved_01_03_hex':raw[absolute+i*stride+1:absolute+i*stride+4].hex().upper(),
+                      'source_key':u32(absolute+i*stride+4),
+                      'source_key_hex':f'{u32(absolute+i*stride+4):08X}',
+                    } for i in range(count)
+                  ]
+              return out
 
           rows={}
-          for label,entry_hex in entries.items():
-              entry=int(entry_hex,16)
-              a=dyn(entry,8)
-              decoded=[]
-              for i in range(a['count']):
-                  o=a['data_offset']+i*8
-                  decoded.append({
-                      'index':i,
-                      'row_offset':o,
-                      'row_offset_hex':f'0x{o:X}',
-                      'source_selector':raw[o],
-                      'source_selector_hex':f'0x{raw[o]:02X}',
-                      'reserved_01_03_hex':raw[o+1:o+4].hex().upper(),
-                      'source_key':u32(o+4),
-                      'source_key_hex':f'{u32(o+4):08X}',
-                      'row_hex':raw[o:o+8].hex().upper(),
-                  })
+          for label,entry in entries.items():
+              candidates=[]
+              # Preserve every aligned 16-byte header candidate in the source
+              # entry prefix instead of assuming the runtime object's field
+              # offset equals the serialized source object's field offset.
+              for rel in range(0,0x28,8):
+                  candidates.append(candidate(entry+rel,8))
               rows[label]={
-                  'entry_offset':entry,
-                  'entry_offset_hex':entry_hex,
-                  'input_descriptors':a,
-                  'rows':decoded,
-                  'entry_prefix_0x28_hex':raw[entry:entry+0x28].hex().upper(),
-                  'unknown_0x14_f32':struct.unpack_from('<f',raw,entry+0x14)[0],
-                  'local_channel_index':u32(entry+0x20),
+                'entry_offset':entry,'entry_offset_hex':f'0x{entry:X}',
+                'entry_prefix_0x48_hex':raw[entry:entry+0x48].hex().upper(),
+                'u32_words_0x00_0x27':[f'{u32(entry+o):08X}' for o in range(0,0x28,4)],
+                'u64_words_0x00_0x27':[f'{u64(entry+o):016X}' for o in range(0,0x28,8)],
+                'known_local_channel_index':u32(entry+0x20),
+                'known_bytecode_header':candidate(entry+0x28,1),
+                'candidate_input_arrays':candidates,
               }
 
           out={
-            'schema':'d1_tower_sequencer_input_descriptors/v1',
-            'status':'EXACT_RETAIL_INPUT_DESCRIPTOR_ROWS',
+            'schema':'d1_tower_sequencer_input_descriptor_layout/v2',
+            'status':'EXACT_RETAIL_PROGRAM_ENTRY_LAYOUT_CENSUS',
             'resource_hash':'80AA8F06',
             'resource_sha256':hashlib.sha256(raw).hexdigest(),
             'resource_size':len(raw),
@@ -119,12 +124,13 @@ jobs:
               'vm_function':'FUN_00237710',
               'opcode_0x3c':'loads 16-byte input vector from param_2 + operand_index*0x10',
               'wrapper_function':'FUN_00111070',
-              'descriptor_stride':8,
-              'descriptor_source_selector_offset':0,
-              'descriptor_source_key_offset':4,
+              'runtime_descriptor_stride':8,
+              'runtime_descriptor_source_selector_offset':0,
+              'runtime_descriptor_source_key_offset':4,
               'resolver_function':'FUN_00311390',
+              'boundary':'Runtime object field offset is not equated to serialized program-entry field offset without a source/runtime construction proof.'
             },
-            'proof_boundary':'Rows and offsets are exact CUSA00219 01.33 retail bytes. Source selector/key semantics are retained raw until their resolver branches are closed from executable evidence.'
+            'proof_boundary':'Entry bytes and bounded candidate arrays are exact CUSA00219 01.33 retail data. Candidate source-selector/key interpretations are structural only until the serialized-to-runtime construction path is joined.'
           }
           Path('reports/tower_sequencer_input_descriptors.json').write_text(json.dumps(out,indent=2)+'\n')
           print(json.dumps(out,indent=2))
