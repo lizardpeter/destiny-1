@@ -1,0 +1,34 @@
+name: Stage exact D1 eboot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/d1-stage-exact-eboot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and verify exact owner-provided executable
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-eboot-stage
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL"             -o build/d1-eboot-stage/eboot.bin
+          test "$(stat -c %s build/d1-eboot-stage/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-eboot-stage/eboot.bin" | sha256sum --check --strict
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-exact-owner-eboot-0133
+          path: build/d1-eboot-stage/eboot.bin
+          retention-days: 1
+          compression-level: 0
