@@ -1,0 +1,103 @@
+name: D1 Tower Light Global Sequencer Fast
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-tower-light-global-sequencer-fast.yml'
+      - 'tools/d1_tower_global_channel_join.py'
+      - 'tools/d1_tower_global_channel_sequencer_symbolic.py'
+      - 'tools/d1_tower_light_runtime_globals_summary.py'
+      - 'evidence/generated/d1_current_global_channel_defaults_decoded.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      SOURCE_RUN_ID: '37395526037'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recover completed Tower entity census from preserved probe artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p source reports
+          gh run download "$SOURCE_RUN_ID" -n d1-render-globals-channel-probe -D source
+          census="$(find source -name tower_entity_resource_census.json -print -quit)"
+          test -n "$census" -a -f "$census"
+          cp "$census" reports/tower_entity_resource_census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('reports/tower_entity_resource_census.json'))
+          if d.get('status')!='D1_TOWER_ENTITY_RESOURCE_CENSUS_COMPLETE':
+              raise SystemExit(d.get('status'))
+          print('global_channel_parent_count',d.get('global_channel_parent_count'))
+          PY
+
+      - name: Join exact current defaults to Tower Activity sequencers
+        run: |
+          set -euo pipefail
+          python tools/d1_tower_global_channel_join.py             --defaults evidence/generated/d1_current_global_channel_defaults_decoded.json             --tower-census reports/tower_entity_resource_census.json             --out reports/tower_global_channel_join.json
+          python tools/d1_tower_global_channel_sequencer_symbolic.py             --join reports/tower_global_channel_join.json             --out reports/tower_global_channel_sequencer_symbolic.json
+          python tools/d1_tower_light_runtime_globals_summary.py             --defaults evidence/generated/d1_current_global_channel_defaults_decoded.json             --join reports/tower_global_channel_join.json             --symbolic reports/tower_global_channel_sequencer_symbolic.json             --out reports/tower_light_runtime_global_channels.json
+
+      - name: Print high-impact light channel proof
+        run: |
+          python - <<'PY'
+          import json
+          j=json.load(open('reports/tower_global_channel_join.json'))
+          s=json.load(open('reports/tower_global_channel_sequencer_symbolic.json'))
+          r=json.load(open('reports/tower_light_runtime_global_channels.json'))
+          print('JOIN',json.dumps({
+              'status':j.get('status'),
+              'matched':j.get('matched_program_count'),
+              'unmatched':j.get('unmatched_program_count'),
+              'ambiguous':j.get('ambiguous_program_count'),
+              'requested_without_program':j.get('requested_global_indices_without_tower_program'),
+          },indent=2))
+          for key in ('0x11','0x28','0x30','0x60'):
+              rows=s.get('programs_by_index',{}).get(key,[])
+              print('\nCHANNEL',key,'programs',len(rows))
+              for row in rows:
+                  print(json.dumps({
+                      'resource_hash':row.get('resource_hash'),
+                      'global_index':row.get('global_index_hex'),
+                      'local_channel_index':row.get('local_channel_index_hex'),
+                      'channel_id_string_hash':row.get('channel_id_string_hash'),
+                      'global_default_vec4':row.get('global_default_vec4'),
+                      'bytecode_sha256':row.get('bytecode_sha256'),
+                      'symbolic':row.get('symbolic'),
+                  },indent=2))
+          print('\nSUMMARY',json.dumps(r,indent=2))
+          PY
+
+      - name: Persist exact generated evidence
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          cp reports/tower_global_channel_join.json evidence/generated/d1_tower_global_channel_join.json
+          cp reports/tower_global_channel_sequencer_symbolic.json evidence/generated/d1_tower_global_channel_sequencer_symbolic.json
+          cp reports/tower_light_runtime_global_channels.json evidence/generated/d1_tower_light_runtime_global_channels.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add evidence/generated/d1_tower_global_channel_join.json                   evidence/generated/d1_tower_global_channel_sequencer_symbolic.json                   evidence/generated/d1_tower_light_runtime_global_channels.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record exact Tower light global sequencers'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-tower-light-global-sequencer-fast
+          path: reports/
+          retention-days: 30
