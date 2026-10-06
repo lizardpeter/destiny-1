@@ -1,0 +1,823 @@
+{
+  "schema": "d1_tower_global_channel_sequencer_symbolic/v2",
+  "status": "D1_TOWER_CHANNEL_SEQUENCER_SYMBOLIC_COMPLETE",
+  "requested_indices": [
+    "0x11",
+    "0x28",
+    "0x30",
+    "0x60"
+  ],
+  "requested_indices_without_tower_override": [
+    "0x60"
+  ],
+  "default_only_candidates": {
+    "0x60": {
+      "index": 96,
+      "index_hex": "0x60",
+      "string_hash": "0AD675E2",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "program_count": 4,
+  "programs_by_index": {
+    "0x11": [
+      {
+        "resource_hash": "80AA8F06",
+        "global_index": 17,
+        "global_index_hex": "0x11",
+        "local_channel_index": 0,
+        "local_channel_index_hex": "0x00",
+        "channel_id_string_hash": "90745795",
+        "global_default_vec4": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "bytecode_hex": "3C002200232200380023213B0A3E00",
+        "bytecode_sha256": "9777b3075f8153eb5c94b5cc3ed2a268002194c20e6834d55bfd56d7bb4ef33d",
+        "constant_vec4s": [
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.25,
+            0.2513889968395233,
+            0.3472220003604889
+          ],
+          [
+            0.4999980032444,
+            0.6666669845581055,
+            0.75,
+            0.7513890266418457
+          ],
+          [
+            0.8237670063972473,
+            0.8864480257034302,
+            1.0,
+            1.0
+          ],
+          [
+            -0.2612670063972473,
+            0.4375,
+            0.0,
+            0.0
+          ],
+          [
+            -0.14894799888134003,
+            -0.4967229962348938,
+            0.12547600269317627,
+            0.4473020136356354
+          ],
+          [
+            0.0,
+            -0.9444699883460999,
+            0.0397769995033741,
+            0.4074139893054962
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -0.4000000059604645,
+            0.2237669974565506
+          ],
+          [
+            -0.4473020136356354,
+            -0.06854300200939178,
+            0.4711320102214813,
+            0.11760599911212921
+          ],
+          [
+            -0.4074139893054962,
+            -0.0009660000214353204,
+            0.9056580066680908,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.25,
+            0.2513889968395233,
+            0.3472220003604889
+          ],
+          [
+            0.4999980032444,
+            0.6666669845581055,
+            0.75,
+            0.7513890266418457
+          ]
+        ],
+        "lineage_dynamic_rule": null,
+        "ops": [
+          {
+            "offset": 0,
+            "opcode": "0x3C",
+            "name": "PushExternInputFloat",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 2,
+            "opcode": "0x22",
+            "name": "Permute",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 4,
+            "opcode": "0x23",
+            "name": "Saturate",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 5,
+            "opcode": "0x22",
+            "name": "Permute",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 7,
+            "opcode": "0x38",
+            "name": "Spline8Const",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 9,
+            "opcode": "0x23",
+            "name": "Saturate",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 10,
+            "opcode": "0x21",
+            "name": "PermuteAllX",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 11,
+            "opcode": "0x3B",
+            "name": "Gradient8Const",
+            "status": "FRAMED",
+            "operand_hex": "0A",
+            "operands": [
+              10
+            ]
+          },
+          {
+            "offset": 13,
+            "opcode": "0x3E",
+            "name": "SequencerPopOutput",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          }
+        ],
+        "symbolic": {
+          "dependencies": [
+            "SequencerScalar[0]"
+          ],
+          "outputs": {
+            "0": "gradient8_const(splat_x(saturate(spline8_const(permute(saturate(permute(SequencerScalar[0],0x00)),0x00),C[0..9]))),C[10..20])"
+          },
+          "final_stack": [],
+          "temp_slots": {},
+          "blockers": [],
+          "fully_symbolically_closed": true
+        }
+      },
+      {
+        "resource_hash": "80B9E848",
+        "global_index": 17,
+        "global_index_hex": "0x11",
+        "local_channel_index": 2,
+        "local_channel_index_hex": "0x02",
+        "channel_id_string_hash": "90745795",
+        "global_default_vec4": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "bytecode_hex": "34003E00",
+        "bytecode_sha256": "09c2870244ddad6963c066b9b037071f430f9afab62c7aef55bd3ebf18ba9a22",
+        "constant_vec4s": [
+          [
+            1.0,
+            0.7684159874916077,
+            0.5773839950561523,
+            1.0
+          ]
+        ],
+        "lineage_dynamic_rule": null,
+        "ops": [
+          {
+            "offset": 0,
+            "opcode": "0x34",
+            "name": "PushConstantVec4",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 2,
+            "opcode": "0x3E",
+            "name": "SequencerPopOutput",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          }
+        ],
+        "symbolic": {
+          "dependencies": [],
+          "outputs": {
+            "0": "C[0]=[1.0, 0.7684159874916077, 0.5773839950561523, 1.0]"
+          },
+          "final_stack": [],
+          "temp_slots": {},
+          "blockers": [],
+          "fully_symbolically_closed": true
+        }
+      }
+    ],
+    "0x28": [
+      {
+        "resource_hash": "80AA8F06",
+        "global_index": 40,
+        "global_index_hex": "0x28",
+        "local_channel_index": 2,
+        "local_channel_index_hex": "0x02",
+        "channel_id_string_hash": "1191B30B",
+        "global_default_vec4": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bytecode_hex": "3C002200232200380023213B0A3E00",
+        "bytecode_sha256": "9777b3075f8153eb5c94b5cc3ed2a268002194c20e6834d55bfd56d7bb4ef33d",
+        "constant_vec4s": [
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.24722200632095337,
+            0.25277799367904663,
+            0.7472220063209534
+          ],
+          [
+            0.7527779936790466,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.24722200632095337,
+            0.25277799367904663,
+            0.7472220063209534
+          ],
+          [
+            0.7527779936790466,
+            1.0,
+            1.0,
+            1.0
+          ]
+        ],
+        "lineage_dynamic_rule": null,
+        "ops": [
+          {
+            "offset": 0,
+            "opcode": "0x3C",
+            "name": "PushExternInputFloat",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 2,
+            "opcode": "0x22",
+            "name": "Permute",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 4,
+            "opcode": "0x23",
+            "name": "Saturate",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 5,
+            "opcode": "0x22",
+            "name": "Permute",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 7,
+            "opcode": "0x38",
+            "name": "Spline8Const",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 9,
+            "opcode": "0x23",
+            "name": "Saturate",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 10,
+            "opcode": "0x21",
+            "name": "PermuteAllX",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 11,
+            "opcode": "0x3B",
+            "name": "Gradient8Const",
+            "status": "FRAMED",
+            "operand_hex": "0A",
+            "operands": [
+              10
+            ]
+          },
+          {
+            "offset": 13,
+            "opcode": "0x3E",
+            "name": "SequencerPopOutput",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          }
+        ],
+        "symbolic": {
+          "dependencies": [
+            "SequencerScalar[0]"
+          ],
+          "outputs": {
+            "0": "gradient8_const(splat_x(saturate(spline8_const(permute(saturate(permute(SequencerScalar[0],0x00)),0x00),C[0..9]))),C[10..20])"
+          },
+          "final_stack": [],
+          "temp_slots": {},
+          "blockers": [],
+          "fully_symbolically_closed": true
+        }
+      }
+    ],
+    "0x30": [
+      {
+        "resource_hash": "80AA8F06",
+        "global_index": 48,
+        "global_index_hex": "0x30",
+        "local_channel_index": 3,
+        "local_channel_index_hex": "0x03",
+        "channel_id_string_hash": "E9EE5E9C",
+        "global_default_vec4": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bytecode_hex": "3C002200232200380023213B0A3E00",
+        "bytecode_sha256": "9777b3075f8153eb5c94b5cc3ed2a268002194c20e6834d55bfd56d7bb4ef33d",
+        "constant_vec4s": [
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.25,
+            0.2513889968395233,
+            0.3472220003604889
+          ],
+          [
+            0.4999980032444,
+            0.6666669845581055,
+            0.75,
+            0.7513890266418457
+          ],
+          [
+            0.8237670063972473,
+            0.8864480257034302,
+            1.0,
+            1.0
+          ],
+          [
+            -0.2612670063972473,
+            0.4375,
+            0.0,
+            0.0
+          ],
+          [
+            -0.14894799888134003,
+            -0.4967229962348938,
+            0.12547600269317627,
+            0.4473020136356354
+          ],
+          [
+            0.0,
+            -0.9444699883460999,
+            0.0397769995033741,
+            0.4074139893054962
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -0.4000000059604645,
+            0.2237669974565506
+          ],
+          [
+            -0.4473020136356354,
+            -0.06854300200939178,
+            0.4711320102214813,
+            0.11760599911212921
+          ],
+          [
+            -0.4074139893054962,
+            -0.0009660000214353204,
+            0.9056580066680908,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.25,
+            0.2513889968395233,
+            0.3472220003604889
+          ],
+          [
+            0.4999980032444,
+            0.6666669845581055,
+            0.75,
+            0.7513890266418457
+          ]
+        ],
+        "lineage_dynamic_rule": null,
+        "ops": [
+          {
+            "offset": 0,
+            "opcode": "0x3C",
+            "name": "PushExternInputFloat",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 2,
+            "opcode": "0x22",
+            "name": "Permute",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 4,
+            "opcode": "0x23",
+            "name": "Saturate",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 5,
+            "opcode": "0x22",
+            "name": "Permute",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 7,
+            "opcode": "0x38",
+            "name": "Spline8Const",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          },
+          {
+            "offset": 9,
+            "opcode": "0x23",
+            "name": "Saturate",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 10,
+            "opcode": "0x21",
+            "name": "PermuteAllX",
+            "status": "FRAMED",
+            "operand_hex": "",
+            "operands": []
+          },
+          {
+            "offset": 11,
+            "opcode": "0x3B",
+            "name": "Gradient8Const",
+            "status": "FRAMED",
+            "operand_hex": "0A",
+            "operands": [
+              10
+            ]
+          },
+          {
+            "offset": 13,
+            "opcode": "0x3E",
+            "name": "SequencerPopOutput",
+            "status": "FRAMED",
+            "operand_hex": "00",
+            "operands": [
+              0
+            ]
+          }
+        ],
+        "symbolic": {
+          "dependencies": [
+            "SequencerScalar[0]"
+          ],
+          "outputs": {
+            "0": "gradient8_const(splat_x(saturate(spline8_const(permute(saturate(permute(SequencerScalar[0],0x00)),0x00),C[0..9]))),C[10..20])"
+          },
+          "final_stack": [],
+          "temp_slots": {},
+          "blockers": [],
+          "fully_symbolically_closed": true
+        }
+      }
+    ]
+  },
+  "fully_symbolically_closed_program_count": 4,
+  "proof_boundary": "Raw current-retail bytecode/constants and the local-ID to global-index StringHash join are exact evidence. Opcode names/framing use the D1 RoI strategy-aware lineage and sequencer special cases. Symbolic formulas promote stack/data dependencies only where the implemented operation is already corroborated by D1 material work. SequencerScalar indices retain raw identity; no seconds/ticks/phase unit is assigned here."
+}

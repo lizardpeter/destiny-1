@@ -1,0 +1,124 @@
+{
+  "schema": "d1_tower_light_runtime_global_channels/v1",
+  "status": "D1_TOWER_LIGHT_RUNTIME_GLOBAL_CHANNELS_EXACT",
+  "global_defaults_tag_hash": "80AE4005",
+  "global_channel_count": 100,
+  "requested_indices": [
+    "0x11",
+    "0x28",
+    "0x30",
+    "0x60"
+  ],
+  "channels": [
+    {
+      "global_index": 17,
+      "global_index_hex": "0x11",
+      "state": "TOWER_SEQUENCER_OVERRIDE",
+      "string_hash": "90745795",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "tower_override_program_count": 2,
+      "tower_override_programs": [
+        {
+          "resource_hash": "80AA8F06",
+          "local_channel_index": 0,
+          "local_channel_index_hex": "0x00",
+          "channel_id_string_hash": "90745795",
+          "bytecode_sha256": "9777b3075f8153eb5c94b5cc3ed2a268002194c20e6834d55bfd56d7bb4ef33d",
+          "fully_symbolically_closed": true,
+          "outputs": {
+            "0": "gradient8_const(splat_x(saturate(spline8_const(permute(saturate(permute(SequencerScalar[0],0x00)),0x00),C[0..9]))),C[10..20])"
+          },
+          "unresolved": []
+        },
+        {
+          "resource_hash": "80B9E848",
+          "local_channel_index": 2,
+          "local_channel_index_hex": "0x02",
+          "channel_id_string_hash": "90745795",
+          "bytecode_sha256": "09c2870244ddad6963c066b9b037071f430f9afab62c7aef55bd3ebf18ba9a22",
+          "fully_symbolically_closed": true,
+          "outputs": {
+            "0": "C[0]=[1.0, 0.7684159874916077, 0.5773839950561523, 1.0]"
+          },
+          "unresolved": []
+        }
+      ]
+    },
+    {
+      "global_index": 40,
+      "global_index_hex": "0x28",
+      "state": "TOWER_SEQUENCER_OVERRIDE",
+      "string_hash": "1191B30B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tower_override_program_count": 1,
+      "tower_override_programs": [
+        {
+          "resource_hash": "80AA8F06",
+          "local_channel_index": 2,
+          "local_channel_index_hex": "0x02",
+          "channel_id_string_hash": "1191B30B",
+          "bytecode_sha256": "9777b3075f8153eb5c94b5cc3ed2a268002194c20e6834d55bfd56d7bb4ef33d",
+          "fully_symbolically_closed": true,
+          "outputs": {
+            "0": "gradient8_const(splat_x(saturate(spline8_const(permute(saturate(permute(SequencerScalar[0],0x00)),0x00),C[0..9]))),C[10..20])"
+          },
+          "unresolved": []
+        }
+      ]
+    },
+    {
+      "global_index": 48,
+      "global_index_hex": "0x30",
+      "state": "TOWER_SEQUENCER_OVERRIDE",
+      "string_hash": "E9EE5E9C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tower_override_program_count": 1,
+      "tower_override_programs": [
+        {
+          "resource_hash": "80AA8F06",
+          "local_channel_index": 3,
+          "local_channel_index_hex": "0x03",
+          "channel_id_string_hash": "E9EE5E9C",
+          "bytecode_sha256": "9777b3075f8153eb5c94b5cc3ed2a268002194c20e6834d55bfd56d7bb4ef33d",
+          "fully_symbolically_closed": true,
+          "outputs": {
+            "0": "gradient8_const(splat_x(saturate(spline8_const(permute(saturate(permute(SequencerScalar[0],0x00)),0x00),C[0..9]))),C[10..20])"
+          },
+          "unresolved": []
+        }
+      ]
+    },
+    {
+      "global_index": 96,
+      "global_index_hex": "0x60",
+      "state": "DEFAULT_ONLY",
+      "string_hash": null,
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tower_override_program_count": 0,
+      "tower_override_programs": []
+    }
+  ],
+  "violations": [],
+  "runtime_policy": "Start each requested channel from its exact GlobalChannelDefaults Vec4. Apply only exact Tower sequencer overrides whose local ID was joined to the global row by StringHash and whose bytecode symbolic reduction is closed. Do not infer a human-facing semantic name from index, value, lane usage, or later-engine terminology.",
+  "proof_boundary": "This report closes exact default values and Tower-owned sequencer update program identity/formulas when present. It does not prove update cadence, sequencer activation conditions outside the exact owner chain, or names such as exposure/sun/intensity/direction."
+}
