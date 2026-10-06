@@ -1,0 +1,1192 @@
+{
+  "schema": "d1_global_channel_defaults_exact/v1",
+  "status": "EXACT_RETAIL_PARALLEL_ARRAYS_CLOSED",
+  "tag_hash": "80AE4005",
+  "payload_file": "80AE4005.bin",
+  "payload_size": 2160,
+  "payload_sha256": "83e902c1f298596039911e190fec831dd1afd9faff991a7eec236c87296441af",
+  "layout": {
+    "channel_hashes": {
+      "field_offset": 8,
+      "field_offset_hex": "0x8",
+      "count": 100,
+      "unknown04": 0,
+      "relative": 48,
+      "data_offset": 80,
+      "data_offset_hex": "0x50",
+      "end_offset": 480,
+      "end_offset_hex": "0x1E0",
+      "stride": 4,
+      "bounds_ok": true
+    },
+    "channel_defaults": {
+      "field_offset": 24,
+      "field_offset_hex": "0x18",
+      "count": 100,
+      "unknown04": 0,
+      "relative": 464,
+      "data_offset": 512,
+      "data_offset_hex": "0x200",
+      "end_offset": 2112,
+      "end_offset_hex": "0x840",
+      "stride": 16,
+      "bounds_ok": true
+    },
+    "parallel_counts_equal": true,
+    "channel_count": 100
+  },
+  "requested_indices": [
+    {
+      "in_range": true,
+      "index": 17,
+      "index_hex": "0x11",
+      "string_hash": "90745795",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "in_range": true,
+      "index": 40,
+      "index_hex": "0x28",
+      "string_hash": "1191B30B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "in_range": true,
+      "index": 48,
+      "index_hex": "0x30",
+      "string_hash": "E9EE5E9C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "in_range": true,
+      "index": 96,
+      "index_hex": "0x60",
+      "string_hash": "0AD675E2",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "requested_indices_all_in_range": true,
+  "channels": [
+    {
+      "index": 0,
+      "index_hex": "0x00",
+      "string_hash": "056007C7",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 1,
+      "index_hex": "0x01",
+      "string_hash": "4AA1BEF5",
+      "default_vec4": [
+        50.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 2,
+      "index_hex": "0x02",
+      "string_hash": "9859DAF1",
+      "default_vec4": [
+        0.02500000037252903,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 3,
+      "index_hex": "0x03",
+      "string_hash": "F853533C",
+      "default_vec4": [
+        0.5,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 4,
+      "index_hex": "0x04",
+      "string_hash": "ED4BB08A",
+      "default_vec4": [
+        5.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 5,
+      "index_hex": "0x05",
+      "string_hash": "9E769ED2",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 6,
+      "index_hex": "0x06",
+      "string_hash": "49FBBCE1",
+      "default_vec4": [
+        30000.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 7,
+      "index_hex": "0x07",
+      "string_hash": "94D8ECDC",
+      "default_vec4": [
+        1.850000023841858,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 8,
+      "index_hex": "0x08",
+      "string_hash": "BD2C7FE8",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 9,
+      "index_hex": "0x09",
+      "string_hash": "9EC7A5E8",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 10,
+      "index_hex": "0x0A",
+      "string_hash": "B630810B",
+      "default_vec4": [
+        0.05000000074505806,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 11,
+      "index_hex": "0x0B",
+      "string_hash": "3EEACB23",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 12,
+      "index_hex": "0x0C",
+      "string_hash": "7E92EB31",
+      "default_vec4": [
+        100.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 13,
+      "index_hex": "0x0D",
+      "string_hash": "9F4CB78F",
+      "default_vec4": [
+        10.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 14,
+      "index_hex": "0x0E",
+      "string_hash": "5800C6F4",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 15,
+      "index_hex": "0x0F",
+      "string_hash": "5800C6F7",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 16,
+      "index_hex": "0x10",
+      "string_hash": "5800C6F6",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 17,
+      "index_hex": "0x11",
+      "string_hash": "90745795",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 18,
+      "index_hex": "0x12",
+      "string_hash": "615E07A3",
+      "default_vec4": [
+        10.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 19,
+      "index_hex": "0x13",
+      "string_hash": "CCEADF9A",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 20,
+      "index_hex": "0x14",
+      "string_hash": "7C7F9077",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 21,
+      "index_hex": "0x15",
+      "string_hash": "52717901",
+      "default_vec4": [
+        0.10000000149011612,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 22,
+      "index_hex": "0x16",
+      "string_hash": "F20B0FF3",
+      "default_vec4": [
+        0.5,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 23,
+      "index_hex": "0x17",
+      "string_hash": "603EF86C",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 24,
+      "index_hex": "0x18",
+      "string_hash": "CD02F312",
+      "default_vec4": [
+        0.15000000596046448,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 25,
+      "index_hex": "0x19",
+      "string_hash": "74FC62C4",
+      "default_vec4": [
+        0.5,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 26,
+      "index_hex": "0x1A",
+      "string_hash": "E43477BE",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 27,
+      "index_hex": "0x1B",
+      "string_hash": "98552BE8",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 28,
+      "index_hex": "0x1C",
+      "string_hash": "38D8C873",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 29,
+      "index_hex": "0x1D",
+      "string_hash": "E283FBE0",
+      "default_vec4": [
+        90.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 30,
+      "index_hex": "0x1E",
+      "string_hash": "5F3B8491",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "index": 31,
+      "index_hex": "0x1F",
+      "string_hash": "62E4542E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 32,
+      "index_hex": "0x20",
+      "string_hash": "79F2E305",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 33,
+      "index_hex": "0x21",
+      "string_hash": "949768CF",
+      "default_vec4": [
+        49500.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 34,
+      "index_hex": "0x22",
+      "string_hash": "2C53817D",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 35,
+      "index_hex": "0x23",
+      "string_hash": "2C53817E",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 36,
+      "index_hex": "0x24",
+      "string_hash": "2C53817F",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 37,
+      "index_hex": "0x25",
+      "string_hash": "2C538178",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 38,
+      "index_hex": "0x26",
+      "string_hash": "2C538179",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 39,
+      "index_hex": "0x27",
+      "string_hash": "2C53817A",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 40,
+      "index_hex": "0x28",
+      "string_hash": "1191B30B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 41,
+      "index_hex": "0x29",
+      "string_hash": "20A0AD8E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 42,
+      "index_hex": "0x2A",
+      "string_hash": "2C53817B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 43,
+      "index_hex": "0x2B",
+      "string_hash": "2C538174",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 44,
+      "index_hex": "0x2C",
+      "string_hash": "2C538175",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 45,
+      "index_hex": "0x2D",
+      "string_hash": "2D5382EF",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 46,
+      "index_hex": "0x2E",
+      "string_hash": "2D5382EE",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 47,
+      "index_hex": "0x2F",
+      "string_hash": "2D5382ED",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 48,
+      "index_hex": "0x30",
+      "string_hash": "E9EE5E9C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 49,
+      "index_hex": "0x31",
+      "string_hash": "FE279F22",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 50,
+      "index_hex": "0x32",
+      "string_hash": "3C112DD3",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 51,
+      "index_hex": "0x33",
+      "string_hash": "3C112DD0",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 52,
+      "index_hex": "0x34",
+      "string_hash": "D9A2D8A3",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 53,
+      "index_hex": "0x35",
+      "string_hash": "5C579DFA",
+      "default_vec4": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 54,
+      "index_hex": "0x36",
+      "string_hash": "C09AC1A6",
+      "default_vec4": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 55,
+      "index_hex": "0x37",
+      "string_hash": "6E22B25E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "index": 56,
+      "index_hex": "0x38",
+      "string_hash": "CF620DD4",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 57,
+      "index_hex": "0x39",
+      "string_hash": "38DCFCDA",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 58,
+      "index_hex": "0x3A",
+      "string_hash": "CDE25113",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 59,
+      "index_hex": "0x3B",
+      "string_hash": "3F9BF6CD",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 60,
+      "index_hex": "0x3C",
+      "string_hash": "E16B6B6B",
+      "default_vec4": [
+        100000.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "index": 61,
+      "index_hex": "0x3D",
+      "string_hash": "CBF32782",
+      "default_vec4": [
+        50.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 62,
+      "index_hex": "0x3E",
+      "string_hash": "CD265A98",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 63,
+      "index_hex": "0x3F",
+      "string_hash": "3EA1FBBE",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 64,
+      "index_hex": "0x40",
+      "string_hash": "7E708D99",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 65,
+      "index_hex": "0x41",
+      "string_hash": "D8E51195",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 66,
+      "index_hex": "0x42",
+      "string_hash": "FF5E4E71",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 67,
+      "index_hex": "0x43",
+      "string_hash": "10CF852C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 68,
+      "index_hex": "0x44",
+      "string_hash": "05AA1AD2",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 69,
+      "index_hex": "0x45",
+      "string_hash": "F07113DB",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 70,
+      "index_hex": "0x46",
+      "string_hash": "2D5382EC",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 71,
+      "index_hex": "0x47",
+      "string_hash": "2D5382EB",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 72,
+      "index_hex": "0x48",
+      "string_hash": "2D5382EA",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 73,
+      "index_hex": "0x49",
+      "string_hash": "2D5382E9",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 74,
+      "index_hex": "0x4A",
+      "string_hash": "2D5382E8",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 75,
+      "index_hex": "0x4B",
+      "string_hash": "2D5382E7",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 76,
+      "index_hex": "0x4C",
+      "string_hash": "4FC38ABB",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 77,
+      "index_hex": "0x4D",
+      "string_hash": "03B0B095",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 78,
+      "index_hex": "0x4E",
+      "string_hash": "BEBDF937",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 79,
+      "index_hex": "0x4F",
+      "string_hash": "2D5382E6",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 80,
+      "index_hex": "0x50",
+      "string_hash": "2E538442",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 81,
+      "index_hex": "0x51",
+      "string_hash": "2E538443",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 82,
+      "index_hex": "0x52",
+      "string_hash": "2E538440",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 83,
+      "index_hex": "0x53",
+      "string_hash": "2E538441",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 84,
+      "index_hex": "0x54",
+      "string_hash": "2E538446",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 85,
+      "index_hex": "0x55",
+      "string_hash": "7C61F53B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 86,
+      "index_hex": "0x56",
+      "string_hash": "7BC51142",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 87,
+      "index_hex": "0x57",
+      "string_hash": "ECA86879",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 88,
+      "index_hex": "0x58",
+      "string_hash": "ECA8687A",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 89,
+      "index_hex": "0x59",
+      "string_hash": "ECA8687B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 90,
+      "index_hex": "0x5A",
+      "string_hash": "ECA8687C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 91,
+      "index_hex": "0x5B",
+      "string_hash": "ECA8687D",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 92,
+      "index_hex": "0x5C",
+      "string_hash": "ECA8687E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 93,
+      "index_hex": "0x5D",
+      "string_hash": "ECA8687F",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 94,
+      "index_hex": "0x5E",
+      "string_hash": "ECA86870",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 95,
+      "index_hex": "0x5F",
+      "string_hash": "F2DB92ED",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 96,
+      "index_hex": "0x60",
+      "string_hash": "0AD675E2",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 97,
+      "index_hex": "0x61",
+      "string_hash": "E6AEB9EC",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 98,
+      "index_hex": "0x62",
+      "string_hash": "ED15B1C4",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "index": 99,
+      "index_hex": "0x63",
+      "string_hash": "B9FABF51",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "proof_boundary": "Exact D1 retail bytes independently validate two parallel DynamicArray descriptors at +0x08 and +0x18 with strides 4 and 16 and equal counts. Rows are promoted only as ordered (StringHash, default Vec4) pairs. Human-facing channel names and the claim that RoI TFX 0x4B reads this table remain separate until joined by exact runtime/index dataflow."
+}
