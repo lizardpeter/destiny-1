@@ -1,0 +1,112 @@
+name: D1 Lighting Runtime Producer Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/d1-lighting-runtime-producers.yml"
+      - "tools/d1_lighting_runtime_producer_probe.py"
+      - "tools/d1_executable_probe.py"
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: "29249016"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact owner-provided eboot
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-light-runtime
+          curl --fail --location --retry 4 --retry-delay 2             "$EBOOT_URL" -o build/d1-light-runtime/eboot.bin
+          test "$(stat -c %s build/d1-light-runtime/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-light-runtime/eboot.bin" | sha256sum --check --strict
+
+      - name: Install exact disassembler
+        run: python -m pip install --disable-pip-version-check --quiet capstone==5.0.6
+
+      - name: Trace lighting runtime producers
+        run: |
+          set -euo pipefail
+          python tools/d1_lighting_runtime_producer_probe.py             build/d1-light-runtime/eboot.bin             -o build/d1-light-runtime/runtime_producers.json
+
+      - name: Extract focused decompile targets
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('build/d1-light-runtime/runtime_producers.json'))
+          candidates=d['deferred_light_structural_scan']['candidates']
+          exact=[x for x in candidates if set(x['distinct_offsets']) >= {'0x40','0xc0','0x100'}]
+          out={
+            'schema':'d1_lighting_runtime_producer_targets/v1',
+            'status':'FOCUSED_DECOMPILATION_TARGETS_FROM_EXACT_X86_EVIDENCE',
+            'executable_sha256':d['executable_sha256'],
+            'snapshot_plus_0x1c_hits':[
+              {
+                'address_hex':h['address_hex'],
+                'mnemonic':h['mnemonic'],
+                'op_str':h['op_str'],
+                'refs':h['snapshot_refs'],
+                'context_before':h['context_before'],
+                'context_after':h['context_after'],
+              }
+              for h in d['snapshot_storage']['hits']
+              if any('copied_block_plus_0x1c' in r['labels'] for r in h['snapshot_refs'])
+            ],
+            'joint_deferred_light_candidates':exact[:24],
+            'top_plus_0x100_candidates':candidates[:24],
+            'proof_boundary':'Targets are ranked exact-build x86 evidence only. Semantic producer names remain withheld until focused control-flow/decompiler closure.'
+          }
+          Path('build/d1-light-runtime/focused_targets.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps({
+            'snapshot_plus_0x1c_hit_count':len(out['snapshot_plus_0x1c_hits']),
+            'joint_deferred_light_candidate_count':len(exact),
+            'top_joint':[
+              {
+                'score':x['score'],'base':x['base_reg'],
+                'span':[x['span_start_hex'],x['span_end_hex']],
+                'offsets':x['distinct_offsets'],
+                'reads':x['read_ref_count'],'writes':x['write_ref_count']
+              } for x in exact[:12]
+            ]
+          },indent=2))
+          PY
+
+      - name: Persist exact derived evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/generated
+          cp build/d1-light-runtime/runtime_producers.json             evidence/generated/d1_ps4_0133_lighting_runtime_producers.json
+          cp build/d1-light-runtime/focused_targets.json             evidence/generated/d1_ps4_0133_lighting_runtime_producer_targets.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             evidence/generated/d1_ps4_0133_lighting_runtime_producers.json             evidence/generated/d1_ps4_0133_lighting_runtime_producer_targets.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record exact D1 lighting runtime producer frontier"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Remove raw executable
+        if: always()
+        run: rm -f build/d1-light-runtime/eboot.bin
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-lighting-runtime-producers
+          path: |
+            build/d1-light-runtime/runtime_producers.json
+            build/d1-light-runtime/focused_targets.json
+          retention-days: 7
