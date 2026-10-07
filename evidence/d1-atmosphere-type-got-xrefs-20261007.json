@@ -1,0 +1,125 @@
+{
+  "schema": "d1-atmosphere-type-object-xrefs-v1",
+  "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "target_va": "0x198ea68",
+  "references": [
+    {
+      "va": "0x8417f7",
+      "bytes": "488d056ad21401",
+      "instruction": "lea rax, [rip + 0x114d26a]",
+      "context": [
+        {
+          "va": "0x8417f7",
+          "bytes": "488d056ad21401",
+          "instruction": "lea rax, [rip + 0x114d26a]"
+        },
+        {
+          "va": "0x8417fe",
+          "bytes": "488b00",
+          "instruction": "mov rax, qword ptr [rax]"
+        },
+        {
+          "va": "0x841801",
+          "bytes": "8b30",
+          "instruction": "mov esi, dword ptr [rax]"
+        },
+        {
+          "va": "0x841803",
+          "bytes": "488d3c24",
+          "instruction": "lea rdi, [rsp]"
+        },
+        {
+          "va": "0x841807",
+          "bytes": "e8647183ff",
+          "instruction": "call 0x78970"
+        },
+        {
+          "va": "0x84180c",
+          "bytes": "4885c0",
+          "instruction": "test rax, rax"
+        },
+        {
+          "va": "0x84180f",
+          "bytes": "7453",
+          "instruction": "je 0x841864"
+        },
+        {
+          "va": "0x841811",
+          "bytes": "c5fc57c0",
+          "instruction": "vxorps ymm0, ymm0, ymm0"
+        },
+        {
+          "va": "0x841815",
+          "bytes": "c5fc29442460",
+          "instruction": "vmovaps ymmword ptr [rsp + 0x60], ymm0"
+        },
+        {
+          "va": "0x84181b",
+          "bytes": "c5fc29442440",
+          "instruction": "vmovaps ymmword ptr [rsp + 0x40], ymm0"
+        },
+        {
+          "va": "0x841821",
+          "bytes": "c5fc29442420",
+          "instruction": "vmovaps ymmword ptr [rsp + 0x20], ymm0"
+        },
+        {
+          "va": "0x841827",
+          "bytes": "c5fc290424",
+          "instruction": "vmovaps ymmword ptr [rsp], ymm0"
+        },
+        {
+          "va": "0x84182c",
+          "bytes": "48c784248800000000000000",
+          "instruction": "mov qword ptr [rsp + 0x88], 0"
+        },
+        {
+          "va": "0x841838",
+          "bytes": "48c784248000000000000000",
+          "instruction": "mov qword ptr [rsp + 0x80], 0"
+        },
+        {
+          "va": "0x841844",
+          "bytes": "4883c00c",
+          "instruction": "add rax, 0xc"
+        },
+        {
+          "va": "0x841848",
+          "bytes": "488d1c24",
+          "instruction": "lea rbx, [rsp]"
+        },
+        {
+          "va": "0x84184c",
+          "bytes": "4889df",
+          "instruction": "mov rdi, rbx"
+        },
+        {
+          "va": "0x84184f",
+          "bytes": "4889c6",
+          "instruction": "mov rsi, rax"
+        },
+        {
+          "va": "0x841852",
+          "bytes": "ba88000000",
+          "instruction": "mov edx, 0x88"
+        },
+        {
+          "va": "0x841857",
+          "bytes": "e8648fa600",
+          "instruction": "call 0x12aa7c0"
+        },
+        {
+          "va": "0x84185c",
+          "bytes": "4889df",
+          "instruction": "mov rdi, rbx"
+        },
+        {
+          "va": "0x84185f",
+          "bytes": "e87c060000",
+          "instruction": "call 0x841ee0"
+        }
+      ]
+    }
+  ],
+  "boundary": "RIP references only. Candidate decoding is not reachability proof. Serialized class ID and source payload relationship remain unclosed."
+}
