@@ -73,6 +73,10 @@ jobs:
                 'resource_class':f'{cls:08X}',
                 'sun_filehash_offset':'0x204',
                 'sun_tag':f'{sun:08X}',
+                'cycle_seconds_offset':'0x208',
+                'cycle_seconds':struct.unpack_from('<f',b,obj+0x10)[0],
+                'phase_offset_field':'0x20C',
+                'phase_offset':struct.unpack_from('<f',b,obj+0x14)[0],
                 'resource_bytes':b[obj:obj+0x40].hex(),
               }
               if cls != 0x80801B13:
@@ -86,20 +90,19 @@ jobs:
             'status':'EXACT_TOWER_SMAPDATA_SUN_RESOURCES_FOLLOWED',
             'rows':rows,
             'unique_non_null_sun_tags':sorted(set(suns)),
-            'proof':'resource absolute/class comes from exact current Tower map-data census; +0x0C is the eboot/Rust importer sun FileHash field'
+            'proof':'resource absolute/class comes from exact current Tower map-data census; retail 0x8B2BF9 consumes component +0x10 as live-cycle duration and +0x14 as phase/time offset; +0x0C is the 80801B06 sun FileHash'
           }
           pathlib.Path('reports/sun_resource_follow.json').write_text(json.dumps(out,indent=2)+'\n')
           pathlib.Path('reports/sun_tags.txt').write_text('\n'.join(sorted(set(suns)))+'\n')
           print(json.dumps(out,indent=2))
           PY
 
-      - name: Probe exact Tower sun tag time fields
+      - name: Probe exact Tower 24-byte sun curve tags
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
         run: |
           set -euo pipefail
-          : > reports/tower_sun_time_fields.jsonl
-          printf '80C984B3\n80CA0DED\n' > reports/sun_tags.txt
+          : > reports/tower_sun_curve_tags.jsonl
           while read -r SUN_TAG; do
             test -n "$SUN_TAG"
             python tools/d1_remote_filehash_probe.py \
@@ -117,34 +120,32 @@ jobs:
               raise SystemExit(f'sun payload not recovered: {h}')
           b=p.read_bytes()
           if len(b)<0x18:
-              raise SystemExit(f'sun tag {h} too small for +0x14 time field: {len(b)}')
+              raise SystemExit(f'sun tag {h} too small for 80801B06 curve/window layout: {len(b)}')
           u32=lambda o: struct.unpack_from('<I',b,o)[0]
           f32=lambda o: struct.unpack_from('<f',b,o)[0]
           out={
-            'schema':'d1_tower_exact_sun_component/v2',
-            'status':'EXACT_CURRENT_TOWER_SUN_TIME_FIELDS_CAPTURED',
+            'schema':'d1_tower_exact_sun_curve_tag/v1',
+            'status':'EXACT_CURRENT_TOWER_SUN_CURVE_TAG_CAPTURED',
             'sun_tag':h,
             'payload_sha256':hashlib.sha256(b).hexdigest(),
             'payload_size':len(b),
             'raw_payload':b.hex(),
             'fields':{
-              '0x00_f32':f32(0x00),
-              '0x04_f32':f32(0x04),
-              '0x08_u32':f'{u32(0x08):08X}',
-              '0x0c_u32':f'{u32(0x0c):08X}',
-              '0x10_f32':f32(0x10),
-              '0x14_f32':f32(0x14),
+              'window_0x00_f32':f32(0x00),
+              'window_0x04_f32':f32(0x04),
+              'curve_0x08_u32':f'{u32(0x08):08X}',
+              'curve_0x0c_u32':f'{u32(0x0c):08X}',
+              'curve_0x10_u32':f'{u32(0x10):08X}',
+              'curve_0x14_u32':f'{u32(0x14):08X}',
             },
-            'eboot_contract':{
-              'loader':'0x8B2BF9',
-              'known_rule':'if component+0x10 > 0 use live timer/cycle path; both paths add component+0x14 then normalize/fraction before storing time-of-day',
-            }
+            'boundary':'Timing/cycle state is owned by the containing 80801B13 component, not this 80801B06 curve tag.'
           }
-          with open('reports/tower_sun_time_fields.jsonl','a') as fp:
+          with open('reports/tower_sun_curve_tags.jsonl','a') as fp:
               fp.write(json.dumps(out)+'\n')
           print(json.dumps(out,indent=2))
           PY
           done < reports/sun_tags.txt
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
