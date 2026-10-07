@@ -1,0 +1,33 @@
+{
+  "schema": "d1-short-wwise-event-retail-witness-v1",
+  "event_hash": "80C9808E",
+  "reference": "8080080A",
+  "source_package_id": "024c",
+  "source_patch_id": 5,
+  "payload_size": 80,
+  "payload_sha256": "2334e171999242c2bb32c2cddb66b72e624a4b5b32d093eaa5694f96d567d31c",
+  "payload_hex": "50000000000000008811ef51d4e31648000000000000000000000000000000000000000000000000000000000000000001d4aa801281c98000000000000000000000000000000000ffffffff00000000",
+  "bank_tag_hash": "80C98112",
+  "stream_count": 0,
+  "contract": {
+    "minimum_descriptor_size": 72,
+    "count_offset": 56,
+    "count_type": "i32",
+    "relative_offset": 64,
+    "relative_type": "i64",
+    "payload_formula": "0x40 + relative + 0x10",
+    "empty_array": "does not follow relative pointer"
+  },
+  "production_fix": {
+    "repository": "lizardpeter/Rust-test",
+    "commit": "0fb42af0f763c653c0b487e694cb665d0a1b33ec",
+    "previous_failure": "valid bank-only event shorter than assumed 0x70 aborted whole map audio import",
+    "previous_local_validation": "321 importer tests passed before workspace replacement; not rerun in current workspace"
+  },
+  "current_validation": {
+    "command": "python tools/test_d1_audio_event_contract.py -v",
+    "passed": 8,
+    "failed": 0
+  },
+  "proof_boundary": "Bank ownership and empty external stream array are exact. Embedded bank media, HIRC selection, event startup, bus roles and retail ambient autoplay remain unresolved."
+}
