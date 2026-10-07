@@ -1,0 +1,20 @@
+{
+  "schema": "d1-tower-character-path-status-20261007",
+  "source_review": {
+    "bridge": {
+      "path": "src/source_importers/destiny1.rs",
+      "sha": "acf1d24af8f9cb0c832e493a9609169c94120a3b"
+    },
+    "spawned_actors": {
+      "path": "src/source_importers/destiny1_spawned_actors.rs",
+      "sha": "d6fb7fccf3b9d63b8eeef630ab51f48a4693c7f3"
+    }
+  },
+  "confirmed_from_current_source": [
+    "destiny1_tower import_visuals invokes Family E, Families F/G, and spawned actor host-preview builders",
+    "Successful assets append to LoadedMapVisuals.skinned_assets for the generic renderer",
+    "Family failures are reported and withheld without aborting the environment import",
+    "Spawned family admission requires exact geometry, native retarget compatibility, and material/range admission"
+  ],
+  "boundary": "Current source-path verification, not a fresh rendered map test or proof that every Tower NPC appears. Retail activation/simultaneity, startup/phase, and full NPC behavior remain unclosed."
+}
