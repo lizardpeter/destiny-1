@@ -1,0 +1,29 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_arch_human_earth_city_009f_0.pkg",
+      "bytes": 269680640,
+      "sha256": "7446d5c4b8c2ca3fed6bb0b13a649ff68052a8a2fcfa3aae1b38bf8356c54813",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_human_earth_city_009f_0.pkg"
+    },
+    {
+      "name": "ps4_arch_human_earth_city_009f_1.pkg",
+      "bytes": 32270336,
+      "sha256": "e5907ac4b5ba8256c23b667b5f1b237b729db824503a225c9b39daad993d7719",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_human_earth_city_009f_1.pkg"
+    },
+    {
+      "name": "ps4_arch_human_earth_city_009f_2.pkg",
+      "bytes": 203638784,
+      "sha256": "467047bcfab0281f0f1a69ea2e43038c9e1bc616b0214f1cdc62eb7666844b24",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_human_earth_city_009f_2.pkg"
+    },
+    {
+      "name": "ps4_arch_human_earth_city_009f_4.pkg",
+      "bytes": 116736,
+      "sha256": "0f58f8042d96852a1641e4b4378d2b6f7316b15ba8c6294cd5674e5ac61dc504",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_human_earth_city_009f_4.pkg"
+    }
+  ]
+}
