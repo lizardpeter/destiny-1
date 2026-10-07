@@ -1,0 +1,35 @@
+{
+  "schema": "d1_tower_exact_sun_components/v1",
+  "status": "EXACT_CURRENT_TOWER_SUN_COMPONENT_TIMING_CAPTURED",
+  "build": "CUSA00219_01.33",
+  "source_run": 37551770873,
+  "source_job": 112568680971,
+  "executable_contract": {
+    "loader": "0x8B2BF9",
+    "rule": "component +0x10 > 0 selects the live timer/cycle path; +0x14 is added as authored phase/time offset before normalized time-of-day is produced"
+  },
+  "rows": [
+    {
+      "map_data_table": "80CA0B18",
+      "map_payload_sha256": "3d0454b7e050d51d7af45739e3311837a880d2ef08b27694bac816e009658c61",
+      "sun_resource_class": "80801B13",
+      "sun_resource_offset": "0x1F8",
+      "sun_tag": "80CA0DED",
+      "raw_resource_bytes": "000000000000000000000000ed0dca800000e14500000000ee0dca801e0eca80ffffffff00000000",
+      "cycle_seconds": 7200,
+      "phase_offset": 0
+    },
+    {
+      "map_data_table": "80C984AA",
+      "map_payload_sha256": "db6e3da44df828ebfe562fcef8ede97ccd5392a9f5bfda3d71a3a30cf2fc0076",
+      "sun_resource_class": "80801B13",
+      "sun_resource_offset": "0x1F8",
+      "sun_tag": "80C984B3",
+      "raw_resource_bytes": "000000000000000000000000b384c9800000614500000000ffffffffffffffffffffffff00000000",
+      "cycle_seconds": 3600,
+      "phase_offset": 0
+    }
+  ],
+  "conclusion": "Both exact recovered Tower sun components are live-cycle configurations, not fixed-time components. The remaining open value is the retail runtime clock/phase source used by the live-cycle path, not a serialized Tower time constant.",
+  "correction": "The 24-byte 80801B06 sun tag owns curve/window data; +0x10/+0x14 timing fields belong to the containing 80801B13 sun component resource."
+}
