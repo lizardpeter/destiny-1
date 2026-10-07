@@ -1,0 +1,70 @@
+name: Recover Tower NPC source inputs
+on:
+  push:
+    paths: ['.github/workflows/d1-npc-source-inputs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        package: ['023d', '0244', '009f', '003b', '00ec', '00ee', '0154', '0156', '0157', '0158', '0172']
+    env:
+      PACKAGE_ID: ${{ matrix.package }}
+    steps:
+      - name: Recover exact physical package generations from public R2 inventory
+        run: |
+          set -euo pipefail
+          mkdir -p inputs
+          curl --fail --location --retry 4 https://crypt.cohae.dev/destiny/ps4/packages/latest/packages.txt -o inventory.txt
+          python - <<'PY'
+          import os,re,time,subprocess,struct,hashlib,json
+          from pathlib import Path
+          package=os.environ['PACKAGE_ID']
+          inventory=Path('inventory.txt').read_text()
+          names=sorted(set(re.findall(r'ps4_[^/\s"]+_'+package+r'_[0-9]+\.pkg',inventory)))
+          names=[name for name in names if '_unp_' not in name]
+          if not names:raise SystemExit('no exact inventory names for '+package)
+          rows=[]
+          for name in names:
+              path=Path('inputs')/name
+              url='https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/'+name
+              for attempt in range(3):
+                  subprocess.run(['curl','--fail','--location','--retry','4',url+'?npc-source='+str(time.time_ns()),'-o',str(path)],check=True)
+                  with path.open('rb') as f:header=f.read(0x140)
+                  if len(header)>=0x140 and path.stat().st_size==struct.unpack_from('<I',header,0x13c)[0]:break
+              else:raise SystemExit('incomplete physical package '+name)
+              assert struct.unpack_from('<H',header,0)[0]==24,name
+              assert struct.unpack_from('<H',header,4)[0]==int(package,16),name
+              digest=hashlib.file_digest(path.open('rb'),'sha256').hexdigest()
+              rows.append({'name':name,'bytes':path.stat().st_size,'sha256':digest,'url':url})
+              print(name,path.stat().st_size,digest,flush=True)
+          Path('inputs/acquisition-'+package+'.json').write_text(json.dumps({'schema':'d1-npc-source-input-acquisition-v1','objects':rows},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-npc-packages-${{ matrix.package }}
+          path: inputs/
+          compression-level: 0
+          retention-days: 1
+  decompressor:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Recover existing public decompression dependencies
+        run: |
+          mkdir -p runtime
+          curl --fail --location --retry 4 https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c085/liblinoodle3.so -o runtime/liblinoodle3.so
+          curl --fail --location --retry 4 https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll -o runtime/oo2core_3_win64.dll
+          echo "0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so" | sha256sum --check
+          echo "682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  runtime/oo2core_3_win64.dll" | sha256sum --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-npc-decompressor
+          path: runtime/
+          compression-level: 0
+          retention-days: 1
