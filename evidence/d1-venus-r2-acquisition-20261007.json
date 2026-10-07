@@ -1,0 +1,119 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_venus_destination_0402_0.pkg",
+      "bytes": 103280640,
+      "sha256": "202cd93dfaa9ebe0738a994dde4e01daf64ea3aa06771fae42fc51e44ff1db5b",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0402_0.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0402_1.pkg",
+      "bytes": 9809920,
+      "sha256": "39923a0db1f28db2cffa80ec998a068114db9c09032f8d2a59e842036aec78d2",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0402_1.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0402_2.pkg",
+      "bytes": 3532800,
+      "sha256": "6b554e649bfa97e87f433f5d92447657f63bc628e17b0baf0379af9c86e486e6",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0402_2.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0402_3.pkg",
+      "bytes": 159744,
+      "sha256": "c983b1d4ef26ce83acd17326dd95356131e0f714a176788cc54cacf0f5a0dba3",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0402_3.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0402_5.pkg",
+      "bytes": 163840,
+      "sha256": "e6a1ffb3b214f79e86ff2bed43e958e2faae770d18e30a4148aa351f0694a6b9",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0402_5.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0405_0.pkg",
+      "bytes": 146190336,
+      "sha256": "056f0032e90a127a31117e580e722ea21109f9595879c4523a380101ec75f23d",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0405_0.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0405_1.pkg",
+      "bytes": 10817536,
+      "sha256": "9d3d5dc3a1d623b8725db04439e03fe52a17235a90dec3fe1f2b1433fc5865b4",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0405_1.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0405_2.pkg",
+      "bytes": 5584896,
+      "sha256": "3ff0fa6f45dfcfbfcdbea519a274fc2e21c67a597773fda34bfe323ab20471c6",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0405_2.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0405_5.pkg",
+      "bytes": 6592512,
+      "sha256": "2bb200e913e94751edc397e2be53c867eec32f55f33ceabf0283e74eb3b0111d",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0405_5.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0406_0.pkg",
+      "bytes": 139190272,
+      "sha256": "fa6c3c8571b4dfcc1c9ac6630a0d3bac26ecaf15f86bf62e9c897ae69ab463b1",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0406_0.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0406_1.pkg",
+      "bytes": 16400384,
+      "sha256": "882ecc3e1751799548fc78d52728af7d8b014256c32caf962a957f5334337920",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0406_1.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0406_2.pkg",
+      "bytes": 5343232,
+      "sha256": "9550ee97ea8a5fa98e9505b1e524b53d80bd40de402ce181f80b58622d1164ed",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0406_2.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0407_0.pkg",
+      "bytes": 226285568,
+      "sha256": "11be98c57a34963d159f6e9a3c3a594c4dd178abde67da7fff06a768eac7919a",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0407_0.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0407_1.pkg",
+      "bytes": 2048000,
+      "sha256": "1540c588246b8b5621d782e3a9b8e4f6220ae74b808717446ccbf2c1f84443e6",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0407_1.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0407_2.pkg",
+      "bytes": 1114112,
+      "sha256": "d2b853acb0eef788945c5b5429ba69fb4bb49fa427da8dc3519105cea5a62a0b",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0407_2.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0409_0.pkg",
+      "bytes": 1003407360,
+      "sha256": "5ab43e6d63d16921152d4ea7d1b9f6cef728a9b76d5783bad74e4fef5f880ff8",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0409_0.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0409_1.pkg",
+      "bytes": 33026048,
+      "sha256": "29bb6533bf468a1e1eb1c6e4d7bfc850b69ad3be051752c796e939fc56ef0bb1",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0409_1.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0409_2.pkg",
+      "bytes": 14340096,
+      "sha256": "b4236600d42d430b47deabdd468506bf2fd110a883e06b5cf63e27172324a096",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0409_2.pkg"
+    },
+    {
+      "name": "ps4_venus_destination_0409_5.pkg",
+      "bytes": 266240,
+      "sha256": "0cb32ff83197a97783f5fffe2991ae808a4c6a502b956c627b6b2d79dfe57c5f",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_venus_destination_0409_5.pkg"
+    }
+  ]
+}
