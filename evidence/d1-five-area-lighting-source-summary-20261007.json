@@ -1,0 +1,52 @@
+{
+  "schema": "d1-five-area-lighting-source-summary-v1",
+  "tests_passed": 312,
+  "areas": {
+    "tower": {
+      "source_records": 737,
+      "imported_records": 737,
+      "source_materials": 497,
+      "translated_materials": 497,
+      "programs": 34,
+      "constant_programs": 92,
+      "textures": 5
+    },
+    "cosmo": {
+      "source_records": 3402,
+      "imported_records": 3402,
+      "source_materials": 2712,
+      "translated_materials": 2712,
+      "programs": 71,
+      "constant_programs": 499,
+      "textures": 6
+    },
+    "mars": {
+      "source_records": 2029,
+      "imported_records": 2029,
+      "source_materials": 1474,
+      "translated_materials": 1474,
+      "programs": 45,
+      "constant_programs": 263,
+      "textures": 4
+    },
+    "venus": {
+      "source_records": 2242,
+      "imported_records": 2241,
+      "source_materials": 1860,
+      "translated_materials": 1859,
+      "programs": 49,
+      "constant_programs": 339,
+      "textures": 4
+    },
+    "moon": {
+      "source_records": 2250,
+      "imported_records": 2250,
+      "source_materials": 1551,
+      "translated_materials": 1551,
+      "programs": 44,
+      "constant_programs": 214,
+      "textures": 5
+    }
+  },
+  "scope": "Combined recovered source-table censuses with diagnostic Tower Activity root; no rendered or real per-area Activity/env activation validation. Venus retains one source-null cookie without an inferred runtime fallback."
+}
