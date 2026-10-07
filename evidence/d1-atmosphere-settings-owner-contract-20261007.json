@@ -34,13 +34,27 @@
   ],
   "contract": [
     "Global allocation initializes settings +0x88 to mode 3 and source-null words +0,+0x40,+0x44.",
-    "Source loader 0x8417c0 resolves the class through type object +0, zero-initializes a 0x90-byte temporary, copies exactly 0x88 source bytes beginning at tag payload +0x0c, and sends all 0x90 bytes to setter 0x841ee0. Its mode at +0x88 and texture override at +0x8c therefore remain zero.",
+    "Source loader 0x8417c0 reads the type object +0 into esi, but accessor 0x78970 ignores that argument and returns the supplied handle data pointer at +0x08. This call does not validate a serialized source class. The loader zero-initializes a 0x90-byte temporary, copies exactly 0x88 bytes beginning at provided data pointer +0x0c, and sends all 0x90 bytes to setter 0x841ee0. Its mode at +0x88 and texture override at +0x8c therefore remain zero.",
     "Setter copies 0x90 bytes only, preserving resolved channel indices at +0x90..+0xec in the global owner.",
     "Getter 0x841f10 returns the global settings pointer. Renderer callbacks copy all 0xf0 bytes to renderer +0x191f8.",
     "Context constructors copy renderer +0x191f8 to context +0x34, size 0xf0. Primary producer receives context +0x34 and view +0x500; secondary receives the same settings via r9 and view +0x500 after an earlier +0x4f0 base.",
     "Secondary pass accepts settings modes 0,1,4 and rejects other modes; producer alone also has an arithmetic mode-2 branch."
   ],
   "instructions": {
+    "typed_data_accessor": [
+      {
+        "va": "0x78970",
+        "bytes": "488b4708",
+        "mnemonic": "mov",
+        "operands": "rax, qword ptr [rdi + 8]"
+      },
+      {
+        "va": "0x78974",
+        "bytes": "c3",
+        "mnemonic": "ret",
+        "operands": ""
+      }
+    ],
     "source_tag_load": [
       {
         "va": "0x8417c0",
@@ -2039,7 +2053,8 @@
     ]
   },
   "remaining": [
-    "serialized source class ID inside runtime object is not resolved",
+    "serialized source class ID is not resolved; accessor does not enforce it",
+    "data pointer relationship to serialized payload base",
     "actual map tag/activation joins",
     "all context mode and texture-override mutations",
     "view matrix semantic producer",
