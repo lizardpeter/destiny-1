@@ -1,0 +1,23 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_arch_cabal_0059_0.pkg",
+      "bytes": 233091072,
+      "sha256": "0b2bb108849e78a2313831dcc8530b091a0461cb8dec6c2813af35402983c36a",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_cabal_0059_0.pkg"
+    },
+    {
+      "name": "ps4_arch_cabal_0059_1.pkg",
+      "bytes": 26046464,
+      "sha256": "a3082f5267cd81238ebf7ad7a7ec572f76d7ec45d65a0d1d7e4b43594699e945",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_cabal_0059_1.pkg"
+    },
+    {
+      "name": "ps4_arch_cabal_0059_2.pkg",
+      "bytes": 128530432,
+      "sha256": "b7961a5948a92e99e45a6707818e9fdad0e7c39939fc0f3e170bafc2011364bf",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_cabal_0059_2.pkg"
+    }
+  ]
+}
