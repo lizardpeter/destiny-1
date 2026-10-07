@@ -1,0 +1,58 @@
+name: Split large Tower sky source input artifact
+on:
+  push:
+    paths: ['.github/workflows/d1-sky-source-input-split.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: d1-sky-packages-01d1
+          run-id: 37648067922
+          github-token: ${{ github.token }}
+          path: inputs
+      - name: Split exact source input archive for the connector size limit
+        run: |
+          tar -C inputs -cf sky-01d1.tar .
+          split -b 256M -d -a 3 sky-01d1.tar sky01d1-part-
+          sha256sum sky-01d1.tar sky01d1-part-* > sky01d1-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-01d1-part-000
+          path: sky01d1-part-000
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-01d1-part-001
+          path: sky01d1-part-001
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-01d1-part-002
+          path: sky01d1-part-002
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-01d1-part-003
+          path: sky01d1-part-003
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-01d1-part-004
+          path: sky01d1-part-004
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-sky-01d1-manifest
+          path: sky01d1-sha256.txt
+          retention-days: 7
