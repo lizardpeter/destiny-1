@@ -26,6 +26,9 @@ jobs:
           test "$(stat -c %s build/sequencer-native/eboot.bin)" = 29249016
           echo "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833  build/sequencer-native/eboot.bin" | sha256sum --check --strict
           python tools/d1_sequencer_arithmetic_native_oracle.py build/sequencer-native/eboot.bin --evidence-dir evidence --output build/sequencer-native/oracle.json
+          echo D1_ORACLE_JSON_BEGIN
+          cat build/sequencer-native/oracle.json
+          echo D1_ORACLE_JSON_END
       - name: Remove owned binary
         if: always()
         run: rm -f build/sequencer-native/eboot.bin
