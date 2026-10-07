@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        package: ['023d', '0244', '009f', '003b', '00ec', '00ee', '0154', '0156', '0157', '0158', '0172']
+        package: ['00ef', '0169']
     env:
       PACKAGE_ID: ${{ matrix.package }}
     steps:
