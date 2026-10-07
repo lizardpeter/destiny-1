@@ -76,3 +76,31 @@ These findings are saved with complete scripts and disassembly evidence in `ureg
 ## Global-channel Rand production follow-up
 
 Production commit `21d6b276` replaces the remaining folded Rand formula in `global_channel_sequencer.rs` with the shared retail helper. The first fifteen native cases happened to agree with the old formula, so the native probe was expanded with fourteen summation-order witnesses. The new sequencer regression fails before the fix at input 5 (`40A00000`): old result `3F0BD578`, source result `3F0B4E58`. After the fix the full importer library suite passes **313 tests, zero failures**, including all 29 native bit cases and x-only broadcast checks. Native oracle commits are `088621c7` and `6d4a5b2e`; validation logs are committed in `d1-global-channel-rand-fix-validation-20261007.json` (`d98f7024`). This validates CPU sequencer arithmetic and does not establish runtime channel activation or rendered image fidelity.
+
+## Gradient and spline arithmetic fixes, with independent native regressions
+
+Two additional importer paths were corrected and committed:
+
+- Gradient4/8 now read the source-initialized tolerance bits `38D1B717` (about 0.0001), matching RODATA `1610BE0` copied to BSS `1AC6320` by `94813/9486E/948D7`. Both the universal IR lowering and resolved global-channel evaluator previously used an assumed 0.000001.
+- Both paths preserve separate MUL/ADD rounding, combine Gradient8 banks per lane, and use the retail pairwise reduction. Ninety independent native cases include tolerance boundaries, duplicate and descending thresholds, differing input lanes, and cancellation witnesses. Both new regressions failed before the fix and passed afterward.
+- Cubic spline IR lowering now XORs adjacent reached masks and XOR-reduces selected result bits for opcodes 37/38/39. The previously duplicated two-bank lowering shares the corrected helper. Ninety native cases cover normal, duplicate and unsorted thresholds and differing input lanes. The IR regression failed before the fix; the resolved sequencer already matched these cases.
+
+Private commits: gradient fixtures `ccf4f931`, IR `58f31196`, sequencer `ddb14095`; spline fixtures `4d66cc69`, IR `d42401c0`, sequencer regression `15ab2699`.
+
+The full importer library suite passes **317 tests, zero failed**. These fixes affect the common D1 interpreter paths across maps; they do not constitute rendered validation. Full before/after logs and source-pinned native evidence are committed in `d1-gradient-importer-fix-validation-20261007.json`, `d1-spline-importer-fix-validation-20261007.json`, and their native-oracle files, and complete source/evidence is checkpointed in uregraph.
+
+## Tower source ownership scopes after dependency restoration
+
+The recovered archive contains **85 package snapshots / 90,513 current tags**. Additional missing resources were restored through exact inventory-selected R2 objects; acquisition manifests pin every downloaded object and SHA256.
+
+The actual scenario root `80C7A005` (class `80800616`) closes the placement and sequencer-resource join: **274 runtime placements / 47 unique entities**, six scenario entity-layer tables, and two sequencer resources `809DF584/809DF585`, both with zero program entries. These entity tables contain zero local-light records.
+
+The separate destination map root `80C98019` (class `8080052E`) closes its bubble/container/table graph to **122 tables**. Its broader census resolves **737/737 local lights / 497/497 materials**, 34 lighting programs, and valid lighting IR. Across that combined bubble graph the importer sees 58 environment entities / 66 resources and evaluates 71 channels, with overlapping owners and 16 channel names absent from current defaults. The first selected sun is `80CA0DED`, cycle 7200 seconds, phase zero.
+
+These are distinct source scopes. A combined destination graph is not one active rendered bubble; scenario entity tables alone do not contain the destination's world lighting. The map root has an 84-byte map layout and cannot be parsed as the scenario's +48 location array. Live scalar0 meaning, descriptor construction, output-slot ownership/update order, active-world/scenario composition, atmosphere settings/LUT textures, shadow masks, and per-frame evaluation remain open.
+
+The audit tool now exposes `--scenario-tables` and `--map-tables` and prints its scope explicitly. Structured observed counts are committed in `d1-tower-root-scoped-source-census-20261007.json`. The full local logs were inspected; the local execution service later stopped responding before their raw files could be archived, so the structured count checkpoint explicitly records that limitation.
+
+## Actual sequencer VM cross-check checkpoint
+
+The separate sequencer VM is `237710`, opcode jump table `239138`. Its own Rand/Spline4/Spline8/chain/Gradient4/Gradient8 handler entries were recovered at `238085/238B2F/238BA9/238C95/238D9C/238EC4`. A targeted CI job now executes these native handlers against the existing 209 material-TFX witnesses. That additional run is pending; it must not be described as passed until its result is retrieved. The owned executable is pinned and removed before artifact upload. Source scalar and runtime ownership semantics remain unclosed regardless of arithmetic equivalence.
