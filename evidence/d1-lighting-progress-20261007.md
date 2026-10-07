@@ -33,3 +33,13 @@ Final production importer census: **737/737 local lights, 497/497 local light ma
 - Screen-space ambient occlusion, live settings overrides, dynamic curve updates and rendered comparisons across destinations remain unvalidated.
 
 Source assets and executable bytes are not redistributed by these scripts or evidence files.
+
+## Cosmodrome expansion checkpoint
+
+Recovered 21 initial Cosmodrome destination snapshots and 13 shared dependency snapshots. The 100-package source audit identifies 127,428 current tags, 956 relevant source rows and zero source parsing errors. The initial inventory filter omitted the hexadecimal destination family `026d`; it is being added, so this result covers the 42 recovered light-collection tables rather than all Cosmodrome content.
+
+The exact authored sun component `80CEC1A2` points to `80CEC1A4`, cycle 3600 seconds, initial phase 0.7699999809265137. The phase fix is exercised on real nonzero source data.
+
+Production commit `722a9e73` fixes a cross-destination import abort: source collection `80CEABCE`, record 41, has a reciprocal difference of 80.0000114440918 versus the equation's 80.0. The validator now retains its 1e-5 near-zero floor and adds a two-f32-epsilon scale allowance. Non-finite and materially incorrect values remain rejected. Exact source entry identities and arithmetic are in `d1-light-volume-rounding-source-20261007.json`; the full importer suite now passes **312 tests**.
+
+The recovered 42-table Cosmodrome census translates **2,250/2,250 local lights and 1,788/1,788 materials**, with 65 lighting programs, 364 constant programs, six textures, zero unbounded records and zero translation failures. See `d1-cosmo-lighting-importer-source-census-20261007.log`. This synthetic source census uses the Tower Activity root as a diagnostic placeholder; it does not close actual Cosmodrome Activity/environment joins or rendered image fidelity.
