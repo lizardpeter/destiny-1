@@ -42,58 +42,85 @@ jobs:
           curl --fail --location --retry 3             'https://raw.githubusercontent.com/v4nguard/tiger-pkg/657f41c0851001b2d371592b2f7a5cb9c686ddb4/liblinoodle3.so'             -o runtime/liblinoodle3.so
           echo '0167cfd2b31623ce15afd129c3ad568776d63af223824ab085254b7ea0730e35  runtime/liblinoodle3.so' | sha256sum --check --strict
 
-      - name: Probe exact Tower sun EntityResource
+      - name: Probe exact Tower SMapData sun resources
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
         run: |
           set -euo pipefail
-          python tools/d1_remote_filehash_probe.py             --tag-hash "$RESOURCE_HASH"             --package-list reports/packages.txt             --runtime runtime             --base-url "$BASE_URL"             --payload-out-dir payloads             --out reports/sun_entity_resource.json
+          for TABLE in 80CA0B18 80C984AA; do
+            python tools/d1_remote_filehash_probe.py \
+              --tag-hash "$TABLE" \
+              --package-list reports/packages.txt \
+              --runtime runtime \
+              --base-url "$BASE_URL" \
+              --payload-out-dir payloads \
+              --out "reports/map_$TABLE.json"
+          done
 
           python - <<'PY'
-          import json,struct,pathlib
-          h='80AAE484'
-          p=pathlib.Path('payloads')/(h+'.bin')
-          b=p.read_bytes()
-          if len(b)<0x78:
-              raise SystemExit(f'{h} payload too small: {len(b)}')
-          # Preserved exact census proves EntityResource +0x08 pointer target is
-          # object offset 0x68, class 80801B13; retail layout places Sun FileHash
-          # at object +0x0C => payload offset 0x74.
-          sun=struct.unpack_from('<I',b,0x74)[0]
+          import json,struct,pathlib,hashlib
+          rows=[]
+          suns=[]
+          for h in ('80CA0B18','80C984AA'):
+              b=(pathlib.Path('payloads')/(h+'.bin')).read_bytes()
+              obj=0x1f8
+              cls=struct.unpack_from('<I',b,obj-4)[0]
+              sun=struct.unpack_from('<I',b,obj+0x0c)[0]
+              row={
+                'map_data_table':h,
+                'payload_sha256':hashlib.sha256(b).hexdigest(),
+                'resource_absolute':'0x1F8',
+                'resource_class':f'{cls:08X}',
+                'sun_filehash_offset':'0x204',
+                'sun_tag':f'{sun:08X}',
+                'resource_bytes':b[obj:obj+0x40].hex(),
+              }
+              if cls != 0x80801B13:
+                  raise SystemExit(f'{h}: resource class {cls:08X} != 80801B13')
+              if sun not in (0,0xffffffff):
+                  suns.append(f'{sun:08X}')
+              rows.append(row)
+          if not suns:
+              raise SystemExit('no non-null sun FileHash in exact Tower SMapData resources')
           out={
-            'status':'EXACT_TOWER_SUN_RESOURCE_FOLLOWED',
-            'entity_resource':h,
-            'payload_sha256':__import__('hashlib').sha256(b).hexdigest(),
-            'sun_object_offset':'0x68',
-            'sun_object_class':'80801B13',
-            'sun_filehash_field_offset':'0x74',
-            'sun_tag':f'{sun:08X}',
-            'sun_object_prefix_0x68_0x90':b[0x68:0x90].hex(),
+            'status':'EXACT_TOWER_SMAPDATA_SUN_RESOURCES_FOLLOWED',
+            'rows':rows,
+            'unique_non_null_sun_tags':sorted(set(suns)),
+            'proof':'resource absolute/class comes from exact current Tower map-data census; +0x0C is the eboot/Rust importer sun FileHash field'
           }
           pathlib.Path('reports/sun_resource_follow.json').write_text(json.dumps(out,indent=2)+'\n')
+          pathlib.Path('reports/sun_tags.txt').write_text('\n'.join(sorted(set(suns)))+'\n')
           print(json.dumps(out,indent=2))
-          print(f'SUN_TAG={sun:08X}')
-          pathlib.Path('reports/sun_tag.txt').write_text(f'{sun:08X}\n')
           PY
 
-      - name: Probe exact Tower sun tag and time fields
+      - name: Probe exact Tower sun tag time fields
         env:
           LINOODLE_SKIP_DLLMAIN: '1'
         run: |
           set -euo pipefail
-          SUN_TAG="$(cat reports/sun_tag.txt)"
-          python tools/d1_remote_filehash_probe.py             --tag-hash "$SUN_TAG"             --package-list reports/packages.txt             --runtime runtime             --base-url "$BASE_URL"             --payload-out-dir payloads             --out reports/sun_tag_probe.json
-
-          python - <<'PY'
-          import json,struct,pathlib,hashlib,math
-          h=pathlib.Path('reports/sun_tag.txt').read_text().strip()
-          b=(pathlib.Path('payloads')/(h+'.bin')).read_bytes()
+          : > reports/tower_sun_time_fields.jsonl
+          while read -r SUN_TAG; do
+            test -n "$SUN_TAG"
+            python tools/d1_remote_filehash_probe.py \
+              --tag-hash "$SUN_TAG" \
+              --package-list reports/packages.txt \
+              --runtime runtime \
+              --base-url "$BASE_URL" \
+              --payload-out-dir payloads \
+              --out "reports/sun_tag_$SUN_TAG.json"
+            SUN_TAG="$SUN_TAG" python - <<'PY'
+          import json,struct,pathlib,hashlib,os
+          h=os.environ['SUN_TAG']
+          p=pathlib.Path('payloads')/(h+'.bin')
+          if not p.exists():
+              raise SystemExit(f'sun payload not recovered: {h}')
+          b=p.read_bytes()
           if len(b)<0x20:
               raise SystemExit(f'sun tag {h} too small: {len(b)}')
           u32=lambda o: struct.unpack_from('<I',b,o)[0]
           f32=lambda o: struct.unpack_from('<f',b,o)[0]
           out={
-            'schema':'d1_tower_exact_sun_component/v1',
+            'schema':'d1_tower_exact_sun_component/v2',
             'status':'EXACT_CURRENT_TOWER_SUN_TIME_FIELDS_CAPTURED',
             'sun_tag':h,
             'payload_sha256':hashlib.sha256(b).hexdigest(),
@@ -111,14 +138,14 @@ jobs:
             },
             'eboot_contract':{
               'loader':'0x8B2BF9',
-              'known_rule':'fixed/paused activities use frac(component+0x14); live-cycle activities use frac(runtime_clock + component+0x14) with component+0x10 cycle seconds',
-              'semantic_boundary':'This probe records exact serialized fields; fixed-vs-live flag identity is taken only from exact eboot decompilation, not guessed from field values.'
+              'known_rule':'if component+0x10 > 0 use live timer/cycle path; both paths add component+0x14 then normalize/fraction before storing time-of-day',
             }
           }
-          pathlib.Path('reports/tower_sun_time_fields.json').write_text(json.dumps(out,indent=2)+'\n')
+          with open('reports/tower_sun_time_fields.jsonl','a') as fp:
+              fp.write(json.dumps(out)+'\n')
           print(json.dumps(out,indent=2))
           PY
-
+          done < reports/sun_tags.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
