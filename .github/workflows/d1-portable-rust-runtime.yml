@@ -1,0 +1,105 @@
+name: Portable Rust importer validation runtime
+on:
+  push:
+    paths: ['.github/workflows/d1-portable-rust-runtime.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch public importer dependencies and package compiler
+        run: |
+          set -euo pipefail
+          mkdir -p build/runtime/dependencies/src
+          cat > build/runtime/dependencies/Cargo.toml <<'EOF'
+          [package]
+          name = "d1-public-dependency-cache"
+          version = "0.0.0"
+          edition = "2021"
+          [dependencies]
+          serde = { version = "1", features = ["derive"] }
+          glam = "0.30"
+          bytemuck = { version = "1", features = ["derive"] }
+          lewton = "0.10.2"
+          tar = { version = "0.4.46", default-features = false }
+          ww2ogg = { git = "https://github.com/cohaereo/ww2ogg-rs" }
+          libloading = "0.8.9"
+          EOF
+          touch build/runtime/dependencies/src/lib.rs
+          cargo fetch --manifest-path build/runtime/dependencies/Cargo.toml
+          compiler_root="$(dirname "$(dirname "$(rustup which rustc)")")"
+          cp -a "$compiler_root" build/runtime/rust-toolchain
+          mkdir -p build/runtime/cargo-home
+          cp -a "$HOME/.cargo/registry" "$HOME/.cargo/git" build/runtime/cargo-home/
+          rustc --version --verbose > build/runtime/compiler-version.txt
+          tar --exclude='rust-toolchain/share/doc' --exclude='rust-toolchain/share/man' -C build/runtime -cJf build/d1-rust-runtime.tar.xz rust-toolchain cargo-home dependencies compiler-version.txt
+          sha256sum build/d1-rust-runtime.tar.xz > build/runtime-sha256.txt
+          split -b 24M -d -a 3 build/d1-rust-runtime.tar.xz build/runtime-part-
+          sha256sum build/runtime-part-* >> build/runtime-sha256.txt
+          cat build/runtime-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-000
+          path: build/runtime-part-000
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-001
+          path: build/runtime-part-001
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-002
+          path: build/runtime-part-002
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-003
+          path: build/runtime-part-003
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-004
+          path: build/runtime-part-004
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-005
+          path: build/runtime-part-005
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-006
+          path: build/runtime-part-006
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-007
+          path: build/runtime-part-007
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-rust-runtime-manifest
+          path: build/runtime-sha256.txt
+          retention-days: 7
