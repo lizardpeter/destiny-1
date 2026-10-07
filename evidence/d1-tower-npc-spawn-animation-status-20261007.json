@@ -1,0 +1,51 @@
+{
+  "schema": "d1-tower-npc-spawn-animation-status-v2",
+  "date": "2026-10-07",
+  "production_repository": "lizardpeter/Rust-test",
+  "latest_audit_commit": "df1acee7874a3b0e24db1e8afb24eceda08742b2",
+  "source_acquisition": {
+    "physical_packages": 112,
+    "bytes": 3527491584,
+    "manifest": "d1-tower-npc-acquisition-20261007.json"
+  },
+  "verified": {
+    "audit_exit_code": 0,
+    "activity_scopes": 8,
+    "finite_source_actor_placements": 55,
+    "visual_families": 13,
+    "rig_sizes": 6,
+    "mesh_ranges_admitted": 448,
+    "mesh_ranges_source": 448,
+    "triangles_admitted": 436333,
+    "triangles_source": 436333,
+    "animated_families": 13,
+    "weighted_vertex_motion_families": 13,
+    "weighted_vertex_sampling": "up to approximately 256 vertices per source mesh range, evaluated at four clip phases against phase 0.375",
+    "repeat_cycles": [
+      1,
+      2,
+      5,
+      20
+    ],
+    "source_backed_fallback_ranges": 448,
+    "universal_program_ranges": 0,
+    "importer_tests": 329,
+    "character_path_tests": 24
+  },
+  "fixes": [
+    "Per-actor exact source ownership and animation ownership admission; full strict source census retained",
+    "Named Tower scenario imports use the scenario scope; Tower destination host preview examines all eight source scenarios",
+    "Native shared-component prefix retargeting covers all six target rig sizes with authored bind pose for unmatched tails",
+    "Exact material errors isolate source ranges instead of rejecting an entire family",
+    "Shader payload footer boundary admits serialized embedded buffer suffixes; API15 binds bit-exact serialized embedded constants",
+    "GCN V_READFIRSTLANE_B32 reads first EXEC-enabled lane into scalar destination with lane-zero empty-mask semantics"
+  ],
+  "boundaries": [
+    "Host preview placements do not prove retail simultaneous activation or native startup/idle state",
+    "No GPU device or Vulkan ICD in this execution workspace; default renderer visibility not validated",
+    "Full application build not performed; production importer and actual focused NPC bridge compile and pass tests",
+    "All NPC material ranges currently use source-backed baked fallback; universal vertex shader translation remains blocked at encoding ebf32000",
+    "Facial runtime behavior, AI interaction, and source animation transitions are not validated"
+  ],
+  "evidence_log": "d1-tower-npc-weighted-animation-audit-20261007.log"
+}
