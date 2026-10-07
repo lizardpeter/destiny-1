@@ -1,0 +1,127 @@
+name: D1 Global Lighting and Sun Time Decompile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-global-lighting-sun-time-decompile.yml'
+      - 'tools/ghidra/D1ExportFunctionOffsets.py'
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EBOOT_URL: https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin
+      EBOOT_SHA256: 672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833
+      EBOOT_SIZE: '29249016'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact owner-provided eboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-global-lighting-time
+          curl --fail --location --retry 4 --retry-delay 2 "$EBOOT_URL"             -o build/d1-global-lighting-time/eboot.bin
+          test "$(stat -c %s build/d1-global-lighting-time/eboot.bin)" = "$EBOOT_SIZE"
+          echo "$EBOOT_SHA256  build/d1-global-lighting-time/eboot.bin" | sha256sum --check --strict
+
+      - name: Download Ghidra
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request(
+              'https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest',
+              headers={
+                  'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                  'Accept':'application/vnd.github+json',
+                  'User-Agent':'d1-global-lighting-sun-time',
+              })
+          with urllib.request.urlopen(req) as r: rel=json.load(r)
+          assets=[x for x in rel.get('assets',[]) if x.get('name','').endswith('.zip') and 'PUBLIC' in x.get('name','')]
+          if not assets: raise SystemExit('no Ghidra PUBLIC zip')
+          open('build/d1-global-lighting-time/ghidra_url.txt','w').write(assets[0]['browser_download_url']+'\n')
+          PY
+          curl --fail --location --retry 4             "$(cat build/d1-global-lighting-time/ghidra_url.txt)"             -o build/d1-global-lighting-time/ghidra.zip
+          unzip -q build/d1-global-lighting-time/ghidra.zip -d build/d1-global-lighting-time/
+          GHIDRA_DIR="$(find build/d1-global-lighting-time -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          test -n "$GHIDRA_DIR"
+          echo "GHIDRA_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+
+      - name: Install bundled PyGhidra
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet             --no-index             --find-links "$GHIDRA_DIR/Ghidra/Features/PyGhidra/pypkg/dist"             pyghidra
+
+      - name: Decompile exact global-lighting and sun-time frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/d1-global-lighting-time/project
+          "$GHIDRA_DIR/support/pyghidraRun" --headless             build/d1-global-lighting-time/project D1GlobalLightingTime             -import build/d1-global-lighting-time/eboot.bin             -overwrite             -analysisTimeoutPerFile 3600             -scriptPath "$GITHUB_WORKSPACE/tools/ghidra"             -postScript D1ExportFunctionOffsets.py               "$GITHUB_WORKSPACE/build/d1-global-lighting-time/functions.json"               2               0x8AFCC0 0x88E806 0x8B2020 0x8B2BF9               0x8B2B00 0x8B2C80 0x8AFB00 0x8AFE80
+
+      - name: Extract exact evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,re
+          src=json.load(open('build/d1-global-lighting-time/functions.json'))
+          rows=[]
+          needles=[
+              '0x3c','0x40','0x50','0x54',
+              '+ 0x3c','+ 0x40','+ 0x50','+ 0x54',
+              '0x10','0x14','0x18','0x1c',
+              '8afcc0','88e806','8b2020','8b2bf9',
+          ]
+          for f in src.get('functions',[]):
+              c=(f.get('decompilation') or {}).get('c') or ''
+              if f.get('requested') or any(n.lower() in c.lower() for n in needles):
+                  rows.append({
+                      'image_offset':f.get('image_offset'),
+                      'image_offset_hex':hex(f.get('image_offset',0)),
+                      'name':f.get('name'),
+                      'prototype':f.get('prototype'),
+                      'requested':f.get('requested'),
+                      'decompilation':c,
+                      'instructions':f.get('instructions') or [],
+                  })
+          out={
+              'schema':'d1_global_lighting_sun_time_decompile/v1',
+              'status':'EXACT_CUSA00219_0133_GLOBAL_LIGHTING_SUN_TIME_DECOMPILED',
+              'executable_sha256':'672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833',
+              'functions':rows,
+              'proof_boundary':'Exact-build decompilation. Semantic names are promoted only where dataflow and known TFX/layout consumers agree.'
+          }
+          open('build/d1-global-lighting-time/compact.json','w').write(json.dumps(out,indent=2)+'\n')
+          for f in rows:
+              print('\n==',f['image_offset_hex'],f['name'],f['prototype'],'==')
+              print(f['decompilation'][:30000])
+          PY
+
+      - name: Remove raw binaries
+        if: always()
+        run: |
+          rm -f build/d1-global-lighting-time/eboot.bin                 build/d1-global-lighting-time/ghidra.zip
+          rm -rf "$GHIDRA_DIR" build/d1-global-lighting-time/project
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-global-lighting-sun-time-decompile
+          path: |
+            build/d1-global-lighting-time/functions.json
+            build/d1-global-lighting-time/compact.json
+            build/d1-global-lighting-time/ghidra_url.txt
+          retention-days: 30
