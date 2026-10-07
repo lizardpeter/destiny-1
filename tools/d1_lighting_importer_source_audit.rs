@@ -39,6 +39,8 @@ fn main() -> Result<()> {
     // placeholder. Scenario activities have a different source layout, so
     // permit an explicit root and keep that distinction visible in the log.
     let mut activity = None;
+    let mut scenario_tables = false;
+    let mut map_tables = false;
     let mut tables = Vec::new();
     let mut remaining = args.iter().skip(2);
     let parse_hash = |s: &str| -> Result<u32> {
@@ -46,7 +48,11 @@ fn main() -> Result<()> {
             .map_err(|_| Error::Invalid(format!("invalid source TagHash {s:?}")))
     };
     while let Some(arg) = remaining.next() {
-        if arg == "--activity" {
+        if arg == "--scenario-tables" {
+            scenario_tables = true;
+        } else if arg == "--map-tables" {
+            map_tables = true;
+        } else if arg == "--activity" {
             if activity.is_some() {
                 return Err(Error::Invalid("--activity supplied more than once".into()));
             }
@@ -57,7 +63,35 @@ fn main() -> Result<()> {
             tables.push(parse_hash(arg)?);
         }
     }
-    let tables = if tables.is_empty() { vec![0x80C984AA, 0x80CA0B18] } else { tables };
+    if (scenario_tables || map_tables) && (activity.is_none() || !tables.is_empty() || (scenario_tables && map_tables)) {
+        return Err(Error::Invalid("choose one of --scenario-tables/--map-tables, with --activity and no explicit table hashes".into()));
+    }
+    if let Some(activity) = activity {
+        if map_tables {
+            tables = destiny1_importer::d1_map::activity_map_tables(&archive, activity)?;
+            println!("DESTINATION_MAP_TABLES {:?}", tables.iter().map(|h| format!("{h:08X}")).collect::<Vec<_>>());
+        } else {
+        let placed = destiny1_importer::world_activity::decode_activity_entity_placements(&archive, activity)?;
+        println!("ACTIVITY_PLACEMENTS {:?}", placed.census);
+        println!("ACTIVITY_TABLES {:?}", placed.map_data_tables.iter().map(|h| format!("{h:08X}")).collect::<Vec<_>>());
+        match destiny1_importer::global_channel_sequencer::decode_activity_global_channel_sequencers(
+            &archive, activity, &globals.defaults,
+        ) {
+            Ok(plan) => {
+                println!("ACTIVITY_SEQUENCERS RESOURCES {:?} PROGRAMS {}", plan.resource_hashes.iter().map(|h| format!("{h:08X}")).collect::<Vec<_>>(), plan.programs.len());
+                for program in &plan.programs {
+                    println!("ACTIVITY_PROGRAM RESOURCE {:08X} CHANNEL {:02X} REQUIREMENTS {:?}",
+                        program.resource_hash, program.global_channel_index,
+                        destiny1_importer::global_channel_sequencer::global_channel_sequencer_requirements(program)?);
+                }
+            }
+            Err(error) => println!("ACTIVITY_SEQUENCERS UNAVAILABLE {error}"),
+        }
+        if scenario_tables { tables = placed.map_data_tables; }
+        }
+    }
+    let tables = if tables.is_empty() && !scenario_tables && !map_tables { vec![0x80C984AA, 0x80CA0B18] } else { tables };
+    println!("TABLE_SCOPE {}", if scenario_tables { "SCENARIO_ENTITY_LAYER" } else if map_tables { "DESTINATION_BUBBLE_GRAPH" } else { "EXPLICIT_OR_DIAGNOSTIC_TABLE_CENSUS" });
     println!("ACTIVITY_ROOT {:08X} DIAGNOSTIC_PLACEHOLDER {}", activity.unwrap_or(0x80C98019), activity.is_none());
     let lighting = destiny1_importer::d1_scene_lighting::build_d1_scene_lighting(&archive, activity.unwrap_or(0x80C98019), &tables)?;
     println!("LIGHTING PROGRAMS {} LIGHTS {} TEXTURES {}", lighting.programs.len(),
