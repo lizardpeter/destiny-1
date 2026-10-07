@@ -1,0 +1,77 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_city_tower_activities_act_023d_0.pkg",
+      "bytes": 1544192,
+      "sha256": "a69fc58b6692ac55e08da03c2364058351fbb85db8e06387a28de3cf4748a076",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_0.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_1.pkg",
+      "bytes": 835584,
+      "sha256": "7386776a514488b2ee89fb3259aaa79f1bdaab3991181ea2bd423ab893bfc0f5",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_1.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_2.pkg",
+      "bytes": 49981440,
+      "sha256": "6c51c45edcefcfc4954d0adcbe4c84b17d67c02a5d39512639987063880118f0",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_2.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_3.pkg",
+      "bytes": 4132864,
+      "sha256": "71fe16c95cdaa4dc4119f75c34a3af2ace7798819460f97fa1656624782170b3",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_3.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_4.pkg",
+      "bytes": 42117120,
+      "sha256": "ec698392d37149c03d678dbd8605d66a36084bea4b41d77c7daef7894b1526a9",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_4.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 131072,
+      "sha256": "de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_5.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_0.pkg",
+      "bytes": 46385152,
+      "sha256": "cf483101913c7f640b85679216075dad5d1292c001430bc6b9e066d3e6fa29dd",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_0.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_1.pkg",
+      "bytes": 19652608,
+      "sha256": "9acf40811494a8d33afd2f1094d0b658b59dc22f8bb0dc84863e481f5f095af3",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_1.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_2.pkg",
+      "bytes": 892928,
+      "sha256": "61eb14b4d3e1cc3bce10917a1a750117c34b758fcc456aeebc90ad2949f0ec2e",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_2.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_3.pkg",
+      "bytes": 92160,
+      "sha256": "bd34e7681b87d79e7f88335741f6189ab0c09100132e84c0af8df9c7c6cf6c19",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_3.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_4.pkg",
+      "bytes": 108544,
+      "sha256": "06e431d8c54cba3d03dd55b18661aa484e5cb9beb8c364a8088460929d431a14",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_4.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_5.pkg",
+      "bytes": 110592,
+      "sha256": "1537bc62b74f19065c7e1416e3a7eb2b49429f6458024f716ecb255e871f93bf",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_5.pkg"
+    }
+  ]
+}
