@@ -1,0 +1,167 @@
+{
+  "schema": "d1-tfx-rand-native-oracle-v1",
+  "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "handler_va": "0x829c92",
+  "exit_jump_va": "0x829d61",
+  "patch": "only final dispatch jump changed to ret+nops; arithmetic unchanged",
+  "kernel_bytes": "c4c17970da00c5f96f05c092e300c5e1dbc8c5fa5bd3c5f85beac5f96f15bc92e300c5e966e1c5e0c2f501c5f8280d4b92e300c5c854f1c5d05cee49ffc5c5d9dbedc5d9dfdbc5d1ebdbc5e0591d9c92e300c5f970e34ec5e058dcc5f970e393c5e058dcc5e054e0c5e966e4c5d9dfebc5fa5bf3c5f85bf6c5e0c2fe01c5c054f9c5c85cf7c5d9dbe6c5d9ebe5c5e05cdcc5e059dbc5e0591d8192e300c5e054c0c5e966c0c5f9dfd3c5fa5be3c5f85be4c5e0c2ec01c5d054c9c5d85cc9c5f9dbc1c5f9ebc2c5605cd0c441782916e9c2140000",
+  "coefficient_bits": [
+    "0x3f7553f7",
+    "0x3fa11d0e",
+    "0x410ca03f",
+    "0x4284710a"
+  ],
+  "coefficient_order": "floor(x) times each coefficient, then (lane0+lane2)+(lane1+lane3)",
+  "cases": [
+    {
+      "input_x_bits": "0x00000000",
+      "input_x": 0.0,
+      "output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ]
+    },
+    {
+      "input_x_bits": "0x80000000",
+      "input_x": -0.0,
+      "output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ]
+    },
+    {
+      "input_x_bits": "0x3f000000",
+      "input_x": 0.5,
+      "output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ]
+    },
+    {
+      "input_x_bits": "0xbf000000",
+      "input_x": -0.5,
+      "output_bits": [
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000"
+      ]
+    },
+    {
+      "input_x_bits": "0x3f800000",
+      "input_x": 1.0,
+      "output_bits": [
+        "0x3f6c85f0",
+        "0x3f6c85f0",
+        "0x3f6c85f0",
+        "0x3f6c85f0"
+      ]
+    },
+    {
+      "input_x_bits": "0x40000000",
+      "input_x": 2.0,
+      "output_bits": [
+        "0x3f3217c0",
+        "0x3f3217c0",
+        "0x3f3217c0",
+        "0x3f3217c0"
+      ]
+    },
+    {
+      "input_x_bits": "0x40400000",
+      "input_x": 3.0,
+      "output_bits": [
+        "0x3ea16a00",
+        "0x3ea16a00",
+        "0x3ea16a00",
+        "0x3ea16a00"
+      ]
+    },
+    {
+      "input_x_bits": "0xbf800000",
+      "input_x": -1.0,
+      "output_bits": [
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000"
+      ]
+    },
+    {
+      "input_x_bits": "0xc0000000",
+      "input_x": -2.0,
+      "output_bits": [
+        "0x3f5fe400",
+        "0x3f5fe400",
+        "0x3f5fe400",
+        "0x3f5fe400"
+      ]
+    },
+    {
+      "input_x_bits": "0xc0b00000",
+      "input_x": -5.5,
+      "output_bits": [
+        "0x3eab3a00",
+        "0x3eab3a00",
+        "0x3eab3a00",
+        "0x3eab3a00"
+      ]
+    },
+    {
+      "input_x_bits": "0x41f80000",
+      "input_x": 31.0,
+      "output_bits": [
+        "0x3e984966",
+        "0x3e984966",
+        "0x3e984966",
+        "0x3e984966"
+      ]
+    },
+    {
+      "input_x_bits": "0x42fe0000",
+      "input_x": 127.0,
+      "output_bits": [
+        "0x3dc82800",
+        "0x3dc82800",
+        "0x3dc82800",
+        "0x3dc82800"
+      ]
+    },
+    {
+      "input_x_bits": "0x44800000",
+      "input_x": 1024.0,
+      "output_bits": [
+        "0x3ed56000",
+        "0x3ed56000",
+        "0x3ed56000",
+        "0x3ed56000"
+      ]
+    },
+    {
+      "input_x_bits": "0x45fff800",
+      "input_x": 8191.0,
+      "output_bits": [
+        "0x3d400000",
+        "0x3d400000",
+        "0x3d400000",
+        "0x3d400000"
+      ]
+    },
+    {
+      "input_x_bits": "0x4b000000",
+      "input_x": 8388608.0,
+      "output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ]
+    }
+  ]
+}
