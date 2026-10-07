@@ -1,0 +1,17 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_arch_fallen_com01_0753_0.pkg",
+      "bytes": 47947776,
+      "sha256": "2e6ccd17e3a9b4995c39b95ee83cb628c5033323ff2622afa37805c175e4034e",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_fallen_com01_0753_0.pkg"
+    },
+    {
+      "name": "ps4_arch_fallen_com01_0753_1.pkg",
+      "bytes": 37697536,
+      "sha256": "bfc9d8046ffa5d9611bd7894a77210c2ca3591fdd7aa2d5c66937bda4912fca6",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_fallen_com01_0753_1.pkg"
+    }
+  ]
+}
