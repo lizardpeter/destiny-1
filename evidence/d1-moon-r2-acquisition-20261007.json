@@ -1,0 +1,77 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_moon_destination_02b7_0.pkg",
+      "bytes": 79626240,
+      "sha256": "ca0a2ae264fef5f91f9f74d07f07afa6bdbfaf54072ff28cf7e70c5655a1f2d6",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02b7_0.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02b7_1.pkg",
+      "bytes": 19728384,
+      "sha256": "3bc9d1195728cff374e8bcbad1ae73094e0a7495e8087bee21e6698d3f33fe91",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02b7_1.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02b7_2.pkg",
+      "bytes": 32200704,
+      "sha256": "c453a215714a22cb5cd74499426aa92292152718e81e8157d47e84c5746843e8",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02b7_2.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02b7_3.pkg",
+      "bytes": 159744,
+      "sha256": "9ceb1469686a8b6db299348774d3b0eb6039e5166c3492d20ba89ed5aeb1fca4",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02b7_3.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02ba_0.pkg",
+      "bytes": 123754496,
+      "sha256": "06920d6a7e8dbcce47c29686ab763189ffe0c2bc7f9878e66cca4f1a8619c6c8",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02ba_0.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02ba_1.pkg",
+      "bytes": 10663936,
+      "sha256": "a5a94d3c5c806af20eb74f1001c849c6e9cb937ec1fc307d224fc4f8a406f24b",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02ba_1.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02ba_2.pkg",
+      "bytes": 10778624,
+      "sha256": "d05c26b24e65f3679cbff9a295f122cba431ab49a90c3eda8ffbf75b4a8b24df",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02ba_2.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02ba_4.pkg",
+      "bytes": 342016,
+      "sha256": "24d33d866e7942c49a598202df18771ce8c1a8034e61d09e06e443f63bc9fc58",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02ba_4.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02bb_0.pkg",
+      "bytes": 265455616,
+      "sha256": "585477fa28bdd2d017fdbceffc146eb3113f814ab4f2be97d7c779b493e69062",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02bb_0.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02bb_1.pkg",
+      "bytes": 12853248,
+      "sha256": "d720f8339397d5342ae07f82ab4d79c9570e42792cf22a7f5d398a57c4035efa",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02bb_1.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02bb_2.pkg",
+      "bytes": 9553920,
+      "sha256": "a8b7172c1f1a2d76acddcdea9e7dad0c1b94deb3cec1a38d203ad070d8de62d6",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02bb_2.pkg"
+    },
+    {
+      "name": "ps4_moon_destination_02bb_3.pkg",
+      "bytes": 178176,
+      "sha256": "3c89620a43a40b0fc07a3ec9062dc9a07de1d1a4de593d1ff4cf587e45f5dc38",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_moon_destination_02bb_3.pkg"
+    }
+  ]
+}
