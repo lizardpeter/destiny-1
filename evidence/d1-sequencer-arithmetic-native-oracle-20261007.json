@@ -1,0 +1,3009 @@
+{
+  "schema": "d1-sequencer-arithmetic-native-oracle-v1",
+  "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "vm_entry": "0x237710",
+  "jump_table": "0x239138",
+  "ranges": [
+    {
+      "opcode": 42,
+      "start": "0x238085",
+      "exit": "0x238153",
+      "bytes": "c5f970df00c5f96f056e793e01c5e1dbc8c5fa5bd3c5f85beac5f96f156a793e01c5e966e1c5e0c2f501c5f8280df9783e01c5c854f1c5d05cee49ffc4c5d9dbedc5d9dfdbc5d1ebdbc5e0591d4a793e01c5f970e34ec5e058dcc5f970e393c5e058dcc5e054e0c5e966e4c5d9dfebc5fa5bf3c5f85bf6c5e0c2fe01c5c054f9c5c85cf7c5d9dbe6c5d9ebe5c5e05cdcc5e059dbc5e0591d2f793e01c5e054c0c5e966c0c5f9dfd3c5fa5be3c5f85be4c5e0c2ec01c5d054c9c5d85cc9c5f9dbc1c5f9ebc2c5e05cf8c4c178293fe9780f0000",
+      "assembly": [
+        "238085 vpshufd xmm3, xmm7, 0",
+        "23808a vmovdqa xmm0, xmmword ptr [rip + 0x13e796e]",
+        "238092 vpand xmm1, xmm3, xmm0",
+        "238096 vcvttps2dq xmm2, xmm3",
+        "23809a vcvtdq2ps xmm5, xmm2",
+        "23809e vmovdqa xmm2, xmmword ptr [rip + 0x13e796a]",
+        "2380a6 vpcmpgtd xmm4, xmm2, xmm1",
+        "2380aa vcmpltps xmm6, xmm3, xmm5",
+        "2380af vmovaps xmm1, xmmword ptr [rip + 0x13e78f9]",
+        "2380b7 vandps xmm6, xmm6, xmm1",
+        "2380bb vsubps xmm5, xmm5, xmm6",
+        "2380bf inc r12",
+        "2380c2 vpand xmm5, xmm4, xmm5",
+        "2380c6 vpandn xmm3, xmm4, xmm3",
+        "2380ca vpor xmm3, xmm5, xmm3",
+        "2380ce vmulps xmm3, xmm3, xmmword ptr [rip + 0x13e794a]",
+        "2380d6 vpshufd xmm4, xmm3, 0x4e",
+        "2380db vaddps xmm3, xmm3, xmm4",
+        "2380df vpshufd xmm4, xmm3, 0x93",
+        "2380e4 vaddps xmm3, xmm3, xmm4",
+        "2380e8 vandps xmm4, xmm3, xmm0",
+        "2380ec vpcmpgtd xmm4, xmm2, xmm4",
+        "2380f0 vpandn xmm5, xmm4, xmm3",
+        "2380f4 vcvttps2dq xmm6, xmm3",
+        "2380f8 vcvtdq2ps xmm6, xmm6",
+        "2380fc vcmpltps xmm7, xmm3, xmm6",
+        "238101 vandps xmm7, xmm7, xmm1",
+        "238105 vsubps xmm6, xmm6, xmm7",
+        "238109 vpand xmm4, xmm4, xmm6",
+        "23810d vpor xmm4, xmm4, xmm5",
+        "238111 vsubps xmm3, xmm3, xmm4",
+        "238115 vmulps xmm3, xmm3, xmm3",
+        "238119 vmulps xmm3, xmm3, xmmword ptr [rip + 0x13e792f]",
+        "238121 vandps xmm0, xmm3, xmm0",
+        "238125 vpcmpgtd xmm0, xmm2, xmm0",
+        "238129 vpandn xmm2, xmm0, xmm3",
+        "23812d vcvttps2dq xmm4, xmm3",
+        "238131 vcvtdq2ps xmm4, xmm4",
+        "238135 vcmpltps xmm5, xmm3, xmm4",
+        "23813a vandps xmm1, xmm5, xmm1",
+        "23813e vsubps xmm1, xmm4, xmm1",
+        "238142 vpand xmm0, xmm0, xmm1",
+        "238146 vpor xmm0, xmm0, xmm2",
+        "23814a vsubps xmm7, xmm3, xmm0",
+        "23814e vmovaps xmmword ptr [r15], xmm7",
+        "238153 jmp 0x2390d0"
+      ]
+    },
+    {
+      "opcode": 55,
+      "start": "0x238b2f",
+      "exit": "0x238ba4",
+      "bytes": "410fb644240148c1e004c5f8100403c5f8104c0310c5f810540320c5f8105c0330c5c059e0c5c059c2c5e058c0c5f058ccc5c059d7c5e859c94983c402c5e857d2c5f058c0c5f8104c0340c5f0c2cf02c4e3690fd104c5f1efcac5f854c1c5f970c84ec5f9efc1c5f970c81bc5f9eff9c4c1797f3fe927050000",
+      "assembly": [
+        "238b2f movzx eax, byte ptr [r12 + 1]",
+        "238b35 shl rax, 4",
+        "238b39 vmovups xmm0, xmmword ptr [rbx + rax]",
+        "238b3e vmovups xmm1, xmmword ptr [rbx + rax + 0x10]",
+        "238b44 vmovups xmm2, xmmword ptr [rbx + rax + 0x20]",
+        "238b4a vmovups xmm3, xmmword ptr [rbx + rax + 0x30]",
+        "238b50 vmulps xmm4, xmm7, xmm0",
+        "238b54 vmulps xmm0, xmm7, xmm2",
+        "238b58 vaddps xmm0, xmm3, xmm0",
+        "238b5c vaddps xmm1, xmm1, xmm4",
+        "238b60 vmulps xmm2, xmm7, xmm7",
+        "238b64 vmulps xmm1, xmm2, xmm1",
+        "238b68 add r12, 2",
+        "238b6c vxorps xmm2, xmm2, xmm2",
+        "238b70 vaddps xmm0, xmm1, xmm0",
+        "238b74 vmovups xmm1, xmmword ptr [rbx + rax + 0x40]",
+        "238b7a vcmpleps xmm1, xmm1, xmm7",
+        "238b7f vpalignr xmm2, xmm2, xmm1, 4",
+        "238b85 vpxor xmm1, xmm1, xmm2",
+        "238b89 vandps xmm0, xmm0, xmm1",
+        "238b8d vpshufd xmm1, xmm0, 0x4e",
+        "238b92 vpxor xmm0, xmm0, xmm1",
+        "238b96 vpshufd xmm1, xmm0, 0x1b",
+        "238b9b vpxor xmm7, xmm0, xmm1",
+        "238b9f vmovdqa xmmword ptr [r15], xmm7",
+        "238ba4 jmp 0x2390d0"
+      ]
+    },
+    {
+      "opcode": 56,
+      "start": "0x238ba9",
+      "exit": "0x238c90",
+      "bytes": "410fb644240148c1e004c5f810440350c5f8104c0340c5c059c9c5f858d9c5f8101403c5f810740310c5f8104c0320c57810440330c5c059c2c5f810540370c5f810640360c5c059ecc5c059e7c5e858d5c5d859ebc5c858c0c5f8109c0390000000c5e0c2f702c5c059d94983c402c5f057c9c5b858dbc5d859e0c5f970c600c5d058d2c4e3710fee04c5c9efedc5e854d5c5f970ea4ec5e9efd5c5f970ea1bc5e9efd5c5f9dbd2c5d858dbc5f810a40380000000c5d8c2e702c4e3710fcc04c5d9efc9c5e054c9c5f970d94ec5f1efcbc5f970d91bc5f1efcbc5f9dfc1c5f9ebfac4c1797f3fe93b040000",
+      "assembly": [
+        "238ba9 movzx eax, byte ptr [r12 + 1]",
+        "238baf shl rax, 4",
+        "238bb3 vmovups xmm0, xmmword ptr [rbx + rax + 0x50]",
+        "238bb9 vmovups xmm1, xmmword ptr [rbx + rax + 0x40]",
+        "238bbf vmulps xmm1, xmm7, xmm1",
+        "238bc3 vaddps xmm3, xmm0, xmm1",
+        "238bc7 vmovups xmm2, xmmword ptr [rbx + rax]",
+        "238bcc vmovups xmm6, xmmword ptr [rbx + rax + 0x10]",
+        "238bd2 vmovups xmm1, xmmword ptr [rbx + rax + 0x20]",
+        "238bd8 vmovups xmm8, xmmword ptr [rbx + rax + 0x30]",
+        "238bde vmulps xmm0, xmm7, xmm2",
+        "238be2 vmovups xmm2, xmmword ptr [rbx + rax + 0x70]",
+        "238be8 vmovups xmm4, xmmword ptr [rbx + rax + 0x60]",
+        "238bee vmulps xmm5, xmm7, xmm4",
+        "238bf2 vmulps xmm4, xmm7, xmm7",
+        "238bf6 vaddps xmm2, xmm2, xmm5",
+        "238bfa vmulps xmm5, xmm4, xmm3",
+        "238bfe vaddps xmm0, xmm6, xmm0",
+        "238c02 vmovups xmm3, xmmword ptr [rbx + rax + 0x90]",
+        "238c0b vcmpleps xmm6, xmm3, xmm7",
+        "238c10 vmulps xmm3, xmm7, xmm1",
+        "238c14 add r12, 2",
+        "238c18 vxorps xmm1, xmm1, xmm1",
+        "238c1c vaddps xmm3, xmm8, xmm3",
+        "238c20 vmulps xmm4, xmm4, xmm0",
+        "238c24 vpshufd xmm0, xmm6, 0",
+        "238c29 vaddps xmm2, xmm5, xmm2",
+        "238c2d vpalignr xmm5, xmm1, xmm6, 4",
+        "238c33 vpxor xmm5, xmm6, xmm5",
+        "238c37 vandps xmm2, xmm2, xmm5",
+        "238c3b vpshufd xmm5, xmm2, 0x4e",
+        "238c40 vpxor xmm2, xmm2, xmm5",
+        "238c44 vpshufd xmm5, xmm2, 0x1b",
+        "238c49 vpxor xmm2, xmm2, xmm5",
+        "238c4d vpand xmm2, xmm0, xmm2",
+        "238c51 vaddps xmm3, xmm4, xmm3",
+        "238c55 vmovups xmm4, xmmword ptr [rbx + rax + 0x80]",
+        "238c5e vcmpleps xmm4, xmm4, xmm7",
+        "238c63 vpalignr xmm1, xmm1, xmm4, 4",
+        "238c69 vpxor xmm1, xmm4, xmm1",
+        "238c6d vandps xmm1, xmm3, xmm1",
+        "238c71 vpshufd xmm3, xmm1, 0x4e",
+        "238c76 vpxor xmm1, xmm1, xmm3",
+        "238c7a vpshufd xmm3, xmm1, 0x1b",
+        "238c7f vpxor xmm1, xmm1, xmm3",
+        "238c83 vpandn xmm0, xmm0, xmm1",
+        "238c87 vpor xmm7, xmm0, xmm2",
+        "238c8b vmovdqa xmmword ptr [r15], xmm7",
+        "238c90 jmp 0x2390d0"
+      ]
+    },
+    {
+      "opcode": 57,
+      "start": "0x238c95",
+      "exit": "0x238d97",
+      "bytes": "410fb644240148c1e004c5f8101403c5f8105c0310c5f8104c0320c5f810440330c5c059d2c5e058d2c5f8105c0370c5f810640360c5c059ecc5c059c9c5c059e7c5f858c9c5d859d2c5e058ddc5f810440350c5f8106c0340c5c059edc5f858c5c5d859e0c5f810840390000000c5f8c2c702c5d057edc4e3510ff004c5d858e3c5e858c9c5f9efd6c5f8109c0380000000c5e0c2f702c4e3510fde04c5c9efdb498d47f0c5f054dbc5d854e2c5f970ce00c4c171df57f0c5f970c0004983c402c5f970ec4ec5d9efe5c5f970ec1bc5d9efe5c5f9dbe4c5f970eb4ec5e1efddc5f970eb1bc5e1efddc5f1dbcbc5e9ebc9c5f9dfc1c5f9ebfcc4c1797f7ff04989c7e934030000",
+      "assembly": [
+        "238c95 movzx eax, byte ptr [r12 + 1]",
+        "238c9b shl rax, 4",
+        "238c9f vmovups xmm2, xmmword ptr [rbx + rax]",
+        "238ca4 vmovups xmm3, xmmword ptr [rbx + rax + 0x10]",
+        "238caa vmovups xmm1, xmmword ptr [rbx + rax + 0x20]",
+        "238cb0 vmovups xmm0, xmmword ptr [rbx + rax + 0x30]",
+        "238cb6 vmulps xmm2, xmm7, xmm2",
+        "238cba vaddps xmm2, xmm3, xmm2",
+        "238cbe vmovups xmm3, xmmword ptr [rbx + rax + 0x70]",
+        "238cc4 vmovups xmm4, xmmword ptr [rbx + rax + 0x60]",
+        "238cca vmulps xmm5, xmm7, xmm4",
+        "238cce vmulps xmm1, xmm7, xmm1",
+        "238cd2 vmulps xmm4, xmm7, xmm7",
+        "238cd6 vaddps xmm1, xmm0, xmm1",
+        "238cda vmulps xmm2, xmm4, xmm2",
+        "238cde vaddps xmm3, xmm3, xmm5",
+        "238ce2 vmovups xmm0, xmmword ptr [rbx + rax + 0x50]",
+        "238ce8 vmovups xmm5, xmmword ptr [rbx + rax + 0x40]",
+        "238cee vmulps xmm5, xmm7, xmm5",
+        "238cf2 vaddps xmm0, xmm0, xmm5",
+        "238cf6 vmulps xmm4, xmm4, xmm0",
+        "238cfa vmovups xmm0, xmmword ptr [rbx + rax + 0x90]",
+        "238d03 vcmpleps xmm0, xmm0, xmm7",
+        "238d08 vxorps xmm5, xmm5, xmm5",
+        "238d0c vpalignr xmm6, xmm5, xmm0, 4",
+        "238d12 vaddps xmm4, xmm4, xmm3",
+        "238d16 vaddps xmm1, xmm2, xmm1",
+        "238d1a vpxor xmm2, xmm0, xmm6",
+        "238d1e vmovups xmm3, xmmword ptr [rbx + rax + 0x80]",
+        "238d27 vcmpleps xmm6, xmm3, xmm7",
+        "238d2c vpalignr xmm3, xmm5, xmm6, 4",
+        "238d32 vpxor xmm3, xmm6, xmm3",
+        "238d36 lea rax, [r15 - 0x10]",
+        "238d3a vandps xmm3, xmm1, xmm3",
+        "238d3e vandps xmm4, xmm4, xmm2",
+        "238d42 vpshufd xmm1, xmm6, 0",
+        "238d47 vpandn xmm2, xmm1, xmmword ptr [r15 - 0x10]",
+        "238d4d vpshufd xmm0, xmm0, 0",
+        "238d52 add r12, 2",
+        "238d56 vpshufd xmm5, xmm4, 0x4e",
+        "238d5b vpxor xmm4, xmm4, xmm5",
+        "238d5f vpshufd xmm5, xmm4, 0x1b",
+        "238d64 vpxor xmm4, xmm4, xmm5",
+        "238d68 vpand xmm4, xmm0, xmm4",
+        "238d6c vpshufd xmm5, xmm3, 0x4e",
+        "238d71 vpxor xmm3, xmm3, xmm5",
+        "238d75 vpshufd xmm5, xmm3, 0x1b",
+        "238d7a vpxor xmm3, xmm3, xmm5",
+        "238d7e vpand xmm1, xmm1, xmm3",
+        "238d82 vpor xmm1, xmm2, xmm1",
+        "238d86 vpandn xmm0, xmm0, xmm1",
+        "238d8a vpor xmm7, xmm0, xmm4",
+        "238d8e vmovdqa xmmword ptr [r15 - 0x10], xmm7",
+        "238d94 mov r15, rax",
+        "238d97 jmp 0x2390d0"
+      ]
+    },
+    {
+      "opcode": 58,
+      "start": "0x238d9c",
+      "exit": "0x239091",
+      "bytes": "410fb644240148c1e004c5fa6f640350c5f970c439c5f9db05c76b3e01c5f9eb15df6b3e014983c402488d0d54d58801c5f82809c5f9efc0c5e85cdcc5f85cd3c5e85fd3c578101403c5f810740310c5f8106c0320c578104c0330c5f0c2ca01c57810440340c5c05ce4c5d85ed3c5f054d2c5f8c2e402c5d85425956b3e01c5f055ccc5f056cac5f05fc8c5f05d25816b3e01c5c859ccc5f058c8c5f970d14ec5f058cac5f970d193c5f058cac5d059d4c5fa10c9c5e858d0c5f970ea4ec5e858d5c5a858d9c5f970ca93c5e858c9c5f0540d4d6b3e01c5b059d4c5e858d0c5f970ea4ec5e858edc5f058d3c5f970cd93c5d058c9c5f0540d376b3e01c5b859dcc5e058c0c5f970d84ec5f858dbc5f058c2c5f970cb93c5e058c9c5f0540dd16a3e01e9c4010000410fb644240148c1e004c5fa6f9403a0000000c5fa6f9c0390000000c5f970ca00c5f970c239c5f96f2d8e6a3e01c5f9dbc5c5796f05926a3e01c5f9eb259a6a3e01c4c171dbf0c5f970c339c5f9dbc54983c402488d0d01d48801c5f82829c5f1efc9c5f858f6c5d85cc2c5f05ce0c5d85fe0c5d0c2e401c5c05cd2c5e85ec0c5d854c0c5f0c2d202c57828155b6a3e01c4c16854d2c5d855d2c5e856c0c5f85fc1c5c85cf3c5f05cd6c5e85fe6c4c1785dd2c5d0c2ec01c5f810640350c5c05cdbc5e05ec6c5d054c0c5f0c2db02c4c16054dac5d055dbc5d859f2c5e056c0c5f85fc1c578100c03c5f8105c0310c5f8106c0320c5f8107c0330c4c1785de2c5e059c4c5f858d9c5f810440370c5e058dec5f970f34ec5e058f6c5f859c2c5c059dcc5e058f9c5f8105c0360c5c058f8c5f970c693c54858d0c5e059c2c5d059dcc5e058d9c5f970ef4ec5c058edc5f810740340c5e058f8c5f810840380000000c5f859d2c5c859e4c57211d0c5b058c0c5f970df4ec5c058dbc5f970f393c5e058dec5e0541d70693e01c5e058d8c5f970c593c5d058c0c5f854056b693e01c5d858c9c5f058cac5f970d14ec5f058cac5f858c3c5f970d193c5f058cac4c17054c8c5f058f8c4c178293feb3d",
+      "assembly": [
+        "238d9c movzx eax, byte ptr [r12 + 1]",
+        "238da2 shl rax, 4",
+        "238da6 vmovdqu xmm4, xmmword ptr [rbx + rax + 0x50]",
+        "238dac vpshufd xmm0, xmm4, 0x39",
+        "238db1 vpand xmm0, xmm0, xmmword ptr [rip + 0x13e6bc7]",
+        "238db9 vpor xmm2, xmm0, xmmword ptr [rip + 0x13e6bdf]",
+        "238dc1 add r12, 2",
+        "238dc5 lea rcx, [rip + 0x188d554]",
+        "238dcc vmovaps xmm1, xmmword ptr [rcx]",
+        "238dd0 vpxor xmm0, xmm0, xmm0",
+        "238dd4 vsubps xmm3, xmm2, xmm4",
+        "238dd8 vsubps xmm2, xmm0, xmm3",
+        "238ddc vmaxps xmm2, xmm2, xmm3",
+        "238de0 vmovups xmm10, xmmword ptr [rbx + rax]",
+        "238de5 vmovups xmm6, xmmword ptr [rbx + rax + 0x10]",
+        "238deb vmovups xmm5, xmmword ptr [rbx + rax + 0x20]",
+        "238df1 vmovups xmm9, xmmword ptr [rbx + rax + 0x30]",
+        "238df7 vcmpltps xmm1, xmm1, xmm2",
+        "238dfc vmovups xmm8, xmmword ptr [rbx + rax + 0x40]",
+        "238e02 vsubps xmm4, xmm7, xmm4",
+        "238e06 vdivps xmm2, xmm4, xmm3",
+        "238e0a vandps xmm2, xmm1, xmm2",
+        "238e0e vcmpleps xmm4, xmm0, xmm4",
+        "238e13 vandps xmm4, xmm4, xmmword ptr [rip + 0x13e6b95]",
+        "238e1b vandnps xmm1, xmm1, xmm4",
+        "238e1f vorps xmm1, xmm1, xmm2",
+        "238e23 vmaxps xmm1, xmm1, xmm0",
+        "238e27 vminps xmm4, xmm1, xmmword ptr [rip + 0x13e6b81]",
+        "238e2f vmulps xmm1, xmm6, xmm4",
+        "238e33 vaddps xmm1, xmm1, xmm0",
+        "238e37 vpshufd xmm2, xmm1, 0x4e",
+        "238e3c vaddps xmm1, xmm1, xmm2",
+        "238e40 vpshufd xmm2, xmm1, 0x93",
+        "238e45 vaddps xmm1, xmm1, xmm2",
+        "238e49 vmulps xmm2, xmm5, xmm4",
+        "238e4d vmovss xmm1, xmm0, xmm1",
+        "238e51 vaddps xmm2, xmm2, xmm0",
+        "238e55 vpshufd xmm5, xmm2, 0x4e",
+        "238e5a vaddps xmm2, xmm2, xmm5",
+        "238e5e vaddps xmm3, xmm10, xmm1",
+        "238e62 vpshufd xmm1, xmm2, 0x93",
+        "238e67 vaddps xmm1, xmm2, xmm1",
+        "238e6b vandps xmm1, xmm1, xmmword ptr [rip + 0x13e6b4d]",
+        "238e73 vmulps xmm2, xmm9, xmm4",
+        "238e77 vaddps xmm2, xmm2, xmm0",
+        "238e7b vpshufd xmm5, xmm2, 0x4e",
+        "238e80 vaddps xmm5, xmm2, xmm5",
+        "238e84 vaddps xmm2, xmm1, xmm3",
+        "238e88 vpshufd xmm1, xmm5, 0x93",
+        "238e8d vaddps xmm1, xmm5, xmm1",
+        "238e91 vandps xmm1, xmm1, xmmword ptr [rip + 0x13e6b37]",
+        "238e99 vmulps xmm3, xmm8, xmm4",
+        "238e9d vaddps xmm0, xmm3, xmm0",
+        "238ea1 vpshufd xmm3, xmm0, 0x4e",
+        "238ea6 vaddps xmm3, xmm0, xmm3",
+        "238eaa vaddps xmm0, xmm1, xmm2",
+        "238eae vpshufd xmm1, xmm3, 0x93",
+        "238eb3 vaddps xmm1, xmm3, xmm1",
+        "238eb7 vandps xmm1, xmm1, xmmword ptr [rip + 0x13e6ad1]",
+        "238ebf jmp 0x239088",
+        "238ec4 movzx eax, byte ptr [r12 + 1]",
+        "238eca shl rax, 4",
+        "238ece vmovdqu xmm2, xmmword ptr [rbx + rax + 0xa0]",
+        "238ed7 vmovdqu xmm3, xmmword ptr [rbx + rax + 0x90]",
+        "238ee0 vpshufd xmm1, xmm2, 0",
+        "238ee5 vpshufd xmm0, xmm2, 0x39",
+        "238eea vmovdqa xmm5, xmmword ptr [rip + 0x13e6a8e]",
+        "238ef2 vpand xmm0, xmm0, xmm5",
+        "238ef6 vmovdqa xmm8, xmmword ptr [rip + 0x13e6a92]",
+        "238efe vpor xmm4, xmm0, xmmword ptr [rip + 0x13e6a9a]",
+        "238f06 vpand xmm6, xmm1, xmm8",
+        "238f0b vpshufd xmm0, xmm3, 0x39",
+        "238f10 vpand xmm0, xmm0, xmm5",
+        "238f14 add r12, 2",
+        "238f18 lea rcx, [rip + 0x188d401]",
+        "238f1f vmovaps xmm5, xmmword ptr [rcx]",
+        "238f23 vpxor xmm1, xmm1, xmm1",
+        "238f27 vaddps xmm6, xmm0, xmm6",
+        "238f2b vsubps xmm0, xmm4, xmm2",
+        "238f2f vsubps xmm4, xmm1, xmm0",
+        "238f33 vmaxps xmm4, xmm4, xmm0",
+        "238f37 vcmpltps xmm4, xmm5, xmm4",
+        "238f3c vsubps xmm2, xmm7, xmm2",
+        "238f40 vdivps xmm0, xmm2, xmm0",
+        "238f44 vandps xmm0, xmm4, xmm0",
+        "238f48 vcmpleps xmm2, xmm1, xmm2",
+        "238f4d vmovaps xmm10, xmmword ptr [rip + 0x13e6a5b]",
+        "238f55 vandps xmm2, xmm2, xmm10",
+        "238f5a vandnps xmm2, xmm4, xmm2",
+        "238f5e vorps xmm0, xmm2, xmm0",
+        "238f62 vmaxps xmm0, xmm0, xmm1",
+        "238f66 vsubps xmm6, xmm6, xmm3",
+        "238f6a vsubps xmm2, xmm1, xmm6",
+        "238f6e vmaxps xmm4, xmm2, xmm6",
+        "238f72 vminps xmm2, xmm0, xmm10",
+        "238f77 vcmpltps xmm5, xmm5, xmm4",
+        "238f7c vmovups xmm4, xmmword ptr [rbx + rax + 0x50]",
+        "238f82 vsubps xmm3, xmm7, xmm3",
+        "238f86 vdivps xmm0, xmm3, xmm6",
+        "238f8a vandps xmm0, xmm5, xmm0",
+        "238f8e vcmpleps xmm3, xmm1, xmm3",
+        "238f93 vandps xmm3, xmm3, xmm10",
+        "238f98 vandnps xmm3, xmm5, xmm3",
+        "238f9c vmulps xmm6, xmm4, xmm2",
+        "238fa0 vorps xmm0, xmm3, xmm0",
+        "238fa4 vmaxps xmm0, xmm0, xmm1",
+        "238fa8 vmovups xmm9, xmmword ptr [rbx + rax]",
+        "238fad vmovups xmm3, xmmword ptr [rbx + rax + 0x10]",
+        "238fb3 vmovups xmm5, xmmword ptr [rbx + rax + 0x20]",
+        "238fb9 vmovups xmm7, xmmword ptr [rbx + rax + 0x30]",
+        "238fbf vminps xmm4, xmm0, xmm10",
+        "238fc4 vmulps xmm0, xmm3, xmm4",
+        "238fc8 vaddps xmm3, xmm0, xmm1",
+        "238fcc vmovups xmm0, xmmword ptr [rbx + rax + 0x70]",
+        "238fd2 vaddps xmm3, xmm3, xmm6",
+        "238fd6 vpshufd xmm6, xmm3, 0x4e",
+        "238fdb vaddps xmm6, xmm3, xmm6",
+        "238fdf vmulps xmm0, xmm0, xmm2",
+        "238fe3 vmulps xmm3, xmm7, xmm4",
+        "238fe7 vaddps xmm7, xmm3, xmm1",
+        "238feb vmovups xmm3, xmmword ptr [rbx + rax + 0x60]",
+        "238ff1 vaddps xmm7, xmm7, xmm0",
+        "238ff5 vpshufd xmm0, xmm6, 0x93",
+        "238ffa vaddps xmm10, xmm6, xmm0",
+        "238ffe vmulps xmm0, xmm3, xmm2",
+        "239002 vmulps xmm3, xmm5, xmm4",
+        "239006 vaddps xmm3, xmm3, xmm1",
+        "23900a vpshufd xmm5, xmm7, 0x4e",
+        "23900f vaddps xmm5, xmm7, xmm5",
+        "239013 vmovups xmm6, xmmword ptr [rbx + rax + 0x40]",
+        "239019 vaddps xmm7, xmm3, xmm0",
+        "23901d vmovups xmm0, xmmword ptr [rbx + rax + 0x80]",
+        "239026 vmulps xmm2, xmm0, xmm2",
+        "23902a vmulps xmm4, xmm6, xmm4",
+        "23902e vmovss xmm0, xmm1, xmm10",
+        "239032 vaddps xmm0, xmm9, xmm0",
+        "239036 vpshufd xmm3, xmm7, 0x4e",
+        "23903b vaddps xmm3, xmm7, xmm3",
+        "23903f vpshufd xmm6, xmm3, 0x93",
+        "239044 vaddps xmm3, xmm3, xmm6",
+        "239048 vandps xmm3, xmm3, xmmword ptr [rip + 0x13e6970]",
+        "239050 vaddps xmm3, xmm3, xmm0",
+        "239054 vpshufd xmm0, xmm5, 0x93",
+        "239059 vaddps xmm0, xmm5, xmm0",
+        "23905d vandps xmm0, xmm0, xmmword ptr [rip + 0x13e696b]",
+        "239065 vaddps xmm1, xmm4, xmm1",
+        "239069 vaddps xmm1, xmm1, xmm2",
+        "23906d vpshufd xmm2, xmm1, 0x4e",
+        "239072 vaddps xmm1, xmm1, xmm2",
+        "239076 vaddps xmm0, xmm0, xmm3",
+        "23907a vpshufd xmm2, xmm1, 0x93",
+        "23907f vaddps xmm1, xmm1, xmm2",
+        "239083 vandps xmm1, xmm1, xmm8",
+        "239088 vaddps xmm7, xmm1, xmm0",
+        "23908c vmovaps xmmword ptr [r15], xmm7",
+        "239091 jmp 0x2390d0"
+      ]
+    },
+    {
+      "opcode": 59,
+      "start": "0x238ec4",
+      "exit": "0x239091",
+      "bytes": "410fb644240148c1e004c5fa6f9403a0000000c5fa6f9c0390000000c5f970ca00c5f970c239c5f96f2d8e6a3e01c5f9dbc5c5796f05926a3e01c5f9eb259a6a3e01c4c171dbf0c5f970c339c5f9dbc54983c402488d0d01d48801c5f82829c5f1efc9c5f858f6c5d85cc2c5f05ce0c5d85fe0c5d0c2e401c5c05cd2c5e85ec0c5d854c0c5f0c2d202c57828155b6a3e01c4c16854d2c5d855d2c5e856c0c5f85fc1c5c85cf3c5f05cd6c5e85fe6c4c1785dd2c5d0c2ec01c5f810640350c5c05cdbc5e05ec6c5d054c0c5f0c2db02c4c16054dac5d055dbc5d859f2c5e056c0c5f85fc1c578100c03c5f8105c0310c5f8106c0320c5f8107c0330c4c1785de2c5e059c4c5f858d9c5f810440370c5e058dec5f970f34ec5e058f6c5f859c2c5c059dcc5e058f9c5f8105c0360c5c058f8c5f970c693c54858d0c5e059c2c5d059dcc5e058d9c5f970ef4ec5c058edc5f810740340c5e058f8c5f810840380000000c5f859d2c5c859e4c57211d0c5b058c0c5f970df4ec5c058dbc5f970f393c5e058dec5e0541d70693e01c5e058d8c5f970c593c5d058c0c5f854056b693e01c5d858c9c5f058cac5f970d14ec5f058cac5f858c3c5f970d193c5f058cac4c17054c8c5f058f8c4c178293feb3d",
+      "assembly": [
+        "238ec4 movzx eax, byte ptr [r12 + 1]",
+        "238eca shl rax, 4",
+        "238ece vmovdqu xmm2, xmmword ptr [rbx + rax + 0xa0]",
+        "238ed7 vmovdqu xmm3, xmmword ptr [rbx + rax + 0x90]",
+        "238ee0 vpshufd xmm1, xmm2, 0",
+        "238ee5 vpshufd xmm0, xmm2, 0x39",
+        "238eea vmovdqa xmm5, xmmword ptr [rip + 0x13e6a8e]",
+        "238ef2 vpand xmm0, xmm0, xmm5",
+        "238ef6 vmovdqa xmm8, xmmword ptr [rip + 0x13e6a92]",
+        "238efe vpor xmm4, xmm0, xmmword ptr [rip + 0x13e6a9a]",
+        "238f06 vpand xmm6, xmm1, xmm8",
+        "238f0b vpshufd xmm0, xmm3, 0x39",
+        "238f10 vpand xmm0, xmm0, xmm5",
+        "238f14 add r12, 2",
+        "238f18 lea rcx, [rip + 0x188d401]",
+        "238f1f vmovaps xmm5, xmmword ptr [rcx]",
+        "238f23 vpxor xmm1, xmm1, xmm1",
+        "238f27 vaddps xmm6, xmm0, xmm6",
+        "238f2b vsubps xmm0, xmm4, xmm2",
+        "238f2f vsubps xmm4, xmm1, xmm0",
+        "238f33 vmaxps xmm4, xmm4, xmm0",
+        "238f37 vcmpltps xmm4, xmm5, xmm4",
+        "238f3c vsubps xmm2, xmm7, xmm2",
+        "238f40 vdivps xmm0, xmm2, xmm0",
+        "238f44 vandps xmm0, xmm4, xmm0",
+        "238f48 vcmpleps xmm2, xmm1, xmm2",
+        "238f4d vmovaps xmm10, xmmword ptr [rip + 0x13e6a5b]",
+        "238f55 vandps xmm2, xmm2, xmm10",
+        "238f5a vandnps xmm2, xmm4, xmm2",
+        "238f5e vorps xmm0, xmm2, xmm0",
+        "238f62 vmaxps xmm0, xmm0, xmm1",
+        "238f66 vsubps xmm6, xmm6, xmm3",
+        "238f6a vsubps xmm2, xmm1, xmm6",
+        "238f6e vmaxps xmm4, xmm2, xmm6",
+        "238f72 vminps xmm2, xmm0, xmm10",
+        "238f77 vcmpltps xmm5, xmm5, xmm4",
+        "238f7c vmovups xmm4, xmmword ptr [rbx + rax + 0x50]",
+        "238f82 vsubps xmm3, xmm7, xmm3",
+        "238f86 vdivps xmm0, xmm3, xmm6",
+        "238f8a vandps xmm0, xmm5, xmm0",
+        "238f8e vcmpleps xmm3, xmm1, xmm3",
+        "238f93 vandps xmm3, xmm3, xmm10",
+        "238f98 vandnps xmm3, xmm5, xmm3",
+        "238f9c vmulps xmm6, xmm4, xmm2",
+        "238fa0 vorps xmm0, xmm3, xmm0",
+        "238fa4 vmaxps xmm0, xmm0, xmm1",
+        "238fa8 vmovups xmm9, xmmword ptr [rbx + rax]",
+        "238fad vmovups xmm3, xmmword ptr [rbx + rax + 0x10]",
+        "238fb3 vmovups xmm5, xmmword ptr [rbx + rax + 0x20]",
+        "238fb9 vmovups xmm7, xmmword ptr [rbx + rax + 0x30]",
+        "238fbf vminps xmm4, xmm0, xmm10",
+        "238fc4 vmulps xmm0, xmm3, xmm4",
+        "238fc8 vaddps xmm3, xmm0, xmm1",
+        "238fcc vmovups xmm0, xmmword ptr [rbx + rax + 0x70]",
+        "238fd2 vaddps xmm3, xmm3, xmm6",
+        "238fd6 vpshufd xmm6, xmm3, 0x4e",
+        "238fdb vaddps xmm6, xmm3, xmm6",
+        "238fdf vmulps xmm0, xmm0, xmm2",
+        "238fe3 vmulps xmm3, xmm7, xmm4",
+        "238fe7 vaddps xmm7, xmm3, xmm1",
+        "238feb vmovups xmm3, xmmword ptr [rbx + rax + 0x60]",
+        "238ff1 vaddps xmm7, xmm7, xmm0",
+        "238ff5 vpshufd xmm0, xmm6, 0x93",
+        "238ffa vaddps xmm10, xmm6, xmm0",
+        "238ffe vmulps xmm0, xmm3, xmm2",
+        "239002 vmulps xmm3, xmm5, xmm4",
+        "239006 vaddps xmm3, xmm3, xmm1",
+        "23900a vpshufd xmm5, xmm7, 0x4e",
+        "23900f vaddps xmm5, xmm7, xmm5",
+        "239013 vmovups xmm6, xmmword ptr [rbx + rax + 0x40]",
+        "239019 vaddps xmm7, xmm3, xmm0",
+        "23901d vmovups xmm0, xmmword ptr [rbx + rax + 0x80]",
+        "239026 vmulps xmm2, xmm0, xmm2",
+        "23902a vmulps xmm4, xmm6, xmm4",
+        "23902e vmovss xmm0, xmm1, xmm10",
+        "239032 vaddps xmm0, xmm9, xmm0",
+        "239036 vpshufd xmm3, xmm7, 0x4e",
+        "23903b vaddps xmm3, xmm7, xmm3",
+        "23903f vpshufd xmm6, xmm3, 0x93",
+        "239044 vaddps xmm3, xmm3, xmm6",
+        "239048 vandps xmm3, xmm3, xmmword ptr [rip + 0x13e6970]",
+        "239050 vaddps xmm3, xmm3, xmm0",
+        "239054 vpshufd xmm0, xmm5, 0x93",
+        "239059 vaddps xmm0, xmm5, xmm0",
+        "23905d vandps xmm0, xmm0, xmmword ptr [rip + 0x13e696b]",
+        "239065 vaddps xmm1, xmm4, xmm1",
+        "239069 vaddps xmm1, xmm1, xmm2",
+        "23906d vpshufd xmm2, xmm1, 0x4e",
+        "239072 vaddps xmm1, xmm1, xmm2",
+        "239076 vaddps xmm0, xmm0, xmm3",
+        "23907a vpshufd xmm2, xmm1, 0x93",
+        "23907f vaddps xmm1, xmm1, xmm2",
+        "239083 vandps xmm1, xmm1, xmm8",
+        "239088 vaddps xmm7, xmm1, xmm0",
+        "23908c vmovaps xmmword ptr [r15], xmm7",
+        "239091 jmp 0x2390d0"
+      ]
+    }
+  ],
+  "provenance": [
+    {
+      "path": "d1-tfx-gradient-native-oracle-20261007.json",
+      "sha256": "2d7d014b786b274c9ba4b35163eef77a5d76a82c1ce37d2ac99b2e3dcdf259da"
+    },
+    {
+      "path": "d1-tfx-spline-native-oracle-20261007.json",
+      "sha256": "650473a09239480ef996141135abc8914cf4a23656bc01daa3a5beb069df4e52"
+    },
+    {
+      "path": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "sha256": "15038a7ba3541a86e6ff339b0d7f5e7bfda69df86d16fe403133ba00eba1047c"
+    }
+  ],
+  "scope": "Isolated arithmetic only; scalar0 meanings, descriptor joins, output-slot ownership and update order remain open.",
+  "cases": [
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 0,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 1,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 2,
+      "sequencer_output_bits": [
+        "0x38d1b717",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 3,
+      "sequencer_output_bits": [
+        "0x3951b717",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 4,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 5,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 6,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x3e4cccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 7,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 8,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 9,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 10,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 11,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3e800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 12,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 13,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x3dccccd0",
+        "0x3e4cccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 14,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 15,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 16,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 17,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 18,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3e800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 19,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 20,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x3dccccd0",
+        "0x3e4cccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 21,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 22,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 23,
+      "sequencer_output_bits": [
+        "0x3e7fffff",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 24,
+      "sequencer_output_bits": [
+        "0x3effffff",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 25,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3e800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 26,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 27,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x3dccccd0",
+        "0x3e4cccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 28,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 29,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 30,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x38d1b717",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 31,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3951b717",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 32,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3e800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 33,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 34,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x00000000",
+        "0x3dccccd0",
+        "0x3e4cccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 35,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 36,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 37,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f7ff972",
+        "0x37d1b717"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 38,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f800000",
+        "0x3f7ff2e5",
+        "0x3851b717"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 39,
+      "sequencer_output_bits": [
+        "0x3f800000",
+        "0x3f000000",
+        "0x00000000",
+        "0x3ec00000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 40,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 41,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x3f800000",
+        "0x00000000",
+        "0x3f4ccccd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 42,
+      "sequencer_output_bits": [
+        "0x40000000",
+        "0x40800000",
+        "0x3f800000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 43,
+      "sequencer_output_bits": [
+        "0x4cbebc20",
+        "0x4b800000",
+        "0x3e4ccccd",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 58,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 44,
+      "sequencer_output_bits": [
+        "0x4b989684",
+        "0x4a4cccd5",
+        "0x3f0a3d71",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 45,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 46,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 47,
+      "sequencer_output_bits": [
+        "0x399d4951",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffdd1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 48,
+      "sequencer_output_bits": [
+        "0x3a1d4951",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffba1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 49,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x3fc00000",
+        "0x00000000",
+        "0x3f000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 50,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x40000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 51,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3eccccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 52,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 53,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 54,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffdd1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 55,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffba1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 56,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x3f400000",
+        "0x3f000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 57,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x40000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 58,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x3e99999c",
+        "0x3eccccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 59,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 60,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 61,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffdd1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 62,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffba1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 63,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x3f400000",
+        "0x3f000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 64,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x40000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 65,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x3e99999c",
+        "0x3eccccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 66,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 67,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 68,
+      "sequencer_output_bits": [
+        "0x3f3fffff",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffdd1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 69,
+      "sequencer_output_bits": [
+        "0x3fbfffff",
+        "0x00000000",
+        "0x00000000",
+        "0x3f7ffba1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 70,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x3f400000",
+        "0x3f000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 71,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x40000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 72,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x3e99999c",
+        "0x3eccccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 73,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 74,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x00000000",
+        "0x3f800000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 75,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x399d4951",
+        "0x00000000",
+        "0x3f7ffdd1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 76,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x3a1d4951",
+        "0x00000000",
+        "0x3f7ffba1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 77,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x3f400000",
+        "0x3f000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 78,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x40000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 79,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x00000000",
+        "0x3e99999c",
+        "0x3eccccd0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 80,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 81,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x40400000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 82,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x403ffb16",
+        "0x38aec33e"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 83,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40400000",
+        "0x403ff62c",
+        "0x392ec33e"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 84,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x3fc00000",
+        "0x00000000",
+        "0x3fa00000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 85,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x40400000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 86,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x40400000",
+        "0x00000000",
+        "0x40266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 87,
+      "sequencer_output_bits": [
+        "0x40400000",
+        "0x40a00000",
+        "0x3f19999a",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 88,
+      "sequencer_output_bits": [
+        "0x3fc00000",
+        "0x40200000",
+        "0x3ecccccd",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 59,
+      "source_evidence": "d1-tfx-gradient-native-oracle-20261007.json",
+      "source_case": 89,
+      "sequencer_output_bits": [
+        "0x3fb33334",
+        "0x3fe66668",
+        "0x3eeb851f",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 0,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 1,
+      "sequencer_output_bits": [
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 2,
+      "sequencer_output_bits": [
+        "0x3fd86666",
+        "0x3fd86666",
+        "0x3fd86666",
+        "0x3fd86666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 3,
+      "sequencer_output_bits": [
+        "0x40223000",
+        "0x40223000",
+        "0x40223000",
+        "0x40223000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 4,
+      "sequencer_output_bits": [
+        "0x40d1999a",
+        "0x40d1999a",
+        "0x40d1999a",
+        "0x40d1999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 5,
+      "sequencer_output_bits": [
+        "0x41266666",
+        "0x41266666",
+        "0x41266666",
+        "0x41266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 6,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 7,
+      "sequencer_output_bits": [
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 8,
+      "sequencer_output_bits": [
+        "0x4102cb92",
+        "0x4102cb92",
+        "0x4102cb92",
+        "0x4102cb92"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 9,
+      "sequencer_output_bits": [
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 10,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 11,
+      "sequencer_output_bits": [
+        "0x00155555",
+        "0x00155555",
+        "0x00155555",
+        "0x00155555"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 12,
+      "sequencer_output_bits": [
+        "0x000c0001",
+        "0x000c0001",
+        "0x000c0001",
+        "0x000c0001"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 13,
+      "sequencer_output_bits": [
+        "0x40012ffc",
+        "0x40012ffc",
+        "0x40012ffc",
+        "0x40012ffc"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 14,
+      "sequencer_output_bits": [
+        "0x40d1999a",
+        "0x40d1999a",
+        "0x40d1999a",
+        "0x40d1999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 15,
+      "sequencer_output_bits": [
+        "0x41266666",
+        "0x41266666",
+        "0x41266666",
+        "0x41266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 16,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 17,
+      "sequencer_output_bits": [
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 18,
+      "sequencer_output_bits": [
+        "0x401ccccd",
+        "0x401ccccd",
+        "0x401ccccd",
+        "0x401ccccd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 19,
+      "sequencer_output_bits": [
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 20,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 21,
+      "sequencer_output_bits": [
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 22,
+      "sequencer_output_bits": [
+        "0x3fe96666",
+        "0x3fe96666",
+        "0x3fe96666",
+        "0x3fe96666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 23,
+      "sequencer_output_bits": [
+        "0x40223000",
+        "0x40223000",
+        "0x40223000",
+        "0x40223000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 24,
+      "sequencer_output_bits": [
+        "0x40d1999a",
+        "0x40d1999a",
+        "0x40d1999a",
+        "0x40d1999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 25,
+      "sequencer_output_bits": [
+        "0x41266666",
+        "0x41266666",
+        "0x41266666",
+        "0x41266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 26,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 27,
+      "sequencer_output_bits": [
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 28,
+      "sequencer_output_bits": [
+        "0x4102cb92",
+        "0x4102cb92",
+        "0x4102cb92",
+        "0x4102cb92"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 55,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 29,
+      "sequencer_output_bits": [
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 30,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 31,
+      "sequencer_output_bits": [
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 32,
+      "sequencer_output_bits": [
+        "0x3fd86666",
+        "0x3fd86666",
+        "0x3fd86666",
+        "0x3fd86666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 33,
+      "sequencer_output_bits": [
+        "0x40223000",
+        "0x40223000",
+        "0x40223000",
+        "0x40223000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 34,
+      "sequencer_output_bits": [
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 35,
+      "sequencer_output_bits": [
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 36,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 37,
+      "sequencer_output_bits": [
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 38,
+      "sequencer_output_bits": [
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 39,
+      "sequencer_output_bits": [
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 40,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 41,
+      "sequencer_output_bits": [
+        "0x00155555",
+        "0x00155555",
+        "0x00155555",
+        "0x00155555"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 42,
+      "sequencer_output_bits": [
+        "0x000c0001",
+        "0x000c0001",
+        "0x000c0001",
+        "0x000c0001"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 43,
+      "sequencer_output_bits": [
+        "0x40012ffc",
+        "0x40012ffc",
+        "0x40012ffc",
+        "0x40012ffc"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 44,
+      "sequencer_output_bits": [
+        "0xc0fb999a",
+        "0xc0fb999a",
+        "0xc0fb999a",
+        "0xc0fb999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 45,
+      "sequencer_output_bits": [
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 46,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 47,
+      "sequencer_output_bits": [
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 48,
+      "sequencer_output_bits": [
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 49,
+      "sequencer_output_bits": [
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 50,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 51,
+      "sequencer_output_bits": [
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 52,
+      "sequencer_output_bits": [
+        "0x3fe96666",
+        "0x3fe96666",
+        "0x3fe96666",
+        "0x3fe96666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 53,
+      "sequencer_output_bits": [
+        "0x40223000",
+        "0x40223000",
+        "0x40223000",
+        "0x40223000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 54,
+      "sequencer_output_bits": [
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 55,
+      "sequencer_output_bits": [
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 56,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 57,
+      "sequencer_output_bits": [
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd",
+        "0x007543dd"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 58,
+      "sequencer_output_bits": [
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 56,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 59,
+      "sequencer_output_bits": [
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1",
+        "0x7ebde7b1"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 60,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 61,
+      "sequencer_output_bits": [
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 62,
+      "sequencer_output_bits": [
+        "0x3fd86666",
+        "0x3fd86666",
+        "0x3fd86666",
+        "0x3fd86666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 63,
+      "sequencer_output_bits": [
+        "0x40223000",
+        "0x40223000",
+        "0x40223000",
+        "0x40223000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 64,
+      "sequencer_output_bits": [
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 65,
+      "sequencer_output_bits": [
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 66,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 67,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 68,
+      "sequencer_output_bits": [
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 69,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 70,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 71,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 72,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 73,
+      "sequencer_output_bits": [
+        "0x40012ffc",
+        "0x40012ffc",
+        "0x40012ffc",
+        "0x40012ffc"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 74,
+      "sequencer_output_bits": [
+        "0xc0fb999a",
+        "0xc0fb999a",
+        "0xc0fb999a",
+        "0xc0fb999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 75,
+      "sequencer_output_bits": [
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 76,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 77,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 78,
+      "sequencer_output_bits": [
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 79,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 80,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 81,
+      "sequencer_output_bits": [
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666",
+        "0x3fa66666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 82,
+      "sequencer_output_bits": [
+        "0x3fe96666",
+        "0x3fe96666",
+        "0x3fe96666",
+        "0x3fe96666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 83,
+      "sequencer_output_bits": [
+        "0x40223000",
+        "0x40223000",
+        "0x40223000",
+        "0x40223000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 84,
+      "sequencer_output_bits": [
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a",
+        "0xc0b7999a"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 85,
+      "sequencer_output_bits": [
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666",
+        "0xc1266666"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 86,
+      "sequencer_output_bits": [
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9",
+        "0x3fbc56d9"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 87,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 88,
+      "sequencer_output_bits": [
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f",
+        "0xc1a5f61f"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 57,
+      "source_evidence": "d1-tfx-spline-native-oracle-20261007.json",
+      "source_case": 89,
+      "sequencer_output_bits": [
+        "0x41300000",
+        "0x41b00000",
+        "0x42040000",
+        "0x42300000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 0,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 1,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 2,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 3,
+      "sequencer_output_bits": [
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 4,
+      "sequencer_output_bits": [
+        "0x3f6c85f0",
+        "0x3f6c85f0",
+        "0x3f6c85f0",
+        "0x3f6c85f0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 5,
+      "sequencer_output_bits": [
+        "0x3f3217c0",
+        "0x3f3217c0",
+        "0x3f3217c0",
+        "0x3f3217c0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 6,
+      "sequencer_output_bits": [
+        "0x3ea16a00",
+        "0x3ea16a00",
+        "0x3ea16a00",
+        "0x3ea16a00"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 7,
+      "sequencer_output_bits": [
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000",
+        "0x3c5b0000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 8,
+      "sequencer_output_bits": [
+        "0x3f5fe400",
+        "0x3f5fe400",
+        "0x3f5fe400",
+        "0x3f5fe400"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 9,
+      "sequencer_output_bits": [
+        "0x3eab3a00",
+        "0x3eab3a00",
+        "0x3eab3a00",
+        "0x3eab3a00"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 10,
+      "sequencer_output_bits": [
+        "0x3e984966",
+        "0x3e984966",
+        "0x3e984966",
+        "0x3e984966"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 11,
+      "sequencer_output_bits": [
+        "0x3dc82800",
+        "0x3dc82800",
+        "0x3dc82800",
+        "0x3dc82800"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 12,
+      "sequencer_output_bits": [
+        "0x3ed56000",
+        "0x3ed56000",
+        "0x3ed56000",
+        "0x3ed56000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 13,
+      "sequencer_output_bits": [
+        "0x3d400000",
+        "0x3d400000",
+        "0x3d400000",
+        "0x3d400000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 14,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 15,
+      "sequencer_output_bits": [
+        "0x3f0b4e58",
+        "0x3f0b4e58",
+        "0x3f0b4e58",
+        "0x3f0b4e58"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 16,
+      "sequencer_output_bits": [
+        "0x3e34e580",
+        "0x3e34e580",
+        "0x3e34e580",
+        "0x3e34e580"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 17,
+      "sequencer_output_bits": [
+        "0x3f45fb00",
+        "0x3f45fb00",
+        "0x3f45fb00",
+        "0x3f45fb00"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 18,
+      "sequencer_output_bits": [
+        "0x3f7daa00",
+        "0x3f7daa00",
+        "0x3f7daa00",
+        "0x3f7daa00"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 19,
+      "sequencer_output_bits": [
+        "0x3dbf6000",
+        "0x3dbf6000",
+        "0x3dbf6000",
+        "0x3dbf6000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 20,
+      "sequencer_output_bits": [
+        "0x3f2d2000",
+        "0x3f2d2000",
+        "0x3f2d2000",
+        "0x3f2d2000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 21,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 22,
+      "sequencer_output_bits": [
+        "0x3f7fc300",
+        "0x3f7fc300",
+        "0x3f7fc300",
+        "0x3f7fc300"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 23,
+      "sequencer_output_bits": [
+        "0x3db10800",
+        "0x3db10800",
+        "0x3db10800",
+        "0x3db10800"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 24,
+      "sequencer_output_bits": [
+        "0x3f3bfb00",
+        "0x3f3bfb00",
+        "0x3f3bfb00",
+        "0x3f3bfb00"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 25,
+      "sequencer_output_bits": [
+        "0x3f54b9f0",
+        "0x3f54b9f0",
+        "0x3f54b9f0",
+        "0x3f54b9f0"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 26,
+      "sequencer_output_bits": [
+        "0x3c7b0000",
+        "0x3c7b0000",
+        "0x3c7b0000",
+        "0x3c7b0000"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 27,
+      "sequencer_output_bits": [
+        "0x3f57f020",
+        "0x3f57f020",
+        "0x3f57f020",
+        "0x3f57f020"
+      ],
+      "matches_material_tfx": true
+    },
+    {
+      "opcode": 42,
+      "source_evidence": "d1-tfx-rand-sequencer-native-oracle-20261007.json",
+      "source_case": 28,
+      "sequencer_output_bits": [
+        "0x00000000",
+        "0x00000000",
+        "0x00000000",
+        "0x00000000"
+      ],
+      "matches_material_tfx": true
+    }
+  ]
+}
