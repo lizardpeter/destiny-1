@@ -1,0 +1,1535 @@
+{
+  "schema": "d1-atmosphere-lut-selection-native-oracle-v1",
+  "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "start_va": "0x842790",
+  "end_va": "0x842837",
+  "source_settings": {
+    "tags": "16 u32 at +0x00",
+    "phases": "16 f32 at +0x48"
+  },
+  "contract": "First inclusive interval wins; wrap adds 1 to upper endpoint when upper < phase, otherwise subtracts 1 from lower endpoint. Duplicate endpoints produce zero blend. Atlas offsets are selected slot indices /16.",
+  "source": [
+    {
+      "va": "0x842790",
+      "bytes": "4889fa",
+      "mnemonic": "mov",
+      "operands": "rdx, rdi"
+    },
+    {
+      "va": "0x842793",
+      "bytes": "83fa0f",
+      "mnemonic": "cmp",
+      "operands": "edx, 0xf"
+    },
+    {
+      "va": "0x842796",
+      "bytes": "0f87b4080000",
+      "mnemonic": "ja",
+      "operands": "0x843050"
+    },
+    {
+      "va": "0x84279c",
+      "bytes": "c4c17a10449648",
+      "mnemonic": "vmovss",
+      "operands": "xmm0, dword ptr [r14 + rdx*4 + 0x48]"
+    },
+    {
+      "va": "0x8427a3",
+      "bytes": "488d7a01",
+      "mnemonic": "lea",
+      "operands": "rdi, [rdx + 1]"
+    },
+    {
+      "va": "0x8427a7",
+      "bytes": "89fe",
+      "mnemonic": "mov",
+      "operands": "esi, edi"
+    },
+    {
+      "va": "0x8427a9",
+      "bytes": "83e60f",
+      "mnemonic": "and",
+      "operands": "esi, 0xf"
+    },
+    {
+      "va": "0x8427ac",
+      "bytes": "c4c17a104cb648",
+      "mnemonic": "vmovss",
+      "operands": "xmm1, dword ptr [r14 + rsi*4 + 0x48]"
+    },
+    {
+      "va": "0x8427b3",
+      "bytes": "39d6",
+      "mnemonic": "cmp",
+      "operands": "esi, edx"
+    },
+    {
+      "va": "0x8427b5",
+      "bytes": "7d21",
+      "mnemonic": "jge",
+      "operands": "0x8427d8"
+    },
+    {
+      "va": "0x8427b7",
+      "bytes": "c5f82ecc",
+      "mnemonic": "vucomiss",
+      "operands": "xmm1, xmm4"
+    },
+    {
+      "va": "0x8427bb",
+      "bytes": "7313",
+      "mnemonic": "jae",
+      "operands": "0x8427d0"
+    },
+    {
+      "va": "0x8427bd",
+      "bytes": "c5f2580d4717e200",
+      "mnemonic": "vaddss",
+      "operands": "xmm1, xmm1, dword ptr [rip + 0xe21747]"
+    },
+    {
+      "va": "0x8427c5",
+      "bytes": "eb11",
+      "mnemonic": "jmp",
+      "operands": "0x8427d8"
+    },
+    {
+      "va": "0x8427c7",
+      "bytes": "660f1f840000000000",
+      "mnemonic": "nop",
+      "operands": "word ptr [rax + rax]"
+    },
+    {
+      "va": "0x8427d0",
+      "bytes": "c5fa58053017e200",
+      "mnemonic": "vaddss",
+      "operands": "xmm0, xmm0, dword ptr [rip + 0xe21730]"
+    },
+    {
+      "va": "0x8427d8",
+      "bytes": "83e980",
+      "mnemonic": "sub",
+      "operands": "ecx, -0x80"
+    },
+    {
+      "va": "0x8427db",
+      "bytes": "c5f82ee0",
+      "mnemonic": "vucomiss",
+      "operands": "xmm4, xmm0"
+    },
+    {
+      "va": "0x8427df",
+      "bytes": "72af",
+      "mnemonic": "jb",
+      "operands": "0x842790"
+    },
+    {
+      "va": "0x8427e1",
+      "bytes": "c5f82ecc",
+      "mnemonic": "vucomiss",
+      "operands": "xmm1, xmm4"
+    },
+    {
+      "va": "0x8427e5",
+      "bytes": "72a9",
+      "mnemonic": "jb",
+      "operands": "0x842790"
+    },
+    {
+      "va": "0x8427e7",
+      "bytes": "458b2cb6",
+      "mnemonic": "mov",
+      "operands": "r13d, dword ptr [r14 + rsi*4]"
+    },
+    {
+      "va": "0x8427eb",
+      "bytes": "418b1496",
+      "mnemonic": "mov",
+      "operands": "edx, dword ptr [r14 + rdx*4]"
+    },
+    {
+      "va": "0x8427ef",
+      "bytes": "c1e607",
+      "mnemonic": "shl",
+      "operands": "esi, 7"
+    },
+    {
+      "va": "0x8427f2",
+      "bytes": "c5fa2ad6",
+      "mnemonic": "vcvtsi2ss",
+      "operands": "xmm2, xmm0, esi"
+    },
+    {
+      "va": "0x8427f6",
+      "bytes": "c5ea59151217e200",
+      "mnemonic": "vmulss",
+      "operands": "xmm2, xmm2, dword ptr [rip + 0xe21712]"
+    },
+    {
+      "va": "0x8427fe",
+      "bytes": "c5e057db",
+      "mnemonic": "vxorps",
+      "operands": "xmm3, xmm3, xmm3"
+    },
+    {
+      "va": "0x842802",
+      "bytes": "c5f82ec8",
+      "mnemonic": "vucomiss",
+      "operands": "xmm1, xmm0"
+    },
+    {
+      "va": "0x842806",
+      "bytes": "7502",
+      "mnemonic": "jne",
+      "operands": "0x84280a"
+    },
+    {
+      "va": "0x842808",
+      "bytes": "7b0c",
+      "mnemonic": "jnp",
+      "operands": "0x842816"
+    },
+    {
+      "va": "0x84280a",
+      "bytes": "c5f25cc8",
+      "mnemonic": "vsubss",
+      "operands": "xmm1, xmm1, xmm0"
+    },
+    {
+      "va": "0x84280e",
+      "bytes": "c5da5cc0",
+      "mnemonic": "vsubss",
+      "operands": "xmm0, xmm4, xmm0"
+    },
+    {
+      "va": "0x842812",
+      "bytes": "c5fa5ed9",
+      "mnemonic": "vdivss",
+      "operands": "xmm3, xmm0, xmm1"
+    },
+    {
+      "va": "0x842816",
+      "bytes": "c5fa115b10",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0x10], xmm3"
+    },
+    {
+      "va": "0x84281b",
+      "bytes": "c5fa2ac1",
+      "mnemonic": "vcvtsi2ss",
+      "operands": "xmm0, xmm0, ecx"
+    },
+    {
+      "va": "0x84281f",
+      "bytes": "c5fa5905e916e200",
+      "mnemonic": "vmulss",
+      "operands": "xmm0, xmm0, dword ptr [rip + 0xe216e9]"
+    },
+    {
+      "va": "0x842827",
+      "bytes": "c5fa118320010000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0x120], xmm0"
+    },
+    {
+      "va": "0x84282f",
+      "bytes": "c5fa119324010000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0x124], xmm2"
+    }
+  ],
+  "cases": [
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.0,
+      "selection": {
+        "slot0": 0,
+        "slot1": 1,
+        "tag0": 2158628864,
+        "tag1": 2158628865,
+        "blend": 0.0,
+        "atlas0": 0.0,
+        "atlas1": 0.0625
+      },
+      "native_selected_tags": [
+        "80AA1000",
+        "80AA1001"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.0,
+        "0x120": 0.0,
+        "0x124": 0.0625
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.03125,
+      "selection": {
+        "slot0": 0,
+        "slot1": 1,
+        "tag0": 2158628864,
+        "tag1": 2158628865,
+        "blend": 0.5,
+        "atlas0": 0.0,
+        "atlas1": 0.0625
+      },
+      "native_selected_tags": [
+        "80AA1000",
+        "80AA1001"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.5,
+        "0x120": 0.0,
+        "0x124": 0.0625
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.0625,
+      "selection": {
+        "slot0": 0,
+        "slot1": 1,
+        "tag0": 2158628864,
+        "tag1": 2158628865,
+        "blend": 1.0,
+        "atlas0": 0.0,
+        "atlas1": 0.0625
+      },
+      "native_selected_tags": [
+        "80AA1000",
+        "80AA1001"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.0,
+        "0x124": 0.0625
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.5,
+      "selection": {
+        "slot0": 7,
+        "slot1": 8,
+        "tag0": 2158628871,
+        "tag1": 2158628872,
+        "blend": 1.0,
+        "atlas0": 0.4375,
+        "atlas1": 0.5
+      },
+      "native_selected_tags": [
+        "80AA1007",
+        "80AA1008"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.4375,
+        "0x124": 0.5
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.9375,
+      "selection": {
+        "slot0": 14,
+        "slot1": 15,
+        "tag0": 2158628878,
+        "tag1": 2158628879,
+        "blend": 1.0,
+        "atlas0": 0.875,
+        "atlas1": 0.9375
+      },
+      "native_selected_tags": [
+        "80AA100E",
+        "80AA100F"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.875,
+        "0x124": 0.9375
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.96875,
+      "selection": {
+        "slot0": 15,
+        "slot1": 0,
+        "tag0": 2158628879,
+        "tag1": 2158628864,
+        "blend": 0.5,
+        "atlas0": 0.9375,
+        "atlas1": 0.0
+      },
+      "native_selected_tags": [
+        "80AA100F",
+        "80AA1000"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.5,
+        "0x120": 0.9375,
+        "0x124": 0.0
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 1.0,
+      "selection": {
+        "slot0": 15,
+        "slot1": 0,
+        "tag0": 2158628879,
+        "tag1": 2158628864,
+        "blend": 1.0,
+        "atlas0": 0.9375,
+        "atlas1": 0.0
+      },
+      "native_selected_tags": [
+        "80AA100F",
+        "80AA1000"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.9375,
+        "0x124": 0.0
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": -0.009999999776482582,
+      "selection": {
+        "slot0": 15,
+        "slot1": 0,
+        "tag0": 2158628879,
+        "tag1": 2158628864,
+        "blend": 0.8400000333786011,
+        "atlas0": 0.9375,
+        "atlas1": 0.0
+      },
+      "native_selected_tags": [
+        "80AA100F",
+        "80AA1000"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.8400000333786011,
+        "0x120": 0.9375,
+        "0x124": 0.0
+      }
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": -0.10000000149011612,
+      "selection": null,
+      "native_selected_tags": [
+        "00000010",
+        "DEADBEEF"
+      ],
+      "native_block_outputs": {}
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": -1.0,
+      "selection": null,
+      "native_selected_tags": [
+        "00000010",
+        "DEADBEEF"
+      ],
+      "native_block_outputs": {}
+    },
+    {
+      "name": "uniform",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 1.0099999904632568,
+      "selection": null,
+      "native_selected_tags": [
+        "00000010",
+        "DEADBEEF"
+      ],
+      "native_block_outputs": {}
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.0625,
+      "selection": {
+        "slot0": 0,
+        "slot1": 1,
+        "tag0": 2158628864,
+        "tag1": 2158628865,
+        "blend": 1.0,
+        "atlas0": 0.0,
+        "atlas1": 0.0625
+      },
+      "native_selected_tags": [
+        "80AA1000",
+        "80AA1001"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.0,
+        "0x124": 0.0625
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.125,
+      "selection": {
+        "slot0": 1,
+        "slot1": 2,
+        "tag0": 2158628865,
+        "tag1": 2158628866,
+        "blend": 1.0,
+        "atlas0": 0.0625,
+        "atlas1": 0.125
+      },
+      "native_selected_tags": [
+        "80AA1001",
+        "80AA1002"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.0625,
+        "0x124": 0.125
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.1875,
+      "selection": {
+        "slot0": 2,
+        "slot1": 3,
+        "tag0": 2158628866,
+        "tag1": 2158628867,
+        "blend": 1.0,
+        "atlas0": 0.125,
+        "atlas1": 0.1875
+      },
+      "native_selected_tags": [
+        "80AA1002",
+        "80AA1003"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.125,
+        "0x124": 0.1875
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.25,
+      "selection": {
+        "slot0": 3,
+        "slot1": 4,
+        "tag0": 2158628867,
+        "tag1": 2158628868,
+        "blend": 1.0,
+        "atlas0": 0.1875,
+        "atlas1": 0.25
+      },
+      "native_selected_tags": [
+        "80AA1003",
+        "80AA1004"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.1875,
+        "0x124": 0.25
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.3125,
+      "selection": {
+        "slot0": 4,
+        "slot1": 5,
+        "tag0": 2158628868,
+        "tag1": 2158628869,
+        "blend": 1.0,
+        "atlas0": 0.25,
+        "atlas1": 0.3125
+      },
+      "native_selected_tags": [
+        "80AA1004",
+        "80AA1005"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.25,
+        "0x124": 0.3125
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.375,
+      "selection": {
+        "slot0": 5,
+        "slot1": 6,
+        "tag0": 2158628869,
+        "tag1": 2158628870,
+        "blend": 1.0,
+        "atlas0": 0.3125,
+        "atlas1": 0.375
+      },
+      "native_selected_tags": [
+        "80AA1005",
+        "80AA1006"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.3125,
+        "0x124": 0.375
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.4375,
+      "selection": {
+        "slot0": 6,
+        "slot1": 7,
+        "tag0": 2158628870,
+        "tag1": 2158628871,
+        "blend": 1.0,
+        "atlas0": 0.375,
+        "atlas1": 0.4375
+      },
+      "native_selected_tags": [
+        "80AA1006",
+        "80AA1007"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.375,
+        "0x124": 0.4375
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.5,
+      "selection": {
+        "slot0": 7,
+        "slot1": 8,
+        "tag0": 2158628871,
+        "tag1": 2158628872,
+        "blend": 1.0,
+        "atlas0": 0.4375,
+        "atlas1": 0.5
+      },
+      "native_selected_tags": [
+        "80AA1007",
+        "80AA1008"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.4375,
+        "0x124": 0.5
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.5625,
+      "selection": {
+        "slot0": 8,
+        "slot1": 9,
+        "tag0": 2158628872,
+        "tag1": 2158628873,
+        "blend": 1.0,
+        "atlas0": 0.5,
+        "atlas1": 0.5625
+      },
+      "native_selected_tags": [
+        "80AA1008",
+        "80AA1009"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.5,
+        "0x124": 0.5625
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.625,
+      "selection": {
+        "slot0": 9,
+        "slot1": 10,
+        "tag0": 2158628873,
+        "tag1": 2158628874,
+        "blend": 1.0,
+        "atlas0": 0.5625,
+        "atlas1": 0.625
+      },
+      "native_selected_tags": [
+        "80AA1009",
+        "80AA100A"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.5625,
+        "0x124": 0.625
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.6875,
+      "selection": {
+        "slot0": 10,
+        "slot1": 11,
+        "tag0": 2158628874,
+        "tag1": 2158628875,
+        "blend": 1.0,
+        "atlas0": 0.625,
+        "atlas1": 0.6875
+      },
+      "native_selected_tags": [
+        "80AA100A",
+        "80AA100B"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.625,
+        "0x124": 0.6875
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.75,
+      "selection": {
+        "slot0": 11,
+        "slot1": 12,
+        "tag0": 2158628875,
+        "tag1": 2158628876,
+        "blend": 1.0,
+        "atlas0": 0.6875,
+        "atlas1": 0.75
+      },
+      "native_selected_tags": [
+        "80AA100B",
+        "80AA100C"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.6875,
+        "0x124": 0.75
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.8125,
+      "selection": {
+        "slot0": 12,
+        "slot1": 13,
+        "tag0": 2158628876,
+        "tag1": 2158628877,
+        "blend": 1.0,
+        "atlas0": 0.75,
+        "atlas1": 0.8125
+      },
+      "native_selected_tags": [
+        "80AA100C",
+        "80AA100D"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.75,
+        "0x124": 0.8125
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.875,
+      "selection": {
+        "slot0": 13,
+        "slot1": 14,
+        "tag0": 2158628877,
+        "tag1": 2158628878,
+        "blend": 1.0,
+        "atlas0": 0.8125,
+        "atlas1": 0.875
+      },
+      "native_selected_tags": [
+        "80AA100D",
+        "80AA100E"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.8125,
+        "0x124": 0.875
+      }
+    },
+    {
+      "name": "uniform_boundary",
+      "phases": [
+        0.0,
+        0.0625,
+        0.125,
+        0.1875,
+        0.25,
+        0.3125,
+        0.375,
+        0.4375,
+        0.5,
+        0.5625,
+        0.625,
+        0.6875,
+        0.75,
+        0.8125,
+        0.875,
+        0.9375
+      ],
+      "phase": 0.9375,
+      "selection": {
+        "slot0": 14,
+        "slot1": 15,
+        "tag0": 2158628878,
+        "tag1": 2158628879,
+        "blend": 1.0,
+        "atlas0": 0.875,
+        "atlas1": 0.9375
+      },
+      "native_selected_tags": [
+        "80AA100E",
+        "80AA100F"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.875,
+        "0x124": 0.9375
+      }
+    },
+    {
+      "name": "duplicate",
+      "phases": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "phase": 0.0,
+      "selection": {
+        "slot0": 0,
+        "slot1": 1,
+        "tag0": 2158628864,
+        "tag1": 2158628865,
+        "blend": 0.0,
+        "atlas0": 0.0,
+        "atlas1": 0.0625
+      },
+      "native_selected_tags": [
+        "80AA1000",
+        "80AA1001"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.0,
+        "0x120": 0.0,
+        "0x124": 0.0625
+      }
+    },
+    {
+      "name": "duplicate",
+      "phases": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "phase": 0.4000000059604645,
+      "selection": {
+        "slot0": 15,
+        "slot1": 0,
+        "tag0": 2158628879,
+        "tag1": 2158628864,
+        "blend": 0.4000000059604645,
+        "atlas0": 0.9375,
+        "atlas1": 0.0
+      },
+      "native_selected_tags": [
+        "80AA100F",
+        "80AA1000"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.4000000059604645,
+        "0x120": 0.9375,
+        "0x124": 0.0
+      }
+    },
+    {
+      "name": "duplicate",
+      "phases": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "phase": 1.0,
+      "selection": {
+        "slot0": 15,
+        "slot1": 0,
+        "tag0": 2158628879,
+        "tag1": 2158628864,
+        "blend": 1.0,
+        "atlas0": 0.9375,
+        "atlas1": 0.0
+      },
+      "native_selected_tags": [
+        "80AA100F",
+        "80AA1000"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.9375,
+        "0x124": 0.0
+      }
+    },
+    {
+      "name": "nonuniform",
+      "phases": [
+        0,
+        0.1,
+        0.1,
+        0.2,
+        0.25,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.975,
+        0.99
+      ],
+      "phase": 0.10000000149011612,
+      "selection": {
+        "slot0": 0,
+        "slot1": 1,
+        "tag0": 2158628864,
+        "tag1": 2158628865,
+        "blend": 1.0,
+        "atlas0": 0.0,
+        "atlas1": 0.0625
+      },
+      "native_selected_tags": [
+        "80AA1000",
+        "80AA1001"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.0,
+        "0x124": 0.0625
+      }
+    },
+    {
+      "name": "nonuniform",
+      "phases": [
+        0,
+        0.1,
+        0.1,
+        0.2,
+        0.25,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.975,
+        0.99
+      ],
+      "phase": 0.15000000596046448,
+      "selection": {
+        "slot0": 2,
+        "slot1": 3,
+        "tag0": 2158628866,
+        "tag1": 2158628867,
+        "blend": 0.5000000596046448,
+        "atlas0": 0.125,
+        "atlas1": 0.1875
+      },
+      "native_selected_tags": [
+        "80AA1002",
+        "80AA1003"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.5000000596046448,
+        "0x120": 0.125,
+        "0x124": 0.1875
+      }
+    },
+    {
+      "name": "nonuniform",
+      "phases": [
+        0,
+        0.1,
+        0.1,
+        0.2,
+        0.25,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.975,
+        0.99
+      ],
+      "phase": 0.9950000047683716,
+      "selection": {
+        "slot0": 15,
+        "slot1": 0,
+        "tag0": 2158628879,
+        "tag1": 2158628864,
+        "blend": 0.5,
+        "atlas0": 0.9375,
+        "atlas1": 0.0
+      },
+      "native_selected_tags": [
+        "80AA100F",
+        "80AA1000"
+      ],
+      "native_block_outputs": {
+        "0x10": 0.5,
+        "0x120": 0.9375,
+        "0x124": 0.0
+      }
+    },
+    {
+      "name": "nonuniform",
+      "phases": [
+        0,
+        0.1,
+        0.1,
+        0.2,
+        0.25,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.975,
+        0.99
+      ],
+      "phase": 0.9750000238418579,
+      "selection": {
+        "slot0": 13,
+        "slot1": 14,
+        "tag0": 2158628877,
+        "tag1": 2158628878,
+        "blend": 1.0,
+        "atlas0": 0.8125,
+        "atlas1": 0.875
+      },
+      "native_selected_tags": [
+        "80AA100D",
+        "80AA100E"
+      ],
+      "native_block_outputs": {
+        "0x10": 1.0,
+        "0x120": 0.8125,
+        "0x124": 0.875
+      }
+    }
+  ],
+  "all_native_outputs_match": true,
+  "remaining": [
+    "source class ID and map joins",
+    "tag/null activation gates",
+    "LUT texels and format",
+    "live phase provider",
+    "render validation"
+  ]
+}
