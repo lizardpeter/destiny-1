@@ -1,0 +1,3330 @@
+{
+  "schema": "d1-r2-lighting-source-audit-v1",
+  "packages": [
+    {
+      "name": "ps4_city_tower_activities_act_023d_0.pkg",
+      "bytes": 1544192,
+      "sha256": "a69fc58b6692ac55e08da03c2364058351fbb85db8e06387a28de3cf4748a076",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_0.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_1.pkg",
+      "bytes": 835584,
+      "sha256": "7386776a514488b2ee89fb3259aaa79f1bdaab3991181ea2bd423ab893bfc0f5",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_1.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_2.pkg",
+      "bytes": 49981440,
+      "sha256": "6c51c45edcefcfc4954d0adcbe4c84b17d67c02a5d39512639987063880118f0",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_2.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_3.pkg",
+      "bytes": 4132864,
+      "sha256": "71fe16c95cdaa4dc4119f75c34a3af2ace7798819460f97fa1656624782170b3",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_3.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_4.pkg",
+      "bytes": 42117120,
+      "sha256": "ec698392d37149c03d678dbd8605d66a36084bea4b41d77c7daef7894b1526a9",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_4.pkg"
+    },
+    {
+      "name": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 131072,
+      "sha256": "de0a2e4052602d26184d9f739678a0805b8cb8272f3758204700e1687cb55695",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_5.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_0.pkg",
+      "bytes": 46385152,
+      "sha256": "cf483101913c7f640b85679216075dad5d1292c001430bc6b9e066d3e6fa29dd",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_0.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_1.pkg",
+      "bytes": 19652608,
+      "sha256": "9acf40811494a8d33afd2f1094d0b658b59dc22f8bb0dc84863e481f5f095af3",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_1.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_2.pkg",
+      "bytes": 892928,
+      "sha256": "61eb14b4d3e1cc3bce10917a1a750117c34b758fcc456aeebc90ad2949f0ec2e",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_2.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_3.pkg",
+      "bytes": 92160,
+      "sha256": "bd34e7681b87d79e7f88335741f6189ab0c09100132e84c0af8df9c7c6cf6c19",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_3.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_4.pkg",
+      "bytes": 108544,
+      "sha256": "06e431d8c54cba3d03dd55b18661aa484e5cb9beb8c364a8088460929d431a14",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_4.pkg"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_5.pkg",
+      "bytes": 110592,
+      "sha256": "1537bc62b74f19065c7e1416e3a7eb2b49429f6458024f716ecb255e871f93bf",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_5.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_024c_0.pkg",
+      "bytes": 137527296,
+      "sha256": "ffb2e3cbb9777956384063e3c0fc5636200df51ae82a35a6aad06850dbf1fff2",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_024c_0.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_024c_1.pkg",
+      "bytes": 12226560,
+      "sha256": "21e75033fcba2f85b5d22b7377a7122c5135ce2c3f10f8453fc54a1d304c10f8",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_024c_1.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_024c_2.pkg",
+      "bytes": 13574144,
+      "sha256": "681349e0d32c213cae4bdef839bee8a6fa5aa3a5989c4a5344ee342cbe9d6e45",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_024c_2.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_024c_3.pkg",
+      "bytes": 2134016,
+      "sha256": "c6846bbe0bdf9aaf9ba194ed8a2a3b2c7e26178bd79218134e909fa460ebcaef",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_024c_3.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_024c_4.pkg",
+      "bytes": 6987776,
+      "sha256": "12dfe5e7dc65a8477d5ceabba5bb921b07c83110151a57b86a52ba3eb7d82018",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_024c_4.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1687552,
+      "sha256": "b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_024c_5.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_0250_0.pkg",
+      "bytes": 294875136,
+      "sha256": "beb269a2673f1106e2eff20ff577d0221d7fa56a8b71f5f8763cf34272114b32",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_0250_0.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_0250_1.pkg",
+      "bytes": 17983488,
+      "sha256": "87904a97ce9899305b6bdba9df960d220749b3b2398c4ba8bd97e6efb8f81f91",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_0250_1.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_0250_2.pkg",
+      "bytes": 11143168,
+      "sha256": "7543c1926023ec76ff8949618e04e1d0a93609f8448a1f8f875fcfc505a6b219",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_0250_2.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_0250_3.pkg",
+      "bytes": 206848,
+      "sha256": "1db9423081f922b78cce256641dfab195e6a4b4afb6020e4e0c5029234f19375",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_0250_3.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_0250_4.pkg",
+      "bytes": 17901568,
+      "sha256": "5a9370d60724622fb6592a7bcfa2fc4dbb40a4fca5cd696ce8db086a5756e84f",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_0250_4.pkg"
+    },
+    {
+      "name": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 1677312,
+      "sha256": "2066afe09503eee4c35d948f6749a6e7b7b02572dcd41d1d3ca679fa523ea22c",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_destination_0250_5.pkg"
+    },
+    {
+      "name": "ps4_client_bootstrap_patchabl_0172_0.pkg",
+      "bytes": 18964480,
+      "sha256": "40f99482d8a7e65cf65b904fa2f96bb15420daec35b42235037129f7dca8951c",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_bootstrap_patchabl_0172_0.pkg"
+    },
+    {
+      "name": "ps4_client_bootstrap_patchabl_0172_1.pkg",
+      "bytes": 12472320,
+      "sha256": "489d43d85eff74fb76aa4453f4939c2752ad26e8abc0021ac3d5bc7cfb92bb67",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_bootstrap_patchabl_0172_1.pkg"
+    },
+    {
+      "name": "ps4_client_bootstrap_patchabl_0172_2.pkg",
+      "bytes": 17139712,
+      "sha256": "e5c2a393fe4440202849b090cfe18f4377e28c72fd1cbb9a2c483a4ab343d3db",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_bootstrap_patchabl_0172_2.pkg"
+    },
+    {
+      "name": "ps4_client_bootstrap_patchabl_0172_4.pkg",
+      "bytes": 43008,
+      "sha256": "bf50a0b21dbd1f989534a3b84a5d88912ffb63636ee8d7e075b8046dc42b7793",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_bootstrap_patchabl_0172_4.pkg"
+    },
+    {
+      "name": "ps4_client_bootstrap_patchabl_0172_5.pkg",
+      "bytes": 38883328,
+      "sha256": "73b604e7119cde264b6b181274a8afe8cd50d00dbd0ad6a1544fe0c5b1ed2999",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_bootstrap_patchabl_0172_5.pkg"
+    },
+    {
+      "name": "ps4_client_startup_globals_018d_0.pkg",
+      "bytes": 3846144,
+      "sha256": "0283304bfa69e3e7840e0141c9e52b4b7e62fda5ed3e447036159adfdc6a4daa",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_startup_globals_018d_0.pkg"
+    },
+    {
+      "name": "ps4_client_startup_globals_018d_1.pkg",
+      "bytes": 1370112,
+      "sha256": "ef5a44e94bd2fea5de6ac0263622362e504d3b8b14ead8b47bd666ddb05a1256",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_startup_globals_018d_1.pkg"
+    },
+    {
+      "name": "ps4_client_startup_globals_018d_2.pkg",
+      "bytes": 759808,
+      "sha256": "3c8ee6981bf2b04c598484499bf23cff0a94004d02a1291d581b298486dc0452",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_startup_globals_018d_2.pkg"
+    },
+    {
+      "name": "ps4_client_startup_globals_018d_3.pkg",
+      "bytes": 96256,
+      "sha256": "7ab71a22efdfd80913c2a480ca8a869873f3e2941b63ce797f85f379ec22fd9d",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_startup_globals_018d_3.pkg"
+    },
+    {
+      "name": "ps4_client_startup_globals_018d_4.pkg",
+      "bytes": 161792,
+      "sha256": "476c646d4a107e93185461ad89f3c33600804f9c32cccfc9558966b49224f147",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_startup_globals_018d_4.pkg"
+    },
+    {
+      "name": "ps4_client_startup_globals_018d_5.pkg",
+      "bytes": 83968,
+      "sha256": "ba3019263a1e9941490b53cb734b8a4b83ed4d1f7931f28c2624ab8da3d4b411",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_client_startup_globals_018d_5.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_0.pkg",
+      "bytes": 45594624,
+      "sha256": "7160cf335c0cb3db012636f1f4a7cea05015fe8dccb7bd53678dec18c1f82e26",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_0.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_1.pkg",
+      "bytes": 12720128,
+      "sha256": "041de439c5e4fd4154ff665501efce05eead88d411b93cf397d50fd0dab64f9f",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_1.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_2.pkg",
+      "bytes": 10653696,
+      "sha256": "ec13db8f6f648dd12d394fbfdbffbe2f0ae4988f96e15cbc275a4d0cc9cec4af",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_2.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_3.pkg",
+      "bytes": 178176,
+      "sha256": "06d386544040c398d61af7a92f269f5a0466f02ec8413bb699b246198696bcff",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_3.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_4.pkg",
+      "bytes": 180224,
+      "sha256": "0e82537b08c4bff923426c144d0efbbba760640efd0ad27cc24a8c15376fe3b1",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_4.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_5.pkg",
+      "bytes": 194560,
+      "sha256": "bf740d48a129502d6a262ba505184883ac6703de5cef6b2c9b5bdb8fd36e037c",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_5.pkg"
+    },
+    {
+      "name": "ps4_globals_0151_6.pkg",
+      "bytes": 161792,
+      "sha256": "316a38cdde9f74668a1b268884140631777d8cecc640b4cfe5930b2279db8529",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0151_6.pkg"
+    },
+    {
+      "name": "ps4_globals_0156_0.pkg",
+      "bytes": 51275776,
+      "sha256": "3c1ff48ac177547f3b326cf7ec1775786d6977fa5bef9cdc55b9dd06940c8391",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0156_0.pkg"
+    },
+    {
+      "name": "ps4_globals_0156_1.pkg",
+      "bytes": 5599232,
+      "sha256": "00baa490264a92f8f0de34a07f7ab7b4003772fe7c2cd959e89adb48180ca56f",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0156_1.pkg"
+    },
+    {
+      "name": "ps4_globals_0156_2.pkg",
+      "bytes": 8103936,
+      "sha256": "fc86eabbb56ae198a26284ad9dc54e67541b3eae1b6a0e02f0799a371e81faf7",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0156_2.pkg"
+    },
+    {
+      "name": "ps4_globals_0156_3.pkg",
+      "bytes": 165888,
+      "sha256": "c1a4d4eeea6624e8ccc69d3dcd9ec6d14190139e3b30392110c5ef32d97dba7d",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0156_3.pkg"
+    },
+    {
+      "name": "ps4_globals_0156_4.pkg",
+      "bytes": 176128,
+      "sha256": "e2bae33d5c38107b46266e28c965b0d8ce590b22d299c2cbfa025472e8c1a107",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0156_4.pkg"
+    },
+    {
+      "name": "ps4_globals_0156_5.pkg",
+      "bytes": 172032,
+      "sha256": "54ad42b38dab239d483c1271cc00eea7e5d2d5ec1df6d6277251aad2d5cac3ba",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0156_5.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_0.pkg",
+      "bytes": 206192640,
+      "sha256": "e4f0844d75dde0d062ddf42f6a13b82d00689b76543c28255aefa28785d3f7b6",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_0.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_1.pkg",
+      "bytes": 30326784,
+      "sha256": "91c19b8c392f8f12c98ec6527306190fe2a59012abfe016a975b54b42a7dad2f",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_1.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_2.pkg",
+      "bytes": 30464000,
+      "sha256": "c8f71e22a37d2feed68178dbb60aed245bfbbe5d342c70d0e11dfd580684573f",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_2.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_3.pkg",
+      "bytes": 268288,
+      "sha256": "d06814d03e9b00d9df8ed683bff036627cd3195edb8fe58fcf80566c13d3f79a",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_3.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_4.pkg",
+      "bytes": 546816,
+      "sha256": "98b0e7abdfd88eabe7a3d6534b8f487dbbaa4ea0bf8e87b2d0fe6ec29c229077",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_4.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_5.pkg",
+      "bytes": 380928,
+      "sha256": "723b1d79ed9904474bd737f9af6065dc6b6266eaf2c59d123e3452434550089c",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_5.pkg"
+    },
+    {
+      "name": "ps4_globals_0157_6.pkg",
+      "bytes": 356352,
+      "sha256": "51cb4f9bdb8a10e0fc25de757a9885641cce0c887549019831b9a0687a44b089",
+      "previously_pinned": true,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0157_6.pkg"
+    },
+    {
+      "name": "ps4_globals_0158_1.pkg",
+      "bytes": 16465920,
+      "sha256": "1264074ace241e069d26ffcbb96bce2a4379b283ae0ae61adf0e1e6262f83e50",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0158_1.pkg"
+    },
+    {
+      "name": "ps4_globals_0158_2.pkg",
+      "bytes": 121954304,
+      "sha256": "a912b07555ec00a982b1b57b3b729d751d80376142bd6d11adea56146d8a4c24",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0158_2.pkg"
+    },
+    {
+      "name": "ps4_globals_0158_3.pkg",
+      "bytes": 5095424,
+      "sha256": "991aed958470557098c0b05e42a9442f228cae1f0a0c0cdfee85211d750e57a7",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0158_3.pkg"
+    },
+    {
+      "name": "ps4_globals_0158_4.pkg",
+      "bytes": 4018176,
+      "sha256": "758bf5ee43fd5545b0bdf8a5e36ce77c95ca2cffeae55eaf991ae98dc752f970",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0158_4.pkg"
+    },
+    {
+      "name": "ps4_globals_0158_5.pkg",
+      "bytes": 3821568,
+      "sha256": "03e3b08129cd2bfe64024342e8cfe3b8e0975850d5f440741cb0e50f9e56c158",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0158_5.pkg"
+    },
+    {
+      "name": "ps4_globals_0158_6.pkg",
+      "bytes": 122880,
+      "sha256": "e498d678bd6ba688b5905eec1aa0124c9fab9532120a310c90053e087ceb7cb3",
+      "previously_pinned": false,
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_globals_0158_6.pkg"
+    }
+  ],
+  "current_tag_count": 52117,
+  "source_rows": [
+    {
+      "hash": "80AAE475",
+      "class": "808009A2",
+      "snapshot": "ps4_globals_0157_6.pkg",
+      "bytes": 24,
+      "sha256": "96a3042a3c919c2a0f0a9c00cdf9593dc4e9d6af972950d914ff3ebbc01e9a70",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80AE4001",
+      "class": "80801BB0",
+      "snapshot": "ps4_client_bootstrap_patchabl_0172_5.pkg",
+      "bytes": 19484,
+      "sha256": "89cc2719e2c96f9d0823216978c44daa50ac804164d13222f8274575b60d20e9",
+      "pass_materials": {
+        "composite": "80AE40C4",
+        "sun": "80AE40C9",
+        "frame_textures": "80AE40C3",
+        "global_channel_defaults": "80AE4005"
+      }
+    },
+    {
+      "hash": "80AE4005",
+      "class": "80800466",
+      "snapshot": "ps4_client_bootstrap_patchabl_0172_5.pkg",
+      "bytes": 2160,
+      "sha256": "83e902c1f298596039911e190fec831dd1afd9faff991a7eec236c87296441af",
+      "channels": [
+        {
+          "index": 0,
+          "hash": 90179527,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 1,
+          "hash": 1252114165,
+          "default_vec4": [
+            50.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 2,
+          "hash": 2556025585,
+          "default_vec4": [
+            0.02500000037252903,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 3,
+          "hash": 4166210364,
+          "default_vec4": [
+            0.5,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 4,
+          "hash": 3981160586,
+          "default_vec4": [
+            5.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 5,
+          "hash": 2658574034,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 6,
+          "hash": 1241234657,
+          "default_vec4": [
+            30000.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 7,
+          "hash": 2497244380,
+          "default_vec4": [
+            1.850000023841858,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 8,
+          "hash": 3173810152,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 9,
+          "hash": 2663884264,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 10,
+          "hash": 3056632075,
+          "default_vec4": [
+            0.05000000074505806,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 11,
+          "hash": 1055574819,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 12,
+          "hash": 2123557681,
+          "default_vec4": [
+            100.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 13,
+          "hash": 2672605071,
+          "default_vec4": [
+            10.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 14,
+          "hash": 1476445940,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 15,
+          "hash": 1476445943,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 16,
+          "hash": 1476445942,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 17,
+          "hash": 2423543701,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 18,
+          "hash": 1633552291,
+          "default_vec4": [
+            10.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 19,
+          "hash": 3437944730,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 20,
+          "hash": 2088734839,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 21,
+          "hash": 1383168257,
+          "default_vec4": [
+            0.10000000149011612,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 22,
+          "hash": 4060811251,
+          "default_vec4": [
+            0.5,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 23,
+          "hash": 1614739564,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 24,
+          "hash": 3439522578,
+          "default_vec4": [
+            0.15000000596046448,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 25,
+          "hash": 1962697412,
+          "default_vec4": [
+            0.5,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 26,
+          "hash": 3828643774,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 27,
+          "hash": 2555718632,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 28,
+          "hash": 953731187,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 29,
+          "hash": 3800300512,
+          "default_vec4": [
+            90.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 30,
+          "hash": 1597736081,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "index": 31,
+          "hash": 1659130926,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 32,
+          "hash": 2045960965,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 33,
+          "hash": 2492950735,
+          "default_vec4": [
+            49500.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 34,
+          "hash": 743670141,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 35,
+          "hash": 743670142,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 36,
+          "hash": 743670143,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 37,
+          "hash": 743670136,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 38,
+          "hash": 743670137,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 39,
+          "hash": 743670138,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 40,
+          "hash": 294761227,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 41,
+          "hash": 547401102,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 42,
+          "hash": 743670139,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 43,
+          "hash": 743670132,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 44,
+          "hash": 743670133,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 45,
+          "hash": 760447727,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 46,
+          "hash": 760447726,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 47,
+          "hash": 760447725,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 48,
+          "hash": 3924713116,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 49,
+          "hash": 4264009506,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 50,
+          "hash": 1007758803,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 51,
+          "hash": 1007758800,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 52,
+          "hash": 3651328163,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 53,
+          "hash": 1549245946,
+          "default_vec4": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 54,
+          "hash": 3231367590,
+          "default_vec4": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 55,
+          "hash": 1847767646,
+          "default_vec4": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "index": 56,
+          "hash": 3479309780,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 57,
+          "hash": 954006746,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 58,
+          "hash": 3454161171,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 59,
+          "hash": 1067185869,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 60,
+          "hash": 3781913451,
+          "default_vec4": [
+            100000.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "index": 61,
+          "hash": 3421710210,
+          "default_vec4": [
+            50.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 62,
+          "hash": 3441842840,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 63,
+          "hash": 1050803134,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 64,
+          "hash": 2121305497,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 65,
+          "hash": 3638890901,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 66,
+          "hash": 4284370545,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 67,
+          "hash": 282035500,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 68,
+          "hash": 95034066,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 69,
+          "hash": 4033942491,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 70,
+          "hash": 760447724,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 71,
+          "hash": 760447723,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 72,
+          "hash": 760447722,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 73,
+          "hash": 760447721,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 74,
+          "hash": 760447720,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 75,
+          "hash": 760447719,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 76,
+          "hash": 1338215099,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 77,
+          "hash": 61911189,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 78,
+          "hash": 3200121143,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 79,
+          "hash": 760447718,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 80,
+          "hash": 777225282,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 81,
+          "hash": 777225283,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 82,
+          "hash": 777225280,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 83,
+          "hash": 777225281,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 84,
+          "hash": 777225286,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 85,
+          "hash": 2086794555,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 86,
+          "hash": 2076512578,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 87,
+          "hash": 3970459769,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 88,
+          "hash": 3970459770,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 89,
+          "hash": 3970459771,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 90,
+          "hash": 3970459772,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 91,
+          "hash": 3970459773,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 92,
+          "hash": 3970459774,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 93,
+          "hash": 3970459775,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 94,
+          "hash": 3970459760,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 95,
+          "hash": 4074476269,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 96,
+          "hash": 181827042,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 97,
+          "hash": 3870210540,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 98,
+          "hash": 3977621956,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 99,
+          "hash": 3120217937,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "80C7A025",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 1488,
+      "sha256": "5a239ca36184cf0ec232b861e4ad567578e1684e2fcb1c312c75357e34fd7616",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A05D",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 2640,
+      "sha256": "0fa0f61e188643b8aef465081ae3dfec0986b44a3ebb0222d53c679fe7f8409c",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A243",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 22512,
+      "sha256": "6010ee214550270aa978dc04e3ef674e66111b1e1511eec1b9cb29acddda273d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A43B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 368,
+      "sha256": "3f64e2c181dde7dc017dfc4fdd21d16dac5aad37cb4257e4d5e1f45cccb98d22",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A4DD",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 280,
+      "sha256": "39e6c2073fd4b76dfde3ed74935c5876e7b82a8502ee92f74ecd1bea2df90b2d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A65B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 192,
+      "sha256": "f8b4f9de73865948b2d6f80f11db7abdb338115153459a3eab4c725ca7ad241a",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A6F2",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 32304,
+      "sha256": "584119dd2532ef9545e0570938f26b73f42db17078776618fbc5f274aa561576",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A6F3",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 192,
+      "sha256": "3a71a4f7373dcd69f58b0fc81dbdc12b52cbb638e738c68e57393903455d35af",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A918",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 4800,
+      "sha256": "90b30dac5af2df84ff0b760cc7e768c398726baa93fa0c1d77c159b583c106f5",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7A994",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 9408,
+      "sha256": "9d8aad0fab4efc0f20b3ab2bd244d24d6ddacec7e434a624f119e0d26aad56b4",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7AA31",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 192,
+      "sha256": "7b83d6c805087ce58d8bcdfecc87554f3a1e88b67de85b014788d1c99f470993",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7AA3B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 20064,
+      "sha256": "7378edad9ca45cbf411514b06c4ec53f0da414da0c1d951f7b573262a2c6be0e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7ABCC",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 15312,
+      "sha256": "f9beaafa4ef4c27eb3a979c699970a3f25eddf0194961458ee4a460a14843511",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7AD81",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 22608,
+      "sha256": "54de4c8058f8abb01d769bdaf4301590465bcc407eabc848650db640eb3af0e7",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7ADDB",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 624,
+      "sha256": "6f6b20f6a535ecc9c8f6b3d7284950956b91ba68f0077c06dc6b6e8fff341409",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7ADE4",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 600,
+      "sha256": "ad9d2910f820303c02ba096f5385f50f19d4ca3377dbf667310e7399d9c463fe",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C7AE08",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_activities_act_023d_5.pkg",
+      "bytes": 17716,
+      "sha256": "49dccb01997db9648d1c3dfe7745b931e3facfe0cae0f5a284a52664530f37e6",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C8817A",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_ambient_activi_0244_5.pkg",
+      "bytes": 13440,
+      "sha256": "303fff360e03bd3501aad5218de0fd7c096d77e2aa4c9b20edf7b2dcc9cdf6b1",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C88472",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_ambient_activi_0244_5.pkg",
+      "bytes": 8832,
+      "sha256": "02e02b26e8f126f3e7ba6ea8fc0b63c20ec423e74e400bd300b315012645aa60",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98022",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 649,
+      "sha256": "bc1064b5f41010dd663caedf2e14751e4f8374279cc148b687dc01e874d9fa9a",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98026",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "2f579fed9a6fb878ce42ffb855967849758a36a4dd8e40586eaef464793b4617",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98027",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 16784,
+      "sha256": "4fb116aa8e02993d7718a694a65334d72c600c149bd399f895c8acf04075acbc",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98028",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 6600,
+      "sha256": "940a1fb252c353f8a7f0d47db8a61088d65251f6c9e1a9e288c8e3d0c290732d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98029",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 224,
+      "sha256": "f02b9b03fad4073d2d28e2da3d25118502c74e7349730984129ebf0c1489b7ee",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9802A",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "ff205724fc5524af8939b67a5bfa5aa062de1b4420d1bdc1b5a5b8f3ff0c075e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9802B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 5624,
+      "sha256": "2082e70a991e73a6765992fc50b39019cf39eb60db4af0ed8213fc8940eef358",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9802C",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 920,
+      "sha256": "b1947220ac8b092585dabebccb96ad8c444f356462dc371dbe8646c28c91b778",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 4,
+          "collection_hash": "80C98190"
+        }
+      ]
+    },
+    {
+      "hash": "80C9802D",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 12312,
+      "sha256": "68169ace432a9e9d4dd06d36e2d0fa6b34561f7457d9bf3ca79ea26c8d9b92df",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9802E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 6304,
+      "sha256": "b9db22c06bf70bd9e36d60fa88cad61843fc32863abedc42bcef86c938c2d1f6",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9802F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1408,
+      "sha256": "da795eb4b0e6fff0cd1a0dda21f5ddb5dc14ca9bf4c0fc94872e629c4ae352b2",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98030",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "02b19db221a290261f4a5336cdaf7aaf62d22989a568cc16c29fec19bba47a15",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98031",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "ea8fdb098fefa45dd5162dce5e1e76a3f33c9d64b487accabf5bc638137c2864",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98032",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "13753ccb7745ee5e34f51328d58518e01f3d88a8404cd5d546eeb7202b0824eb",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98033",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1328,
+      "sha256": "194821a5108686cc3eff65dd746f08dac814d1b73a0bd3c22ff23ba3f9aa9282",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98034",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "67c8cfbf339ba929f383d1ada86d3b19101524c3621e16d979f8820b53609bad",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98035",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 232,
+      "sha256": "88b92c8dcf8af602c6a0be3aafbc3d62ec34726b85de422601a4d477139b1827",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98037",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "03b0cd701e9d258869814fd98d62691e50dd1c259137630211c304b17f98d87b",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9806A",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "01ba92bef0ff40572a1607434e70204bf0860feaa33ff1ece06e69df1dea5bc7",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C980E2",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "604b8a63c9783b4da318f9c642a9e2de76eb1240e71e36f74cc5121f6124a6e8",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C980E3",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "241f18d0081fabecc3dba888da526f547d8032b68d69697646c84d33e03c044e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98164",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "61971bd437c3c178fad7cbd61cd140e1f8a54a7ddbba543cb3db7aaad8cede09",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98193",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "38a3c76ec1c20290d9ddfa93809768ab536b31b6f9065ba8461d172a64a0d8d1",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9849F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 240,
+      "sha256": "b374d92412abd61bd891d8abe494a0a3cec5a241317790e86f8c1334d57e0602",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A0",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 2400,
+      "sha256": "72f9e9383c6c89a9d901680d3e8ff6c92b9383137113d69abe4411c9f24dd780",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A1",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 224,
+      "sha256": "fdeb2d2065cb03b3ea3cf5c40409206ac78bfa28ae5657e1c2ea15dc4f196f8d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A2",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 192,
+      "sha256": "a962e6f8b89cc3e32da92afccded7f6ca4b942c14f7e87f44a5b121e4962728e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A3",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 568,
+      "sha256": "2c243d73bda43cc31ef7ec552be2d02b45f8831fccea768be4ea67c691535cd6",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 2,
+          "collection_hash": "80C984C6"
+        }
+      ]
+    },
+    {
+      "hash": "80C984A4",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "4184053248fea0dcf4068e79404375beacfcfecbd2e8376653fe60db895333c8",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A6",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "5c7b60ff2f5362ccab02e1b0b134ba458f6dcf5e4bb6dc16b930e32f5869ca6e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A7",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "b503e9441d948df18a068abf3d2bfe78afe4cdc36eedecaad54024b6da284f75",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A8",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "3b118297654495f8f7039520398b847fba49caf1152f7e0efb4c5a5f1c335f48",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984A9",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 192,
+      "sha256": "6950ddab64a3f70819c2feaffca6c260e2265698f0edd4667b0cfa8adc16bec6",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C984AA",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 544,
+      "sha256": "db6e3da44df828ebfe562fcef8ede97ccd5392a9f5bfda3d71a3a30cf2fc0076",
+      "sun_components": [
+        {
+          "entry": 1,
+          "sun_tag": "80C984B3",
+          "cycle_seconds": 3600.0,
+          "initial_phase": 0.0
+        }
+      ],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9895B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 5280,
+      "sha256": "871416bdc04b2e27b8267e49bba2c44ac6d53e83f361b6131db7eaf8cf549f0f",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9895C",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 13320,
+      "sha256": "2e9c9925e99e3fe943ee696bc21954922322444b1f30d4ac5af1bea6f9076e40",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9895D",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 224,
+      "sha256": "e0fd1a19abcdc73dd6917f7a5b0a99b6038eec8acb954107f7fc7fb68303cdd7",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9895E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1280,
+      "sha256": "644a0806d01df4d5d3169432aa8e7f4ffdff10b86f9814ece05c358d033bc7d5",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9895F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 11240,
+      "sha256": "3593d2a5faec57213cd72f6ca6e54a41193ac9427f8229a03fa6f88fb6070d85",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98960",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1272,
+      "sha256": "2903324bde2ba0d2a0d191e033675d8a8b88089c2f665cb77b3826d1aa28b77f",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 6,
+          "collection_hash": "80C989DE"
+        }
+      ]
+    },
+    {
+      "hash": "80C98961",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 16176,
+      "sha256": "fffc40d3150122a54828b9f956d07c16372d23a005f0caccbcb58cfca6d9ef9a",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98962",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1336,
+      "sha256": "a901926bd7ab8488fc4027a07d0d95fc020b509fce3be7f7fdd819eae90f1d57",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98963",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1952,
+      "sha256": "6f656346920f8fb61088869c5c0e94dc9c7a4afb97b5dc6f8d042d044d10cb90",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98964",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "6100fe7725043eb4144f27cac28c2636859c2020b9a8eb9bd26c64af7e6fb9ec",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98966",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "8a218d72c1491829ad5edb4ae48fa74971812466e4cebca9b50640274c04787f",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98967",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1328,
+      "sha256": "f7c11b64ef82fb1ff4c5472503ce975cc20304b0432d8ef183cb463306140c42",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98968",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "3e7e8ab5e80714f55a08256a781866610c8dff36ca78268c082e7e23d949b6fa",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98969",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 232,
+      "sha256": "dd54f6ce93f6734c647768b7dce17e59da4016a11fd4d946f7ae5d423536e9f7",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9896B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "72f6338bbf9ced097c8bdb3eb1d714da2390f46e6e0375a4a49386061b8ced34",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C989F7",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 18864,
+      "sha256": "24d62beb64d2569cb3afd9910bc387ae65fff529a3bb010a2b074d46ad9b91ec",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98A0E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1353,
+      "sha256": "2c37f5a58738e4b53fda52bb7cda22275e8bfe66b1ff41d18df2e614b8341e78",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98A2F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 3899,
+      "sha256": "294aabf67fc046b89698b6105ba2584b023b7e8e58db88501a9b5440d907c787",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98A30",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1800,
+      "sha256": "df1b7ee9b44fa11c6f8bfd3b7972a1a8a93fbe1241c8e17555a377ccd11243f5",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 9,
+          "collection_hash": "80C9936F"
+        }
+      ]
+    },
+    {
+      "hash": "80C98ABA",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 23843,
+      "sha256": "6003bb40fa06a0f5cf1b96e7749d591c15bec21b047fdad23390637d281709c2",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98ACC",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "4f318054c4cb14c8d176c8458ff171d43b0d43bc4bad062195ad2404bd2cb850",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98ACD",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 232,
+      "sha256": "6b71bba5751c37b5a2420cfcb8b31418be933e6c43ac0955fa6a42cdc9483217",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98B7A",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "a42c075754b3d0f08d084560a5c097b7eb14caaf3d13796cfec131bc00813d64",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C98B7B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "e0930244994713d9ac1cf5e1a37a28c2931da6ed9f659f56e85fb6942a7f5070",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9924E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "efd03309aa5ece8bac152f363d3de6c611da6cb86e1e5882d4f5cfa1b5da124c",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99251",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 400,
+      "sha256": "9e9dd9d8e5bbeee88b2070b0b07da037492e1d956993ee9532c753ad2f7d9f9d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99255",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 16056,
+      "sha256": "5fbab17c3beaa69b3528b862d23f4e33930b49956273e6fda4297a3e8e399d5a",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99256",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 6816,
+      "sha256": "d176ea6c3682ac828f546ce795b66bc1ca7f4d47acbcb46742224dfd1cf410c0",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99257",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "c3859c8f27416884308648ee7339c0f914d9f36d5f133795089b9914330678cb",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99291",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "60401260a82515cc52e49bbd75188e54bd7a3c39946ade2463948fa5c35a291a",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99295",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 19872,
+      "sha256": "fd6143b3c304bdff58a9cd6d78f62d57ea560491639a6ac8fa63c6793c676b87",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99296",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "0b87dd8bd3a5d55fa592b6e59b77eef538c1d3dfc52967be44f4460e62241d1e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99298",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "9f28c7dff7ee9c8f59689538a886e0c7c132fd9f2f7830c528b5f4ca1bc08a5e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99299",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 5936,
+      "sha256": "28a37b86902c1c0482f97fd71ee95b67b93ee72225def50a4f28f4d91c8738e8",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997C7",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "93f12b8485fa58c0a068985453dd3f9af92728255700ef6b260320e17251fa12",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997C8",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 232,
+      "sha256": "dbd02abae1e2154f4978bbd1e08f137cec657db35d5557d760f23ff3ab3e2f0c",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997DE",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 480,
+      "sha256": "6ccc80da047f31e8468bb4b980ad553d8b4a0bf44b918c74bd2a87507a362c09",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997DF",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 720,
+      "sha256": "549cec5a807c23e657a57ea6e4fbb8c973cf44460af92832285cd286276fda10",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997E0",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 224,
+      "sha256": "768002df3c564f1f90a7daf3a120f57bd827cbd5366191e2ff527c4112c1f29c",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997E1",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 392,
+      "sha256": "3548a46447fe346fc80426d61c64e47b2b658e51f2465e2f5c607df5638d25ac",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 1,
+          "collection_hash": "80C997EF"
+        }
+      ]
+    },
+    {
+      "hash": "80C997E2",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "5ce9977bcd2f60aa9894b6ea9aecd79751054f97c970848b8528d805caa0a833",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997E4",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "b344fb83020e200a7c3c51bb318373441e0d1140a52c5a0edf29beaf34a29e92",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C997E5",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 560,
+      "sha256": "d07228f074faf026624061364916b12cd7b5318c848232c785822b4e0c1d7a6e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99855",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 889,
+      "sha256": "8d4f90712e48d17d4960529806cdd0de6b7e7a5de584da837397c5fec23c6db2",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99857",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "825aebcb3ce3a0563b615ee720927ea4f418540ab2e161cbbb8bce3dd12e8943",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99955",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 856,
+      "sha256": "bb5d91b91700a59f651eae26947099fc5b315935df9b1256709358bf9a3507b8",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99956",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 3744,
+      "sha256": "1edbe17188530de547affd45415fd49cd919dd9264459f1a7ef63a657e422015",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99957",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 224,
+      "sha256": "be3dfa1f6fce5fcbe43632b9941f79d112c8308c73a9810c2485882895d6dd57",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99958",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 400,
+      "sha256": "37f7e09f7f50d071e8b6677cd098d5c1b0b10ca316b071f42e63b65698d31b07",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C99959",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 480,
+      "sha256": "782dc0f5a615fcb4bc433e930c3ac6f3a498ed651e31c9bc84ca473836da5d63",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9995A",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 392,
+      "sha256": "197a6e5244c6fc2e88846e87842c392e5100736ae120975c20e9d9b7de451b31",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 1,
+          "collection_hash": "80C9997B"
+        }
+      ]
+    },
+    {
+      "hash": "80C9995B",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1392,
+      "sha256": "1a18fee0619959a75e5ec7f2c7fb62b03c5d9d304fe93364ac6abc507b98cca9",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9995C",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 600,
+      "sha256": "382eae54ccfcf0e782029abc51046dc51ae312e80f8a7ef9345a8dc4908dbccf",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9995D",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 1136,
+      "sha256": "19f71631327ac57b46a7244a97d5b20ce78939f0ca0444bb3ce33c40afe0bb95",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9995E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 216,
+      "sha256": "69a7b3bae377932abfffd5df1c37da39da03e0778d544e00e6d1344f2c104701",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80C9995F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_024c_5.pkg",
+      "bytes": 304,
+      "sha256": "15da69528aaf9f06a234d135e78922b34e9b0fe312262c1a02b7b44411590c5e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0AE1",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 6288,
+      "sha256": "d558a5972323a28d9cc7b5581b56521191571c936887b2f28c596dcd13797844",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0AE2",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 224,
+      "sha256": "6146b29f011964704683eb83e90ed189f26b71be21449f6267b122e48391817d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0AE3",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "462d3921ad782ebd1691baad4634cc0fead0af52bde07806c660be60c8b48017",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0AE5",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 232,
+      "sha256": "6b1ad8c9d352da453cbe03bc8cc92a416d675a36e855e55bcd29d5956cac2240",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0AE7",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "b1452545878de20f2991946a330240bc8a38e6ef9e47f0ed7be17df93b1b9fb1",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B0D",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 336,
+      "sha256": "a4b4b9083c984167904c6fd9a54ccacafa157f096fce942ceed85bdaf4b49e0d",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B0E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 1728,
+      "sha256": "21e75df0234e13bea9812084bf4e4ce1f7810a2101b76afbce49449f8ea35186",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B0F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 224,
+      "sha256": "d98a3bc884b06c26b610e1531df0163ca1a0985c221bf1f75e846250f2d330a6",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B10",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 1536,
+      "sha256": "8153ab7b21290c52cb9a9b8a541b3887397af11ba8c8f50d85c887dfa6bc1d5e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B11",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 9120,
+      "sha256": "cd8e9c851f74b8333a48e997b663ef49d13ccb111fe65d118aea45da86236c36",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B12",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "83ab794caa44d2eef546443c240ffde5c5c21cc6a19f885573dc0213fc871750",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 0,
+          "collection_hash": "80CA0B63"
+        }
+      ]
+    },
+    {
+      "hash": "80CA0B13",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "443556619e6de900e2620f8b0002e203cdc7000b4bd406e0ee97c02b9e2c24df",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B15",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "75a7672bc749ad13242f58d9cbc131012b9a6988bd733a6f24d40ddd5db70e08",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B16",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 1344,
+      "sha256": "0f1d408de9430ee72c12b88e07326cd16b9a4278035792887390cf97cf50c084",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B17",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 192,
+      "sha256": "afd9e44a6ce7a45a2321edd562500f0cf5393ed1330a1429f99a615d20377bf3",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0B18",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 544,
+      "sha256": "3d0454b7e050d51d7af45739e3311837a880d2ef08b27694bac816e009658c61",
+      "sun_components": [
+        {
+          "entry": 1,
+          "sun_tag": "80CA0DED",
+          "cycle_seconds": 7200.0,
+          "initial_phase": 0.0
+        }
+      ],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0BCB",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "6a94b6089cd1373ce4deef7edc413f78047e17c450061a11526e621f76e88c96",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0BD0",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "d0db8f7d1ccf3d109aab50a85ceeb0997e136de702ab14a7867cc823a72f7d81",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0BEB",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "91f4e1b75760ddd51ab92dd8e452adb0f4d05697e48db8707c9bc0ce6585b34f",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C05",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "dd40147b9228bfa4ec0b67cf41152fbb4394aae44630041be48219855dc4bc27",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 0,
+          "collection_hash": "80CA0C06"
+        }
+      ]
+    },
+    {
+      "hash": "80CA0C44",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 232,
+      "sha256": "a93d00f8954bde01a9b57db7f1d45ec9dba1a7a65bea143e143465cced34f87e",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C45",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "a3d00cd446d6bcffd63d05f236309e29a3a0a7a6fa42cdb599a9a31012fa5d82",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C4D",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 1032,
+      "sha256": "ad8ac2509ed78bdaa13efbb299be0b321b78a87190e7f7acd33a25f5f88ecda8",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C4E",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 552,
+      "sha256": "0e0959921ab7628f9dfafb7017cc3aae4578f8e5f02c88272124535e4c705e84",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C4F",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 224,
+      "sha256": "4eb3bf0f9084905e1a1d30192d7203de523ff5d552d632b29fcdbae3d6af5796",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C50",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 400,
+      "sha256": "e8751a6f2317c4df8b967788d25dfccad92e24d55e0a0e0742a6499421da75c9",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0C51",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 392,
+      "sha256": "f209295f11f367b8fe09367c35db4c7823bf77d4739c436f66d611a84908349d",
+      "sun_components": [],
+      "light_collections": [
+        {
+          "entry": 1,
+          "collection_hash": "80CA0C5C"
+        }
+      ]
+    },
+    {
+      "hash": "80CA0C52",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "8d8482abbac294a716d2e1f195b13043fc269d7f5d5dd5e341d5a4b107d04bc3",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0CAB",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "d1aec81b816501884010e87c320f33926fab39027aec7518f8baf926bacf2699",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0CAC",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "cdb3098e156a907287183b0f19dcbd42674b63bd60d156a6f9ec7330ff295e03",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA0CAD",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "063cf0f2190fdfa939ab9f4ec179788baa4cd60f2e542adfbd5eadeaf93011aa",
+      "sun_components": [],
+      "light_collections": []
+    },
+    {
+      "hash": "80CA13A9",
+      "class": "808009A2",
+      "snapshot": "ps4_city_tower_destination_0250_5.pkg",
+      "bytes": 216,
+      "sha256": "953b6b6562623deed4c14c0572dc06ee53cc4e99efbdf76347b4afd73b4986c9",
+      "sun_components": [],
+      "light_collections": []
+    }
+  ],
+  "errors": [],
+  "atmosphere_channel_name_joins": [
+    {
+      "hash": 90179527,
+      "hash_hex": "056007C7",
+      "global_va": "0x2709aa8",
+      "initializer_va": "0x8431cb",
+      "settings_index_offset": "0x90",
+      "extern_offset": "0x80",
+      "extern_word": 32,
+      "copied_lanes": 4,
+      "destination_va": "0x84294f",
+      "global_channel_matches": [
+        {
+          "index": 0,
+          "hash": 90179527,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 1252114165,
+      "hash_hex": "4AA1BEF5",
+      "global_va": "0x2709aac",
+      "initializer_va": "0x8431d5",
+      "settings_index_offset": "0x94",
+      "extern_offset": "0x90",
+      "extern_word": 36,
+      "copied_lanes": 1,
+      "destination_va": "0x842977",
+      "global_channel_matches": [
+        {
+          "index": 1,
+          "hash": 1252114165,
+          "default_vec4": [
+            50.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2556025585,
+      "hash_hex": "9859DAF1",
+      "global_va": "0x2709ab0",
+      "initializer_va": "0x8431df",
+      "settings_index_offset": "0x98",
+      "extern_offset": "0x94",
+      "extern_word": 37,
+      "copied_lanes": 1,
+      "destination_va": "0x84299b",
+      "global_channel_matches": [
+        {
+          "index": 2,
+          "hash": 2556025585,
+          "default_vec4": [
+            0.02500000037252903,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 3363180682,
+      "hash_hex": "C876108A",
+      "global_va": "0x2709ab4",
+      "initializer_va": "0x8431e9",
+      "settings_index_offset": "0x9c",
+      "extern_offset": "0x98",
+      "extern_word": 38,
+      "copied_lanes": 1,
+      "destination_va": "0x8429bf",
+      "global_channel_matches": [],
+      "status": "CHANNEL_ABSENT_OR_AMBIGUOUS"
+    },
+    {
+      "hash": 3776043094,
+      "hash_hex": "E111D856",
+      "global_va": "0x2709ab8",
+      "initializer_va": "0x8431f3",
+      "settings_index_offset": "0xa0",
+      "extern_offset": "0x9c",
+      "extern_word": 39,
+      "copied_lanes": 1,
+      "destination_va": "0x8429e3",
+      "global_channel_matches": [],
+      "status": "CHANNEL_ABSENT_OR_AMBIGUOUS"
+    },
+    {
+      "hash": 4166210364,
+      "hash_hex": "F853533C",
+      "global_va": "0x2709abc",
+      "initializer_va": "0x8431fd",
+      "settings_index_offset": "0xa4",
+      "extern_offset": "0xa0",
+      "extern_word": 40,
+      "copied_lanes": 1,
+      "destination_va": "0x842a07",
+      "global_channel_matches": [
+        {
+          "index": 3,
+          "hash": 4166210364,
+          "default_vec4": [
+            0.5,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 3981160586,
+      "hash_hex": "ED4BB08A",
+      "global_va": "0x2709ac0",
+      "initializer_va": "0x843207",
+      "settings_index_offset": "0xa8",
+      "extern_offset": "0xa4",
+      "extern_word": 41,
+      "copied_lanes": 1,
+      "destination_va": "0x842a2b",
+      "global_channel_matches": [
+        {
+          "index": 4,
+          "hash": 3981160586,
+          "default_vec4": [
+            5.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2658574034,
+      "hash_hex": "9E769ED2",
+      "global_va": "0x2709ac4",
+      "initializer_va": "0x843211",
+      "settings_index_offset": "0xac",
+      "extern_offset": "0xa8",
+      "extern_word": 42,
+      "copied_lanes": 1,
+      "destination_va": "0x842a4f",
+      "global_channel_matches": [
+        {
+          "index": 5,
+          "hash": 2658574034,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 1241234657,
+      "hash_hex": "49FBBCE1",
+      "global_va": "0x2709ac8",
+      "initializer_va": "0x84321b",
+      "settings_index_offset": "0xb0",
+      "extern_offset": "0xac",
+      "extern_word": 43,
+      "copied_lanes": 1,
+      "destination_va": "0x842a73",
+      "global_channel_matches": [
+        {
+          "index": 6,
+          "hash": 1241234657,
+          "default_vec4": [
+            30000.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2497244380,
+      "hash_hex": "94D8ECDC",
+      "global_va": "0x2709acc",
+      "initializer_va": "0x843225",
+      "settings_index_offset": "0xb4",
+      "extern_offset": "0xb0",
+      "extern_word": 44,
+      "copied_lanes": 1,
+      "destination_va": "0x842a97",
+      "global_channel_matches": [
+        {
+          "index": 7,
+          "hash": 2497244380,
+          "default_vec4": [
+            1.850000023841858,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 3173810152,
+      "hash_hex": "BD2C7FE8",
+      "global_va": "0x2709ad0",
+      "initializer_va": "0x84322f",
+      "settings_index_offset": "0xb8",
+      "extern_offset": "0xb4",
+      "extern_word": 45,
+      "copied_lanes": 1,
+      "destination_va": "0x842abb",
+      "global_channel_matches": [
+        {
+          "index": 8,
+          "hash": 3173810152,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2663884264,
+      "hash_hex": "9EC7A5E8",
+      "global_va": "0x2709ad4",
+      "initializer_va": "0x843239",
+      "settings_index_offset": "0xbc",
+      "extern_offset": "0xc0",
+      "extern_word": 48,
+      "copied_lanes": 4,
+      "destination_va": "0x842aca",
+      "global_channel_matches": [
+        {
+          "index": 9,
+          "hash": 2663884264,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 3056632075,
+      "hash_hex": "B630810B",
+      "global_va": "0x2709ad8",
+      "initializer_va": "0x843243",
+      "settings_index_offset": "0xc0",
+      "extern_offset": "0xd0",
+      "extern_word": 52,
+      "copied_lanes": 1,
+      "destination_va": "0x842af5",
+      "global_channel_matches": [
+        {
+          "index": 10,
+          "hash": 3056632075,
+          "default_vec4": [
+            0.05000000074505806,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 1055574819,
+      "hash_hex": "3EEACB23",
+      "global_va": "0x2709adc",
+      "initializer_va": "0x84324d",
+      "settings_index_offset": "0xc4",
+      "extern_offset": "0xd4",
+      "extern_word": 53,
+      "copied_lanes": 1,
+      "destination_va": "0x842b19",
+      "global_channel_matches": [
+        {
+          "index": 11,
+          "hash": 1055574819,
+          "default_vec4": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2123557681,
+      "hash_hex": "7E92EB31",
+      "global_va": "0x2709ae0",
+      "initializer_va": "0x843257",
+      "settings_index_offset": "0xc8",
+      "extern_offset": "0xd8",
+      "extern_word": 54,
+      "copied_lanes": 1,
+      "destination_va": "0x842b3d",
+      "global_channel_matches": [
+        {
+          "index": 12,
+          "hash": 2123557681,
+          "default_vec4": [
+            100.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2672605071,
+      "hash_hex": "9F4CB78F",
+      "global_va": "0x2709ae4",
+      "initializer_va": "0x843261",
+      "settings_index_offset": "0xcc",
+      "extern_offset": "0xdc",
+      "extern_word": 55,
+      "copied_lanes": 1,
+      "destination_va": "0x842b61",
+      "global_channel_matches": [
+        {
+          "index": 13,
+          "hash": 2672605071,
+          "default_vec4": [
+            10.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 1050457837,
+      "hash_hex": "3E9CB6ED",
+      "global_va": "0x2709ae8",
+      "initializer_va": "0x84326b",
+      "settings_index_offset": "0xd0",
+      "extern_offset": "0xe0",
+      "extern_word": 56,
+      "copied_lanes": 4,
+      "destination_va": "0x842b70",
+      "global_channel_matches": [],
+      "status": "CHANNEL_ABSENT_OR_AMBIGUOUS"
+    },
+    {
+      "hash": 100440118,
+      "hash_hex": "05FC9836",
+      "global_va": "0x2709aec",
+      "initializer_va": "0x843275",
+      "settings_index_offset": "0xd4",
+      "extern_offset": "0xf0",
+      "extern_word": 60,
+      "copied_lanes": 1,
+      "destination_va": "0x842b9b",
+      "global_channel_matches": [],
+      "status": "CHANNEL_ABSENT_OR_AMBIGUOUS"
+    },
+    {
+      "hash": 3800300512,
+      "hash_hex": "E283FBE0",
+      "global_va": "0x2709af0",
+      "initializer_va": "0x84327f",
+      "settings_index_offset": "0xd8",
+      "extern_offset": "0xf4",
+      "extern_word": 61,
+      "copied_lanes": 1,
+      "destination_va": "0x842bbf",
+      "global_channel_matches": [
+        {
+          "index": 29,
+          "hash": 3800300512,
+          "default_vec4": [
+            90.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 1597736081,
+      "hash_hex": "5F3B8491",
+      "global_va": "0x2709af4",
+      "initializer_va": "0x843289",
+      "settings_index_offset": "0xdc",
+      "extern_offset": "0xf8",
+      "extern_word": 62,
+      "copied_lanes": 1,
+      "destination_va": "0x842be3",
+      "global_channel_matches": [
+        {
+          "index": 30,
+          "hash": 1597736081,
+          "default_vec4": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2045960965,
+      "hash_hex": "79F2E305",
+      "global_va": "0x2709af8",
+      "initializer_va": "0x843293",
+      "settings_index_offset": "0xe0",
+      "extern_offset": "0xfc",
+      "extern_word": 63,
+      "copied_lanes": 1,
+      "destination_va": "0x842c07",
+      "global_channel_matches": [
+        {
+          "index": 32,
+          "hash": 2045960965,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 1659130926,
+      "hash_hex": "62E4542E",
+      "global_va": "0x2709afc",
+      "initializer_va": "0x84329d",
+      "settings_index_offset": "0xe4",
+      "extern_offset": "0x100",
+      "extern_word": 64,
+      "copied_lanes": 1,
+      "destination_va": "0x842c2f",
+      "global_channel_matches": [
+        {
+          "index": 31,
+          "hash": 1659130926,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 2492950735,
+      "hash_hex": "949768CF",
+      "global_va": "0x2709b00",
+      "initializer_va": "0x8432a7",
+      "settings_index_offset": "0xe8",
+      "extern_offset": "0x104",
+      "extern_word": 65,
+      "copied_lanes": 1,
+      "destination_va": "0x842c53",
+      "global_channel_matches": [
+        {
+          "index": 33,
+          "hash": 2492950735,
+          "default_vec4": [
+            49500.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    },
+    {
+      "hash": 3651328163,
+      "hash_hex": "D9A2D8A3",
+      "global_va": "0x2709b04",
+      "initializer_va": "0x8432b1",
+      "settings_index_offset": "0xec",
+      "extern_offset": "0x110",
+      "extern_word": 68,
+      "copied_lanes": 4,
+      "destination_va": "0x842c62",
+      "global_channel_matches": [
+        {
+          "index": 52,
+          "hash": 3651328163,
+          "default_vec4": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "status": "EXACT_NAME_JOIN"
+    }
+  ],
+  "scope": "serialized inputs and executable channel routing; default Vec4s are not claimed as activity live values"
+}
