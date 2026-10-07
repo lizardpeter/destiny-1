@@ -1,0 +1,23 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_env_skies_01cf_0.pkg",
+      "bytes": 277645312,
+      "sha256": "f45d85c89f46e5ba9585073f105b8a1c1229c4d543b56e38ccc840a0010d297a",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_env_skies_01cf_0.pkg"
+    },
+    {
+      "name": "ps4_env_skies_01cf_1.pkg",
+      "bytes": 3885056,
+      "sha256": "16a54200f04680d06ed3936afc44aac1eaea8f111cc44acac2fa18cdd394b34f",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_env_skies_01cf_1.pkg"
+    },
+    {
+      "name": "ps4_env_skies_01cf_2.pkg",
+      "bytes": 87631872,
+      "sha256": "1999fa9d728ef75393f59171325b397cb1356d94322694b6fedd60e339f171f9",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_env_skies_01cf_2.pkg"
+    }
+  ]
+}
