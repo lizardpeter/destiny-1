@@ -1,0 +1,57 @@
+{
+  "schema": "d1-light-volume-f32-rounding-v1",
+  "collection": {
+    "hash": "80CEABCE",
+    "package": "ps4_cosmo_destination_0275_3.pkg",
+    "bytes": 47680,
+    "sha256": "8013dade61dae3615cf7d8a323204fdbe3c4e42ed74ccbed87e4cd8d7ddfc676"
+  },
+  "record_index": 41,
+  "buffer": {
+    "hash": "80CEADEB",
+    "package": "ps4_cosmo_destination_0275_3.pkg",
+    "bytes": 416,
+    "sha256": "2cdd2b99a17316f82711e84893d77b3fd6a6291d03262ec712cb34dc5b8147c1"
+  },
+  "source_range": 1.25,
+  "source_angle": 0.6981316804885864,
+  "equations": [
+    {
+      "name": "tan_y",
+      "observed": 0.8390995860099792,
+      "expected": 0.8390995965687057,
+      "absolute_error": 1.055872644872835e-08,
+      "previously_accepted": true,
+      "f32_rounding_tolerance": 1e-05,
+      "accepted": true
+    },
+    {
+      "name": "tan_z",
+      "observed": 0.8390997052192688,
+      "expected": 0.8390995965687057,
+      "absolute_error": 1.086505631020529e-07,
+      "previously_accepted": true,
+      "f32_rounding_tolerance": 1e-05,
+      "accepted": true
+    },
+    {
+      "name": "reciprocal_sum",
+      "observed": 0.7999992370605469,
+      "expected": 0.8,
+      "absolute_error": 7.629394531694089e-07,
+      "previously_accepted": true,
+      "f32_rounding_tolerance": 1e-05,
+      "accepted": true
+    },
+    {
+      "name": "reciprocal_difference",
+      "observed": 80.0000114440918,
+      "expected": 80.0,
+      "absolute_error": 1.1444091796875e-05,
+      "previously_accepted": false,
+      "f32_rounding_tolerance": 1.9073489056609105e-05,
+      "accepted": true
+    }
+  ],
+  "production_commit": "722a9e73a5df49400fd27fadd587d5436239c3ad"
+}
