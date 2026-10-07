@@ -1,0 +1,46 @@
+name: Split large Tower NPC source input artifact
+on:
+  push:
+    paths: ['.github/workflows/d1-npc-source-input-split.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: d1-npc-packages-003b
+          run-id: 37629761019
+          github-token: ${{ github.token }}
+          path: inputs
+      - name: Split exact source input archive for the connector size limit
+        run: |
+          tar -C inputs -cf npc-003b.tar .
+          split -b 256M -d -a 3 npc-003b.tar npc003b-part-
+          sha256sum npc-003b.tar npc003b-part-* > npc003b-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-npc-003b-part-000
+          path: npc003b-part-000
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-npc-003b-part-001
+          path: npc003b-part-001
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-npc-003b-part-002
+          path: npc003b-part-002
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1-npc-003b-manifest
+          path: npc003b-sha256.txt
+          retention-days: 1
