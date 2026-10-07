@@ -1,0 +1,11 @@
+CURRENT_TAGS 258046
+GLOBALS 80AE4001 CHANNELS 80AE4005 COUNT 100
+LIGHTING PROGRAMS 45 LIGHTS 2030 TEXTURES 4
+REPORT D1 scene lighting: source-exact initial sun phase 0.000000; retail timer then advances by Input::Time / 3600.000s (eboot 0x8b6380/0x8b6450, clock FUN_005916B0)
+REPORT D1 scene lighting WARNING: Activity global-channel sequencer join unavailable (D1 Activity 80C98019 is 84 bytes; +0x48 location array is unavailable); lighting channels currently use RenderGlobals defaults plus decoded sun updates only
+REPORT D1 scene lighting: environment profile from 38 entity(ies) / 41 resource(s): 0 channel(s) set; 11 channel hash(es) not in GlobalChannelDefaults
+REPORT D1 scene lighting: exact sun component -> tag 80D2B584, cycle 3600.000s, phase offset 0.000000; live-cycle activity; retail clock is elapsed map/runtime seconds divided by this cycle. Current importer uses the exact load-time phase while per-frame curve re-evaluation remains open
+REPORT D1 scene lighting: sun tag 80D2B584 window 0.875/0.125 at host time of day 0.000 (night curves) -> ch35 [-0.26371878, -0.91920173, 0.29243922, 0.0] ch36 [-0.26746973, -0.93270296, 0.24191989, 0.0]
+REPORT D1 lighting runtime dependency census across unique live composite/sun/local-light materials: 15804 TFX extern read(s); DeferredLight+0x100=2886 read(s), Frame+0x1C=2892 read(s), Frame+0x00=194 read(s), GlobalLighting[38..41]=4 read(s), Atmosphere=20 read(s), ShadowMask=3 read(s); contract failures {}. DeferredLight+0x100 is source-derived from the retail per-light fade producer, and Frame+0x1C uses the exact 01.33 Engine Configuration default (20.0); GlobalLighting[38..41] uses exact retail settings defaults [0, 0, 1, 1] (live configuration overrides remain uncaptured); remaining provisional providers are Atmosphere and ShadowMask where requested.
+REPORT D1 scene lighting: RenderGlobals 80AE4001, composite 80AE40C4, sun 80AE40C9, 2029 light record(s) -> 2029 local light(s) over 1474 light material(s) (1474 translated); 0 unbounded; light translation failures {}; 45 lighting program(s), 263 light constant program(s), 4 lighting texture(s); unresolved engine words read as 0: {}; provisional/runtime-inexact: Activity-sequenced light globals may still be defaults, time of day 0, identity atmosphere
+LIGHTING_IR_VALIDATED
