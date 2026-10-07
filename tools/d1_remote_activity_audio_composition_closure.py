@@ -16,11 +16,13 @@ Pinned D1 Charm schema (MontagueM/Charm@50d36ee...):
   D1 29068080 is an 0x08-byte record containing one ResourcePointer at +0x00.
   Its pointed D1 001F8080 structure (class 80801F00) stores WwiseSound at +0x20.
 
-QuickTag's D1v2 parser independently identifies Wwise event tags as reference
-8080080A and parses them as:
+QuickTag independently identifies Wwise event tags as reference 8080080A.
+Retail event 80C9808E and the DynamicArray contract refine its field layout:
   +0x34 FileHash bank tag
-  +0x38 u64 stream count
-  +0x70 FileHash[count] Wwise streams
+  +0x38 i32 stream count, +0x3C unrelated descriptor word
+  +0x40 i64 relative pointer; streams at +0x40 + relative +0x10
++0x70 is a common payload location, not a fixed schema offset. Empty arrays
+do not dereference their pointer; exact bank-only events may be only 0x50 bytes.
 D1v2 Wwise stream payloads are package type/subtype 8/21.
 
 Only this exact schema path is emitted as TYPED_EXACT audio ownership. Other
@@ -97,7 +99,7 @@ def dyn(b: bytes, field: int, stride: int) -> dict:
     unknown = u32(b, field + 4)
     rel = i64(b, field + 8)
     # Charm RelativePointer base is its own field (+8), DynamicArray adds +0x10.
-    absolute = field + 8 + rel + 0x10
+    absolute = 0 if count == 0 else field + 8 + rel + 0x10
     end = absolute + max(count, 0) * stride
     ok = count >= 0 and 0 <= absolute <= len(b) and 0 <= end <= len(b)
     return {
@@ -153,24 +155,22 @@ def parse_event(c: RemoteCorpus, event_hash: str, cache: dict[str, dict]) -> dic
         "violations": [],
         "streams": [],
     }
-    if len(b) < 0x70:
-        row["violations"].append("event_payload_shorter_than_0x70")
+    if len(b) < 0x48:
+        row["violations"].append("event_bank_stream_descriptor_oob")
         cache[event_hash] = row
         return row
     bank = f"{u32(b, 0x34):08X}"
-    count = u64(b, 0x38)
     row["bank_tag_hash"] = bank
     row["bank_meta"] = meta_row(c.entry_meta(bank)) if bank not in NULLS else None
-    row["stream_count"] = int(count)
-    end = 0x70 + int(count) * 4
-    if end > len(b):
-        row["violations"].append(
-            f"event_stream_array_oob end=0x{end:X} size=0x{len(b):X}"
-        )
+    array = dyn(b, 0x38, 4)
+    row["stream_descriptor"] = array
+    row["stream_count"] = array["count"]
+    if not array["ok"]:
+        row["violations"].append("event_stream_descriptor_invalid")
         cache[event_hash] = row
         return row
-    for i in range(int(count)):
-        off = 0x70 + i * 4
+    for i in range(array["count"]):
+        off = array["absolute"] + i * 4
         h = f"{u32(b, off):08X}"
         sm = c.entry_meta(h) if h not in NULLS else None
         srow = {
@@ -466,7 +466,7 @@ def main() -> int:
             "8080079A->80800610 are traversed as audio owners. WwiseSounds1/+0x110 and WwiseSounds2/+0x130 "
             "are parsed as Charm DynamicArray records, each nested ResourcePointer must resolve to D1 class "
             "80801F00, and its +0x20 FileHash must resolve to exact Wwise event reference 8080080A. Event "
-            "streams are then parsed using the independent QuickTag D1v2 offsets and must resolve to type/subtype "
+            "streams follow the exact DynamicArray descriptor and must resolve to type/subtype "
             "8/21. Other aligned 8080080A sightings remain discovery-only frontiers. No sound/event semantic name "
             "or playback behavior is inferred."
         ),
