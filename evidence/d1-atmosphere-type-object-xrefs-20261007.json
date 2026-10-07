@@ -1,0 +1,7 @@
+{
+  "schema": "d1-atmosphere-type-object-xrefs-v1",
+  "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "target_va": "0x28d75b0",
+  "references": [],
+  "boundary": "RIP references only. Candidate decoding is not reachability proof. Serialized class ID and source payload relationship remain unclosed."
+}
