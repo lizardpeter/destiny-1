@@ -1,0 +1,56 @@
+{
+  "schema": "d1_sun_time_runtime_path/v1",
+  "status": "EXACT_CUSA00219_0133_SUN_TIME_RUNTIME_PATH_PARTIALLY_CLOSED",
+  "executable_sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "loader_function_region": "0x8B2B60..0x8B2D8E",
+  "exact_behavior": [
+    {
+      "address": "0x8B2BF9",
+      "operation": "load float component+0x10 and branch if <= 0"
+    },
+    {
+      "address": "0x8B2C4F..0x8B2C5C",
+      "operation": "for positive +0x10, pass it to timer configuration helper 0x8B6380"
+    },
+    {
+      "address": "0x8B2C61",
+      "operation": "call runtime freeze/state resolver 0x8B2D90"
+    },
+    {
+      "address": "0x8B2CB2..0x8B2CC3",
+      "operation": "if freeze/state resolver is true, set timer paused via 0x8B6440 and use time input 0"
+    },
+    {
+      "address": "0x8B2CC5..0x8B2CDE",
+      "operation": "otherwise query period at 0x8B64E0, pass it into global service thunk 0x2406C0, clamp returned float to >=0"
+    },
+    {
+      "address": "0x8B2CE4",
+      "operation": "add component+0x14 authored phase offset"
+    },
+    {
+      "address": "0x8B2CF2",
+      "operation": "normalize/wrap with external helper 0x12AB990 using literal 1.0 at 0x1668128"
+    },
+    {
+      "address": "0x74C170",
+      "operation": "call 0x8B6450 once in the main update path"
+    },
+    {
+      "address": "0x8B6450..0x8B64C8",
+      "operation": "when unpaused, advance normalized phase by (current_time - previous_time) / configured_period and wrap to [0,1)"
+    }
+  ],
+  "helper_facts": {
+    "timer_config_0x8B6380": "stores max(requested period, 1e-4) in timer state +0x04",
+    "timer_pause_0x8B6440": "stores pause byte at timer state +0x0C",
+    "timer_period_getter_0x8B64E0": "returns timer state +0x04",
+    "runtime_state_0x8B2D90": "resolves an active runtime object and returns whether byte +0x39 is nonzero"
+  },
+  "open_semantics": [
+    "Semantic name/source schema of the active-runtime +0x39 freeze flag.",
+    "Semantic identity of global service virtual method reached through 0x2406C0, although its float dataflow role in the sun-time path is exact.",
+    "Which freeze-state value is active for each current Tower scenario at runtime."
+  ],
+  "policy": "Do not infer Tower live-vs-frozen state from component +0x10 alone."
+}
