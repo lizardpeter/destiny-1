@@ -1,0 +1,35 @@
+{
+  "schema": "d1-venus-null-cookie-source-v1",
+  "material": {
+    "hash": "8100A311",
+    "package": "ps4_venus_destination_0405_5.pkg",
+    "class": "80801AD7",
+    "bytes": 2128,
+    "sha256": "ed4235f622f24e04bf32110b3a103c244cd5bd839fd6b5ef763cc26efdbea871"
+  },
+  "pixel_shader": "8100EA66",
+  "pixel_textures": [
+    {
+      "register": 3,
+      "texture_hash": "FFFFFFFF"
+    }
+  ],
+  "owners": [
+    {
+      "map_table": "8100A25F",
+      "collection": {
+        "hash": "8100A280",
+        "package": "ps4_venus_destination_0405_5.pkg",
+        "class": "80801A5B",
+        "bytes": 5968,
+        "sha256": "0d39b89f0307f9c11266758ec776fa8f181d05146243aeea153a73152b7e6183"
+      },
+      "record_index": 14,
+      "buffer_hash": "8100A312",
+      "flags88_raw": "02000428",
+      "flags8c_raw": "00000000"
+    }
+  ],
+  "status": "WITHHELD_RUNTIME_NULL_BINDING_NOT_CLOSED",
+  "scope": "Serialized source is null, not a missing downloadable texture; no white/black fallback or inactive-record meaning is inferred."
+}
