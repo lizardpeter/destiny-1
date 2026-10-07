@@ -1,0 +1,1024 @@
+{
+  "schema": "d1-atmosphere-channel-fetch-native-oracle-v1",
+  "eboot_sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "defaults_tag": "80AE4005",
+  "defaults_payload_sha256": "83e902c1f298596039911e190fec831dd1afd9faff991a7eec236c87296441af",
+  "all_native_outputs_match": true,
+  "cases": [
+    {
+      "hash": "056007C7",
+      "native_index": 0,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "4AA1BEF5",
+      "native_index": 1,
+      "native_fetch_success": true,
+      "native_output_hex": "000048420000803f0000803f0000803f"
+    },
+    {
+      "hash": "9859DAF1",
+      "native_index": 2,
+      "native_fetch_success": true,
+      "native_output_hex": "cdcccc3c0000803f0000803f0000803f"
+    },
+    {
+      "hash": "F853533C",
+      "native_index": 3,
+      "native_fetch_success": true,
+      "native_output_hex": "0000003f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "ED4BB08A",
+      "native_index": 4,
+      "native_fetch_success": true,
+      "native_output_hex": "0000a040000000000000000000000000"
+    },
+    {
+      "hash": "9E769ED2",
+      "native_index": 5,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "49FBBCE1",
+      "native_index": 6,
+      "native_fetch_success": true,
+      "native_output_hex": "0060ea46000000000000000000000000"
+    },
+    {
+      "hash": "94D8ECDC",
+      "native_index": 7,
+      "native_fetch_success": true,
+      "native_output_hex": "cdccec3f000000000000000000000000"
+    },
+    {
+      "hash": "BD2C7FE8",
+      "native_index": 8,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "9EC7A5E8",
+      "native_index": 9,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "B630810B",
+      "native_index": 10,
+      "native_fetch_success": true,
+      "native_output_hex": "cdcc4c3d000000000000000000000000"
+    },
+    {
+      "hash": "3EEACB23",
+      "native_index": 11,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "7E92EB31",
+      "native_index": 12,
+      "native_fetch_success": true,
+      "native_output_hex": "0000c842000000000000000000000000"
+    },
+    {
+      "hash": "9F4CB78F",
+      "native_index": 13,
+      "native_fetch_success": true,
+      "native_output_hex": "00002041000000000000000000000000"
+    },
+    {
+      "hash": "5800C6F4",
+      "native_index": 14,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "5800C6F7",
+      "native_index": 15,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "5800C6F6",
+      "native_index": 16,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "90745795",
+      "native_index": 17,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "615E07A3",
+      "native_index": 18,
+      "native_fetch_success": true,
+      "native_output_hex": "00002041000000000000000000000000"
+    },
+    {
+      "hash": "CCEADF9A",
+      "native_index": 19,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "7C7F9077",
+      "native_index": 20,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "52717901",
+      "native_index": 21,
+      "native_fetch_success": true,
+      "native_output_hex": "cdcccc3d000000000000000000000000"
+    },
+    {
+      "hash": "F20B0FF3",
+      "native_index": 22,
+      "native_fetch_success": true,
+      "native_output_hex": "0000003f000000000000000000000000"
+    },
+    {
+      "hash": "603EF86C",
+      "native_index": 23,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "CD02F312",
+      "native_index": 24,
+      "native_fetch_success": true,
+      "native_output_hex": "9a99193e000000000000000000000000"
+    },
+    {
+      "hash": "74FC62C4",
+      "native_index": 25,
+      "native_fetch_success": true,
+      "native_output_hex": "0000003f000000000000000000000000"
+    },
+    {
+      "hash": "E43477BE",
+      "native_index": 26,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "98552BE8",
+      "native_index": 27,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "38D8C873",
+      "native_index": 28,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "E283FBE0",
+      "native_index": 29,
+      "native_fetch_success": true,
+      "native_output_hex": "0000b442000000000000000000000000"
+    },
+    {
+      "hash": "5F3B8491",
+      "native_index": 30,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f0000803f"
+    },
+    {
+      "hash": "62E4542E",
+      "native_index": 31,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "79F2E305",
+      "native_index": 32,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "949768CF",
+      "native_index": 33,
+      "native_fetch_success": true,
+      "native_output_hex": "005c4147000000000000000000000000"
+    },
+    {
+      "hash": "2C53817D",
+      "native_index": 34,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "2C53817E",
+      "native_index": 35,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "2C53817F",
+      "native_index": 36,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "2C538178",
+      "native_index": 37,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "2C538179",
+      "native_index": 38,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "2C53817A",
+      "native_index": 39,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f0000803f0000803f00000000"
+    },
+    {
+      "hash": "1191B30B",
+      "native_index": 40,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "20A0AD8E",
+      "native_index": 41,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2C53817B",
+      "native_index": 42,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2C538174",
+      "native_index": 43,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2C538175",
+      "native_index": 44,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382EF",
+      "native_index": 45,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382EE",
+      "native_index": 46,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382ED",
+      "native_index": 47,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "E9EE5E9C",
+      "native_index": 48,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "FE279F22",
+      "native_index": 49,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "3C112DD3",
+      "native_index": 50,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "3C112DD0",
+      "native_index": 51,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "D9A2D8A3",
+      "native_index": 52,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "5C579DFA",
+      "native_index": 53,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000803f00000000"
+    },
+    {
+      "hash": "C09AC1A6",
+      "native_index": 54,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000803f00000000"
+    },
+    {
+      "hash": "6E22B25E",
+      "native_index": 55,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000803f00000000"
+    },
+    {
+      "hash": "CF620DD4",
+      "native_index": 56,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "38DCFCDA",
+      "native_index": 57,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "CDE25113",
+      "native_index": 58,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "3F9BF6CD",
+      "native_index": 59,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "E16B6B6B",
+      "native_index": 60,
+      "native_fetch_success": true,
+      "native_output_hex": "0050c34700000000000000000000803f"
+    },
+    {
+      "hash": "CBF32782",
+      "native_index": 61,
+      "native_fetch_success": true,
+      "native_output_hex": "00004842000000000000000000000000"
+    },
+    {
+      "hash": "CD265A98",
+      "native_index": 62,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "3EA1FBBE",
+      "native_index": 63,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "7E708D99",
+      "native_index": 64,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "D8E51195",
+      "native_index": 65,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "FF5E4E71",
+      "native_index": 66,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "10CF852C",
+      "native_index": 67,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "05AA1AD2",
+      "native_index": 68,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "F07113DB",
+      "native_index": 69,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382EC",
+      "native_index": 70,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382EB",
+      "native_index": 71,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382EA",
+      "native_index": 72,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382E9",
+      "native_index": 73,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382E8",
+      "native_index": 74,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382E7",
+      "native_index": 75,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "4FC38ABB",
+      "native_index": 76,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "03B0B095",
+      "native_index": 77,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "BEBDF937",
+      "native_index": 78,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2D5382E6",
+      "native_index": 79,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2E538442",
+      "native_index": 80,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2E538443",
+      "native_index": 81,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2E538440",
+      "native_index": 82,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2E538441",
+      "native_index": 83,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "2E538446",
+      "native_index": 84,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "7C61F53B",
+      "native_index": 85,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "7BC51142",
+      "native_index": 86,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "ECA86879",
+      "native_index": 87,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA8687A",
+      "native_index": 88,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA8687B",
+      "native_index": 89,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA8687C",
+      "native_index": 90,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA8687D",
+      "native_index": 91,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA8687E",
+      "native_index": 92,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA8687F",
+      "native_index": 93,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ECA86870",
+      "native_index": 94,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "F2DB92ED",
+      "native_index": 95,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "0AD675E2",
+      "native_index": 96,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "E6AEB9EC",
+      "native_index": 97,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "ED15B1C4",
+      "native_index": 98,
+      "native_fetch_success": true,
+      "native_output_hex": "00000000000000000000000000000000"
+    },
+    {
+      "hash": "B9FABF51",
+      "native_index": 99,
+      "native_fetch_success": true,
+      "native_output_hex": "0000803f000000000000000000000000"
+    },
+    {
+      "hash": "C876108A",
+      "native_index": -1,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "hash": "E111D856",
+      "native_index": -1,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "hash": "3E9CB6ED",
+      "native_index": -1,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "hash": "05FC9836",
+      "native_index": -1,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "native_index": -2147483648,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "native_index": -2,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "native_index": 100,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "native_index": 101,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    },
+    {
+      "native_index": 2147483647,
+      "native_fetch_success": false,
+      "native_output_hex": "123456789abcdef0fedcba9876543210"
+    }
+  ],
+  "missing_atmosphere_keys": [
+    {
+      "hash": 3363180682,
+      "hash_hex": "C876108A",
+      "global_va": "0x2709ab4",
+      "initializer_va": "0x8431e9",
+      "settings_index_offset": "0x9c",
+      "extern_offset": "0x98",
+      "extern_word": 38,
+      "copied_lanes": 1,
+      "destination_va": "0x8429bf"
+    },
+    {
+      "hash": 3776043094,
+      "hash_hex": "E111D856",
+      "global_va": "0x2709ab8",
+      "initializer_va": "0x8431f3",
+      "settings_index_offset": "0xa0",
+      "extern_offset": "0x9c",
+      "extern_word": 39,
+      "copied_lanes": 1,
+      "destination_va": "0x8429e3"
+    },
+    {
+      "hash": 1050457837,
+      "hash_hex": "3E9CB6ED",
+      "global_va": "0x2709ae8",
+      "initializer_va": "0x84326b",
+      "settings_index_offset": "0xd0",
+      "extern_offset": "0xe0",
+      "extern_word": 56,
+      "copied_lanes": 4,
+      "destination_va": "0x842b70"
+    },
+    {
+      "hash": 100440118,
+      "hash_hex": "05FC9836",
+      "global_va": "0x2709aec",
+      "initializer_va": "0x843275",
+      "settings_index_offset": "0xd4",
+      "extern_offset": "0xf0",
+      "extern_word": 60,
+      "copied_lanes": 1,
+      "destination_va": "0x842b9b"
+    }
+  ],
+  "source": {
+    "resolver": [
+      {
+        "va": "0x816240",
+        "bytes": "488d05a9bded01",
+        "mnemonic": "lea",
+        "operands": "rax, [rip + 0x1edbda9]"
+      },
+      {
+        "va": "0x816247",
+        "bytes": "8b30",
+        "mnemonic": "mov",
+        "operands": "esi, dword ptr [rax]"
+      },
+      {
+        "va": "0x816249",
+        "bytes": "41b8ffffffff",
+        "mnemonic": "mov",
+        "operands": "r8d, 0xffffffff"
+      },
+      {
+        "va": "0x81624f",
+        "bytes": "83feff",
+        "mnemonic": "cmp",
+        "operands": "esi, -1"
+      },
+      {
+        "va": "0x816252",
+        "bytes": "7504",
+        "mnemonic": "jne",
+        "operands": "0x816258"
+      },
+      {
+        "va": "0x816254",
+        "bytes": "4489c0",
+        "mnemonic": "mov",
+        "operands": "eax, r8d"
+      },
+      {
+        "va": "0x816257",
+        "bytes": "c3",
+        "mnemonic": "ret",
+        "operands": ""
+      },
+      {
+        "va": "0x816258",
+        "bytes": "89f0",
+        "mnemonic": "mov",
+        "operands": "eax, esi"
+      },
+      {
+        "va": "0x81625a",
+        "bytes": "c1f80d",
+        "mnemonic": "sar",
+        "operands": "eax, 0xd"
+      },
+      {
+        "va": "0x81625d",
+        "bytes": "89c1",
+        "mnemonic": "mov",
+        "operands": "ecx, eax"
+      },
+      {
+        "va": "0x81625f",
+        "bytes": "c1e912",
+        "mnemonic": "shr",
+        "operands": "ecx, 0x12"
+      },
+      {
+        "va": "0x816262",
+        "bytes": "81c9ff030000",
+        "mnemonic": "or",
+        "operands": "ecx, 0x3ff"
+      },
+      {
+        "va": "0x816268",
+        "bytes": "21c1",
+        "mnemonic": "and",
+        "operands": "ecx, eax"
+      },
+      {
+        "va": "0x81626a",
+        "bytes": "48c1e106",
+        "mnemonic": "shl",
+        "operands": "rcx, 6"
+      },
+      {
+        "va": "0x81626e",
+        "bytes": "488d052bd62001",
+        "mnemonic": "lea",
+        "operands": "rax, [rip + 0x120d62b]"
+      },
+      {
+        "va": "0x816275",
+        "bytes": "488b00",
+        "mnemonic": "mov",
+        "operands": "rax, qword ptr [rax]"
+      },
+      {
+        "va": "0x816278",
+        "bytes": "4c8b10",
+        "mnemonic": "mov",
+        "operands": "r10, qword ptr [rax]"
+      },
+      {
+        "va": "0x81627b",
+        "bytes": "31c0",
+        "mnemonic": "xor",
+        "operands": "eax, eax"
+      },
+      {
+        "va": "0x81627d",
+        "bytes": "498b540a10",
+        "mnemonic": "mov",
+        "operands": "rdx, qword ptr [r10 + rcx + 0x10]"
+      },
+      {
+        "va": "0x816282",
+        "bytes": "4d634c0a34",
+        "mnemonic": "movsxd",
+        "operands": "r9, dword ptr [r10 + rcx + 0x34]"
+      },
+      {
+        "va": "0x816287",
+        "bytes": "81e6ff1f0000",
+        "mnemonic": "and",
+        "operands": "esi, 0x1fff"
+      },
+      {
+        "va": "0x81628d",
+        "bytes": "410faf740a30",
+        "mnemonic": "imul",
+        "operands": "esi, dword ptr [r10 + rcx + 0x30]"
+      },
+      {
+        "va": "0x816293",
+        "bytes": "4c234c3208",
+        "mnemonic": "and",
+        "operands": "r9, qword ptr [rdx + rsi + 8]"
+      },
+      {
+        "va": "0x816298",
+        "bytes": "4801f2",
+        "mnemonic": "add",
+        "operands": "rdx, rsi"
+      },
+      {
+        "va": "0x81629b",
+        "bytes": "4c29ca",
+        "mnemonic": "sub",
+        "operands": "rdx, r9"
+      },
+      {
+        "va": "0x81629e",
+        "bytes": "4c8b4a08",
+        "mnemonic": "mov",
+        "operands": "r9, qword ptr [rdx + 8]"
+      },
+      {
+        "va": "0x8162a2",
+        "bytes": "4883c210",
+        "mnemonic": "add",
+        "operands": "rdx, 0x10"
+      },
+      {
+        "va": "0x8162a6",
+        "bytes": "662e0f1f840000000000",
+        "mnemonic": "nop",
+        "operands": "word ptr cs:[rax + rax]"
+      },
+      {
+        "va": "0x8162b0",
+        "bytes": "4c39c8",
+        "mnemonic": "cmp",
+        "operands": "rax, r9"
+      },
+      {
+        "va": "0x8162b3",
+        "bytes": "7d15",
+        "mnemonic": "jge",
+        "operands": "0x8162ca"
+      },
+      {
+        "va": "0x8162b5",
+        "bytes": "488b32",
+        "mnemonic": "mov",
+        "operands": "rsi, qword ptr [rdx]"
+      },
+      {
+        "va": "0x8162b8",
+        "bytes": "4801d6",
+        "mnemonic": "add",
+        "operands": "rsi, rdx"
+      },
+      {
+        "va": "0x8162bb",
+        "bytes": "8b0f",
+        "mnemonic": "mov",
+        "operands": "ecx, dword ptr [rdi]"
+      },
+      {
+        "va": "0x8162bd",
+        "bytes": "3b4c8610",
+        "mnemonic": "cmp",
+        "operands": "ecx, dword ptr [rsi + rax*4 + 0x10]"
+      },
+      {
+        "va": "0x8162c1",
+        "bytes": "488d4001",
+        "mnemonic": "lea",
+        "operands": "rax, [rax + 1]"
+      },
+      {
+        "va": "0x8162c5",
+        "bytes": "75e9",
+        "mnemonic": "jne",
+        "operands": "0x8162b0"
+      },
+      {
+        "va": "0x8162c7",
+        "bytes": "ffc8",
+        "mnemonic": "dec",
+        "operands": "eax"
+      },
+      {
+        "va": "0x8162c9",
+        "bytes": "c3",
+        "mnemonic": "ret",
+        "operands": ""
+      },
+      {
+        "va": "0x8162ca",
+        "bytes": "4489c0",
+        "mnemonic": "mov",
+        "operands": "eax, r8d"
+      },
+      {
+        "va": "0x8162cd",
+        "bytes": "c3",
+        "mnemonic": "ret",
+        "operands": ""
+      }
+    ],
+    "fetch": [
+      {
+        "va": "0x816140",
+        "bytes": "30c0",
+        "mnemonic": "xor",
+        "operands": "al, al"
+      },
+      {
+        "va": "0x816142",
+        "bytes": "85f6",
+        "mnemonic": "test",
+        "operands": "esi, esi"
+      },
+      {
+        "va": "0x816144",
+        "bytes": "781a",
+        "mnemonic": "js",
+        "operands": "0x816160"
+      },
+      {
+        "va": "0x816146",
+        "bytes": "3937",
+        "mnemonic": "cmp",
+        "operands": "dword ptr [rdi], esi"
+      },
+      {
+        "va": "0x816148",
+        "bytes": "7e16",
+        "mnemonic": "jle",
+        "operands": "0x816160"
+      },
+      {
+        "va": "0x81614a",
+        "bytes": "488b4708",
+        "mnemonic": "mov",
+        "operands": "rax, qword ptr [rdi + 8]"
+      },
+      {
+        "va": "0x81614e",
+        "bytes": "4863ce",
+        "mnemonic": "movsxd",
+        "operands": "rcx, esi"
+      },
+      {
+        "va": "0x816151",
+        "bytes": "48c1e104",
+        "mnemonic": "shl",
+        "operands": "rcx, 4"
+      },
+      {
+        "va": "0x816155",
+        "bytes": "c5f8280408",
+        "mnemonic": "vmovaps",
+        "operands": "xmm0, xmmword ptr [rax + rcx]"
+      },
+      {
+        "va": "0x81615a",
+        "bytes": "c5f82902",
+        "mnemonic": "vmovaps",
+        "operands": "xmmword ptr [rdx], xmm0"
+      },
+      {
+        "va": "0x81615e",
+        "bytes": "b001",
+        "mnemonic": "mov",
+        "operands": "al, 1"
+      },
+      {
+        "va": "0x816160",
+        "bytes": "c3",
+        "mnemonic": "ret",
+        "operands": ""
+      }
+    ]
+  },
+  "contract": "First matching source key index; absent key or null defaults handle returns -1. Fetch rejects negative/out-of-range indices without writing any destination byte.",
+  "scope": "Exact lookup/fetch routines with synthetic resource storage and source-pinned keys/vectors. Does not establish the prior destination values, live overrides, map settings/LUT joins, or a rendered scene."
+}
