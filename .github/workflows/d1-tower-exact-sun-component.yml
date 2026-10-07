@@ -99,6 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           : > reports/tower_sun_time_fields.jsonl
+          printf '80C984B3\n80CA0DED\n' > reports/sun_tags.txt
           while read -r SUN_TAG; do
             test -n "$SUN_TAG"
             python tools/d1_remote_filehash_probe.py \
@@ -115,8 +116,8 @@ jobs:
           if not p.exists():
               raise SystemExit(f'sun payload not recovered: {h}')
           b=p.read_bytes()
-          if len(b)<0x20:
-              raise SystemExit(f'sun tag {h} too small: {len(b)}')
+          if len(b)<0x18:
+              raise SystemExit(f'sun tag {h} too small for +0x14 time field: {len(b)}')
           u32=lambda o: struct.unpack_from('<I',b,o)[0]
           f32=lambda o: struct.unpack_from('<f',b,o)[0]
           out={
@@ -125,7 +126,7 @@ jobs:
             'sun_tag':h,
             'payload_sha256':hashlib.sha256(b).hexdigest(),
             'payload_size':len(b),
-            'raw_prefix_0x00_0x40':b[:0x40].hex(),
+            'raw_payload':b.hex(),
             'fields':{
               '0x00_f32':f32(0x00),
               '0x04_f32':f32(0x04),
@@ -133,8 +134,6 @@ jobs:
               '0x0c_u32':f'{u32(0x0c):08X}',
               '0x10_f32':f32(0x10),
               '0x14_f32':f32(0x14),
-              '0x18_u32':f'{u32(0x18):08X}',
-              '0x1c_u32':f'{u32(0x1c):08X}',
             },
             'eboot_contract':{
               'loader':'0x8B2BF9',
