@@ -20,17 +20,19 @@ def join(eboot, defaults_path):
     if len(channels) != len(defaults['channels']):
         raise ValueError('ambiguous default channel hashes')
     rows = []
+    missing = []
     for mapping in producer['channel_mappings_before_coefficient_transforms']:
         source = channels.get(mapping['hash_hex'])
         if source is None:
-            raise ValueError('missing source channel ' + mapping['hash_hex'])
+            missing.append(mapping)
+            continue
         rows.append({**mapping, 'global_channel_index': source['index'],
                      'serialized_default_vec4': source['default_vec4']})
     return {'schema': 'd1-atmosphere-default-channel-join-v1',
             'eboot_sha256': producer['sha256'], 'defaults_tag': defaults['tag_hash'],
             'defaults_payload_sha256': defaults['payload_sha256'],
             'defaults_evidence_sha256': hashlib.sha256(raw).hexdigest(),
-            'mappings': rows, 'producer_instructions': producer['instructions'],
+            'mappings': rows, 'missing_source_keys': missing, 'producer_instructions': producer['instructions'],
             'scope': 'Exact source index/default join only. Live channel overrides, map settings/LUT owner, coefficient transforms, and render validation remain open.'}
 
 if __name__ == '__main__':
