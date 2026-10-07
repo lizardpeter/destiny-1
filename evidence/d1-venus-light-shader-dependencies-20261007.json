@@ -1,0 +1,29 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_arch_fallen_0064_0.pkg",
+      "bytes": 203536384,
+      "sha256": "5f5a0c63ce77a2cc2a00ed9728836f406a8cefdfbf3fcb3de7f31444f482e758",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_fallen_0064_0.pkg"
+    },
+    {
+      "name": "ps4_arch_fallen_0064_1.pkg",
+      "bytes": 24610816,
+      "sha256": "a294a722f31e96ce7c3237a51dad85e0a92d8f85ca9d9bc2b70fb8f8f34d41e3",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_fallen_0064_1.pkg"
+    },
+    {
+      "name": "ps4_arch_fallen_0064_2.pkg",
+      "bytes": 107698176,
+      "sha256": "a29b3134aa76ffcf5398015a961001774f77c18baa3854b1650c99e8ee68e1c1",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_fallen_0064_2.pkg"
+    },
+    {
+      "name": "ps4_arch_fallen_0064_3.pkg",
+      "bytes": 157696,
+      "sha256": "da3decdae8a91951aa063e327a8e3809d66ab8f300ba0942836f3bfb1a876ec1",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_arch_fallen_0064_3.pkg"
+    }
+  ]
+}
