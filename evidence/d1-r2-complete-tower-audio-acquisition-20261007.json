@@ -1,0 +1,22 @@
+{
+  "schema": "d1-r2-complete-tower-audio-acquisition-v1",
+  "objects": [
+    {
+      "name": "ps4_city_tower_activities_act_023d_2.pkg",
+      "bytes": 49981440,
+      "header_declared_bytes": 49981440,
+      "sha256": "6c51c45edcefcfc4954d0adcbe4c84b17d67c02a5d39512639987063880118f0",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_activities_act_023d_2.pkg",
+      "fetch_query": "d1-full-20261007=1"
+    },
+    {
+      "name": "ps4_city_tower_ambient_activi_0244_0.pkg",
+      "bytes": 46385152,
+      "header_declared_bytes": 46385152,
+      "sha256": "cf483101913c7f640b85679216075dad5d1292c001430bc6b9e066d3e6fa29dd",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_city_tower_ambient_activi_0244_0.pkg",
+      "fetch_query": "d1-full-20261007=1"
+    }
+  ],
+  "finding": "Earlier cached GET bodies for these two objects were shorter than the Tiger header declaration and HEAD Content-Length. Cache-busted GET recovered complete objects. Strict Tiger metadata/body size validation remains enabled; no padding or source-header rewriting was performed."
+}
