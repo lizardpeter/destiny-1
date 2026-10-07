@@ -1,0 +1,356 @@
+{
+  "schema": "d1-atmosphere-mode2-native-oracle-v1",
+  "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+  "arithmetic_start_va": "0x842c71",
+  "arithmetic_end_va": "0x842fe6",
+  "settings_mode_offset": "0x88",
+  "mode": 2,
+  "executed_source": [
+    {
+      "va": "0x842c71",
+      "bytes": "c5fa108b90000000",
+      "mnemonic": "vmovss",
+      "operands": "xmm1, dword ptr [rbx + 0x90]"
+    },
+    {
+      "va": "0x842c79",
+      "bytes": "c5fa10059312e200",
+      "mnemonic": "vmovss",
+      "operands": "xmm0, dword ptr [rip + 0xe21293]"
+    },
+    {
+      "va": "0x842c81",
+      "bytes": "c5f25ec8",
+      "mnemonic": "vdivss",
+      "operands": "xmm1, xmm1, xmm0"
+    },
+    {
+      "va": "0x842c85",
+      "bytes": "c5fa10157b12e200",
+      "mnemonic": "vmovss",
+      "operands": "xmm2, dword ptr [rip + 0xe2127b]"
+    },
+    {
+      "va": "0x842c8d",
+      "bytes": "c5f258ca",
+      "mnemonic": "vaddss",
+      "operands": "xmm1, xmm1, xmm2"
+    },
+    {
+      "va": "0x842c91",
+      "bytes": "c5fa118b90000000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0x90], xmm1"
+    },
+    {
+      "va": "0x842c99",
+      "bytes": "c5fa109b98000000",
+      "mnemonic": "vmovss",
+      "operands": "xmm3, dword ptr [rbx + 0x98]"
+    },
+    {
+      "va": "0x842ca1",
+      "bytes": "c5e25ec0",
+      "mnemonic": "vdivss",
+      "operands": "xmm0, xmm3, xmm0"
+    },
+    {
+      "va": "0x842ca5",
+      "bytes": "c5fa58c2",
+      "mnemonic": "vaddss",
+      "operands": "xmm0, xmm0, xmm2"
+    },
+    {
+      "va": "0x842ca9",
+      "bytes": "c5fa118398000000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0x98], xmm0"
+    },
+    {
+      "va": "0x842cb1",
+      "bytes": "c5fa1093f4000000",
+      "mnemonic": "vmovss",
+      "operands": "xmm2, dword ptr [rbx + 0xf4]"
+    },
+    {
+      "va": "0x842cb9",
+      "bytes": "c5ea5e155712e200",
+      "mnemonic": "vdivss",
+      "operands": "xmm2, xmm2, dword ptr [rip + 0xe21257]"
+    },
+    {
+      "va": "0x842cc1",
+      "bytes": "c5fa1193f4000000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0xf4], xmm2"
+    },
+    {
+      "va": "0x842cc9",
+      "bytes": "4183be8800000002",
+      "mnemonic": "cmp",
+      "operands": "dword ptr [r14 + 0x88], 2"
+    },
+    {
+      "va": "0x842cd1",
+      "bytes": "7515",
+      "mnemonic": "jne",
+      "operands": "0x842ce8"
+    },
+    {
+      "va": "0x842cd3",
+      "bytes": "c5fa10a3b0000000",
+      "mnemonic": "vmovss",
+      "operands": "xmm4, dword ptr [rbx + 0xb0]"
+    },
+    {
+      "va": "0x842cdb",
+      "bytes": "c5fa109bd8000000",
+      "mnemonic": "vmovss",
+      "operands": "xmm3, dword ptr [rbx + 0xd8]"
+    },
+    {
+      "va": "0x842ce3",
+      "bytes": "e994020000",
+      "mnemonic": "jmp",
+      "operands": "0x842f7c"
+    },
+    {
+      "va": "0x842f7c",
+      "bytes": "c5fa1005a80fe200",
+      "mnemonic": "vmovss",
+      "operands": "xmm0, dword ptr [rip + 0xe20fa8]"
+    },
+    {
+      "va": "0x842f84",
+      "bytes": "c5fa5cd4",
+      "mnemonic": "vsubss",
+      "operands": "xmm2, xmm0, xmm4"
+    },
+    {
+      "va": "0x842f88",
+      "bytes": "c5f057c9",
+      "mnemonic": "vxorps",
+      "operands": "xmm1, xmm1, xmm1"
+    },
+    {
+      "va": "0x842f8c",
+      "bytes": "c5f82ed1",
+      "mnemonic": "vucomiss",
+      "operands": "xmm2, xmm1"
+    },
+    {
+      "va": "0x842f90",
+      "bytes": "c5f828d0",
+      "mnemonic": "vmovaps",
+      "operands": "xmm2, xmm0"
+    },
+    {
+      "va": "0x842f94",
+      "bytes": "7304",
+      "mnemonic": "jae",
+      "operands": "0x842f9a"
+    },
+    {
+      "va": "0x842f96",
+      "bytes": "c5f828d4",
+      "mnemonic": "vmovaps",
+      "operands": "xmm2, xmm4"
+    },
+    {
+      "va": "0x842f9a",
+      "bytes": "c5fa1193b0000000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0xb0], xmm2"
+    },
+    {
+      "va": "0x842fa2",
+      "bytes": "c5fa5cd3",
+      "mnemonic": "vsubss",
+      "operands": "xmm2, xmm0, xmm3"
+    },
+    {
+      "va": "0x842fa6",
+      "bytes": "c5f82ed1",
+      "mnemonic": "vucomiss",
+      "operands": "xmm2, xmm1"
+    },
+    {
+      "va": "0x842faa",
+      "bytes": "7304",
+      "mnemonic": "jae",
+      "operands": "0x842fb0"
+    },
+    {
+      "va": "0x842fac",
+      "bytes": "c5f828c3",
+      "mnemonic": "vmovaps",
+      "operands": "xmm0, xmm3"
+    },
+    {
+      "va": "0x842fb0",
+      "bytes": "c5fa1183d8000000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0xd8], xmm0"
+    },
+    {
+      "va": "0x842fb8",
+      "bytes": "c5fa1083a8000000",
+      "mnemonic": "vmovss",
+      "operands": "xmm0, dword ptr [rbx + 0xa8]"
+    },
+    {
+      "va": "0x842fc0",
+      "bytes": "c5f82e83ac000000",
+      "mnemonic": "vucomiss",
+      "operands": "xmm0, dword ptr [rbx + 0xac]"
+    },
+    {
+      "va": "0x842fc8",
+      "bytes": "7512",
+      "mnemonic": "jne",
+      "operands": "0x842fdc"
+    },
+    {
+      "va": "0x842fca",
+      "bytes": "7a10",
+      "mnemonic": "jp",
+      "operands": "0x842fdc"
+    },
+    {
+      "va": "0x842fcc",
+      "bytes": "c5fa5805580fe200",
+      "mnemonic": "vaddss",
+      "operands": "xmm0, xmm0, dword ptr [rip + 0xe20f58]"
+    },
+    {
+      "va": "0x842fd4",
+      "bytes": "c5fa1183ac000000",
+      "mnemonic": "vmovss",
+      "operands": "dword ptr [rbx + 0xac], xmm0"
+    },
+    {
+      "va": "0x842fdc",
+      "bytes": "c783280100000000803d",
+      "mnemonic": "mov",
+      "operands": "dword ptr [rbx + 0x128], 0x3d800000"
+    }
+  ],
+  "formulas": {
+    "0x90": "f32(f32(channel/2000)-1)",
+    "0x98": "f32(f32(channel/2000)-1)",
+    "0xf4": "channel/360",
+    "0xb0": "max(0.0001,channel)",
+    "0xd8": "max(0.0001,channel)",
+    "0xac": "if lower==upper then f32(lower+0.0001)",
+    "0x128": "0.0625"
+  },
+  "cases": [
+    {
+      "input": {
+        "0x90": 0.0,
+        "0x98": 0.0,
+        "0xf4": 0.0,
+        "0xb0": 0.0,
+        "0xd8": 0.0,
+        "0xa8": 0.0,
+        "0xac": 0.0
+      },
+      "native_output": {
+        "0x90": -1.0,
+        "0x98": -1.0,
+        "0xf4": 0.0,
+        "0xb0": 9.999999747378752e-05,
+        "0xd8": 9.999999747378752e-05,
+        "0xa8": 0.0,
+        "0xac": 9.999999747378752e-05,
+        "0x128": 0.0625
+      }
+    },
+    {
+      "input": {
+        "0x90": 1000.0,
+        "0x98": 2000.0,
+        "0xf4": 180.0,
+        "0xb0": 0.5,
+        "0xd8": 1.5,
+        "0xa8": 5.0,
+        "0xac": 5.0
+      },
+      "native_output": {
+        "0x90": -0.5,
+        "0x98": 0.0,
+        "0xf4": 0.5,
+        "0xb0": 0.5,
+        "0xd8": 1.5,
+        "0xa8": 5.0,
+        "0xac": 5.000100135803223,
+        "0x128": 0.0625
+      }
+    },
+    {
+      "input": {
+        "0x90": 2000.0,
+        "0x98": 4000.0,
+        "0xf4": 360.0,
+        "0xb0": -1.0,
+        "0xd8": -2.0,
+        "0xa8": 5.0,
+        "0xac": 6.0
+      },
+      "native_output": {
+        "0x90": 0.0,
+        "0x98": 1.0,
+        "0xf4": 1.0,
+        "0xb0": 9.999999747378752e-05,
+        "0xd8": 9.999999747378752e-05,
+        "0xa8": 5.0,
+        "0xac": 6.0,
+        "0x128": 0.0625
+      }
+    },
+    {
+      "input": {
+        "0x90": -1000.0,
+        "0x98": 3000.0,
+        "0xf4": -90.0,
+        "0xb0": 9.999999747378752e-06,
+        "0xd8": 0.00019999999494757503,
+        "0xa8": -7.0,
+        "0xac": -7.0
+      },
+      "native_output": {
+        "0x90": -1.5,
+        "0x98": 0.5,
+        "0xf4": -0.25,
+        "0xb0": 9.999999747378752e-05,
+        "0xd8": 0.00019999999494757503,
+        "0xa8": -7.0,
+        "0xac": -6.999899864196777,
+        "0x128": 0.0625
+      }
+    },
+    {
+      "input": {
+        "0x90": 123.5,
+        "0x98": 2345.75,
+        "0xf4": 719.5,
+        "0xb0": 0.25,
+        "0xd8": 0.75,
+        "0xa8": 1.0,
+        "0xac": 1.0000100135803223
+      },
+      "native_output": {
+        "0x90": -0.9382500052452087,
+        "0x98": 0.1728750467300415,
+        "0xf4": 1.9986110925674438,
+        "0xb0": 0.25,
+        "0xd8": 0.75,
+        "0xa8": 1.0,
+        "0xac": 1.0000100135803223,
+        "0x128": 0.0625
+      }
+    }
+  ],
+  "all_native_outputs_match": true,
+  "scope": "Finite mode-2 arithmetic only. Map mode/settings ownership, live channels and LUTs remain unestablished. General-path imported helper 0x12aaaa0 is unnamed."
+}
