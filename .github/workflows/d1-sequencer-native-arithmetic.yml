@@ -1,0 +1,38 @@
+name: D1 Sequencer Native Arithmetic
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/d1-sequencer-native-arithmetic.yml'
+      - 'tools/d1_sequencer_arithmetic_native_oracle.py'
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install disassembly readers
+        run: python -m pip install capstone==5.0.6 pyelftools==0.32
+      - name: Recover pinned executable and run native arithmetic
+        run: |
+          set -euo pipefail
+          mkdir -p build/sequencer-native
+          curl --fail --location --retry 3 --max-time 120 https://r2.houseofkublai.com/destiny/CUSA00219_01.33/eboot.bin -o build/sequencer-native/eboot.bin
+          test "$(stat -c %s build/sequencer-native/eboot.bin)" = 29249016
+          echo "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833  build/sequencer-native/eboot.bin" | sha256sum --check --strict
+          python tools/d1_sequencer_arithmetic_native_oracle.py build/sequencer-native/eboot.bin --evidence-dir evidence --output build/sequencer-native/oracle.json
+      - name: Remove owned binary
+        if: always()
+        run: rm -f build/sequencer-native/eboot.bin
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-sequencer-native-arithmetic
+          path: build/sequencer-native/oracle.json
+          if-no-files-found: warn
+          retention-days: 30
