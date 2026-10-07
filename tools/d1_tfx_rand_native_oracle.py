@@ -10,6 +10,7 @@ import argparse
 import ctypes
 import hashlib
 import json
+import math
 import mmap
 import platform
 import struct
@@ -18,7 +19,7 @@ from pathlib import Path
 from d1_global_lighting_settings_defaults import EXPECTED_SHA256
 
 
-def probe(path):
+def probe(path, additional_cases=()):
     if platform.machine() not in ("x86_64", "AMD64") or " avx " not in Path("/proc/cpuinfo").read_text():
         raise RuntimeError("native oracle requires Linux x86-64 AVX")
     raw = path.read_bytes()
@@ -43,7 +44,8 @@ def probe(path):
     output = ctypes.create_string_buffer(32)
     output_address = (ctypes.addressof(output) + 15) & ~15
     cases = []
-    for x in [0.0, -0.0, 0.5, -0.5, 1.0, 2.0, 3.0, -1.0, -2.0, -5.5, 31.0, 127.0, 1024.0, 8191.0, 8388608.0]:
+    inputs = [0.0, -0.0, 0.5, -0.5, 1.0, 2.0, 3.0, -1.0, -2.0, -5.5, 31.0, 127.0, 1024.0, 8191.0, 8388608.0]
+    for x in inputs + list(additional_cases):
         source = ctypes.create_string_buffer(struct.pack("<4f", x, 42.0, -123.0, 999.0))
         call(ctypes.addressof(source), output_address)
         bits = struct.unpack("<4I", ctypes.string_at(output_address, 16))
@@ -63,7 +65,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("eboot", type=Path)
     ap.add_argument("--output", type=Path, required=True)
+    ap.add_argument("--case", type=float, action="append", default=[], help="append a finite source input witness")
     args = ap.parse_args()
-    result = probe(args.eboot)
+    if any(not math.isfinite(x) for x in args.case):
+        ap.error("--case inputs must be finite")
+    result = probe(args.eboot, args.case)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result["cases"]))
