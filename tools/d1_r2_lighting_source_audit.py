@@ -22,11 +22,12 @@ def audit(package_dir, runtime, atmosphere_contract):
     pins = {name: (size, digest) for name, _, size, digest in CORE + MEMBERS}
     packages = []
     for path in paths:
-        raw = path.read_bytes()
-        digest = hashlib.sha256(raw).hexdigest()
-        if path.name in pins and (len(raw), digest) != pins[path.name]:
+        size = path.stat().st_size
+        with path.open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        if path.name in pins and (size, digest) != pins[path.name]:
             raise ValueError(f"source package differs from pinned corpus: {path.name}")
-        packages.append({"name": path.name, "bytes": len(raw), "sha256": digest,
+        packages.append({"name": path.name, "bytes": size, "sha256": digest,
                          "previously_pinned": path.name in pins,
                          "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/" + path.name})
     corpus = Corpus(paths, runtime)
