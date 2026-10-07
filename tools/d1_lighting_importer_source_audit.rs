@@ -35,9 +35,31 @@ fn main() -> Result<()> {
     let globals = destiny1_importer::global_channels::decode_current_render_global_channels(&archive)?;
     println!("GLOBALS {:08X} CHANNELS {:08X} COUNT {}", globals.render_globals_hash,
         globals.global_channel_defaults_hash, globals.defaults.channels.len());
-    let tables: Vec<u32> = args.iter().skip(2).map(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).unwrap()).collect();
+    // The original combined-table census used a map root as a diagnostic
+    // placeholder. Scenario activities have a different source layout, so
+    // permit an explicit root and keep that distinction visible in the log.
+    let mut activity = None;
+    let mut tables = Vec::new();
+    let mut remaining = args.iter().skip(2);
+    let parse_hash = |s: &str| -> Result<u32> {
+        u32::from_str_radix(s.trim_start_matches("0x").trim_start_matches("0X"), 16)
+            .map_err(|_| Error::Invalid(format!("invalid source TagHash {s:?}")))
+    };
+    while let Some(arg) = remaining.next() {
+        if arg == "--activity" {
+            if activity.is_some() {
+                return Err(Error::Invalid("--activity supplied more than once".into()));
+            }
+            let value = remaining.next()
+                .ok_or_else(|| Error::Invalid("--activity requires a source TagHash".into()))?;
+            activity = Some(parse_hash(value)?);
+        } else {
+            tables.push(parse_hash(arg)?);
+        }
+    }
     let tables = if tables.is_empty() { vec![0x80C984AA, 0x80CA0B18] } else { tables };
-    let lighting = destiny1_importer::d1_scene_lighting::build_d1_scene_lighting(&archive, 0x80C98019, &tables)?;
+    println!("ACTIVITY_ROOT {:08X} DIAGNOSTIC_PLACEHOLDER {}", activity.unwrap_or(0x80C98019), activity.is_none());
+    let lighting = destiny1_importer::d1_scene_lighting::build_d1_scene_lighting(&archive, activity.unwrap_or(0x80C98019), &tables)?;
     println!("LIGHTING PROGRAMS {} LIGHTS {} TEXTURES {}", lighting.programs.len(),
         lighting.model.lights.len(), lighting.model.textures.len());
     for line in lighting.report { println!("REPORT {line}"); }
