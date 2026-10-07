@@ -104,7 +104,7 @@ def probe(path):
             call(ctypes.addressof(source), ctypes.addressof(constants), outptr, ctypes.addressof(pc))
             cases.append({'name': 'cancellation', 'opcode': opcode, 'input': x, 'constants': k,
                           'output_bits': [f'0x{v:08x}' for v in struct.unpack('<4I', ctypes.string_at(outptr, 16))]})
-    ranges = [(0x94813, 0x9481a), (0x9486e, 0x94876), (0x948d7, 0x948db), (0x82a9ef, 0x82acfc)]
+    ranges = [(0x9477a, 0x949ee), (0x82a9ef, 0x82acfc)]
     return {'schema': 'd1-tfx-gradient-native-oracle-v1', 'sha256': EXPECTED_SHA256,
             'bss_tolerance_va': '0x1ac6320', 'rodata_tolerance_va': '0x1610be0',
             'tolerance_bits': '0x38d1b717', 'tolerance': eps,
