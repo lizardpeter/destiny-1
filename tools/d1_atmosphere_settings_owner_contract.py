@@ -35,6 +35,7 @@ def contract(path):
     assert name == 'atmosphere settings'
     dis = Cs(CS_ARCH_X86, CS_MODE_64)
     ranges = {
+        'typed_data_accessor': (0x78970,0x78975),
         'source_tag_load': (0x8417C0,0x841887),
         'reset': (0x841890,0x84192D),
         'global_allocation': (0x841A80,0x841B1E),
@@ -53,7 +54,8 @@ def contract(path):
                               for i in dis.disasm(raw[start + 0x4000:end + 0x4000],start)]
         assert instructions[name]
     lookup = {int(i['va'],16):i for rows in instructions.values() for i in rows}
-    checks = {0x841844:('add','rax, 0xc'), 0x841852:('mov','edx, 0x88'),
+    checks = {0x78970:('mov','rax, qword ptr [rdi + 8]'), 0x78974:('ret',''),
+              0x841844:('add','rax, 0xc'), 0x841852:('mov','edx, 0x88'),
               0x841AE5:('mov','dword ptr [rax + 0x88], 3'),
               0x841EF6:('mov','edx, 0x90'), 0x7EBE90:('mov','edx, 0xf0'),
               0x7ECE9D:('mov','edx, 0xf0'), 0x8074E6:('lea','rdi, [rbx + 0x34]'),
@@ -69,13 +71,13 @@ def contract(path):
             'relevant_relocations':[relocations[o] for o in expected],
             'contract':[
                 'Global allocation initializes settings +0x88 to mode 3 and source-null words +0,+0x40,+0x44.',
-                'Source loader 0x8417c0 resolves the class through type object +0, zero-initializes a 0x90-byte temporary, copies exactly 0x88 source bytes beginning at tag payload +0x0c, and sends all 0x90 bytes to setter 0x841ee0. Its mode at +0x88 and texture override at +0x8c therefore remain zero.',
+                'Source loader 0x8417c0 reads the type object +0 into esi, but accessor 0x78970 ignores that argument and returns the supplied handle data pointer at +0x08. This call does not validate a serialized source class. The loader zero-initializes a 0x90-byte temporary, copies exactly 0x88 bytes beginning at provided data pointer +0x0c, and sends all 0x90 bytes to setter 0x841ee0. Its mode at +0x88 and texture override at +0x8c therefore remain zero.',
                 'Setter copies 0x90 bytes only, preserving resolved channel indices at +0x90..+0xec in the global owner.',
                 'Getter 0x841f10 returns the global settings pointer. Renderer callbacks copy all 0xf0 bytes to renderer +0x191f8.',
                 'Context constructors copy renderer +0x191f8 to context +0x34, size 0xf0. Primary producer receives context +0x34 and view +0x500; secondary receives the same settings via r9 and view +0x500 after an earlier +0x4f0 base.',
                 'Secondary pass accepts settings modes 0,1,4 and rejects other modes; producer alone also has an arithmetic mode-2 branch.'],
             'instructions':instructions,
-            'remaining':['serialized source class ID inside runtime object is not resolved','actual map tag/activation joins','all context mode and texture-override mutations','view matrix semantic producer','atmosphere LUT generation/residency']}
+            'remaining':['serialized source class ID is not resolved; accessor does not enforce it','data pointer relationship to serialized payload base','actual map tag/activation joins','all context mode and texture-override mutations','view matrix semantic producer','atmosphere LUT generation/residency']}
 
 
 if __name__ == '__main__':
