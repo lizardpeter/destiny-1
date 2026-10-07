@@ -1,12 +1,15 @@
 {
   "schema": "d1_tower_exact_sun_components/v1",
-  "status": "EXACT_CURRENT_TOWER_SUN_COMPONENT_TIMING_CAPTURED",
+  "status": "EXACT_CURRENT_TOWER_SUN_COMPONENT_TIMING_CAPTURED_RUNTIME_FREEZE_GATE_OPEN",
   "build": "CUSA00219_01.33",
   "source_run": 37551770873,
   "source_job": 112568680971,
   "executable_contract": {
     "loader": "0x8B2BF9",
-    "rule": "component +0x10 > 0 selects the live timer/cycle path; +0x14 is added as authored phase/time offset before normalized time-of-day is produced"
+    "cycle_setup": "If component +0x10 > 0, 0x8B6380 configures the normalized cyclic timer period (bounded below by 1e-4).",
+    "freeze_gate": "0x8B2D90 resolves an active runtime object and reads a boolean byte at +0x39. If set, 0x8B6440 pauses the timer and the time input is forced to 0 before adding component +0x14.",
+    "live_path": "If the freeze gate is clear, component +0x10 is passed through the global runtime-time service path at 0x2406C0; negative results are clamped to 0, component +0x14 is added, then the result is normalized to the unit interval.",
+    "per_frame_timer": "0x8B6450 is called from the main update path at 0x74C170 and advances the normalized timer by delta_time / configured_period when not paused."
   },
   "rows": [
     {
@@ -30,6 +33,6 @@
       "phase_offset": 0
     }
   ],
-  "conclusion": "Both exact recovered Tower sun components are live-cycle configurations, not fixed-time components. The remaining open value is the retail runtime clock/phase source used by the live-cycle path, not a serialized Tower time constant.",
+  "conclusion": "Both recovered Tower sun components are cycle-capable (3600/7200 s, phase offset 0). Retail 0x8B2D90 resolves an active-runtime flag; when set, 0x8B2BF9 pauses the cycle and uses phase 0 + authored offset. Therefore current-scenario live-vs-frozen state remains a separate runtime join.",
   "correction": "The 24-byte 80801B06 sun tag owns curve/window data; +0x10/+0x14 timing fields belong to the containing 80801B13 sun component resource."
 }
