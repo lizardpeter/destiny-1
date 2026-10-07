@@ -1,0 +1,131 @@
+{
+  "schema": "d1-r2-acquisition-manifest-v1",
+  "objects": [
+    {
+      "name": "ps4_cosmo_destination_0270_0.pkg",
+      "bytes": 80791552,
+      "sha256": "dc4b0b4342b05d30d45bbdce80ae0e080d4c0cb62a5c4a5dee117f8daf82d1a8",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0270_0.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0270_1.pkg",
+      "bytes": 3934208,
+      "sha256": "a7ad69dcb06f0a7e09cf86f662e6c03291e5b46d60edff18536a3874ed509690",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0270_1.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0270_2.pkg",
+      "bytes": 1884160,
+      "sha256": "fd6ead01552028ef08dd54109ce9ce1ba295542fcfeff4977ed33e0ac9599684",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0270_2.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0270_4.pkg",
+      "bytes": 296960,
+      "sha256": "30854406c3ab5614fe18fdf937b643afccdf08a8c4f895d4dbe8a0b6ba71b0be",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0270_4.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0271_0.pkg",
+      "bytes": 110563328,
+      "sha256": "b0be2e7a80ab20cb49df324ce51dc6816c1728b91651bf42335b94a35b9168e7",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0271_0.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0271_1.pkg",
+      "bytes": 20717568,
+      "sha256": "dd8608820bd103823c5572d35d1ad31d73836331d286abdc077d33a765e25a21",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0271_1.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0271_2.pkg",
+      "bytes": 1554432,
+      "sha256": "e45fe1030f63fbf3da83b78907aab8eb3a5f25125fd20e9dec4a8eb2bddd13be",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0271_2.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0272_0.pkg",
+      "bytes": 141213696,
+      "sha256": "3f7425615682e5f7fea518550660a5e8e46778901a122f979007d1b9a7b63839",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0272_0.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0272_1.pkg",
+      "bytes": 11362304,
+      "sha256": "632f5e7552be80efe5148e868a51a2443651c5706216eacecad7b49694eacb55",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0272_1.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0272_2.pkg",
+      "bytes": 3686400,
+      "sha256": "6e3572b999cd1bd0bd028727cb63309b4eaf646305564e91ddac43c50bd6e0e4",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0272_2.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0272_3.pkg",
+      "bytes": 165888,
+      "sha256": "4b663712f8ce85bdf58418347edc0f42f1a889944cdbb4ffe21c5c5ec90bb443",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0272_3.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0274_0.pkg",
+      "bytes": 650121216,
+      "sha256": "7cc911425b7dc670ba865657eee20720ede23994d553cc916fd74816a5d9257c",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0274_0.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0274_1.pkg",
+      "bytes": 7368704,
+      "sha256": "af93d3b97cc31753895ac2ad55d50ece02afa0fa738b5362e120f478b8ab4f90",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0274_1.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0274_2.pkg",
+      "bytes": 16138240,
+      "sha256": "ad9340db4dfc80b6b3085bb0ca3bc23f0ac7317e50ae7b0dbc25ded37c3dfcdc",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0274_2.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0275_0.pkg",
+      "bytes": 165515264,
+      "sha256": "c180d9c49095a59f214f2ab8e4f33f1f378030d1acba0fd48a409c8bb442beab",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0275_0.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0275_1.pkg",
+      "bytes": 69539840,
+      "sha256": "211131c33d911d06bf90e0ffa697fbe54f1d9ad6076f69c88a627f3bcdfbeab4",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0275_1.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0275_2.pkg",
+      "bytes": 8042496,
+      "sha256": "549bcd5d8fc0509c67c8dba65750858040dcf5647ab154cde4ed77983e10b6e1",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0275_2.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0275_3.pkg",
+      "bytes": 194560,
+      "sha256": "7474ad583ed96a04252dfafc8a89c0f90316e3476f80133c7acf2d1d05ccd0fe",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0275_3.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0276_1.pkg",
+      "bytes": 193519616,
+      "sha256": "a656e69e7c93fc86693ec236f0001c31aaaed79258e3337c0b5267a2425f223a",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0276_1.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0276_2.pkg",
+      "bytes": 5376000,
+      "sha256": "bf60ea6b8f54ebf54c68831b803bf0ea7282fd5effa902639bcdf34966a9005d",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0276_2.pkg"
+    },
+    {
+      "name": "ps4_cosmo_destination_0276_3.pkg",
+      "bytes": 153600,
+      "sha256": "b0d7551ece30500c9349fd2c5dd8f98c268559b74ed96be8a42bbaa792050787",
+      "url": "https://r2.houseofkublai.com/destiny/CUSA00219_01.33/packages/ps4_cosmo_destination_0276_3.pkg"
+    }
+  ]
+}
