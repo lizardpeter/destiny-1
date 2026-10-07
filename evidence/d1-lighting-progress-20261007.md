@@ -43,3 +43,21 @@ The exact authored sun component `80CEC1A2` points to `80CEC1A4`, cycle 3600 sec
 Production commit `722a9e73` fixes a cross-destination import abort: source collection `80CEABCE`, record 41, has a reciprocal difference of 80.0000114440918 versus the equation's 80.0. The validator now retains its 1e-5 near-zero floor and adds a two-f32-epsilon scale allowance. Non-finite and materially incorrect values remain rejected. Exact source entry identities and arithmetic are in `d1-light-volume-rounding-source-20261007.json`; the full importer suite now passes **312 tests**.
 
 The recovered 42-table Cosmodrome census translates **2,250/2,250 local lights and 1,788/1,788 materials**, with 65 lighting programs, 364 constant programs, six textures, zero unbounded records and zero translation failures. See `d1-cosmo-lighting-importer-source-census-20261007.log`. This synthetic source census uses the Tower Activity root as a diagnostic placeholder; it does not close actual Cosmodrome Activity/environment joins or rendered image fidelity.
+
+## Final five-area source checkpoint
+
+Final production commits include `f43f9495` (volume inverse), `b3fe1c97` (serialized BC1 sRGB cookies), `722a9e73` (f32 volume validation) and `63828b46` (explicit unresolved null-source binding diagnostic). The complete importer library suite still passes **312 tests**.
+
+| Source area | Local records imported | Materials translated | Lighting programs |
+| --- | ---: | ---: | ---: |
+| Tower | 737 / 737 | 497 / 497 | 34 |
+| Cosmodrome | 3,402 / 3,402 | 2,712 / 2,712 | 71 |
+| Mars | 2,029 / 2,029 | 1,474 / 1,474 | 45 |
+| Venus | 2,241 / 2,242 | 1,859 / 1,860 | 49 |
+| Moon | 2,250 / 2,250 | 1,551 / 1,551 | 44 |
+
+All five models validate their neutral lighting IR. There are zero unbounded records and zero unresolved engine words in these censuses. The 163-package source audit covers 258,046 current tags and 3,506 relevant source rows with zero parsing errors. Package hashes, source owners, full warning logs and compact counts are committed. These are combined destination-table source censuses using a diagnostic Tower Activity root, not actual per-map activation/environment joins or rendered fidelity checks. Raid, PvP and other destination families are not covered by this checkpoint.
+
+The one withheld Venus record is collection `8100A280`, record 14, map table `8100A25F`, BufferData `8100A312`, material `8100A311`, pixel shader `8100EA66`. Its serialized PS t3 hash is `FFFFFFFF`. Raw flags 88/8C are `02000428` / `00000000`; no activation semantics are inferred. The importer now reports the unclosed runtime fallback directly instead of calling this a missing downloadable texture. See `d1-venus-null-cookie-source-20261007.json` and its reproducible audit script. No fabricated white/black cookie was added.
+
+Next fidelity work remains the real Activity/environment joins, atmosphere coefficient/LUT production, live sun/environment curve updates, null-cookie runtime handling, and rendered map comparisons. The R2 source-audit helper now hashes large package objects as a stream; all 147 previous package identities and source rows agreed with the earlier full-buffer audit.
