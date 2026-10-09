@@ -1,0 +1,25 @@
+name: SMG J3D CMPR Exact Decoder A-B
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/smg-cmpr-full-subblock-20261009]
+    paths:
+      - 'bench/smg_cmpr/**'
+      - '.github/workflows/smg-cmpr-fast-subblock.yml'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Unit test exact original and optimized J3D decoder source
+        shell: bash
+        run: cargo test --release --manifest-path bench/smg_cmpr/Cargo.toml -- --nocapture
+      - name: Paired SMG CMPR decode benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/smg_cmpr/Cargo.toml
