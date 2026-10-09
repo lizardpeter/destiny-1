@@ -1,0 +1,25 @@
+name: SMG GX Color Row A-B Benchmark
+on:
+  push:
+    branches: [bench/smg-j3d-color-row-20261009]
+    paths:
+      - 'bench/smg_color/**'
+      - '.github/workflows/smg-j3d-color-row-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-and-measure:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Exact source differential unit tests
+        shell: bash
+        run: cargo test --release --manifest-path bench/smg_color/Cargo.toml
+      - name: Native CPU A-B benchmark of all five candidate formats
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/smg_color/Cargo.toml
