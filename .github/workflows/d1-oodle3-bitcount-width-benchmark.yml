@@ -156,3 +156,5 @@ jobs:
           if-no-files-found: ignore
 
 # Replication: unchanged source and paired timing rotation, separate hosted Windows runner.
+
+# Repeat run of u8/u16/u32 counter widths on another hosted CPU; same source variants.
