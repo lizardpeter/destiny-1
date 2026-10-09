@@ -1,0 +1,33 @@
+name: Xbox LZX Exact Dependency Lock
+on:
+  push:
+    branches: [bench/xbox-lzx-reset-20261009]
+    paths:
+      - 'bench/xbox_lzx_reset/importer_manifest/**'
+      - '.github/workflows/xbox-lzx-lockfile.yml'
+permissions:
+  contents: write
+jobs:
+  lockfile:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate exact Cargo lock of private importer dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path bench/xbox_lzx_reset/importer_manifest/Cargo.toml
+          cat bench/xbox_lzx_reset/importer_manifest/Cargo.lock
+      - name: Commit regenerated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/xbox_lzx_reset/importer_manifest/Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m "bench(xbox): generate exact importer dependency lock [skip ci]"
+            git push origin "HEAD:refs/heads/bench/xbox-lzx-reset-20261009"
+          fi
