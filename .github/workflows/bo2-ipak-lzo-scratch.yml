@@ -1,0 +1,25 @@
+name: BO2 IPAK LZO Scratch Allocation Benchmark
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/bo2-ipak-crc32-20261009]
+    paths:
+      - 'bench/ipak_lzo/**'
+      - '.github/workflows/bo2-ipak-lzo-scratch.yml'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test LZO decompress and decompress_into equality
+        shell: bash
+        run: cargo test --release --manifest-path bench/ipak_lzo/Cargo.toml
+      - name: Benchmark per-command allocations
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/ipak_lzo/Cargo.toml
