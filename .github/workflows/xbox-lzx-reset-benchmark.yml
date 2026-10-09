@@ -1,0 +1,31 @@
+name: Xbox Avatar LZX 0.2.7 Reset Reuse Benchmark
+on:
+  push:
+    branches: [bench/xbox-lzx-reset-20261009]
+    paths:
+      - 'bench/xbox_lzx_reset/**'
+      - '.github/workflows/xbox-lzx-reset-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch exact crates.io lzxd 0.2.7
+        shell: bash
+        run: cargo fetch --manifest-path bench/xbox_lzx_reset/bootstrap/Cargo.toml
+      - name: Prepare experimental reset-reusing decoder
+        shell: bash
+        run: python bench/xbox_lzx_reset/prepare.py
+      - name: Decode-parity and malformed-state tests
+        shell: bash
+        run: cargo test --release --manifest-path bench/xbox_lzx_reset/runner/Cargo.toml
+      - name: Paired benchmark against upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/xbox_lzx_reset/runner/Cargo.toml
