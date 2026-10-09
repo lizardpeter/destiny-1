@@ -156,3 +156,5 @@ jobs:
           if-no-files-found: ignore
 
 # Replication: unchanged source and paired timing rotation, separate hosted Windows runner.
+
+# Independent Windows hosted runner A/B repeat with unchanged pointer-cursor variants.
