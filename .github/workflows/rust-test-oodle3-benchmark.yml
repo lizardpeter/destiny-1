@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 LZ 16-byte HotPath A-B
+name: Rust-test Oodle3 Huffman prefix width A-B
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -18,117 +18,31 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Compile and test baseline and single-refill candidate
+      - name: Compile and test 11-bit baseline, 12-bit, and 13-bit Huffman variants
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
           mkdir -p out
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-scalar cargo build --release)
-          cp rust/d1_oodle3/target-scalar/release/d1_oodle3.dll out/rust_scalar.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-native cargo build --release)
-          cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/rust_native.dll
-          python - <<'PY'
+          cp rust/d1_oodle3/src/lzh.rs out/original_lzh.rs
+          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-huff11 cargo build --release)
+          cp rust/d1_oodle3/target-huff11/release/d1_oodle3.dll out/huff11.dll
+          for width in 12 13; do
+            HUFF_BITS="$width" python - <<'PY'
+          import os
           from pathlib import Path
-          path=Path('rust/d1_oodle3/src/lzh.rs')
-          src=path.read_text()
-          marker='    fn ensure_bits_fast(&mut self, count: usize) {'
-          endmarker='    fn read_bits_fast(&mut self, count: usize) -> u64 {'
-          p=src.index(marker)
-          q=src.index(endmarker,p)
-          middle=src[p:q]
-          old='while usize::from(self.bit_count) < count {'
-          if middle.count(old)!=1: raise RuntimeError('Expected unique fast-refill loop')
-          middle=middle.replace(old,'if usize::from(self.bit_count) < count {')
-          path.write_text(src[:p]+middle+src[q:])
-          print('FAST_REFILL_IF_CANDIDATE_APPLIED')
+          p=Path("rust/d1_oodle3/src/lzh.rs")
+          original=Path("out/original_lzh.rs").read_text()
+          current="pub const FAST_DECODE_BITS: u8 = 11;"
+          if original.count(current)!=1: raise RuntimeError("Unsupported Huffman table layout")
+          p.write_text(original.replace(current,f"pub const FAST_DECODE_BITS: u8 = {os.environ['HUFF_BITS']};"))
+          print("HUFFMAN_FAST_PREFIX_BITS",os.environ['HUFF_BITS'])
           PY
-          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-candidate cargo build --release)
-          cp rust/d1_oodle3/target-candidate/release/d1_oodle3.dll out/rust_candidate.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-candidate-native cargo build --release)
-          cp rust/d1_oodle3/target-candidate-native/release/d1_oodle3.dll out/rust_candidate_native.dll
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('rust/d1_oodle3/src/lzh.rs')
-          src=p.read_text()
-          head=src.index('fn copy_match_into(')
-          tail=src.index('\n}\n',head)+3
-          fn=src[head:tail]
-          dist_start=fn.index('    if distance == 1 {')
-          dist_end=fn.index('\n\n    let match_start = *output_pos;',dist_start)
-          dist_block=fn[dist_start:dist_end]
-          fn=fn[:dist_start]+fn[dist_end:]
-          small_start=fn.index('        if length <= 8 && physical_remaining >= 8 {')
-          small_end=fn.index('        if length <= 16 && physical_remaining >= 16 {',small_start)
-          small_block=fn[small_start:small_end]
-          fn=fn[:small_start]+fn[small_end:]
-          anchor='    let source_start = match_start - distance;\n'
-          if fn.count(anchor)!=1: raise RuntimeError('Missing match copy anchor')
-          short='\n'.join([
-              "    // Most match tokens are short: handle them before the rarer",
-              "    // RLE, SIMD or longer copy paths, after all bounds validation.",
-              "    if distance >= 8 && length <= 8 && output.len() - match_start >= 8 {",
-              "        unsafe {",
-              "            let base = output.as_mut_ptr();",
-              "            let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());",
-              "            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);",
-              "        }",
-              "        *output_pos += length;",
-              "        return Ok(());",
-              "    }",
-              "",
-              "",
-          ])
-          fn=fn.replace(anchor,anchor+'\n'+short+dist_block+'\n')
-          if small_block.count('if length <= 8')!=1 or fn.count('if distance == 1')!=1: raise RuntimeError('Unexpected copy path')
-          p.write_text(src[:head]+fn+src[tail:])
-          print('SHORT_MATCH_FAST_PATH_REORDER_APPLIED')
-          PY
-          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-match cargo build --release)
-          cp rust/d1_oodle3/target-match/release/d1_oodle3.dll out/rust_match.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-match-native cargo build --release)
-          cp rust/d1_oodle3/target-match-native/release/d1_oodle3.dll out/rust_match_native.dll
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('rust/d1_oodle3/src/lzh.rs')
-          src=p.read_text()
-          begin=src.index('fn copy_match_into(')
-          end=src.index('\n}\n',begin)+3
-          fn=src[begin:end]
-          outer='    if distance >= 8 {\n        let physical_remaining = output.len() - match_start;\n'
-          idx=fn.index(outer)
-          stop=fn.index('\n    }\n\n    // For the next two common length buckets',idx)+6
-          removed=fn[idx:stop]
-          if removed.count('length <= 16')!=1: raise RuntimeError('Expected 16-byte scalar bucket missing')
-          fn=fn[:idx]+fn[stop:]
-          insert='\n'.join([
-              "    // Second common bucket: sequential 16-byte copy, preserving distance-8 overlap.",
-              "    if distance >= 8 && length <= 16 && output.len() - match_start >= 16 {",
-              "        unsafe {",
-              "            let base = output.as_mut_ptr();",
-              "            let first = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());",
-              "            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), first);",
-              "            let second = core::ptr::read_unaligned(base.add(source_start + 8).cast::<u64>());",
-              "            core::ptr::write_unaligned(base.add(match_start + 8).cast::<u64>(), second);",
-              "        }",
-              "        *output_pos += length;",
-              "        return Ok(());",
-              "    }",
-              "",
-              "",
-          ])
-          where=fn.index('    if distance == 1 {')
-          fn=fn[:where]+insert+fn[where:]
-          p.write_text(src[:begin]+fn+src[end:])
-          print('SECOND_SHORT_MATCH_BUCKET_EARLY_APPLIED')
-          PY
-          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-match16 cargo build --release)
-          cp rust/d1_oodle3/target-match16/release/d1_oodle3.dll out/rust_match16.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-match16-native cargo build --release)
-          cp rust/d1_oodle3/target-match16-native/release/d1_oodle3.dll out/rust_match16_native.dll
+            cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+            (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR="target-huff$width" cargo build --release)
+            cp "rust/d1_oodle3/target-huff$width/release/d1_oodle3.dll" "out/huff$width.dll"
+          done
+          cp out/original_lzh.rs rust/d1_oodle3/src/lzh.rs
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -153,7 +67,7 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Byte-verify and benchmark original and fast-refill candidate
+      - name: Validate 11 blocks and compare Huffman lookup widths
         shell: bash
         run: |
           set -euo pipefail
@@ -192,14 +106,9 @@ jobs:
               if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
-              'rust_scalar':bind('out/rust_scalar.dll'),
-              'rust_native':bind('out/rust_native.dll'),
-              'rust_candidate':bind('out/rust_candidate.dll'),
-              'rust_candidate_native':bind('out/rust_candidate_native.dll'),
-              'rust_match':bind('out/rust_match.dll'),
-              'rust_match_native':bind('out/rust_match_native.dll'),
-              'rust_match16':bind('out/rust_match16.dll'),
-              'rust_match16_native':bind('out/rust_match16_native.dll')
+              'rust_huff11':bind('out/huff11.dll'),
+              'rust_huff12':bind('out/huff12.dll'),
+              'rust_huff13':bind('out/huff13.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -237,16 +146,11 @@ jobs:
               print('ROUND',j+1,json.dumps(results))
           medians={name:statistics.median(v) for name,v in samples.items()}
           ratios={
-              'candidate_over_scalar':medians['rust_candidate']/medians['rust_scalar'],
-              'candidate_native_over_native':medians['rust_candidate_native']/medians['rust_native'],
-              'native_over_oodle':medians['rust_native']/medians['original_oodle'],
-              'candidate_native_over_oodle':medians['rust_candidate_native']/medians['original_oodle'],
-              'match_over_refill':medians['rust_match']/medians['rust_candidate'],
-              'match_native_over_refill_native':medians['rust_match_native']/medians['rust_candidate_native'],
-              'match_native_over_oodle':medians['rust_match_native']/medians['original_oodle'],
-              'match16_over_match':medians['rust_match16']/medians['rust_match'],
-              'match16_native_over_match_native':medians['rust_match16_native']/medians['rust_match_native'],
-              'match16_native_over_oodle':medians['rust_match16_native']/medians['original_oodle']
+              'huff12_over_huff11':medians['rust_huff12']/medians['rust_huff11'],
+              'huff13_over_huff11':medians['rust_huff13']/medians['rust_huff11'],
+              'huff11_over_oodle':medians['rust_huff11']/medians['original_oodle'],
+              'huff12_over_oodle':medians['rust_huff12']/medians['original_oodle'],
+              'huff13_over_oodle':medians['rust_huff13']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
