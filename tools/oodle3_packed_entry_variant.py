@@ -12,7 +12,7 @@ def transform(source: str, layout: str) -> str:
     stop = source.index("\n#[derive(Debug, Clone)]\nstruct CanonicalDecoder", start)
     old_struct = source[start:stop]
     expected_struct = "#[derive(Debug, Clone, Copy, Default)]\nstruct FastEntry {\n    symbol: u16,\n    len: u8,\n}"
-    if old_struct != expected_struct:
+    if old_struct.strip() != expected_struct.strip():
         raise RuntimeError("Unexpected FastEntry definition")
     source = source[:start] + old_struct.replace(
         "    symbol: u16,\n    len: u8,", "    packed: u32,"
