@@ -154,3 +154,5 @@ jobs:
           path: out/benchmark.json
           retention-days: 14
           if-no-files-found: ignore
+
+# Exact repeat: same Rust source, exact two token variants, rotated 11-round Windows A/B.
