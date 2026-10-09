@@ -154,3 +154,5 @@ jobs:
           path: out/benchmark.json
           retention-days: 14
           if-no-files-found: ignore
+
+# Replication: unchanged source and paired timing rotation, separate hosted Windows runner.
