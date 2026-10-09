@@ -1,0 +1,154 @@
+name: D1 Oodle3 combined verified speedup versus original
+on:
+  push:
+    branches: [verify/oodle3-unified-rotation-20261009]
+    paths:
+      - 'rust/d1_oodle3/**'
+
+      - '.github/workflows/d1-oodle3-combined-gain-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build unchanged pre-optimization Rust and committed combined decoder
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp rust/d1_oodle3/src/lzh.rs out/optimized_source.rs
+          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-combined cargo build --release)
+          cp rust/d1_oodle3/target-combined/release/d1_oodle3.dll out/optimized_combined.dll
+          git fetch --depth=1 origin refs/heads/bench/oodle3-rust-test-20261008
+          git show FETCH_HEAD:rust/d1_oodle3/src/lzh.rs > rust/d1_oodle3/src/lzh.rs
+          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-original cargo build --release)
+          cp rust/d1_oodle3/target-original/release/d1_oodle3.dll out/original_prechange.dll
+          cp out/optimized_source.rs rust/d1_oodle3/src/lzh.rs
+          echo 'COMBINED_PERF_SOURCE_VERIFIED separate Rust builds on same runner'
+      - name: Recover source-verified Destiny package and reference Oodle DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered reference
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from d1_split_tar_extract import SplitHttpTar
+          name = 'ps4_city_tower_destination_024c_5.pkg'
+          offset, size = 7715401728, 1687552
+          expected = 'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'
+          base = 'https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          archive = SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)], retries=5, timeout=90)
+          actual = archive.copy_to(offset, size, Path('recovered')/name)
+          if actual.lower() != expected: raise SystemExit('Package SHA mismatch: '+actual)
+          print('RECOVERED_VERIFIED_PACKAGE_SHA256', actual)
+          globals_name='ps4_globals_0157_6.pkg'
+          globals_sha=archive.copy_to(0x47AF53A00, 356352, Path('recovered')/globals_name)
+          print('RECOVERED_HOLDOUT_PACKAGE_SHA256', globals_sha)
+          PY
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+      - name: Byte verify and paired benchmark original Rust versus combined optimizations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ctypes, hashlib, json, statistics, sys, time
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from d1_pkg_probe import parse_header, parse_blocks, read_table
+          def bind(path):
+              lib = ctypes.WinDLL(str(Path(path).resolve()))
+              fn = lib.OodleLZ_Decompress
+              fn.restype = ctypes.c_int64
+              fn.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32]
+              return lib,fn
+          cases=[]
+          sources=[
+              ('ps4_city_tower_destination_024c_5.pkg',5,8),
+              ('ps4_globals_0157_6.pkg',6,3),
+          ]
+          for member,patch,limit in sources:
+              pkg=Path('recovered')/member
+              with pkg.open('rb') as f:
+                  h=parse_header(f)
+                  table=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+              selected=0
+              for block in parse_blocks(table):
+                  if not block['compressed'] or int(block['patch_id'])!=patch: continue
+                  with pkg.open('rb') as f:
+                      f.seek(int(block['offset']))
+                      comp=f.read(int(block['size']))
+                  if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower():
+                      raise RuntimeError('Compressed block SHA mismatch: '+member)
+                  cases.append((member+'/'+str(block['index']),comp,0x40000))
+                  selected+=1
+                  if selected==limit: break
+              if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
+          libs={
+              'original_oodle':bind('reference/oo2core_3_win64.dll'),
+              'rust_prechange':bind('out/original_prechange.dll'),
+              'rust_combined':bind('out/optimized_combined.dll')
+          }
+          buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
+          def call(name,i):
+              src,dst,cl,raw=buffers[name][i]
+              fn=libs[name][1]
+              n=fn(ctypes.cast(src,ctypes.c_void_p),cl,ctypes.cast(dst,ctypes.c_void_p),raw,1,0,0,None,None,None,None,None,None,3)
+              if n!=raw: raise RuntimeError(f'{name} block {cases[i][0]} returned {n}, expected {raw}')
+              # Do not copy decoded bytes into Python on the timed path.
+              # The correctness pass below materializes output only once.
+              return n
+          for i,(index,_,raw) in enumerate(cases):
+              for name in libs: call(name,i)
+              outs={name:buffers[name][i][1].raw[:raw] for name in libs}
+              if len(set(outs.values()))!=1: raise RuntimeError(f'Decode output mismatch on {index}')
+          print('CORRECTNESS: 11/11 blocks byte-identical (Tower + globals holdout, all tested decoders)')
+          for _ in range(20):
+              for name in libs:
+                  for i in range(len(cases)): call(name,i)
+          rounds=11
+          iterations=75
+          total_bytes=sum(x[2] for x in cases)*iterations
+          samples={name:[] for name in libs}
+          names=list(libs)
+          orders=[names, names[1:]+names[:1], names[2:]+names[:2], names[3:]+names[:3], names[::-1], list(reversed(names[1:]))+[names[0]]]
+          for j in range(rounds):
+              results={}
+              for name in orders[j%len(orders)]:
+                  start=time.perf_counter_ns()
+                  for _ in range(iterations):
+                      for i in range(len(cases)): call(name,i)
+                  sec=(time.perf_counter_ns()-start)/1e9
+                  speed=total_bytes/sec/(1024*1024)
+                  results[name]=speed
+                  samples[name].append(speed)
+              print('ROUND',j+1,json.dumps(results))
+          medians={name:statistics.median(v) for name,v in samples.items()}
+          ratios={
+              'combined_over_prechange':medians['rust_combined']/medians['rust_prechange'],
+              'prechange_over_oodle':medians['rust_prechange']/medians['original_oodle'],
+              'combined_over_oodle':medians['rust_combined']/medians['original_oodle']
+          }
+          report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
+          Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('BENCHMARK_RESULT',json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-test-oodle3-benchmark
+          path: out/benchmark.json
+          retention-days: 14
+          if-no-files-found: ignore
