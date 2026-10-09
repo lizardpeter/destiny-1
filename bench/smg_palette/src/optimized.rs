@@ -964,7 +964,7 @@ mod tests{
                         seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
                         *b = seed as u8;
                     }
-                    for (w,h) in [(1,1), (7,7), (9,11), (65,33), (128,128)] {
+                    for (w,h) in [(1usize,1usize), (7,7), (9,11), (65,33), (128,128)] {
                         let mut pixels = vec![0u8;w.div_ceil(bw)*h.div_ceil(bh)*32];
                         for b in &mut pixels {
                             seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
