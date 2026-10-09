@@ -1117,11 +1117,13 @@ impl Decoder {
                 }
 
                 debug_assert!(symbol < SYMBOL_COUNT);
-                if symbol < LITERAL_SYMBOLS + RECENT_TOKEN_COUNT {
+                // The recent and explicit match classes share the same
+                // canonical metadata. Decode the distance separately, then
+                // run length decoding and the LZ copy exactly once.
+                let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
+                let distance = if symbol < LITERAL_SYMBOLS + RECENT_TOKEN_COUNT {
                     #[cfg(feature = "profile")]
                     profile::recent_match();
-                    let length =
-                        unsafe { *RECENT_LENGTHS.get_unchecked(symbol - LITERAL_SYMBOLS) };
                     let selector = bits.read_bits_fast(2) as usize;
                     let distance = match selector {
                         0 => recent[0],
@@ -1142,45 +1144,32 @@ impl Decoder {
                         }
                         _ => unreachable!(),
                     };
-                    let match_len = decode_length_parts_fast(
-                        &mut bits,
-                        length.base,
-                        length.extra_bits,
-                        length.extended,
-                    );
-                    #[cfg(feature = "profile")]
-                    {
-                        profile::distance(distance);
-                        profile::length(match_len);
-                    }
-                    copy_match_into(output, &mut op, output_end, distance, match_len)?;
+                    distance
                 } else {
                     #[cfg(feature = "profile")]
                     profile::explicit_match();
-                    let meta = unsafe { *TOKEN_META.get_unchecked(symbol - LITERAL_SYMBOLS) };
-                    let match_distance = meta.distance_base as usize
+                    let distance = meta.distance_base as usize
                         + bits.read_bits_fast(usize::from(meta.distance_info)) as usize
                         + 1;
-
                     if meta.distance_base != 0 {
                         recent[3] = recent[2];
                         recent[2] = recent[1];
-                        recent[1] = match_distance;
+                        recent[1] = distance;
                     }
-
-                    let match_len = decode_length_parts_fast(
-                        &mut bits,
-                        meta.length_base,
-                        meta.length_info & !TOKEN_EXTENDED_FLAG,
-                        (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
-                    );
-                    #[cfg(feature = "profile")]
-                    {
-                        profile::distance(match_distance);
-                        profile::length(match_len);
-                    }
-                    copy_match_into(output, &mut op, output_end, match_distance, match_len)?;
+                    distance
+                };
+                let match_len = decode_length_parts_fast(
+                    &mut bits,
+                    meta.length_base,
+                    meta.length_info & !TOKEN_EXTENDED_FLAG,
+                    (meta.length_info & TOKEN_EXTENDED_FLAG) != 0,
+                );
+                #[cfg(feature = "profile")]
+                {
+                    profile::distance(distance);
+                    profile::length(match_len);
                 }
+                copy_match_into(output, &mut op, output_end, distance, match_len)?;
             }
 
         }
@@ -2022,6 +2011,29 @@ impl<'a> MsbBitReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unified_match_metadata_preserves_all_recent_and_explicit_classes() {
+        for (index, &length) in RECENT_LENGTHS.iter().enumerate() {
+            let meta = TOKEN_META[index];
+            assert_eq!(meta.length_base, length.base);
+            assert_eq!(meta.length_info, encode_length_info(length));
+            assert_eq!(meta.distance_base, 0);
+            assert_eq!(meta.distance_info, TOKEN_RECENT_FLAG | 2);
+        }
+        for (length_index, &length) in EXPLICIT_LENGTHS.iter().enumerate() {
+            for (distance_index, &distance) in EXPLICIT_DISTANCES.iter().enumerate() {
+                let index = RECENT_TOKEN_COUNT
+                    + length_index * EXPLICIT_DISTANCE_CLASS_COUNT
+                    + distance_index;
+                let meta = TOKEN_META[index];
+                assert_eq!(meta.length_base, length.base);
+                assert_eq!(meta.length_info, encode_length_info(length));
+                assert_eq!(meta.distance_base, distance.base);
+                assert_eq!(meta.distance_info, distance.extra_bits);
+            }
+        }
+    }
 
     #[test]
     fn optimized_match_copy_matches_serial_lz_for_overlap_and_slack() {
