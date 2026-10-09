@@ -1,0 +1,58 @@
+name: D1 Oodle 2.3 Rust vs retail native hotpath diagnostic
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/oodle3-rust-test-20261008]
+    paths:
+      - '.github/workflows/d1-oodle3-hotpath-diagnostic.yml'
+      - 'tools/oodle3_hotpath_probe.py'
+permissions:
+  contents: read
+jobs:
+  disassemble:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Prepare PE disassembler and compile real Rust native binary with PDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out reference
+          python -m pip install --disable-pip-version-check pefile capstone
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native -C debuginfo=2 -C force-frame-pointers=yes" CARGO_TARGET_DIR=target-hotpath cargo build --release --lib)
+          cp rust/d1_oodle3/target-hotpath/release/d1_oodle3.dll out/d1_oodle3.dll
+          find rust/d1_oodle3/target-hotpath/release/ -maxdepth 2 -iname '*.pdb' -print | head -25
+          find rust/d1_oodle3/target-hotpath/release/ -maxdepth 1 -iname '*.pdb' -exec cp {} out/ \;
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+          python tools/oodle3_hotpath_probe.py \
+            --oodle reference/oo2core_3_win64.dll \
+            --rust out/d1_oodle3.dll \
+            --out out/oodle23_static_hotpath.json
+      - name: Determine hosted runner CPU and sampling tooling support
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors | Format-List
+          foreach ($program in @("wpr.exe","xperf.exe","llvm-pdbutil.exe","llvm-objdump.exe","dumpbin.exe","vswhere.exe")) {
+            Get-Command $program -ErrorAction SilentlyContinue | Select-Object Name,Source | Format-Table
+          }
+          $wpr = Get-Command wpr.exe -ErrorAction SilentlyContinue
+          if ($null -ne $wpr) {
+            & wpr -profiles 2>&1 | Select-Object -First 35
+          }
+      - name: Upload textual machine-code diagnostics only
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle23-rust-static-hotpath
+          path: out/oodle23_static_hotpath.json
+          if-no-files-found: warn
+          retention-days: 20
