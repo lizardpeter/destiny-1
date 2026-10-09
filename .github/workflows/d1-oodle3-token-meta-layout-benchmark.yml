@@ -154,3 +154,5 @@ jobs:
           path: out/benchmark.json
           retention-days: 14
           if-no-files-found: ignore
+
+# Replication run: preserve the exact source/binary variants and rotated A/B timing order.
