@@ -23,3 +23,5 @@ jobs:
         run: |
           set -euo pipefail
           RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/smg_palette/Cargo.toml
+
+# Independent identical-source benchmark repetition.
