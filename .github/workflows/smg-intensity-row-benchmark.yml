@@ -1,0 +1,25 @@
+name: SMG J3D I4 I8 Decode A-B
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/smg-intensity-row-20261009]
+    paths:
+      - 'bench/smg_intensity/**'
+      - '.github/workflows/smg-intensity-row-benchmark.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Unit-test original and optimized SMG intensity-mask decoders
+        shell: bash
+        run: cargo test --release --manifest-path bench/smg_intensity/Cargo.toml
+      - name: Benchmark I4 and I8 on native Windows CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/smg_intensity/Cargo.toml
