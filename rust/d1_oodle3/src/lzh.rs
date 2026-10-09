@@ -1033,8 +1033,6 @@ impl Decoder {
     }
 
     #[inline(always)]
-    // Keep the hot loop available for feature-specialized code generation.
-    #[inline(always)]
     fn decode_quantum_into_impl(
         &mut self,
         payload: &[u8],
