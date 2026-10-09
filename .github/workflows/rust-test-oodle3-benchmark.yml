@@ -79,19 +79,7 @@ jobs:
               "    }",
               "",
               "",
-          ])    // Most match tokens are short: handle them before the rarer
-    // RLE, SIMD or longer copy paths, after all bounds validation.
-    if distance >= 8 && length <= 8 && output.len() - match_start >= 8 {
-        unsafe {
-            let base = output.as_mut_ptr();
-            let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
-        }
-        *output_pos += length;
-        return Ok(());
-    }
-
-'''
+          ])
           fn=fn.replace(anchor,anchor+'\n'+short+dist_block+'\n')
           if small_block.count('if length <= 8')!=1 or fn.count('if distance == 1')!=1: raise RuntimeError('Unexpected copy path')
           p.write_text(src[:head]+fn+src[tail:])
