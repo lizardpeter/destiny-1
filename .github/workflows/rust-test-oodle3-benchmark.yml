@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 FastRefill benchmark
+name: Rust-test Oodle3 Refill and MatchCopy A-B
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -48,6 +48,46 @@ jobs:
           cp rust/d1_oodle3/target-candidate/release/d1_oodle3.dll out/rust_candidate.dll
           (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-candidate-native cargo build --release)
           cp rust/d1_oodle3/target-candidate-native/release/d1_oodle3.dll out/rust_candidate_native.dll
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('rust/d1_oodle3/src/lzh.rs')
+          src=p.read_text()
+          head=src.index('fn copy_match_into(')
+          tail=src.index('\n}\n',head)+3
+          fn=src[head:tail]
+          dist_start=fn.index('    if distance == 1 {')
+          dist_end=fn.index('\n\n    let match_start = *output_pos;',dist_start)
+          dist_block=fn[dist_start:dist_end]
+          fn=fn[:dist_start]+fn[dist_end:]
+          small_start=fn.index('        if length <= 8 && physical_remaining >= 8 {')
+          small_end=fn.index('        if length <= 16 && physical_remaining >= 16 {',small_start)
+          small_block=fn[small_start:small_end]
+          fn=fn[:small_start]+fn[small_end:]
+          anchor='    let source_start = match_start - distance;\n'
+          if fn.count(anchor)!=1: raise RuntimeError('Missing match copy anchor')
+          short='''    // Most match tokens are short: handle them before the rarer
+    // RLE, SIMD or longer copy paths, after all bounds validation.
+    if distance >= 8 && length <= 8 && output.len() - match_start >= 8 {
+        unsafe {
+            let base = output.as_mut_ptr();
+            let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
+            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
+        }
+        *output_pos += length;
+        return Ok(());
+    }
+
+'''
+          fn=fn.replace(anchor,anchor+'\n'+short+dist_block+'\n')
+          if small_block.count('if length <= 8')!=1 or fn.count('if distance == 1')!=1: raise RuntimeError('Unexpected copy path')
+          p.write_text(src[:head]+fn+src[tail:])
+          print('SHORT_MATCH_FAST_PATH_REORDER_APPLIED')
+          PY
+          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-match cargo build --release)
+          cp rust/d1_oodle3/target-match/release/d1_oodle3.dll out/rust_match.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-match-native cargo build --release)
+          cp rust/d1_oodle3/target-match-native/release/d1_oodle3.dll out/rust_match_native.dll
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -114,7 +154,9 @@ jobs:
               'rust_scalar':bind('out/rust_scalar.dll'),
               'rust_native':bind('out/rust_native.dll'),
               'rust_candidate':bind('out/rust_candidate.dll'),
-              'rust_candidate_native':bind('out/rust_candidate_native.dll')
+              'rust_candidate_native':bind('out/rust_candidate_native.dll'),
+              'rust_match':bind('out/rust_match.dll'),
+              'rust_match_native':bind('out/rust_match_native.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -152,9 +194,12 @@ jobs:
               'candidate_over_scalar':medians['rust_candidate']/medians['rust_scalar'],
               'candidate_native_over_native':medians['rust_candidate_native']/medians['rust_native'],
               'native_over_oodle':medians['rust_native']/medians['original_oodle'],
-              'candidate_native_over_oodle':medians['rust_candidate_native']/medians['original_oodle']
+              'candidate_native_over_oodle':medians['rust_candidate_native']/medians['original_oodle'],
+              'match_over_refill':medians['rust_match']/medians['rust_candidate'],
+              'match_native_over_refill_native':medians['rust_match_native']/medians['rust_candidate_native'],
+              'match_native_over_oodle':medians['rust_match_native']/medians['original_oodle']
           }
-          report={'blocks':[x[0] for x in cases], 'correctness':'8/8 byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
+          report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
           print('BENCHMARK_RESULT',json.dumps(report,indent=2))
           PY
