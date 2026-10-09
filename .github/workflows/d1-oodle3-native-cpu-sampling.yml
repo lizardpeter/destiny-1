@@ -81,8 +81,19 @@ jobs:
               Out-File "out/etw-$tag-summary.txt"
             $analyzed = ($LASTEXITCODE -eq 0)
             Write-Host "ETW_PROFILE_ANALYZED_$tag $analyzed"
-            Get-Content "out/etw-$tag-summary.txt" -TotalCount 35
-            $results += @{decoder=$tag;etw_started=$true;workload_ok=$success;etl_analyzed=$analyzed}
+            # xperf -a profile emits only process/module buckets unless -symbols
+            # is supplied. The optimized Rust DLL has its matching PDB in out.
+            $env:_NT_SYMBOL_PATH = (Resolve-Path out).Path + ";" + (Resolve-Path reference).Path
+            $env:_NT_SYMCACHE_PATH = Join-Path (Resolve-Path out).Path "symcache"
+            New-Item -ItemType Directory -Force $env:_NT_SYMCACHE_PATH | Out-Null
+            & xperf.exe -i "out/etw-$tag.etl" -symbols -a profile -detail 2>&1 |
+              Out-File "out/etw-$tag-symbolized.txt"
+            $symbolized = ($LASTEXITCODE -eq 0)
+            Write-Host "ETW_SYMBOLIZED_$tag $symbolized"
+            Get-Content "out/etw-$tag-symbolized.txt" | Where-Object {
+              $_ -match 'python|d1_oodle3|oo2core|decode_stream|OodleLZ|lzh::'
+            } | Select-Object -First 65
+            $results += @{decoder=$tag;etw_started=$true;workload_ok=$success;etl_analyzed=$analyzed;symbolized=$symbolized}
           }
           $results | ConvertTo-Json -Depth 3 | Out-File -FilePath out/etw-capture-status.json
           Get-Content out/etw-capture-status.json
@@ -93,6 +104,7 @@ jobs:
           name: d1-oodle23-rust-etw-cpu-results
           path: |
             out/etw-*-summary.txt
+            out/etw-*-symbolized.txt
             out/etw-*-start.txt
             out/etw-*-stop.txt
             out/etw-capture-status.json
