@@ -12,7 +12,7 @@ def transform(text,kind):
     if reader.count("count as u8")!=3 or reader.count("consume as u8")!=1:
         raise RuntimeError("unexpected subtract forms")
     new=reader.replace(old,f"bit_count: {kind},")
-    new=new.replace("usize::from(self.bit_count)","self.bit_count as usize")
+    new=new.replace("usize::from(self.bit_count)","(self.bit_count as usize)")
     new=new.replace("count as u8",f"count as {kind}")
     new=new.replace("consume as u8",f"consume as {kind}")
     return text[:a]+new+text[b:]
