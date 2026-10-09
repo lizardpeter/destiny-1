@@ -1125,25 +1125,13 @@ impl Decoder {
                     #[cfg(feature = "profile")]
                     profile::recent_match();
                     let selector = bits.read_bits_fast(2) as usize;
-                    let distance = match selector {
-                        0 => recent[0],
-                        1 => {
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        2 => {
-                            recent.swap(1, 2);
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        3 => {
-                            recent.swap(2, 3);
-                            recent.swap(1, 2);
-                            recent.swap(0, 1);
-                            recent[0]
-                        }
-                        _ => unreachable!(),
-                    };
+                    let distance = recent[selector];
+                    if selector != 0 {
+                        // Moving the selected distance to rank 0 preserves
+                        // the retail recent-cache ordering exactly.
+                        recent.copy_within(0..selector, 1);
+                        recent[0] = distance;
+                    }
                     distance
                 } else {
                     #[cfg(feature = "profile")]
@@ -2011,6 +1999,26 @@ impl<'a> MsbBitReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recent_distance_rotation_preserves_all_four_selector_orders() {
+        let initial = [20usize, 24, 28, 32];
+        let expected = [
+            [20usize, 24, 28, 32],
+            [24usize, 20, 28, 32],
+            [28usize, 20, 24, 32],
+            [32usize, 20, 24, 28],
+        ];
+        for selector in 0..4 {
+            let mut recent = initial;
+            let selected = recent[selector];
+            if selector != 0 {
+                recent.copy_within(0..selector, 1);
+                recent[0] = selected;
+            }
+            assert_eq!(recent, expected[selector]);
+        }
+    }
 
     #[test]
     fn unified_match_metadata_preserves_all_recent_and_explicit_classes() {
