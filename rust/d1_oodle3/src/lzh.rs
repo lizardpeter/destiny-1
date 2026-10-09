@@ -1411,6 +1411,23 @@ fn copy_match_into(
         return Ok(());
     }
 
+
+
+    let match_start = *output_pos;
+    let source_start = match_start - distance;
+
+    // Most match tokens are short: handle them before the rarer
+    // RLE, SIMD or longer copy paths, after all bounds validation.
+    if distance >= 8 && length <= 8 && output.len() - match_start >= 8 {
+        unsafe {
+            let base = output.as_mut_ptr();
+            let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
+            core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
+        }
+        *output_pos += length;
+        return Ok(());
+    }
+
     if distance == 1 {
         let value = unsafe { *output.get_unchecked(*output_pos - 1) };
         unsafe {
@@ -1419,9 +1436,6 @@ fn copy_match_into(
         *output_pos += length;
         return Ok(());
     }
-
-    let match_start = *output_pos;
-    let source_start = match_start - distance;
 
     // Opt-in SIMD trial (x86-64 guarantees SSE2). Only use sequential,
     // non-overlapping 16-byte moves with distance >= 16, preserving LZ
@@ -1458,15 +1472,6 @@ fn copy_match_into(
     // output slice has physical slack; subsequent output overwrites those bytes.
     if distance >= 8 {
         let physical_remaining = output.len() - match_start;
-        if length <= 8 && physical_remaining >= 8 {
-            unsafe {
-                let base = output.as_mut_ptr();
-                let word = core::ptr::read_unaligned(base.add(source_start).cast::<u64>());
-                core::ptr::write_unaligned(base.add(match_start).cast::<u64>(), word);
-            }
-            *output_pos += length;
-            return Ok(());
-        }
         if length <= 16 && physical_remaining >= 16 {
             unsafe {
                 let base = output.as_mut_ptr();
@@ -1856,7 +1861,10 @@ impl<'a> MsbBitReader<'a> {
     #[inline(always)]
     fn ensure_bits_fast(&mut self, count: usize) {
         debug_assert!(count <= 32);
-        while usize::from(self.bit_count) < count {
+        // A 32-bit refill is sufficient: count <= 32 and the refill only
+        // runs when bit_count < count, so bit_count starts <= 31.
+        // Once refilled it contains at least 32 bits, without overflow.
+        if usize::from(self.bit_count) < count {
             debug_assert!(self.bytes_remaining() >= 4);
             debug_assert!(self.bit_count <= 32);
             let word = unsafe { u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>())) };
