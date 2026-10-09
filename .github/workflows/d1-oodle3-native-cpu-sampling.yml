@@ -90,6 +90,16 @@ jobs:
               Out-File "out/etw-$tag-symbolized.txt"
             $symbolized = ($LASTEXITCODE -eq 0)
             Write-Host "ETW_SYMBOLIZED_$tag $symbolized"
+            # Dump raw sampled instruction-pointer events for function-internal
+            # hot-offset analysis; raw ETW/large dumps are NOT uploaded.
+            & xperf.exe -i "out/etw-$tag.etl" -symbols -target machine -a dumper 2>&1 |
+              Out-File "out/etw-$tag-rawdump.txt"
+            $dumpOk = ($LASTEXITCODE -eq 0)
+            Write-Host "ETW_RAW_IP_DUMP_$tag $dumpOk"
+            Get-Content "out/etw-$tag-rawdump.txt" -TotalCount 25
+            Get-Content "out/etw-$tag-rawdump.txt" | Where-Object {
+              $_ -match 'SampledProfile|Sample Profile|Profile'
+            } | Select-Object -First 13
             Get-Content "out/etw-$tag-symbolized.txt" | Where-Object {
               $_ -match 'python|d1_oodle3|oo2core|decode_stream|OodleLZ|lzh::'
             } | Select-Object -First 65
