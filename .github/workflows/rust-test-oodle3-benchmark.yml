@@ -79,52 +79,46 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Train PGO and compile profile-guided native decoder
+      - name: Build profile-guided DLL with reusable Rust-test tooling
         shell: bash
         run: |
           set -euo pipefail
-          rustup component add llvm-tools-preview
-          mkdir -p out/pgo-raw
+          mkdir -p out/pgo-fixtures
           git show HEAD:rust/d1_oodle3/src/lzh.rs > rust/d1_oodle3/src/lzh.rs
-          pgo_dir=$(cd out/pgo-raw && pwd -W)
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native -C profile-generate=$pgo_dir" CARGO_TARGET_DIR=target-pgogen cargo build --release)
-          cp rust/d1_oodle3/target-pgogen/release/d1_oodle3.dll out/rust_pgogen.dll
           python - <<'PY'
-          import ctypes, hashlib, sys
+          import ctypes,hashlib,sys
           from pathlib import Path
           sys.path.insert(0,'tools')
           from d1_pkg_probe import parse_header,parse_blocks,read_table
+          root=Path('out/pgo-fixtures')
           pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
           with pkg.open('rb') as f:
               h=parse_header(f)
               tbl=read_table(f,h['block_table_offset'],h['block_table_count'],32)
-          cases=[]
-          for b in parse_blocks(tbl):
-              if not b['compressed'] or int(b['patch_id'])!=5: continue
-              with pkg.open('rb') as f:
-                  f.seek(int(b['offset']))
-                  comp=f.read(int(b['size']))
-              if hashlib.sha1(comp).hexdigest().lower()!=str(b['sha1']).lower():
-                  raise RuntimeError('Training corpus block mismatch')
-              cases.append((ctypes.create_string_buffer(comp),len(comp),ctypes.create_string_buffer(0x40000)))
-              if len(cases)==8: break
-          assert len(cases)==8
-          dll=ctypes.WinDLL(str(Path('out/rust_pgogen.dll').resolve()))
+          dll=ctypes.WinDLL(str(Path('reference/oo2core_3_win64.dll').resolve()))
           fn=dll.OodleLZ_Decompress
           fn.restype=ctypes.c_int64
           fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
-          for iteration in range(140):
-              for src,n,dst in cases:
-                  result=fn(ctypes.cast(src,ctypes.c_void_p),n,ctypes.cast(dst,ctypes.c_void_p),0x40000,1,0,0,None,None,None,None,None,None,3)
-                  if result!=0x40000: raise RuntimeError(f'PGO decoder failed: {result}')
-          print('TRAINED_PGO_CALLS',140*len(cases))
+          count=0
+          for block in parse_blocks(tbl):
+              if not block['compressed'] or int(block['patch_id'])!=5: continue
+              with pkg.open('rb') as f:
+                  f.seek(int(block['offset']))
+                  comp=f.read(int(block['size']))
+              if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower(): raise RuntimeError('Block SHA mismatch')
+              src=ctypes.create_string_buffer(comp)
+              dst=ctypes.create_string_buffer(0x40000)
+              result=fn(ctypes.cast(src,ctypes.c_void_p),len(comp),ctypes.cast(dst,ctypes.c_void_p),0x40000,1,0,0,None,None,None,None,None,None,3)
+              if result!=0x40000: raise RuntimeError('Reference decode failed')
+              (root/f'{block["index"]}.bin').write_bytes(comp)
+              (root/f'{block["index"]}.raw').write_bytes(dst.raw[:0x40000])
+              count+=1
+              if count==8: break
+          if count!=8: raise RuntimeError('Missing expected training cases')
+          print('VERIFIED_TRAINING_FIXTURES',count)
           PY
-          sysroot=$(rustc --print sysroot)
-          profdata="$sysroot/lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-profdata.exe"
-          "$profdata" merge -o out/d1.profdata out/pgo-raw/*.profraw
-          prof=$(cd out && pwd -W)/d1.profdata
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native -C profile-use=$prof" CARGO_TARGET_DIR=target-pgouse cargo build --release)
-          cp rust/d1_oodle3/target-pgouse/release/d1_oodle3.dll out/rust_pgo_native.dll
+          pwsh -NoProfile -File rust/d1_oodle3/tools/build_pgo.ps1 -Fixtures out/pgo-fixtures -Iterations 140
+          cp rust/d1_oodle3/target-pgo/optimized/release/d1_oodle3.dll out/rust_pgo_native.dll
       - name: Byte-verify and benchmark scalar, SSE2 and Oodle
         shell: bash
         run: |
