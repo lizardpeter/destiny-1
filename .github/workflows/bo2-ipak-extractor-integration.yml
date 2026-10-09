@@ -1,0 +1,22 @@
+name: BO2 IPAK Exact Extractor Source Validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/bo2-ipak-crc32-20261009]
+    paths:
+      - 'bench/ipak_integration/**'
+      - '.github/workflows/bo2-ipak-extractor-integration.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test exact Rust-test memory and range IPAK extractors
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" cargo test --release --manifest-path bench/ipak_integration/Cargo.toml -- --nocapture
