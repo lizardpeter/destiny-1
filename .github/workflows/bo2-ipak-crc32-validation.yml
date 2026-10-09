@@ -1,0 +1,29 @@
+name: BO2 IPAK Shared CRC32 Validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/bo2-ipak-crc32-20261009]
+    paths:
+      - 'bench/ipak_crc/**'
+      - '.github/workflows/bo2-ipak-crc32-validation.yml'
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile and run exact Rust-test CRC regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 -C opt-level=3 --test bench/ipak_crc/bench.rs -o bench/ipak_crc/crc_test.exe
+          bench/ipak_crc/crc_test.exe --nocapture
+      - name: Benchmark original bitwise vs shared table CRC
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 -C opt-level=3 -C target-cpu=native -C lto=fat -C codegen-units=1 bench/ipak_crc/bench.rs -o bench/ipak_crc/crc_bench.exe
+          bench/ipak_crc/crc_bench.exe
