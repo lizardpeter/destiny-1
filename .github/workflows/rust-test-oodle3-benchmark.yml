@@ -66,6 +66,9 @@ jobs:
           actual = archive.copy_to(offset, size, Path('recovered')/name)
           if actual.lower() != expected: raise SystemExit('Package SHA mismatch: '+actual)
           print('RECOVERED_VERIFIED_PACKAGE_SHA256', actual)
+          globals_name='ps4_globals_0157_6.pkg'
+          globals_sha=archive.copy_to(0x47AF53A00, 356352, Path('recovered')/globals_name)
+          print('RECOVERED_HOLDOUT_PACKAGE_SHA256', globals_sha)
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
@@ -84,21 +87,28 @@ jobs:
               fn.restype = ctypes.c_int64
               fn.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32]
               return lib,fn
-          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
-          with pkg.open('rb') as f:
-              h=parse_header(f)
-              table=read_table(f,h['block_table_offset'],h['block_table_count'],32)
           cases=[]
-          for block in parse_blocks(table):
-              if not block['compressed'] or int(block['patch_id'])!=5: continue
+          sources=[
+              ('ps4_city_tower_destination_024c_5.pkg',5,8),
+              ('ps4_globals_0157_6.pkg',6,3),
+          ]
+          for member,patch,limit in sources:
+              pkg=Path('recovered')/member
               with pkg.open('rb') as f:
-                  f.seek(int(block['offset']))
-                  comp=f.read(int(block['size']))
-              if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower():
-                  raise RuntimeError('Compressed block SHA mismatch')
-              cases.append((int(block['index']),comp,0x40000))
-              if len(cases)>=8: break
-          if len(cases)!=8: raise RuntimeError(f'Expected 8 blocks, got {len(cases)}')
+                  h=parse_header(f)
+                  table=read_table(f,h['block_table_offset'],h['block_table_count'],32)
+              selected=0
+              for block in parse_blocks(table):
+                  if not block['compressed'] or int(block['patch_id'])!=patch: continue
+                  with pkg.open('rb') as f:
+                      f.seek(int(block['offset']))
+                      comp=f.read(int(block['size']))
+                  if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower():
+                      raise RuntimeError('Compressed block SHA mismatch: '+member)
+                  cases.append((member+'/'+str(block['index']),comp,0x40000))
+                  selected+=1
+                  if selected==limit: break
+              if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
               'rust_scalar':bind('out/rust_scalar.dll'),
@@ -116,7 +126,7 @@ jobs:
           for i,(index,_,_) in enumerate(cases):
               outs={name:call(name,i) for name in libs}
               if len(set(outs.values()))!=1: raise RuntimeError(f'Decode output mismatch on {index}')
-          print('CORRECTNESS: 8/8 blocks byte-identical (Oodle + 4 Rust variants)')
+          print('CORRECTNESS: 11/11 blocks byte-identical (Tower + globals holdout, Oodle + 4 Rust variants)')
           for _ in range(20):
               for name in libs:
                   for i in range(len(cases)): call(name,i)
