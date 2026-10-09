@@ -444,7 +444,7 @@ mod tests {
     #[test]
     fn decodes_uncompressed_entry_and_verifies_crc29() {
         let payload = b"retail-t6-ipak-canary";
-        let data_hash = super::retail_ipak_crc::crc32(payload) & DATA_HASH_MASK;
+        let data_hash = super::super::retail_ipak_crc::crc32(payload) & DATA_HASH_MASK;
         let mut bytes = vec![0u8; 0x200];
         let file_len = bytes.len() as u32;
         bytes[0..4].copy_from_slice(b"KAPI");
@@ -485,7 +485,7 @@ mod tests {
             119, 111, 114, 108, 100, 33, 17, 0, 0,
         ];
         let expected = b"hello, lzo world!";
-        let data_hash = super::retail_ipak_crc::crc32(expected) & DATA_HASH_MASK;
+        let data_hash = super::super::retail_ipak_crc::crc32(expected) & DATA_HASH_MASK;
         let mut bytes = vec![0u8; 0x200];
         let length = bytes.len() as u32;
         bytes[0..4].copy_from_slice(b"KAPI");
