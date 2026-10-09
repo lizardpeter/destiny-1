@@ -12,12 +12,8 @@ target = here / "vendor" / "lzxd_fast"
 if target.exists():
     shutil.rmtree(target)
 shutil.copytree(origin, target)
-cargo = target / "Cargo.toml"
-content = cargo.read_text(encoding="utf-8")
-# crates.io's normalized manifest has 'name = "lzxd"' near the package block.
-key = 'name = "lzxd"'
-assert content.count(key) == 1, "upstream Cargo.toml changed"
-cargo.write_text(content.replace(key, 'name = "lzxd_fast"'), encoding="utf-8")
+# Keep exact upstream package metadata; Cargo aliases this path dependency
+# as lzxd_fast. No need to edit its version or normalized manifest.
 
 def patch(file, needle, replacement):
     p = target / file
