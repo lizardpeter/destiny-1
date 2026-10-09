@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 cold match-error construction A-B
+name: Rust-test Oodle3 64-bit sliding reservoir A-B
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -18,66 +18,77 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Test cold error construction in inlined match-copy hot path
+      - name: Build baseline and Oodle-style 64-bit sliding reservoir candidate
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cp rust/d1_oodle3/src/lzh.rs out/original_lzh.rs
           cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-error-base cargo build --release)
-          cp rust/d1_oodle3/target-error-base/release/d1_oodle3.dll out/base.dll
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-scalar cargo build --release)
+          cp rust/d1_oodle3/target-scalar/release/d1_oodle3.dll out/rust_scalar.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-native cargo build --release)
+          cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/rust_native.dll
           python - <<'PY'
           from pathlib import Path
           p=Path('rust/d1_oodle3/src/lzh.rs')
-          src=Path('out/original_lzh.rs').read_text()
-          a=src.index('fn copy_match_into(')
-          b=src.index('\n}\n',a)+3
-          fn=src[a:b]
-          import re
-          fn, n_dist = re.subn(
-              r'return Err\(Error::InvalidMatchDistance \{\s*distance,\s*produced: \*output_pos,\s*\}\);',
-              'return Err(cold_match_distance_error(distance, *output_pos));', fn)
-          fn, n_out = re.subn(
-              r'return Err\(Error::OutputOverrun \{\s*requested: length,\s*remaining,\s*\}\);',
-              'return Err(cold_match_output_error(length, remaining));', fn)
-          if n_dist != 1 or n_out != 1:
-              raise RuntimeError(f'Expected unique match-error branches, got {n_dist} and {n_out}')
-          helpers='''
-          #[cold]
-          #[inline(never)]
-          fn cold_match_distance_error(distance: usize, produced: usize) -> Error {
-              Error::InvalidMatchDistance { distance, produced }
-          }
-
-          #[cold]
-          #[inline(never)]
-          fn cold_match_output_error(requested: usize, remaining: usize) -> Error {
-              Error::OutputOverrun { requested, remaining }
+          source=Path('out/original_lzh.rs').read_text()
+          start=source.index('    fn ensure_bits_fast(&mut self, count: usize) {')
+          stop=source.index('    #[inline(always)]\n    fn read_bits_fast(',start)
+          body='''    fn ensure_bits_fast(&mut self, count: usize) {
+              debug_assert!(count <= 32);
+              if usize::from(self.bit_count) >= count {
+                  return;
+              }
+              if (self.ptr as usize) <= self.fast_limit {
+                  // Keep a 64-bit MSB-first reservoir. Read eight bytes, but
+                  // commit only as many whole bytes as fit in its free space.
+                  // Every consumed byte is read exactly once: overlapped
+                  // eight-byte loads use the same logical pointer advance.
+                  let old = usize::from(self.bit_count);
+                  let n = (64 - old) / 8;
+                  debug_assert!((4..=8).contains(&n));
+                  let word = unsafe {
+                      u64::from_be(core::ptr::read_unaligned(self.ptr.cast::<u64>()))
+                  };
+                  self.ptr = unsafe { self.ptr.add(n) };
+                  let new_bits = n * 8;
+                  self.bit_buf |= (word >> (64 - new_bits)) << (64 - old - new_bits);
+                  self.bit_count += new_bits as u8;
+              } else if self.bytes_remaining() >= 4 && self.bit_count <= 32 {
+                  // Last eight input bytes: keep the checked 32-bit fill.
+                  let word = unsafe {
+                      u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>()))
+                  };
+                  self.ptr = unsafe { self.ptr.add(4) };
+                  let shift = 32 - usize::from(self.bit_count);
+                  self.bit_buf |= u64::from(word) << shift;
+                  self.bit_count += 32;
+              } else {
+                  // Preserve exact tail behavior if the fast token extends
+                  // into the input-boundary region. Do not read past end.
+                  while usize::from(self.bit_count) < count && self.ptr < self.end {
+                      let byte = unsafe { *self.ptr };
+                      self.ptr = unsafe { self.ptr.add(1) };
+                      let shift = 56 - usize::from(self.bit_count);
+                      self.bit_buf |= u64::from(byte) << shift;
+                      self.bit_count += 8;
+                  }
+              }
+              debug_assert!(usize::from(self.bit_count) >= count);
           }
 
           '''.replace('\n          ','\n')
-          p.write_text(src[:a]+fn+helpers+src[b:])
-          print('COLD_ERRORS_APPLIED')
+          # Body begins at the function signature; preserve its inline attribute.
+          if source[start-22:start].count('inline')!=1: raise RuntimeError('Unexpected fast-refill signature')
+          p.write_text(source[:start]+body+source[stop:])
+          print('WINDOWED_U64_SLIDING_RESERVOIR_APPLIED')
           PY
           cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-error-cold cargo build --release)
-          cp rust/d1_oodle3/target-error-cold/release/d1_oodle3.dll out/errorcold.dll
-          python - <<'PY'
-          import json,struct
-          from pathlib import Path
-          results={}
-          for dll in (Path('out/base.dll'),Path('out/errorcold.dll')):
-              data=dll.read_bytes()
-              pe=struct.unpack_from('<I',data,0x3c)[0]
-              count=struct.unpack_from('<H',data,pe+6)[0]
-              base=pe+24+struct.unpack_from('<H',data,pe+20)[0]
-              for i in range(count):
-                  off=base+i*40
-                  if data[off:off+8].rstrip(b'\0')==b'.text':
-                      results[dll.name]={'text_bytes':struct.unpack_from('<I',data,off+8)[0]}
-          print('COLD_ERROR_TEXT_SIZE',json.dumps(results,sort_keys=True))
-          PY
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-window cargo build --release)
+          cp rust/d1_oodle3/target-window/release/d1_oodle3.dll out/rust_window.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-window-native cargo build --release)
+          cp rust/d1_oodle3/target-window-native/release/d1_oodle3.dll out/rust_window_native.dll
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -102,7 +113,7 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Verify 11 blocks and compare cold error construction
+      - name: Byte-verify 11 blocks and benchmark 32-bit versus 64-bit sliding refill
         shell: bash
         run: |
           set -euo pipefail
@@ -141,8 +152,10 @@ jobs:
               if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
-              'rust_baseline':bind('out/base.dll'),
-              'rust_errorcold':bind('out/errorcold.dll')
+              'rust_scalar':bind('out/rust_scalar.dll'),
+              'rust_native':bind('out/rust_native.dll'),
+              'rust_window':bind('out/rust_window.dll'),
+              'rust_window_native':bind('out/rust_window_native.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -180,9 +193,10 @@ jobs:
               print('ROUND',j+1,json.dumps(results))
           medians={name:statistics.median(v) for name,v in samples.items()}
           ratios={
-              'cold_errors_over_baseline':medians['rust_errorcold']/medians['rust_baseline'],
-              'baseline_over_oodle':medians['rust_baseline']/medians['original_oodle'],
-              'cold_errors_over_oodle':medians['rust_errorcold']/medians['original_oodle']
+              'u64_over_scalar':medians['rust_window']/medians['rust_scalar'],
+              'u64_native_over_native':medians['rust_window_native']/medians['rust_native'],
+              'native_over_oodle':medians['rust_native']/medians['original_oodle'],
+              'u64_native_over_oodle':medians['rust_window_native']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
