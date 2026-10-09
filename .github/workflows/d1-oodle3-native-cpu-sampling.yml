@@ -1,0 +1,101 @@
+name: D1 Oodle 2.3 native ETW CPU sampling
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/oodle3-rust-test-20261008]
+    paths:
+      - '.github/workflows/d1-oodle3-native-cpu-sampling.yml'
+      - 'tools/oodle3_cpu_etw_workload.py'
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build profile-symbolized Rust and recover exact 11-block Destiny corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out reference recovered
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native -C debuginfo=2 -C force-frame-pointers=yes" CARGO_TARGET_DIR=target-profile cargo build --release --lib)
+          cp rust/d1_oodle3/target-profile/release/d1_oodle3.dll out/d1_oodle3.dll
+          find rust/d1_oodle3/target-profile/release/ -maxdepth 1 -iname '*.pdb' -exec cp {} out/ \;
+          python - <<'PY'
+          from pathlib import Path
+          from tools.d1_split_tar_extract import SplitHttpTar
+          base='https://crypt.cohae.dev/destiny/ps4/packages/latest'
+          arc=SplitHttpTar([f'{base}/packages.tar.{i:03d}' for i in range(1,11)],retries=5,timeout=90)
+          cases=[('ps4_city_tower_destination_024c_5.pkg',7715401728,1687552,
+                  'b404bacccf44a4bf6859bf3b867ae02f5dc840432bdaa081c341439c2ae83311'),
+                 ('ps4_globals_0157_6.pkg',0x47AF53A00,356352,None)]
+          for name,offset,size,expected in cases:
+              digest=arc.copy_to(offset,size,Path('recovered')/name)
+              if expected and digest.lower()!=expected:raise RuntimeError(name+' sha mismatch')
+              print('NATIVE_ETW_RECOVERED',name,size,digest)
+          PY
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' \
+            -o reference/oo2core_3_win64.dll
+          echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
+          python tools/oodle3_cpu_etw_workload.py --dll out/d1_oodle3.dll --reference reference/oo2core_3_win64.dll --label rust-smoke --iterations 5
+          python tools/oodle3_cpu_etw_workload.py --dll reference/oo2core_3_win64.dll --reference reference/oo2core_3_win64.dll --label original-smoke --iterations 5
+      - name: Capture CPU instruction-pointer samples with Windows Performance Toolkit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          New-Item -ItemType Directory -Force out | Out-Null
+          & xperf.exe -help profile 2>&1 | Out-File -FilePath out/xperf-profile-help.txt
+          $results = @()
+          foreach ($item in @(
+            @{ name = 'rust'; dll='out/d1_oodle3.dll' },
+            @{ name = 'oodle'; dll='reference/oo2core_3_win64.dll' }
+          )) {
+            $tag = $item.name
+            # Stop any previously left-over ETW session without terminating the job.
+            & xperf.exe -stop 2>&1 | Out-Null
+            & xperf.exe -on PROC_THREAD+LOADER+PROFILE -stackwalk Profile -BufferSize 1024 -MinBuffers 32 -MaxBuffers 128 2>&1 |
+              Out-File -FilePath "out/etw-$tag-start.txt"
+            $started = ($LASTEXITCODE -eq 0)
+            Write-Host "ETW_START_$tag $started"
+            if (-not $started) {
+              Get-Content "out/etw-$tag-start.txt" | Select-Object -Last 15
+              $results += @{decoder=$tag;etw_started=$false}
+              continue
+            }
+            $success = $false
+            try {
+              & python tools/oodle3_cpu_etw_workload.py --dll $item.dll --reference reference/oo2core_3_win64.dll --label $tag --iterations 2000
+              $success = ($LASTEXITCODE -eq 0)
+            }
+            finally {
+              & xperf.exe -d "out/etw-$tag.etl" 2>&1 | Out-File "out/etw-$tag-stop.txt"
+              Write-Host "ETW_STOP_$tag $LASTEXITCODE"
+            }
+            & xperf.exe -i "out/etw-$tag.etl" -a profile -detail 2>&1 |
+              Out-File "out/etw-$tag-summary.txt"
+            $analyzed = ($LASTEXITCODE -eq 0)
+            Write-Host "ETW_PROFILE_ANALYZED_$tag $analyzed"
+            Get-Content "out/etw-$tag-summary.txt" -TotalCount 35
+            $results += @{decoder=$tag;etw_started=$true;workload_ok=$success;etl_analyzed=$analyzed}
+          }
+          $results | ConvertTo-Json -Depth 3 | Out-File -FilePath out/etw-capture-status.json
+          Get-Content out/etw-capture-status.json
+      - name: Upload textual ETW results only
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d1-oodle23-rust-etw-cpu-results
+          path: |
+            out/etw-*-summary.txt
+            out/etw-*-start.txt
+            out/etw-*-stop.txt
+            out/etw-capture-status.json
+            out/xperf-profile-help.txt
+          if-no-files-found: warn
+          retention-days: 20
