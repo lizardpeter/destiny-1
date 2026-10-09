@@ -34,17 +34,15 @@ jobs:
           a=src.index('fn copy_match_into(')
           b=src.index('\n}\n',a)+3
           fn=src[a:b]
-          dist='''return Err(Error::InvalidMatchDistance {
-              distance,
-              produced: *output_pos,
-          });'''.replace('\n          ','\n')
-          out='''return Err(Error::OutputOverrun {
-              requested: length,
-              remaining,
-          });'''.replace('\n          ','\n')
-          if fn.count(dist)!=1 or fn.count(out)!=1: raise RuntimeError('Expected match error branches not found')
-          fn=fn.replace(dist,'return Err(cold_match_distance_error(distance, *output_pos));')
-          fn=fn.replace(out,'return Err(cold_match_output_error(length, remaining));')
+          import re
+          fn, n_dist = re.subn(
+              r'return Err\(Error::InvalidMatchDistance \{\s*distance,\s*produced: \*output_pos,\s*\}\);',
+              'return Err(cold_match_distance_error(distance, *output_pos));', fn)
+          fn, n_out = re.subn(
+              r'return Err\(Error::OutputOverrun \{\s*requested: length,\s*remaining,\s*\}\);',
+              'return Err(cold_match_output_error(length, remaining));', fn)
+          if n_dist != 1 or n_out != 1:
+              raise RuntimeError(f'Expected unique match-error branches, got {n_dist} and {n_out}')
           helpers='''
           #[cold]
           #[inline(never)]
