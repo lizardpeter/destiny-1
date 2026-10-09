@@ -1,0 +1,25 @@
+name: T6 FastFile bufread DEFLATE A-B
+on:
+  push:
+    branches: [bench/t6-fastfile-bufread-20261009]
+    paths:
+      - 'bench/t6_fastfile/**'
+      - '.github/workflows/t6-fastfile-bufread-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Original and alternative FastFile unit tests
+        shell: bash
+        run: cargo test --release --manifest-path bench/t6_fastfile/Cargo.toml
+      - name: Paired whole FastFile read vs bufread benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/t6_fastfile/Cargo.toml

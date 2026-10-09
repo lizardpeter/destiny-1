@@ -1,7 +1,7 @@
 use sha1::{Digest, Sha1};
 use flate2::{write::DeflateEncoder, Compression};
 use std::{hint::black_box, io::Write, time::Instant};
-use t6_fastfile_bench::{original, optimized};
+use t6_fastfile_bench::{original, optimized, candidate};
 
 fn sample(size: usize, seed: u32, profile: usize) -> Vec<u8> {
     let mut x=seed|1;
@@ -51,9 +51,12 @@ fn main(){
         let (file,expected)=frame_stream(records,size,profile);
         let (orig,rec,summary)=original::decode_bytes(&file).unwrap();
         let (fast,fr,fsum)=optimized::decode_bytes(&file).unwrap();
-        assert_eq!(orig,expected); assert_eq!(fast,expected);
+        let (cand,cr,csum)=candidate::decode_bytes(&file).unwrap();
+        assert_eq!(orig,expected); assert_eq!(fast,expected); assert_eq!(cand,expected);
         assert_eq!(serde_json::to_value(&rec).unwrap(),serde_json::to_value(&fr).unwrap());
         assert_eq!(serde_json::to_value(&summary).unwrap(),serde_json::to_value(&fsum).unwrap());
+        assert_eq!(serde_json::to_value(&fr).unwrap(),serde_json::to_value(&cr).unwrap());
+        assert_eq!(serde_json::to_value(&fsum).unwrap(),serde_json::to_value(&csum).unwrap());
         let mut ratios=Vec::new();
         let reps=if size<1000 {9} else {4};
         for round in 0..9 {
@@ -63,10 +66,10 @@ fn main(){
                 let start=Instant::now();
                 for _ in 0..reps {
                     let decoded_and_digest=if optimized_first {
-                        let (decoded,_,summary)=optimized::decode_bytes(black_box(&file)).unwrap();
+                        let (decoded,_,summary)=candidate::decode_bytes(black_box(&file)).unwrap();
                         (decoded,summary.expanded_sha256)
                     } else {
-                        let (decoded,_,summary)=original::decode_bytes(black_box(&file)).unwrap();
+                        let (decoded,_,summary)=optimized::decode_bytes(black_box(&file)).unwrap();
                         (decoded,summary.expanded_sha256)
                     };
                     black_box(decoded_and_digest);
@@ -75,7 +78,7 @@ fn main(){
             }
             ratios.push(elapsed[0]/elapsed[1]);
         }
-        println!("T6_FASTFILE_AB size={size} records={records} profile={profile} compressed_file_bytes={} ratio={:.4}x",file.len(),median(&mut ratios));
+        println!("T6_BUFREAD_AB size={size} records={records} profile={profile} compressed_file_bytes={} ratio={:.4}x",file.len(),median(&mut ratios));
     }
     let mut nonce=[0u8;8];
     for (i,b) in nonce.iter_mut().enumerate(){*b=(i*23) as u8;}
