@@ -7,6 +7,7 @@ on:
       - '.github/workflows/d1-oodle3-native-cpu-sampling.yml'
       - 'tools/oodle3_cpu_etw_workload.py'
       - 'tools/oodle3_etw_ip_summary.py'
+      - 'tools/oodle3_hot_instruction_map.py'
 permissions:
   contents: read
 jobs:
@@ -24,6 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out reference recovered
+          python -m pip install --disable-pip-version-check pefile capstone
           (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native -C debuginfo=2 -C force-frame-pointers=yes" CARGO_TARGET_DIR=target-profile cargo build --release --lib)
           cp rust/d1_oodle3/target-profile/release/d1_oodle3.dll out/d1_oodle3.dll
           find rust/d1_oodle3/target-profile/release/ -maxdepth 1 -iname '*.pdb' -exec cp {} out/ \;
@@ -100,6 +102,10 @@ jobs:
             $module = if ($tag -eq 'rust') { 'd1_oodle3.dll' } else { 'oo2core_3_win64.dll' }
             & python tools/oodle3_etw_ip_summary.py --raw "out/etw-$tag-rawdump.txt" --module $module --output "out/etw-$tag-ip-summary.json"
             Write-Host "ETW_IP_AGGREGATION_$tag $LASTEXITCODE"
+            if (Test-Path "out/etw-$tag-ip-summary.json") {
+              & python tools/oodle3_hot_instruction_map.py --dll $item.dll --summary "out/etw-$tag-ip-summary.json" --out "out/etw-$tag-hotasm.json"
+              Write-Host "ETW_HOT_ASM_MAP_$tag $LASTEXITCODE"
+            }
             Get-Content "out/etw-$tag-rawdump.txt" -TotalCount 5
             Get-Content "out/etw-$tag-rawdump.txt" | Where-Object {
               $_ -match 'SampledProfile|Sample Profile|Profile'
@@ -120,6 +126,7 @@ jobs:
             out/etw-*-summary.txt
             out/etw-*-symbolized.txt
             out/etw-*-ip-summary.json
+            out/etw-*-hotasm.json
             out/etw-*-start.txt
             out/etw-*-stop.txt
             out/etw-capture-status.json
