@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 4-byte Huffman entry layout A-B
+name: Rust-test Oodle3 cold match-error construction A-B
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -18,43 +18,58 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Compile baseline and Huffman 4-byte entry layout variants
+      - name: Test cold error construction in inlined match-copy hot path
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cp rust/d1_oodle3/src/lzh.rs out/original_lzh.rs
           cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-entry-default cargo build --release)
-          cp rust/d1_oodle3/target-entry-default/release/d1_oodle3.dll out/entry-default.dll
-          for layout in c-normal c-reordered; do
-            HUFF_ENTRY_LAYOUT="$layout" python - <<'PY'
-          import os
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-error-base cargo build --release)
+          cp rust/d1_oodle3/target-error-base/release/d1_oodle3.dll out/base.dll
+          python - <<'PY'
           from pathlib import Path
           p=Path('rust/d1_oodle3/src/lzh.rs')
           src=Path('out/original_lzh.rs').read_text()
-          old='''#[derive(Debug, Clone, Copy, Default)]
-          struct FastEntry {
-              symbol: u16,
-              len: u8,
-          }'''.replace('\n          ','\n')
-          mode=os.environ['HUFF_ENTRY_LAYOUT']
-          fields={'c-normal':'symbol: u16,\n    len: u8,','c-reordered':'len: u8,\n    symbol: u16,'}[mode]
-          new='#[derive(Debug, Clone, Copy, Default)]\n#[repr(C)]\nstruct FastEntry {\n    '+fields+'\n}'
-          if src.count(old)!=1: raise RuntimeError('Huffman entry signature changed unexpectedly')
-          p.write_text(src.replace(old,new))
-          print('HUFFMAN_ENTRY_LAYOUT',mode)
+          a=src.index('fn copy_match_into(')
+          b=src.index('\n}\n',a)+3
+          fn=src[a:b]
+          dist='''return Err(Error::InvalidMatchDistance {
+              distance,
+              produced: *output_pos,
+          });'''.replace('\n          ','\n')
+          out='''return Err(Error::OutputOverrun {
+              requested: length,
+              remaining,
+          });'''.replace('\n          ','\n')
+          if fn.count(dist)!=1 or fn.count(out)!=1: raise RuntimeError('Expected match error branches not found')
+          fn=fn.replace(dist,'return Err(cold_match_distance_error(distance, *output_pos));')
+          fn=fn.replace(out,'return Err(cold_match_output_error(length, remaining));')
+          helpers='''
+          #[cold]
+          #[inline(never)]
+          fn cold_match_distance_error(distance: usize, produced: usize) -> Error {
+              Error::InvalidMatchDistance { distance, produced }
+          }
+
+          #[cold]
+          #[inline(never)]
+          fn cold_match_output_error(requested: usize, remaining: usize) -> Error {
+              Error::OutputOverrun { requested, remaining }
+          }
+
+          '''.replace('\n          ','\n')
+          p.write_text(src[:a]+fn+helpers+src[b:])
+          print('COLD_ERRORS_APPLIED')
           PY
-            cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-            (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR="target-entry-$layout" cargo build --release)
-            cp "rust/d1_oodle3/target-entry-$layout/release/d1_oodle3.dll" "out/entry-$layout.dll"
-          done
-          cp out/original_lzh.rs rust/d1_oodle3/src/lzh.rs
+          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-error-cold cargo build --release)
+          cp rust/d1_oodle3/target-error-cold/release/d1_oodle3.dll out/errorcold.dll
           python - <<'PY'
           import json,struct
           from pathlib import Path
           results={}
-          for dll in sorted(Path('out').glob('entry-*.dll')):
+          for dll in (Path('out/base.dll'),Path('out/errorcold.dll')):
               data=dll.read_bytes()
               pe=struct.unpack_from('<I',data,0x3c)[0]
               count=struct.unpack_from('<H',data,pe+6)[0]
@@ -62,8 +77,8 @@ jobs:
               for i in range(count):
                   off=base+i*40
                   if data[off:off+8].rstrip(b'\0')==b'.text':
-                      results[dll.stem]={'text_bytes':struct.unpack_from('<I',data,off+8)[0],'dll_bytes':len(data)}
-          print('ENTRY_LAYOUT_CODE_SIZE',json.dumps(results,sort_keys=True))
+                      results[dll.name]={'text_bytes':struct.unpack_from('<I',data,off+8)[0]}
+          print('COLD_ERROR_TEXT_SIZE',json.dumps(results,sort_keys=True))
           PY
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
@@ -89,7 +104,7 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Verify 11 blocks and compare Huffman table-entry layouts
+      - name: Verify 11 blocks and compare cold error construction
         shell: bash
         run: |
           set -euo pipefail
@@ -128,9 +143,8 @@ jobs:
               if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
-              'entry_default':bind('out/entry-default.dll'),
-              'entry_c_normal':bind('out/entry-c-normal.dll'),
-              'entry_c_reordered':bind('out/entry-c-reordered.dll')
+              'rust_baseline':bind('out/base.dll'),
+              'rust_errorcold':bind('out/errorcold.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -168,10 +182,9 @@ jobs:
               print('ROUND',j+1,json.dumps(results))
           medians={name:statistics.median(v) for name,v in samples.items()}
           ratios={
-              'c_normal_over_default':medians['entry_c_normal']/medians['entry_default'],
-              'c_reordered_over_default':medians['entry_c_reordered']/medians['entry_default'],
-              'default_over_oodle':medians['entry_default']/medians['original_oodle'],
-              'c_reordered_over_oodle':medians['entry_c_reordered']/medians['original_oodle']
+              'cold_errors_over_baseline':medians['rust_errorcold']/medians['rust_baseline'],
+              'baseline_over_oodle':medians['rust_baseline']/medians['original_oodle'],
+              'cold_errors_over_oodle':medians['rust_errorcold']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
