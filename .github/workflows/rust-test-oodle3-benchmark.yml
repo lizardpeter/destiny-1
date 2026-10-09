@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 Windows per-core benchmark
+name: Rust-test Oodle3 FastRefill benchmark
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -18,46 +18,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Compile and test Rust scalar + SSE2
+      - name: Compile and test baseline and single-refill candidate
         shell: bash
         run: |
           set -euo pipefail
           cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
-          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib --features simd_match_copy
           mkdir -p out
           (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-scalar cargo build --release)
           cp rust/d1_oodle3/target-scalar/release/d1_oodle3.dll out/rust_scalar.dll
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-sse2 cargo build --release --features simd_match_copy)
-          cp rust/d1_oodle3/target-sse2/release/d1_oodle3.dll out/rust_sse2.dll
           (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-native cargo build --release)
           cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/rust_native.dll
-      - name: Build and test native-width bit reader variants
-        shell: bash
-        run: |
-          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          p=Path('rust/d1_oodle3/src/lzh.rs')
-          source=p.read_text()
-          start=source.index("struct MsbBitReader<'a> {")
-          region=source[start:]
-          edits=[
-              ('bit_count: u8,','bit_count: usize,'),
-              ('usize::from(self.bit_count)','self.bit_count'),
-              ('self.bit_count -= count as u8;','self.bit_count -= count;'),
-              ('self.bit_count -= consume as u8;','self.bit_count -= consume;'),
-          ]
-          for old,new in edits:
-              if old not in region: raise RuntimeError('Missing bit-reader expression: '+old)
-              region=region.replace(old,new)
-          p.write_text(source[:start]+region)
-          print('BIT_COUNT_NATIVE_WIDTH_APPLIED',len(region))
+          path=Path('rust/d1_oodle3/src/lzh.rs')
+          src=path.read_text()
+          marker='    fn ensure_bits_fast(&mut self, count: usize) {'
+          endmarker='    fn read_bits_fast(&mut self, count: usize) -> u64 {'
+          p=src.index(marker)
+          q=src.index(endmarker,p)
+          middle=src[p:q]
+          old='while usize::from(self.bit_count) < count {'
+          if middle.count(old)!=1: raise RuntimeError('Expected unique fast-refill loop')
+          middle=middle.replace(old,'if usize::from(self.bit_count) < count {')
+          path.write_text(src[:p]+middle+src[q:])
+          print('FAST_REFILL_IF_CANDIDATE_APPLIED')
           PY
           cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-usize cargo build --release)
-          cp rust/d1_oodle3/target-usize/release/d1_oodle3.dll out/rust_usize.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-usize-native cargo build --release)
-          cp rust/d1_oodle3/target-usize-native/release/d1_oodle3.dll out/rust_usize_native.dll
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-candidate cargo build --release)
+          cp rust/d1_oodle3/target-candidate/release/d1_oodle3.dll out/rust_candidate.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-candidate-native cargo build --release)
+          cp rust/d1_oodle3/target-candidate-native/release/d1_oodle3.dll out/rust_candidate_native.dll
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -79,47 +69,7 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Build profile-guided DLL with reusable Rust-test tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p out/pgo-fixtures
-          git show HEAD:rust/d1_oodle3/src/lzh.rs > rust/d1_oodle3/src/lzh.rs
-          python - <<'PY'
-          import ctypes,hashlib,sys
-          from pathlib import Path
-          sys.path.insert(0,'tools')
-          from d1_pkg_probe import parse_header,parse_blocks,read_table
-          root=Path('out/pgo-fixtures')
-          pkg=Path('recovered/ps4_city_tower_destination_024c_5.pkg')
-          with pkg.open('rb') as f:
-              h=parse_header(f)
-              tbl=read_table(f,h['block_table_offset'],h['block_table_count'],32)
-          dll=ctypes.WinDLL(str(Path('reference/oo2core_3_win64.dll').resolve()))
-          fn=dll.OodleLZ_Decompress
-          fn.restype=ctypes.c_int64
-          fn.argtypes=[ctypes.c_void_p,ctypes.c_int64,ctypes.c_void_p,ctypes.c_int64,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint32]
-          count=0
-          for block in parse_blocks(tbl):
-              if not block['compressed'] or int(block['patch_id'])!=5: continue
-              with pkg.open('rb') as f:
-                  f.seek(int(block['offset']))
-                  comp=f.read(int(block['size']))
-              if hashlib.sha1(comp).hexdigest().lower()!=str(block['sha1']).lower(): raise RuntimeError('Block SHA mismatch')
-              src=ctypes.create_string_buffer(comp)
-              dst=ctypes.create_string_buffer(0x40000)
-              result=fn(ctypes.cast(src,ctypes.c_void_p),len(comp),ctypes.cast(dst,ctypes.c_void_p),0x40000,1,0,0,None,None,None,None,None,None,3)
-              if result!=0x40000: raise RuntimeError('Reference decode failed')
-              (root/f'{block["index"]}.bin').write_bytes(comp)
-              (root/f'{block["index"]}.raw').write_bytes(dst.raw[:0x40000])
-              count+=1
-              if count==8: break
-          if count!=8: raise RuntimeError('Missing expected training cases')
-          print('VERIFIED_TRAINING_FIXTURES',count)
-          PY
-          pwsh -NoProfile -File rust/d1_oodle3/tools/build_pgo.ps1 -Fixtures out/pgo-fixtures -Iterations 140
-          cp rust/d1_oodle3/target-pgo/optimized/release/d1_oodle3.dll out/rust_pgo_native.dll
-      - name: Byte-verify and benchmark scalar, SSE2 and Oodle
+      - name: Byte-verify and benchmark original and fast-refill candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -152,11 +102,9 @@ jobs:
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
               'rust_scalar':bind('out/rust_scalar.dll'),
-              'rust_sse2':bind('out/rust_sse2.dll'),
               'rust_native':bind('out/rust_native.dll'),
-              'rust_usize':bind('out/rust_usize.dll'),
-              'rust_usize_native':bind('out/rust_usize_native.dll'),
-              'rust_pgo_native':bind('out/rust_pgo_native.dll')
+              'rust_candidate':bind('out/rust_candidate.dll'),
+              'rust_candidate_native':bind('out/rust_candidate_native.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -168,7 +116,7 @@ jobs:
           for i,(index,_,_) in enumerate(cases):
               outs={name:call(name,i) for name in libs}
               if len(set(outs.values()))!=1: raise RuntimeError(f'Decode output mismatch on {index}')
-          print('CORRECTNESS: 8/8 blocks byte-identical (Oodle + 5 Rust variants)')
+          print('CORRECTNESS: 8/8 blocks byte-identical (Oodle + 4 Rust variants)')
           for _ in range(20):
               for name in libs:
                   for i in range(len(cases)): call(name,i)
@@ -191,16 +139,10 @@ jobs:
               print('ROUND',j+1,json.dumps(results))
           medians={name:statistics.median(v) for name,v in samples.items()}
           ratios={
-              'scalar_over_oodle':medians['rust_scalar']/medians['original_oodle'],
-              'sse2_over_oodle':medians['rust_sse2']/medians['original_oodle'],
-              'sse2_over_scalar':medians['rust_sse2']/medians['rust_scalar'],
+              'candidate_over_scalar':medians['rust_candidate']/medians['rust_scalar'],
+              'candidate_native_over_native':medians['rust_candidate_native']/medians['rust_native'],
               'native_over_oodle':medians['rust_native']/medians['original_oodle'],
-              'native_over_scalar':medians['rust_native']/medians['rust_scalar'],
-              'usize_over_scalar':medians['rust_usize']/medians['rust_scalar'],
-              'usize_native_over_native':medians['rust_usize_native']/medians['rust_native'],
-              'usize_native_over_oodle':medians['rust_usize_native']/medians['original_oodle'],
-              'pgo_over_native':medians['rust_pgo_native']/medians['rust_native'],
-              'pgo_over_oodle':medians['rust_pgo_native']/medians['original_oodle']
+              'candidate_native_over_oodle':medians['rust_candidate_native']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':'8/8 byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
