@@ -1,0 +1,32 @@
+name: Rust-test T6 IPAK CRC32 verifier native A-B
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/rust-test-other-decoders-20261009]
+    paths:
+      - '.github/workflows/rust-test-t6-ipak-crc32-benchmark.yml'
+      - 'tools/codec_bench/t6_ipak_crc32_*'
+permissions:
+  contents: read
+jobs:
+  crc:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile and compare source-identical IEEE CRC32 and 256-entry lookup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          rustc --edition=2021 -O -C target-cpu=native -C lto=fat -C codegen-units=1 \
+            tools/codec_bench/t6_ipak_crc32_bench.rs -o out/t6_crc_bench.exe
+          ./out/t6_crc_bench.exe | tee out/t6_crc_bench.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-test-t6-ipak-crc32-comparison
+          path: out/t6_crc_bench.txt
+          if-no-files-found: warn
+          retention-days: 20
