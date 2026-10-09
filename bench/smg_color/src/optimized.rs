@@ -462,26 +462,11 @@ fn rgb5a3(v:u16)->[u8;4]{
 fn expand5(v:u8)->u8{(v<<3)|(v>>2)}
 fn expand6(v:u8)->u8{(v<<2)|(v>>4)}
 
-fn decode_rgb565_block(block: &[u8], bx: usize, by: usize, w: usize, h: usize, out: &mut [u8]) {
-    let sx = bx * 4;
-    let sy = by * 4;
-    if sx + 4 <= w && sy + 4 <= h {
-        for y in 0..4 {
-            let off = ((sy + y) * w + sx) * 4;
-            let row = &mut out[off..off + 16];
-            for x in 0..4 {
-                let src = (y * 4 + x) * 2;
-                let color = rgb565(u16::from_be_bytes([block[src], block[src + 1]]));
-                row[x * 4..x * 4 + 4].copy_from_slice(&color);
-            }
-        }
-    } else {
-        for y in 0..4 { for x in 0..4 {
-            let src = (y * 4 + x) * 2;
-            let color = rgb565(u16::from_be_bytes([block[src], block[src + 1]]));
-            write_pixel(out, w, h, sx + x, sy + y, color);
-        }}
-    }
+fn decode_rgb565_block(block:&[u8],bx:usize,by:usize,w:usize,h:usize,out:&mut[u8]){
+    for y in 0..4{for x in 0..4{
+        let o=(y*4+x)*2; let v=u16::from_be_bytes([block[o],block[o+1]]);
+        write_pixel(out,w,h,bx*4+x,by*4+y,rgb565(v));
+    }}
 }
 fn decode_rgb5a3_block(block: &[u8], bx: usize, by: usize, w: usize, h: usize, out: &mut [u8]) {
     let sx = bx * 4;
