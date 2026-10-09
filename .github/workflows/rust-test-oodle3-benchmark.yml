@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 64-bit sliding reservoir A-B
+name: Rust-test Oodle3 packed Huffman symbols A-B
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -18,77 +18,37 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Build baseline and Oodle-style 64-bit sliding reservoir candidate
+      - name: Compile and test current and packed Huffman lookup variants
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          cp rust/d1_oodle3/src/lzh.rs out/original_lzh.rs
+          cp rust/d1_oodle3/src/lzh.rs out/source_original.rs
           cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-scalar cargo build --release)
-          cp rust/d1_oodle3/target-scalar/release/d1_oodle3.dll out/rust_scalar.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-native cargo build --release)
-          cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/rust_native.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-entry-base cargo build --release)
+          cp rust/d1_oodle3/target-entry-base/release/d1_oodle3.dll out/entry_baseline.dll
+          for layout in length_high length_low; do
+            python tools/oodle3_packed_entry_variant.py --original out/source_original.rs --output rust/d1_oodle3/src/lzh.rs --layout "$layout"
+            cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+            (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR="target-entry-$layout" cargo build --release)
+            cp "rust/d1_oodle3/target-entry-$layout/release/d1_oodle3.dll" "out/entry_$layout.dll"
+          done
+          cp out/source_original.rs rust/d1_oodle3/src/lzh.rs
           python - <<'PY'
+          import json,struct
           from pathlib import Path
-          p=Path('rust/d1_oodle3/src/lzh.rs')
-          source=Path('out/original_lzh.rs').read_text()
-          start=source.index('    fn ensure_bits_fast(&mut self, count: usize) {')
-          stop=source.index('    #[inline(always)]\n    fn read_bits_fast(',start)
-          body='''    fn ensure_bits_fast(&mut self, count: usize) {
-              debug_assert!(count <= 32);
-              if usize::from(self.bit_count) >= count {
-                  return;
-              }
-              if (self.ptr as usize) <= self.fast_limit {
-                  // Keep a 64-bit MSB-first reservoir. Read eight bytes, but
-                  // commit only as many whole bytes as fit in its free space.
-                  // Every consumed byte is read exactly once: overlapped
-                  // eight-byte loads use the same logical pointer advance.
-                  let old = usize::from(self.bit_count);
-                  let n = (64 - old) / 8;
-                  debug_assert!((4..=8).contains(&n));
-                  let word = unsafe {
-                      u64::from_be(core::ptr::read_unaligned(self.ptr.cast::<u64>()))
-                  };
-                  self.ptr = unsafe { self.ptr.add(n) };
-                  let new_bits = n * 8;
-                  self.bit_buf |= (word >> (64 - new_bits)) << (64 - old - new_bits);
-                  self.bit_count += new_bits as u8;
-              } else if self.bytes_remaining() >= 4 && self.bit_count <= 32 {
-                  // Last eight input bytes: keep the checked 32-bit fill.
-                  let word = unsafe {
-                      u32::from_be(core::ptr::read_unaligned(self.ptr.cast::<u32>()))
-                  };
-                  self.ptr = unsafe { self.ptr.add(4) };
-                  let shift = 32 - usize::from(self.bit_count);
-                  self.bit_buf |= u64::from(word) << shift;
-                  self.bit_count += 32;
-              } else {
-                  // Preserve exact tail behavior if the fast token extends
-                  // into the input-boundary region. Do not read past end.
-                  while usize::from(self.bit_count) < count && self.ptr < self.end {
-                      let byte = unsafe { *self.ptr };
-                      self.ptr = unsafe { self.ptr.add(1) };
-                      let shift = 56 - usize::from(self.bit_count);
-                      self.bit_buf |= u64::from(byte) << shift;
-                      self.bit_count += 8;
-                  }
-              }
-              debug_assert!(usize::from(self.bit_count) >= count);
-          }
-
-          '''.replace('\n          ','\n')
-          # Body begins at the function signature; preserve its inline attribute.
-          if source[start-22:start].count('inline')!=1: raise RuntimeError('Unexpected fast-refill signature')
-          p.write_text(source[:start]+body+source[stop:])
-          print('WINDOWED_U64_SLIDING_RESERVOIR_APPLIED')
+          result={}
+          for dll in sorted(Path('out').glob('entry_*.dll')):
+              blob=dll.read_bytes()
+              pe=struct.unpack_from('<I',blob,0x3c)[0]
+              nsec=struct.unpack_from('<H',blob,pe+6)[0]
+              hlen=struct.unpack_from('<H',blob,pe+20)[0]
+              for i in range(nsec):
+                  off=pe+24+hlen+i*40
+                  if blob[off:off+8].rstrip(b'\0')==b'.text':
+                      result[dll.name]={'text_bytes':struct.unpack_from('<I',blob,off+8)[0],'dll_bytes':len(blob)}
+          print('PACKED_ENTRY_TEXT_SIZE',json.dumps(result,sort_keys=True))
           PY
-          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-window cargo build --release)
-          cp rust/d1_oodle3/target-window/release/d1_oodle3.dll out/rust_window.dll
-          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-window-native cargo build --release)
-          cp rust/d1_oodle3/target-window-native/release/d1_oodle3.dll out/rust_window_native.dll
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -113,7 +73,7 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Byte-verify 11 blocks and benchmark 32-bit versus 64-bit sliding refill
+      - name: Byte-verify 11 blocks and benchmark packed Huffman entries
         shell: bash
         run: |
           set -euo pipefail
@@ -152,10 +112,9 @@ jobs:
               if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
-              'rust_scalar':bind('out/rust_scalar.dll'),
-              'rust_native':bind('out/rust_native.dll'),
-              'rust_window':bind('out/rust_window.dll'),
-              'rust_window_native':bind('out/rust_window_native.dll')
+              'rust_baseline':bind('out/entry_baseline.dll'),
+              'rust_length_high':bind('out/entry_length_high.dll'),
+              'rust_length_low':bind('out/entry_length_low.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -193,10 +152,11 @@ jobs:
               print('ROUND',j+1,json.dumps(results))
           medians={name:statistics.median(v) for name,v in samples.items()}
           ratios={
-              'u64_over_scalar':medians['rust_window']/medians['rust_scalar'],
-              'u64_native_over_native':medians['rust_window_native']/medians['rust_native'],
-              'native_over_oodle':medians['rust_native']/medians['original_oodle'],
-              'u64_native_over_oodle':medians['rust_window_native']/medians['original_oodle']
+              'length_high_over_baseline':medians['rust_length_high']/medians['rust_baseline'],
+              'length_low_over_baseline':medians['rust_length_low']/medians['rust_baseline'],
+              'baseline_over_oodle':medians['rust_baseline']/medians['original_oodle'],
+              'length_high_over_oodle':medians['rust_length_high']/medians['original_oodle'],
+              'length_low_over_oodle':medians['rust_length_low']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
