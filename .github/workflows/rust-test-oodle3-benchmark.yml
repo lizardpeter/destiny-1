@@ -4,6 +4,7 @@ on:
     branches: [bench/oodle3-rust-test-20261008]
     paths:
       - 'rust/d1_oodle3/**'
+      - 'tools/oodle3_packed_entry_variant.py'
       - '.github/workflows/rust-test-oodle3-benchmark.yml'
   workflow_dispatch:
 permissions:
