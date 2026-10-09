@@ -1,4 +1,4 @@
-name: Rust-test Oodle3 MatchCopy inline/code-size A-B
+name: Rust-test Oodle3 cold Huffman fallback A-B
 on:
   push:
     branches: [bench/oodle3-rust-test-20261008]
@@ -18,52 +18,58 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Compare match-copy inline policies with native-code section measurements
+      - name: Compile baseline and cold long-Huffman fallback variant
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cp rust/d1_oodle3/src/lzh.rs out/original_lzh.rs
-          for policy in always never heuristic; do
-            COPY_POLICY="$policy" python - <<'PY'
-          import os
+          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-baseline cargo build --release)
+          cp rust/d1_oodle3/target-baseline/release/d1_oodle3.dll out/baseline.dll
+          python - <<'PY'
           from pathlib import Path
-          p=Path('rust/d1_oodle3/src/lzh.rs')
+          path=Path('rust/d1_oodle3/src/lzh.rs')
           src=Path('out/original_lzh.rs').read_text()
-          old='#[inline(always)]\nfn copy_match_into('
-          mode=os.environ['COPY_POLICY']
-          new={'always':'#[inline(always)]','never':'#[inline(never)]','heuristic':'#[inline]'}[mode]+'\nfn copy_match_into('
-          if src.count(old)!=1: raise RuntimeError('Missing exact match-copy inlining site')
-          p.write_text(src.replace(old,new))
-          print('COPY_MATCH_INLINE_POLICY',mode)
+          fast=src.index('    fn decode_fast_multi(')
+          start=src.index('        bits.ensure_bits_fast(usize::from(MAX_CODE_LEN));',fast)
+          tail='    }\n\n    #[inline(always)]\n    fn decode('
+          stop=src.index(tail,start)
+          moved=src[start:stop]
+          if moved.count('profile::huffman_long()')!=1 or not moved.strip().endswith('0'):
+              raise RuntimeError('Unexpected long Huffman fallback body')
+          cold='''        self.decode_huffman_long(bits)
+              }
+
+              #[cold]
+              #[inline(never)]
+              fn decode_huffman_long(&self, bits: &mut MsbBitReader<'_>) -> usize {
+              '''
+          replacement=cold + moved + '    \n'
+          # Preserve the old closing brace and following checked decoder.
+          src=src[:start]+replacement+src[stop:]
+          path.write_text(src)
+          print('COLD_HUFFMAN_FALLBACK_EXTRACTED',len(moved))
           PY
-            cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
-            (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR="target-copy-$policy" cargo build --release)
-            cp "rust/d1_oodle3/target-copy-$policy/release/d1_oodle3.dll" "out/copy-$policy.dll"
-          done
+          cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-huffcold cargo build --release)
+          cp rust/d1_oodle3/target-huffcold/release/d1_oodle3.dll out/huffcold.dll
           python - <<'PY'
           import json,struct
           from pathlib import Path
-          result={}
-          for path in Path('out').glob('copy-*.dll'):
-              data=path.read_bytes()
+          report={}
+          for dll in (Path('out/baseline.dll'),Path('out/huffcold.dll')):
+              data=dll.read_bytes()
               pe=struct.unpack_from('<I',data,0x3c)[0]
-              if data[pe:pe+4]!=b'PE\x00\x00': raise RuntimeError('Expected valid PE binary')
-              sections=struct.unpack_from('<H',data,pe+6)[0]
-              optlen=struct.unpack_from('<H',data,pe+20)[0]
-              section_base=pe+24+optlen
-              text_size=None
-              for index in range(sections):
-                  off=section_base+40*index
-                  name=data[off:off+8].rstrip(b'\0').decode('ascii')
-                  if name=='.text':
-                      text_size=struct.unpack_from('<I',data,off+8)[0]
-                      break
-              if text_size is None: raise RuntimeError('Missing .text')
-              result[path.stem]={'text_virtual_bytes':text_size,'dll_file_bytes':len(data)}
-          print('ASSEMBLY_CODE_SIZE_COMPARISON',json.dumps(result,sort_keys=True))
+              n=struct.unpack_from('<H',data,pe+6)[0]
+              optional=struct.unpack_from('<H',data,pe+20)[0]
+              base=pe+24+optional
+              for j in range(n):
+                  off=base+40*j
+                  if data[off:off+8].rstrip(b'\0')==b'.text':
+                      report[dll.name]={'text_virtual_bytes':struct.unpack_from('<I',data,off+8)[0],'dll_bytes':len(data)}
+          print('ASSEMBLY_CODE_SIZE_COMPARISON',json.dumps(report,sort_keys=True))
           PY
-          cp out/original_lzh.rs rust/d1_oodle3/src/lzh.rs
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -88,7 +94,7 @@ jobs:
           PY
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/Crauzer/OodleSharp/master/OodleSharp/oo2core_3_win64.dll' -o reference/oo2core_3_win64.dll
           echo '682c0aad216fae443e0f9561876cfabfddaeffcd48e5990613ad2cf47c49fa62  reference/oo2core_3_win64.dll' | sha256sum --check --strict
-      - name: Validate 11 blocks and compare match-copy inlining policies
+      - name: Validate 11 blocks and compare cold fallback versus baseline
         shell: bash
         run: |
           set -euo pipefail
@@ -127,9 +133,8 @@ jobs:
               if selected!=limit: raise RuntimeError(f'Expected {limit} holdout blocks from {member}; got {selected}')
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
-              'copy_always':bind('out/copy-always.dll'),
-              'copy_never':bind('out/copy-never.dll'),
-              'copy_heuristic':bind('out/copy-heuristic.dll')
+              'rust_baseline':bind('out/baseline.dll'),
+              'rust_huffcold':bind('out/huffcold.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -167,11 +172,9 @@ jobs:
               print('ROUND',j+1,json.dumps(results))
           medians={name:statistics.median(v) for name,v in samples.items()}
           ratios={
-              'never_over_always':medians['copy_never']/medians['copy_always'],
-              'heuristic_over_always':medians['copy_heuristic']/medians['copy_always'],
-              'always_over_oodle':medians['copy_always']/medians['original_oodle'],
-              'never_over_oodle':medians['copy_never']/medians['original_oodle'],
-              'heuristic_over_oodle':medians['copy_heuristic']/medians['original_oodle']
+              'huffcold_over_baseline':medians['rust_huffcold']/medians['rust_baseline'],
+              'baseline_over_oodle':medians['rust_baseline']/medians['original_oodle'],
+              'huffcold_over_oodle':medians['rust_huffcold']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':str(len(cases))+'/'+str(len(cases))+' byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
