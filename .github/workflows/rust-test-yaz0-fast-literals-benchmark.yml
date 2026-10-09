@@ -40,3 +40,5 @@ jobs:
           retention-days: 20
 
 # Independent paired replication of safe overlap-preserving Yaz0 chunk copies.
+
+# Independent native Windows A/B repeat of bulk literal groups and chunked matches.
