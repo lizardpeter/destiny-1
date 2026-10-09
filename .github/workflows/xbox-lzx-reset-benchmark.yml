@@ -7,7 +7,7 @@ on:
       - '.github/workflows/xbox-lzx-reset-benchmark.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   benchmark:
     runs-on: windows-2025
@@ -29,3 +29,14 @@ jobs:
         run: |
           set -euo pipefail
           RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/xbox_lzx_reset/runner/Cargo.toml
+      - name: Snapshot exact patched lzxd source for Rust-test integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f bench/xbox_lzx_reset/vendor/lzxd_fast
+          if ! git diff --cached --quiet; then
+            git commit -m "bench(xbox): snapshot exact lzxd 0.2.7 reset-reuse fork [skip ci]"
+            git push origin "HEAD:refs/heads/bench/xbox-lzx-reset-20261009"
+          fi
