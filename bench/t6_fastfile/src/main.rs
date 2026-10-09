@@ -62,12 +62,14 @@ fn main(){
                 let optimized_first=(step==0)==(round%2==0);
                 let start=Instant::now();
                 for _ in 0..reps {
-                    let (decoded,_,summary)=if optimized_first {
-                        optimized::decode_bytes(black_box(&file)).unwrap()
+                    let decoded_and_digest=if optimized_first {
+                        let (decoded,_,summary)=optimized::decode_bytes(black_box(&file)).unwrap();
+                        (decoded,summary.expanded_sha256)
                     } else {
-                        original::decode_bytes(black_box(&file)).unwrap()
+                        let (decoded,_,summary)=original::decode_bytes(black_box(&file)).unwrap();
+                        (decoded,summary.expanded_sha256)
                     };
-                    black_box((decoded,summary));
+                    black_box(decoded_and_digest);
                 }
                 elapsed[usize::from(optimized_first)]=start.elapsed().as_secs_f64();
             }
