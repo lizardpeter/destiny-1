@@ -372,26 +372,11 @@ fn write_pixel(out: &mut [u8], width: usize, height: usize, x: usize, y: usize, 
 fn intensity_rgba(v: u8) -> [u8; 4] { [v, v, v, v] }
 
 fn decode_i4(block: &[u8], bx: usize, by: usize, w: usize, h: usize, out: &mut [u8]) {
-    let sx=bx*8;
-    let sy=by*8;
-    if sx+8 <= w && sy+8 <= h {
-        for y in 0..8 {
-            // All eight RGBA pixels fit: decode two I4 texels per source byte.
-            let offset=((sy+y)*w+sx)*4;
-            let row=&mut out[offset..offset+32];
-            for pair in 0..4 {
-                let byte=block[y*4+pair];
-                row[pair*8..pair*8+4].fill((byte>>4)*17);
-                row[pair*8+4..pair*8+8].fill((byte&15)*17);
-            }
-        }
-    } else {
-        for y in 0..8 {
-            for x in 0..8 {
-                let byte=block[(y*8+x)/2];
-                let nibble=if x&1==0 {byte>>4} else {byte&15};
-                write_pixel(out,w,h,sx+x,sy+y,intensity_rgba(nibble*17));
-            }
+    for y in 0..8 {
+        for x in 0..8 {
+            let b = block[(y * 8 + x) / 2];
+            let n = if x & 1 == 0 { b >> 4 } else { b & 0x0f };
+            write_pixel(out, w, h, bx * 8 + x, by * 8 + y, intensity_rgba(n * 17));
         }
     }
 }
