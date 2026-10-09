@@ -29,6 +29,8 @@ jobs:
           cp rust/d1_oodle3/target-scalar/release/d1_oodle3.dll out/rust_scalar.dll
           (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-sse2 cargo build --release --features simd_match_copy)
           cp rust/d1_oodle3/target-sse2/release/d1_oodle3.dll out/rust_sse2.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-native cargo build --release)
+          cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/rust_native.dll
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -83,7 +85,8 @@ jobs:
           libs={
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
               'rust_scalar':bind('out/rust_scalar.dll'),
-              'rust_sse2':bind('out/rust_sse2.dll')
+              'rust_sse2':bind('out/rust_sse2.dll'),
+              'rust_native':bind('out/rust_native.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -95,7 +98,7 @@ jobs:
           for i,(index,_,_) in enumerate(cases):
               outs={name:call(name,i) for name in libs}
               if len(set(outs.values()))!=1: raise RuntimeError(f'Decode output mismatch on {index}')
-          print('CORRECTNESS: 8/8 blocks byte-identical (original, Rust scalar, Rust SSE2)')
+          print('CORRECTNESS: 8/8 blocks byte-identical (original, Rust scalar, Rust SSE2, Rust native-LTO)')
           for _ in range(20):
               for name in libs:
                   for i in range(len(cases)): call(name,i)
@@ -103,7 +106,8 @@ jobs:
           iterations=75
           total_bytes=sum(x[2] for x in cases)*iterations
           samples={name:[] for name in libs}
-          orders=[['original_oodle','rust_scalar','rust_sse2'],['rust_scalar','rust_sse2','original_oodle'],['rust_sse2','original_oodle','rust_scalar'],['original_oodle','rust_sse2','rust_scalar'],['rust_scalar','original_oodle','rust_sse2'],['rust_sse2','rust_scalar','original_oodle']]
+          names=list(libs)
+          orders=[names, names[1:]+names[:1], names[2:]+names[:2], names[3:]+names[:3], names[::-1], list(reversed(names[1:]))+[names[0]]]
           for j in range(rounds):
               results={}
               for name in orders[j%len(orders)]:
@@ -119,7 +123,9 @@ jobs:
           ratios={
               'scalar_over_oodle':medians['rust_scalar']/medians['original_oodle'],
               'sse2_over_oodle':medians['rust_sse2']/medians['original_oodle'],
-              'sse2_over_scalar':medians['rust_sse2']/medians['rust_scalar']
+              'sse2_over_scalar':medians['rust_sse2']/medians['rust_scalar'],
+              'native_over_oodle':medians['rust_native']/medians['original_oodle'],
+              'native_over_scalar':medians['rust_native']/medians['rust_scalar']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':'8/8 byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
