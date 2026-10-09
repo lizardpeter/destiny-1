@@ -404,7 +404,7 @@ mod tests {
         // LZO command, 21 encoded bytes.
         entry[4..8].copy_from_slice(&((1u32 << 24) | compressed.len() as u32).to_le_bytes());
         entry[DATA_BLOCK_BYTES..].copy_from_slice(&compressed);
-        let hash = super::retail_ipak_crc::crc32(expected) & DATA_HASH_MASK;
+        let hash = super::super::retail_ipak_crc::crc32(expected) & DATA_HASH_MASK;
         assert_eq!(decode_entry_range(&entry, T6IpakEndian::Little, hash).unwrap(), expected);
         assert!(decode_entry_range(&entry, T6IpakEndian::Little, hash ^ 1).is_err());
     }
