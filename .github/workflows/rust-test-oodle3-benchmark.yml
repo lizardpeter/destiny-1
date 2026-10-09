@@ -31,6 +31,33 @@ jobs:
           cp rust/d1_oodle3/target-sse2/release/d1_oodle3.dll out/rust_sse2.dll
           (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-native cargo build --release)
           cp rust/d1_oodle3/target-native/release/d1_oodle3.dll out/rust_native.dll
+      - name: Build and test native-width bit reader variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('rust/d1_oodle3/src/lzh.rs')
+          source=p.read_text()
+          start=source.index("struct MsbBitReader<'a> {")
+          region=source[start:]
+          edits=[
+              ('bit_count: u8,','bit_count: usize,'),
+              ('usize::from(self.bit_count)','self.bit_count'),
+              ('self.bit_count -= count as u8;','self.bit_count -= count;'),
+              ('self.bit_count -= consume as u8;','self.bit_count -= consume;'),
+          ]
+          for old,new in edits:
+              if old not in region: raise RuntimeError('Missing bit-reader expression: '+old)
+              region=region.replace(old,new)
+          p.write_text(source[:start]+region)
+          print('BIT_COUNT_NATIVE_WIDTH_APPLIED',len(region))
+          PY
+          cargo test --manifest-path rust/d1_oodle3/Cargo.toml --release --lib
+          (cd rust/d1_oodle3 && CARGO_TARGET_DIR=target-usize cargo build --release)
+          cp rust/d1_oodle3/target-usize/release/d1_oodle3.dll out/rust_usize.dll
+          (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=target-usize-native cargo build --release)
+          cp rust/d1_oodle3/target-usize-native/release/d1_oodle3.dll out/rust_usize_native.dll
       - name: Recover source-verified Destiny package and reference Oodle DLL
         shell: bash
         run: |
@@ -86,7 +113,9 @@ jobs:
               'original_oodle':bind('reference/oo2core_3_win64.dll'),
               'rust_scalar':bind('out/rust_scalar.dll'),
               'rust_sse2':bind('out/rust_sse2.dll'),
-              'rust_native':bind('out/rust_native.dll')
+              'rust_native':bind('out/rust_native.dll'),
+              'rust_usize':bind('out/rust_usize.dll'),
+              'rust_usize_native':bind('out/rust_usize_native.dll')
           }
           buffers={name:[(ctypes.create_string_buffer(comp),ctypes.create_string_buffer(raw),len(comp),raw) for _,comp,raw in cases] for name in libs}
           def call(name,i):
@@ -98,7 +127,7 @@ jobs:
           for i,(index,_,_) in enumerate(cases):
               outs={name:call(name,i) for name in libs}
               if len(set(outs.values()))!=1: raise RuntimeError(f'Decode output mismatch on {index}')
-          print('CORRECTNESS: 8/8 blocks byte-identical (original, Rust scalar, Rust SSE2, Rust native-LTO)')
+          print('CORRECTNESS: 8/8 blocks byte-identical (Oodle + 5 Rust variants)')
           for _ in range(20):
               for name in libs:
                   for i in range(len(cases)): call(name,i)
@@ -125,7 +154,10 @@ jobs:
               'sse2_over_oodle':medians['rust_sse2']/medians['original_oodle'],
               'sse2_over_scalar':medians['rust_sse2']/medians['rust_scalar'],
               'native_over_oodle':medians['rust_native']/medians['original_oodle'],
-              'native_over_scalar':medians['rust_native']/medians['rust_scalar']
+              'native_over_scalar':medians['rust_native']/medians['rust_scalar'],
+              'usize_over_scalar':medians['rust_usize']/medians['rust_scalar'],
+              'usize_native_over_native':medians['rust_usize_native']/medians['rust_native'],
+              'usize_native_over_oodle':medians['rust_usize_native']/medians['original_oodle']
           }
           report={'blocks':[x[0] for x in cases], 'correctness':'8/8 byte-identical', 'rounds':rounds,'iterations':iterations,'median_mib_s':medians,'ratios':ratios,'samples_mib_s':samples}
           Path('out/benchmark.json').write_text(json.dumps(report,indent=2)+'\n')
