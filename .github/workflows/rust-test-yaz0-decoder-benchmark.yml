@@ -1,0 +1,40 @@
+name: Rust-test SMG Yaz0 chunk-copy correctness and throughput
+on:
+  workflow_dispatch:
+  push:
+    branches: [bench/rust-test-other-decoders-20261009]
+    paths:
+      - '.github/workflows/rust-test-yaz0-decoder-benchmark.yml'
+      - 'tools/codec_bench/yaz0_*'
+permissions:
+  contents: read
+jobs:
+  yaz0:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test exact Yaz0 behavior including long overlapping copies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          rustc --edition=2021 --test -O tools/codec_bench/yaz0_optimized.rs -o out/yaz0_tests.exe
+          ./out/yaz0_tests.exe --nocapture
+          rustc --edition=2021 --test -O tools/codec_bench/yaz0_baseline.rs -o out/yaz0_baseline_tests.exe
+          ./out/yaz0_baseline_tests.exe --nocapture
+      - name: Benchmark same-run old and new Rust decoders
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --edition=2021 -O -C target-cpu=native -C lto=fat -C codegen-units=1 \
+            tools/codec_bench/yaz0_bench.rs -o out/yaz0_bench.exe
+          ./out/yaz0_bench.exe | tee out/yaz0_bench_results.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-test-yaz0-comparison
+          path: out/yaz0_bench_results.txt
+          if-no-files-found: warn
+          retention-days: 20
