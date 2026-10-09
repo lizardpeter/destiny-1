@@ -158,3 +158,5 @@ jobs:
           if-no-files-found: ignore
 
 # Replication: unchanged source and paired timing rotation, separate hosted Windows runner.
+
+# Independent Windows-hosted replication of unchanged 32/64/128-byte aligned Huffman entries.
