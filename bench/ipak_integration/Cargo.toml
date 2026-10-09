@@ -1,0 +1,6 @@
+[package]
+name = "bo2-ipak-integration-verify"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+lzo = "=0.1.3"
