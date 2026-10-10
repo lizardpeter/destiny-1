@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 // Small BCSV field lists fit in a few cache lines; hashing them costs more
 // than scanning. Larger tables are queried repeatedly for each JMap row.
-const INDEX_MIN_FIELDS: usize = 24;
+const INDEX_MIN_FIELDS: usize = 64;
 
 #[derive(Clone, Debug)]
 pub struct BcsvField {
@@ -186,10 +186,10 @@ mod tests {
 
     #[test]
     fn indexed_wide_table_returns_original_first_duplicate_field_and_row_value() {
-        // Generate a real 32-column BCSV with overlapping names, and one
+        // Generate a real 128-column BCSV with overlapping names, and one
         // record whose values vary by physical column. A duplicate must
         // always resolve to the *first* occurrence, just like Vec::position.
-        let count = 32usize;
+        let count = 128usize;
         let record_off = 0x10 + count * 12;
         let mut bytes = vec![0u8; record_off + count * 4];
         bytes[0..4].copy_from_slice(&1u32.to_be_bytes());
