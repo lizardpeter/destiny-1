@@ -10,6 +10,7 @@ on:
       - 'ci/fortnite_541/remote_index.py'
       - 'ci/fortnite_541/parse_local_index.py'
       - 'ci/fortnite_541/download_athena_samples.py'
+      - 'ci/fortnite_541/fetch_athena_541.py'
   pull_request:
     paths:
       - '.github/workflows/fortnite_r2_probe.yml'
@@ -48,6 +49,8 @@ jobs:
             cargo run --manifest-path ci/fortnite_541/Cargo.toml \
               --bin athena_probe -- /tmp/fortnite541-pak0-sparse.pak
 
+      - name: Independently run repeatable Fortnite Athena R2 downloader
+        run: python3 ci/fortnite_541/fetch_athena_541.py --destination /tmp/fortnite541-source-output
       - name: Check public endpoint status, inventory and likely cooked files
         shell: bash
         run: |
