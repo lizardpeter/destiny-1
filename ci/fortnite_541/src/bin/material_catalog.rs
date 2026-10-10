@@ -1,7 +1,7 @@
 //! Inspect exact source-authored Fortnite 5.41 material package dependency
 //! graphs without generating a substitute shader or synthesizing source nodes.
 use std::{env,fs,path::PathBuf,process::ExitCode};
-use fortnite_541_importer::{properties,uobject};
+use fortnite_541_importer::{material,properties,uobject};
 
 fn inspect_source(root:&PathBuf,name:&str)->Result<(),String>{
     let base=root.join("FortniteGame/Content/Athena/Environments/Landscape/Material").join(name);
@@ -30,6 +30,23 @@ fn inspect_source(root:&PathBuf,name:&str)->Result<(),String>{
         };
         println!("MATERIAL_EXPORT name={name} export={} source_path={source_path:?} class={class} object={name_text} serial_bytes={} {tagged}",
             i+1,bytes.len());
+    }
+    if name=="M_Athena_Terrain_Master" {
+        let graph=material::inspect(&catalog,&h,&exp);
+        let links=graph.expressions.iter().map(|n|n.expression_inputs.len()).sum::<usize>();
+        let refs=graph.expressions.iter().map(|n|n.references.len()).sum::<usize>();
+        println!("SOURCE_MATERIAL_GRAPH nodes={} by_class={:?} expr_input_links={} typed_refs={} unique_external_dependencies={} unresolved={:?}",
+            graph.expressions.len(),graph.class_counts,links,refs,
+            graph.external_dependencies.len(),graph.unresolved.iter().take(24).collect::<Vec<_>>());
+        for node in graph.expressions.iter().filter(|node|
+            node.class_name=="MaterialExpressionLandscapeLayerSample" ||
+            node.class_name=="MaterialExpressionMaterialFunctionCall" ||
+            node.class_name=="MaterialExpressionTextureSample"
+        ).take(16) {
+            println!("SOURCE_MATERIAL_NODE class={} export={} obj={} parameters={:?} refs={:?} input_edges={:?} tagged_properties={:?}",
+                node.class_name,node.export_index,node.object_name,node.parameters,node.references,
+                node.expression_inputs,node.properties);
+        }
     }
     for (i,entry) in catalog.imports.iter().enumerate().take(50){
         let path=catalog.source_object_path(-1-(i as i32))?;
