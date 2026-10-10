@@ -9,6 +9,7 @@ on:
       - 'ci/fortnite_541/remote_probe.py'
       - 'ci/fortnite_541/remote_index.py'
       - 'ci/fortnite_541/parse_local_index.py'
+      - 'ci/fortnite_541/download_athena_samples.py'
   pull_request:
     paths:
       - '.github/workflows/fortnite_r2_probe.yml'
@@ -42,6 +43,7 @@ jobs:
             -out /tmp/fortnite541-pak0-index.dec
           echo 'fd1f4623c812f5fff47298f99cc3d0d8f2d0f11b  /tmp/fortnite541-pak0-index.dec' | sha1sum --check
           python3 ci/fortnite_541/parse_local_index.py /tmp/fortnite541-pak0-index.dec
+          python3 ci/fortnite_541/download_athena_samples.py
 
       - name: Check public endpoint status, inventory and likely cooked files
         shell: bash
