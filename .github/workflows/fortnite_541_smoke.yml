@@ -35,6 +35,8 @@ jobs:
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_material_dependencies -- /tmp/fortnite541/athena/source /tmp/fortnite541/original-main.pak
       - name: Inventory source-authored terrain function bodies and texture formats
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_texture_format_probe -- /tmp/fortnite541/athena/source
+      - name: Audit nested original terrain LayerBlend shader inputs and function calls
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_material_graph_probe -- /tmp/fortnite541/athena/source
       - name: Inventory original landscape lighting and sky actors
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_scene_lighting_probe -- /tmp/fortnite541/athena/source
       - name: Extract original master terrain material functions and original texture bulk (direct source closure)
