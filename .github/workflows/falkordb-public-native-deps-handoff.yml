@@ -1,0 +1,50 @@
+name: FalkorDB public native dependencies handoff
+on:
+  push:
+    branches:
+      - falkordb-secure-build-20261009
+    paths:
+      - '.github/workflows/falkordb-public-native-deps-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Fetch pinned public upstream sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deps
+          git init -q deps/FalkorDB
+          git -C deps/FalkorDB remote add origin https://github.com/FalkorDB/FalkorDB.git
+          git -C deps/FalkorDB fetch --depth 1 origin 55204c94bb6c8bc1684ada3d712a61f73f324067
+          git -C deps/FalkorDB checkout -q FETCH_HEAD
+
+          git init -q deps/GraphBLAS
+          git -C deps/GraphBLAS remote add origin https://github.com/DrTimothyAldenDavis/GraphBLAS.git
+          git -C deps/GraphBLAS fetch --depth 1 origin ea79e354877ad5e96fad13e161b8db6d661875e4
+          git -C deps/GraphBLAS checkout -q FETCH_HEAD
+
+          git init -q deps/LAGraph
+          git -C deps/LAGraph remote add origin https://github.com/GraphBLAS/LAGraph.git
+          git -C deps/LAGraph fetch --depth 1 origin a96fc4e055b7af6dde5e8a3f4dbb45b87d4bca28
+          git -C deps/LAGraph checkout -q FETCH_HEAD
+
+          for repo in FalkorDB GraphBLAS LAGraph; do
+            test -d "deps/$repo"
+            git -C "deps/$repo" rev-parse HEAD
+            rm -rf "deps/$repo/.git"
+          done
+          tar -I 'zstd -T0 -8' -cf pinned-falkordb-native-public-sources.tar.zst deps/
+          sha256sum pinned-falkordb-native-public-sources.tar.zst > SHA256SUMS.txt
+          ls -lh pinned-falkordb-native-public-sources.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-falkordb-native-public-sources
+          path: |
+            pinned-falkordb-native-public-sources.tar.zst
+            SHA256SUMS.txt
+          retention-days: 1
