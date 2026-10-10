@@ -1,0 +1,21 @@
+name: Source-neutral camera rotation exact-source A/B
+on:
+  push:
+    branches: [bench/native-shared-rotation-20261010]
+  workflow_dispatch:
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/native_shared_rotation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Source parity and alternating A/B
+        shell: bash
+        run: cargo run --release
