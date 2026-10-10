@@ -53,14 +53,14 @@ fn queries(count:usize,mode:usize,n:usize)->Vec<String>{
  }).collect()
 }
 fn consume_base(a:&baseline::RarcArchive,q:&[String])->u64{
- let mut digest=0;
+ let mut digest=0u64;
  for item in q{
   let byte=a.get(black_box(item)).unwrap();
   digest=digest.wrapping_add(byte[7] as u64);
  }digest
 }
 fn consume_opt(a:&optimized::RarcArchive,q:&[String])->u64{
- let mut digest=0;
+ let mut digest=0u64;
  for item in q{
   let byte=a.get(black_box(item)).unwrap();
   digest=digest.wrapping_add(byte[7] as u64);
