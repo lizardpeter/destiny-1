@@ -79,9 +79,11 @@ mod source_importers {
         let map=fortnite_541::generated_source_map(id)?;
         let spawn=map.spawns[0].0;
         assert!(map.display_name.contains("Athena"));
-        assert!((spawn[0]-762.).abs()<0.01);
-        assert!((spawn[1]-(87.40625+1.8)).abs()<0.001);
-        assert!((spawn[2]+762.).abs()<0.01);
+        // Six retail ULandscape roots place grid [762,762] at world (0,0),
+        // while original scale 50/100 halves local height and offsets Z.
+        assert!(spawn[0].abs()<0.02,"world spawn X: {}",spawn[0]);
+        assert!((spawn[1]-28.583125).abs()<0.02,"world spawn Y: {}",spawn[1]);
+        assert!(spawn[2].abs()<0.02,"world spawn Z: {}",spawn[2]);
         let visuals=fortnite_541::import_visuals(id,Path::new(""),&SourceImportManifest)?;
         assert!(visuals.skinned_assets.is_empty());
         let env=visuals.environment.ok_or("missing neutral environment")?;
@@ -95,6 +97,16 @@ mod source_importers {
             s.collision.len()!=3032252{
             return Err("real Athena source neutral scene bridge census mismatch".into());
         }
+        // The same source scale/origin must apply to every collision vertex,
+        // not just the scene mesh and diagnostic-only viewer.
+        let positions=s.meshes.iter().flat_map(|m|m.vertices.iter().map(|v|v.position));
+        let mut min=[f32::INFINITY;3];let mut max=[f32::NEG_INFINITY;3];
+        for p in positions {for ax in 0..3 {min[ax]=min[ax].min(p[ax]);max[ax]=max[ax].max(p[ax]);}}
+        println!("ATHENA_PHYSICAL_WORLD_BOUNDS_METERS min={min:?} max={max:?}");
+        assert!((min[0]+1530.).abs()<0.1,"wrong X root/original actor scale");
+        assert!((max[0]-1530.).abs()<0.1,"wrong X extent");
+        assert!((min[2]+1530.).abs()<0.1,"wrong Z root/original actor scale");
+        assert!((max[2]-1530.).abs()<0.1,"wrong Z extent");
         // Prevent accidental rendering of a false original-material substitute.
         if !s.materials.iter().all(|m|m.unlit&&m.name.starts_with("DIAGNOSTIC_ONLY_")){
             return Err("source diagnostic visualizer mislabeled as original Fortnite material".into());
