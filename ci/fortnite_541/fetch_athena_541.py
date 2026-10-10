@@ -17,6 +17,33 @@ import tempfile
 ARCHIVE = "https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak"
 HISTORICAL_KEY = "81C42E03B21760A5C457C8DB7D52BA066F0633D0891FD9E37CF118F27687924A"
 MAGIC = 0x5A6F12E1
+MASTER_DIRECT_GAME_PACKAGE_SUFFIXES = [
+    "Athena/Environments/Landscape/MPC/MPC_Landscape",
+    "Athena/Environments/Landscape/MaterialFunctions/Arid/MF_Athena_Arid_Rock",
+    "Athena/Environments/Landscape/MaterialFunctions/Arid/MF_Athena_Arid_Rock_02",
+    "Athena/Environments/Landscape/MaterialFunctions/Arid/MF_Athena_Arid_Sand",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_Athena_Material_BaseMultiply",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_Athena_ReplaceBaseColor",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_Athena_SedimentGradient",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_Athena_WorldHeightGrad",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_Athena_ZSandColor",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_FarmGrass_Colors",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_Landscape_GrassDistanceBlend",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_LawnGrassColoration",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_MountainGrass_Colors",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_TerrainDistanceFade",
+    "Athena/Environments/Landscape/MaterialFunctions/MF_TerrainTopoAdjustment",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Crater_01",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Forest_01",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Grass_01",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Gravel_01",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Mud_01",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Road_01",
+    "Athena/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Rock_01",
+    "Athena/Environments/Landscape/Textures/T_Athena_Terrain_CombinedColors_01",
+    "Athena/Environments/Landscape/Textures/T_Athena_Terrain_Topo_Mask",
+]
+
 
 def ranged(start, size, url=ARCHIVE):
     if start < 0 or size <= 0 or size > 128 * 1024 * 1024:
@@ -94,7 +121,7 @@ def derive_footer():
         raise ValueError("invalid encrypted original PakInfo bounds")
     return offset, length, digest
 
-def run(destination, include_landscape, include_materials, key, sparse_pak=None):
+def run(destination, include_landscape, include_materials, key, sparse_pak=None, include_master_deps=False):
     idxoff, idxlen, expected = derive_footer()
     if idxlen > 64*1024*1024 or idxlen % 16:
         raise ValueError("unexpected index size or AES block alignment")
@@ -140,6 +167,12 @@ def run(destination, include_landscape, include_materials, key, sparse_pak=None)
                          "M_Athena_Terrain_01_NoAridRock", "M_Athena_Terrain_01_Masked"]:
             for extension in [".uasset", ".uexp"]:
                 suffixes.append(f"/Environments/Landscape/Material/{material}{extension}")
+    if include_master_deps:
+        if not include_materials:
+            raise ValueError("direct master dependencies require --with-terrain-materials")
+        for package in MASTER_DIRECT_GAME_PACKAGE_SUFFIXES:
+            for extension in (".uasset", ".uexp"):
+                suffixes.append("/" + package + extension)
     found = []
     for suffix in suffixes:
         matches = [(name, record) for name, record in entries.items() if name.endswith(suffix)]
@@ -181,9 +214,11 @@ if __name__ == "__main__":
                         help="fetch all six landscape sections, not just LS_00")
     parser.add_argument("--with-terrain-materials", action="store_true",
                         help="also download original Athena material and master asset source packages")
+    parser.add_argument("--with-master-direct-deps", action="store_true",
+                        help="fetch source-proven 24 master material direct package pairs")
     parser.add_argument("--sparse-pak", type=pathlib.Path,
                         help="CI only: assemble an authenticated sparse original-byte pak fixture")
     parser.add_argument("--aes-key", default=HISTORICAL_KEY,
                         help="AES key for an original 5.41 build; historical public key is default")
     args = parser.parse_args()
-    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"), args.sparse_pak)
+    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"), args.sparse_pak, args.with_master_direct_deps)
