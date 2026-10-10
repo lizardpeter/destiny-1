@@ -43,11 +43,26 @@ fn source_directory()->Result<PathBuf,String>{
         Path::new(env!("CARGO_MANIFEST_DIR")).join(relative),
         env::current_dir().unwrap_or_default().join(relative),
     ];
-    candidates.into_iter().find(|p|p.join(
+    if let Some(folder)=candidates.iter().find(|p|p.join(
         "FortniteGame/Content/Athena/Maps/Landscape/Athena_Terrain_LS_00.umap"
-    ).is_file()).ok_or_else(||format!(
-        "Fortnite Athena source heightfields not installed. From the Rust-test repo root run: python asset_import/importers/fortnite_541/tools/fetch_athena_541.py --all-landscape --with-terrain-materials ; or set RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT"
-    ))
+    ).is_file()) {
+        return Ok(folder.clone());
+    }
+    // Prefer an already-owned local Fortnite build over external tooling:
+    // native authenticated extraction happens once when a map is selected,
+    // never on the renderer/input/audio paths. Reuse the ignored work cache.
+    let local_pak=env::var_os("RUST_TEST_FORTNITE_541_PAK").map(PathBuf::from)
+        .or_else(||fortnite_541_importer::locate_source_root().map(|root|
+            root.join("FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak")
+        ));
+    if let Some(pak)=local_pak {
+        let target=Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        let result=fortnite_541_importer::extract::prepare_local_athena(&pak,&target)?;
+        println!("Fortnite 5.41: {} original SHA-1-verified landscape packages ready ({} extracted, {} bytes newly written) from {}",
+            result.verified_files,result.extracted_files,result.bytes_extracted,pak.display());
+        return Ok(target);
+    }
+    Err("Fortnite 5.41 Athena terrain requires source data. Set RUST_TEST_FORTNITE_541_PAK to your local pakchunk0-WindowsClient.pak for automatic native extraction, or run python asset_import/importers/fortnite_541/tools/fetch_athena_541.py --all-landscape --with-terrain-materials for original R2 packages.".into())
 }
 type TerrainCache=Mutex<Option<Arc<fortnite_541_importer::athena::AthenaTerrain>>>;
 fn terrain_cache()->&'static TerrainCache {
