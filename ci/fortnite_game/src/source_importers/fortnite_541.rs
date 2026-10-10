@@ -26,7 +26,9 @@ pub(super) fn generated_source_map(map_id:&str)->Result<GeneratedSourceMap,Strin
     let src=terrain.preview_spawn_source_xyz()?;
     // UE4 local Z up -> engine Y up. The spawn is lifted by standing eye
     // height, only for navigating this source diagnostic preview.
-    let spawn=[src[0],src[2]+1.8,-src[1]];
+    let authored_world=terrain.world_transform.world_meters(src);
+    let mut spawn=engine_point(authored_world);
+    spawn[1]+=1.8;
     Ok(GeneratedSourceMap{
         display_name:"Fortnite 5.41 — Athena (source terrain diagnostic)".to_owned(),
         spawns:vec![(spawn,0.0)],
@@ -85,7 +87,11 @@ fn source_terrain()->Result<Arc<fortnite_541_importer::athena::AthenaTerrain>,St
 fn engine_point(source:[f32;3])->[f32;3]{
     [source[0],source[2],-source[1]]
 }
-fn source_patch_normal(patch:&fortnite_541_importer::terrain::LocalTerrainPatch,x:usize,y:usize)->[f32;3]{
+fn source_patch_normal(
+    patch:&fortnite_541_importer::terrain::LocalTerrainPatch,
+    world:&fortnite_541_importer::landscape::LandscapeWorldTransform,
+    x:usize,y:usize
+)->[f32;3]{
     let n=patch.side()-1;
     let left=patch.vertices_source_xyz[y*patch.side()+x.saturating_sub(1)][2];
     let right=patch.vertices_source_xyz[y*patch.side()+(x+1).min(n)][2];
@@ -93,7 +99,12 @@ fn source_patch_normal(patch:&fortnite_541_importer::terrain::LocalTerrainPatch,
     let down=patch.vertices_source_xyz[(y+1).min(n)*patch.side()+x][2];
     let dx=(right-left)/((x+1).min(n)-x.saturating_sub(1)).max(1) as f32;
     let dy=(down-up)/((y+1).min(n)-y.saturating_sub(1)).max(1) as f32;
-    let v=[-dx,1.,dy];
+    // UE5/UE4 source height is unscaled relative to the actor root.
+    // The six authenticated 5.41 roots scale XY by 200.7874 and Z by 50;
+    // normals must use the same derivatives as the physical world mesh.
+    let sx=world.local_scale_cm[2]/world.local_scale_cm[0];
+    let sy=world.local_scale_cm[2]/world.local_scale_cm[1];
+    let v=[-dx*sx,1.,dy*sy];
     let len=(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]).sqrt().max(1e-8);
     [v[0]/len,v[1]/len,v[2]/len]
 }
@@ -132,8 +143,8 @@ fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<Ne
             let v=diagnostic_value(h,min,max);
             diagnostic_pixels.extend_from_slice(&[v,v,v,255]);
             vertices.push(NeutralVertex{
-                position:engine_point(source),
-                normal:source_patch_normal(patch,x,y),
+                position:engine_point(t.world_transform.world_meters(source)),
+                normal:source_patch_normal(patch,&t.world_transform,x,y),
                 tangent:[1.,0.,0.,1.],
                 uv:[x as f32/(side-1) as f32,y as f32/(side-1) as f32],
                 color:[1.;4],data:[0.;4],lightmap_uv:[0.;2],
@@ -182,8 +193,12 @@ fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<Ne
         });
     }
     scene.report.lines.push(format!(
-        "Athena source geometry: {} verified components, {} exact heightfield triangles; {} matching source seam samples",
+        "Athena source geometry: {} verified components, {} exact heightfield triangles; {} matching source seam samples", 
         scene.meshes.len(),collision_triangles,t.shared_height_samples
+    ));
+    scene.report.lines.push(format!(
+        "Original Athena landscape world transform verified across all six proxy roots: origin_cm={:?}, local_scale_cm={:?}, displayed in physical metres (Y-up).",
+        t.world_transform.grid_origin_cm,t.world_transform.local_scale_cm
     ));
     scene.report.lines.push(format!(
         "DIAGNOSTIC ONLY: height-derived grayscale, not source Fortnite albedo/normal/material shader. No original sky, sunlight, world props or authored player starts yet."
@@ -236,5 +251,19 @@ mod tests{
     }
     #[test] fn coordinates_convert_source_up_to_engine_up(){
         assert_eq!(engine_point([2.,3.,4.]),[2.,4.,-3.]);
+    }
+    #[test] fn source_landscape_normals_use_authored_xy_and_z_scale(){
+        let patch=fortnite_541_importer::terrain::LocalTerrainPatch{
+            section_base:[0,0],component_size_quads:1,
+            vertices_source_xyz:vec![[0.,0.,0.],[1.,0.,1.],[0.,1.,0.],[1.,1.,1.]],
+            height_samples:vec![32768;4],indices:vec![0,2,1,1,2,3],
+        };
+        let t=fortnite_541_importer::landscape::LandscapeWorldTransform{
+            grid_origin_cm:[0.;3],local_scale_cm:[200.7874,200.7874,50.],
+        };
+        let n=source_patch_normal(&patch,&t,0,0);
+        // Physical slope is 50/200.7874, NOT the old 100/100 = 1.
+        assert!((n[0]/n[1]+50./200.7874).abs()<0.0001);
+        assert!(n[1]>0.9 && n[2].abs()<0.001);
     }
 }
