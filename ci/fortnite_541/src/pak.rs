@@ -1,0 +1,316 @@
+//! Bounded, read-only UE4 PakFile index inspection. No archive content is executed
+//! or extracted. Index contents must match the footer's SHA-1 before admission.
+use sha1::{Digest, Sha1};
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
+};
+
+const MAGIC: u32 = 0x5A6F_12E1;
+const MAX_INDEX_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_ENTRIES: usize = 1_000_000;
+const MAX_STRING_UNITS: usize = 64 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PakFooter {
+    pub version: u32,
+    pub index_offset: u64,
+    pub index_size: u64,
+    pub index_hash: [u8; 20],
+    pub encrypted_index: bool,
+    pub encryption_key_guid: Option<[u8; 16]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PakEntry {
+    pub path: String,
+    pub offset: u64,
+    pub compressed_size: u64,
+    pub uncompressed_size: u64,
+    pub compression_method: u32,
+    pub encrypted: bool,
+    pub compression_block_size: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexStatus {
+    Encrypted,
+    UnsupportedVersion(u32),
+    Indexed { mount_point: String, entries: Vec<PakEntry> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PakReport {
+    pub footer: PakFooter,
+    pub status: IndexStatus,
+    pub file_size: u64,
+}
+
+/// Inspect one PakFile using only footer+index range reads. Encrypted indexes
+/// remain explicit barriers; this never guesses AES keys or data layouts.
+pub fn inspect(path: &Path) -> Result<PakReport, String> {
+    let mut file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let file_size = file.metadata().map_err(|e| format!("metadata {}: {e}", path.display()))?.len();
+    let footer = read_footer(&mut file, file_size)?;
+    if footer.encrypted_index {
+        return Ok(PakReport { footer, status: IndexStatus::Encrypted, file_size });
+    }
+    // Version 8+ changes compression method registration and eventually the
+    // structure of the index. Do not claim that older records decode it.
+    if footer.version > 7 {
+        let version = footer.version;
+        return Ok(PakReport { footer, status: IndexStatus::UnsupportedVersion(version), file_size });
+    }
+    if footer.index_size > MAX_INDEX_BYTES {
+        return Err(format!("pak index of {} bytes exceeds {} byte safety limit",
+            footer.index_size, MAX_INDEX_BYTES));
+    }
+    let len = usize::try_from(footer.index_size).map_err(|_| "pak index length too large")?;
+    let mut bytes = vec![0u8; len];
+    file.seek(SeekFrom::Start(footer.index_offset)).map_err(|e| format!("seek pak index: {e}"))?;
+    file.read_exact(&mut bytes).map_err(|e| format!("read pak index: {e}"))?;
+    let digest = Sha1::digest(&bytes);
+    if digest.as_slice() != footer.index_hash {
+        return Err("pak index SHA-1 mismatch (corrupt data, wrong footer, or encrypted index)".into());
+    }
+    let (mount_point, entries) = read_index(&bytes, &footer)?;
+    Ok(PakReport {
+        footer, status: IndexStatus::Indexed { mount_point, entries }, file_size,
+    })
+}
+
+fn read_footer(file: &mut File, size: u64) -> Result<PakFooter, String> {
+    // UE4 stores GUID and encrypted-index flag BEFORE Magic, but v8+ stores
+    // its fixed-width compression-method table AFTER IndexHash. Therefore the
+    // magic position must be version-specific, not assumed to be at the start
+    // of the footer, or immediately before EOF. We only decode flat v1-v7
+    // indexes; newer index formats remain explicitly unsupported.
+    // tuple: (serialized footer bytes, magic position, first version, last).
+    for &(length, magic_pos, low, high) in &[
+        (44u64, 0usize, 1u32, 3u32),
+        (45, 1, 4, 6),
+        (61, 17, 7, 7),
+        (189, 17, 8, 8), // UE4.22: 4 compression names
+        (221, 17, 8, 12), // UE4.23+: 5 names
+    ] {
+        if size < length { continue; }
+        let mut bytes = vec![0u8; length as usize];
+        file.seek(SeekFrom::Start(size - length))
+            .map_err(|e| format!("seek pak footer: {e}"))?;
+        file.read_exact(&mut bytes).map_err(|e| format!("read pak footer: {e}"))?;
+        let magic = &bytes[magic_pos..magic_pos + 44];
+        if u32::from_le_bytes(magic[0..4].try_into().unwrap()) != MAGIC { continue; }
+        let version = u32::from_le_bytes(magic[4..8].try_into().unwrap());
+        if !(low..=high).contains(&version) { continue; }
+        let index_offset = u64::from_le_bytes(magic[8..16].try_into().unwrap());
+        let index_size = u64::from_le_bytes(magic[16..24].try_into().unwrap());
+        let mut index_hash = [0u8; 20];
+        index_hash.copy_from_slice(&magic[24..44]);
+        let encrypted_index = version >= 4 && bytes[magic_pos - 1] != 0;
+        let encryption_key_guid = if version >= 7 {
+            let mut guid = [0u8; 16];
+            guid.copy_from_slice(&bytes[magic_pos - 17..magic_pos - 1]);
+            Some(guid)
+        } else { None };
+        let end = index_offset.checked_add(index_size)
+            .ok_or("pak index offset+length overflow")?;
+        if end > size - length {
+            return Err(format!("pak index range {index_offset}..{end} overlaps footer at {}",
+                size - length));
+        }
+        return Ok(PakFooter {
+            version, index_offset, index_size, index_hash,
+            encrypted_index, encryption_key_guid,
+        });
+    }
+    Err("no supported UE4 FPakInfo footer (magic/version/size) found".into())
+}
+
+struct Cursor<'a> { bytes: &'a [u8], pos: usize }
+impl<'a> Cursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self { Self { bytes, pos: 0 } }
+    fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
+        let end = self.pos.checked_add(n).ok_or("pak index cursor overflow")?;
+        let value = self.bytes.get(self.pos..end).ok_or("truncated pak index record")?;
+        self.pos = end;
+        Ok(value)
+    }
+    fn u8(&mut self) -> Result<u8, String> { Ok(self.take(1)?[0]) }
+    fn u32(&mut self) -> Result<u32, String> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+    fn i32(&mut self) -> Result<i32, String> {
+        Ok(i32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+    fn u64(&mut self) -> Result<u64, String> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
+    fn string(&mut self) -> Result<String, String> {
+        let count = self.i32()?;
+        if count == 0 { return Ok(String::new()); }
+        if count > 0 {
+            let len = usize::try_from(count).map_err(|_| "invalid ANSI FString length")?;
+            if len > MAX_STRING_UNITS { return Err("pak FString exceeds safety limit".into()); }
+            let bytes = self.take(len)?;
+            if bytes.last() != Some(&0) { return Err("pak FString is not NUL terminated".into()); }
+            return String::from_utf8(bytes[..len - 1].to_vec())
+                .map_err(|_| "pak ANSI FString is not UTF-8".into());
+        }
+        let len = usize::try_from(count.checked_neg().ok_or("invalid UTF-16 FString length")?)
+            .map_err(|_| "invalid UTF-16 FString length")?;
+        if len > MAX_STRING_UNITS { return Err("pak UTF-16 FString exceeds safety limit".into()); }
+        let bytes = self.take(len.checked_mul(2).ok_or("UTF-16 length overflow")?)?;
+        if &bytes[bytes.len() - 2..] != [0u8, 0u8] {
+            return Err("pak UTF-16 FString is not NUL terminated".into());
+        }
+        String::from_utf16(&bytes[..bytes.len() - 2].chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect::<Vec<_>>())
+            .map_err(|_| "invalid UTF-16 path in pak index".into())
+    }
+}
+
+fn read_index(data: &[u8], footer: &PakFooter) -> Result<(String, Vec<PakEntry>), String> {
+    let mut reader = Cursor::new(data);
+    let mount_point = reader.string()?;
+    let count = usize::try_from(reader.u32()?).map_err(|_| "pak entry count too large")?;
+    if count > MAX_ENTRIES || count > data.len() / 35 {
+        return Err(format!("implausible pak entry count: {count}"));
+    }
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let path = reader.string()?;
+        if path.is_empty() || path.starts_with('/') || path.starts_with('\\') ||
+            path.replace('\\', "/").split('/').any(|part| part == "..") {
+            return Err(format!("unsafe pak index entry path: {path:?}"));
+        }
+        let offset = reader.u64()?;
+        let compressed_size = reader.u64()?;
+        let uncompressed_size = reader.u64()?;
+        let compression_method = reader.u32()?;
+        if footer.version == 1 { reader.take(8)?; } // retired timestamp
+        reader.take(20)?; // source entry SHA-1; payload verification comes with extraction
+        if footer.version >= 3 {
+            if compression_method != 0 {
+                let blocks = usize::try_from(reader.u32()?).map_err(|_| "block count too large")?;
+                let block_bytes = blocks.checked_mul(16).ok_or("compression block count overflow")?;
+                reader.take(block_bytes)?;
+            }
+        }
+        let (encrypted, compression_block_size) = if footer.version >= 3 {
+            (reader.u8()? & 1 != 0, reader.u32()?)
+        } else { (false, 0) };
+        if offset > footer.index_offset ||
+            offset.checked_add(compressed_size).is_none_or(|end| end > footer.index_offset) {
+            return Err(format!("pak entry {path:?} has invalid source data range"));
+        }
+        entries.push(PakEntry {
+            path, offset, compressed_size, uncompressed_size,
+            compression_method, encrypted, compression_block_size,
+        });
+    }
+    if reader.pos != data.len() {
+        return Err(format!("pak index contains {} unexplained trailing bytes",
+            data.len() - reader.pos));
+    }
+    Ok((mount_point, entries))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, io::Write, sync::atomic::{AtomicU64, Ordering}};
+    static FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    fn fake_pak(version: u32, encrypted: bool) -> (std::path::PathBuf, Vec<u8>) {
+        let mut index = Vec::new();
+        index.extend_from_slice(&5i32.to_le_bytes());
+        index.extend_from_slice(b"Test\0");
+        index.extend_from_slice(&1u32.to_le_bytes());
+        index.extend_from_slice(&11i32.to_le_bytes());
+        index.extend_from_slice(b"Level.umap\0"); // ten bytes including NUL
+        index.extend_from_slice(&0u64.to_le_bytes()); // start of data
+        index.extend_from_slice(&0u64.to_le_bytes());
+        index.extend_from_slice(&0u64.to_le_bytes());
+        index.extend_from_slice(&0u32.to_le_bytes());
+        index.extend_from_slice(&[0u8; 20]);
+        index.push(0);
+        index.extend_from_slice(&0u32.to_le_bytes());
+        let hash = Sha1::digest(&index);
+        let mut bytes = vec![0x42; 64]; // data region before index
+        bytes.extend_from_slice(&index);
+        let mut footer = Vec::new();
+        if version >= 7 { footer.extend_from_slice(&[0; 16]); }
+        if version >= 4 { footer.push(u8::from(encrypted)); }
+        footer.extend_from_slice(&MAGIC.to_le_bytes());
+        footer.extend_from_slice(&version.to_le_bytes());
+        footer.extend_from_slice(&64u64.to_le_bytes());
+        footer.extend_from_slice(&(index.len() as u64).to_le_bytes());
+        footer.extend_from_slice(&hash);
+        if version >= 8 { footer.extend_from_slice(&[0; 160]); }
+        bytes.extend_from_slice(&footer);
+        let path = std::env::temp_dir().join(format!(
+            "fortnite_test_{}_{}_{}_{}.pak",
+            std::process::id(), version, encrypted,
+            FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed)));
+        fs::File::create(&path).unwrap().write_all(&bytes).unwrap();
+        (path, bytes)
+    }
+
+    #[test]
+    fn inspects_unencrypted_index_and_one_map() {
+        let (path, _) = fake_pak(5, false);
+        let result = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(result.footer.version, 5);
+        match result.status {
+            IndexStatus::Indexed { entries, .. } => assert_eq!(entries[0].path, "Level.umap"),
+            other => panic!("expected index: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn encrypted_index_is_reported_not_guessed() {
+        let (path, _) = fake_pak(5, true);
+        let result = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(result.status, IndexStatus::Encrypted);
+    }
+
+    #[test]
+    fn version_seven_guid_precedes_magic() {
+        let (path, _) = fake_pak(7, false);
+        let report = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(report.footer.version, 7);
+        assert!(report.footer.encryption_key_guid.is_some());
+        assert!(matches!(report.status, IndexStatus::Indexed { .. }));
+    }
+
+    #[test]
+    fn version_five_relative_offset_footer() {
+        let (path, _) = fake_pak(5, false);
+        let report = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(report.footer.version, 5);
+        assert_eq!(report.footer.index_offset, 64);
+        assert_eq!(report.footer.index_size, 81);
+    }
+
+    #[test]
+    fn unsupported_newer_index_is_not_misparsed() {
+        let (path, _) = fake_pak(8, false);
+        let report = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(report.status, IndexStatus::UnsupportedVersion(8));
+    }
+
+    #[test]
+    fn corrupt_index_is_rejected() {
+        let (path, mut bytes) = fake_pak(5, false);
+        bytes[66] ^= 1;
+        fs::write(&path, bytes).unwrap();
+        assert!(inspect(&path).unwrap_err().contains("SHA-1 mismatch"));
+        fs::remove_file(&path).unwrap();
+    }
+}
