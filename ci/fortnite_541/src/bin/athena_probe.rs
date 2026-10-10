@@ -115,6 +115,18 @@ fn run() -> Result<(), String> {
                 println!("EXPORT_SAMPLE {name} class={class_name} object={} offset={} bytes={} first_property={first_property} head={first}",
                     catalog.names.get(export.object_name.name_index as usize).map_or("?", String::as_str),
                     export.serialized_offset, bytes.len());
+                match fortnite_541_importer::properties::scan(&catalog, bytes) {
+                    Ok(properties) => {
+                        let preview = properties.fields.iter().take(16)
+                            .map(|f| format!("{}:{}:{}:{:?}",f.name,f.kind,f.payload.len(),f.metadata))
+                            .collect::<Vec<_>>();
+                        println!("PROPERTY_SCAN {class_name} properties={} stopped_at={} previews={preview:?}",
+                            properties.fields.len(), properties.bytes_consumed);
+                    }
+                    Err(error) => {
+                        println!("PROPERTY_UNPROVEN {class_name}: {error}");
+                    }
+                }
             }
         }
         let mut sorted = classes.into_iter().collect::<Vec<_>>();
