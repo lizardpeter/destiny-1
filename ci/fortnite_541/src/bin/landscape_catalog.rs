@@ -29,10 +29,34 @@ fn run() -> Result<(), String> {
         let external_bulk=fs::read(base.with_extension("ubulk"))
             .map_err(|e| format!("read original LS_{section:02} UBULK: {e}"))?;
         let mut section_top_mips=0usize;
+        for (index, actor) in catalog.exports.iter().enumerate() {
+            if catalog.export_class_name(actor)!=Some("LandscapeStreamingProxy") {continue;}
+            let raw=catalog.export_data(&package_file,&companion,actor)?;
+            let properties=fortnite_541_importer::properties::scan(&catalog,raw)?;
+            let metadata=properties.fields.iter().map(|prop| {
+                let value=&raw[prop.payload.clone()];
+                let sample=value.iter().take(32).map(|b| format!("{b:02x}")).collect::<String>();
+                format!("{}:{}({})={sample}",prop.name,prop.kind,value.len())
+            }).collect::<Vec<_>>();
+            println!("LANDSCAPE_PROXY LS_{section:02} export={} property_names_and_values={metadata:?}",index+1);
+        }
         let mut landscape_objects=0usize;
         for export in &catalog.exports {
             if catalog.export_class_name(export) != Some("LandscapeComponent") {continue;}
             let bytes=catalog.export_data(&package_file,&companion,export)?;
+            if let Ok(props)=fortnite_541_importer::properties::scan(&catalog,bytes) {
+                for prop in &props.fields {
+                    if matches!(prop.name.as_str(),"RelativeLocation"|"RelativeScale3D"|"RelativeRotation") {
+                        let raw=&bytes[prop.payload.clone()];
+                        if raw.len()==12 {
+                            let xyz=(0..3).map(|i| f32::from_le_bytes(raw[4*i..4*i+4].try_into().unwrap())).collect::<Vec<_>>();
+                            println!("LANDSCAPE_COMPONENT_TRANSFORM LS_{section:02} object={} property={} kind={} source_f32={:?}",
+                                catalog.names.get(export.object_name.name_index as usize).map_or("?",String::as_str),
+                                prop.name,prop.kind,xyz);
+                        }
+                    }
+                }
+            }
             let component=match landscape::inspect(&catalog, bytes) {
                 Ok(component) => component,
                 Err(error) => {
