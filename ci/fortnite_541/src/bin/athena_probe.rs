@@ -105,7 +105,14 @@ fn run() -> Result<(), String> {
                     use std::fmt::Write;
                     let _ = write!(&mut first, "{byte:02x}");
                 }
-                println!("EXPORT_SAMPLE {name} class={class_name} object={} offset={} bytes={} head={first}",
+                let first_property = if bytes.len() >= 24 {
+                    let get = |off: usize| u32::from_le_bytes(bytes[off..off+4].try_into().unwrap()) as usize;
+                    let prop_name = catalog.names.get(get(0)).map(String::as_str).unwrap_or("<invalid>");
+                    let prop_type = catalog.names.get(get(8)).map(String::as_str).unwrap_or("<invalid>");
+                    let prop_size = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
+                    format!("{prop_name}:{prop_type} size={prop_size}")
+                } else { "<not enough data>".to_owned() };
+                println!("EXPORT_SAMPLE {name} class={class_name} object={} offset={} bytes={} first_property={first_property} head={first}",
                     catalog.names.get(export.object_name.name_index as usize).map_or("?", String::as_str),
                     export.serialized_offset, bytes.len());
             }
