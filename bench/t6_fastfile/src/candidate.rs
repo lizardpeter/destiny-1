@@ -478,7 +478,7 @@ mod tests {
                 let original = salsa20_xor(&ciphertext, &FASTFILE_KEY, &nonce);
                 assert_eq!(buffer, original, "length={len} seed={seed}");
                 let encoded = buffer.clone();
-                salsa20_xor_into(&encoded, &base, &nonce, &mut buffer);
+                salsa20_xor_into(&encoded, &FASTFILE_KEY, &nonce, &mut buffer);
                 assert_eq!(buffer, ciphertext, "Salsa20 involution length={len} seed={seed}");
             }
         }
