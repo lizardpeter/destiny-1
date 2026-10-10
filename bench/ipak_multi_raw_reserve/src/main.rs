@@ -28,14 +28,14 @@ fn decode(encoded:&[u8], optimized:bool, expected_crc:u32)->Result<Vec<u8>,&'sta
     let word=u32::from_le_bytes(encoded[..4].try_into().unwrap());
     let count=(word>>24) as usize;
     if count>MAX_COMMANDS{return Err("too many commands")}
-    if word&MASK !=0 {return Err("offset mismatch")}
+    if word&0x00ff_ffff !=0 {return Err("offset mismatch")}
     let mut commands=[(0usize,0u8);MAX_COMMANDS];
     let mut total=0usize;
     let mut raw_bytes=0usize;
     let mut has_lzo=false;
     for (i,slot) in commands.iter_mut().enumerate().take(count){
         let word=u32::from_le_bytes(encoded[4+i*4..8+i*4].try_into().unwrap());
-        let len=(word&MASK)as usize;
+        let len=(word&0x00ff_ffff)as usize;
         let kind=(word>>24)as u8;
         total=total.checked_add(len).ok_or("overflow")?;
         if kind==RAW {raw_bytes+=len}
