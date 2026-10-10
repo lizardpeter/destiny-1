@@ -31,6 +31,8 @@ jobs:
         run: cargo check --manifest-path ci/fortnite_541/Cargo.toml --all-targets
       - name: Fetch all six original Athena landscape sections (source SHA-1 verified)
         run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --destination /tmp/fortnite541/athena/source --sparse-pak /tmp/fortnite541/original-main.pak
+      - name: Audit authentic Athena weightmaps and landscape actor roots
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_surface_probe -- /tmp/fortnite541/athena/source
       - name: Decode and assemble real in-game terrain source
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --bin athena_runtime_smoke -- /tmp/fortnite541/athena/source
       - name: Compile full game-side Fortnite NeutralScene adapter using source-neutral engine crate
