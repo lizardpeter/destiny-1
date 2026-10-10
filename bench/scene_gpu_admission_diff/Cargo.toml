@@ -1,0 +1,10 @@
+[package]
+name="scene-fence-admission-diff"
+version="0.1.0"
+edition="2021"
+[dependencies]
+bytemuck="1.23"
+[profile.release]
+opt-level=3
+lto="fat"
+codegen-units=1
