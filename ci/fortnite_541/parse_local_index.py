@@ -28,6 +28,7 @@ print("MOUNT",repr(mount),"ENTRY_COUNT",total,flush=True)
 if total>1000000:raise ValueError("implausible entry count")
 maps=[]
 bulks=[]
+material_candidates=[]
 targets=[]
 methods=collections.Counter()
 enc=0
@@ -48,6 +49,7 @@ for j in range(total):
  if off>len(b):raise ValueError("overrun")
  methods[method]+=1
  if name.lower().endswith(".umap"):maps.append(name)
+ if "M_Athena_Terrain_01" in name or "Athena_Terrain_Master" in name: material_candidates.append((name,offset,size,uncompressed,method,encrypted))
  if name.lower().endswith((".ubulk",".uptnl")): bulks.append((name,offset,size,uncompressed,method,encrypted))
  if any(t in name.lower() for t in ('athena_terrain.umap', 'athena_terrain.uexp', 'athena_terrain_ls_00.umap', 'athena_terrain_ls_00.uexp', 'sublevel_x0y0.umap', 'sublevel_x0y0.uexp', 'athena_background.umap', 'athena_background.uexp')):
   targets.append((name,offset,size,uncompressed,method,encrypted,block_size))
@@ -60,3 +62,5 @@ print("BULK_COUNT",len(bulks),"ATHENA_LANDSCAPE_BULK",repr([v for v in bulks if 
 
 for target in targets:
  print('TARGET_ENTRY',repr(target),flush=True)
+
+print("ORIGINAL_LANDSCAPE_MATERIAL_PACKAGES",repr(material_candidates[:60]),flush=True)
