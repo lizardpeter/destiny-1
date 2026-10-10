@@ -1,0 +1,43 @@
+name: T6 FastFile audit-free decode A-B
+on:
+  push:
+    branches: [bench/t6-fastfile-no-audit-20261009]
+    paths:
+      - 'bench/t6_backend/**'
+      - 'bench/t6_fastfile/src/candidate.rs'
+      - '.github/workflows/t6-fastfile-no-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Exact-output tests, native release compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RUSTFLAGS="-C target-cpu=native"
+          export CARGO_PROFILE_RELEASE_LTO=fat
+          export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+          cargo test --release --manifest-path bench/t6_backend/zlibrs/Cargo.toml
+          cargo build --release --manifest-path bench/t6_backend/zlibrs/Cargo.toml
+      - name: 11 paired alternating runs, identical encrypted records
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="./bench/t6_backend/zlibrs/target/release/t6-ff-zlibrs.exe"
+          mkdir -p bench/t6_backend/results
+          "$BIN" --generate bench/t6_backend/results
+          for i in $(seq 1 11); do
+            if (( i % 2 )); then
+              "$BIN" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\taudited/"
+              "$BIN" --bench-no-audit bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tauditless/"
+            else
+              "$BIN" --bench-no-audit bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tauditless/"
+              "$BIN" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\taudited/"
+            fi
+          done
