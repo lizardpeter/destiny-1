@@ -126,6 +126,12 @@ impl NativeRenderSettings {
         {
             return Err(format!("native render settings for '{map_id}' contain non-finite values"));
         }
+        if self.shadow_distance <= 0.0 {
+            return Err(format!(
+                "native render settings for '{map_id}' require shadow_distance > 0 (received {})",
+                self.shadow_distance
+            ));
+        }
         if self.fog_color.iter().chain(self.ibl_color.iter()).any(|value| *value < 0.0)
             || self.fog_density < 0.0
             || self.fog_height_falloff < 0.0
@@ -184,5 +190,25 @@ mod tests {
         assert!(settings.exposure_multiplier().is_finite());
         assert!(settings.shadow_map_size.is_power_of_two());
         assert!(settings.shadow_map_size >= 512);
+    }
+
+    #[test]
+    fn missing_sun_does_not_allow_zero_shadow_distance_hint() {
+        let map_id = "fortnite_541_athena_terrain_preview";
+        let invalid = NativeRenderSettings {
+            shadow_distance: 0.0,
+            ..NativeRenderSettings::default()
+        };
+        let error = invalid.validate(map_id).unwrap_err();
+        assert!(error.contains("shadow_distance > 0"), "{error}");
+
+        // The scene may have no recovered source sun/shadow records, but the
+        // shared Vulkan settings contract still requires a positive range.
+        // 120 metres is the regular engine default, not a new light source.
+        let valid = NativeRenderSettings {
+            shadow_distance: 120.0,
+            ..NativeRenderSettings::default()
+        };
+        assert!(valid.validate(map_id).is_ok());
     }
 }
