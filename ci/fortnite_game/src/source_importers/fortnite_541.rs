@@ -114,6 +114,65 @@ fn diagnostic_value(h:u16,min:u16,max:u16)->u8{
     let span=(max as u32).saturating_sub(min as u32).max(1);
     (64+((h as u32-min as u32)*191/span)).min(255) as u8
 }
+/// Convert source-authenticated UE4 BC1/BC3 top mip bytes into an actual
+/// source-neutral texture asset. Do not assign this to a terrain material
+/// until its ORIGINAL TextureSample UV/sampler/material-function binding is
+/// reconstructed; otherwise the engine would display falsely colored land.
+///
+/// This runs only when invoked for material admission, not per frame or on
+/// input/camera submission. The generic renderer can upload original BC data
+/// without recompression or a Fortnite-specific Vulkan shader.
+pub(super) fn source_original_terrain_bc_texture(
+    root:&Path,
+    source_name:&str,
+)->Result<NeutralTexture,String>{
+    let source_path=match source_name {
+        "T_Athena_Terrain_CombinedColors_01"=>
+            "Athena/Environments/Landscape/Textures/T_Athena_Terrain_CombinedColors_01",
+        "T_Athena_Terrain_Topo_Mask"=>
+            "Athena/Environments/Landscape/Textures/T_Athena_Terrain_Topo_Mask",
+        _=>return Err(format!("unresolved original Athena texture identity {source_name}")),
+    };
+    let base=root.join("FortniteGame/Content").join(source_path);
+    let source_package=std::fs::read(base.with_extension("uasset"))
+        .map_err(|e|format!("original Athena {source_name}.uasset: {e}"))?;
+    let source_export=std::fs::read(base.with_extension("uexp"))
+        .map_err(|e|format!("original Athena {source_name}.uexp: {e}"))?;
+    let source_bulk=std::fs::read(base.with_extension("ubulk"))
+        .map_err(|e|format!("original Athena {source_name}.ubulk: {e}"))?;
+    let catalog=fortnite_541_importer::uobject::inspect(&source_package)?;
+    let source_textures=catalog.exports.iter().filter(|export|
+        catalog.export_class_name(export)==Some("Texture2D")).collect::<Vec<_>>();
+    if source_textures.len()!=1 {
+        return Err(format!("expected one authenticated Texture2D export in {source_name}, got {}",source_textures.len()));
+    }
+    let mip=fortnite_541_importer::texture::first_mip_bc(
+        &catalog,&source_package,&source_export,&source_bulk,source_textures[0],
+    )?;
+    let (kind,format)=match mip.format{
+        fortnite_541_importer::texture::OriginalBcFormat::Bc1=>
+            (neutral_scene::BcKind::Bc1,neutral_scene::NeutralBlockFormat::Bc1),
+        fortnite_541_importer::texture::OriginalBcFormat::Bc3=>
+            (neutral_scene::BcKind::Bc3,neutral_scene::NeutralBlockFormat::Bc3),
+    };
+    let rgba=neutral_scene::decode_bc(mip.blocks,mip.width,mip.height,kind)
+        .ok_or("original Fortnite BC texel decoding rejected authenticated mip")?;
+    if rgba.len()!=mip.width as usize*mip.height as usize*4 {
+        return Err(format!("original {source_name} BC texel count mismatch"));
+    }
+    Ok(NeutralTexture{
+        name:format!("FORTNITE_541_ORIGINAL_{source_name}_TOP_MIP"),
+        width:mip.width,height:mip.height,rgba,
+        mips:Vec::new(),
+        compressed:Some(neutral_scene::NeutralCompressedTexture{
+            format,
+            levels:vec![neutral_scene::NeutralCompressedLevel {
+                width:mip.width,height:mip.height,blocks:mip.blocks.to_vec(),
+            }],
+        }),
+    })
+}
+
 fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<NeutralScene,String>{
     let min=t.patches.iter().flat_map(|p|p.height_samples.iter().copied())
         .min().ok_or("Athena source contains no terrain samples")?;
