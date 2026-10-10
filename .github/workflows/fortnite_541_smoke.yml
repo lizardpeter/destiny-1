@@ -30,7 +30,9 @@ jobs:
       - name: Check isolated binary
         run: cargo check --manifest-path ci/fortnite_541/Cargo.toml --all-targets
       - name: Fetch all six original Athena landscape sections (source SHA-1 verified)
-        run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --destination /tmp/fortnite541/athena/source --sparse-pak /tmp/fortnite541/original-main.pak
+        run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --with-terrain-materials --destination /tmp/fortnite541/athena/source --sparse-pak /tmp/fortnite541/original-main.pak
+      - name: Enumerate source master-material function packages in verified original PAK
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_material_dependencies -- /tmp/fortnite541/athena/source /tmp/fortnite541/original-main.pak
       - name: Audit authentic Athena weightmaps and landscape actor roots
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_surface_probe -- /tmp/fortnite541/athena/source
       - name: Decode and assemble real in-game terrain source
