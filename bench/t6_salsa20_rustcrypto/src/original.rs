@@ -1,6 +1,6 @@
 const FASTFILE_KEY: [u8;32] = [0;32];
 const SALSA_SIGMA: [u8;16] = *b"expand 32-byte k";
-fn salsa20_key_state(key: &[u8; 32]) -> [u32; 16] {
+pub fn salsa20_key_state(key: &[u8; 32]) -> [u32; 16] {
     let k = words8(key);
     let c = words4(&SALSA_SIGMA);
     [
@@ -12,7 +12,7 @@ fn salsa20_key_state(key: &[u8; 32]) -> [u32; 16] {
 /// Decrypt directly into a retained per-stream scratch buffer, avoiding one
 /// Vec allocation for each encrypted FastFile record. The stream uses Salsa20
 /// counter zero at the start of every record, matching the original decoder.
-fn salsa20_xor_into(
+pub fn salsa20_xor_into(
     ciphertext: &[u8],
     base_state: &[u32; 16],
     nonce: &[u8; 8],
