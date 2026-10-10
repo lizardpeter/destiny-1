@@ -13,6 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Run exact optimized source unit tests
+        shell: bash
+        run: |
+          rustc --edition=2021 --test bench/smg_j3d_hermite/optimized.rs -o j3d-anim-tests
+          ./j3d-anim-tests
       - name: Compile exact J3D source A/B
         shell: bash
         run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_j3d_hermite/main.rs -o hermite-bench
