@@ -1,0 +1,26 @@
+name: BO2 exact lightgrid RLE run index benchmark
+on:
+  push:
+    branches: [bench/t6-lightgrid-run-search-20261009]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile source-level runtime tests
+        shell: bash
+        run: |
+          rustc --edition=2021 --test bench/t6_lightgrid_run/optimized.rs -o t6-grid-tests
+          ./t6-grid-tests
+      - name: Compile source-exact RLE lookup benchmark
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/t6_lightgrid_run/main.rs -o t6-grid-bench
+      - name: Run A/B source parity and performance
+        shell: bash
+        run: ./t6-grid-bench
