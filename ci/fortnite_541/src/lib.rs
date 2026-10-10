@@ -4,6 +4,7 @@
 //! collision, materials, world spawns or map-readiness from filenames.
 pub mod pak;
 pub mod uobject;
+pub mod properties;
 
 use std::{
     collections::BTreeSet,
