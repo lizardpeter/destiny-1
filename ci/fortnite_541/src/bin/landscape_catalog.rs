@@ -2,7 +2,7 @@
 //! original Fortnite 5.41 landscape sublevel packages.
 //! No mesh generation or engine-specific rendering behavior.
 use std::{collections::{BTreeMap,BTreeSet}, env, fs, path::PathBuf, process::ExitCode};
-use fortnite_541_importer::{landscape, uobject};
+use fortnite_541_importer::{landscape, texture, uobject};
 
 fn run() -> Result<(), String> {
     let root = env::args_os().nth(1).map(PathBuf::from)
@@ -11,6 +11,9 @@ fn run() -> Result<(), String> {
     let mut all_textures=BTreeMap::<String,usize>::new();
     let mut occupied=BTreeSet::<(i32,i32)>::new();
     let mut omitted_grid_components=0usize;
+    let mut height_min=u16::MAX;
+    let mut height_max=u16::MIN;
+    let mut decoded_height_texels=0usize;
     let mut min=[i32::MAX;2];
     let mut max=[i32::MIN;2];
     for section in 0..6 {
@@ -20,6 +23,9 @@ fn run() -> Result<(), String> {
         let companion=fs::read(base.with_extension("uexp"))
             .map_err(|e| format!("read source LS_{section:02} UEXP: {e}"))?;
         let catalog=uobject::inspect(&package_file)?;
+        let external_bulk=fs::read(base.with_extension("ubulk"))
+            .map_err(|e| format!("read original LS_{section:02} UBULK: {e}"))?;
+        let mut section_top_mips=0usize;
         let mut landscape_objects=0usize;
         for export in &catalog.exports {
             if catalog.export_class_name(export) != Some("LandscapeComponent") {continue;}
@@ -38,6 +44,23 @@ fn run() -> Result<(), String> {
                     continue;
                 }
             };
+            let ref_id=usize::try_from(component.heightmap_texture_ref.checked_sub(1)
+                .ok_or("heightmap reference is zero or negative")?)
+                .map_err(|_| "heightmap is an unresolved source import")?;
+            let tex_export=catalog.exports.get(ref_id).ok_or("source heightmap export out of range")?;
+            let mip=texture::first_mip_bgra8(
+                &catalog,&package_file,&companion,&external_bulk,tex_export
+            )?;
+            for pixel in mip.bgra8.chunks_exact(4) {
+                let h=((pixel[2] as u16)<<8)|pixel[1] as u16;
+                height_min=height_min.min(h);
+                height_max=height_max.max(h);
+                decoded_height_texels+=1;
+            }
+            section_top_mips+=1;
+            println!("HEIGHTMAP_SOURCE LS_{section:02} component_base={:?} ref={} dimensions={}x{} bulk_offset={} height0={} height_end={}",
+                component.section_base,component.heightmap_texture_ref,mip.width,mip.height,
+                mip.source_bulk_offset,mip.height_u16(0,0)?,mip.height_u16(mip.width-1,mip.height-1)?);
             total_components+=1;
             landscape_objects+=1;
             if component.section_base_serialized.iter().any(|stored| !stored) {
@@ -88,11 +111,11 @@ fn run() -> Result<(), String> {
         if landscape_objects==0 {
             return Err(format!("source LS_{section:02} contains no LandscapeComponent objects"));
         }
-        println!("SECTION LS_{section:02} source_landscape_components={landscape_objects}");
+        println!("SECTION LS_{section:02} source_landscape_components={landscape_objects} verified_first_mips={section_top_mips} original_ubulk_bytes={}",external_bulk.len());
     }
     println!("FORTNITE_541_LANDSCAPE_SOURCE_COMPONENTS={total_components} range_x={}..{} range_y={}..{} heightmaps={:?}",
         min[0],max[0],min[1],max[1],all_textures);
-    println!("LANDSCAPE_GRID_COVERAGE decoded={total_components} unique_positions={} omitted_zero_default_fields={omitted_grid_components}",occupied.len());
+    println!("LANDSCAPE_GRID_COVERAGE decoded={total_components} unique_positions={} omitted_zero_default_fields={omitted_grid_components} first_mip_texels={decoded_height_texels} raw_height_min={height_min} raw_height_max={height_max}",occupied.len());
     Ok(())
 }
 fn main() -> ExitCode {
