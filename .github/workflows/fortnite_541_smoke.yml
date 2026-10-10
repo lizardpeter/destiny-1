@@ -7,6 +7,10 @@ on:
     paths:
       - 'ci/fortnite_541/**'
       - '.github/workflows/fortnite_541_smoke.yml'
+  pull_request:
+    paths:
+      - 'ci/fortnite_541/**'
+      - '.github/workflows/fortnite_541_smoke.yml'
   workflow_dispatch:
 
 permissions:
