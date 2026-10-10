@@ -1,0 +1,53 @@
+name: Probe Fortnite 5.41 R2 public source
+
+on:
+  push:
+    branches:
+      - ci/fortnite-541-parser-smoke-20261010
+    paths:
+      - '.github/workflows/fortnite_r2_probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check public endpoint status, inventory and likely cooked files
+        shell: bash
+        run: |
+          set -u
+          base='https://r2.houseofkublai.com'
+          paths=(
+            'bo2/zone/all/mp_nuketown_2020.ff'
+            'Fortnite/5.41/'
+            'Fortnite/5.41/Engine/'
+            'Fortnite/5.41/FortniteGame/'
+            'Fortnite/5.41/all.txt'
+            'Fortnite/5.41/files.txt'
+            'Fortnite/5.41/filelist.txt'
+            'Fortnite/5.41/index.json'
+            'Fortnite/5.41/manifest.json'
+            'Fortnite/5.41/FortniteGame/Config/DefaultEngine.ini'
+            'Fortnite/5.41/Engine/Config/BaseEngine.ini'
+            'Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak'
+            'Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0-WindowsNoEditor.pak'
+            'Fortnite/5.41/FortniteGame/Content/Athena/Maps/Athena_Terrain.umap'
+            'Fortnite/5.41/FortniteGame/Binaries/Win64/FortniteClient-Win64-Shipping.exe'
+          )
+          for p in "${paths[@]}"; do
+            echo "-- $p"
+            curl --silent --show-error --location --connect-timeout 6 --max-time 12 \
+              --range 0-0 --output /dev/null \
+              --write-out 'status=%{http_code} content_type=%{content_type} size=%{size_download} effective=%{url_effective}\\n' \
+              "$base/$p" || :
+          done
+          for query in '?list-type=2&prefix=Fortnite%2F5.41%2F&max-keys=2' '?prefix=Fortnite%2F5.41%2F'; do
+            echo "-- root query $query"
+            curl --silent --show-error --location --connect-timeout 6 --max-time 12 --max-filesize 4000 \
+              --output /tmp/list_probe --write-out 'status=%{http_code} content_type=%{content_type} size=%{size_download}\\n' "$base/$query" || :
+            head -c 240 /tmp/list_probe 2>/dev/null | tr '\n' ' '; echo
+          done
