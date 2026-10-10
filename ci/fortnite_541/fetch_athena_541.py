@@ -121,7 +121,7 @@ def derive_footer():
         raise ValueError("invalid encrypted original PakInfo bounds")
     return offset, length, digest
 
-def run(destination, include_landscape, include_materials, key, sparse_pak=None, include_master_deps=False):
+def run(destination, include_landscape, include_materials, key, sparse_pak=None, include_master_deps=False, include_light_sources=False):
     idxoff, idxlen, expected = derive_footer()
     if idxlen > 64*1024*1024 or idxlen % 16:
         raise ValueError("unexpected index size or AES block alignment")
@@ -176,6 +176,22 @@ def run(destination, include_landscape, include_materials, key, sparse_pak=None,
             bulk_suffix="/" + package + ".ubulk"
             if any(p.endswith(bulk_suffix) for p in entries):
                 suffixes.append(bulk_suffix)
+    if include_light_sources:
+        original_source_packages = (
+            "/TimeOfDay/TODM/BR/TODM_BR",
+            "/Environments/World/Backgrounds/Transylvania/Meshes/TRV_Skybox_Mountain_04",
+            "/Maps/Athena_Streaming_Grid",
+        )
+        for pkg in original_source_packages:
+            for ext in ((".umap", ".uexp") if pkg.startswith("/Maps/") else (".uasset", ".uexp")):
+                suffix = pkg + ext
+                if any(p.endswith(suffix) for p in entries):
+                    suffixes.append(suffix)
+                else:
+                    print(f"ORIGINAL_LIGHTING_SOURCE_NOT_IN_MAIN_PAK {suffix}")
+            bulk_suffix = pkg + ".ubulk"
+            if any(p.endswith(bulk_suffix) for p in entries):
+                suffixes.append(bulk_suffix)
     found = []
     for suffix in suffixes:
         matches = [(name, record) for name, record in entries.items() if name.endswith(suffix)]
@@ -217,6 +233,8 @@ if __name__ == "__main__":
                         help="fetch all six landscape sections, not just LS_00")
     parser.add_argument("--with-terrain-materials", action="store_true",
                         help="also download original Athena material and master asset source packages")
+    parser.add_argument("--with-world-lighting", action="store_true",
+                        help="locate original Fortnite TODM_BR, skybox mountain mesh and streamed grid")
     parser.add_argument("--with-master-direct-deps", action="store_true",
                         help="fetch source-proven 24 master material direct package pairs")
     parser.add_argument("--sparse-pak", type=pathlib.Path,
@@ -224,4 +242,4 @@ if __name__ == "__main__":
     parser.add_argument("--aes-key", default=HISTORICAL_KEY,
                         help="AES key for an original 5.41 build; historical public key is default")
     args = parser.parse_args()
-    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"), args.sparse_pak, args.with_master_direct_deps)
+    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"), args.sparse_pak, args.with_master_direct_deps, args.with_world_lighting)
