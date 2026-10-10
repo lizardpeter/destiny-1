@@ -386,7 +386,8 @@ mod tests {
 
     #[test]
     fn malformed_utf16_length_fails_closed() {
-        let mut input = Cursor::new(&i32::MIN.to_le_bytes());
+        let bytes = i32::MIN.to_le_bytes();
+        let mut input = Cursor::new(&bytes);
         assert!(input.string().is_err());
     }
 
