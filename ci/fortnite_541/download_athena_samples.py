@@ -13,7 +13,7 @@ index_offset=4805651429
 sparse=Path('/tmp/fortnite541-pak0-sparse.pak')
 with sparse.open('wb') as f:
  f.seek(pak_size-1)
- f.write(b'\\0')
+ f.write(bytes([0]))
 encrypted_index=Path('/tmp/fortnite541-pak0-index.enc').read_bytes()
 with sparse.open('r+b') as f:
  f.seek(index_offset)
