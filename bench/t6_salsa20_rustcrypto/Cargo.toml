@@ -1,0 +1,10 @@
+[package]
+name = "salsa20-ipak-compare"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+salsa20 = "0.10"
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
