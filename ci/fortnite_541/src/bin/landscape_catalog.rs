@@ -1,7 +1,7 @@
 //! Strict source-backed Athena landscape placement census across all six
 //! original Fortnite 5.41 landscape sublevel packages.
 //! No mesh generation or engine-specific rendering behavior.
-use std::{collections::BTreeMap, env, fs, path::PathBuf, process::ExitCode};
+use std::{collections::{BTreeMap,BTreeSet}, env, fs, path::PathBuf, process::ExitCode};
 use fortnite_541_importer::{landscape, uobject};
 
 fn run() -> Result<(), String> {
@@ -9,6 +9,8 @@ fn run() -> Result<(), String> {
         .ok_or("usage: landscape_catalog PATH_TO_ATHENA_SOURCE_ROOT")?;
     let mut total_components=0usize;
     let mut all_textures=BTreeMap::<String,usize>::new();
+    let mut occupied=BTreeSet::<(i32,i32)>::new();
+    let mut omitted_grid_components=0usize;
     let mut min=[i32::MAX;2];
     let mut max=[i32::MIN;2];
     for section in 0..6 {
@@ -38,12 +40,18 @@ fn run() -> Result<(), String> {
             };
             total_components+=1;
             landscape_objects+=1;
+            if component.section_base_serialized.iter().any(|stored| !stored) {
+                omitted_grid_components+=1;
+            }
+            if !occupied.insert((component.section_base[0],component.section_base[1])) {
+                return Err(format!("duplicate source landscape grid position {:?}",component.section_base));
+            }
             for axis in 0..2 {
                 min[axis]=min[axis].min(component.section_base[axis]);
                 max[axis]=max[axis].max(component.section_base[axis]+component.component_size_quads as i32);
             }
             if let Some(name)=&component.heightmap_texture_name {
-                *all_textures.entry(name.clone()).or_insert(0)+=1;
+                *all_textures.entry(format!("LS_{section:02} {name} ref={}",component.heightmap_texture_ref)).or_insert(0)+=1;
             } else {
                 return Err(format!("source LS_{section:02} has unresolved heightmap texture index {}",
                     component.heightmap_texture_ref));
@@ -84,6 +92,7 @@ fn run() -> Result<(), String> {
     }
     println!("FORTNITE_541_LANDSCAPE_SOURCE_COMPONENTS={total_components} range_x={}..{} range_y={}..{} heightmaps={:?}",
         min[0],max[0],min[1],max[1],all_textures);
+    println!("LANDSCAPE_GRID_COVERAGE decoded={total_components} unique_positions={} omitted_zero_default_fields={omitted_grid_components}",occupied.len());
     Ok(())
 }
 fn main() -> ExitCode {
