@@ -30,3 +30,26 @@ The initial unconditional binary-search experiment demonstrated
 regressions on early frames. The adaptive method was chosen only
 after that failure and source parity checking; a separate runner
 repeat is triggered by this note.
+
+## First adaptive, cold-helper source run
+
+The candidate keeps binary lookup in a separate `#[inline(never)]`
+helper so the original linear sampler remains the hot early-frame
+fallthrough. Both platforms passed 11 source-module tests and bitwise
+output comparisons:
+https://github.com/lizardpeter/destiny-1/actions/runs/38017144548
+
+Warm synthetic interpolation ratios (old duration divided by new):
+
+- 128-key full-range frames: Windows 2.05×; Linux 1.74×.
+- 128-key terminal frames: Windows 5.50×; Linux 3.97×.
+- 512-key full-range frames: Windows 5.88×; Linux 4.06×.
+- 512-key terminal frames: Windows 17.68×; Linux 11.25×.
+- 128-key early frames: Windows 0.94×; Linux 0.97×.
+- 512-key early frames: Windows 0.93×; Linux 0.99×.
+
+Thus even the adaptive implementation has a small **Windows
+early-frame regression**. The benefit is confined to late/distributed
+sampling on long curves; real frame-time outcomes require recording
+actual per-track sampling distributions and total game perf.
+These ratios do not include J3D scene, GPU, shader or draw costs.
