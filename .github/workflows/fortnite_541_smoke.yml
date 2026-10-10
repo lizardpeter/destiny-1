@@ -48,6 +48,6 @@ jobs:
       - name: Regression-test native Vulkan shadow-distance contract
         run: RUSTFLAGS='--cfg native_vulkan' cargo test --manifest-path ci/fortnite_game/Cargo.toml --all-targets
       - name: Load real Athena source into actual game-side NeutralScene adapter
-        run: RUSTFLAGS='--cfg native_vulkan' RUST_TEST_FORTNITE_541_PAK=/tmp/fortnite541/original-main.pak cargo run --manifest-path ci/fortnite_game/Cargo.toml --release
+        run: RUSTFLAGS='--cfg native_vulkan' RUST_TEST_FORTNITE_541_PAK=/tmp/fortnite541/original-main.pak RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT=/tmp/fortnite541/athena/source cargo run --manifest-path ci/fortnite_game/Cargo.toml --release
       - name: Show resolved AES dependency lock entries
         run: cat ci/fortnite_541/Cargo.lock
