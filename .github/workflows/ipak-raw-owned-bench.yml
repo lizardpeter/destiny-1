@@ -1,0 +1,23 @@
+name: IPAK single-RAW owned decode microbenchmark
+on:
+  push:
+    branches:
+      - bench/ipak-raw-owned-20261009
+  workflow_dispatch:
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/ipak_raw_owned
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Release correctness
+        run: cargo test --release
+      - name: Release benchmark
+        run: cargo run --release
