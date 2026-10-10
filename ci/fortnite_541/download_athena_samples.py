@@ -69,6 +69,7 @@ for i,path in enumerate(wanted):
                  '--range',f'{offset}-{offset+52}','--output',str(header_file),url],check=True)
  header=header_file.read_bytes()
  if len(header)!=53:raise RuntimeError('truncated source FPakEntry header')
+ if i==0:print('REAL_ENTRY_HEADER',header.hex(),'offset_size_uncompressed_method',struct.unpack_from('<QQQI',header),'index_values',(offset,size,raw,method),'header_sha1',header[28:48].hex(),'index_sha1',sha.hex(),'flags',header[48],'block_size',struct.unpack_from('<I',header,49)[0],flush=True)
  with sparse.open('r+b') as f:
   f.seek(offset)
   f.write(header)
