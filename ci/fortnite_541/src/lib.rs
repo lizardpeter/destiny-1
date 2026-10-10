@@ -10,6 +10,7 @@ pub mod texture;
 pub mod terrain;
 pub mod material;
 pub mod athena;
+pub mod extract;
 
 use std::{
     collections::BTreeSet,
