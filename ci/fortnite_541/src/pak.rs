@@ -1,5 +1,6 @@
 //! Bounded, read-only UE4 PakFile index inspection. No archive content is executed
 //! or extracted. Index contents must match the footer's SHA-1 before admission.
+use aes::{Aes256, cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray}};
 use sha1::{Digest, Sha1};
 use std::{
     fs::File,
@@ -10,6 +11,7 @@ use std::{
 const MAGIC: u32 = 0x5A6F_12E1;
 const MAX_INDEX_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_ENTRIES: usize = 1_000_000;
+const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STRING_UNITS: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +31,7 @@ pub struct PakEntry {
     pub compressed_size: u64,
     pub uncompressed_size: u64,
     pub compression_method: u32,
+    pub content_hash: [u8; 20],
     pub encrypted: bool,
     pub compression_block_size: u32,
 }
@@ -47,13 +50,22 @@ pub struct PakReport {
     pub file_size: u64,
 }
 
-/// Inspect one PakFile using only footer+index range reads. Encrypted indexes
-/// remain explicit barriers; this never guesses AES keys or data layouts.
+/// Inspect without keys. Encrypted indexes stay explicit, not guessed.
 pub fn inspect(path: &Path) -> Result<PakReport, String> {
+    inspect_inner(path, None)
+}
+
+/// Inspect an archive with an explicitly supplied historical/source AES-256
+/// key. Index SHA-1 must match the source footer after decryption.
+pub fn inspect_with_key(path: &Path, key: &[u8; 32]) -> Result<PakReport, String> {
+    inspect_inner(path, Some(key))
+}
+
+fn inspect_inner(path: &Path, key: Option<&[u8; 32]>) -> Result<PakReport, String> {
     let mut file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
     let file_size = file.metadata().map_err(|e| format!("metadata {}: {e}", path.display()))?.len();
     let footer = read_footer(&mut file, file_size)?;
-    if footer.encrypted_index {
+    if footer.encrypted_index && key.is_none() {
         return Ok(PakReport { footer, status: IndexStatus::Encrypted, file_size });
     }
     // Version 8+ changes compression method registration and eventually the
@@ -70,6 +82,15 @@ pub fn inspect(path: &Path) -> Result<PakReport, String> {
     let mut bytes = vec![0u8; len];
     file.seek(SeekFrom::Start(footer.index_offset)).map_err(|e| format!("seek pak index: {e}"))?;
     file.read_exact(&mut bytes).map_err(|e| format!("read pak index: {e}"))?;
+    if footer.encrypted_index {
+        if bytes.len() % 16 != 0 {
+            return Err("AES-256 encrypted pak index is not block-aligned".into());
+        }
+        let cipher = Aes256::new(GenericArray::from_slice(key.expect("validated above")));
+        for block in bytes.chunks_exact_mut(16) {
+            cipher.decrypt_block(GenericArray::from_mut_slice(block));
+        }
+    }
     let digest = Sha1::digest(&bytes);
     if digest.as_slice() != footer.index_hash {
         return Err("pak index SHA-1 mismatch (corrupt data, wrong footer, or encrypted index)".into());
@@ -78,6 +99,48 @@ pub fn inspect(path: &Path) -> Result<PakReport, String> {
     Ok(PakReport {
         footer, status: IndexStatus::Indexed { mount_point, entries }, file_size,
     })
+}
+
+
+/// Extract one exact, uncompressed and unencrypted source entry without
+/// decompressing entire archives. The serialized FPakEntry header and the
+/// payload SHA-1 must both agree with the verified index before admission.
+/// Unknown compressed/encrypted payloads remain explicit unsupported cases.
+pub fn extract_plain_entry(path: &Path, report: &PakReport, entry: &PakEntry) -> Result<Vec<u8>, String> {
+    if report.footer.version < 3 || report.footer.version > 7 {
+        return Err("plain entry extraction currently requires UE4 pak v3-v7".into());
+    }
+    if entry.encrypted || entry.compression_method != 0 {
+        return Err(format!("source entry {:?} requires an encrypted or compressed payload decoder", entry.path));
+    }
+    if entry.compressed_size != entry.uncompressed_size || entry.uncompressed_size > MAX_ENTRY_BYTES {
+        return Err(format!("source entry {:?} has mismatched or excessive byte counts", entry.path));
+    }
+    let head_size = 53u64; // uncompressed v3-v7 FPakEntry source metadata.
+    let data_start = entry.offset.checked_add(head_size).ok_or("entry offset overflow")?;
+    let end = data_start.checked_add(entry.compressed_size).ok_or("entry length overflow")?;
+    if end > report.footer.index_offset || end > report.file_size {
+        return Err(format!("source entry {:?} would escape original pak data", entry.path));
+    }
+    let mut file = File::open(path).map_err(|e| format!("open pak for extraction: {e}"))?;
+    file.seek(SeekFrom::Start(entry.offset)).map_err(|e| format!("seek source entry: {e}"))?;
+    let mut header = [0u8; 53];
+    file.read_exact(&mut header).map_err(|e| format!("read source entry header: {e}"))?;
+    let u64_at = |begin: usize| u64::from_le_bytes(header[begin..begin+8].try_into().unwrap());
+    if u64_at(0) != entry.offset || u64_at(8) != entry.compressed_size ||
+        u64_at(16) != entry.uncompressed_size ||
+        u32::from_le_bytes(header[24..28].try_into().unwrap()) != 0 ||
+        header[28..48] != entry.content_hash ||
+        header[48] & 1 != 0 {
+        return Err(format!("source entry {:?} header disagrees with verified index", entry.path));
+    }
+    let mut data = vec![0u8; usize::try_from(entry.uncompressed_size)
+        .map_err(|_| "source entry length exceeds address space")?];
+    file.read_exact(&mut data).map_err(|e| format!("read source entry payload: {e}"))?;
+    if Sha1::digest(&data).as_slice() != entry.content_hash {
+        return Err(format!("source entry {:?} payload SHA-1 mismatch", entry.path));
+    }
+    Ok(data)
 }
 
 fn read_footer(file: &mut File, size: u64) -> Result<PakFooter, String> {
@@ -189,7 +252,8 @@ fn read_index(data: &[u8], footer: &PakFooter) -> Result<(String, Vec<PakEntry>)
         let uncompressed_size = reader.u64()?;
         let compression_method = reader.u32()?;
         if footer.version == 1 { reader.take(8)?; } // retired timestamp
-        reader.take(20)?; // source entry SHA-1; payload verification comes with extraction
+        let mut content_hash = [0u8; 20];
+        content_hash.copy_from_slice(reader.take(20)?);
         if footer.version >= 3 {
             if compression_method != 0 {
                 let blocks = usize::try_from(reader.u32()?).map_err(|_| "block count too large")?;
@@ -206,12 +270,17 @@ fn read_index(data: &[u8], footer: &PakFooter) -> Result<(String, Vec<PakEntry>)
         }
         entries.push(PakEntry {
             path, offset, compressed_size, uncompressed_size,
-            compression_method, encrypted, compression_block_size,
+            compression_method, content_hash, encrypted, compression_block_size,
         });
     }
     if reader.pos != data.len() {
-        return Err(format!("pak index contains {} unexplained trailing bytes",
-            data.len() - reader.pos));
+        let trailing = &data[reader.pos..];
+        // Encrypted PakInfo v7 indexes round the serialized index to an AES
+        // block boundary. The source-owned zero bytes must still be checked.
+        if !footer.encrypted_index || trailing.len() >= 16 || trailing.iter().any(|b| *b != 0) {
+            return Err(format!("pak index contains {} unexplained trailing bytes",
+                trailing.len()));
+        }
     }
     Ok((mount_point, entries))
 }
