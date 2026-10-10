@@ -1,0 +1,20 @@
+name: D1 Tiger TAR retained range read benchmark
+on:
+  push:
+    branches: [bench/d1-tar-retained-ranges-20261009]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/tiger_tar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Benchmark synthetic TAR ranges
+        run: cargo run --release
