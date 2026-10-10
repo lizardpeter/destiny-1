@@ -1,0 +1,20 @@
+name: D1 standalone package retained patch-file I/O benchmark
+on:
+  push:
+    branches: [bench/d1-pkg-file-handle-cache-20261009]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/d1_pkg_retain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Benchmark cached per-patch file reads
+        run: cargo run --release
