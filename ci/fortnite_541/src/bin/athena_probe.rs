@@ -87,6 +87,29 @@ fn run() -> Result<(), String> {
                 }
             }
         }
+        let mut class_samples = BTreeSet::new();
+        for export in &catalog.exports {
+            let class_name = catalog.export_class_name(export).unwrap_or("<unresolved>");
+            if !matches!(class_name,
+                "LandscapeComponent" | "LandscapeHeightfieldCollisionComponent" |
+                "Texture2D" | "LandscapeMaterialInstanceConstant" |
+                "World" | "Level" | "StaticMeshComponent" |
+                "FortHLODSMActor" | "FortStaticMeshActor" | "InstancedFoliageActor") ||
+                !class_samples.insert(class_name.to_owned()) {
+                continue;
+            }
+            if let Ok(bytes) = catalog.export_data(header, companion, export) {
+                let count = bytes.len().min(128);
+                let mut first = String::new();
+                for byte in &bytes[..count] {
+                    use std::fmt::Write;
+                    let _ = write!(&mut first, "{byte:02x}");
+                }
+                println!("EXPORT_SAMPLE {name} class={class_name} object={} offset={} bytes={} head={first}",
+                    catalog.names.get(export.object_name.name_index as usize).map_or("?", String::as_str),
+                    export.serialized_offset, bytes.len());
+            }
+        }
         let mut sorted = classes.into_iter().collect::<Vec<_>>();
         sorted.sort_by(|a,b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         println!("OBJECT_GRAPH {} exports={} class_resolved={} payloads_in_uexp={} payloads_invalid={} top_classes={:?} failures={:?}",
