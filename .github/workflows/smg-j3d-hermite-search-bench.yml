@@ -1,0 +1,21 @@
+name: SMG J3D Hermite keyframe search parity A/B
+on:
+  push:
+    branches: [bench/smg-j3d-hermite-search-20261009]
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact J3D source A/B
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_j3d_hermite/main.rs -o hermite-bench
+      - name: Run bitwise parity and Hermite sampling A/B
+        shell: bash
+        run: ./hermite-bench
