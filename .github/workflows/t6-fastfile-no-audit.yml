@@ -41,3 +41,5 @@ jobs:
               "$BIN" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\taudited/"
             fi
           done
+
+# Independent same-source audited vs auditless differential benchmark repeat.
