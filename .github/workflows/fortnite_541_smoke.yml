@@ -19,7 +19,7 @@ permissions:
 jobs:
   parser:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Show compiler version
@@ -28,5 +28,9 @@ jobs:
         run: cargo test --manifest-path ci/fortnite_541/Cargo.toml --all-targets -- --nocapture
       - name: Check isolated binary
         run: cargo check --manifest-path ci/fortnite_541/Cargo.toml --all-targets
+      - name: Fetch all six original Athena landscape sections (source SHA-1 verified)
+        run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --destination /tmp/fortnite541/athena/source
+      - name: Decode and assemble real in-game terrain source
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --bin athena_runtime_smoke -- /tmp/fortnite541/athena/source
       - name: Show resolved AES dependency lock entries
         run: cat ci/fortnite_541/Cargo.lock
