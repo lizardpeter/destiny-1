@@ -56,6 +56,51 @@ pub struct PackageCatalog {
     pub exports: Vec<PackageExport>,
 }
 
+impl PackageCatalog {
+    /// Resolve UE4 FPackageIndex semantics into a source table name.
+    ///  0 is null, negative is -(import index+1), positive is export index+1.
+    pub fn resolve_package_name(&self, reference: i32) -> Option<&str> {
+        if reference == 0 {
+            return None;
+        }
+        let name_index = if reference < 0 {
+            let index = usize::try_from(i64::from(reference).checked_neg()?.checked_sub(1)?).ok()?;
+            self.imports.get(index)?.object_name.name_index
+        } else {
+            let index = usize::try_from(reference - 1).ok()?;
+            self.exports.get(index)?.object_name.name_index
+        };
+        self.names.get(name_index as usize).map(String::as_str)
+    }
+
+    /// Resolve an export class by source-authored package reference; never
+    /// assume an unreferenced actor or material class.
+    pub fn export_class_name(&self, export: &PackageExport) -> Option<&str> {
+        self.resolve_package_name(export.class_index)
+    }
+
+    /// A split cooked UE4 package stores exported data in the companion .uexp.
+    /// SerialOffset is relative to the logical concatenation of .umap and
+    /// .uexp; this function uses the actual header length, not a heuristic.
+    pub fn export_data<'a>(
+        &self,
+        package_file: &[u8],
+        companion_uexp: &'a [u8],
+        export: &PackageExport,
+    ) -> Result<&'a [u8], String> {
+        let file_header = i64::try_from(package_file.len()).map_err(|_| "header too large")?;
+        let source_offset = export.serialized_offset.checked_sub(file_header)
+            .ok_or("UE4 export serial offset underflow")?;
+        let start = usize::try_from(source_offset)
+            .map_err(|_| "source export serial offset predates .uexp")?;
+        let len = usize::try_from(export.serialized_size)
+            .map_err(|_| "source export has invalid serialization length")?;
+        let end = start.checked_add(len).ok_or("UE4 export serial span overflow")?;
+        companion_uexp.get(start..end).ok_or_else(||
+            "UE4 source export escapes companion .uexp bytes".to_owned())
+    }
+}
+
 struct Reader<'a> { data: &'a [u8], pos: usize }
 impl<'a> Reader<'a> {
     fn at(data: &'a [u8], pos: usize) -> Result<Self, String> {
