@@ -54,6 +54,29 @@ fn run() -> Result<(), String> {
                 component.heightmap_texture_name,component.heightmap_scale_bias,
                 component.weightmap_texture_refs.len(),component.material_instance_refs.len());
         }
+        let mut audited_textures=0usize;
+        for (export_idx,export) in catalog.exports.iter().enumerate() {
+            if catalog.export_class_name(export) != Some("Texture2D") { continue; }
+            let data=catalog.export_data(&package_file,&companion,export)?;
+            match fortnite_541_importer::properties::scan(&catalog,data) {
+                Ok(properties) => {
+                    if audited_textures < 3 {
+                        let at=properties.bytes_consumed;
+                        let end=(at+112).min(data.len());
+                        let head=&data[at..end];
+                        let printable=String::from_utf8_lossy(head).chars()
+                            .map(|c| if c.is_ascii_graphic() { c } else { '.' }).collect::<String>();
+                        let prefix=head.iter().map(|x| format!("{x:02x}")).collect::<String>();
+                        println!("TEXTURE_SOURCE LS_{section:02} export={} object={} bytes={} tagged_end={} raw_hex={} raw_ascii={}",
+                            export_idx+1,catalog.names.get(export.object_name.name_index as usize).map_or("?",String::as_str),
+                            data.len(),at,prefix,printable);
+                    }
+                    audited_textures += 1;
+                }
+                Err(error)=>eprintln!("TEXTURE_SOURCE_UNPROVEN LS_{section:02} export={} {error}",export_idx+1),
+            }
+        }
+        println!("TEXTURE_SOURCE_SUMMARY LS_{section:02} entries={audited_textures}");
         if landscape_objects==0 {
             return Err(format!("source LS_{section:02} contains no LandscapeComponent objects"));
         }
