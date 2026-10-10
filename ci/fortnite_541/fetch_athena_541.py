@@ -173,6 +173,9 @@ def run(destination, include_landscape, include_materials, key, sparse_pak=None,
         for package in MASTER_DIRECT_GAME_PACKAGE_SUFFIXES:
             for extension in (".uasset", ".uexp"):
                 suffixes.append("/" + package + extension)
+            bulk_suffix="/" + package + ".ubulk"
+            if any(p.endswith(bulk_suffix) for p in entries):
+                suffixes.append(bulk_suffix)
     found = []
     for suffix in suffixes:
         matches = [(name, record) for name, record in entries.items() if name.endswith(suffix)]
