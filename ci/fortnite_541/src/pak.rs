@@ -233,9 +233,12 @@ mod tests {
         index.extend_from_slice(&0u64.to_le_bytes());
         index.extend_from_slice(&0u64.to_le_bytes());
         index.extend_from_slice(&0u32.to_le_bytes());
+        if version == 1 { index.extend_from_slice(&0u64.to_le_bytes()); }
         index.extend_from_slice(&[0u8; 20]);
-        index.push(0);
-        index.extend_from_slice(&0u32.to_le_bytes());
+        if version >= 3 {
+            index.push(0);
+            index.extend_from_slice(&0u32.to_le_bytes());
+        }
         let hash = Sha1::digest(&index);
         let mut bytes = vec![0x42; 64]; // data region before index
         bytes.extend_from_slice(&index);
@@ -303,6 +306,100 @@ mod tests {
         let report = inspect(&path).unwrap();
         fs::remove_file(&path).unwrap();
         assert_eq!(report.status, IndexStatus::UnsupportedVersion(8));
+    }
+
+
+    #[test]
+    fn oldest_supported_pak_index_and_timestamp() {
+        let (path, _) = fake_pak(1, false);
+        let report = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(report.footer.version, 1);
+        assert!(matches!(report.status, IndexStatus::Indexed { .. }));
+    }
+
+    #[test]
+    fn version_four_index_encryption_flag() {
+        let (path, _) = fake_pak(4, false);
+        let report = inspect(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(report.footer.version, 4);
+        assert!(matches!(report.status, IndexStatus::Indexed { .. }));
+    }
+
+    #[test]
+    fn compressed_record_consumes_all_block_metadata() {
+        let mut bytes = Vec::<u8>::new();
+        bytes.extend_from_slice(&5i32.to_le_bytes());
+        bytes.extend_from_slice(b"Test\0");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        let path = b"Maps/Alpha.umap\0";
+        bytes.extend_from_slice(&(path.len() as i32).to_le_bytes());
+        bytes.extend_from_slice(path);
+        bytes.extend_from_slice(&16u64.to_le_bytes());
+        bytes.extend_from_slice(&64u64.to_le_bytes());
+        bytes.extend_from_slice(&128u64.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 20]);
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        for (start, end) in [(0u64, 32u64), (32, 64)] {
+            bytes.extend_from_slice(&start.to_le_bytes());
+            bytes.extend_from_slice(&end.to_le_bytes());
+        }
+        bytes.push(1);
+        bytes.extend_from_slice(&64u32.to_le_bytes());
+        let footer = PakFooter {
+            version: 5,
+            index_offset: 1024,
+            index_size: bytes.len() as u64,
+            index_hash: [0; 20],
+            encrypted_index: false,
+            encryption_key_guid: None,
+        };
+        let (mount, entries) = read_index(&bytes, &footer).unwrap();
+        assert_eq!(mount, "Test");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "Maps/Alpha.umap");
+        assert_eq!(entries[0].compression_method, 1);
+        assert_eq!(entries[0].compression_block_size, 64);
+        assert!(entries[0].encrypted);
+    }
+
+    #[test]
+    fn traversal_and_absolute_paths_rejected() {
+        for path in ["../Outside.umap", "/Absolute.umap", "dir/../escape.umap"] {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(&5i32.to_le_bytes());
+            bytes.extend_from_slice(b"Test\0");
+            bytes.extend_from_slice(&1u32.to_le_bytes());
+            bytes.extend_from_slice(&((path.len() + 1) as i32).to_le_bytes());
+            bytes.extend_from_slice(path.as_bytes());
+            bytes.push(0);
+            bytes.extend_from_slice(&[0; 24 + 4 + 20 + 1 + 4]);
+            let footer = PakFooter {
+                version: 5, index_offset: 1024, index_size: bytes.len() as u64,
+                index_hash: [0; 20], encrypted_index: false, encryption_key_guid: None,
+            };
+            assert!(read_index(&bytes, &footer).unwrap_err().contains("unsafe"));
+        }
+    }
+
+    #[test]
+    fn malformed_utf16_length_fails_closed() {
+        let mut input = Cursor::new(&i32::MIN.to_le_bytes());
+        assert!(input.string().is_err());
+    }
+
+    #[test]
+    fn overlarge_entry_count_does_not_allocate() {
+        let mut index = Vec::new();
+        index.extend_from_slice(&0i32.to_le_bytes());
+        index.extend_from_slice(&u32::MAX.to_le_bytes());
+        let footer = PakFooter {
+            version: 5, index_offset: 1024, index_size: index.len() as u64,
+            index_hash: [0; 20], encrypted_index: false, encryption_key_guid: None,
+        };
+        assert!(read_index(&index, &footer).unwrap_err().contains("entry count"));
     }
 
     #[test]
