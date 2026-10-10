@@ -1390,6 +1390,20 @@ fn be_f32(bytes: &[u8], off: usize) -> Result<f32, String> {
 mod tests {
     use super::*;
 
+    // Source fixture writers shared by the pre-existing animation tests.
+    fn put_u16(data: &mut [u8], offset: usize, value: u16) {
+        data[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
+    }
+    fn put_i16(data: &mut [u8], offset: usize, value: i16) {
+        data[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
+    }
+    fn put_u32(data: &mut [u8], offset: usize, value: u32) {
+        data[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
+    }
+    fn put_f32(data: &mut [u8], offset: usize, value: f32) {
+        put_u32(data, offset, value.to_bits());
+    }
+
     #[test]
     fn pak1_decodes_primary_material_color_track() {
         // Minimal one-entry PAK1 chunk wrapped in a BPK container.
@@ -1623,6 +1637,7 @@ mod tests {
         };
         let brk = J3dBrk {
             duration: 30.0,
+            loop_mode: 0,
             entries: vec![register, konst],
         };
         let updates = brk.sample_end();
