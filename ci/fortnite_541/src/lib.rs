@@ -6,6 +6,7 @@ pub mod pak;
 pub mod uobject;
 pub mod properties;
 pub mod landscape;
+pub mod texture;
 
 use std::{
     collections::BTreeSet,
