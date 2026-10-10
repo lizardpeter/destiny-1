@@ -22,10 +22,38 @@ pub struct PackageSummary {
     pub depends_offset: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceName {
+    pub name_index: u32,
+    pub instance_number: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PackageImport {
+    pub class_package: SourceName,
+    pub class_name: SourceName,
+    pub outer_index: i32,
+    pub object_name: SourceName,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PackageExport {
+    pub class_index: i32,
+    pub super_index: i32,
+    pub template_index: i32,
+    pub outer_index: i32,
+    pub object_name: SourceName,
+    pub object_flags: u32,
+    pub serialized_size: i64,
+    pub serialized_offset: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct PackageCatalog {
     pub summary: PackageSummary,
     pub names: Vec<String>,
+    pub imports: Vec<PackageImport>,
+    pub exports: Vec<PackageExport>,
 }
 
 struct Reader<'a> { data: &'a [u8], pos: usize }
@@ -45,6 +73,15 @@ impl<'a> Reader<'a> {
     }
     fn u32(&mut self) -> Result<u32, String> {
         Ok(u32::from_le_bytes(self.bytes(4)?.try_into().unwrap()))
+    }
+    fn i64(&mut self) -> Result<i64, String> {
+        Ok(i64::from_le_bytes(self.bytes(8)?.try_into().unwrap()))
+    }
+    fn name(&mut self) -> Result<SourceName, String> {
+        Ok(SourceName {
+            name_index: self.u32()?,
+            instance_number: self.u32()?,
+        })
     }
     fn string(&mut self) -> Result<String, String> {
         let count = self.i32()?;
@@ -121,7 +158,66 @@ pub fn inspect(bytes: &[u8]) -> Result<PackageCatalog, String> {
         (export_count != 0 && names_reader.pos > export_offset as usize) {
         return Err("name map crosses source import/export table".into());
     }
-    Ok(PackageCatalog { summary, names })
+    // This build's cooked FObjectImport records are exactly 28 bytes:
+    // two FNames, FPackageIndex, and the object FName. FObjectExport records
+    // occupy 104 bytes up to DependsOffset. Fail closed if a different
+    // version/layout is encountered instead of inventing actor relationships.
+    const IMPORT_BYTES: usize = 28;
+    const EXPORT_BYTES: usize = 104;
+    let count_i = usize::try_from(import_count).map_err(|_| "import count too large")?;
+    let count_e = usize::try_from(export_count).map_err(|_| "export count too large")?;
+    let expected_import_end = (import_offset as usize)
+        .checked_add(count_i.checked_mul(IMPORT_BYTES).ok_or("import size overflow")?)
+        .ok_or("import end overflow")?;
+    let expected_export_end = (export_offset as usize)
+        .checked_add(count_e.checked_mul(EXPORT_BYTES).ok_or("export size overflow")?)
+        .ok_or("export end overflow")?;
+    if expected_import_end != export_offset as usize ||
+        expected_export_end != depends_offset as usize ||
+        expected_export_end > bytes.len() {
+        return Err("unsupported UE4.21 cooked import/export record stride".into());
+    }
+
+    let mut r_import = Reader::at(bytes, import_offset as usize)?;
+    let mut imports = Vec::with_capacity(count_i);
+    for _ in 0..count_i {
+        let class_package = r_import.name()?;
+        let class_name = r_import.name()?;
+        let outer_index = r_import.i32()?;
+        let object_name = r_import.name()?;
+        for value in [class_package, class_name, object_name] {
+            if value.name_index >= name_count {
+                return Err("source import FName index out of bounds".into());
+            }
+        }
+        imports.push(PackageImport { class_package, class_name, outer_index, object_name });
+    }
+    let mut r_export = Reader::at(bytes, export_offset as usize)?;
+    let mut exports = Vec::with_capacity(count_e);
+    for _ in 0..count_e {
+        let class_index = r_export.i32()?;
+        let super_index = r_export.i32()?;
+        let template_index = r_export.i32()?;
+        let outer_index = r_export.i32()?;
+        let object_name = r_export.name()?;
+        if object_name.name_index >= name_count {
+            return Err("source export FName index out of bounds".into());
+        }
+        let object_flags = r_export.u32()?;
+        let serialized_size = r_export.i64()?;
+        let serialized_offset = r_export.i64()?;
+        if serialized_size < 0 || serialized_offset < 0 {
+            return Err("invalid negative source export length or offset".into());
+        }
+        // Preserve the remaining version-specific flags, GUID and dependency
+        // metadata for later precise lowering; do not pretend to interpret it.
+        r_export.bytes(EXPORT_BYTES - 44)?;
+        exports.push(PackageExport {
+            class_index, super_index, template_index, outer_index,
+            object_name, object_flags, serialized_size, serialized_offset,
+        });
+    }
+    Ok(PackageCatalog { summary, names, imports, exports })
 }
 
 #[cfg(test)]
