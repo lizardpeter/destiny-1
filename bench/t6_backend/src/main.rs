@@ -64,24 +64,35 @@ fn generate(path:&Path){
         println!("GENERATED profile={name} records={records} encrypted={} expanded={}",file.len(),expected.len());
     }
 }
-fn bench(path:&Path){
+fn bench(path:&Path, no_audit:bool){
     for (name,_,count,_) in cases(){
         let file=fs::read(path.join(format!("{name}.ff"))).unwrap();
         let expected=fs::read_to_string(path.join(format!("{name}.sha256"))).unwrap();
         let mut result_hash=None;
         for _ in 0..2 {
-            let (out,audits,summary)=fastfile::decode_bytes(black_box(&file)).unwrap();
+            let (out,summary)=if no_audit {
+                fastfile::decode_bytes_without_audit(black_box(&file)).unwrap()
+            } else {
+                let (out,audits,summary)=fastfile::decode_bytes(black_box(&file)).unwrap();
+                assert_eq!(audits.len(),count);
+                (out,summary)
+            };
             assert_eq!(summary.records,count);
-            assert_eq!(audits.len(),count);
             assert_eq!(summary.expanded_sha256,expected);
             result_hash=Some(summary.expanded_sha256);
             black_box(out);
         }
         let start=Instant::now();
         for _ in 0..5 {
-            let (expanded,audit,summary)=fastfile::decode_bytes(black_box(&file)).unwrap();
-            assert_eq!(summary.expanded_sha256,expected);
-            black_box((expanded,audit,summary));
+            if no_audit {
+                let (expanded,summary)=fastfile::decode_bytes_without_audit(black_box(&file)).unwrap();
+                assert_eq!(summary.expanded_sha256,expected);
+                black_box((expanded,summary));
+            } else {
+                let (expanded,audit,summary)=fastfile::decode_bytes(black_box(&file)).unwrap();
+                assert_eq!(summary.expanded_sha256,expected);
+                black_box((expanded,audit,summary));
+            }
         }
         let secs=start.elapsed().as_secs_f64()/5.0;
         println!("BENCH\t{name}\t{secs:.9}\t{}\t{}",file.len(),result_hash.unwrap());
@@ -91,5 +102,5 @@ fn main(){
     let args=env::args().collect::<Vec<_>>();
     assert_eq!(args.len(),3,"usage: binary --generate|--bench folder");
     let path=Path::new(&args[2]);
-    match args[1].as_str(){"--generate"=>generate(path),"--bench"=>bench(path),_=>panic!("unknown command")}
+    match args[1].as_str(){"--generate"=>generate(path),"--bench"=>bench(path,false),"--bench-no-audit"=>bench(path,true),_=>panic!("unknown command")}
 }
