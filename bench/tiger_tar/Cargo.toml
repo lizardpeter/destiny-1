@@ -1,0 +1,10 @@
+[package]
+name="d1-tar-retained-ranges-bench"
+version="0.1.0"
+edition="2021"
+[dependencies]
+tar="0.4"
+[profile.release]
+opt-level=3
+lto="fat"
+codegen-units=1
