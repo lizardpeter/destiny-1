@@ -45,8 +45,9 @@ fn run() -> Result<(), String> {
             if catalog.export_class_name(actor)!=Some("LandscapeStreamingProxy"){continue;}
             let raw=catalog.export_data(&package_file,&companion,actor)?;
             let source=landscape::inspect_proxy(&catalog,raw)?;
-            println!("LANDSCAPE_PROXY_CLOSED LS_{section:02} actor_ref={} offset={:?} component_refs={} material_ref={} guid={:02x?}",
-                index+1,source.section_offset,source.component_refs.len(),source.material_ref,source.landscape_guid);
+            println!("LANDSCAPE_PROXY_CLOSED LS_{section:02} actor_ref={} offset={:?} component_refs={} material_ref={} material_path={:?} guid={:02x?}",
+                index+1,source.section_offset,source.component_refs.len(),source.material_ref,
+                catalog.source_object_path(source.material_ref),source.landscape_guid);
             for index_ref in source.component_refs {
                 if index_ref<=0 {return Err("source proxy component index is not a local export".into());}
                 let resolved=catalog.exports.get(index_ref as usize-1)
@@ -96,6 +97,11 @@ fn run() -> Result<(), String> {
                 .ok_or("heightmap reference is zero or negative")?)
                 .map_err(|_| "heightmap is an unresolved source import")?;
             let tex_export=catalog.exports.get(ref_id).ok_or("source heightmap export out of range")?;
+            if section_top_mips==0 {
+                println!("LANDSCAPE_ASSET_DEPENDENCIES LS_{section:02} source_heightmap_object={:?} source_material_paths={:?}",
+                    catalog.source_object_path(component.heightmap_texture_ref),
+                    component.material_instance_refs.iter().map(|r|catalog.source_object_path(*r)).collect::<Vec<_>>());
+            }
             let mip=texture::first_mip_bgra8(
                 &catalog,&package_file,&companion,&external_bulk,tex_export
             )?;
