@@ -90,6 +90,15 @@ pub fn scan(catalog: &PackageCatalog, bytes: &[u8]) -> Result<Properties, String
             "MulticastDelegateProperty" | "DelegateProperty" => {}
             _ => return Err(format!("unproven UE4 FPropertyTag type {kind:?}")),
         }
+        // UE4.21 serializes a source-authored bHasPropertyGuid byte on each
+        // cooked FPropertyTag, following any type-specific tag metadata.
+        // Its absence caused a one-byte desync on real Athena components.
+        let has_guid = *bytes.get(pos).ok_or("missing property GUID flag")?;
+        if has_guid > 1 { return Err("invalid property GUID presence flag".into()); }
+        next(&mut pos, 1, bytes.len())?;
+        if has_guid == 1 {
+            next(&mut pos, 16, bytes.len())?;
+        }
         let start = pos;
         next(&mut pos, size as usize, bytes.len())?;
         fields.push(Property {name: property, kind, array_index, payload: start..pos, metadata});
@@ -123,6 +132,7 @@ mod tests {
         bytes.extend_from_slice(&0u32.to_le_bytes());
         bytes.extend_from_slice(&4u32.to_le_bytes());
         bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.push(0); // bHasPropertyGuid is false in retail UE4.21 tags.
         bytes.extend_from_slice(&127u32.to_le_bytes());
         bytes.extend_from_slice(&0u32.to_le_bytes());
         bytes.extend_from_slice(&0u32.to_le_bytes());
@@ -130,7 +140,7 @@ mod tests {
         assert_eq!(result.fields.len(),1);
         assert_eq!(result.fields[0].name,"SectionBaseX");
         assert_eq!(&bytes[result.fields[0].payload.clone()], &127u32.to_le_bytes());
-        assert_eq!(result.bytes_consumed,36);
+        assert_eq!(result.bytes_consumed,37);
     }
     #[test]
     fn rejects_invalid_property_name_index() {
