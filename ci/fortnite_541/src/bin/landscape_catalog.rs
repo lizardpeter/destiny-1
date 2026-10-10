@@ -2,12 +2,15 @@
 //! original Fortnite 5.41 landscape sublevel packages.
 //! No mesh generation or engine-specific rendering behavior.
 use std::{collections::{BTreeMap,BTreeSet}, env, fs, path::PathBuf, process::ExitCode};
-use fortnite_541_importer::{landscape, texture, uobject};
+use fortnite_541_importer::{landscape, texture, terrain, uobject};
 
 fn run() -> Result<(), String> {
     let root = env::args_os().nth(1).map(PathBuf::from)
         .ok_or("usage: landscape_catalog PATH_TO_ATHENA_SOURCE_ROOT")?;
     let mut total_components=0usize;
+    let mut triangles=0usize;
+    let mut vertices=0usize;
+    let mut seam_audit=terrain::LandscapeSeamAudit::default();
     let mut all_textures=BTreeMap::<String,usize>::new();
     let mut occupied=BTreeSet::<(i32,i32)>::new();
     let mut omitted_grid_components=0usize;
@@ -51,6 +54,10 @@ fn run() -> Result<(), String> {
             let mip=texture::first_mip_bgra8(
                 &catalog,&package_file,&companion,&external_bulk,tex_export
             )?;
+            let patch=terrain::build_patch(&component,&mip)?;
+            seam_audit.admit(&patch)?;
+            vertices+=patch.vertex_count();
+            triangles+=patch.triangle_count();
             for pixel in mip.bgra8.chunks_exact(4) {
                 let h=((pixel[2] as u16)<<8)|pixel[1] as u16;
                 height_min=height_min.min(h);
@@ -116,6 +123,9 @@ fn run() -> Result<(), String> {
     println!("FORTNITE_541_LANDSCAPE_SOURCE_COMPONENTS={total_components} range_x={}..{} range_y={}..{} heightmaps={:?}",
         min[0],max[0],min[1],max[1],all_textures);
     println!("LANDSCAPE_GRID_COVERAGE decoded={total_components} unique_positions={} omitted_zero_default_fields={omitted_grid_components} first_mip_texels={decoded_height_texels} raw_height_min={height_min} raw_height_max={height_max}",occupied.len());
+    println!("SOURCE_TERRAIN_MESH_PROOF vertices={vertices} triangles={triangles} shared_exact_heights={} shared_mismatched_heights={} unique_boundary_points={} mismatch_samples={:?}",
+        seam_audit.matching_shared_samples,seam_audit.mismatched_shared_samples,
+        seam_audit.unique_boundary_vertices(),seam_audit.mismatches);
     Ok(())
 }
 fn main() -> ExitCode {
