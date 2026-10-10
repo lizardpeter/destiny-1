@@ -3,7 +3,7 @@
 //! This is an explicit heightfield DIAGNOSTIC preview, not a claim of Fortnite
 //! albedo/shader/sky parity. Geometry + collisions derive from original UE4
 //! heightmaps. No importer-specific Vulkan paths or fabricated map geometry.
-use std::{env, path::{Path,PathBuf}, sync::{Arc,OnceLock}, time::Instant};
+use std::{env, path::{Path,PathBuf}, sync::{Arc,Mutex,OnceLock}, time::Instant};
 use crate::mesh_render_data::{environment::LoadedMapVisuals,GeneratedSourceMap};
 use neutral_scene::{
     NeutralScene,NeutralMesh,NeutralVertex,NeutralMaterial,NeutralTexture,
@@ -49,12 +49,21 @@ fn source_directory()->Result<PathBuf,String>{
         "Fortnite Athena source heightfields not installed. From the Rust-test repo root run: python asset_import/importers/fortnite_541/tools/fetch_athena_541.py --all-landscape --with-terrain-materials ; or set RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT"
     ))
 }
+type TerrainCache=Mutex<Option<Arc<fortnite_541_importer::athena::AthenaTerrain>>>;
+fn terrain_cache()->&'static TerrainCache {
+    static CACHE:OnceLock<TerrainCache>=OnceLock::new();
+    CACHE.get_or_init(||Mutex::new(None))
+}
 fn source_terrain()->Result<Arc<fortnite_541_importer::athena::AthenaTerrain>,String>{
-    static CACHE:OnceLock<Result<Arc<fortnite_541_importer::athena::AthenaTerrain>,String>>=OnceLock::new();
-    CACHE.get_or_init(||{
-        let root=source_directory()?;
-        fortnite_541_importer::athena::load_verified_athena(&root).map(Arc::new)
-    }).clone()
+    // Cache only between map selection (which needs a ground spawn) and map
+    // scene build; do NOT pin ~50 MB of source meshes for the lifetime of
+    // the process or cache a failed source lookup after the user adds files.
+    let mut cache=terrain_cache().lock().map_err(|_|"Athena terrain cache lock poisoned")?;
+    if let Some(t)=cache.as_ref(){return Ok(Arc::clone(t));}
+    let root=source_directory()?;
+    let t=Arc::new(fortnite_541_importer::athena::load_verified_athena(&root)?);
+    *cache=Some(Arc::clone(&t));
+    Ok(t)
 }
 
 /// Convert source UE Z-up right-handed position into the generic Y-up world.
@@ -93,7 +102,8 @@ fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<Ne
         lightmaps:Vec::new(),irradiance_field:None,source_volume:None,
         local_lights:Vec::new(),sun:None,sky:None,fog:None,grade:None,
         reflection_probes:Vec::new(),lighting:None,instance_vertex_data:Vec::new(),
-        collision:Vec::new(),report:Default::default(),
+        collision:Vec::with_capacity(t.patches.iter().map(|p|p.triangle_count()).sum()),
+        report:Default::default(),
     };
     let mut collision_triangles=0usize;
     for (index,patch) in t.patches.iter().enumerate(){
@@ -123,7 +133,6 @@ fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<Ne
             indices.extend_from_slice(&[tri[0],tri[2],tri[1]]);
         }
         collision_triangles+=indices.len()/3;
-        scene.collision.reserve(indices.len()/3);
         for tri in indices.chunks_exact(3){
             scene.collision.push([
                 vertices[tri[0] as usize].position,
@@ -176,6 +185,10 @@ pub(super) fn import_visuals(
     let started=Instant::now();
     let source=source_terrain()?;
     let scene=scene_from_source(&source)?;
+    drop(source);
+    // Release cached source bytes as soon as the runtime scene owns the
+    // decoded engine-space geometry; later maps do not retain Fortnite RAM.
+    *terrain_cache().lock().map_err(|_|"Athena terrain cache lock poisoned")?=None;
     for line in &scene.report.lines{println!("Fortnite 5.41: {line}");}
     let environment=neutral_bridge::environment_from_neutral(
         map_id,scene,
