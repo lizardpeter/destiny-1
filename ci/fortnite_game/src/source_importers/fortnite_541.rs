@@ -315,7 +315,27 @@ pub(super) fn import_visuals(
     // The original game Blueprint identifies phase 1 as daytime, 07:00 to
     // 19:00. Select that AUTHORED phase for this static preview, not an
     // invented day/night clock. Preserve missing dynamic sun direction.
-    let source_day=original_timeofday(&source_directory()?)?
+    let original_asset_root=source_directory()?;
+    let main_pak=env::var_os("RUST_TEST_FORTNITE_541_PAK").map(PathBuf::from)
+        .or_else(||fortnite_541_importer::locate_source_root().map(|r|
+            r.join("FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak")));
+    // An explicitly pre-extracted source root (e.g. the public original-byte
+    // test harness) owns its own source admission. Never try to re-extract
+    // omitted sparse fixture spans from that fixture's logical original PAK.
+    if env::var_os("RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT").is_none() {
+    if let Some(main)=main_pak.filter(|p|p.is_file()) {
+        // Source-specific import happens ONCE at map load. All original
+        // assets stay outside Git and the performance-sensitive frame loop.
+        let prepared=fortnite_541_importer::extract::prepare_original_environment_sources(
+            &main,&original_asset_root
+        )?;
+        scene.report.lines.push(format!(
+            "Recovered {} SHA1-authenticated original 5.41 sky/ambient/terrain-material source files, {} newly extracted bytes from local retail PAKs (including split archives). Assets are not claimed as executable shaders until their graph contracts close.",
+            prepared.verified_files,prepared.bytes_extracted
+        ));
+    }
+    }
+    let source_day=original_timeofday(&original_asset_root)?
         .map(|time|time.phases[1]);
     let mut source_ambient_rgb=[1.;3];
     let mut source_ambient_strength=0.;
