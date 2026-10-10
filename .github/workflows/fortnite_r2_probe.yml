@@ -53,6 +53,8 @@ jobs:
         run: python3 ci/fortnite_541/fetch_athena_541.py --destination /tmp/fortnite541-source-output
       - name: Download all six authentic Athena landscape sections
         run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --destination /tmp/fortnite541-full-landscape
+      - name: Decode exact six-section terrain component grid and source texture references
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --bin landscape_catalog -- /tmp/fortnite541-full-landscape
       - name: Check public endpoint status, inventory and likely cooked files
         shell: bash
         run: |
