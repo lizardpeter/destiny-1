@@ -1,0 +1,24 @@
+name: SMG BCSV wide-field hashed lookup A/B
+on:
+  push:
+    branches: [bench/smg-bcsv-wide-field-index-20261009]
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact BCSV parser source and source tests
+        shell: bash
+        run: |
+          rustc --edition=2021 --test bench/smg_bcsv_wide/optimized.rs -o bcsv-tests
+          ./bcsv-tests
+          rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_bcsv_wide/main.rs -o bcsv-bench
+      - name: Run BCSV indexed field A/B
+        shell: bash
+        run: ./bcsv-bench
