@@ -1,0 +1,20 @@
+name: IPAK LZO direct-output feasibility benchmark
+on:
+  push:
+    branches: [bench/ipak-lzo-direct-output-20261009]
+  workflow_dispatch:
+jobs:
+  test-and-measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/ipak_lzo_direct
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Measure LZO scratch vs direct
+        run: cargo run --release
