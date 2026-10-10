@@ -18,6 +18,13 @@ permissions:
   contents: read
 
 jobs:
+  remote_paks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover and authenticate all available Fortnite 5.41 public R2 PAK chunk indexes
+        run: python3 ci/fortnite_541/probe_remote_541_paks.py
   parser:
     runs-on: ubuntu-latest
     timeout-minutes: 25
