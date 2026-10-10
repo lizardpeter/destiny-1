@@ -1,0 +1,21 @@
+name: SMG RARC borrowed normalized key benchmark
+on:
+  push:
+    branches: [bench/smg-rarc-borrow-normalize-20261009]
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile baseline and borrowed source
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_rarc_borrow/main.rs -o rarc-borrow-bench
+      - name: Benchmark RARC hot-path lookups
+        shell: bash
+        run: ./rarc-borrow-bench
