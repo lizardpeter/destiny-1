@@ -26,7 +26,9 @@ jobs:
       - name: Discover and authenticate all available Fortnite 5.41 public R2 PAK chunk indexes
         run: python3 ci/fortnite_541/probe_remote_541_paks.py
       - name: Verify original Fortnite material and sky source files
-        run: python3 ci/fortnite_541/fetch_remote_541_dependencies.py --destination /tmp/fortnite541/remote-original
+        run: python3 ci/fortnite_541/fetch_remote_541_dependencies.py --destination /tmp/fortnite541/remote-original --sparse-retail-paks /tmp/fortnite541/retail-sparse
+      - name: Verify native Rust extractor recovers all 22 original sky and material assets from real source PAK indexes
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_extract_environment -- /tmp/fortnite541/retail-sparse/pakchunk0-WindowsClient.pak /tmp/fortnite541/native-extracted
       - name: Verify original daytime sun/skylight/fog typed importer
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_phase_probe -- /tmp/fortnite541/remote-original
       - name: Inspect authenticated original TODM source and retail skybox mesh
