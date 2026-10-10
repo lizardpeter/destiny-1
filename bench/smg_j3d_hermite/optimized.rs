@@ -1305,14 +1305,16 @@ fn sample_track(track: &Track, frame: f32) -> f32 {
     if frames.len() == 1 || frame <= frames[0].time {
         return frames[0].value;
     }
-    // Long, finite and source-ordered ANK1 curves can locate their
-    // interpolation segment logarithmically. Use the original first-match
-    // linear rule on short tracks and non-finite source timestamps.
-    let next = if frames.len() >= 16 && track.binary_searchable {
-        frames.partition_point(|key| !(frame < key.time))
-    } else {
-        frames.iter().position(|key| frame < key.time).unwrap_or(frames.len())
-    };
+    // For short curves and frames near the start, the original first-match
+    // scan is faster. A/B tests found unconditional binary search regressed
+    // these cases even on long tracks; only seek beyond the 64th timestamp.
+    if frames.len() < 96 || !track.binary_searchable || frame <= frames[63].time {
+        let Some(next) = frames.iter().position(|key| frame < key.time) else {
+            return frames.last().unwrap().value;
+        };
+        return hermite(frames[next - 1], frames[next], frame);
+    }
+    let next = frames.partition_point(|key| !(frame < key.time));
     if next == frames.len() {
         return frames.last().unwrap().value;
     }
