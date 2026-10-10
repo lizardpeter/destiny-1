@@ -32,14 +32,15 @@ fn check(){
 }
 fn bench(len:usize,pattern:u8){
  let input=raw_input(len,pattern);
- let mut output=vec![0u8;len];
  let repeats=if len<=1024{1200}else if len<=16384{100}else{8};
  let run_old=||{
+  let mut output=vec![0u8;len];
   let t=Instant::now();let mut sum=0usize;
   for _ in 0..repeats{baseline::convert(black_box(&input),black_box(&mut output));sum+=output[0]as usize;}
   black_box(sum);t.elapsed().as_secs_f64()
  };
  let run_new=||{
+  let mut output=vec![0u8;len];
   let t=Instant::now();let mut sum=0usize;
   for _ in 0..repeats{optimized::convert(black_box(&input),black_box(&mut output));sum+=output[0]as usize;}
   black_box(sum);t.elapsed().as_secs_f64()
