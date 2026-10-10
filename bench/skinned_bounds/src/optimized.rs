@@ -44,3 +44,9 @@ pub fn world_motion_bounds_prepared(
         local[3].max(0.0) * radius_scale.max(0.0),
     ]
 }
+
+pub fn world_motion_bounds(transform: [f32; 12], local: [f32; 4]) -> [f32; 4] {
+    let matrix = affine_rows_to_mat4(transform);
+    let scale = world_motion_radius_scale(matrix);
+    world_motion_bounds_prepared(matrix, scale, local)
+}
