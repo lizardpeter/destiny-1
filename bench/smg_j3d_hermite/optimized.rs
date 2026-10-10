@@ -1388,6 +1388,8 @@ fn be_f32(bytes: &[u8], off: usize) -> Result<f32, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn pak1_decodes_primary_material_color_track() {
         // Minimal one-entry PAK1 chunk wrapped in a BPK container.
