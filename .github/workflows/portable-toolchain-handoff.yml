@@ -1,4 +1,4 @@
-name: Portable toolchain handoff probe
+name: Portable Linux Rust compiler handoff
 on:
   push:
     branches:
@@ -11,16 +11,32 @@ permissions:
 jobs:
   handoff:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
-      - name: Generate harmless transfer probe
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Package standalone Linux host Rust toolchain
         shell: bash
         run: |
-          mkdir -p handoff
-          printf 'OPENAI_GITHUB_ARTIFACT_TRANSPORT_PROBE\n' > handoff/probe.txt
-          sha256sum handoff/probe.txt
+          set -euo pipefail
+          rustc -Vv
+          cargo -V
+          SYSROOT="$(rustc --print sysroot)"
+          echo "Installed Rust sysroot: $SYSROOT"
+          mkdir -p handoff/bin
+          cp -a "$SYSROOT" handoff/rust-toolchain
+          rm -rf handoff/rust-toolchain/share/doc handoff/rust-toolchain/share/man
+          # GitHub-hosted runner has a rustup shim; the sysroot contains
+          # real cargo and rustc binaries plus all host rustlib objects.
+          ls -lh handoff/rust-toolchain/bin
+          tar --use-compress-program='zstd -T0 -8' -cf handoff/rust-linux-toolchain.tar.zst -C handoff rust-toolchain
+          stat -c '%s %n' handoff/rust-linux-toolchain.tar.zst
+          sha256sum handoff/rust-linux-toolchain.tar.zst > handoff/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: local-toolchain-transfer-probe
-          path: handoff/probe.txt
+          name: portable-rust-linux-x64
+          path: |
+            handoff/rust-linux-toolchain.tar.zst
+            handoff/SHA256SUMS.txt
           retention-days: 1
