@@ -6,6 +6,7 @@ on:
       - ci/fortnite-541-parser-smoke-20261010
     paths:
       - 'ci/fortnite_541/**'
+      - 'ci/fortnite_game/**'
       - '.github/workflows/fortnite_541_smoke.yml'
   pull_request:
     paths:
@@ -33,8 +34,8 @@ jobs:
       - name: Decode and assemble real in-game terrain source
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --bin athena_runtime_smoke -- /tmp/fortnite541/athena/source
       - name: Compile full game-side Fortnite NeutralScene adapter using source-neutral engine crate
-        run: cargo check --manifest-path ci/fortnite_game/Cargo.toml --all-targets
+        run: RUSTFLAGS='--cfg native_vulkan' cargo check --manifest-path ci/fortnite_game/Cargo.toml --all-targets
       - name: Load real Athena source into actual game-side NeutralScene adapter
-        run: RUST_TEST_FORTNITE_541_PAK=/tmp/fortnite541/original-main.pak cargo run --manifest-path ci/fortnite_game/Cargo.toml --release
+        run: RUSTFLAGS='--cfg native_vulkan' RUST_TEST_FORTNITE_541_PAK=/tmp/fortnite541/original-main.pak cargo run --manifest-path ci/fortnite_game/Cargo.toml --release
       - name: Show resolved AES dependency lock entries
         run: cat ci/fortnite_541/Cargo.lock
