@@ -27,6 +27,8 @@ jobs:
         run: python3 ci/fortnite_541/probe_remote_541_paks.py
       - name: Verify original Fortnite material and sky source files
         run: python3 ci/fortnite_541/fetch_remote_541_dependencies.py --destination /tmp/fortnite541/remote-original
+      - name: Verify original daytime sun/skylight/fog typed importer
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_phase_probe -- /tmp/fortnite541/remote-original
       - name: Inspect authenticated original TODM source and retail skybox mesh
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_remote_source_probe -- /tmp/fortnite541/remote-original
   parser:
