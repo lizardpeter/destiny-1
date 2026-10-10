@@ -27,6 +27,7 @@ total=u32(off);off+=4
 print("MOUNT",repr(mount),"ENTRY_COUNT",total,flush=True)
 if total>1000000:raise ValueError("implausible entry count")
 maps=[]
+targets=[]
 methods=collections.Counter()
 enc=0
 for j in range(total):
@@ -39,13 +40,20 @@ for j in range(total):
   if blocks>1000000:raise ValueError("bad blocks")
   off+=16*blocks
  if off+5>len(b):raise ValueError("truncated block extras")
- enc+=b[off]&1
+ encrypted=b[off]&1
+ block_size=struct.unpack_from('<I',b,off+1)[0]
+ enc+=encrypted
  off+=5
  if off>len(b):raise ValueError("overrun")
  methods[method]+=1
  if name.lower().endswith(".umap"):maps.append(name)
+ if any(t in name.lower() for t in ('athena_terrain.umap', 'athena_terrain.uexp', 'athena_terrain_ls_00.umap', 'athena_terrain_ls_00.uexp', 'sublevel_x0y0.umap', 'sublevel_x0y0.uexp', 'athena_background.umap', 'athena_background.uexp')):
+  targets.append((name,offset,size,uncompressed,method,encrypted,block_size))
  if j<3: print("FIRST_ENTRY",j,repr(name),"offset",offset,"stored",size,"raw",uncompressed,"method",method,flush=True)
 print("DONE",total,"maps",len(maps),"enc_entries",enc,"methods",dict(methods),"end_offset",off,"index_size",len(b),flush=True)
 print("MAPS_FIRST_45",repr(maps[:45]),flush=True)
 print("ATHENA_MAPS_FIRST_100",repr([x for x in maps if "athena" in x.lower()][:100]),flush=True)
 print("TERRAIN_MATCHES",repr([x for x in maps if "terrain" in x.lower()][:50]),flush=True)
+
+for target in targets:
+ print('TARGET_ENTRY',repr(target),flush=True)
