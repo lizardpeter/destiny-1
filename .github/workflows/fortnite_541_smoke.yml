@@ -1,0 +1,26 @@
+name: Temporary Fortnite UE4 parser smoke test
+
+on:
+  push:
+    branches:
+      - ci/fortnite-541-parser-smoke-20261010
+    paths:
+      - 'ci/fortnite_541/**'
+      - '.github/workflows/fortnite_541_smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show compiler version
+        run: rustc --version && cargo --version
+      - name: Test synthetic UE4 PAK and loose-file cases
+        run: cargo test --manifest-path ci/fortnite_541/Cargo.toml --all-targets -- --nocapture
+      - name: Check isolated binary
+        run: cargo check --manifest-path ci/fortnite_541/Cargo.toml --all-targets
