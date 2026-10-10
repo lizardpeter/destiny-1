@@ -1,0 +1,20 @@
+name: T6 FastFile DEFLATE reusable state benchmark
+on:
+  push:
+    branches: [bench/t6-deflate-state-reuse-20261009]
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/t6_deflate_reset
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: A/B reusable DEFLATE decoder
+        run: cargo run --release
