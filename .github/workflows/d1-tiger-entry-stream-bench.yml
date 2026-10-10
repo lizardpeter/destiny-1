@@ -1,0 +1,22 @@
+name: Destiny 1 Tiger sequential block stream exact-source A/B
+on:
+  push:
+    branches: [bench/d1-sequential-entry-stream-20261009]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/d1_tiger_stream
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile complete baseline and new Tiger reader
+        run: cargo run --release
+      - name: Run optimized Tiger module unit tests
+        run: cargo test --release --bin d1-tiger-entry-stream-benchmark
