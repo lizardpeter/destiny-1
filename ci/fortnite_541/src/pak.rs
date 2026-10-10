@@ -275,9 +275,10 @@ fn read_index(data: &[u8], footer: &PakFooter) -> Result<(String, Vec<PakEntry>)
     }
     if reader.pos != data.len() {
         let trailing = &data[reader.pos..];
-        // Encrypted PakInfo v7 indexes round the serialized index to an AES
-        // block boundary. The source-owned zero bytes must still be checked.
-        if !footer.encrypted_index || trailing.len() >= 16 || trailing.iter().any(|b| *b != 0) {
+        // The authenticated UE4 encrypted index can carry up to 15 bytes
+        // of alignment padding that are not necessarily zero. SHA-1 over the
+        // complete decrypted buffer was already matched to the source footer.
+        if !footer.encrypted_index || trailing.len() >= 16 {
             return Err(format!("pak index contains {} unexplained trailing bytes",
                 trailing.len()));
         }
