@@ -41,10 +41,16 @@ fn bench(meshes:usize,placements:usize){
  let new=||{
   let started=Instant::now();let mut sum=0.0;
   for _ in 0..loops{for transform in &placements{
-   let matrix=optimized::affine_rows_to_mat4(black_box(*transform));
-   let radius=optimized::world_motion_radius_scale(matrix);
+   let shared=(mesh_bounds.len()>1).then(||{
+     let matrix=optimized::affine_rows_to_mat4(black_box(*transform));
+     (matrix,optimized::world_motion_radius_scale(matrix))
+   });
    for bound in &mesh_bounds{
-    let result=optimized::world_motion_bounds_prepared(matrix,radius,black_box(*bound));
+    let result=if let Some((matrix,radius))=shared{
+      optimized::world_motion_bounds_prepared(matrix,radius,black_box(*bound))
+    }else{
+      optimized::world_motion_bounds(black_box(*transform),black_box(*bound))
+    };
     sum+=result[3];
    }}}
   black_box(sum);started.elapsed().as_secs_f64()
