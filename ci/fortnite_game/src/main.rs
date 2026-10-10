@@ -3,6 +3,9 @@
 //! against the real neutral_scene crate and validates all source geometry.
 use std::{process::ExitCode,sync::Arc};
 
+#[path = "native_render_settings.rs"]
+mod native_render_settings;
+
 mod mesh_render_data {
     use super::Arc;
     pub struct GeneratedSourceMap{
@@ -14,6 +17,12 @@ mod mesh_render_data {
     }
     pub mod environment {
         use super::{Arc,EnvironmentRenderData};
+        pub struct EnvironmentRenderHints {
+            pub exposure_ev:f32,pub ibl_diffuse_strength:f32,
+            pub ibl_specular_strength:f32,pub shadow_distance:f32,
+            pub fog_color:[f32;3],pub fog_density:f32,
+            pub fog_base_height:f32,pub fog_height_falloff:f32,
+        }
         pub struct LoadedMapVisuals{
             pub environment:Option<Arc<EnvironmentRenderData>>,
             pub skinned_assets:Vec<()>,
@@ -42,7 +51,21 @@ mod source_importers {
             assert_eq!(options.ibl_diffuse_strength,0.);
             assert_eq!(options.ibl_specular_strength,0.);
             assert_eq!(options.studio_shading_strength,0.);
-            assert_eq!(options.shadow_distance,0.);
+            assert_eq!(options.shadow_distance,120.);
+            // Compile the real Rust-test native render settings validator
+            // against the real game importer hints. The exact prior failure
+            // (distance 0) must be rejected; positive source-safe hints pass.
+            let hints=crate::mesh_render_data::environment::EnvironmentRenderHints {
+                exposure_ev:0.,
+                ibl_diffuse_strength:options.ibl_diffuse_strength,
+                ibl_specular_strength:options.ibl_specular_strength,
+                shadow_distance:options.shadow_distance,
+                fog_color:[0.;3],fog_density:0.,
+                fog_base_height:0.,fog_height_falloff:0.,
+            };
+            let actual=crate::native_render_settings::NativeRenderSettings::load_or_hinted(
+                "fortnite_541_athena_terrain_preview",Some(hints));
+            assert!(actual.is_ok(),"Fortnite preview must pass original Vulkan render validation: {actual:?}");
             crate::mesh_render_data::EnvironmentRenderData{scene}
         }
     }
