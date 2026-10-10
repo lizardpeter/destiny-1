@@ -1,0 +1,21 @@
+name: SMG Yaz0 distance-one RLE optimization benchmark
+on:
+  push:
+    branches: [bench/smg-yaz0-rle-20261009]
+  workflow_dispatch:
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile release parity and A/B
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_yaz0_rle/main.rs -o yaz0-bench
+      - name: Run parity and A/B
+        shell: bash
+        run: ./yaz0-bench
