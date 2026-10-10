@@ -40,6 +40,27 @@ fn run() -> Result<(), String> {
             }).collect::<Vec<_>>();
             println!("LANDSCAPE_PROXY LS_{section:02} export={} property_names_and_values={metadata:?}",index+1);
         }
+        let mut proxy_offsets=BTreeMap::<i32,[i32;2]>::new();
+        for (index,actor) in catalog.exports.iter().enumerate(){
+            if catalog.export_class_name(actor)!=Some("LandscapeStreamingProxy"){continue;}
+            let raw=catalog.export_data(&package_file,&companion,actor)?;
+            let source=landscape::inspect_proxy(&catalog,raw)?;
+            println!("LANDSCAPE_PROXY_CLOSED LS_{section:02} actor_ref={} offset={:?} component_refs={} material_ref={} guid={:02x?}",
+                index+1,source.section_offset,source.component_refs.len(),source.material_ref,source.landscape_guid);
+            for index_ref in source.component_refs {
+                if index_ref<=0 {return Err("source proxy component index is not a local export".into());}
+                let resolved=catalog.exports.get(index_ref as usize-1)
+                    .ok_or("source LandscapeComponents references missing export")?;
+                if catalog.export_class_name(resolved)!=Some("LandscapeComponent"){
+                    return Err("source LandscapeComponents index references a non-landscape export".into());
+                }
+                if proxy_offsets.insert(index_ref,source.section_offset).is_some(){
+                    return Err("one source LandscapeComponent belongs to multiple proxies".into());
+                }
+            }
+        }
+        let mut checked_transforms=0usize;
+        let mut direct_transforms=0usize;
         let mut landscape_objects=0usize;
         for export in &catalog.exports {
             if catalog.export_class_name(export) != Some("LandscapeComponent") {continue;}
@@ -78,6 +99,23 @@ fn run() -> Result<(), String> {
             let mip=texture::first_mip_bgra8(
                 &catalog,&package_file,&companion,&external_bulk,tex_export
             )?;
+            let source_ref=(catalog.exports.iter().position(|e|std::ptr::eq(e,export))
+                .ok_or("unresolved LandscapeComponent export index")?+1) as i32;
+            let (relative,was_written)=landscape::relative_component_location(&catalog,bytes)?;
+            let proxy_offset=proxy_offsets.get(&source_ref).copied();
+            let expected=proxy_offset.unwrap_or([0,0]);
+            for axis in 0..2 {
+                let resolved=relative[axis]+expected[axis] as f32;
+                if (resolved-component.section_base[axis] as f32).abs()>0.0001 {
+                    return Err(format!("source LandscapeComponent placement mismatch LS_{section:02} ref={source_ref}: SectionBase={:?}, RelativeLocation={relative:?}, ProxyOffset={expected:?}",
+                        component.section_base));
+                }
+            }
+            if proxy_offset.is_none(){direct_transforms+=1;}
+            checked_transforms+=1;
+            if !was_written && component.section_base!=expected {
+                return Err("missing relative transform without zero-default placement".into());
+            }
             let patch=terrain::build_patch(&component,&mip)?;
             seam_audit.admit(&patch)?;
             vertices+=patch.vertex_count();
@@ -142,7 +180,10 @@ fn run() -> Result<(), String> {
         if landscape_objects==0 {
             return Err(format!("source LS_{section:02} contains no LandscapeComponent objects"));
         }
-        println!("SECTION LS_{section:02} source_landscape_components={landscape_objects} verified_first_mips={section_top_mips} original_ubulk_bytes={}",external_bulk.len());
+        if checked_transforms!=landscape_objects {
+            return Err(format!("not all source section components have original transform closure: {checked_transforms}/{landscape_objects}"));
+        }
+        println!("SECTION LS_{section:02} source_landscape_components={landscape_objects} verified_first_mips={section_top_mips} original_ubulk_bytes={} transform_closure={checked_transforms} outside_proxy={direct_transforms}",external_bulk.len());
     }
     println!("FORTNITE_541_LANDSCAPE_SOURCE_COMPONENTS={total_components} range_x={}..{} range_y={}..{} heightmaps={:?}",
         min[0],max[0],min[1],max[1],all_textures);
