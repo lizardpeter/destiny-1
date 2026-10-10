@@ -44,7 +44,7 @@ fn decode(encoded:&[u8], optimized:bool, expected_crc:u32)->Result<Vec<u8>,&'sta
     }
     if HEADER+total>encoded.len(){return Err("truncated payload")}
     let mut output=Vec::new();
-    if optimized && count>1 && !has_lzo && raw_bytes>=1024 {output.reserve(raw_bytes);}
+    if optimized && count>1 && !has_lzo && (1024..=32768).contains(&raw_bytes) {output.reserve(raw_bytes);}
     let mut cursor=HEADER;
     for (size,kind) in commands.into_iter().take(count) {
         let end=cursor+size;
