@@ -1,0 +1,39 @@
+name: Download Windows cross toolchain for local build
+on:
+  push:
+    branches:
+      - falkordb-secure-build-20261009
+    paths:
+      - '.github/workflows/windows-cross-toolchain-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - name: Obtain native-linux LLVM MinGW cross compiler and Rust Windows stdlib
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p handoff
+          curl -fLsS --retry 3 -o handoff/llvm-mingw-linux.tar.xz \
+            'https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-ubuntu-24.04-x86_64.tar.xz'
+          tar -tJf handoff/llvm-mingw-linux.tar.xz | head -10 || true
+          SYSROOT="$(rustc --print sysroot)"
+          test -e "$SYSROOT/lib/rustlib/x86_64-pc-windows-gnu/lib/libstd.rlib"
+          tar -I 'zstd -T0 -8' -cf handoff/rust-windows-gnu-std.tar.zst -C "$SYSROOT/lib/rustlib" x86_64-pc-windows-gnu
+          (cd handoff && sha256sum *.tar.* > SHA256SUMS.txt)
+          ls -lh handoff
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-to-windows-gnu-cross-toolchain
+          path: |
+            handoff/llvm-mingw-linux.tar.xz
+            handoff/rust-windows-gnu-std.tar.zst
+            handoff/SHA256SUMS.txt
+          retention-days: 1
