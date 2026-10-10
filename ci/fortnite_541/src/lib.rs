@@ -9,6 +9,7 @@ pub mod landscape;
 pub mod texture;
 pub mod terrain;
 pub mod material;
+pub mod athena;
 
 use std::{
     collections::BTreeSet,
