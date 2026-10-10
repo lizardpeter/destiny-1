@@ -1,0 +1,25 @@
+name: T6 IPAK IEEE CRC32fast benchmark
+on:
+  push:
+    branches: [bench/t6-ipak-crc32fast-20261009]
+    paths:
+      - 'bench/ipak_crc32/**'
+      - '.github/workflows/t6-ipak-crc32fast-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify CRC-32/29-bit identities and edge conditions
+        shell: bash
+        run: cargo test --release --manifest-path bench/ipak_crc32/Cargo.toml
+      - name: Independent paired scalar vs accelerated CRC32 timings
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C target-cpu=native" CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo run --release --manifest-path bench/ipak_crc32/Cargo.toml
