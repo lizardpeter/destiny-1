@@ -1,0 +1,21 @@
+name: Native direct imported skinned CPU output benchmark
+on:
+  push:
+    branches: [bench/native-direct-skinned-output-20261010]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact ABI-sized draw and palette parity benchmark
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/native_direct_skinned/main.rs -o skinned-output
+      - name: Compare CPU output and record ordering
+        shell: bash
+        run: ./skinned-output
