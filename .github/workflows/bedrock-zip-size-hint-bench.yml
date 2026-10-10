@@ -1,0 +1,20 @@
+name: Bedrock ZIP entry size-hint A/B
+on:
+  push:
+    branches: [bench/bedrock-zip-size-hint-20261009]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/bedrock_zip_size_hint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Benchmark exact ZIP 2.x entry reads
+        run: cargo run --release
