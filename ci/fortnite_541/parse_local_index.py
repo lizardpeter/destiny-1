@@ -27,6 +27,7 @@ total=u32(off);off+=4
 print("MOUNT",repr(mount),"ENTRY_COUNT",total,flush=True)
 if total>1000000:raise ValueError("implausible entry count")
 maps=[]
+bulks=[]
 targets=[]
 methods=collections.Counter()
 enc=0
@@ -47,6 +48,7 @@ for j in range(total):
  if off>len(b):raise ValueError("overrun")
  methods[method]+=1
  if name.lower().endswith(".umap"):maps.append(name)
+ if name.lower().endswith((".ubulk",".uptnl")): bulks.append((name,offset,size,uncompressed,method,encrypted))
  if any(t in name.lower() for t in ('athena_terrain.umap', 'athena_terrain.uexp', 'athena_terrain_ls_00.umap', 'athena_terrain_ls_00.uexp', 'sublevel_x0y0.umap', 'sublevel_x0y0.uexp', 'athena_background.umap', 'athena_background.uexp')):
   targets.append((name,offset,size,uncompressed,method,encrypted,block_size))
  if j<3: print("FIRST_ENTRY",j,repr(name),"offset",offset,"stored",size,"raw",uncompressed,"method",method,flush=True)
@@ -54,6 +56,7 @@ print("DONE",total,"maps",len(maps),"enc_entries",enc,"methods",dict(methods),"e
 print("MAPS_FIRST_45",repr(maps[:45]),flush=True)
 print("ATHENA_MAPS_FIRST_100",repr([x for x in maps if "athena" in x.lower()][:100]),flush=True)
 print("TERRAIN_MATCHES",repr([x for x in maps if "terrain" in x.lower()][:50]),flush=True)
+print("BULK_COUNT",len(bulks),"ATHENA_LANDSCAPE_BULK",repr([v for v in bulks if "Athena_Terrain_LS_" in v[0]][:18]),"OTHER_EXAMPLES",repr(bulks[:5]),flush=True)
 
 for target in targets:
  print('TARGET_ENTRY',repr(target),flush=True)
