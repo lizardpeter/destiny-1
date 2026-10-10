@@ -37,6 +37,8 @@ jobs:
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_texture_format_probe -- /tmp/fortnite541/athena/source
       - name: Inventory original landscape lighting and sky actors
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_scene_lighting_probe -- /tmp/fortnite541/athena/source
+      - name: Extract original master terrain material functions and original texture bulk (direct source closure)
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_extract_materials -- /tmp/fortnite541/original-main.pak /tmp/fortnite541/material-extracted --direct-only
       - name: Audit authentic Athena weightmaps and landscape actor roots
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_surface_probe -- /tmp/fortnite541/athena/source
       - name: Decode and assemble real in-game terrain source
