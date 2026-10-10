@@ -1,0 +1,20 @@
+name: IPAK multi-RAW output reserve benchmark
+on:
+  push:
+    branches: [bench/ipak-multi-raw-reserve-20261009]
+  workflow_dispatch:
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/ipak_multi_raw_reserve
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Bench mixed RAW/SKIP blocks
+        run: cargo run --release
