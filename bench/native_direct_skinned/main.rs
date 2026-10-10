@@ -21,12 +21,12 @@ fn bench(draws_per_asset:usize,assets:usize){
  source::old_two_stage(&input,&mut old_scratch);
  source::new_direct(&input,&mut new_scratch);
  let frames=if draws_per_asset*assets>10000 {150} else {400};
- let old=||{
+ let mut old=||{
   let start=Instant::now();
   for _ in 0..frames {source::old_two_stage(black_box(&input), &mut old_scratch); black_box(&old_scratch.final_draws);}
   start.elapsed().as_secs_f64()
  };
- let new=||{
+ let mut new=||{
   let start=Instant::now();
   for _ in 0..frames {source::new_direct(black_box(&input), &mut new_scratch); black_box(&new_scratch.final_draws);}
   start.elapsed().as_secs_f64()
