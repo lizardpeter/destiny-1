@@ -6,6 +6,9 @@ on:
       - ci/fortnite-541-parser-smoke-20261010
     paths:
       - '.github/workflows/fortnite_r2_probe.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/fortnite_r2_probe.yml'
   workflow_dispatch:
 
 permissions:
