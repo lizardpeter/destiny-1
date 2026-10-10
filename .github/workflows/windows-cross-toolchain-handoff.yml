@@ -23,9 +23,9 @@ jobs:
           mkdir -p handoff
           curl -fLsS --retry 3 -o handoff/llvm-mingw-linux.tar.xz \
             'https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-ubuntu-22.04-x86_64.tar.xz'
-          tar -tJf handoff/llvm-mingw-linux.tar.xz | head -10 || true
+          test -s handoff/llvm-mingw-linux.tar.xz
           SYSROOT="$(rustc --print sysroot)"
-          test -e "$SYSROOT/lib/rustlib/x86_64-pc-windows-gnu/lib/libstd.rlib"
+          compgen -G "$SYSROOT/lib/rustlib/x86_64-pc-windows-gnu/lib/libstd-*.rlib" > /dev/null
           tar -I 'zstd -T0 -8' -cf handoff/rust-windows-gnu-std.tar.zst -C "$SYSROOT/lib/rustlib" x86_64-pc-windows-gnu
           (cd handoff && sha256sum *.tar.* > SHA256SUMS.txt)
           ls -lh handoff
