@@ -1,0 +1,35 @@
+name: Public Rust source dependencies
+on:
+  push:
+    branches:
+      - falkordb-secure-build-20261009
+    paths:
+      - '.github/workflows/public-cargo-cache-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  vendor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download dependencies for public pinned upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/FalkorDB/FalkorDB.git upstream
+          git -C upstream fetch --depth 1 origin 55204c94bb6c8bc1684ada3d712a61f73f324067
+          git -C upstream checkout -q 55204c94bb6c8bc1684ada3d712a61f73f324067
+          cargo vendor --manifest-path upstream/Cargo.toml vendor > cargo-config.txt
+          tar -I 'zstd -T0 -6' -cf vendor.tar.zst vendor
+          sha256sum vendor.tar.zst > SHA256SUMS.txt
+          du -h vendor.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-upstream-vendored-crates
+          path: |
+            vendor.tar.zst
+            cargo-config.txt
+            SHA256SUMS.txt
+          retention-days: 1
