@@ -25,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Discover and authenticate all available Fortnite 5.41 public R2 PAK chunk indexes
         run: python3 ci/fortnite_541/probe_remote_541_paks.py
+      - name: Verify original Fortnite material and sky source files
+        run: python3 ci/fortnite_541/fetch_remote_541_dependencies.py --destination /tmp/fortnite541/remote-original
   parser:
     runs-on: ubuntu-latest
     timeout-minutes: 25
