@@ -1,0 +1,70 @@
+name: Temporary Fortnite UE4 parser smoke test
+
+on:
+  push:
+    branches:
+      - ci/fortnite-541-parser-smoke-20261010
+    paths:
+      - 'ci/fortnite_541/**'
+      - 'ci/fortnite_game/**'
+      - '.github/workflows/fortnite_541_smoke.yml'
+  pull_request:
+    paths:
+      - 'ci/fortnite_541/**'
+      - '.github/workflows/fortnite_541_smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remote_paks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover and authenticate all available Fortnite 5.41 public R2 PAK chunk indexes
+        run: python3 ci/fortnite_541/probe_remote_541_paks.py
+      - name: Verify original Fortnite material and sky source files
+        run: python3 ci/fortnite_541/fetch_remote_541_dependencies.py --destination /tmp/fortnite541/remote-original --sparse-retail-paks /tmp/fortnite541/retail-sparse
+      - name: Verify native Rust extractor recovers all 22 original sky and material assets from real source PAK indexes
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_extract_environment -- /tmp/fortnite541/retail-sparse/pakchunk0-WindowsClient.pak /tmp/fortnite541/native-extracted
+      - name: Verify original daytime sun/skylight/fog typed importer
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_phase_probe -- /tmp/fortnite541/remote-original
+      - name: Inspect authenticated original TODM source and retail skybox mesh
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_remote_source_probe -- /tmp/fortnite541/remote-original
+  parser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show compiler version
+        run: rustc --version && cargo --version
+      - name: Test synthetic UE4 PAK and loose-file cases
+        run: cargo test --manifest-path ci/fortnite_541/Cargo.toml --all-targets -- --nocapture
+      - name: Check isolated binary
+        run: cargo check --manifest-path ci/fortnite_541/Cargo.toml --all-targets
+      - name: Fetch all six original Athena landscape sections (source SHA-1 verified)
+        run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --with-terrain-materials --with-master-direct-deps --with-world-lighting --destination /tmp/fortnite541/athena/source --sparse-pak /tmp/fortnite541/original-main.pak
+      - name: Enumerate source master-material function packages in verified original PAK
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_material_dependencies -- /tmp/fortnite541/athena/source /tmp/fortnite541/original-main.pak
+      - name: Inventory source-authored terrain function bodies and texture formats
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_texture_format_probe -- /tmp/fortnite541/athena/source
+      - name: Audit nested original terrain LayerBlend shader inputs and function calls
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_material_graph_probe -- /tmp/fortnite541/athena/source
+      - name: Inventory original landscape lighting and sky actors
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_scene_lighting_probe -- /tmp/fortnite541/athena/source
+      - name: Extract original master terrain material functions and original texture bulk (direct source closure)
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_extract_materials -- /tmp/fortnite541/original-main.pak /tmp/fortnite541/material-extracted --direct-only
+      - name: Audit authentic Athena weightmaps and landscape actor roots
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --release --bin athena_surface_probe -- /tmp/fortnite541/athena/source
+      - name: Decode and assemble real in-game terrain source
+        run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --bin athena_runtime_smoke -- /tmp/fortnite541/athena/source
+      - name: Compile full game-side Fortnite NeutralScene adapter using source-neutral engine crate
+        run: RUSTFLAGS='--cfg native_vulkan' cargo check --manifest-path ci/fortnite_game/Cargo.toml --all-targets
+      - name: Regression-test native Vulkan shadow-distance contract
+        run: RUSTFLAGS='--cfg native_vulkan' cargo test --manifest-path ci/fortnite_game/Cargo.toml --all-targets
+      - name: Load real Athena source into actual game-side NeutralScene adapter
+        run: RUSTFLAGS='--cfg native_vulkan' RUST_TEST_FORTNITE_541_PAK=/tmp/fortnite541/original-main.pak RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT=/tmp/fortnite541/athena/source cargo run --manifest-path ci/fortnite_game/Cargo.toml --release
+      - name: Show resolved AES dependency lock entries
+        run: cat ci/fortnite_541/Cargo.lock
