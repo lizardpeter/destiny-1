@@ -203,6 +203,17 @@ fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<Ne
     scene.report.lines.push(format!(
         "DIAGNOSTIC ONLY: height-derived grayscale, not source Fortnite albedo/normal/material shader. No original sky, sunlight, world props or authored player starts yet."
     ));
+    // These are AUTHORED landscape paint-control inputs recovered from their
+    // original 5.41 BGRA8 channels. They are not RGB terrain albedo and must
+    // NOT be mixed into diagnostic colors or silently renamed as shaders.
+    if t.paint_patches.len()!=t.patches.len() {
+        return Err("Fortnite original painted patches do not match terrain".into());
+    }
+    scene.report.lines.push(format!(
+        "Original terrain paint data recovered: {} source weightmap Texture2D references, {} tagged LayerInfo allocations, {} unique LayerInfo objects over {} patches. Original RGB/normal/shader dependencies still unavailable for SurfaceProgram admission.",
+        t.source_weightmap_texture_refs,t.source_layer_allocation_count,
+        t.source_layer_info_paths.len(),t.paint_patches.len()
+    ));
     scene.report.lines.push(format!(
         "Original source material references (NOT admitted as render shaders): {:?}",t.source_material_paths
     ));
