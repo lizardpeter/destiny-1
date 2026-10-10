@@ -115,6 +115,25 @@ mod source_importers {
         if !s.collision.iter().flat_map(|tri|tri.iter()).all(|v|v.iter().all(|x|x.is_finite())){
             return Err("nonfinite collision geometry".into());
         }
+        // Independently verify original BC source material textures cross
+        // the UNMODIFIED shared texture ABI. These are not yet bound to a
+        // surface shader because source UV/function closure is still pending.
+        let source_root=std::env::var_os("RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT")
+            .ok_or("CI original source root not configured")?;
+        for (name,fmt,expected) in [
+            ("T_Athena_Terrain_CombinedColors_01",neutral_scene::NeutralBlockFormat::Bc1,2097152usize),
+            ("T_Athena_Terrain_Topo_Mask",neutral_scene::NeutralBlockFormat::Bc3,4194304usize),
+        ] {
+            let t=fortnite_541::source_original_terrain_bc_texture(
+                Path::new(&source_root),name
+            )?;
+            let bc=t.compressed.as_ref().ok_or("original source BC encoding discarded")?;
+            assert_eq!(bc.format,fmt);
+            assert_eq!((t.width,t.height),(2048,2048));
+            assert_eq!(t.rgba.len(),2048*2048*4);
+            assert_eq!(bc.levels[0].blocks.len(),expected);
+            println!("PASS: original Fortnite source BC texture preserved through generic NeutralScene {name} {fmt:?} bytes={expected}");
+        }
         println!("PASS: full Fortnite source terrain -> host NeutralScene contract with source-grounded spawn/collision");
         Ok(())
     }
