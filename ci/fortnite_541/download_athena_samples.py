@@ -8,6 +8,25 @@ buf=Path('/tmp/fortnite541-pak0-index.dec').read_bytes()
 url='https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak'
 out=Path('/tmp/fortnite541-atlas')
 out.mkdir(exist_ok=True)
+pak_size=4813653874
+index_offset=4805651429
+sparse=Path('/tmp/fortnite541-pak0-sparse.pak')
+with sparse.open('wb') as f:
+ f.seek(pak_size-1)
+ f.write(b'\\0')
+encrypted_index=Path('/tmp/fortnite541-pak0-index.enc').read_bytes()
+with sparse.open('r+b') as f:
+ f.seek(index_offset)
+ f.write(encrypted_index)
+footer=Path('/tmp/fortnite541-footer61')
+subprocess.run(['curl','--fail','--silent','--show-error','--location','--retry','3',
+                '--range',f'{pak_size-61}-{pak_size-1}',
+                '--output',str(footer),
+                'https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak'],check=True)
+assert footer.stat().st_size==61
+with sparse.open('r+b') as f:
+ f.seek(pak_size-61)
+ f.write(footer.read_bytes())
 wanted=[
 'FortniteGame/Content/Athena/Maps/Athena_Terrain.umap',
 'FortniteGame/Content/Athena/Maps/Athena_Terrain.uexp',
@@ -45,6 +64,15 @@ for i,path in enumerate(wanted):
  subprocess.run(['curl','--fail','--silent','--show-error','--location','--retry','3',
                  '--range',f'{data_start}-{data_start+size-1}','--output',str(full_path),url],check=True)
  data=full_path.read_bytes()
+ header_file=out/('header'+str(i)+'.bin')
+ subprocess.run(['curl','--fail','--silent','--show-error','--location','--retry','3',
+                 '--range',f'{offset}-{offset+52}','--output',str(header_file),url],check=True)
+ header=header_file.read_bytes()
+ if len(header)!=53:raise RuntimeError('truncated source FPakEntry header')
+ with sparse.open('r+b') as f:
+  f.seek(offset)
+  f.write(header)
+  f.write(data)
  got=hashlib.sha1(data).digest()
  print('MAP_PAYLOAD',path,'offset',data_start,'size',len(data),
        'sha_expected',sha.hex(),'sha_actual',got.hex(),'verified',got==sha,
@@ -54,3 +82,5 @@ for i,path in enumerate(wanted):
   print('PACKAGE_SIGNATURE_NOT_UE4',path,flush=True)
  # Keep only small temporary files: no uploads or artifacts.
 print('DOWNLOAD_COMPLETE',len(wanted),'map package files',flush=True)
+
+print('SPARSE_RETAIL_PAK_READY',str(sparse),'logical_bytes',sparse.stat().st_size,flush=True)
