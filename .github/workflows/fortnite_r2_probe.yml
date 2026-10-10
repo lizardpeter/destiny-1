@@ -26,6 +26,16 @@ jobs:
         run: python3 ci/fortnite_541/remote_probe.py
       - name: Download and decrypt real Fortnite 5.41 archive indexes
         run: python3 ci/fortnite_541/remote_index.py
+      - name: Download original Fortnite PAK0 index with curl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 --range '4805651429-4813653812' \
+            --output /tmp/fortnite541-pak0-index.enc \
+            'https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak'
+          wc -c /tmp/fortnite541-pak0-index.enc
+          sha1sum /tmp/fortnite541-pak0-index.enc
+
       - name: Check public endpoint status, inventory and likely cooked files
         shell: bash
         run: |
