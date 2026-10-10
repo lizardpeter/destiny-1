@@ -94,11 +94,22 @@ def derive_footer():
         raise ValueError("invalid encrypted original PakInfo bounds")
     return offset, length, digest
 
-def run(destination, include_landscape, include_materials, key):
+def run(destination, include_landscape, include_materials, key, sparse_pak=None):
     idxoff, idxlen, expected = derive_footer()
     if idxlen > 64*1024*1024 or idxlen % 16:
         raise ValueError("unexpected index size or AES block alignment")
     encrypted = ranged(idxoff, idxlen)
+    if sparse_pak is not None:
+        # A logical 4.8 GB source pak with only index/footer and 24 verified
+        # entry spans physically present. This is a sparse test fixture,
+        # NOT a complete game archive; used only to exercise the native parser.
+        sparse_pak.parent.mkdir(parents=True, exist_ok=True)
+        with sparse_pak.open("wb") as f:
+            f.truncate(4813653874)
+            f.seek(idxoff)
+            f.write(encrypted)
+            f.seek(4813653874 - 61)
+            f.write(ranged(4813653874 - 61, 61))
     with tempfile.TemporaryDirectory(prefix="fn541-decrypt-") as d:
         encrypted_path = pathlib.Path(d) / "index.encrypted"
         encrypted_path.write_bytes(encrypted)
@@ -140,6 +151,10 @@ def run(destination, include_landscape, include_materials, key):
         # Unreal v7 on-disk FPakEntry is 53 bytes for method=0 records.
         raw = ranged(offset, stored + 53)
         header, payload = raw[:53], raw[53:]
+        if sparse_pak is not None:
+            with sparse_pak.open("r+b") as f:
+                f.seek(offset)
+                f.write(raw)
         if struct.unpack_from("<QQQI", header, 0)[1:] != (stored, unpacked, 0):
             raise ValueError(f"source FPakEntry header mismatch for {name}")
         if header[28:48] != digest or hashlib.sha1(payload).digest() != digest:
@@ -166,7 +181,9 @@ if __name__ == "__main__":
                         help="fetch all six landscape sections, not just LS_00")
     parser.add_argument("--with-terrain-materials", action="store_true",
                         help="also download original Athena material and master asset source packages")
+    parser.add_argument("--sparse-pak", type=pathlib.Path,
+                        help="CI only: assemble an authenticated sparse original-byte pak fixture")
     parser.add_argument("--aes-key", default=HISTORICAL_KEY,
                         help="AES key for an original 5.41 build; historical public key is default")
     args = parser.parse_args()
-    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"))
+    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"), args.sparse_pak)
