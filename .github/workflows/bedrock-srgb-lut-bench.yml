@@ -1,0 +1,21 @@
+name: Bedrock exact eight-bit emissive gamma LUT A/B
+on:
+  push:
+    branches: [bench/bedrock-emissive-srgb-lut-20261009]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile original and optimized exact conversion functions
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/bedrock_srgb_lut/main.rs -o srgb-lut-bench
+      - name: Run parity and batch speed measurements
+        shell: bash
+        run: ./srgb-lut-bench
