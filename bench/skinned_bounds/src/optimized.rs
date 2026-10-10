@@ -1,4 +1,4 @@
-fn affine_rows_to_mat4(rows: [f32; 12]) -> glam::Mat4 {
+pub fn affine_rows_to_mat4(rows: [f32; 12]) -> glam::Mat4 {
     glam::Mat4::from_cols_array(&[
         rows[0], rows[4], rows[8], 0.0,
         rows[1], rows[5], rows[9], 0.0,
