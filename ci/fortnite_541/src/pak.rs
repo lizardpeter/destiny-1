@@ -127,7 +127,9 @@ pub fn extract_plain_entry(path: &Path, report: &PakReport, entry: &PakEntry) ->
     let mut header = [0u8; 53];
     file.read_exact(&mut header).map_err(|e| format!("read source entry header: {e}"))?;
     let u64_at = |begin: usize| u64::from_le_bytes(header[begin..begin+8].try_into().unwrap());
-    if u64_at(0) != entry.offset || u64_at(8) != entry.compressed_size ||
+    // Fortnite's serialized per-file FPakEntry uses zero for its local Offset;
+    // the indexed FPakEntry carries the absolute archive offset.
+    if !(u64_at(0) == 0 || u64_at(0) == entry.offset) || u64_at(8) != entry.compressed_size ||
         u64_at(16) != entry.uncompressed_size ||
         u32::from_le_bytes(header[24..28].try_into().unwrap()) != 0 ||
         header[28..48] != entry.content_hash ||
