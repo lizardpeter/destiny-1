@@ -1,0 +1,10 @@
+[package]
+name="t6-deflate-reset-bench"
+version="0.1.0"
+edition="2021"
+[dependencies]
+flate2 = { version="1", default-features=false, features=["zlib-rs"] }
+[profile.release]
+opt-level=3
+lto="fat"
+codegen-units=1
