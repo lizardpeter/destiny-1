@@ -22,6 +22,7 @@ jobs:
           git -C upstream remote add origin https://github.com/FalkorDB/FalkorDB.git
           git -C upstream fetch --depth 1 origin 55204c94bb6c8bc1684ada3d712a61f73f324067
           git -C upstream checkout -q FETCH_HEAD
+          sed -i '/^\[dependencies\]$/a usearch = "2.26.2"' upstream/graph/Cargo.toml
           mkdir -p hostdeps/src
           cat > hostdeps/Cargo.toml <<'END_CARGO'
           [package]
