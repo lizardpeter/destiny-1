@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 sha1 = "0.10"
+aes = "0.8"
 
 [[bin]]
 name = "fortnite_541_audit"
