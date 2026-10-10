@@ -1,0 +1,20 @@
+name: BO2 FastFile Salsa20 exact-source RustCrypto A/B
+on:
+  push:
+    branches: [bench/t6-salsa20-rustcrypto-20261009]
+  workflow_dispatch:
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/t6_salsa20_rustcrypto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify cipher parity and benchmark
+        run: cargo run --release
