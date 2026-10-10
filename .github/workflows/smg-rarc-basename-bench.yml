@@ -1,0 +1,21 @@
+name: SMG RARC basename fallback lookup benchmark
+on:
+  push:
+    branches: [bench/smg-rarc-basename-index-20261009]
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact-source RARC modules
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_rarc_basename/main.rs -o rarc-bench
+      - name: Bench fallback path lookups
+        shell: bash
+        run: ./rarc-bench
