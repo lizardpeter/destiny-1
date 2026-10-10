@@ -1,0 +1,75 @@
+name: FalkorDB host Rust crate dependencies
+on:
+  push:
+    branches:
+      - falkordb-secure-build-20261009
+    paths:
+      - '.github/workflows/falkordb-host-cargo-vendor.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  vendor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Vendor dependency set without private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q upstream
+          git -C upstream remote add origin https://github.com/FalkorDB/FalkorDB.git
+          git -C upstream fetch --depth 1 origin 55204c94bb6c8bc1684ada3d712a61f73f324067
+          git -C upstream checkout -q FETCH_HEAD
+          mkdir -p hostdeps/src
+          cat > hostdeps/Cargo.toml <<'END_CARGO'
+          [package]
+          name = "private-host-dependency-staging"
+          version = "0.4.0"
+          edition = "2024"
+          license = "SSPL-1.0"
+          
+          [dependencies]
+          graph = { path = "../upstream/graph" }
+          parking_lot = { version = "0.12.5", features = ["arc_lock"] }
+          atomic_refcell = "0.1.14"
+          thin-vec = "0.2.18"
+          crc32fast = "1.5"
+          orx-tree = "2.2.0"
+          roaring = "0.11.5"
+          rustc-hash = "2"
+          rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12", "ring"] }
+          rustls-pemfile = "2.2"
+          subtle = "2.6"
+          serde_json = "1"
+          serde = { version = "1", features = ["derive"] }
+          base64 = "0.22"
+          ring = "0.17.12"
+          rpassword = "7.4"
+          
+          [target.'cfg(windows)'.dependencies]
+          windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_JobObjects", "Win32_System_Threading"] }
+          
+          [profile.release]
+          opt-level = 3
+          lto = "fat"
+          codegen-units = 1
+          incremental = false
+          debug = false
+          strip = "symbols"
+          panic = "unwind"
+          END_CARGO
+          printf 'pub fn staging() {}\n' > hostdeps/src/lib.rs
+          cargo vendor --manifest-path hostdeps/Cargo.toml --versioned-dirs vendor > vendor-config.toml
+          tar -I 'zstd -T0 -8' -cf falkordb-host-cargo-vendor.tar.zst vendor
+          sha256sum falkordb-host-cargo-vendor.tar.zst > SHA256SUMS.txt
+          du -h falkordb-host-cargo-vendor.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: falkordb-host-cargo-vendor
+          path: |
+            falkordb-host-cargo-vendor.tar.zst
+            SHA256SUMS.txt
+            hostdeps/Cargo.lock
+          retention-days: 1
