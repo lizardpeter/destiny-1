@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/fortnite_r2_probe.yml'
       - 'ci/fortnite_541/remote_probe.py'
+      - 'ci/fortnite_541/remote_index.py'
   pull_request:
     paths:
       - '.github/workflows/fortnite_r2_probe.yml'
@@ -23,6 +24,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Audit real Fortnite 5.41 PakInfo footers
         run: python3 ci/fortnite_541/remote_probe.py
+      - name: Download and decrypt real Fortnite 5.41 archive indexes
+        run: python3 ci/fortnite_541/remote_index.py
       - name: Check public endpoint status, inventory and likely cooked files
         shell: bash
         run: |
