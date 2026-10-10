@@ -1309,15 +1309,22 @@ fn sample_track(track: &Track, frame: f32) -> f32 {
     // Only larger finite curves *past* the 64th timestamp use a logarithmic
     // seek; unconditional binary search regressed early-frame workloads.
     if frames.len() >= 96 && track.binary_searchable && frame > frames[63].time {
-        let next = frames.partition_point(|key| !(frame < key.time));
-        if next == frames.len() {
-            return frames.last().unwrap().value;
-        }
-        return hermite(frames[next - 1], frames[next], frame);
+        return sample_late_track(frames, frame);
     }
     let Some(next) = frames.iter().position(|key| frame < key.time) else {
         return frames.last().unwrap().value;
     };
+    hermite(frames[next - 1], frames[next], frame)
+}
+
+// Keep the ordinary small-track/early-frame sampler compact and cold-path
+// binary lookup separate; this avoids widening the animation hot loop.
+#[inline(never)]
+fn sample_late_track(frames: &[Keyframe], frame: f32) -> f32 {
+    let next = frames.partition_point(|key| !(frame < key.time));
+    if next == frames.len() {
+        return frames.last().unwrap().value;
+    }
     hermite(frames[next - 1], frames[next], frame)
 }
 
