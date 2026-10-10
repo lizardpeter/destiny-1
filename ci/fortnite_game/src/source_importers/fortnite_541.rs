@@ -211,7 +211,13 @@ pub(super) fn import_visuals(
             label:"Fortnite 5.41 (source terrain diagnostic)",
             id_prefix:"fortnite_541_athena",ambient_color:[1.;3],
             ambient_strength:0.,ibl_diffuse_strength:0.,ibl_specular_strength:0.,
-            studio_shading_strength:0.,shadow_distance:0.,
+            studio_shading_strength:0.,
+            // A zero shadow distance is INVALID for the shared native Vulkan
+            // render-settings contract, even if this source preview has no
+            // recovered original sun, local lights or authored shadow data.
+            // Use the native-safe positive distance; absence of light sources
+            // remains explicit, and no invented sunlight/shadows are added.
+            shadow_distance:120.,
         },
         started,
     );
