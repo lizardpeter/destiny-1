@@ -53,8 +53,9 @@ pub fn locate_source_root() -> Option<PathBuf> {
         PathBuf::from("Fortnite/5.41"),
     ];
     if let Some(profile) = env::var_os("USERPROFILE").or_else(|| env::var_os("HOME")) {
-        candidates.push(PathBuf::from(profile).join("Downloads/5.41/5.41"));
-        candidates.push(PathBuf::from(profile).join("Downloads/5.41"));
+        let downloads = PathBuf::from(profile).join("Downloads");
+        candidates.push(downloads.join("5.41/5.41"));
+        candidates.push(downloads.join("5.41"));
     }
     candidates.into_iter().find(|p| is_source_root(p))
 }
