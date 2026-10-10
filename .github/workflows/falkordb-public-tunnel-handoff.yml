@@ -1,0 +1,35 @@
+name: Official public tunnel runtime handoff
+on:
+  push:
+    branches:
+      - falkordb-secure-build-20261009
+    paths:
+      - '.github/workflows/falkordb-public-tunnel-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch and verify public tunnel runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public-tunnel
+          curl -fL --retry 3 -o public-tunnel/runtime.zip https://github.com/openai/tunnel-client/releases/download/v0.0.15/tunnel-client-runtime-v0.0.15-windows-amd64.zip
+          echo 'aa5ddb14dddd602fa59f3e6f4401aa8a79a218e341466226b7434127dff65dbc  public-tunnel/runtime.zip' | sha256sum -c -
+          unzip -q public-tunnel/runtime.zip -d public-tunnel/unpacked
+          find public-tunnel/unpacked -name 'tunnel-client-runtime.exe' -print
+          test "$(find public-tunnel/unpacked -name 'tunnel-client-runtime.exe' | wc -l)" -eq 1
+          cp "$(find public-tunnel/unpacked -name 'tunnel-client-runtime.exe' | head -1)" public-tunnel/tunnel-client-runtime.exe
+          curl -fL --retry 3 -o public-tunnel/openai-tunnel-LICENSE.txt https://raw.githubusercontent.com/openai/tunnel-client/v0.0.15/LICENSE
+          curl -fL --retry 3 -o public-tunnel/openai-tunnel-NOTICE.txt https://raw.githubusercontent.com/openai/tunnel-client/v0.0.15/NOTICE
+          rm -rf public-tunnel/runtime.zip public-tunnel/unpacked
+          (cd public-tunnel && sha256sum * > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-public-tunnel-runtime
+          path: public-tunnel/
+          retention-days: 1
