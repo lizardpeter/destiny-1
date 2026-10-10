@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 // Small BCSV field lists fit in a few cache lines; hashing them costs more
 // than scanning. Larger tables are queried repeatedly for each JMap row.
-const INDEX_MIN_FIELDS: usize = 64;
+const INDEX_MIN_FIELDS: usize = 128;
 
 #[derive(Clone, Debug)]
 pub struct BcsvField {
