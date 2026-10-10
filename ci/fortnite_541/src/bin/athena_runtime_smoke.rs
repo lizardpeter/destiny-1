@@ -13,6 +13,22 @@ fn run()->Result<(),String>{
         terrain.shared_height_samples!=20413{
         return Err("retail Athena source mesh census changed or incomplete".into());
     }
+    let allocations=terrain.paint_patches.iter().map(|p|p.layers.len()).sum::<usize>();
+    println!("FORTNITE_SOURCE_PAINT_CLOSED references={} allocations={} unique_layers={} patches={} layer_names={:?}",
+        terrain.source_weightmap_texture_refs,allocations,terrain.source_layer_info_paths.len(),
+        terrain.paint_patches.len(),terrain.source_layer_info_paths);
+    if terrain.source_weightmap_texture_refs!=208
+        ||terrain.source_layer_allocation_count!=669
+        ||allocations!=669||terrain.paint_patches.len()!=94 {
+        return Err("original retail Athena paint allocation/weightmap census does not close".into());
+    }
+    if !terrain.paint_patches.iter().zip(&terrain.patches).all(|(paint,patch)|
+        paint.section_base==patch.section_base
+        &&paint.side==patch.side()
+        &&paint.layers.iter().all(|l|l.weights.len()==patch.vertex_count())
+    ){
+        return Err("original Athena paint samples do not align to exact source heightfield vertices".into());
+    }
     println!("PASS: source verified and in-game-neutral-admission terrain geometry ready");
     Ok(())
 }
