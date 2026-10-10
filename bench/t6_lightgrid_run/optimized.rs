@@ -68,6 +68,22 @@ pub(crate) struct T6WorldLightGridRuntime {
     pub(crate) coeff_count: usize,
 }
 
+/// Cold-path lookup used only after validated wide RLE rows reach late
+/// columns. Keeping it out-of-line preserves a compact early-grid hot path.
+#[inline(never)]
+fn t6_late_lightgrid_run(
+    runs: &[T6WorldLightGridRun],
+    local_col: usize,
+) -> Option<&T6WorldLightGridRun> {
+    let index = runs.partition_point(|run| {
+        usize::from(run.column_start) + usize::from(run.column_count) <= local_col
+    });
+    let run = runs.get(index)?;
+    let first = usize::from(run.column_start);
+    (local_col >= first && local_col < first + usize::from(run.column_count))
+        .then_some(run)
+}
+
 impl T6WorldLightGridRuntime {
     #[cfg(feature = "import-bo2")]
     pub(crate) fn load_direct_if_present(map_id: &str) -> Result<Option<Self>, String> {
@@ -303,24 +319,20 @@ impl T6WorldLightGridRuntime {
         if local_z >= usize::from(row.z_count) {
             return None;
         }
-        // Decoded RLE runs have strictly ordered, gap-free column intervals,
-        // as checked by validate(). For broad rows, jump straight to the
-        // containing interval instead of linearly walking every RLE run.
-        // Short rows keep the existing small, branch-predictable scan.
-        let run = if row.runs.len() >= 32 {
-            let index = row.runs.partition_point(|run| {
-                usize::from(run.column_start) + usize::from(run.column_count) <= local_col
-            });
-            let run = row.runs.get(index)?;
-            let first = usize::from(run.column_start);
-            (local_col >= first && local_col < first + usize::from(run.column_count))
-                .then_some(run)
+        // Native source RLE runs are sorted and gap-free after validation.
+        // For wide rows beyond the 32nd interval, an out-of-line binary seek
+        // avoids the long first-match scan. Early coordinates and short rows
+        // retain the source's original branch-predictable linear search.
+        let run = if row.runs.len() >= 64
+            && local_col >= usize::from(row.runs[32].column_start)
+        {
+            t6_late_lightgrid_run(&row.runs, local_col)?
         } else {
             row.runs.iter().find(|run| {
                 let first = usize::from(run.column_start);
                 local_col >= first && local_col < first + usize::from(run.column_count)
-            })
-        }?;
+            })?
+        };
         if run.z_count == 0 || local_z < usize::from(run.z_start) {
             return None;
         }
