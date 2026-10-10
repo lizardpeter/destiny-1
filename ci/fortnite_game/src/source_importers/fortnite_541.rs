@@ -173,6 +173,32 @@ pub(super) fn source_original_terrain_bc_texture(
     })
 }
 
+/// Best-effort admission of *original* Fortnite BR time-of-day source.
+/// The s4 archive is next to the already auto-discovered main PAK, so no
+/// manual command or user-specific path is needed. Missing optional split
+/// files remain explicit and never manufacture a replacement sky/sun.
+fn original_timeofday(root:&Path)->Result<Option<fortnite_541_importer::timeofday::OriginalTimeOfDay>,String>{
+    let file=root.join("FortniteGame/Content/TimeOfDay/TODM/BR/TODM_BR");
+    let header=file.with_extension("uasset");
+    let export=file.with_extension("uexp");
+    if header.is_file()!=export.is_file(){
+        return Err("Fortnite TODM_BR original source cache contains only half the package".into());
+    }
+    if !header.is_file(){
+        let main=env::var_os("RUST_TEST_FORTNITE_541_PAK").map(PathBuf::from)
+            .or_else(||fortnite_541_importer::locate_source_root().map(|r|
+                r.join("FortniteGame/Content/Paks/pakchunk0-WindowsClient.pak")));
+        let Some(main)=main else{return Ok(None)};
+        if !main.with_file_name("pakchunk0_s4-WindowsClient.pak").is_file(){
+            return Ok(None);
+        }
+        let prepared=fortnite_541_importer::extract::prepare_original_todm_br(&main,root)?;
+        println!("Fortnite 5.41: TODM_BR original time-of-day: {} SHA-1-authenticated files, {} newly extracted bytes from original split s4 PAK",
+            prepared.verified_files,prepared.bytes_extracted);
+    }
+    fortnite_541_importer::timeofday::from_source_root(root).map(Some)
+}
+
 fn scene_from_source(t:&fortnite_541_importer::athena::AthenaTerrain)->Result<NeutralScene,String>{
     let min=t.patches.iter().flat_map(|p|p.height_samples.iter().copied())
         .min().ok_or("Athena source contains no terrain samples")?;
@@ -284,8 +310,32 @@ pub(super) fn import_visuals(
     if !can_generate(map_id){return Err(format!("unknown Fortnite diagnostic map '{map_id}'"));}
     let started=Instant::now();
     let source=source_terrain()?;
-    let scene=scene_from_source(&source)?;
+    let mut scene=scene_from_source(&source)?;
     drop(source);
+    // The original game Blueprint identifies phase 1 as daytime, 07:00 to
+    // 19:00. Select that AUTHORED phase for this static preview, not an
+    // invented day/night clock. Preserve missing dynamic sun direction.
+    let source_day=original_timeofday(&source_directory()?)?
+        .map(|time|time.phases[1]);
+    let mut source_ambient_rgb=[1.;3];
+    let mut source_ambient_strength=0.;
+    if let Some(day)=source_day {
+        source_ambient_rgb.copy_from_slice(&day.skylight_linear_rgba[..3]);
+        // The generic renderer uses normalized environment intensity;
+        // the original FLinearColor alpha is not presumed to be the
+        // Unreal SkyLightComponent intensity scale.
+        source_ambient_strength=1.;
+        scene.report.lines.push(format!(
+            "Original BR daytime phase recovered from source TODM_BR (07:00-19:00):              skylight linear RGB={:?}, author alpha={}, directional brightness={}              (sun direction not yet reconstructed), source fog RGB={:?},              fog density={}, fog falloff={}. Universal ambient color uses              source RGB with neutral unit strength, NOT complete retail              sun/shadow/sky/fog parity.",
+            source_ambient_rgb,day.skylight_linear_rgba[3],
+            day.directional_light_brightness,
+            &day.fog_color_linear_rgba[..3],day.fog_density,day.fog_height_falloff
+        ));
+    }else{
+        scene.report.lines.push(
+            "Fortnite BR TODM source is unavailable from cache and nearby split s4 archive; no inferred sky, fog or sunlight admitted.".into()
+        );
+    }
     // Release cached source bytes as soon as the runtime scene owns the
     // decoded engine-space geometry; later maps do not retain Fortnite RAM.
     *terrain_cache().lock().map_err(|_|"Athena terrain cache lock poisoned")?=None;
@@ -294,8 +344,9 @@ pub(super) fn import_visuals(
         map_id,scene,
         &neutral_bridge::BridgeOptions{
             label:"Fortnite 5.41 (source terrain diagnostic)",
-            id_prefix:"fortnite_541_athena",ambient_color:[1.;3],
-            ambient_strength:0.,ibl_diffuse_strength:0.,ibl_specular_strength:0.,
+            id_prefix:"fortnite_541_athena",ambient_color:source_ambient_rgb,
+            ambient_strength:source_ambient_strength,
+            ibl_diffuse_strength:0.,ibl_specular_strength:0.,
             studio_shading_strength:0.,
             // A zero shadow distance is INVALID for the shared native Vulkan
             // render-settings contract, even if this source preview has no
