@@ -121,7 +121,8 @@ def run(destination, include_landscape, key):
     for i in landscape_indices:
         suffixes.extend([
             f"/Maps/Landscape/Athena_Terrain_LS_{i:02}.umap",
-            f"/Maps/Landscape/Athena_Terrain_LS_{i:02}.uexp"
+            f"/Maps/Landscape/Athena_Terrain_LS_{i:02}.uexp",
+            f"/Maps/Landscape/Athena_Terrain_LS_{i:02}.ubulk",
         ])
     found = []
     for suffix in suffixes:
