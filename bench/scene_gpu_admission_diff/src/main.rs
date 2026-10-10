@@ -1,5 +1,5 @@
 use std::{hint::black_box,time::Instant};
-use bytemuck::{cast_slice,cast_slice_mut};
+use bytemuck::cast_slice;
 mod real_source;
 use real_source::{changed_byte_range,commit_uploaded_bytes};
 fn prepare_before_admission(source:&[u32],last:&[u32])->real_source::StreamChange{
@@ -27,7 +27,7 @@ fn verify(){
 fn bench(size:usize,admit_every:usize){
  let mut source=(0..size).map(|i|i as u32*37).collect::<Vec<_>>();
  let rounds=350usize;
- let old=||{
+ let old=|source:&mut Vec<u32>|{
   let mut uploaded=source.clone();let t=Instant::now();
   for attempt in 0..rounds {
    let idx=(attempt*41)%size;
@@ -37,7 +37,7 @@ fn bench(size:usize,admit_every:usize){
   }
   black_box(uploaded);t.elapsed().as_secs_f64()
  };
- let new=||{
+ let new=|source:&mut Vec<u32>|{
   let mut uploaded=source.clone();let t=Instant::now();
   for attempt in 0..rounds {
    let idx=(attempt*41)%size;
@@ -50,7 +50,7 @@ fn bench(size:usize,admit_every:usize){
   black_box(uploaded);t.elapsed().as_secs_f64()
  };
  let (mut a,mut b)=(Vec::new(),Vec::new());
- for round in 0..7{if round%2==0{a.push(old());b.push(new());}else{b.push(new());a.push(old());}}
+ for round in 0..7{if round%2==0{a.push(old(&mut source));b.push(new(&mut source));}else{b.push(new(&mut source));a.push(old(&mut source));}}
  a.sort_by(f64::total_cmp);b.sort_by(f64::total_cmp);
  println!("instance_buffer_u32={size} admit_one_of={admit_every} old_prepare_ms={:.3} deferred_ms={:.3} speedup={:.2}x",a[3]*1000.,b[3]*1000.,a[3]/b[3]);
 }
