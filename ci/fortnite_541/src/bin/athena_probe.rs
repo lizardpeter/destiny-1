@@ -46,6 +46,18 @@ fn run() -> Result<(), String> {
         if entry.path.ends_with(".umap") && !data.starts_with(&0x9E2A_83C1u32.to_le_bytes()) {
             return Err(format!("invalid UE4 package file signature {:?}", entry.path));
         }
+        if entry.path.ends_with(".umap") {
+            let catalog = fortnite_541_importer::uobject::inspect(&data)?;
+            println!("PACKAGE {} names={} imports={} exports={} name_offset={} import_offset={} export_offset={} sample={:?}",
+                entry.path,
+                catalog.summary.name_count,
+                catalog.summary.import_count,
+                catalog.summary.export_count,
+                catalog.summary.name_offset,
+                catalog.summary.import_offset,
+                catalog.summary.export_offset,
+                catalog.names.iter().take(5).collect::<Vec<_>>());
+        }
         println!("VERIFIED {} ({} bytes, SHA-1 matches source entry)",
             entry.path, data.len());
     }
