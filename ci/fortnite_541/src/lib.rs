@@ -8,6 +8,7 @@ pub mod properties;
 pub mod landscape;
 pub mod texture;
 pub mod terrain;
+pub mod material;
 
 use std::{
     collections::BTreeSet,
