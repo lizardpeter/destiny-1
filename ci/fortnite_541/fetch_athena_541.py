@@ -94,7 +94,7 @@ def derive_footer():
         raise ValueError("invalid encrypted original PakInfo bounds")
     return offset, length, digest
 
-def run(destination, include_landscape, key):
+def run(destination, include_landscape, include_materials, key):
     idxoff, idxlen, expected = derive_footer()
     if idxlen > 64*1024*1024 or idxlen % 16:
         raise ValueError("unexpected index size or AES block alignment")
@@ -124,6 +124,11 @@ def run(destination, include_landscape, key):
             f"/Maps/Landscape/Athena_Terrain_LS_{i:02}.uexp",
             f"/Maps/Landscape/Athena_Terrain_LS_{i:02}.ubulk",
         ])
+    if include_materials:
+        for material in ["M_Athena_Terrain_01", "M_Athena_Terrain_Master",
+                         "M_Athena_Terrain_01_NoAridRock", "M_Athena_Terrain_01_Masked"]:
+            for extension in [".uasset", ".uexp"]:
+                suffixes.append(f"/Environments/Landscape/Material/{material}{extension}")
     found = []
     for suffix in suffixes:
         matches = [(name, record) for name, record in entries.items() if name.endswith(suffix)]
@@ -159,7 +164,9 @@ if __name__ == "__main__":
                         default=pathlib.Path("asset_import/work/fortnite_541/athena/source"))
     parser.add_argument("--all-landscape", action="store_true",
                         help="fetch all six landscape sections, not just LS_00")
+    parser.add_argument("--with-terrain-materials", action="store_true",
+                        help="also download original Athena material and master asset source packages")
     parser.add_argument("--aes-key", default=HISTORICAL_KEY,
                         help="AES key for an original 5.41 build; historical public key is default")
     args = parser.parse_args()
-    run(args.destination, args.all_landscape, args.aes_key.removeprefix("0x"))
+    run(args.destination, args.all_landscape, args.with_terrain_materials, args.aes_key.removeprefix("0x"))
