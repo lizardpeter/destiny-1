@@ -1,0 +1,10 @@
+[package]
+name = "ipak-multi-raw-reserve-bench"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+crc32fast = "1"
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
