@@ -1698,7 +1698,7 @@ mod tests {
 
 
 #[cfg(test)]
-mod tests {
+mod animation_source_tests {
     use super::*;
 
     #[test]
