@@ -463,6 +463,69 @@ impl T6WorldLightGridRuntime {
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn wide_canonical_rle_row_seek_matches_original_linear_owner_search() {
+        // 64 column intervals with intermittent omitted Z spans; compare
+        // every grid coordinate to the old first-matching-run scan.
+        let mut runs = Vec::new();
+        let mut entries = Vec::new();
+        for index in 0..64usize {
+            let z_count = if index % 5 == 0 { 0 } else { 2 };
+            let first_entry = entries.len();
+            for _ in 0..2 * z_count {
+                entries.push(T6WorldLightGridEntry {
+                    coeff_index: 0, primary_light_index: 0, needs_trace: 0,
+                });
+            }
+            runs.push(T6WorldLightGridRun {
+                column_start: (index * 2) as u16,
+                column_count: 2,
+                z_start: 0,
+                z_count: z_count as u8,
+                first_entry,
+            });
+        }
+        let runtime = T6WorldLightGridRuntime {
+            sun_primary_light_index: 0,
+            mins: [0, 0, 0],
+            maxs: [0, 127, 1],
+            offset: 0.0,
+            row_axis: 0, col_axis: 1,
+            row_data_start: vec![0],
+            raw_row_data: vec![0; 16],
+            rows: vec![T6WorldLightGridRow {
+                row_index: 0, raw_byte_offset: 0,
+                col_start: 0, col_count: 128,
+                z_start: 0, z_count: 2,
+                first_entry: 0, runs: runs.clone(),
+            }],
+            entries,
+            coeff_bytes: vec![0; COEFF_RECORD_BYTES],
+            coeff_count: 1,
+        };
+        runtime.validate().unwrap();
+        for column in 0..=128u16 {
+            for z in 0..=2u16 {
+                let expected = runs.iter().find(|run| {
+                    let first = usize::from(run.column_start);
+                    let col = usize::from(column);
+                    col >= first && col < first + usize::from(run.column_count)
+                }).and_then(|run| {
+                    let local_col = usize::from(column - run.column_start);
+                    let local_z = usize::from(z);
+                    (run.z_count > 0 && local_z < usize::from(run.z_count))
+                        .then_some(run.first_entry + local_col * usize::from(run.z_count) + local_z)
+                });
+                assert_eq!(
+                    runtime.entry_index_at_grid_coord([0, column, z]),
+                    expected,
+                    "column {column} z {z}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn retained_pc_decode_constants_match_oracle_bits() {
         assert_eq!(INV_65535.to_bits(), 0x3780_0080);
