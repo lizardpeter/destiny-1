@@ -1,0 +1,45 @@
+name: T6 FastFile raw DEFLATE backend comparison
+on:
+  push:
+    branches: [bench/t6-fastfile-deflate-backends-20261009]
+    paths:
+      - 'bench/t6_backend/**'
+      - '.github/workflows/t6-fastfile-backends.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bench:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build and unit-test both independent Rust backends
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RUSTFLAGS="-C target-cpu=native"
+          export CARGO_PROFILE_RELEASE_LTO=fat
+          export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+          for name in miniz zlibrs; do
+            cargo test --release --manifest-path "bench/t6_backend/$name/Cargo.toml"
+            cargo build --release --manifest-path "bench/t6_backend/$name/Cargo.toml"
+          done
+      - name: Generate one fixed corpus and compare 9 alternating paired rounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          MINIZ="./bench/t6_backend/miniz/target/release/t6-ff-miniz.exe"
+          ZLIB="./bench/t6_backend/zlibrs/target/release/t6-ff-zlibrs.exe"
+          mkdir -p bench/t6_backend/results
+          "$MINIZ" --generate bench/t6_backend/results
+          for i in $(seq 1 9); do
+            if (( i % 2 )); then
+              echo "ROUND=$i BACKEND=miniz"; "$MINIZ" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tminiz/"
+              echo "ROUND=$i BACKEND=zlibrs"; "$ZLIB" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tzlibrs/"
+            else
+              echo "ROUND=$i BACKEND=zlibrs"; "$ZLIB" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tzlibrs/"
+              echo "ROUND=$i BACKEND=miniz"; "$MINIZ" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tminiz/"
+            fi
+          done
