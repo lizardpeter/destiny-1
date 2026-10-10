@@ -4,6 +4,7 @@ use flate2::bufread::DeflateDecoder;
 use serde::Serialize;
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
+use salsa20::cipher::{KeyIvInit, StreamCipher};
 
 /// Ring buffer the game reads FastFile records through (see `decode_bytes`).
 const VANILLA_BUFFER_SIZE: usize = 0x80000;
@@ -88,7 +89,6 @@ pub fn decode_bytes(ff: &[u8]) -> Result<(Vec<u8>, Vec<FastFileRecordAudit>, Fas
     // Reuse the largest per-record decrypted buffer; records are at most
     // 0x8000 bytes, and only the encrypted region is ever exposed to DEFLATE.
     let mut plaintext = Vec::<u8>::new();
-    let salsa_key_state = salsa20_key_state(&FASTFILE_KEY);
 
     let mut pos = HEADER_SIZE;
     let mut record_index = 0usize;
@@ -133,7 +133,7 @@ pub fn decode_bytes(ff: &[u8]) -> Result<(Vec<u8>, Vec<FastFileRecordAudit>, Fas
             .try_into()
             .map_err(|_| "invalid T6 digest table nonce".to_owned())?;
 
-        salsa20_xor_into(ciphertext, &salsa_key_state, &nonce, &mut plaintext);
+        salsa20_xor_into(ciphertext, &FASTFILE_KEY, &nonce, &mut plaintext);
         let mut decoder = DeflateDecoder::new(plaintext.as_slice());
         let before = expanded_stream.len();
         decoder
@@ -253,28 +253,15 @@ fn salsa20_key_state(key: &[u8; 32]) -> [u32; 16] {
 /// Vec allocation for each encrypted FastFile record. The stream uses Salsa20
 /// counter zero at the start of every record, matching the original decoder.
 fn salsa20_xor_into(
-    ciphertext: &[u8],
-    base_state: &[u32; 16],
-    nonce: &[u8; 8],
-    output: &mut Vec<u8>,
+    ciphertext: &[u8], key: &[u8;32], nonce: &[u8;8], output: &mut Vec<u8>,
 ) {
-    output.resize(ciphertext.len(), 0);
-    let mut state = *base_state;
-    let nonce_words = words2(nonce);
-    state[6] = nonce_words[0];
-    state[7] = nonce_words[1];
-    for (block_index, (source, destination)) in ciphertext
-        .chunks(64)
-        .zip(output.chunks_mut(64))
-        .enumerate()
-    {
-        state[8] = block_index as u32;
-        state[9] = (block_index >> 32) as u32;
-        let key_stream = salsa20_block_from_state(&state);
-        for (dst, (&src, &key)) in destination.iter_mut().zip(source.iter().zip(key_stream.iter())) {
-            *dst = src ^ key;
-        }
-    }
+    output.clear();
+    output.extend_from_slice(ciphertext);
+    let mut cipher = salsa20::Salsa20::new(
+        salsa20::Key::from_slice(key),
+        salsa20::Nonce::from_slice(nonce),
+    );
+    cipher.apply_keystream(output.as_mut_slice());
 }
 
 /// The original state-independent Salsa20 block kernel can still be exercised
@@ -487,7 +474,7 @@ mod tests {
                 for (i, b) in nonce.iter_mut().enumerate() {
                     *b = seed.wrapping_mul((i + 1) as u8);
                 }
-                salsa20_xor_into(&ciphertext, &base, &nonce, &mut buffer);
+                salsa20_xor_into(&ciphertext, &FASTFILE_KEY, &nonce, &mut buffer);
                 let original = salsa20_xor(&ciphertext, &FASTFILE_KEY, &nonce);
                 assert_eq!(buffer, original, "length={len} seed={seed}");
                 let encoded = buffer.clone();
@@ -548,6 +535,5 @@ pub fn benchmark_encrypt(plaintext: &[u8], nonce: &[u8; 8]) -> Vec<u8> {
     salsa20_xor(plaintext, &FASTFILE_KEY, nonce)
 }
 pub fn benchmark_crypto_reuse(plaintext: &[u8], nonce: &[u8; 8], output: &mut Vec<u8>) {
-    let base = salsa20_key_state(&FASTFILE_KEY);
-    salsa20_xor_into(plaintext, &base, nonce, output)
+    salsa20_xor_into(plaintext, &FASTFILE_KEY, nonce, output)
 }

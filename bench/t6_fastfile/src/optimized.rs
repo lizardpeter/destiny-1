@@ -1,6 +1,6 @@
 use std::{fs, io::Read, path::Path};
 
-use flate2::read::DeflateDecoder;
+use flate2::bufread::DeflateDecoder;
 use serde::Serialize;
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
@@ -15,7 +15,7 @@ const ENTRY_SIZE: usize = 20;
 const TABLE_DWORDS: usize = TABLE_ENTRIES * (ENTRY_SIZE / 4);
 const FASTFILE_VERSION: u32 = 0x93;
 const FASTFILE_KEY: [u8; 32] = [0u8; 32];
-// Public benchmark uses a synthetic zero key, not the retail T6 key.
+// Synthetic benchmark key, not original retail key.
 const SALSA_SIGMA: [u8; 16] = *b"expand 32-byte k";
 
 #[derive(Debug, Clone, Serialize)]
@@ -493,6 +493,44 @@ mod tests {
                 let encoded = buffer.clone();
                 salsa20_xor_into(&encoded, &base, &nonce, &mut buffer);
                 assert_eq!(buffer, ciphertext, "Salsa20 involution length={len} seed={seed}");
+            }
+        }
+    }
+
+    #[test]
+    fn buffered_raw_deflate_matches_prior_reader_for_valid_and_truncated_input() {
+        use flate2::{write::DeflateEncoder, Compression};
+        use std::io::{Read, Write};
+        for (len, level) in [
+            (1usize, 0u32), (3, 6), (64, 1), (4096, 6),
+            (8192, 0), (32768, 9), (65536, 6),
+        ] {
+            let payload=(0..len).map(|i| ((i.wrapping_mul(41)+len)&255) as u8)
+                .collect::<Vec<_>>();
+            let mut writer=DeflateEncoder::new(Vec::new(),Compression::new(level));
+            writer.write_all(&payload).unwrap();
+            let compressed=writer.finish().unwrap();
+            let mut cases=vec![0usize,1,2,3,compressed.len().saturating_sub(3),
+                compressed.len().saturating_sub(1),compressed.len()];
+            cases.sort_unstable();
+            cases.dedup();
+            for n in cases {
+                if n>compressed.len() {continue;}
+                let slice=&compressed[..n];
+                let mut original_out=Vec::new();
+                let mut buffered_out=Vec::new();
+                let original=flate2::read::DeflateDecoder::new(slice)
+                    .read_to_end(&mut original_out);
+                let buffered=flate2::bufread::DeflateDecoder::new(slice)
+                    .read_to_end(&mut buffered_out);
+                assert_eq!(original.is_ok(),buffered.is_ok(),
+                    "valid/error mismatch: decoded_len={len}, compressed_slice_len={n}");
+                assert_eq!(original_out,buffered_out,
+                    "decoded bytes mismatch: decoded_len={len}, compressed_slice_len={n}");
+                if let (Err(a),Err(b))=(original,buffered) {
+                    assert_eq!(a.kind(),b.kind(),
+                        "error class mismatch: decoded_len={len}, compressed_slice_len={n}");
+                }
             }
         }
     }

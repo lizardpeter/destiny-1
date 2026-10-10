@@ -1,0 +1,26 @@
+name: T6 FastFile RustCrypto Salsa20 A-B
+on:
+  push:
+    branches: [bench/t6-fastfile-rustcrypto-salsa-20261009]
+    paths:
+      - 'bench/t6_fastfile/**'
+      - '.github/workflows/t6-fastfile-rustcrypto-salsa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compare original block-vector cryptography and full FastFile decode
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RUSTFLAGS="-C target-cpu=native"
+          export CARGO_PROFILE_RELEASE_LTO=fat
+          export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+          cargo test --release --manifest-path bench/t6_fastfile/Cargo.toml
+          cargo run --release --manifest-path bench/t6_fastfile/Cargo.toml
