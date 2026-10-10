@@ -32,5 +32,9 @@ jobs:
         run: python3 ci/fortnite_541/fetch_athena_541.py --all-landscape --destination /tmp/fortnite541/athena/source
       - name: Decode and assemble real in-game terrain source
         run: cargo run --manifest-path ci/fortnite_541/Cargo.toml --bin athena_runtime_smoke -- /tmp/fortnite541/athena/source
+      - name: Compile full game-side Fortnite NeutralScene adapter using source-neutral engine crate
+        run: cargo check --manifest-path ci/fortnite_game/Cargo.toml --all-targets
+      - name: Load real Athena source into actual game-side NeutralScene adapter
+        run: RUST_TEST_FORTNITE_541_ATHENA_SOURCE_ROOT=/tmp/fortnite541/athena/source cargo run --manifest-path ci/fortnite_game/Cargo.toml --release
       - name: Show resolved AES dependency lock entries
         run: cat ci/fortnite_541/Cargo.lock
