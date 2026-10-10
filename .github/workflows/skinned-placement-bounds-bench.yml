@@ -1,0 +1,21 @@
+name: Source neutral per-placement bounds CPU A/B
+on:
+  push:
+    branches: [bench/skinned-placement-bounds-20261010]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/skinned_bounds
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build production source bound functions
+        shell: bash
+        run: cargo run --release
