@@ -43,3 +43,5 @@ jobs:
               echo "ROUND=$i BACKEND=miniz"; "$MINIZ" --bench bench/t6_backend/results | sed "s/^BENCH/MEASURE\t$i\tminiz/"
             fi
           done
+
+# Independent repeat of same paired A-B sample corpus.
