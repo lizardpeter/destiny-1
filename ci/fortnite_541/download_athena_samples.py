@@ -75,6 +75,11 @@ for i,path in enumerate(wanted):
   f.write(header)
   f.write(data)
  got=hashlib.sha1(data).digest()
+ if path.endswith('.umap'):
+  flags=struct.unpack_from('<I',data,37)[0]
+  name_count,name_offset=struct.unpack_from('<ii',data,41)
+  first_words=[(i,struct.unpack_from('<i',data,i)[0]) for i in range(49,min(len(data)-4,125),4)]
+  print('UE4_SUMMARY_HEADER',path,'flags',hex(flags),'names',name_count,'name_offset',name_offset,'tail_words',first_words,'name_table_first80',data[name_offset:name_offset+80].hex(),flush=True)
  print('MAP_PAYLOAD',path,'offset',data_start,'size',len(data),
        'sha_expected',sha.hex(),'sha_actual',got.hex(),'verified',got==sha,
        'first48',data[:48].hex(),flush=True)
