@@ -1,0 +1,21 @@
+name: Playing-frame frontend snapshot exact source A/B
+on:
+  push:
+    branches: [bench/frontend-playing-header-20261010]
+  workflow_dispatch:
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact production frontend snapshot and Playing header
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/frontend_playing/main.rs -o frontend-bench
+      - name: Compare unchanged displayed header and snapshot performance
+        shell: bash
+        run: ./frontend-bench
