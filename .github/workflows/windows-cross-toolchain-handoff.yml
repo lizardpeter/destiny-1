@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           mkdir -p handoff
           curl -fLsS --retry 3 -o handoff/llvm-mingw-linux.tar.xz \
-            'https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-ubuntu-24.04-x86_64.tar.xz'
+            'https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-ubuntu-22.04-x86_64.tar.xz'
           tar -tJf handoff/llvm-mingw-linux.tar.xz | head -10 || true
           SYSROOT="$(rustc --print sysroot)"
           test -e "$SYSROOT/lib/rustlib/x86_64-pc-windows-gnu/lib/libstd.rlib"
