@@ -122,6 +122,42 @@ fn main() {
             println!("size={} B, old={:.3} ms, pooled={:.3} ms, speedup={:.2}x",
                 size,1000.0*original[4],1000.0*pooled[4],original[4]/pooled[4]);
         }
+
+        // A/B parallel throughput: each worker has an independent extraction
+        // sequence, but all optimized readers share one archive reader.
+        for (workers, size) in [(4usize,4096usize),(16,4096),(4,32768),(16,32768)] {
+            let rounds = 5;
+            let mut old_runs=Vec::new();
+            let mut new_runs=Vec::new();
+            for round in 0..rounds {
+                let timed = |optimized: bool| {
+                    let start=Instant::now();
+                    thread::scope(|scope| {
+                        for worker in 0..workers {
+                            let reader=Arc::clone(&reader);
+                            let path=&path;
+                            scope.spawn(move || {
+                                let mut sum=0u8;
+                                for i in 0..160 {
+                                    let offset=((worker*213_901+i*1_483_217)%(32*1024*1024-size)) as u64;
+                                    let bytes=if optimized {reader.read(offset,size).unwrap()} else {baseline(path,offset,size)};
+                                    sum^=bytes[0];
+                                }
+                                std::hint::black_box(sum);
+                            });
+                        }
+                    });
+                    start.elapsed().as_secs_f64()
+                };
+                let (old, new)=if round%2==0 {(timed(false),timed(true))} else {
+                    let new=timed(true);(timed(false),new)
+                };
+                old_runs.push(old);new_runs.push(new);
+            }
+            old_runs.sort_by(|a,b|a.total_cmp(b));new_runs.sort_by(|a,b|a.total_cmp(b));
+            println!("parallel workers={workers}, size={size} B, old={:.3} ms, pooled={:.3} ms, speedup={:.2}x",
+                1000.0*old_runs[2], 1000.0*new_runs[2], old_runs[2]/new_runs[2]);
+        }
     }
     fs::remove_file(&path).unwrap();
 }
