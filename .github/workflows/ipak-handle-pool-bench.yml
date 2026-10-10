@@ -1,0 +1,22 @@
+name: IPAK read handle parity and microbenchmark
+on:
+  push:
+    branches:
+      - bench/ipak-handle-pool-20261009
+  workflow_dispatch:
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile independent file-range harness
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -o ipak-read-harness bench/ipak_file/main.rs
+      - name: Verify parity and benchmark
+        shell: bash
+        run: ./ipak-read-harness
