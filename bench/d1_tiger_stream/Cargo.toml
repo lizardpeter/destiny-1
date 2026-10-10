@@ -1,0 +1,11 @@
+[package]
+name="d1-tiger-entry-stream-benchmark"
+version="0.1.0"
+edition="2021"
+[dependencies]
+tar = {version="0.4.46",default-features=false}
+sha1_external = { package="sha1", version="0.10" }
+[profile.release]
+opt-level=3
+lto="fat"
+codegen-units=1
