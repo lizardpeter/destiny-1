@@ -1,0 +1,21 @@
+name: Native FPS regression capture exact-source tests
+on:
+  push:
+    branches: [bench/native-perf-capture-20261010]
+  workflow_dispatch:
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile source-exact performance recorder unit tests
+        shell: bash
+        run: rustc --edition=2021 --test bench/native_perf_capture/native_perf_capture.rs -o perf-capture-tests
+      - name: Run source tests
+        shell: bash
+        run: ./perf-capture-tests --nocapture
