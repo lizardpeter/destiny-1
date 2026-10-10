@@ -107,13 +107,13 @@ def main():
             # under an alias or different package naming convention. Search
             # by source-identifying fragments too, without claiming a match.
             print(f"REMOTE_FORTNITE_INDEX_SAMPLE archive={name} samples={list(entries)[:4]}",flush=True)
-            fragments=("todm","timeofday","skybox","transylvania","macronormal","grass_ad_d","grasslands","terrain")
+            fragments=("todm_br","trv_skybox_mountain","skybox_mountain","todm","timeofday","skybox","transylvania","macronormal","grass_ad_d","grasslands","terrain")
             for fragment in fragments:
                 hits=[k for k in entries if fragment in k.lower()]
                 print(f"REMOTE_FORTNITE_FUZZY archive={name} fragment={fragment} count={len(hits)} samples={hits[:12]}",flush=True)
             for target in TARGETS:
                 matches=[(path,record) for path,record in entries.items()
-                         if path.replace("\\","/").endswith(target)]
+                         if path.replace("\\","/").lstrip("/").endswith(target.lstrip("/"))]
                 for path,record in matches:
                     print(f"REMOTE_FORTNITE_ORIGINAL_DEPENDENCY archive={name} source_path={path} offset={record[0]} unpacked={record[2]} compression={record[3]} encrypted={record[5]}",flush=True)
             print(f"REMOTE_FORTNITE_TARGET_CENSUS archive={name} matched_entries={sum(1 for path in entries if any(path.replace(chr(92),'/').endswith(t) for t in TARGETS))}",flush=True)
