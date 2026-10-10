@@ -3,6 +3,7 @@
 //! The source catalog is read-only. It does not synthesize geometry, lighting,
 //! collision, materials, world spawns or map-readiness from filenames.
 pub mod pak;
+pub mod uobject;
 
 use std::{
     collections::BTreeSet,
