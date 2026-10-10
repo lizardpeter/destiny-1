@@ -15,7 +15,7 @@ const ENTRY_SIZE: usize = 20;
 const TABLE_DWORDS: usize = TABLE_ENTRIES * (ENTRY_SIZE / 4);
 const FASTFILE_VERSION: u32 = 0x93;
 const FASTFILE_KEY: [u8; 32] = [0u8; 32];
-// Synthetic benchmark key, not original retail key.
+// Public benchmark key is synthetic; private retail key stays in Rust-test.
 const SALSA_SIGMA: [u8; 16] = *b"expand 32-byte k";
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,7 +52,7 @@ struct AuditFile<'a> {
 pub fn decode_file(input: &Path, output: &Path, audit_output: Option<&Path>) -> Result<FastFileSummary, String> {
     let encrypted = fs::read(input)
         .map_err(|error| format!("failed to read {}: {error}", input.display()))?;
-    let (expanded, records, summary) = decode_bytes(&encrypted)?;
+    let (expanded, records, summary) = decode_bytes_inner(&encrypted, audit_output.is_some())?;
 
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)
@@ -79,6 +79,21 @@ pub fn decode_file(input: &Path, output: &Path, audit_output: Option<&Path>) -> 
 }
 
 pub fn decode_bytes(ff: &[u8]) -> Result<(Vec<u8>, Vec<FastFileRecordAudit>, FastFileSummary), String> {
+    decode_bytes_inner(ff, true)
+}
+
+/// Faster decode when callers need the expanded bytes and summary but do not
+/// consume per-record audits. Nonce/SHA-1 chaining and all validations still
+/// execute exactly as in the complete audited decoder.
+pub fn decode_bytes_without_audit(ff: &[u8]) -> Result<(Vec<u8>, FastFileSummary), String> {
+    let (expanded, _, summary) = decode_bytes_inner(ff, false)?;
+    Ok((expanded, summary))
+}
+
+fn decode_bytes_inner(
+    ff: &[u8],
+    collect_audits: bool,
+) -> Result<(Vec<u8>, Vec<FastFileRecordAudit>, FastFileSummary), String> {
     validate_header(ff)?;
     let zone_name = zone_name(ff)?;
     let mut table = initial_digest_table(&zone_name)?;
@@ -155,18 +170,20 @@ pub fn decode_bytes(ff: &[u8]) -> Result<(Vec<u8>, Vec<FastFileRecordAudit>, Fas
         }
         stream_counters[stream] = next_counter;
 
-        audits.push(FastFileRecordAudit {
-            record: record_index,
-            stream,
-            stream_counter_before: counter_before,
-            table_index,
-            nonce_hex: hex(&nonce),
-            length_field_offset,
-            ciphertext_offset: pos,
-            encrypted_bytes: encrypted_length,
-            expanded_bytes,
-            plaintext_sha1: hex(digest.as_slice()),
-        });
+        if collect_audits {
+            audits.push(FastFileRecordAudit {
+                record: record_index,
+                stream,
+                stream_counter_before: counter_before,
+                table_index,
+                nonce_hex: hex(&nonce),
+                length_field_offset,
+                ciphertext_offset: pos,
+                encrypted_bytes: encrypted_length,
+                expanded_bytes,
+                plaintext_sha1: hex(digest.as_slice()),
+            });
+        }
 
         pos = end;
         record_index += 1;
@@ -179,7 +196,7 @@ pub fn decode_bytes(ff: &[u8]) -> Result<(Vec<u8>, Vec<FastFileRecordAudit>, Fas
     let summary = FastFileSummary {
         zone_name,
         encrypted_file_bytes: ff.len(),
-        records: audits.len(),
+        records: record_index,
         expanded_stream_bytes: expanded_stream.len(),
         stream_record_counts: stream_counters,
         encrypted_sha256: hex(Sha256::digest(ff).as_slice()),
@@ -536,6 +553,59 @@ mod tests {
     }
 
     #[test]
+    fn audited_and_auditless_fastfiles_have_exactly_identical_outputs() {
+        use flate2::{write::DeflateEncoder, Compression};
+        use std::io::Write;
+        let name=b"auditless_test";
+        let mut ff=vec![0u8;HEADER_SIZE];
+        ff[0..8].copy_from_slice(b"TAff0100");
+        ff[8..12].copy_from_slice(&FASTFILE_VERSION.to_le_bytes());
+        ff[12..20].copy_from_slice(b"PHEEBs71");
+        ff[24..24+name.len()].copy_from_slice(name);
+
+        let mut table=initial_digest_table("auditless_test").unwrap();
+        let mut stream_counters=[0usize;STREAM_COUNT];
+        let mut expected=Vec::new();
+        for record in 0..24 {
+            let stream=record%STREAM_COUNT;
+            let table_index=(stream_counters[stream]*STREAM_COUNT+stream)%TABLE_ENTRIES;
+            let table_start=table_index*ENTRY_SIZE;
+            let nonce: [u8;8]=table[table_start..table_start+8].try_into().unwrap();
+            let n=[1usize,192,8192,16384][record%4];
+            let data=(0..n).map(|j|((j*11+record*23)&255) as u8)
+                .collect::<Vec<_>>();
+            let mut encoder=DeflateEncoder::new(Vec::new(),Compression::new(6));
+            encoder.write_all(&data).unwrap();
+            let plaintext=encoder.finish().unwrap();
+            assert!(plaintext.len()<=MAX_ENCRYPTED_RECORD);
+            let encrypted=salsa20_xor(&plaintext,&FASTFILE_KEY,&nonce);
+            ff.extend_from_slice(&(encrypted.len() as u32).to_le_bytes());
+            ff.extend_from_slice(&encrypted);
+            expected.extend_from_slice(&data);
+            let digest=Sha1::digest(&plaintext);
+            stream_counters[stream]+=1;
+            let next=((stream_counters[stream]*STREAM_COUNT+stream)%TABLE_ENTRIES)*ENTRY_SIZE;
+            for i in 0..ENTRY_SIZE {table[next+i]^=digest[i];}
+        }
+        ff.extend_from_slice(&[0u8;4]);
+        let (expanded,audits,summary)=decode_bytes(&ff).unwrap();
+        let (plain,plain_summary)=decode_bytes_without_audit(&ff).unwrap();
+        assert_eq!(expanded,expected);
+        assert_eq!(expanded,plain);
+        assert_eq!(audits.len(),24);
+        assert_eq!(summary.records,24);
+        assert_eq!(serde_json::to_value(summary).unwrap(),serde_json::to_value(plain_summary).unwrap());
+
+        let mut corrupt=ff.clone();
+        corrupt[HEADER_SIZE..HEADER_SIZE+4]
+            .copy_from_slice(&((MAX_ENCRYPTED_RECORD as u32)+1).to_le_bytes());
+        assert_eq!(
+            decode_bytes(&corrupt).err().unwrap(),
+            decode_bytes_without_audit(&corrupt).err().unwrap()
+        );
+    }
+
+    #[test]
     fn digest_table_repeats_zone_name_bytes_per_dword() {
         let table = initial_digest_table("ab").unwrap();
         assert_eq!(&table[0..4], b"aaaa");
@@ -546,8 +616,4 @@ mod tests {
 
 pub fn benchmark_encrypt(plaintext: &[u8], nonce: &[u8; 8]) -> Vec<u8> {
     salsa20_xor(plaintext, &FASTFILE_KEY, nonce)
-}
-pub fn benchmark_crypto_reuse(plaintext: &[u8], nonce: &[u8; 8], output: &mut Vec<u8>) {
-    let base = salsa20_key_state(&FASTFILE_KEY);
-    salsa20_xor_into(plaintext, &base, nonce, output)
 }
