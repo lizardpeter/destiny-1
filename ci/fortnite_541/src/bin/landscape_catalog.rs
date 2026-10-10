@@ -22,7 +22,20 @@ fn run() -> Result<(), String> {
         for export in &catalog.exports {
             if catalog.export_class_name(export) != Some("LandscapeComponent") {continue;}
             let bytes=catalog.export_data(&package_file,&companion,export)?;
-            let component=landscape::inspect(&catalog, bytes)?;
+            let component=match landscape::inspect(&catalog, bytes) {
+                Ok(component) => component,
+                Err(error) => {
+                    let props=fortnite_541_importer::properties::scan(&catalog,bytes);
+                    let names=match props {
+                        Ok(p)=>p.fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>().join(","),
+                        Err(e)=>format!("UNPARSEABLE:{e}"),
+                    };
+                    eprintln!("LANDSCAPE_DIAGNOSTIC LS_{section:02} export_ref={} error={error} properties={names}",
+                        catalog.exports.iter().position(|e| std::ptr::eq(e,export)).unwrap_or(usize::MAX)+1);
+                    landscape_objects+=1;
+                    continue;
+                }
+            };
             total_components+=1;
             landscape_objects+=1;
             for axis in 0..2 {
