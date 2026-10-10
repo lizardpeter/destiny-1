@@ -1,0 +1,21 @@
+name: Vulkan global Forward+ header pinned-ash check
+on:
+  push:
+    branches: [bench/global-forward-header-vk-20261010]
+  workflow_dispatch:
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/global_forward_header
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact Vulkan transfer and sync2 API for pinned ash
+        shell: bash
+        run: cargo test --locked --release || cargo test --release
