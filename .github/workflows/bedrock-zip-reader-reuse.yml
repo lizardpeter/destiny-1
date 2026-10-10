@@ -1,0 +1,20 @@
+name: Bedrock ZIP central directory reuse benchmark
+on:
+  push:
+    branches: [bench/bedrock-zip-reader-reuse-20261009]
+  workflow_dispatch:
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/bedrock_zip_reader_reuse
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Benchmark ZIP archive reuse
+        run: cargo run --release
