@@ -27,7 +27,7 @@ fn check(fields:usize,rows:usize,duplicate:bool){
  let bytes=setup(fields,rows,duplicate);
  let base=baseline::Bcsv::parse(&bytes).unwrap();
  let next=optimized::Bcsv::parse(&bytes).unwrap();
- assert_eq!(base.records,next.records);
+ assert_eq!(format!("{:?}",base.records),format!("{:?}",next.records));
  for row in 0..rows {
   for col in 0..fields{
    let name=if duplicate && col==fields-1{"field_003".to_string()}else{format!("field_{col:03}")};
