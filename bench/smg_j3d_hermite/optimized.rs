@@ -1305,19 +1305,19 @@ fn sample_track(track: &Track, frame: f32) -> f32 {
     if frames.len() == 1 || frame <= frames[0].time {
         return frames[0].value;
     }
-    // For short curves and frames near the start, the original first-match
-    // scan is faster. A/B tests found unconditional binary search regressed
-    // these cases even on long tracks; only seek beyond the 64th timestamp.
-    if frames.len() < 96 || !track.binary_searchable || frame <= frames[63].time {
-        let Some(next) = frames.iter().position(|key| frame < key.time) else {
+    // Keep the hot early-frame path identical to the source linear sampler.
+    // Only larger finite curves *past* the 64th timestamp use a logarithmic
+    // seek; unconditional binary search regressed early-frame workloads.
+    if frames.len() >= 96 && track.binary_searchable && frame > frames[63].time {
+        let next = frames.partition_point(|key| !(frame < key.time));
+        if next == frames.len() {
             return frames.last().unwrap().value;
-        };
+        }
         return hermite(frames[next - 1], frames[next], frame);
     }
-    let next = frames.partition_point(|key| !(frame < key.time));
-    if next == frames.len() {
+    let Some(next) = frames.iter().position(|key| frame < key.time) else {
         return frames.last().unwrap().value;
-    }
+    };
     hermite(frames[next - 1], frames[next], frame)
 }
 
