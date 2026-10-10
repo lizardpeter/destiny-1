@@ -1,0 +1,21 @@
+name: Native CPU frame admission stream diff exact-source
+on:
+  push:
+    branches: [bench/scene-gpu-admission-byte-diff-20261010]
+  workflow_dispatch:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bench/scene_gpu_admission_diff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify source byte ABI and benchmark skipped frame attempts
+        shell: bash
+        run: cargo run --release
