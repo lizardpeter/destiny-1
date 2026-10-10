@@ -1,7 +1,7 @@
 //! Temporary public compiler and real-source contract check. This is NOT
 //! the game's Vulkan runtime; it type-checks the actual game importer adapter
 //! against the real neutral_scene crate and validates all source geometry.
-use std::{path::Path,process::ExitCode,sync::Arc};
+use std::{process::ExitCode,sync::Arc};
 
 mod mesh_render_data {
     use super::Arc;
@@ -21,6 +21,7 @@ mod mesh_render_data {
     }
 }
 mod source_importers {
+    use std::path::Path;
     pub struct SourceImportManifest;
     pub mod neutral_bridge{
         pub struct BridgeOptions<'a>{
