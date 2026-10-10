@@ -1,0 +1,26 @@
+name: Portable toolchain handoff probe
+on:
+  push:
+    branches:
+      - falkordb-secure-build-20261009
+    paths:
+      - '.github/workflows/portable-toolchain-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Generate harmless transfer probe
+        shell: bash
+        run: |
+          mkdir -p handoff
+          printf 'OPENAI_GITHUB_ARTIFACT_TRANSPORT_PROBE\n' > handoff/probe.txt
+          sha256sum handoff/probe.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-toolchain-transfer-probe
+          path: handoff/probe.txt
+          retention-days: 1
