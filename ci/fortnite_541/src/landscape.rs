@@ -21,6 +21,60 @@ pub struct LandscapeComponent {
     pub material_instance_refs: Vec<i32>,
 }
 
+#[derive(Debug,Clone)]
+pub struct LandscapeProxy {
+    /// Source-authored landscape section origin in landscape quad coordinates.
+    pub section_offset: [i32;2],
+    pub component_refs: Vec<i32>,
+    pub material_ref: i32,
+    pub landscape_guid: [u8;16],
+}
+
+pub fn inspect_proxy(catalog:&PackageCatalog,data:&[u8])->Result<LandscapeProxy,String>{
+    let props=properties::scan(catalog,data)?;
+    let offset=named(&props,"LandscapeSectionOffset","StructProperty",data)?;
+    if offset.metadata.first().map(String::as_str)!=Some("IntPoint") ||
+        offset.payload.len()!=8 {
+        return Err("source LandscapeSectionOffset is not an FIntPoint".into());
+    }
+    let raw=&data[offset.payload.clone()];
+    let section_offset=[
+        i32::from_le_bytes(raw[0..4].try_into().unwrap()),
+        i32::from_le_bytes(raw[4..8].try_into().unwrap()),
+    ];
+    let guid_prop=named(&props,"LandscapeGuid","StructProperty",data)?;
+    if guid_prop.metadata.first().map(String::as_str)!=Some("Guid") ||
+        guid_prop.payload.len()!=16 {
+        return Err("source LandscapeGuid is not an FGuid".into());
+    }
+    let mut landscape_guid=[0u8;16];
+    landscape_guid.copy_from_slice(&data[guid_prop.payload.clone()]);
+    let component_refs=object_refs(&props,data,"LandscapeComponents")?;
+    let material_ref=integer(&props,data,"LandscapeMaterial","ObjectProperty")?;
+    Ok(LandscapeProxy {section_offset,component_refs,material_ref,landscape_guid})
+}
+
+pub fn relative_component_location(
+    catalog:&PackageCatalog,data:&[u8]
+)->Result<([f32;3],bool),String> {
+    let props=properties::scan(catalog,data)?;
+    let matching=props.fields.iter().filter(|p|p.name=="RelativeLocation").collect::<Vec<_>>();
+    if matching.is_empty(){return Ok(([0.0,0.0,0.0],false));}
+    if matching.len()!=1 ||
+        matching[0].kind!="StructProperty" ||
+        matching[0].metadata.first().map(String::as_str)!=Some("Vector") ||
+        matching[0].payload.len()!=12 {
+        return Err("source component RelativeLocation is not exactly FVector".into());
+    }
+    let raw=&data[matching[0].payload.clone()];
+    let mut xyz=[0f32;3];
+    for (i,slot) in xyz.iter_mut().enumerate(){
+        *slot=f32::from_le_bytes(raw[i*4..i*4+4].try_into().unwrap());
+        if !slot.is_finite(){return Err("source component RelativeLocation contains NaN/Inf".into());}
+    }
+    Ok((xyz,true))
+}
+
 fn named<'a>(props: &'a Properties, name: &str, kind: &str, bytes: &[u8]) -> Result<&'a Property, String> {
     let matches = props.fields.iter().filter(|p| p.name == name).collect::<Vec<_>>();
     if matches.len() != 1 {
