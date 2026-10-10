@@ -7,6 +7,9 @@ use crate::{properties::{self, Properties, Property}, uobject::PackageCatalog};
 pub struct LandscapeComponent {
     /// Original UE4 component grid origin (landscape quads, not metres).
     pub section_base: [i32; 2],
+    /// True when original cooked UObject explicitly serialized the value;
+    /// false means UE4 ULandscapeComponent CDO's zero default was applied.
+    pub section_base_serialized: [bool; 2],
     pub component_size_quads: u32,
     pub subsection_size_quads: u32,
     pub num_subsections: u32,
@@ -36,6 +39,16 @@ fn integer(props: &Properties, bytes: &[u8], name: &str, kind: &str) -> Result<i
     if raw.len() != 4 { return Err(format!("source {name} is not a 32-bit value")); }
     Ok(i32::from_le_bytes(raw.try_into().unwrap()))
 }
+/// ULandscapeComponent class defaults SectionBaseX/Y to zero in UE4.
+/// Cooked UObject property tagging omits fields equal to their class defaults.
+/// Track that provenance rather than misreporting zero as an explicit value.
+fn section_base(props: &Properties, bytes: &[u8], name: &str) -> Result<(i32, bool), String> {
+    let matches=props.fields.iter().filter(|p| p.name==name).count();
+    if matches==0 { return Ok((0,false)); }
+    if matches!=1 { return Err(format!("duplicate source {name} tags")); }
+    Ok((integer(props,bytes,name,"IntProperty")?,true))
+}
+
 fn vec4(props: &Properties, bytes: &[u8], name: &str) -> Result<[f32;4], String> {
     let p = named(props, name, "StructProperty", bytes)?;
     if p.metadata.first().map(String::as_str) != Some("Vector4") {
@@ -80,11 +93,11 @@ pub fn inspect(catalog: &PackageCatalog, data: &[u8]) -> Result<LandscapeCompone
     let heightmap_scale_bias=vec4(&p,data,"HeightmapScaleBias")?;
     let weightmap_texture_refs=object_refs(&p,data,"WeightmapTextures")?;
     let material_instance_refs=object_refs(&p,data,"MaterialInstances")?;
+    let (section_x, serialized_x)=section_base(&p,data,"SectionBaseX")?;
+    let (section_y, serialized_y)=section_base(&p,data,"SectionBaseY")?;
     Ok(LandscapeComponent {
-        section_base: [
-            integer(&p,data,"SectionBaseX","IntProperty")?,
-            integer(&p,data,"SectionBaseY","IntProperty")?
-        ],
+        section_base: [section_x,section_y],
+        section_base_serialized: [serialized_x,serialized_y],
         component_size_quads: component_size_quads as u32,
         subsection_size_quads: subsection_size_quads as u32,
         num_subsections: num_subsections as u32,
