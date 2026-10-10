@@ -1,0 +1,21 @@
+name: SMG RARC BTreeMap prefix range A/B
+on:
+  push:
+    branches: [bench/smg-rarc-prefix-tree-range-20261009]
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile exact RARC source A/B
+        shell: bash
+        run: rustc --edition=2021 -C opt-level=3 -C lto=fat -C codegen-units=1 bench/smg_rarc_prefix/main.rs -o rarc-prefix-bench
+      - name: Run prefix range A/B and parity
+        shell: bash
+        run: ./rarc-prefix-bench
