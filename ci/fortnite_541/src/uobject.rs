@@ -73,6 +73,44 @@ impl PackageCatalog {
         self.names.get(name_index as usize).map(String::as_str)
     }
 
+    /// Follow the original UE4 FPackageIndex Outer chain, preserving each
+    /// exact source FName and instance number rather than flattening distinct
+    /// texture/material/object records into generic class names.
+    pub fn source_object_chain(&self, reference: i32) -> Result<Vec<(String,u32)>, String> {
+        let mut reference=reference;
+        let mut chain=Vec::<(String,u32)>::new();
+        let mut visited=std::collections::HashSet::<i32>::new();
+        while reference!=0 {
+            if chain.len()>1024 || !visited.insert(reference) {
+                return Err("cyclic or excessive UE4 source UObject outer chain".into());
+            }
+            let (name,outer)=if reference<0 {
+                let n=i64::from(reference).checked_neg().and_then(|v|v.checked_sub(1))
+                    .ok_or("invalid negative UObject import reference")?;
+                let index=usize::try_from(n).map_err(|_| "UObject import index overflow")?;
+                let source=self.imports.get(index).ok_or("unresolved UObject import in outer chain")?;
+                (source.object_name,source.outer_index)
+            } else {
+                let index=usize::try_from(reference-1).map_err(|_| "UObject export index overflow")?;
+                let source=self.exports.get(index).ok_or("unresolved UObject export in outer chain")?;
+                (source.object_name,source.outer_index)
+            };
+            let name_text=self.names.get(name.name_index as usize)
+                .ok_or("UObject outer chain references missing original FName")?;
+            chain.push((name_text.clone(),name.instance_number));
+            reference=outer;
+        }
+        chain.reverse();
+        Ok(chain)
+    }
+
+    pub fn source_object_path(&self,reference:i32)->Result<String,String> {
+        let chain=self.source_object_chain(reference)?;
+        Ok(chain.iter().map(|(name,number)|{
+            if *number==0 {name.clone()} else {format!("{name}#{}",number)}
+        }).collect::<Vec<_>>().join("::"))
+    }
+
     /// Resolve an export class by source-authored package reference; never
     /// assume an unreferenced actor or material class.
     pub fn export_class_name(&self, export: &PackageExport) -> Option<&str> {
