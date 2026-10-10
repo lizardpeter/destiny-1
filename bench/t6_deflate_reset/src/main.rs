@@ -21,6 +21,13 @@ fn reuse_decode(records:&[Vec<u8>])->Result<Vec<u8>,String>{
  let mut expanded=Vec::new();
  let mut decoder=DeflateDecoder::new(Cursor::new(Vec::<u8>::new()));
  for compressed in records{
+  // Large incompressible records regress on Linux with owned-Cursor
+  // decompressor reuse; keep the proven baseline above this byte limit.
+  if compressed.len()>4096 {
+   let mut fallback=DeflateDecoder::new(compressed.as_slice());
+   fallback.read_to_end(&mut expanded).map_err(|e|e.to_string())?;
+   continue;
+  }
   let mut reused=decoder.reset(Cursor::new(Vec::new())).into_inner();
   reused.clear();reused.extend_from_slice(compressed);
   decoder.reset(Cursor::new(reused));
