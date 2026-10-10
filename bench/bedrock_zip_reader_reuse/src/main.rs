@@ -1,4 +1,5 @@
-use std::{hint::black_box,io::{Cursor,Read,Write},time::Instant};
+use std::{hint::black_box,io::{Cursor,Read,Write},time::Instant,
+ fs::{self,File},sync::{Arc,Mutex}};
 use zip::{ZipArchive,ZipWriter,CompressionMethod,write::SimpleFileOptions};
 fn fixture(count:usize,len:usize)->Vec<u8>{
  let mut w=ZipWriter::new(Cursor::new(Vec::new()));
@@ -37,7 +38,45 @@ fn read_all_reused(data:&[u8],count:usize)->u64{
  }
  digest
 }
+#[derive(Clone)]
+struct ReusedZipReader(Arc<Mutex<ZipArchive<File>>>);
+impl std::fmt::Debug for ReusedZipReader {
+ fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result{
+  f.write_str("ReusedZipReader(read-only)")
+ }
+}
+fn validate_shared_file_handle(){
+ let payload=fixture(32,4096);
+ let path=std::env::temp_dir().join(format!("bedrock_zip_cache_{}.zip",std::process::id()));
+ fs::write(&path,&payload).unwrap();
+ {
+  let file=File::open(&path).unwrap();
+  let shared=ReusedZipReader(Arc::new(Mutex::new(ZipArchive::new(file).unwrap())));
+  let another=shared.clone();
+  assert!(Arc::ptr_eq(&shared.0,&another.0));
+  std::thread::scope(|scope|{
+   for worker in 0..8{
+    let shared=shared.clone();
+    scope.spawn(move||{
+     for i in 0..40{
+      let n=(worker*17+i)%32;
+      let name=format!("textures/pack/file_{n:05}.png");
+      let mut guard=shared.0.lock().unwrap();
+      let mut entry=guard.by_name(&name).unwrap();
+      let mut bytes=Vec::with_capacity(entry.size().min(262144) as usize);
+      entry.read_to_end(&mut bytes).unwrap();
+      assert_eq!(bytes.len(),4096);
+      assert_eq!(bytes[0],((n*17)&255)as u8);
+     }
+    });
+   }
+  });
+ }
+ fs::remove_file(path).unwrap();
+ println!("PASS: shared read-only ZipArchive<File> Arc/Mutex clone and 8-worker parity");
+}
 fn main(){
+ validate_shared_file_handle();
  for count in [16usize,64,256,512]{
   for len in [512usize,4096]{
    let data=fixture(count,len);
