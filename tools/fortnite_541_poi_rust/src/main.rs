@@ -32,6 +32,13 @@ fn run()->Result<(),String>{
     let actual=levels.iter().find(|l|l.world_package.ends_with(
         "/Athena_POI_ToiletFactory_001"
     )).ok_or("original ToiletFactory placement missing")?;
+    if actual.streaming_bounds_local_cm.is_none() ||
+        !poi_detail::source_hlod_inside_poi_xy(actual,[-62976.,-64512.,0.]) ||
+        poi_detail::source_hlod_inside_poi_xy(actual,[-46592.,-65024.,5376.]) {
+        return Err("original source-authored POI streaming bounds/HLOD intersection failed".into());
+    }
+    println!("FORTNITE_SOURCE_DETAILED_POI_BOUNDING_BOX verified={:?}",
+        actual.streaming_bounds_local_cm);
     if actual.location_cm!=[-62976.,-64512.,0.] ||
         (actual.rotation_pyr_deg[1]+90.).abs()>0.01{
         return Err(format!("authenticated ToiletFactory root transform changed: {actual:?}"));
