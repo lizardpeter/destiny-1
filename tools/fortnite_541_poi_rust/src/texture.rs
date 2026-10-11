@@ -246,6 +246,68 @@ pub fn first_mip_bc<'a>(
     })
 }
 
+/// Retail UE4 PF_DXT1 inline first-resident mip (FByteBulkData flags 0x48).
+/// Fortnite SkyDome's original star texture has no external .ubulk; its
+/// authenticated first 512x512 BC1 blocks reside inside the cooked .uexp
+/// immediately after the 20-byte bulk-data header, before mip dimensions.
+/// This source layout is distinct from the 0x0501 external bulk decoder.
+pub fn first_mip_bc1_inline<'a>(
+    cat:&PackageCatalog,header:&[u8],exports:&'a[u8],ex:&PackageExport
+)->Result<OriginalBcTopMip<'a>,String>{
+    if cat.export_class_name(ex)!=Some("Texture2D"){
+        return Err("inline sky stars source object is not Texture2D".into());
+    }
+    let source=cat.export_data(header,exports,ex)?;
+    let props=properties::scan(cat,source)?;
+    let raw=source.get(props.bytes_consumed..)
+        .ok_or("source inline BC1 platform data absent")?;
+    let width=u32_at(raw,28)?;
+    let height=u32_at(raw,32)?;
+    let depth=u32_at(raw,36)?;
+    let name_size=u32_at(raw,40)? as usize;
+    if name_size!=8||raw.get(44..52)!=Some(b"PF_DXT1\0".as_slice()){
+        return Err("source inline first mip is not PF_DXT1".into());
+    }
+    let first_mip=u32_at(raw,52)?;
+    let mip_count=u32_at(raw,56)?;
+    let slices=u32_at(raw,60)?;
+    let flags=u32_at(raw,64)?;
+    let stored=u32_at(raw,68)? as usize;
+    let count=u32_at(raw,72)? as usize;
+    let original_bulk_offset=i64_at(raw,76)?;
+    // The UE4 inline-bulk payload begins immediately after the fixed
+    // FByteBulkData 20-byte prelude; it does not use the external offset
+    // fixup employed by source PAK .ubulk top mips.
+    let payload_start=84usize;
+    let expected_width=(width>>first_mip.min(31)).max(1);
+    let expected_height=(height>>first_mip.min(31)).max(1);
+    let expected=(expected_width.div_ceil(4) as usize)
+        .checked_mul(expected_height.div_ceil(4) as usize)
+        .and_then(|n|n.checked_mul(8))
+        .ok_or("inline original BC1 mip block count overflow")?;
+    if width==0||height==0||width>8192||height>8192||
+       depth!=1||first_mip>13||mip_count==0||mip_count>16||
+       slices!=1||flags!=0x48||count!=expected||stored!=expected||
+       expected>MAX_MIP_BYTES||original_bulk_offset<0 {
+        return Err("original source inline BC1 mip metadata/flags invalid".into());
+    }
+    let payload_end=payload_start.checked_add(expected)
+        .ok_or("inline BC1 payload range overflow")?;
+    let blocks=raw.get(payload_start..payload_end)
+        .ok_or("inline BC1 top mip outside exact original export")?;
+    let mw=u32_at(raw,payload_end)?;
+    let mh=u32_at(raw,payload_end+4)?;
+    let md=u32_at(raw,payload_end+8)?;
+    if mw!=expected_width||mh!=expected_height||md!=1{
+        return Err("original inline BC1 post-payload mip dimensions mismatch".into());
+    }
+    Ok(OriginalBcTopMip{
+        width:mw,height:mh,
+        format:OriginalBcFormat::Bc1,
+        flags,source_bulk_offset:payload_start,blocks,
+    })
+}
+
 /// Original UE4 PF_G8 single-channel grayscale top resident mip. Fortnite's
 /// T_StormCloudDetail01_M is source PF_G8 with a 256x256 first resident mip,
 /// although the source platform texture is 1024x1024 (first mip index 2).
