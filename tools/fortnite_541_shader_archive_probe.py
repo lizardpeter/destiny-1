@@ -69,12 +69,24 @@ def inspect_one(path,meta):
                     decoded=zlib.decompress(compressed)
                     if len(decoded)!=usize:
                         raise ValueError(f"real shader #{idx} uncompressed size mismatch")
+                    magic=decoded.find(b"DXBC")
+                    dxbc_valid=False
+                    dxbc_length=None
+                    if magic>=0 and magic+32<=len(decoded):
+                        dxbc_length=struct.unpack_from("<I",decoded,magic+24)[0]
+                        if 32<=dxbc_length<=len(decoded)-magic:
+                            dxbc_valid=True
                     decoded_examples.append({
                         "ordinal":idx,"stage":freq,"compressed":csize,
-                        "uncompressed":usize,"starts_dxbc":decoded.startswith(b"DXBC"),
+                        "uncompressed":usize,"dxbc_offset":magic,
+                        "dxbc_length":dxbc_length,"dxbc_bounds_valid":dxbc_valid,
                         "first_32_hex":decoded[:32].hex(),
                         "sha1_of_decompressed":hashlib.sha1(decoded).hexdigest(),
+                        "source_code_hash":hlist[idx].hex(),
                         "matches_source_hash":hashlib.sha1(decoded).digest()==hlist[idx],
+                        "dxbc_sha1_matches_source_hash": magic>=0 and
+                            hashlib.sha1(decoded[magic:magic+dxbc_length]).digest()==hlist[idx]
+                            if dxbc_valid else False,
                     })
             parsed={
                 "version":version,"index_count":num,"entry_stride":rec_size,
