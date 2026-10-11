@@ -30,8 +30,20 @@ jobs:
               Path('/tmp/fortnite541_native_root'+ext).write_bytes(data)
               print('FORTNITE_NATIVE_SOURCE_VERIFIED',ext,len(data),flush=True)
           PY
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import fortnite_541_r2_material_probe as r2
+          entries=r2.load_index()
+          original='FortniteGame/Content/Athena/Maps/Buildings/1x1/HLOD/Athena_REM_1x1_Shack_a_0_HLOD'
+          for ext in ['.uasset','.uexp']:
+              data=r2.source_payload(entries[original+ext])
+              Path('/tmp/fortnite541_original_hlod_mesh'+ext).write_bytes(data)
+              print('FORTNITE_ORIGINAL_MESH_SHA1_VERIFIED',ext,len(data),flush=True)
+          PY
           cargo test --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml
-          cargo run --quiet --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml -- /tmp/fortnite541_native_root.umap /tmp/fortnite541_native_root.uexp
+          cargo run --quiet --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml -- /tmp/fortnite541_native_root.umap /tmp/fortnite541_native_root.uexp /tmp/fortnite541_original_hlod_mesh.uasset /tmp/fortnite541_original_hlod_mesh.uexp
       - uses: actions/upload-artifact@v4
         if: always()
         with:
