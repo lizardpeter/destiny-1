@@ -1,0 +1,108 @@
+name: Rust-test T6 Drone independent retail audit
+
+on:
+  push:
+    branches:
+      - ci/rust-test-t6-retail-validation-20261011
+    paths:
+      - .github/workflows/rust_test_t6_drone_audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-drone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Confirm public runner
+        run: |
+          echo "runner=$RUNNER_OS"
+          uname -a
+
+      - name: Check out Rust-test main into isolated directory
+        uses: actions/checkout@v4
+        with:
+          repository: lizardpeter/Rust-test
+          ref: main
+          path: rust-test
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Show validated Rust-test commit and compiler
+        working-directory: rust-test
+        run: |
+          git rev-parse HEAD
+          cargo --version
+          rustc --version
+
+      - name: Compile and run source audit regression tests
+        working-directory: rust-test
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path asset_import/importers/bo2/Cargo.toml \
+            t6_world_invalid_corner_is_rejected_instead_of_using_vertex_zero -- --nocapture
+          cargo test --manifest-path asset_import/importers/bo2/Cargo.toml \
+            t6_world_valid_corners_preserve_offset_and_index_identity -- --nocapture
+          cargo test --no-default-features --lib \
+            convex_source_spawn_coverage_uses_exact_halfspaces_not_just_bounds -- --nocapture
+
+      - name: Download original Drone and SHA-verified shared zones from public R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/t6-drone-source
+          mkdir -p "$ROOT/zone/all" "$ROOT/zone/english"
+          declare -A VERIFIED_SHA=(
+            [common_mp]='93fe48b0f0d8cc6844be875ccad94e0cfcf635f62eeff00ac33f2f668a77cb77'
+            [common_patch_mp]='95622d93d4fb761db311a123cd073bed34ea48c9c711d2c11bce4170dd08bae9'
+            [patch_mp]='459077cda8e4a1457f7ee7d8f6c5e0abf30f41767a21ff6744df6a4307cbce1e'
+            [code_post_gfx_mp]='b7bce1dbe94692b1668ae9a1c83a4dcf008979ee5d5f79b3d2e619c23a1002b3'
+          )
+          for zone in common_mp common_patch_mp patch_mp code_post_gfx_mp; do
+            file="$ROOT/zone/all/$zone.ff"
+            curl --fail --location --retry 4 --retry-delay 2 --output "$file" \
+              "https://r2.houseofkublai.com/bo2/zone/all/$zone.ff"
+            echo "${VERIFIED_SHA[$zone]}  $file" | sha256sum -c -
+          done
+          curl --fail --location --retry 4 --retry-delay 2 \
+            --output "$ROOT/zone/all/mp_drone.ff" \
+            "https://r2.houseofkublai.com/bo2/zone/all/mp_drone.ff"
+          sha256sum "$ROOT/zone/all/mp_drone.ff" | tee /tmp/drone-authored-source-sha256.txt
+
+      - name: Import original Drone GfxWorld and save source provenance
+        working-directory: rust-test
+        shell: bash
+        env:
+          FINDINST: __RUST_TEST_DRONE_AUDIT_NO_MATCH__
+        run: |
+          set -euo pipefail
+          cargo run --release --manifest-path asset_import/importers/bo2/Cargo.toml \
+            --bin t6_map_preview -- /tmp/t6-drone-source mp_drone /tmp/drone-unused.ppm \
+            2>&1 | tee /tmp/t6-drone-gfxworld-source.log
+          grep -q '^world:' /tmp/t6-drone-gfxworld-source.log
+
+      - name: Audit true ClipMap brush halfspaces and all authored spawn capsules
+        working-directory: rust-test
+        shell: bash
+        env:
+          RUST_TEST_T6_RETAIL_ROOT: /tmp/t6-drone-source
+        run: |
+          set -euo pipefail
+          cargo test --no-default-features --features import-bo2 --lib \
+            drone_source_collision_parity_audit -- --ignored --nocapture \
+            2>&1 | tee /tmp/t6-drone-collision-source.log
+          grep -q 'T6_DRONE_SOURCE_AUDIT:' /tmp/t6-drone-collision-source.log
+
+      - name: Preserve proof and errors for source-level follow-up
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-test-T6-Drone-retail-source-evidence
+          path: |
+            /tmp/drone-authored-source-sha256.txt
+            /tmp/t6-drone-gfxworld-source.log
+            /tmp/t6-drone-collision-source.log
+          if-no-files-found: warn
