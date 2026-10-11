@@ -65,7 +65,12 @@ def run():
                                     "fields":[{"name":nm,"kind":tp,"meta":ex,
                                         "raw_hex":rw[:64].hex(),
                                         "ref":struct.unpack("<i",rw)[0] if tp=="ObjectProperty" and len(rw)==4 else None,
-                                        "path":cat.path(struct.unpack("<i",rw)[0]) if tp=="ObjectProperty" and len(rw)==4 and struct.unpack("<i",rw)[0] else None
+                                        "path":cat.path(struct.unpack("<i",rw)[0]) if tp=="ObjectProperty" and len(rw)==4 and struct.unpack("<i",rw)[0] else None,
+                                        "nested":([
+                                            {"name":qn,"kind":qk,"meta":qm,
+                                             "value":cat.fname(qv) if qk=="NameProperty" and len(qv)==8 else qv[:32].hex()}
+                                            for qn,qk,qm,qv in cat.props(rw)[0]
+                                        ] if tp=="StructProperty" and ex==["MaterialParameterInfo"] else None)
                                     } for nm,tp,ex,rw in struct_fields]})
                                 p+=used
                             info["nested_structs"]={"array_count":count,
