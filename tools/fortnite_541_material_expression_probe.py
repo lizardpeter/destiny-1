@@ -153,6 +153,35 @@ def audit_one(base, entries):
                     input_links.append({"name":property_name,"target":ref,"path":catalog.path(ref),"source_40_bytes":raw.hex()})
             record={"export":i,"type":class_name,"object":catalog.value(i),
                     "references":references,"inputs":input_links,"parameters":parameters}
+            if class_name in [
+                "MaterialExpressionLandscapeLayerCoords",
+                "MaterialExpressionTextureCoordinate",
+                "MaterialExpressionLandscapeLayerBlend",
+                "MaterialExpressionLandscapeLayerSample",
+                "MaterialExpressionMaterialFunctionCall",
+                "MaterialExpressionTextureSampleParameter2D",
+            ]:
+                record["authored_properties"]=[]
+                for prop_name,kind,extra,raw in props:
+                    if kind=="FloatProperty" and len(raw)==4:
+                        value=struct.unpack_from("<f",raw)[0]
+                    elif kind in ["IntProperty","UInt32Property"] and len(raw)==4:
+                        value=i32(raw,0)
+                    elif kind=="ByteProperty" and len(raw)==8:
+                        value=catalog.fname(raw)
+                    elif kind=="NameProperty" and len(raw)==8:
+                        value=catalog.fname(raw)
+                    elif kind=="BoolProperty":
+                        value=extra
+                    elif kind=="StructProperty" and extra==["ExpressionInput"] and len(raw)==40:
+                        value={"target":i32(raw,0),"selectors":raw.hex()}
+                    elif kind=="ArrayProperty":
+                        value={"bytes":len(raw),"count":u32(raw,0) if len(raw)>=4 else None}
+                    else:
+                        value={"bytes":len(raw),"hex":raw[:32].hex()}
+                    record["authored_properties"].append({
+                        "name":prop_name,"kind":kind,"meta":extra,"source":value,
+                    })
             if "TextureSample" in class_name:
                 samples.append(record)
             elif any(k in class_name for k in ["MaterialFunctionCall","LandscapeLayerBlend",
