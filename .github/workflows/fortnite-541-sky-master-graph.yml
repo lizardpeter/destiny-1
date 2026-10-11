@@ -1,0 +1,18 @@
+name: Fortnite 5.41 exact SkyDome master and clouds
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_sky_material_graph_audit.py
+      - .github/workflows/fortnite-541-sky-master-graph.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit SHA1-authenticated M_SkyDome expression nodes and source cloud textures
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_sky_material_graph_audit.py
