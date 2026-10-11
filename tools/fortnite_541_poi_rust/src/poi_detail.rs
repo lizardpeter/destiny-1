@@ -106,17 +106,15 @@ fn world_package(original:&str)->Result<String,String>{
 /// Source path is a nested Original FPackageIndex identity:
 /// /Game/Packages/MyMesh::MyMesh. No filename-based mesh guessing.
 fn mesh_package(identity:&str)->Result<String,String>{
-    let (package,object)=identity.rsplit_once("::")
-        .ok_or("original POI mesh identity missing exported object")?;
-    if object.is_empty()||object.len()>1024{return Err("original POI UStaticMesh object empty".into());}
-    let pkg=package.strip_prefix("/Game/")
-        .ok_or("original POI mesh not a cooked Game package")?;
-    if pkg.is_empty()||pkg.split('/').any(|x|x.is_empty()||x==".."||x==".")||
-        !pkg.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'_'||b==b'/'||b==b'-'){
-        return Err("original POI mesh package identity invalid".into());
-    }
-    Ok(format!("FortniteGame/Content/{pkg}"))
+    // Both direct StaticMesh actor references and Blueprint-inherited CDO
+    // references use original numbered FPackageIndex identities. Unreal
+    // serializes /Game/.../Mesh#N as Mesh_{N-1}.uasset on disk, whereas the
+    // export lookup MUST still use the unchanged Mesh#N UObject name.
+    // Previously this direct-actor path rejected '#' and silently counted a
+    // genuine mesh as unresolved Blueprint inheritance.
+    crate::poi_blueprint::source_mesh_package(identity)
 }
+
 /// UE4 5.41 FBox is two FVector3f bounds followed by one bIsValid byte.
 /// Unlike an inferred fixed POI radius this comes straight from each source
 /// LF_Athena_POI_* actor's cooked StreamingBoundingBox property.
@@ -314,6 +312,17 @@ mod tests{
         assert!(source_hlod_inside_poi_xy(&world,[-62976.,-64512.,0.]));
         assert!(!source_hlod_inside_poi_xy(&world,[-46592.,-65024.,0.]));
         assert!(!source_hlod_inside_poi_xy(&world,[-62976.,-83968.,0.]));
+    }
+    #[test]fn direct_source_static_mesh_numbered_package_is_not_dropped(){
+        assert_eq!(mesh_package(
+            "/Game/Environments/Sets/Factory/Meshes/Factory_Wall#2::Factory_Wall#2"
+        ).unwrap(),
+        "FortniteGame/Content/Environments/Sets/Factory/Meshes/Factory_Wall_1");
+        assert_eq!(mesh_package(
+            "/Game/Environments/Sets/Factory/Meshes/Tile::Tile"
+        ).unwrap(),
+        "FortniteGame/Content/Environments/Sets/Factory/Meshes/Tile");
+        assert!(mesh_package("/Engine/Unsafe::Object").is_err());
     }
     #[test]fn correct_authored_world_assets(){
         assert_eq!(world_package(
