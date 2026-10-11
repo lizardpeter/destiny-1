@@ -23,15 +23,40 @@ fn run()->Result<(),String>{
         println!("FORTNITE_AUTHORED_BLUEPRINT_HIGH_DETAIL_VERIFIED class=Factory_Wall_3_C source=Factory_Wall_1");
         return Ok(());
     }
-    if paths.len()!=8{
-        return Err("Expected authored foundation.umap foundation.uexp ToiletFactory.umap .uexp HedgeMaze.umap .uexp".into());
+    if paths.len()!=8 && paths.len()!=12{
+        return Err("Expected 8 original POI proof asset paths or 12 including actual Factory Wall and Floor meshes".into());
     }
+    if paths.len()==12 {
+        for (p,e,kind) in [(8usize,9usize,"factory_wall"),(10,11,"floor_tile")] {
+            let h=fs::read(&paths[p]).map_err(|e|e.to_string())?;
+            let x=fs::read(&paths[e]).map_err(|e|e.to_string())?;
+            let c=uobject::inspect(&h)?;
+            let refs=c.exports.iter().enumerate().filter_map(|(i,ex)|
+                (c.export_class_name(ex)==Some("StaticMesh"))
+                    .then(||c.source_object_path((i+1) as i32))
+            ).collect::<Result<Vec<_>,_>>()?;
+            println!("FORTNITE_AUTHENTIC_{}_UOBJECT_NAMES {:?}",kind,refs);
+            if refs.len()!=1{return Err(format!("original {kind} source must have exactly one mesh export"));}
+            let actual=refs[0].rsplit("::").next().unwrap();
+            let lod=staticmesh_lod::decode_original_source_mesh(&c,&h,&x,actual)?;
+            println!("FORTNITE_SOURCE_FULL_DETAIL_{}_LOD0 vertices={} triangles={} sections={} uv_channels={}",
+                kind,lod.vertices.len(),lod.indices.len()/3,lod.sections.len(),lod.total_source_uv_channels);
+        }
+    }
+
     let bytes=paths.iter().map(|p|fs::read(p).map_err(|e|e.to_string()))
         .collect::<Result<Vec<_>,_>>()?;
     let levels=poi_detail::original_poi_foundation_placements(&bytes[0],&bytes[1])?;
     let actual=levels.iter().find(|l|l.world_package.ends_with(
         "/Athena_POI_ToiletFactory_001"
     )).ok_or("original ToiletFactory placement missing")?;
+    if actual.streaming_bounds_local_cm.is_none() ||
+        !poi_detail::source_hlod_inside_poi_xy(actual,[-62976.,-64512.,0.]) ||
+        poi_detail::source_hlod_inside_poi_xy(actual,[-46592.,-65024.,5376.]) {
+        return Err("original source-authored POI streaming bounds/HLOD intersection failed".into());
+    }
+    println!("FORTNITE_SOURCE_DETAILED_POI_BOUNDING_BOX verified={:?}",
+        actual.streaming_bounds_local_cm);
     if actual.location_cm!=[-62976.,-64512.,0.] ||
         (actual.rotation_pyr_deg[1]+90.).abs()>0.01{
         return Err(format!("authenticated ToiletFactory root transform changed: {actual:?}"));
