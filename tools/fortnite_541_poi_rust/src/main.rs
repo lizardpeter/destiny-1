@@ -52,7 +52,10 @@ fn run()->Result<(),String>{
                     tex,error),
             }
         }
-        println!("FORTNITE_NATIVE_SOURCE_SKY_MASTER_GRAPH expressions={} original_sample_nodes={} unique_source_textures={} source_decoded_external_bc_mips={} functions={} runtime_collection={:?}",
+        if decoded!=5{
+            return Err(format!("original source SkyDome texture closure only {decoded}/5 authenticated resident mips"));
+        }
+        println!("FORTNITE_NATIVE_SOURCE_SKY_MASTER_GRAPH expressions={} original_sample_nodes={} unique_source_textures={} source_decoded_resident_mips={} functions={} runtime_collection={:?}",
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
