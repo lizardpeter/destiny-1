@@ -83,14 +83,14 @@ def run():
                 "serialized_bytes":exp["size"]} for i,exp in enumerate(ac.exports,1)][:12]}
         for ex in ac.exports:
             if ac.class_name(ex)=="StaticMesh":
-                payload=ac.export_data(ex)
-                props,end=ac.props(payload)
+                mesh_bytes=ac.export_data(ex)
+                props,end=ac.props(mesh_bytes)
                 mesh_asset["static_mesh_properties"]=[
                     {"name":n,"type":kind,"byte_count":len(raw)}
                     for n,kind,extra,raw in props]
-                mesh_asset["native_render_payload_bytes"]=len(payload)-end
-                mesh_asset["native_first_256"]=payload[end:end+256].hex()
-                mesh_asset["native_last_64"]=payload[-64:].hex()
+                mesh_asset["native_render_payload_bytes"]=len(mesh_bytes)-end
+                mesh_asset["native_first_256"]=mesh_bytes[end:end+256].hex()
+                mesh_asset["native_last_64"]=mesh_bytes[-64:].hex()
                 break
         break
     out={"original_map":SUFFIX,"exports":len(cat.exports),
