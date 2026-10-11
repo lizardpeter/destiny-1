@@ -82,6 +82,11 @@ def main_fn():
         print("FORTNITE_S4_SKY_SOURCE_CANDIDATES "+json.dumps({
             "matched":len(candidates),"paths":candidates[:100]
         }),flush=True)
+        matched=sorted(k for k in records if any(term in k.lower()
+            for term in ("athenaskylight","textureshdr","skydomebasic01","todm_br","m_sky_basic")))
+        print("FORTNITE_S4_FOCUSED_SOURCE_CANDIDATES "+json.dumps({
+            "count":len(matched),"paths":matched[:160]
+        }),flush=True)
         print("FORTNITE_S4_SOURCE_LOOKUP_FAILED "+json.dumps(report),flush=True)
         return
     header=payload(packages[".uasset"][0][1])
