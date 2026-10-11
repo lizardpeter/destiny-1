@@ -17,7 +17,13 @@ def vecs(cat,data):
     cursor=4
     records=[]
     for i in range(count):
-        fields,used=cat.props(data[cursor:])
+        if cursor>=len(data):break
+        try:
+            fields,used=cat.props(data[cursor:])
+        except Exception as err:
+            records.append([{"parser_error":str(err),"at":cursor,
+                             "remaining_head":data[cursor:cursor+64].hex()}])
+            break
         if not used:raise ValueError("sky material parameter struct did not advance")
         row=[]
         for name,kind,metadata,raw in fields:
