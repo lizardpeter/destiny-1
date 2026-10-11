@@ -1,0 +1,29 @@
+name: T6 original Drone temporary artifact handoff
+
+on:
+  push:
+    branches: [tools/t6-local-artifact-bridge-20261011]
+    paths: [.github/workflows/t6_drone_asset_handoff.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Fetch original publicly hosted FastFile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/drone-source
+          curl -fL --retry 3 -o /tmp/drone-source/mp_drone.ff https://r2.houseofkublai.com/bo2/zone/all/mp_drone.ff
+          sha256sum /tmp/drone-source/mp_drone.ff | tee /tmp/drone-source/SHA256.txt
+          ls -lh /tmp/drone-source
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t6-drone-fastfile-original-temporary
+          path: /tmp/drone-source/
+          retention-days: 1
+          compression-level: 0
