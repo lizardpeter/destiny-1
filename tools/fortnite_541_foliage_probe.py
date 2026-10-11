@@ -25,6 +25,7 @@ def run():
         "/Maps/Background/Athena_Background",
         "/Maps/Landscape/Athena_Terrain_LS_00",
         "/Maps/Landscape/Athena_Terrain_LS_01",
+        "/Maps/Athena_Streaming_Grid",
     ]
     for suffix in report["foliage_related_umaps"][:7]:
         name=suffix.removesuffix(".umap")
@@ -44,7 +45,7 @@ def run():
             objects=[]
             for i,ex in enumerate(cat.exports,1):
                 kind=cat.class_name(ex)
-                if not any(x in kind.lower() for x in FOLIAGE_WORDS):
+                if not any(x in kind.lower() for x in FOLIAGE_WORDS) and not kind.startswith("LevelStreaming"):
                     continue
                 row={"class":kind,"object":cat.path(i),"bytes":ex["size"]}
                 try:
@@ -73,7 +74,8 @@ def run():
     # serialized FoliageInstancedStaticMeshComponent may omit its placement
     # arrays from ordinary tagged properties.
     for suffix in ["/Maps/Athena_Terrain","/Maps/Landscape/Athena_Terrain_LS_01",
-                   "/Maps/POI/Athena_POI_HedgeMaze"]:
+                   "/Maps/POI/Athena_POI_HedgeMaze",
+                   "/Maps/Athena_Streaming_Grid"]:
         paths={}
         for ext in (".umap",".uexp"):
             candidates=[v for k,v in ix.items() if k.endswith(suffix+ext)]
@@ -85,7 +87,8 @@ def run():
         for i,ex in enumerate(cat.exports,1):
             cls=cat.class_name(ex)
             if cls not in ("FoliageInstancedStaticMeshComponent","InstancedStaticMeshComponent",
-                "InstancedFoliageActor","StaticMeshComponent",
+                "InstancedFoliageActor","LevelStreamingAlwaysLoaded","LevelStreamingDynamic",
+                "StaticMeshComponent",
                 "Athena_Tree_Large_1_C","Athena_Prop_Plant_Shrub_01_C"):
                 continue
             owner=cat.path(i)
