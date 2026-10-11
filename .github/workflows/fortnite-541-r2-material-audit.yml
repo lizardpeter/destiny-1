@@ -6,11 +6,13 @@ on:
       - analysis/fortnite-541-r2-material-audit-20261010
     paths:
       - tools/fortnite_541_r2_material_probe.py
+      - tools/fortnite_541_material_expression_probe.py
       - .github/workflows/fortnite-541-r2-material-audit.yml
   pull_request:
     branches: [main]
     paths:
       - tools/fortnite_541_r2_material_probe.py
+      - tools/fortnite_541_material_expression_probe.py
       - .github/workflows/fortnite-541-r2-material-audit.yml
   workflow_dispatch:
 jobs:
@@ -21,11 +23,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify authentic original 5.41 material and texture bytes over R2
         run: python3 tools/fortnite_541_r2_material_probe.py
+      - name: Decode authenticated cooked original shader-expression graph
+        run: python3 tools/fortnite_541_material_expression_probe.py
       - name: Upload source metadata only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: fortnite-541-r2-material-metadata
-          path: fortnite-541-r2-material-audit.json
+          path: |
+            fortnite-541-r2-material-audit.json
+            fortnite-541-material-expression-audit.json
           if-no-files-found: ignore
           retention-days: 3

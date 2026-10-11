@@ -24,6 +24,8 @@ TARGETS = [
     "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Rock_01",
     "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Forest_01",
     "/Environments/Landscape/Textures/T_Athena_Terrain_CombinedColors_01",
+    "/Environments/Landscape/Textures/T_Athena_ForestFloor_D",
+    "/Environments/Landscape/Textures/T_Athena_Grass_Farm_ColorMatched_D_2",
     "/Environments/Landscape/Textures/T_Athena_Terrain_Topo_Mask",
 ]
 def ranged(start, count):
@@ -107,6 +109,18 @@ def source_payload(record):
 def main():
     entries=load_index()
     print(f"FORTNITE_R2_VERIFIED_INDEX entries={len(entries)} sha1={EXPECTED_INDEX_SHA1}",flush=True)
+    # Original archive-index names help identify the actual sampled texture
+    # families without asserting unknown original shader/UV assignments.
+    landscape_assets=sorted(k for k in entries
+        if "/Athena/Environments/Landscape/" in k and k.endswith(".uasset"))
+    texture_candidates=[k for k in landscape_assets
+        if "/Textures/" in k or "/Texture/" in k]
+    print("FORTNITE_R2_LANDSCAPE_INDEX "+json.dumps({
+        "packages":len(landscape_assets),
+        "texture_packages":len(texture_candidates),
+        "texture_source_paths":texture_candidates[:128],
+        "truncated":len(texture_candidates)>128
+    }),flush=True)
     audit={"original_pak":URL,"verified_index_sha1":EXPECTED_INDEX_SHA1,"entries":len(entries),"source_packages":[]}
     for suffix in TARGETS:
         group={"path_suffix":suffix,"files":[]}
