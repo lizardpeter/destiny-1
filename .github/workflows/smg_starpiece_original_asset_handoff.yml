@@ -1,0 +1,27 @@
+name: SMG retail StarPiece source model handoff
+on:
+  push:
+    branches: [tools/smg-source-local-handoff-20261011]
+    paths: [.github/workflows/smg_starpiece_original_asset_handoff.yml]
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Transfer exact original StarPiece archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smg-star-original
+          curl --fail --silent --show-error --retry 3 --max-time 60             https://r2.houseofkublai.com/super-mario-galaxy/DATA/files/ObjectData/StarPiece.arc             -o /tmp/smg-star-original/StarPiece.arc
+          test -s /tmp/smg-star-original/StarPiece.arc
+          sha256sum /tmp/smg-star-original/StarPiece.arc > /tmp/smg-star-original/SHA256SUMS
+          ls -lh /tmp/smg-star-original/StarPiece.arc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smg-retail-starpiece-exact
+          path: /tmp/smg-star-original
+          retention-days: 1
+          compression-level: 0
