@@ -5,6 +5,7 @@ on:
     paths:
       - tools/fortnite_541_sky_material_graph_audit.py
       - .github/workflows/fortnite-541-sky-master-graph.yml
+      - 'tools/fortnite_541_poi_rust/**'
   workflow_dispatch:
 jobs:
   audit:
@@ -16,3 +17,11 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python3 tools/fortnite_541_sky_material_graph_audit.py
+      - name: Stage exact original inherited Day and Morning sky source
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_source_sky_lighting.py
+      - name: Compile native original Texture2D and SkyDome parsers
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Validate real master texture links and original BC top mips
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-sky
