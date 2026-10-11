@@ -10,19 +10,44 @@ from fortnite_541_material_expression_probe import Catalog
 PREFIX="Packages/Fortress_Sky/SkyDome/MaterialInstances/SkyDomeBasic01/"
 ASSETS=["Morn_M_SkyDome_Inst_Basic01","Day_M_SkyDome_Inst_Basic01"]
 KEYWORDS=("sun","sky","atmosphere","fog","cloud","light","day","dome")
-def vecs(data):
+def vecs(cat,data):
     if len(data)<4:return {"bytes":len(data)}
     count=struct.unpack_from("<I",data)[0]
-    for stride in (32,48):
-        if count<256 and len(data)==4+stride*count:
-            vals=[]
-            for i in range(count):
-                start=4+i*stride
-                vals.append({"raw_first_16":data[start:start+16].hex(),
-                   "f32":list(struct.unpack_from("<f"*(1 if stride==32 else 4),data,start+16)),
-                   "guid":data[start+stride-16:start+stride].hex()})
-            return {"count":count,"stride":stride,"values":vals}
-    return {"count":count,"length":len(data),"head":data[:96].hex()}
+    if count>128:raise ValueError("unbounded original sky material parameter count")
+    cursor=4
+    records=[]
+    for i in range(count):
+        fields,used=cat.props(data[cursor:])
+        if not used:raise ValueError("sky material parameter struct did not advance")
+        row=[]
+        for name,kind,metadata,raw in fields:
+            entry={"name":name,"kind":kind,"size":len(raw)}
+            if kind=="FloatProperty" and len(raw)==4:
+                entry["value"]=struct.unpack("<f",raw)[0]
+            elif kind=="NameProperty" and len(raw)==8:
+                entry["value"]=cat.fname(raw)
+            elif kind=="StructProperty":
+                if len(raw)==16:entry["values"]=list(struct.unpack("<ffff",raw))
+                else:
+                    try:
+                        nested,nused=cat.props(raw)
+                        entry["nested"]=[]
+                        for n,k,meta,p in nested:
+                            v={"name":n,"kind":k,"size":len(p)}
+                            if k=="NameProperty" and len(p)==8:v["name_value"]=cat.fname(p)
+                            elif k=="FloatProperty" and len(p)==4:v["float"]=struct.unpack("<f",p)[0]
+                            elif k=="IntProperty" and len(p)==4:v["int"]=struct.unpack("<i",p)[0]
+                            entry["nested"].append(v)
+                        entry["nested_consumed"]=nused
+                    except Exception:entry["raw_head"]=raw[:40].hex()
+            elif kind=="IntProperty" and len(raw)==4:
+                entry["value"]=struct.unpack("<i",raw)[0]
+            row.append(entry)
+        records.append(row)
+        cursor+=used
+    return {"count":count,"parsed":records,"consumed":cursor,"total":len(data),
+            "remaining_bytes":data[cursor:cursor+32].hex()}
+
 def map_scene(index,root):
     header=main.source_payload(index[root+".umap"])
     exp=main.source_payload(index[root+".uexp"])
@@ -67,7 +92,7 @@ def sky_materials(entries):
             for name,kind,meta,raw in fields:
                 tag={"name":name,"kind":kind,"size":len(raw)}
                 if name in ("ScalarParameterValues","VectorParameterValues"):
-                    tag["entries"]=vecs(raw)
+                    tag["entries"]=vecs(cat,raw)
                 elif kind=="ObjectProperty" and len(raw)==4:
                     r=struct.unpack("<i",raw)[0]
                     tag["object"]=cat.path(r) if r else None
