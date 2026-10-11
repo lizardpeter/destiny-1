@@ -7,12 +7,14 @@ on:
     paths:
       - tools/fortnite_541_r2_material_probe.py
       - tools/fortnite_541_material_expression_probe.py
+      - tools/fortnite_541_shader_archive_probe.py
       - .github/workflows/fortnite-541-r2-material-audit.yml
   pull_request:
     branches: [main]
     paths:
       - tools/fortnite_541_r2_material_probe.py
       - tools/fortnite_541_material_expression_probe.py
+      - tools/fortnite_541_shader_archive_probe.py
       - .github/workflows/fortnite-541-r2-material-audit.yml
   workflow_dispatch:
 jobs:
@@ -25,6 +27,8 @@ jobs:
         run: python3 tools/fortnite_541_r2_material_probe.py
       - name: Decode authenticated cooked original shader-expression graph
         run: python3 tools/fortnite_541_material_expression_probe.py
+      - name: Inspect original PCD3D SM5 compiled Fortnite shader archives
+        run: python3 tools/fortnite_541_shader_archive_probe.py
       - name: Upload source metadata only
         if: always()
         uses: actions/upload-artifact@v4
@@ -33,5 +37,6 @@ jobs:
           path: |
             fortnite-541-r2-material-audit.json
             fortnite-541-material-expression-audit.json
+            fortnite-541-retail-shader-archive-audit.json
           if-no-files-found: ignore
           retention-days: 3
