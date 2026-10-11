@@ -69,5 +69,63 @@ def run():
             print("FORTNITE_SOURCE_FOLIAGE_MAP "+json.dumps(x),flush=True)
         except Exception as e:
             print("FORTNITE_SOURCE_FOLIAGE_MAP_FAILED "+json.dumps({"source_map":suffix,"error":str(e)}),flush=True)
+    # Deep source check: the *cooked native tails* are critical. Unreal's
+    # serialized FoliageInstancedStaticMeshComponent may omit its placement
+    # arrays from ordinary tagged properties.
+    for suffix in ["/Maps/Athena_Terrain","/Maps/Landscape/Athena_Terrain_LS_01",
+                   "/Maps/POI/Athena_POI_HedgeMaze"]:
+        paths={}
+        for ext in (".umap",".uexp"):
+            candidates=[v for k,v in ix.items() if k.endswith(suffix+ext)]
+            if len(candidates)!=1:continue
+            paths[ext]=candidates[0]
+        if len(paths)!=2:continue
+        cat=Catalog(r2.source_payload(paths[".umap"]),r2.source_payload(paths[".uexp"]))
+        rows=[]
+        for i,ex in enumerate(cat.exports,1):
+            cls=cat.class_name(ex)
+            if cls not in ("FoliageInstancedStaticMeshComponent","InstancedStaticMeshComponent",
+                "InstancedFoliageActor","StaticMeshComponent",
+                "Athena_Tree_Large_1_C","Athena_Prop_Plant_Shrub_01_C"):
+                continue
+            owner=cat.path(i)
+            if cls=="StaticMeshComponent" and not any(k in owner for k in
+                ("Tree_Large","Plant_Shrub","Foliage")):
+                continue
+            raw=cat.export_data(ex)
+            try:fields,used=cat.props(raw)
+            except Exception as e:
+                rows.append({"class":cls,"object":owner,"error":str(e)});continue
+            props=[]
+            for name,kind,meta,blob in fields:
+                if cls=="InstancedFoliageActor" or kind=="ObjectProperty" or
+                    name in ("PerInstanceSMData","InstanceReorderTable",
+                             "PerInstanceSMCustomData","InstancingRandomSeed",
+                             "StaticMesh","RelativeLocation","RelativeRotation",
+                             "RelativeScale3D","BodyInstance"):
+                    field={"name":name,"kind":kind,"bytes":len(blob)}
+                    if kind=="ObjectProperty" and len(blob)==4:
+                        ref=struct.unpack("<i",blob)[0]
+                        field["value"]=cat.path(ref) if ref else None
+                    if kind=="StructProperty" and len(blob)==12:
+                        field["xyz"]=struct.unpack("<fff",blob)
+                    if kind=="ArrayProperty":
+                        field["head"]=blob[:128].hex()
+                    props.append(field)
+            rows.append({"class":cls,"object":owner,
+                "total_bytes":len(raw),"native_tail_bytes":len(raw)-used,
+                "native_head":raw[used:used+160].hex(),
+                "native_last":raw[-96:].hex(),
+                "props":props})
+        o={"map":suffix,"candidates":len(rows),"objects":rows[:35]}
+        print("FORTNITE_AUTHENTIC_FOLIAGE_NATIVE_SERIAL "+json.dumps(o),flush=True)
+    roots=["Athena/Environments/Landscape/Foliage/Athena_SM_WavyGrass_TopologyColor",
+           "Environments/Foliage/Meshes/S_WavyGrass_01"]
+    for root in roots:
+        pref="FortniteGame/Content/"+root
+        print("FORTNITE_AUTHENTIC_FOLIAGE_ASSET "+json.dumps({
+            "path":pref,"source_entries":[{"ext":e,"bytes":ix[pref+e][2]}
+                for e in (".uasset",".uexp",".ubulk") if pref+e in ix]
+        }),flush=True)
     Path("fortnite541_authored_foliage_audit.json").write_text(json.dumps({"index":report,"maps":output},indent=2))
 if __name__=="__main__":run()
