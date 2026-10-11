@@ -176,7 +176,8 @@ def audit_one(base, entries):
                     elif kind=="StructProperty" and extra==["ExpressionInput"] and len(raw)==40:
                         value={"target":i32(raw,0),"selectors":raw.hex()}
                     elif kind=="ArrayProperty":
-                        value={"bytes":len(raw),"count":u32(raw,0) if len(raw)>=4 else None}
+                        value={"bytes":len(raw),"count":u32(raw,0) if len(raw)>=4 else None,
+                               "head_hex":raw[:160].hex()}
                     else:
                         value={"bytes":len(raw),"hex":raw[:32].hex()}
                     record["authored_properties"].append({
@@ -269,6 +270,15 @@ def main():
     for base in bases:
         result=audit_one(base,entries)
         audited.append(result)
+        calls=[entry for entry in result["graph_links"] if entry["type"]=="MaterialExpressionMaterialFunctionCall"]
+        print("FORTNITE_MATERIAL_FUNCTION_INPUT_LAYOUT "+json.dumps({
+            "path":base,"calls_total":len(calls),
+            "examples":[{"object":entry["object"],
+                         "material_function":next((v["path"] for v in entry["references"] if v["name"]=="MaterialFunction"),None),
+                         "fields":[p for p in entry.get("authored_properties",[])
+                                    if p["name"] in ["FunctionInputs","FunctionOutputs","MaterialFunction"]]}
+                        for entry in calls[:12]]
+        },sort_keys=True),flush=True)
         print("FORTNITE_REAL_MATERIAL_GRAPH "+json.dumps({
             "path":base,"nodes":result["expression_count"],
             "classes":result["class_counts"],
