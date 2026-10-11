@@ -24,6 +24,8 @@ TARGETS = [
     "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Rock_01",
     "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Forest_01",
     "/Environments/Landscape/Textures/T_Athena_Terrain_CombinedColors_01",
+    "/Environments/Landscape/Textures/T_Athena_ForestFloor_D",
+    "/Environments/Landscape/Textures/T_Athena_Grass_Farm_ColorMatched_D_2",
     "/Environments/Landscape/Textures/T_Athena_Terrain_Topo_Mask",
 ]
 def ranged(start, count):
