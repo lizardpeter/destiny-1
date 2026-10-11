@@ -120,7 +120,7 @@ def run():
                     if stride in (16,32,48,64,80) and count<200000:
                         matrices=[]
                         for off in (20,20+stride,20+(count//2)*stride,20+(count-1)*stride,20+count*stride):
-                            if off+64<=len(tail):
+                            if off>=0 and off+64<=len(tail):
                                 matrices.append({"relative_byte":off,"16f":struct.unpack_from("<16f",tail,off),
                                 "16u32":struct.unpack_from("<16I",tail,off)})
                         rows.append({"kind":"verified_native_instance_buffer_candidate",
