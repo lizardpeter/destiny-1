@@ -46,6 +46,47 @@ def run():
     for p in sorted(eligible,key=lambda k:-ix[k][2]):
         if p not in samples and len(samples)<8 and ix[p][2]<11_000_000:
             samples.append(p)
+    # Foundation actors own true POI selection/position and streaming state.
+    # Discover the *authored* references before inventing per-level offsets.
+    for foundation_map in [
+        "FortniteGame/Content/Athena/Maps/Athena_POI_Foundations",
+        "FortniteGame/Content/Athena/Maps/Athena_Streaming_Grid"
+    ]:
+        if foundation_map+".umap" not in ix:continue
+        c=Catalog(retail.source_payload(ix[foundation_map+".umap"]),
+                  retail.source_payload(ix[foundation_map+".uexp"]))
+        candidates=[]
+        for ordinal,export in enumerate(c.exports,1):
+            cl=c.class_name(export)
+            if not ("LF_Athena_POI_" in cl or "LevelStreaming" in cl
+                    or cl in ("World","Level","WorldComposition")):
+                continue
+            raw=c.export_data(export)
+            try:props,end=c.props(raw)
+            except Exception as e:
+                candidates.append({"class":cl,"object":c.path(ordinal),"error":str(e)})
+                continue
+            fields=[]
+            for key,kind,meta,val in props:
+                item={"name":key,"type":kind,"size":len(val)}
+                if kind in ("ObjectProperty","ClassProperty") and len(val)==4:
+                    ref=struct.unpack("<i",val)[0]
+                    item["ref"]=c.path(ref) if ref else None
+                elif kind=="NameProperty" and len(val)==8:
+                    item["name_value"]=c.fname(val)
+                elif kind=="SoftObjectProperty" and len(val)>=12:
+                    item["soft_path"]=c.fname(val[:8])
+                elif kind=="StructProperty" and len(val)==12:
+                    item["floats"]=struct.unpack("<fff",val)
+                elif kind=="ArrayProperty" and len(val)>=4:
+                    item["array_count"]=struct.unpack_from("<I",val)[0]
+                fields.append(item)
+            candidates.append({"class":cl,"object":c.path(ordinal),
+                "fields":fields,"native_bytes":len(raw)-end})
+        print("FORTNITE_POI_AUTHORED_FOUNDATION_REFERENCES "+json.dumps({
+            "map":foundation_map,"num":len(candidates),
+            "candidates":candidates[:52]
+        }),flush=True)
     for path in samples:
         try:
             cat=Catalog(retail.source_payload(ix[path]),
