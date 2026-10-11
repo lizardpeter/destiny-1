@@ -19,7 +19,7 @@ pub struct PreparedPoiSource{
     pub new_bytes:u64,
 }
 #[derive(Debug,Clone,Copy,PartialEq,Eq)]
-pub enum SourceChunk{Main,S3}
+pub enum SourceChunk{Main,S3,MainBlueprint}
 fn authenticated_source_key()->Result<[u8;32],String>{
     extract::parse_aes_key(&env::var("RUST_TEST_FORTNITE_541_AES_KEY")
         .unwrap_or_else(|_|HISTORICAL_KEY.to_owned()))
@@ -27,6 +27,7 @@ fn authenticated_source_key()->Result<[u8;32],String>{
 fn validate_package(path:&str,chunk:SourceChunk)->Result<(),String>{
     let valid_root=match chunk{
         SourceChunk::Main=>path.starts_with("FortniteGame/Content/Athena/Maps/"),
+        SourceChunk::MainBlueprint=>path.starts_with("FortniteGame/Content/"),
         SourceChunk::S3=>path.starts_with("FortniteGame/Content/Packages/")||
             path.starts_with("FortniteGame/Content/Environments/")||
             path.starts_with("FortniteGame/Content/Athena/"),
@@ -42,7 +43,7 @@ fn validate_package(path:&str,chunk:SourceChunk)->Result<(),String>{
 fn find_entry<'a>(entries:&'a[PakEntry],pkg:&str,ext:&str,chunk:SourceChunk)
     ->Result<Option<&'a PakEntry>,String>{
     let source=match chunk {
-        SourceChunk::Main=>format!("{pkg}{ext}"),
+        SourceChunk::Main|SourceChunk::MainBlueprint=>format!("{pkg}{ext}"),
         SourceChunk::S3=>format!("{}{ext}",
             pkg.strip_prefix("FortniteGame/Content/")
                 .ok_or("source s3 package lacks canonical Content root")?),
@@ -64,7 +65,7 @@ pub fn prepare_original_poi_packages(
     }
     if requested.is_empty(){return Ok(PreparedPoiSource::default());}
     let archive=match chunk{
-        SourceChunk::Main=>main_pak.to_path_buf(),
+        SourceChunk::Main|SourceChunk::MainBlueprint=>main_pak.to_path_buf(),
         SourceChunk::S3=>main_pak.with_file_name("pakchunk0_s3-WindowsClient.pak"),
     };
     let mut stats=PreparedPoiSource{
@@ -75,7 +76,7 @@ pub fn prepare_original_poi_packages(
         return Ok(stats);
     }
     let report=pak::inspect_with_key(&archive,&authenticated_source_key()?)?;
-    let expected=match chunk{SourceChunk::Main=>MAIN,SourceChunk::S3=>SPLIT_S3};
+    let expected=match chunk{SourceChunk::Main|SourceChunk::MainBlueprint=>MAIN,SourceChunk::S3=>SPLIT_S3};
     if report.footer.version!=7 ||
         report.footer.index_hash.iter().map(|x|format!("{x:02x}")).collect::<String>()!=expected{
         return Err(format!("original detailed POI {} archive index SHA1 mismatch",
@@ -88,6 +89,7 @@ pub fn prepare_original_poi_packages(
         validate_package(pkg,chunk)?;
         let suffixes: &[&str]=match chunk{
             SourceChunk::Main=>&[".umap",".uexp"],
+            SourceChunk::MainBlueprint=>&[".uasset",".uexp"],
             SourceChunk::S3=>&[".uasset",".uexp"],
         };
         let mut records=Vec::with_capacity(3);
