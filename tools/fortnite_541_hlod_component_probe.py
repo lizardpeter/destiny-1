@@ -79,6 +79,7 @@ def run():
         ae=r2.source_payload(entries[pkg+".uexp"])
         ac=Catalog(ah,ae)
         mesh_asset={"source_package":pkg,"header_bytes":len(ah),"export_bytes":len(ae),
+            "bulk_bytes":entries[pkg+".ubulk"][2] if pkg+".ubulk" in entries else None,
             "export_classes":[{"index":i,"class":ac.class_name(exp),"name":ac.value(i),
                 "serialized_bytes":exp["size"]} for i,exp in enumerate(ac.exports,1)][:12]}
         for ex in ac.exports:
@@ -105,7 +106,7 @@ def run():
          "most_common_source_meshes":refs.most_common(40),
          "property_census":[{"class":a,"name":b,"tag":c,"count":num}
               for (a,b,c),num in propcounts.most_common(45)],
-         "component_examples":meshes[:20],"actor_examples":actors[:10],
+         "component_examples":meshes[30:43],"actor_examples":actors[:10],
          "errors":failures[:20]}
     print("FORTNITE_ORIGINAL_HLOD_COMPONENT_AUDIT "+json.dumps(out,sort_keys=True),flush=True)
     Path("fortnite541_hlod_component_audit.json").write_text(json.dumps(out,indent=2))
