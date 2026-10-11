@@ -1,0 +1,31 @@
+name: Fortnite 5.41 original material R2 audit
+on:
+  push:
+    branches:
+      - main
+      - analysis/fortnite-541-r2-material-audit-20261010
+    paths:
+      - tools/fortnite_541_r2_material_probe.py
+      - .github/workflows/fortnite-541-r2-material-audit.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_r2_material_probe.py
+      - .github/workflows/fortnite-541-r2-material-audit.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify authentic original 5.41 material and texture bytes over R2
+        run: python3 tools/fortnite_541_r2_material_probe.py
+      - name: Upload source metadata only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fortnite-541-r2-material-metadata
+          path: fortnite-541-r2-material-audit.json
+          if-no-files-found: ignore
+          retention-days: 3
