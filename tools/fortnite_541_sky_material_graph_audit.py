@@ -140,6 +140,26 @@ def main():
     # Reset PAK source reader to s4 for the source resource contents below.
     s4.URL=S4
     s4.INDEX_SHA=HASH
+    for name in dependencies:
+        index_header=next((k for k in index if k.endswith(name+".uasset")),None)
+        index_uexp=next((k for k in index if k.endswith(name+".uexp")),None)
+        if not index_header or not index_uexp:continue
+        c=package(index,name)
+        candidates=[ex for ex in c.exports if c.class_name(ex)=="Texture2D"]
+        if len(candidates)!=1:continue
+        raw=c.export_data(candidates[0])
+        fields,off=c.props(raw)
+        cooked=raw[off:]
+        metadata={
+            "source":name,"tagged_bytes":off,"cooked_bytes":len(cooked),
+            "first_u32":{str(i):struct.unpack_from("<I",cooked,i)[0]
+                for i in range(0,min(144,len(cooked)-4),4)},
+            "first_128":cooked[:128].hex(),
+            "name_size_at_40":struct.unpack_from("<I",cooked,40)[0] if len(cooked)>=44 else None,
+            "platform_format_head":cooked[44:72].hex(),
+            "property_names":[f[0] for f in fields],
+        }
+        print("FORTNITE_SKY_NATIVE_TEXTURE_LAYOUT "+json.dumps(metadata,sort_keys=True),flush=True)
     # Inspect the actual source package inventory, including texture
     # UBulk. No assumption that .uexp exists for cooked textures.
     for name in TEXTURES+MESHES:
