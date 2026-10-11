@@ -8,6 +8,7 @@ never commits original shader code, and emits archive metadata only.
 import json
 import hashlib
 import re
+import zlib
 import struct
 from pathlib import Path
 import fortnite_541_r2_material_probe as r2
@@ -44,9 +45,11 @@ def inspect_one(path,meta):
         if table_end<=len(prefix):
             shaders=[]
             hashes=set()
+            hlist=[]
             for i in range(num):
                 h,loc,csize,usize,frequency=struct.unpack_from("<20sQIIB",prefix,8+i*rec_size)
                 shaders.append((loc,csize,usize,frequency))
+                hlist.append(h)
                 hashes.add(h)
             first_offsets=sorted(shaders,key=lambda x:x[0])
             max_end=max(loc+csize for loc,csize,_,_ in shaders)
@@ -54,8 +57,28 @@ def inspect_one(path,meta):
                 1 for a,b in zip(first_offsets,first_offsets[1:])
                 if a[0]+a[1]==b[0]
             )
+            # The complete source index now proves a contiguous packed
+            # code stream. Decompress representative retail programs and
+            # identify the real D3D shader container, not guessed material
+            # graph data. Fetch only bounded original byte ranges.
+            decoded_examples=[]
+            if len(hashes)==num and max_end==stored-table_end and contiguous==num-1:
+                for idx in sorted(set([0,1,num//4,num//2,3*num//4,num-1])):
+                    loc,csize,usize,freq=shaders[idx]
+                    compressed=r2.ranged(offset+53+table_end+loc,csize)
+                    decoded=zlib.decompress(compressed)
+                    if len(decoded)!=usize:
+                        raise ValueError(f"real shader #{idx} uncompressed size mismatch")
+                    decoded_examples.append({
+                        "ordinal":idx,"stage":freq,"compressed":csize,
+                        "uncompressed":usize,"starts_dxbc":decoded.startswith(b"DXBC"),
+                        "first_32_hex":decoded[:32].hex(),
+                        "sha1_of_decompressed":hashlib.sha1(decoded).hexdigest(),
+                        "matches_source_hash":hashlib.sha1(decoded).digest()==hlist[idx],
+                    })
             parsed={
                 "version":version,"index_count":num,"entry_stride":rec_size,
+                "sample_decoded_programs":decoded_examples,
                 "table_end":table_end,"unique_hashes":len(hashes),
                 "zero_offsets":sum(1 for loc,_,_,_ in shaders if loc==0),
                 "zero_sizes":sum(1 for _,c,_,_ in shaders if c==0),
