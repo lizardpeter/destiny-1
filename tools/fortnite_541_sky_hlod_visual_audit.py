@@ -88,4 +88,33 @@ def main():
     print("FORTNITE_AUTHENTIC_SKYLIGHT_PIXELS "+json.dumps({"source_texture":prefix,
         "original_SRGB":False,"faces":bc3_stats(blocks)}),flush=True)
     print("FORTNITE_AUTHENTIC_ROOT_STREAMED_LEVELS "+json.dumps(root_streams()),flush=True)
+    sky_assets=[
+        "Packages/Fortress_Sky/SkyDome/MaterialInstances/SkyDomeBasic01/Day_M_SkyDome_Inst_Basic01",
+        "Packages/Fortress_Sky/SkyDome/MaterialInstances/SkyDomeBasic01/Morn_M_SkyDome_Inst_Basic01",
+    ]
+    for asset in sky_assets:
+        headers=[v for k,v in entries.items() if k.endswith(asset+".uasset")]
+        exports=[v for k,v in entries.items() if k.endswith(asset+".uexp")]
+        if len(headers)!=1 or len(exports)!=1:continue
+        c=Catalog(s4.payload(headers[0]),s4.payload(exports[0]))
+        objs=[]
+        for idx,ex in enumerate(c.exports,1):
+            raw=c.export_data(ex)
+            try:
+                fields,at=c.props(raw)
+                props=[]
+                for name,kind,meta,payload in fields:
+                    entry={"name":name,"kind":kind,"bytes":len(payload)}
+                    if kind=="ObjectProperty" and len(payload)==4:
+                        ref=struct.unpack("<i",payload)[0]
+                        entry["source_ref"]=c.path(ref) if ref else None
+                    elif kind=="ArrayProperty":
+                        entry["count"]=struct.unpack_from("<I",payload)[0] if len(payload)>=4 else None
+                        entry["head160"]=payload[:160].hex()
+                    elif kind=="StructProperty" and len(payload) in (12,16):
+                        entry["raw_floats"]=struct.unpack("<"+("f"*(len(payload)//4)),payload)
+                    props.append(entry)
+                objs.append({"name":c.value(idx),"class":c.class_name(ex),"props":props})
+            except Exception as err:objs.append({"class":c.class_name(ex),"error":str(err)})
+        print("FORTNITE_AUTHENTIC_DAY_SKY_MATERIAL "+json.dumps({"asset":asset,"exports":objs}),flush=True)
 if __name__=="__main__":main()
