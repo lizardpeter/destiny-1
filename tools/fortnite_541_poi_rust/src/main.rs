@@ -46,7 +46,7 @@ fn run()->Result<(),String>{
                 Ok(mip)=>{
                     decoded+=1;
                     println!("FORTNITE_NATIVE_SOURCE_SKY_TEXTURE object={:?} width={} height={} format={:?} bytes={}",
-                        tex,mip.width,mip.height,mip.original_format,mip.source_block_bytes);
+                        tex,mip.width,mip.height,mip.original_format,mip.source_bytes);
                 },
                 Err(error)=>println!("FORTNITE_NATIVE_SOURCE_SKY_TEXTURE_DEFERRED object={:?} error={:?}",
                     tex,error),
