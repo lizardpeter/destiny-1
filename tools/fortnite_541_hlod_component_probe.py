@@ -91,6 +91,34 @@ def run():
                     for n,kind,extra,raw in props]
                 mesh_asset["native_render_payload_bytes"]=len(mesh_bytes)-end
                 mesh_asset["native_first_256"]=mesh_bytes[end:end+256].hex()
+                cooked=mesh_bytes[end:]
+                # Validate observed UE4.21 cooked UStaticMesh 1-LOD, 1-section
+                # prefix strictly before interpreting vertex positions:
+                # (strip/cooked flags, body+nav refs, GUID, socket count,
+                # LOD count, LOD strip flags, one 28-byte section and maxdev).
+                if len(cooked)>100 and struct.unpack_from("<I",cooked,38)[0]==1:
+                    sections=struct.unpack_from("<I",cooked,44)[0]
+                    if sections==1:
+                        section_vals=struct.unpack_from("<7I",cooked,48)
+                        stride,verts,bulk_stride,bulk_verts=struct.unpack_from("<4I",cooked,80)
+                        mesh_asset["decoded_first_lod_prefix"]={
+                            "sections":sections,
+                            "section_fields":section_vals,
+                            "position_stride":stride,"position_vertices":verts,
+                            "position_bulk_item_size":bulk_stride,"position_bulk_items":bulk_verts,
+                        }
+                        if stride==12 and verts==bulk_verts and bulk_stride==12 and 0<verts<100000:
+                            pos_start=96;pos_end=pos_start+verts*12
+                            points=[struct.unpack_from("<fff",cooked,pos_start+i*12) for i in range(verts)]
+                            mesh_asset["verified_position_stream"]={
+                                "byte_span":[pos_start,pos_end],
+                                "min":[min(v[j] for v in points) for j in range(3)],
+                                "max":[max(v[j] for v in points) for j in range(3)],
+                                "first3":points[:3],
+                                "after_position_hex":cooked[pos_end:pos_end+160].hex(),
+                                "after_position_u32":[struct.unpack_from("<I",cooked,j)[0]
+                                    for j in range(pos_end,min(len(cooked)-4,pos_end+128),4)]
+                            }
                 mesh_asset["native_last_64"]=mesh_bytes[-64:].hex()
                 break
         break
