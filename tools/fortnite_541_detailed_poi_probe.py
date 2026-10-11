@@ -142,6 +142,34 @@ def run():
                     for pkg in sorted(packages)]
                 print("FORTNITE_FULL_DETAIL_MESH_PACKAGE_DISTRIBUTION "+
                     json.dumps({"factory":path,"source_packages":source}),flush=True)
+                import fortnite_541_skylight_cube_probe as split
+                inventory={"main":ix}
+                for archive,hashcode in [
+                    ("pakchunk0_s1-WindowsClient.pak","a37147494190b90c420b852d69740402f93f6103"),
+                    ("pakchunk0_s2-WindowsClient.pak","42a45eee280ab70abbb5192b33a5945c119bd82c"),
+                    ("pakchunk0_s3-WindowsClient.pak","27376dab8f8a3488d0d2b5332a2a2da7d28fd73e"),
+                    ("pakchunk0_s4-WindowsClient.pak","96a67f9eae257051576e368fdb61a6fb78b2f56a"),
+                    ("pakchunk0_s5-WindowsClient.pak","9f9f8e76d614e080108d2c49d616e9b4bc9affd0"),
+                    ("pakchunk1-WindowsClient.pak","b6b32c94f36c35a528d186bcb4a6b5f9bd89255f")
+                ]:
+                    split.URL="https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/"+archive
+                    split.INDEX_SHA=hashcode
+                    inventory[archive]=split.source()
+                per_archive={}
+                for name,archive in inventory.items():
+                    found=[]
+                    for pkg in sorted(packages):
+                        full="FortniteGame/Content/"+pkg
+                        candidates=[pkg,full]
+                        if any(all(base+ext in archive for ext in (".uasset",".uexp")) for base in candidates):
+                            found.append(pkg)
+                    per_archive[name]=found
+                print("FORTNITE_FULL_DETAIL_AUTHENTIC_MESH_LOCATION "+
+                    json.dumps({"total":len(packages),
+                        "found_per_archive":{name:len(v) for name,v in per_archive.items()},
+                        "unavailable":[pkg for pkg in sorted(packages)
+                            if not any(pkg in v for v in per_archive.values())],
+                        "first_recovered":{name:v[:12] for name,v in per_archive.items()}}),flush=True)
         except Exception as e:
             print("FORTNITE_REAL_DETAIL_POI_ERROR "+json.dumps({
                 "map":path,"error":str(e)}),flush=True)
