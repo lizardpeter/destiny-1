@@ -1,0 +1,50 @@
+name: SMG retail StageData local handoff
+on:
+  push:
+    branches: [tools/smg-source-local-handoff-20261011]
+    paths:
+      - .github/workflows/smg_stage_data_local_handoff.yml
+      - smg_stage_data_manifest_20261011.txt
+permissions:
+  contents: read
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch original StageData from existing public R2 into a transferable bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smg-original
+          sed '/^\s*$/d' smg_stage_data_manifest_20261011.txt | xargs -P 12 -I{} bash -c '
+            set -euo pipefail
+            p="$1"
+            dst="/tmp/smg-original/${p#super-mario-galaxy/}"
+            mkdir -p "$(dirname "$dst")"
+            curl --fail --silent --show-error --retry 3 --max-time 90 "https://r2.houseofkublai.com/$p" -o "$dst"
+            test -s "$dst"
+          ' _ '{}'
+          printf '%s\n' \
+            ObjectData/Tico.arc ObjectData/TicoBaby.arc ObjectData/TicoFat.arc \
+            ObjectData/TicoComet.arc ObjectData/TicoShop.arc ObjectData/Rosetta.arc \
+            ObjectData/LightData.arc ObjectData/PlanetMapDataTable.arc \
+            ParticleData/Effect.arc > /tmp/extra.txt
+          cat /tmp/extra.txt | xargs -P 8 -I{} bash -c '
+            p="$1"
+            dst="/tmp/smg-original/DATA/files/$p"
+            mkdir -p "$(dirname "$dst")"
+            curl --fail --silent --show-error --retry 2 --max-time 90 "https://r2.houseofkublai.com/super-mario-galaxy/DATA/files/$p" -o "$dst" || rm -f "$dst"
+          ' _ '{}'
+          echo "Retail StageData files:"
+          find /tmp/smg-original/DATA/files/StageData -type f | wc -l
+          du -sh /tmp/smg-original
+          tar -C /tmp -czf /tmp/smg-stage-data-local.tar.gz smg-original
+          ls -lh /tmp/smg-stage-data-local.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smg-original-stage-data-for-local-debug
+          path: /tmp/smg-stage-data-local.tar.gz
+          retention-days: 1
+          compression-level: 0
