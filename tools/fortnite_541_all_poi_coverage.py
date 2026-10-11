@@ -76,8 +76,13 @@ def worlds_from_retail_foundations(main):
         props,_ = c.props(c.export_data(ex))
         arrays=[raw for n,k,_,raw in props if n=="AdditionalWorlds"
                 and k=="ArrayProperty"]
+        # Many LF_Athena_POI_ actors have no AdditionalWorlds at all,
+        # matching the native importer; only those with authored references
+        # contribute streamed child levels.
+        if not arrays:
+            continue
         if len(arrays)!=1:
-            raise ValueError("authored LF foundation missing unique AdditionalWorlds")
+            raise ValueError("ambiguous authored LF AdditionalWorlds array")
         raw=arrays[0]
         if len(raw)<4: raise ValueError("truncated foundation worlds array")
         count=struct.unpack_from("<I",raw)[0]
