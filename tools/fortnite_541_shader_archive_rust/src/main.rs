@@ -1,4 +1,5 @@
 mod shader_archive;
+mod material_shader_links;
 use std::{env,fs::File};
 use shader_archive::{ShaderArchiveIndex,embedded_dxbc_range};
 
