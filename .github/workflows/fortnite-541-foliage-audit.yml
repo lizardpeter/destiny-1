@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_foliage_probe.py
+      - tools/fortnite_541_world_tile_probe.py
       - 'tools/fortnite_541_foliage_rust/**'
       - .github/workflows/fortnite-541-foliage-audit.yml
   workflow_dispatch:
@@ -15,6 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Authenticate original Fortnite Athena foliage maps and assets
         run: python3 tools/fortnite_541_foliage_probe.py
+      - name: Audit original UE4 world composition absolute tile placement
+        run: python3 tools/fortnite_541_world_tile_probe.py
       - name: Compile production Rust foliage decoder against original SHA1-verified retail grass transforms
         run: |
           python3 - <<'PY'
