@@ -46,6 +46,15 @@ def run():
                     info["struct"]=extra
                 elif kind=="ArrayProperty":
                     info["array"]=nested(cat,value,field)
+                    if field in ("TextureParameterValues","StaticMaterials"):
+                        info["source_words"]=[
+                            {"offset":i,"raw":struct.unpack_from("<i",value,i)[0],
+                             "fname":cat.name(struct.unpack_from("<I",value,i)[0])
+                                  if struct.unpack_from("<I",value,i)[0]<len(cat.names) else None}
+                            for i in range(0,min(len(value)-4,192),4)
+                        ]
+                        info["source_tail"]=value[-100:].hex()
+                        info["source_raw_hex"]=value.hex() if field=="TextureParameterValues" else value[:200].hex()
                 elif kind in ("BoolProperty","NameProperty","FloatProperty"):
                     info["value"]=extra if kind=="BoolProperty" else (
                         cat.fname(value) if kind=="NameProperty" else (
