@@ -6,6 +6,11 @@ on:
     paths:
       - tools/fortnite_541_r2_material_probe.py
       - .github/workflows/fortnite-541-r2-material-audit.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_r2_material_probe.py
+      - .github/workflows/fortnite-541-r2-material-audit.yml
   workflow_dispatch:
 jobs:
   audit:
