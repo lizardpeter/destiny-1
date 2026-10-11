@@ -103,6 +103,17 @@ def main_fn():
                 for n,k,extra,v in props]
             item["native_tail_len"]=ex["size"]-end
             native=cat.export_data(ex)[end:]
+            # Temporary original cooked texture ONLY on this ephemeral runner.
+            # Never commit or upload original source texture bytes.
+            source_cube=Path("/tmp/fortnite541_verified_s4_skylight_cooked.bin")
+            source_cube.write_bytes(native)
+            item["original_cooked_source_sha1"]=hashlib.sha1(native).hexdigest()
+            if len(native)>=92+393216:
+                face_bytes=native[92:92+393216]
+                item["source_cube_face_sha1"]=[
+                    hashlib.sha1(face_bytes[i*65536:(i+1)*65536]).hexdigest()
+                    for i in range(6)
+                ]
             item["tail_first256"]=native[:256].hex()
             item["tail_last48"]=native[-48:].hex()
             item["source_lengths"]=[len(native),len(native)%16, len(native)-524288]
