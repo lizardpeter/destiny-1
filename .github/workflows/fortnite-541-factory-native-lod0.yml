@@ -1,0 +1,31 @@
+name: Fortnite 5.41 Factory original native LOD0 closure
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_factory_native_mesh_batch.py
+      - tools/fortnite_541_poi_rust/src/main.rs
+      - .github/workflows/fortnite-541-factory-native-lod0.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage authenticated native Blueprint CDO packages for all Factory classes
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_factory_cdo_batch.py
+      - name: Compile source parser and run native Rust tests
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Resolve every source inherited StaticMesh identity
+        run: |
+          set -o pipefail
+          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-cdos /tmp/fortnite541_factory_cdos.tsv | tee /tmp/fortnite541_cdo_output.log
+      - name: Fetch original SHA1 verified native mesh pairs from seven retail archives
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_factory_native_mesh_batch.py
+      - name: Decode the real original native LOD0 for all source mesh actor references
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-meshes /tmp/fortnite541_factory_lod0.tsv
