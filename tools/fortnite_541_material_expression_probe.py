@@ -164,6 +164,37 @@ def audit_one(base, entries):
     return {"source_package_suffix":base,"expression_count":sum(census.values()),
             "class_counts":dict(sorted(census.items())),
             "texture_samples":samples,"graph_links":links,"unresolved":errors}
+def audit_landscape_paint_layers(section,entries):
+    suffix=f"/Maps/Landscape/Athena_Terrain_LS_{section:02}"
+    payload=[]
+    for extension in [".umap",".uexp"]:
+        matches=[record for path,record in entries.items() if path.endswith(suffix+extension)]
+        if len(matches)!=1:raise ValueError("original landscape source package missing: "+suffix+extension)
+        payload.append(r2.source_payload(matches[0]))
+    catalog=Catalog(*payload)
+    combinations=Counter()
+    components=0
+    for export in catalog.exports:
+        if catalog.class_name(export)!="LandscapeComponent":continue
+        components+=1
+        fields,_=catalog.props(catalog.export_data(export))
+        for name,kind,meta,raw in fields:
+            if name!="WeightmapLayerAllocations":continue
+            if kind!="ArrayProperty" or meta!=["StructProperty"] or len(raw)<53:
+                raise ValueError("original landscape paint is not typed source struct array")
+            count=u32(raw,0)
+            if count>64 or len(raw)!=53+105*count:
+                raise ValueError("original landscape source paint array stride does not match")
+            for index in range(count):
+                record=raw[53+105*index:53+105*(index+1)]
+                layer_fields,consumed=catalog.props(record)
+                if consumed!=105:raise ValueError("original paint record trailing bytes")
+                layer_info=[r for n,k,e,r in layer_fields if n=="LayerInfo" and k=="ObjectProperty"]
+                if len(layer_info)!=1:raise ValueError("original source LayerInfo reference missing")
+                ref=i32(layer_info[0],0)
+                combinations[catalog.path(ref)]+=1
+    return {"section":section,"components":components,"layer_info_allocation_counts":dict(combinations)}
+
 def main():
     entries=r2.load_index()
     bases=[
@@ -183,11 +214,17 @@ def main():
             "graph_links":result["graph_links"][:32],
             "unresolved":result["unresolved"][:8],
         },sort_keys=True),flush=True)
+    paint=[]
+    for section in range(6):
+        result=audit_landscape_paint_layers(section,entries)
+        paint.append(result)
+        print("FORTNITE_REAL_LANDSCAPE_PAINT "+json.dumps(result,sort_keys=True),flush=True)
     Path("fortnite-541-material-expression-audit.json").write_text(
-        json.dumps(audited,indent=2),encoding="utf8")
+        json.dumps({"material_graphs":audited,"paint_sections":paint},indent=2),encoding="utf8")
     print("FORTNITE_REAL_MATERIAL_AUDIT_COMPLETE "+json.dumps({
         "packages":len(audited),"sampled_texture_nodes":sum(len(a["texture_samples"]) for a in audited),
-        "unresolved":sum(len(a["unresolved"]) for a in audited)
+        "unresolved":sum(len(a["unresolved"]) for a in audited),
+        "terrain_components":sum(section["components"] for section in paint)
     }),flush=True)
 if __name__=="__main__":
     main()
