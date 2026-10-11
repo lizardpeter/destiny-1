@@ -133,6 +133,15 @@ def run():
                 "source_mesh_components":meshs[:10],
                 "source_actors":actors[:7]}
             print("FORTNITE_REAL_DETAIL_POI_SAMPLE "+json.dumps(item),flush=True)
+            if "ToiletFactory" in path:
+                packages={t.split("::")[0].removeprefix("/Game/") for t in original_detail}
+                source=[
+                    {"p":pkg,"main_uasset":("FortniteGame/Content/"+pkg+".uasset") in ix,
+                        "main_uexp":("FortniteGame/Content/"+pkg+".uexp") in ix,
+                        "main_ubulk":("FortniteGame/Content/"+pkg+".ubulk") in ix}
+                    for pkg in sorted(packages)]
+                print("FORTNITE_FULL_DETAIL_MESH_PACKAGE_DISTRIBUTION "+
+                    json.dumps({"factory":path,"source_packages":source}),flush=True)
         except Exception as e:
             print("FORTNITE_REAL_DETAIL_POI_ERROR "+json.dumps({
                 "map":path,"error":str(e)}),flush=True)
