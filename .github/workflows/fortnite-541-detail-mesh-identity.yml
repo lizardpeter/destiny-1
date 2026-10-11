@@ -37,6 +37,19 @@ jobs:
           for ext in (".uasset",".uexp"):
               raw=split.payload(records[source+ext])
               Path("/tmp/fortnite_source_highdetail"+ext).write_bytes(raw)
+          for part,sha,package,name in [
+              ("s3","27376dab8f8a3488d0d2b5332a2a2da7d28fd73e",
+                  "Environments/Sets/Factory/Meshes/Factory_Wall_1","wall"),
+              ("s4","96a67f9eae257051576e368fdb61a6fb78b2f56a",
+                  "Packages/Fortress_Floors_Generic/SM/Mesh/SM_Fort_Floors_Generic_TileBasic","floor")
+          ]:
+              split.URL=f"https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0_{part}-WindowsClient.pak"
+              split.INDEX_SHA=sha
+              index=split.source()
+              for ext in (".uasset",".uexp"):
+                  raw=split.payload(index[package+ext])
+                  Path("/tmp/fortnite_"+name+ext).write_bytes(raw)
+                  print("FORTNITE_AUTHENTIC_FULL_DETAIL",package+ext,len(raw),flush=True)
           PY
           cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
-          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- /tmp/fortnite_foundation.umap /tmp/fortnite_foundation.uexp /tmp/fortnite_factory.umap /tmp/fortnite_factory.uexp /tmp/fortnite_hedge.umap /tmp/fortnite_hedge.uexp /tmp/fortnite_source_highdetail.uasset /tmp/fortnite_source_highdetail.uexp
+          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- /tmp/fortnite_foundation.umap /tmp/fortnite_foundation.uexp /tmp/fortnite_factory.umap /tmp/fortnite_factory.uexp /tmp/fortnite_hedge.umap /tmp/fortnite_hedge.uexp /tmp/fortnite_source_highdetail.uasset /tmp/fortnite_source_highdetail.uexp /tmp/fortnite_wall.uasset /tmp/fortnite_wall.uexp /tmp/fortnite_floor.uasset /tmp/fortnite_floor.uexp
