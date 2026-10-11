@@ -1,0 +1,34 @@
+name: Portable Rust compiler quick handoff
+
+on:
+  push:
+    branches: [tools/t6-local-artifact-bridge-20261011]
+    paths: [.github/workflows/t6_portable_rust_handoff.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Bundle portable rust compiler and libs without slow XZ
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(rustc --print sysroot)"
+          cargo --version
+          rustc --version
+          echo "$ROOT"
+          mkdir -p /tmp/portable-rust/bin /tmp/portable-rust/lib /tmp/portable-rust-release
+          cp "$ROOT/bin/cargo" "$ROOT/bin/rustc" /tmp/portable-rust/bin/
+          cp -a "$ROOT/lib/"* /tmp/portable-rust/lib/
+          tar -C /tmp -cf /tmp/portable-rust-release/portable-rust.tar portable-rust
+          ls -lh /tmp/portable-rust-release/portable-rust.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-rust-compiler-local-handoff
+          path: /tmp/portable-rust-release/portable-rust.tar
+          retention-days: 1
+          compression-level: 0
