@@ -1,0 +1,16 @@
+name: Fortnite 5.41 authentic POI bounds and HLOD overlap
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_poi_authored_bounds.py
+      - .github/workflows/fortnite-541-poi-bounds.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original streaming foundation boxes and intersecting retail HLOD proxies
+        run: python3 tools/fortnite_541_poi_authored_bounds.py
