@@ -7,6 +7,7 @@ mod pak;
 mod poi_extract;
 mod poi_blueprint;
 mod sky_dome;
+mod texture;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
@@ -29,6 +30,32 @@ fn run()->Result<(),String>{
         if source.scalar_params.len()!=14 || source.vector_params.len()!=7{
             return Err("native source SkyDome inherited material parameter closure changed".into());
         }
+        let master=sky_dome::inspect_sky_master(root)?
+            .ok_or("original M_SkyDome master shader source missing")?;
+        if master.material_expression_count!=98 ||
+            master.texture_sample_count!=8 ||
+            master.source_texture_objects.len()!=5 ||
+            !master.source_collection_parameters.iter().any(|n|
+                n=="SunAndMoonModelWorldPosition"
+            ){
+            return Err(format!("retail master graph changed: {master:?}"));
+        }
+        let mut decoded=0usize;
+        for tex in &master.source_texture_objects {
+            match sky_dome::inspect_sampled_source_mip(root,tex){
+                Ok(mip)=>{
+                    decoded+=1;
+                    println!("FORTNITE_NATIVE_SOURCE_SKY_TEXTURE object={:?} width={} height={} format={:?} bytes={}",
+                        tex,mip.width,mip.height,mip.original_format,mip.source_block_bytes);
+                },
+                Err(error)=>println!("FORTNITE_NATIVE_SOURCE_SKY_TEXTURE_DEFERRED object={:?} error={:?}",
+                    tex,error),
+            }
+        }
+        println!("FORTNITE_NATIVE_SOURCE_SKY_MASTER_GRAPH expressions={} original_sample_nodes={} unique_source_textures={} source_decoded_external_bc_mips={} functions={} runtime_collection={:?}",
+            master.material_expression_count,master.texture_sample_count,
+            master.source_texture_objects.len(),decoded,
+            master.material_functions.len(),master.source_collection_parameters);
         return Ok(());
     }
     if paths.len()==2 && paths[0]=="--audit-meshes" {
