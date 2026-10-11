@@ -1,0 +1,15 @@
+name: Fortnite 5.41 native detailed mesh identity
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_true_mesh_identity.py
+      - .github/workflows/fortnite-541-detail-mesh-identity.yml
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original Blueprint-inherited numbered UStaticMesh export names
+        run: python3 tools/fortnite_541_true_mesh_identity.py
