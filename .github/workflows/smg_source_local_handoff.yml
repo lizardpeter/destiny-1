@@ -1,0 +1,39 @@
+name: SMG source and offline cargo local handoff
+on:
+  push:
+    branches: [tools/smg-source-local-handoff-20261011]
+    paths: [.github/workflows/smg_source_local_handoff.yml]
+permissions:
+  contents: read
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - name: Fetch Rust-test sparse source and offline cargo dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --filter=blob:none --sparse --branch main https://github.com/lizardpeter/Rust-test.git /tmp/smg-source
+          cd /tmp/smg-source
+          git sparse-checkout set asset_import/importers/smg asset_import/neutral_scene asset_import/audio_contract
+          echo "GIT_COMMIT=$(git rev-parse HEAD)" > /tmp/smg-handoff-manifest.txt
+          echo "GIT_BRANCH=main" >> /tmp/smg-handoff-manifest.txt
+          git status --short
+          du -sh asset_import/importers/smg asset_import/neutral_scene asset_import/audio_contract
+          export CARGO_HOME=/tmp/smg-offline-cargo
+          cargo fetch --manifest-path asset_import/importers/smg/Cargo.toml
+          mkdir -p /tmp/smg-local-handoff/source /tmp/smg-local-handoff/cargo-home
+          cp -a asset_import /tmp/smg-local-handoff/source/
+          cp Cargo.toml /tmp/smg-local-handoff/source/Cargo.toml
+          test ! -f Cargo.lock || cp Cargo.lock /tmp/smg-local-handoff/source/Cargo.lock
+          cp -a /tmp/smg-offline-cargo/registry /tmp/smg-local-handoff/cargo-home/
+          cp /tmp/smg-handoff-manifest.txt /tmp/smg-local-handoff/manifest.txt
+          tar -C /tmp -czf /tmp/smg-local-handoff.tar.gz smg-local-handoff
+          ls -lh /tmp/smg-local-handoff.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smg-source-offline-cargo-local-handoff
+          path: /tmp/smg-local-handoff.tar.gz
+          retention-days: 2
+          compression-level: 0
