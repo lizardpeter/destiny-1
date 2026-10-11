@@ -1,0 +1,29 @@
+name: SMG retail Coin model local handoff
+on:
+  push:
+    branches: [tools/smg-source-local-handoff-20261011]
+    paths: [.github/workflows/smg_coin_original_assets_handoff.yml]
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Retrieve original Coin and PurpleCoin resource archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smg-coin-original
+          for name in Coin PurpleCoin; do
+            curl --fail --silent --show-error --retry 3 --max-time 60               "https://r2.houseofkublai.com/super-mario-galaxy/DATA/files/ObjectData/${name}.arc"               -o "/tmp/smg-coin-original/${name}.arc"
+            test -s "/tmp/smg-coin-original/${name}.arc"
+          done
+          sha256sum /tmp/smg-coin-original/*.arc > /tmp/smg-coin-original/SHA256SUMS
+          ls -lh /tmp/smg-coin-original/*.arc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smg-retail-original-coin-and-purplecoin
+          path: /tmp/smg-coin-original
+          retention-days: 1
+          compression-level: 0
