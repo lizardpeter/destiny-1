@@ -121,7 +121,19 @@ def main():
         "texture_source_paths":texture_candidates[:128],
         "truncated":len(texture_candidates)>128
     }),flush=True)
-    audit={"original_pak":URL,"verified_index_sha1":EXPECTED_INDEX_SHA1,"entries":len(entries),"source_packages":[]}
+    shader_records=[{"path":path,"bytes":meta[2],"compression":meta[3],"encrypted":bool(meta[5])}
+        for path,meta in entries.items()
+        if any(needle in path.lower() for needle in (
+            "shaderarchive","shadermap","shadermap","globalshadercache",
+            "ushaderbytecode","ushaderprecache","pipelinecache",
+            "shadercode","materialshadermap","shaderlibrary"
+        )) or path.lower().endswith((".ushaderbytecode",".ushaderprecache",".shadercache"))]
+    print("FORTNITE_R2_SHADER_ARCHIVE_INDEX "+json.dumps({
+        "count":len(shader_records),"entries":shader_records[:150],
+        "truncated":len(shader_records)>150
+    },sort_keys=True),flush=True)
+    audit={"original_pak":URL,"verified_index_sha1":EXPECTED_INDEX_SHA1,"entries":len(entries),
+           "shader_records":shader_records,"source_packages":[]}
     for suffix in TARGETS:
         group={"path_suffix":suffix,"files":[]}
         for extension in [".uasset",".uexp",".ubulk"]:

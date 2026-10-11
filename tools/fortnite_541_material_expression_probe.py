@@ -138,7 +138,8 @@ def audit_one(base, entries):
         if not class_name.startswith("MaterialExpression"):continue
         census[class_name]+=1
         try:
-            props,_=catalog.props(catalog.export_data(ex))
+            exported=catalog.export_data(ex)
+            props,tagged_end=catalog.props(exported)
             references=[]
             input_links=[]
             parameters=[]
@@ -153,6 +154,10 @@ def audit_one(base, entries):
                     input_links.append({"name":property_name,"target":ref,"path":catalog.path(ref),"source_40_bytes":raw.hex()})
             record={"export":i,"type":class_name,"object":catalog.value(i),
                     "references":references,"inputs":input_links,"parameters":parameters}
+            if class_name=="MaterialExpressionMaterialFunctionCall":
+                tail=exported[tagged_end:]
+                record["cooked_native_tail"]={"length":len(tail),"prefix":tail[:192].hex(),
+                    "suffix":tail[-32:].hex() if tail else ""}
             if class_name in [
                 "MaterialExpressionLandscapeLayerCoords",
                 "MaterialExpressionTextureCoordinate",
@@ -176,7 +181,8 @@ def audit_one(base, entries):
                     elif kind=="StructProperty" and extra==["ExpressionInput"] and len(raw)==40:
                         value={"target":i32(raw,0),"selectors":raw.hex()}
                     elif kind=="ArrayProperty":
-                        value={"bytes":len(raw),"count":u32(raw,0) if len(raw)>=4 else None}
+                        value={"bytes":len(raw),"count":u32(raw,0) if len(raw)>=4 else None,
+                               "head_hex":raw[:160].hex()}
                     else:
                         value={"bytes":len(raw),"hex":raw[:32].hex()}
                     record["authored_properties"].append({
@@ -269,6 +275,16 @@ def main():
     for base in bases:
         result=audit_one(base,entries)
         audited.append(result)
+        calls=[entry for entry in result["graph_links"] if entry["type"]=="MaterialExpressionMaterialFunctionCall"]
+        print("FORTNITE_MATERIAL_FUNCTION_INPUT_LAYOUT "+json.dumps({
+            "path":base,"calls_total":len(calls),
+            "examples":[{"object":entry["object"],
+                         "material_function":next((v["path"] for v in entry["references"] if v["name"]=="MaterialFunction"),None),
+                         "fields":[p for p in entry.get("authored_properties",[])
+                                    if p["name"] in ["FunctionInputs","FunctionOutputs","MaterialFunction"]],
+                         "native_tail":entry.get("cooked_native_tail")}
+                        for entry in calls[:12]]
+        },sort_keys=True),flush=True)
         print("FORTNITE_REAL_MATERIAL_GRAPH "+json.dumps({
             "path":base,"nodes":result["expression_count"],
             "classes":result["class_counts"],
