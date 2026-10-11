@@ -1,0 +1,16 @@
+name: Fortnite 5.41 authentic tree and shrub assets
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_recovered_vegetation_probe.py
+      - .github/workflows/fortnite-541-recovered-vegetation.yml
+  workflow_dispatch:
+jobs:
+  recovered:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify real Athena large-tree Blueprint and Shrub_05 source geometry
+        run: python3 tools/fortnite_541_recovered_vegetation_probe.py
