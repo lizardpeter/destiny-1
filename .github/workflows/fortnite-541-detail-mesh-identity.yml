@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_true_mesh_identity.py
+      - 'tools/fortnite_541_poi_rust/**'
       - .github/workflows/fortnite-541-detail-mesh-identity.yml
 jobs:
   proof:
@@ -13,3 +14,29 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify original Blueprint-inherited numbered UStaticMesh export names
         run: python3 tools/fortnite_541_true_mesh_identity.py
+      - name: Build native POI coverage parser and validate actual Fortnite 5.41 source FBox
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as r2
+          import fortnite_541_skylight_cube_probe as split
+          main=r2.load_index()
+          for path,label in [
+              ("Athena/Maps/Athena_POI_Foundations","foundation"),
+              ("Athena/Maps/POI/Athena_POI_ToiletFactory_001","factory"),
+              ("Athena/Maps/POI/Athena_POI_HedgeMaze","hedge")]:
+              for ext in (".umap",".uexp"):
+                  raw=r2.source_payload(main["FortniteGame/Content/"+path+ext])
+                  Path("/tmp/fortnite_"+label+ext).write_bytes(raw)
+          split.URL="https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0_s3-WindowsClient.pak"
+          split.INDEX_SHA="27376dab8f8a3488d0d2b5332a2a2da7d28fd73e"
+          records=split.source()
+          source="Packages/DS_Fortnite_Terrain_NoLOD/Elevation/S_Cave_Outer_Middle"
+          for ext in (".uasset",".uexp"):
+              raw=split.payload(records[source+ext])
+              Path("/tmp/fortnite_source_highdetail"+ext).write_bytes(raw)
+          PY
+          cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- /tmp/fortnite_foundation.umap /tmp/fortnite_foundation.uexp /tmp/fortnite_factory.umap /tmp/fortnite_factory.uexp /tmp/fortnite_hedge.umap /tmp/fortnite_hedge.uexp /tmp/fortnite_source_highdetail.uasset /tmp/fortnite_source_highdetail.uexp
