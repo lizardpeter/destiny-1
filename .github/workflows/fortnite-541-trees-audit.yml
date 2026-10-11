@@ -1,0 +1,49 @@
+name: Original Fortnite Athena tree blueprint audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_tree_blueprint_probe.py
+      - 'tools/fortnite_541_foliage_rust/**'
+      - .github/workflows/fortnite-541-trees-audit.yml
+  workflow_dispatch:
+jobs:
+  trees:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trace authenticated original Athena tree/shrub Blueprint source meshes
+        run: python3 tools/fortnite_541_tree_blueprint_probe.py
+      - name: Decode actual placed original tree and shrub actor transforms in Rust
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as r2
+          ix=r2.load_index()
+          assets=[
+              ("Athena/Maps/Athena_Terrain",".umap","root"),
+              ("Athena/Maps/Athena_Terrain",".uexp","root"),
+              ("Athena/Maps/Landscape/Athena_Terrain_LS_01",".umap","LS01"),
+              ("Athena/Maps/Landscape/Athena_Terrain_LS_01",".uexp","LS01"),
+              ("Athena/Maps/POI/Athena_POI_HedgeMaze",".umap","Hedge"),
+              ("Athena/Maps/POI/Athena_POI_HedgeMaze",".uexp","Hedge"),
+              ("Athena/Environments/Landscape/Foliage/Athena_SM_WavyGrass_TopologyColor",".uasset","Grass"),
+              ("Athena/Environments/Landscape/Foliage/Athena_SM_WavyGrass_TopologyColor",".uexp","Grass"),
+          ]
+          for source,ext,name in assets:
+              raw=r2.source_payload(ix["FortniteGame/Content/"+source+ext])
+              Path("/tmp/fortnite541_"+name+ext).write_bytes(raw)
+              print("FORTNITE_SOURCE_SHA1_VERIFIED",name,ext,len(raw),flush=True)
+          PY
+          cargo test --manifest-path tools/fortnite_541_foliage_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_foliage_rust/Cargo.toml -- /tmp/fortnite541_root.umap /tmp/fortnite541_root.uexp /tmp/fortnite541_LS01.umap /tmp/fortnite541_LS01.uexp /tmp/fortnite541_Hedge.umap /tmp/fortnite541_Hedge.uexp /tmp/fortnite541_Grass.uasset /tmp/fortnite541_Grass.uexp
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fortnite-original-tree-blueprint-metadata
+          path: fortnite541_tree_blueprint_source.json
+          retention-days: 3
+          if-no-files-found: ignore

@@ -121,6 +121,95 @@ pub fn inspect_original_foliage_level(
     }
     Ok(level)
 }
+/// Verified source vegetation Blueprint actor placement from a streamed POI.
+/// Its imported Blueprint class identifies the original source asset, and the
+/// actor's original root StaticMeshComponent supplies transform coordinates.
+/// An inherited mesh is explicitly None until the Blueprint CDO is decoded.
+#[derive(Debug,Clone)]
+pub struct AuthoredVegetationActor {
+    pub source_actor:String,
+    pub source_blueprint_class:String,
+    pub root_component:String,
+    pub source_static_mesh:Option<String>,
+    pub location_cm:[f32;3],
+    pub pitch_yaw_roll_deg:[f32;3],
+    pub scale:[f32;3],
+}
+fn source_object_field(
+    raw:&[u8],props:&properties::Properties,key:&str,
+)->Result<Option<i32>,String>{
+    let mut items=props.fields.iter().filter(|f|f.name==key);
+    let Some(prop)=items.next() else{return Ok(None)};
+    if items.next().is_some()||prop.kind!="ObjectProperty"{
+        return Err(format!("source vegetation actor ambiguous {key}"));
+    }
+    let value=raw.get(prop.payload.clone())
+        .ok_or("source vegetation property extent exceeds serialized actor")?;
+    if value.len()!=4{return Err("original actor reference is not FPackageIndex".into());}
+    Ok(Some(i32::from_le_bytes(value.try_into().unwrap())))
+}
+fn source_vector_field(
+    raw:&[u8],props:&properties::Properties,key:&str,kind:&str
+)->Result<Option<[f32;3]>,String>{
+    let mut fields=props.fields.iter().filter(|f|f.name==key);
+    let Some(f)=fields.next() else{return Ok(None)};
+    if fields.next().is_some()||f.kind!="StructProperty"||
+        f.metadata.first().map(String::as_str)!=Some(kind){
+        return Err(format!("source vegetation {key} is not original {kind}"));
+    }
+    let value=raw.get(f.payload.clone())
+        .ok_or("original vegetation transform source bounds invalid")?;
+    if value.len()!=12{return Err("source FRotator/FVector must have three floats".into());}
+    let xyz=std::array::from_fn(|i|f32::from_le_bytes(
+        value[i*4..i*4+4].try_into().unwrap()
+    ));
+    if xyz.iter().any(|v|!v.is_finite()||v.abs()>20_000_000.){
+        return Err("original vegetation source transform has invalid floats".into());
+    }
+    Ok(Some(xyz))
+}
+pub fn inspect_original_tree_and_shrub_actors(
+    umap:&[u8],uexp:&[u8],
+)->Result<Vec<AuthoredVegetationActor>,String>{
+    let cat=uobject::inspect(umap)?;
+    let mut out=Vec::new();
+    for (i,actor) in cat.exports.iter().enumerate(){
+        let class=cat.export_class_name(actor);
+        if !matches!(class,Some("Athena_Tree_Large_1_C"|
+            "Athena_Prop_Plant_Shrub_01_C"|"Athena_Prop_Plant_Shrub_09_C")){continue;}
+        let index=(i+1) as i32;
+        let blob=cat.export_data(umap,uexp,actor)?;
+        let props=properties::scan(&cat,blob)?;
+        let root=source_object_field(blob,&props,"RootComponent")?
+            .ok_or("original vegetation actor lacks root component")?;
+        if root<=0{return Err("source tree root is not a local component".into());}
+        let component=cat.exports.get((root-1) as usize)
+            .ok_or("source tree component index outside map exports")?;
+        if cat.export_class_name(component)!=Some("StaticMeshComponent")||
+            component.outer_index!=index {
+            return Err("original tree root component is not an owned StaticMeshComponent".into());
+        }
+        let data=cat.export_data(umap,uexp,component)?;
+        let fields=properties::scan(&cat,data)?;
+        let location=source_vector_field(data,&fields,"RelativeLocation","Vector")?
+            .unwrap_or([0.;3]);
+        let rotation=source_vector_field(data,&fields,"RelativeRotation","Rotator")?
+            .unwrap_or([0.;3]);
+        let scale=source_vector_field(data,&fields,"RelativeScale3D","Vector")?
+            .unwrap_or([1.;3]);
+        let source_static_mesh=source_object_field(data,&fields,"StaticMesh")?
+            .map(|refid|cat.source_object_path(refid)).transpose()?;
+        out.push(AuthoredVegetationActor{
+            source_actor:cat.source_object_path(index)?,
+            source_blueprint_class:cat.source_object_path(actor.class_index)?,
+            root_component:cat.source_object_path(root)?,
+            source_static_mesh,
+            location_cm:location,pitch_yaw_roll_deg:rotation,scale,
+        });
+        if out.len()>10_000{return Err("source tree/shrub actor count exceeds safe bound".into());}
+    }
+    Ok(out)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
