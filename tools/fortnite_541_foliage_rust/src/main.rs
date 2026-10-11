@@ -13,6 +13,17 @@ fn run()->Result<(),String>{
         let a=fs::read(&args[i*2]).map_err(|e|e.to_string())?;
         let b=fs::read(&args[i*2+1]).map_err(|e|e.to_string())?;
         let world=foliage::inspect_original_foliage_level(&a,&b)?;
+        if i==2 {
+            let actors=foliage::inspect_original_tree_and_shrub_actors(&a,&b)?;
+            println!("FORTNITE_ORIGINAL_TREE_ACTOR_PROOF total={} examples={:?}",
+                actors.len(),actors.iter().take(4).map(|x|
+                    (&x.source_actor,&x.source_blueprint_class,&x.source_static_mesh,
+                     &x.location_cm,&x.pitch_yaw_roll_deg,&x.scale)
+                ).collect::<Vec<_>>());
+            if actors.len()!=16{
+                return Err(format!("authentic HedgeMaze tree+shrub actors expected 16, got {}",actors.len()));
+            }
+        }
         println!("FORTNITE_ORIGINAL_FOLIAGE_WORLD source={} components={} instances={} assets={:?}",
             i,world.components.len(),world.total_instances,world.mesh_packages);
         if world.total_instances!=*expected{
