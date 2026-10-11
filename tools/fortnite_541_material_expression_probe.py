@@ -195,6 +195,37 @@ def audit_landscape_paint_layers(section,entries):
                 combinations[catalog.path(ref)]+=1
     return {"section":section,"components":components,"layer_info_allocation_counts":dict(combinations)}
 
+def audit_texture_mip(suffix,entries):
+    original={}
+    for ext in [".uasset",".uexp",".ubulk"]:
+        matches=[record for path,record in entries.items() if path.endswith(suffix+ext)]
+        if len(matches)!=1:raise ValueError("original texture source missing: "+suffix+ext)
+        original[ext]=r2.source_payload(matches[0])
+    catalog=Catalog(original[".uasset"],original[".uexp"])
+    tex=[record for record in catalog.exports if catalog.class_name(record)=="Texture2D"]
+    if len(tex)!=1:raise ValueError("expected exactly one source Texture2D export")
+    props,offset=catalog.props(catalog.export_data(tex[0]))
+    cooked=catalog.export_data(tex[0])[offset:]
+    width,height,depth=struct.unpack_from("<III",cooked,28)
+    format_size=u32(cooked,40)
+    if format_size not in [7,8,12]:raise ValueError("unrecognized authentic pixel format")
+    fmt=cooked[44:44+format_size].rstrip(b"\\0").decode()
+    if fmt not in ["PF_DXT1","PF_DXT3","PF_DXT5","PF_BC4","PF_BC5","PF_B8G8R8A8"]:
+        raise ValueError("unsupported original texture pixel format "+fmt)
+    flags_at=44+format_size+12
+    flags,stored,count=struct.unpack_from("<III",cooked,flags_at)
+    signed_offset=i64(cooked,flags_at+12)
+    mip_w,mip_h,mip_d=struct.unpack_from("<III",cooked,flags_at+20)
+    bulk_offset=len(original[".uasset"])+len(original[".uexp"])-4+signed_offset
+    bytes_per_block={"PF_DXT1":8,"PF_DXT3":16,"PF_DXT5":16,"PF_BC4":8,"PF_BC5":16}
+    expected=(mip_w*mip_h*4 if fmt=="PF_B8G8R8A8"
+              else ((mip_w+3)//4)*((mip_h+3)//4)*bytes_per_block[fmt])
+    valid=(flags==0x501 and width==mip_w and height==mip_h and depth==mip_d==1
+           and stored==count==expected and bulk_offset>=0 and bulk_offset+expected<=len(original[".ubulk"]))
+    return {"suffix":suffix,"width":width,"height":height,"format":fmt,
+            "bulk_flags":hex(flags),"first_mip_bytes":stored,
+            "actual_bulk_offset":bulk_offset,"source_mip_bounds_verified":valid}
+
 def main():
     entries=r2.load_index()
     bases=[
@@ -214,6 +245,15 @@ def main():
             "graph_links":result["graph_links"][:32],
             "unresolved":result["unresolved"][:8],
         },sort_keys=True),flush=True)
+    for suffix in [
+        "/Environments/Landscape/Textures/T_Athena_Terrain_CombinedColors_01",
+        "/Environments/Landscape/Textures/T_Athena_ForestFloor_D",
+        "/Environments/Landscape/Textures/T_Athena_Grass_Farm_ColorMatched_D_2",
+    ]:
+        proof=audit_texture_mip(suffix,entries)
+        print("FORTNITE_REAL_TEXTURE_MIP "+json.dumps(proof,sort_keys=True),flush=True)
+        if not proof["source_mip_bounds_verified"]:
+            raise ValueError("actual original texture top mip failed exact source layout validation")
     paint=[]
     for section in range(6):
         result=audit_landscape_paint_layers(section,entries)
