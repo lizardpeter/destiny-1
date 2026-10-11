@@ -80,9 +80,25 @@ def run():
                     item["floats"]=struct.unpack("<fff",val)
                 elif kind=="ArrayProperty" and len(val)>=4:
                     item["array_count"]=struct.unpack_from("<I",val)[0]
+                    if key=="AdditionalWorlds" and len(val)==16:
+                        item["first_world"]=c.fname(val[4:12])
+                        item["array_hex"]=val.hex()
                 fields.append(item)
+            root=next((v.get("ref") for v in fields if v["name"]=="RootComponent"),None)
+            root_fields=[]
+            root_index=next((struct.unpack("<i",vv)[0] for nm,tp,md,vv in props
+                if nm=="RootComponent" and tp=="ObjectProperty" and len(vv)==4),0)
+            if root_index>0:
+                component=c.exports[root_index-1]
+                buf=c.export_data(component)
+                try:
+                    cp,ce=c.props(buf)
+                    for pn,pk,meta,datum in cp:
+                        if pn in ("RelativeLocation","RelativeRotation","RelativeScale3D") and len(datum)==12:
+                            root_fields.append({"name":pn,"floats":struct.unpack("<fff",datum)})
+                except Exception as e:root_fields.append({"error":str(e)})
             candidates.append({"class":cl,"object":c.path(ordinal),
-                "fields":fields,"native_bytes":len(raw)-end})
+                "fields":fields,"root_transform":root_fields,"native_bytes":len(raw)-end})
         print("FORTNITE_POI_AUTHORED_FOUNDATION_REFERENCES "+json.dumps({
             "map":foundation_map,"num":len(candidates),
             "candidates":candidates[:52]
