@@ -18,6 +18,9 @@ pub struct SourcePoiWorld {
     pub location_cm:[f32;3],
     pub rotation_pyr_deg:[f32;3],
     pub scale_xyz:[f32;3],
+    /// Original LF_Athena_POI StreamingBoundingBox FBox in local UE4 cm.
+    /// Valid source bounds permit precise proxy-region replacement.
+    pub streaming_bounds_local_cm:Option<([f32;3],[f32;3])>,
 }
 #[derive(Debug,Clone,PartialEq)]
 pub struct SourceDetailedStaticPlacement {
@@ -114,6 +117,44 @@ fn mesh_package(identity:&str)->Result<String,String>{
     }
     Ok(format!("FortniteGame/Content/{pkg}"))
 }
+/// UE4 5.41 FBox is two FVector3f bounds followed by one bIsValid byte.
+/// Unlike an inferred fixed POI radius this comes straight from each source
+/// LF_Athena_POI_* actor's cooked StreamingBoundingBox property.
+fn original_streaming_bbox(source:&[u8],props:&properties::Properties)
+ ->Result<Option<([f32;3],[f32;3])>,String>{
+    let Some(bytes)=field(source,props,"StreamingBoundingBox","StructProperty")? else{
+        return Ok(None)
+    };
+    if bytes.len()!=25 {return Err("source StreamingBoundingBox is not UE4 FVector FBox".into());}
+    if bytes[24]==0{return Ok(None);}
+    if bytes[24]!=1{return Err("original source StreamingBoundingBox invalid flag".into());}
+    let vector=|offset:usize|{
+        std::array::from_fn(|i|f32::from_le_bytes(
+            bytes[offset+i*4..offset+i*4+4].try_into().unwrap()
+        ))
+    };
+    let min:[f32;3]=vector(0);
+    let max:[f32;3]=vector(12);
+    if (0..3).any(|i| !min[i].is_finite()||!max[i].is_finite()||
+        max[i]<=min[i]||max[i]-min[i]>1_000_000.) {
+        return Err("invalid original authored POI streaming bounds".into());
+    }
+    Ok(Some((min,max)))
+}
+/// Test the HLOD source actor's exact world pivot against original foundation
+/// source-local streaming FBox. Only its XY footprint is used: the original
+/// Z extents describe gameplay space while a group proxy pivot may lie at its
+/// foundation floor. No guessed radius and no unrelated global culling.
+pub fn source_hlod_inside_poi_xy(world:&SourcePoiWorld,p:[f32;3])->bool{
+    let Some((lo,hi))=world.streaming_bounds_local_cm else{return false};
+    let yaw=world.rotation_pyr_deg[1].to_radians();
+    let (sin,cos)=yaw.sin_cos();
+    let dx=p[0]-world.location_cm[0];
+    let dy=p[1]-world.location_cm[1];
+    let x=cos*dx+sin*dy;
+    let y=-sin*dx+cos*dy;
+    x>=lo[0] && x<=hi[0] && y>=lo[1] && y<=hi[1]
+}
 pub fn original_poi_foundation_placements(
     foundation_umap:&[u8],foundation_uexp:&[u8]
 )->Result<Vec<SourcePoiWorld>,String>{
@@ -143,6 +184,7 @@ pub fn original_poi_foundation_placements(
         }
         let (location_cm,rotation_pyr_deg,scale_xyz)=
             transform(&cat,foundation_umap,foundation_uexp,root_component)?;
+        let streaming_bounds_local_cm=original_streaming_bbox(raw,&props)?;
         for nth in 0..count{
             let off=4+nth*12;
             let name_idx=u32::from_le_bytes(worlds_array[off..off+4].try_into().unwrap()) as usize;
@@ -158,6 +200,7 @@ pub fn original_poi_foundation_placements(
                 original_foundation_actor:cat.source_object_path((i+1) as i32)?,
                 source_world_asset:world_asset,
                 world_package:package,location_cm,rotation_pyr_deg,scale_xyz,
+                streaming_bounds_local_cm,
             });
             if worlds.len()>512{return Err("source POI foundation level count exceeds bound".into());}
         }
@@ -260,6 +303,18 @@ pub fn compose_engine_rows(parent:[[f32;4];3],child:[[f32;4];3])
 #[cfg(test)]
 mod tests{
     use super::*;
+    #[test]fn source_authored_proxy_region_not_guessed(){
+        let world=SourcePoiWorld{
+            original_foundation_actor:"source".into(),
+            source_world_asset:"world".into(),world_package:"pkg".into(),
+            location_cm:[-62976.,-64512.,0.],
+            rotation_pyr_deg:[0.,-90.,0.],scale_xyz:[1.;3],
+            streaming_bounds_local_cm:Some(([-6400.,-6400.,0.],[6400.,6400.,1531.824])),
+        };
+        assert!(source_hlod_inside_poi_xy(&world,[-62976.,-64512.,0.]));
+        assert!(!source_hlod_inside_poi_xy(&world,[-46592.,-65024.,0.]));
+        assert!(!source_hlod_inside_poi_xy(&world,[-62976.,-83968.,0.]));
+    }
     #[test]fn correct_authored_world_assets(){
         assert_eq!(world_package(
             "/Game/Athena/Maps/POI/Athena_POI_ToiletFactory_001.Athena_POI_ToiletFactory_001"
