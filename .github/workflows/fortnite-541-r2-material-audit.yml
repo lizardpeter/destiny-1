@@ -8,6 +8,7 @@ on:
       - tools/fortnite_541_r2_material_probe.py
       - tools/fortnite_541_material_expression_probe.py
       - tools/fortnite_541_shader_archive_probe.py
+      - tools/fortnite_541_material_shader_link_probe.py
       - 'tools/fortnite_541_shader_archive_rust/**'
       - .github/workflows/fortnite-541-r2-material-audit.yml
   pull_request:
@@ -16,6 +17,7 @@ on:
       - tools/fortnite_541_r2_material_probe.py
       - tools/fortnite_541_material_expression_probe.py
       - tools/fortnite_541_shader_archive_probe.py
+      - tools/fortnite_541_material_shader_link_probe.py
       - 'tools/fortnite_541_shader_archive_rust/**'
       - .github/workflows/fortnite-541-r2-material-audit.yml
   workflow_dispatch:
@@ -31,6 +33,8 @@ jobs:
         run: python3 tools/fortnite_541_material_expression_probe.py
       - name: Inspect original PCD3D SM5 compiled Fortnite shader archives
         run: python3 tools/fortnite_541_shader_archive_probe.py
+      - name: Resolve exact cooked Athena material shader hashes against original SM5 index
+        run: python3 tools/fortnite_541_material_shader_link_probe.py
       - name: Rust unit tests of identical production UE4 shader archive decoder
         run: cargo test --manifest-path tools/fortnite_541_shader_archive_rust/Cargo.toml
       - name: Compile/run native decoder against SHA1-verified original global SM5 archive
@@ -57,5 +61,6 @@ jobs:
             fortnite-541-r2-material-audit.json
             fortnite-541-material-expression-audit.json
             fortnite-541-retail-shader-archive-audit.json
+            fortnite-541-material-shader-link-audit.json
           if-no-files-found: ignore
           retention-days: 3
