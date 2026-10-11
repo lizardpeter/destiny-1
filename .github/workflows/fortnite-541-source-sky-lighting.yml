@@ -17,6 +17,10 @@ jobs:
         env:
           PYTHONUNBUFFERED: '1'
         run: python3 tools/fortnite_541_source_sky_lighting.py
+      - name: Stage original SkyDome master and sampled sky texture records
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_sky_material_graph_audit.py
       - name: Compile production-native SkyDome Rust decoder and unit regression
         run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
       - name: Verify real retail daytime inherited SkyDome scalar and vector colors

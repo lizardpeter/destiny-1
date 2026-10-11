@@ -226,6 +226,152 @@ pub fn provisional_day_cubemap_rgba(
         pixels
     }))
 }
+/// Original material graph contract for the actual M_SkyDome master. These
+/// are typed UObject dependencies, not source shader execution or a guessed
+/// sky rasterizer.
+#[derive(Clone,Debug)]
+pub struct OriginalSkyMasterGraph{
+    pub material_expression_count:usize,
+    pub texture_sample_count:usize,
+    pub source_texture_objects:Vec<String>,
+    pub material_functions:Vec<String>,
+    pub source_collection_parameters:Vec<String>,
+}
+pub fn inspect_sky_master(root:&Path)->Result<Option<OriginalSkyMasterGraph>,String>{
+    let base=root.join(PREFIX).join("Master/M_SkyDome");
+    let header=base.with_extension("uasset");
+    let exports=base.with_extension("uexp");
+    if header.is_file()!=exports.is_file(){
+        return Err("original SkyDome master shader package incomplete".into());
+    }
+    if !header.is_file(){return Ok(None);}
+    let h=fs::read(&header).map_err(|e|format!("original SkyDome master header: {e}"))?;
+    let x=fs::read(&exports).map_err(|e|format!("original SkyDome master exports: {e}"))?;
+    let cat=uobject::inspect(&h)?;
+    let mut material_roots=0usize;
+    let mut expressions=0usize;
+    let mut samples=0usize;
+    let mut textures=std::collections::BTreeSet::new();
+    let mut functions=std::collections::BTreeSet::new();
+    let mut collections=std::collections::BTreeSet::new();
+    for ex in &cat.exports{
+        let Some(kind)=cat.export_class_name(ex) else{continue};
+        if kind=="Material"{material_roots+=1;}
+        if !kind.starts_with("MaterialExpression"){continue;}
+        expressions+=1;
+        let raw=cat.export_data(&h,&x,ex)?;
+        let props=properties::scan(&cat,raw)?;
+        if kind=="MaterialExpressionTextureSample"{
+            samples+=1;
+            let b=exactly_one(raw,&props,"Texture","ObjectProperty")?;
+            if b.len()!=4{return Err("SkyDome TextureSample object index malformed".into());}
+            let index=i32::from_le_bytes(b.try_into().unwrap());
+            let object=cat.source_object_path(index)?;
+            if !object.starts_with("/Game/"){
+                return Err(format!("original SkyDome TextureSample not from source /Game/: {object}"));
+            }
+            textures.insert(object);
+        }
+        if kind=="MaterialExpressionMaterialFunctionCall"{
+            for p in props.fields.iter().filter(|p|p.name=="MaterialFunction"
+                && p.kind=="ObjectProperty"){
+                let b=&raw[p.payload.clone()];
+                if b.len()!=4{return Err("SkyDome function import index malformed".into());}
+                functions.insert(cat.source_object_path(i32::from_le_bytes(
+                    b.try_into().unwrap()
+                ))?);
+            }
+        }
+        if kind=="MaterialExpressionCollectionParameter"{
+            let name=exactly_one(raw,&props,"ParameterName","NameProperty")?;
+            collections.insert(source_fname(&cat,name)?);
+        }
+    }
+    if material_roots!=1||expressions<1||samples<1||textures.is_empty(){
+        return Err("original SkyDome root/material expression graph incomplete".into());
+    }
+    Ok(Some(OriginalSkyMasterGraph{
+        material_expression_count:expressions,
+        texture_sample_count:samples,
+        source_texture_objects:textures.into_iter().collect(),
+        material_functions:functions.into_iter().collect(),
+        source_collection_parameters:collections.into_iter().collect(),
+    }))
+}
+
+/// Independently validated original material-texture input. The source
+/// image is not bound to the sky until the authored shader graph and its
+/// texture coordinate expressions are reproduced.
+#[derive(Clone,Debug)]
+pub struct OriginalSkySourceMip {
+    pub original_object:String,
+    pub width:u32,
+    pub height:u32,
+    pub original_format:String,
+    pub source_bytes:usize,
+}
+pub fn inspect_sampled_source_mip(
+    root:&Path,original_object:&str,
+)->Result<OriginalSkySourceMip,String>{
+    let source=original_object.strip_prefix("/Game/")
+        .ok_or("original sky sample is not a UE /Game/ object")?;
+    let (package,object)=source.split_once("::")
+        .ok_or("original sky source texture object identity lacks ::")?;
+    if package.is_empty()||object.is_empty()||
+        package.split('/').any(|v|v.is_empty()||v=="."||v=="..")||
+        !package.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'_'||b==b'/'||b==b'-'){
+        return Err("untrusted original SkyDome package path".into());
+    }
+    let base=root.join("FortniteGame/Content").join(package);
+    let h=fs::read(base.with_extension("uasset"))
+        .map_err(|e|format!("original sky texture header {package}: {e}"))?;
+    let x=fs::read(base.with_extension("uexp"))
+        .map_err(|e|format!("original sky texture exports {package}: {e}"))?;
+    let cat=uobject::inspect(&h)?;
+    let meshes=cat.exports.iter().filter(|ex|
+        cat.export_class_name(ex)==Some("Texture2D") &&
+        cat.names.get(ex.object_name.name_index as usize)
+            .is_some_and(|name|name==object)
+    ).collect::<Vec<_>>();
+    if meshes.len()!=1{
+        return Err(format!("original sky texture {original_object} has {} matching Texture2D exports",meshes.len()));
+    }
+    let ex=meshes[0];
+    // Actual sky stars use UE4 0x48 inline BC1 in the UTexture2D .uexp,
+    // not an external .ubulk. Never require a nonexistent source package.
+    if !base.with_extension("ubulk").is_file(){
+        let mip=crate::texture::first_mip_bc1_inline(&cat,&h,&x,ex)?;
+        return Ok(OriginalSkySourceMip{
+            original_object:original_object.into(),
+            width:mip.width,height:mip.height,
+            original_format:format!("{:?}-inline",mip.format),
+            source_bytes:mip.blocks.len(),
+        });
+    }
+    let b=fs::read(base.with_extension("ubulk"))
+        .map_err(|e|format!("original sky external top mip {package}: {e}"))?;
+    // The source SkyDome mixes real BC1 galaxy textures, raw BGRA8
+    // height/normal images and grayscale PF_G8 cloud-detail masks.
+    // These are DISTINCT original formats, not reinterpretations of one
+    // guessed byte stride. Admit only a strict, source-validated decoder.
+    let (w,h,format,bytes)=match crate::texture::first_mip_bc(&cat,&h,&x,&b,ex){
+        Ok(mip)=>(mip.width,mip.height,format!("{:?}",mip.format),mip.blocks.len()),
+        Err(bc_err)=>match crate::texture::first_mip_bgra8(&cat,&h,&x,&b,ex){
+            Ok(mip)=>(mip.width,mip.height,mip.format.to_string(),mip.bgra8.len()),
+            Err(rgb_err)=>match crate::texture::first_mip_g8(&cat,&h,&x,&b,ex){
+                Ok(mip)=>(mip.width,mip.height,"PF_G8".to_string(),mip.pixels.len()),
+                Err(g8_err)=>return Err(format!(
+                    "no supported original cooked source format for {original_object}: BC: {bc_err}; BGRA: {rgb_err}; G8: {g8_err}"
+                )),
+            }
+        }
+    };
+    Ok(OriginalSkySourceMip{
+        original_object:original_object.into(),
+        width:w,height:h,original_format:format,source_bytes:bytes,
+    })
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
