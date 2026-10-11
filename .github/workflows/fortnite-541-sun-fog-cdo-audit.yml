@@ -1,0 +1,18 @@
+name: Fortnite 5.41 authored sun direction and fog runtime contract
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_sun_fog_cdo_audit.py
+      - .github/workflows/fortnite-541-sun-fog-cdo-audit.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact source-authored daylight rotation and exponential fog fields
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_sun_fog_cdo_audit.py
