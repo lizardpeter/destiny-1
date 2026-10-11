@@ -42,7 +42,7 @@ def run():
             "class_source":clspath,
             "actor_fields":prop_desc(cat,cat.export_data(export)),
         })
-        package=clspath.split("::")[0]
+        package=clspath.split("::")[0].split("#")[0]
         packages[cls]=package
     for cls in CLASSES:
         print("FORTNITE_TREE_ACTOR_SOURCE "+json.dumps({
