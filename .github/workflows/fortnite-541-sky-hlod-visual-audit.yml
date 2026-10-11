@@ -1,0 +1,16 @@
+name: Fortnite 5.41 authentic sky vs HLOD visual gap
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_sky_hlod_visual_audit.py
+      - .github/workflows/fortnite-541-sky-hlod-visual-audit.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode source-authentic sky cubemap linear luminance and streamed sublevel identities
+        run: python3 tools/fortnite_541_sky_hlod_visual_audit.py
