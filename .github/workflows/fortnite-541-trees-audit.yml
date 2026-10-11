@@ -1,0 +1,23 @@
+name: Original Fortnite Athena tree blueprint audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_tree_blueprint_probe.py
+      - .github/workflows/fortnite-541-trees-audit.yml
+  workflow_dispatch:
+jobs:
+  trees:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trace authenticated original Athena tree/shrub Blueprint source meshes
+        run: python3 tools/fortnite_541_tree_blueprint_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fortnite-original-tree-blueprint-metadata
+          path: fortnite541_tree_blueprint_source.json
+          retention-days: 3
+          if-no-files-found: ignore
