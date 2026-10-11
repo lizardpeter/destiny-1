@@ -49,14 +49,18 @@ def run():
             "class":cls,"count":len(byclass[cls]),"examples":byclass[cls][:2],
             "blueprint_class_source":packages.get(cls)
         }),flush=True)
+    import fortnite_541_skylight_cube_probe as s4
+    s4_entries=s4.source()
     for cls,path in packages.items():
         prefix="FortniteGame/Content/"+path.removeprefix("/Game/")
-        candidates=[{"ext":ext,"source_bytes":index[prefix+ext][2]}
-            for ext in (".uasset",".uexp",".ubulk") if prefix+ext in index]
-        doc={"class":cls,"source_package":path,"pak_files":candidates}
-        if prefix+".uasset" in index and prefix+".uexp" in index:
-            head=r2.source_payload(index[prefix+".uasset"])
-            payload=r2.source_payload(index[prefix+".uexp"])
+        selected=index if prefix+".uasset" in index else s4_entries
+        selected_reader=r2.source_payload if selected is index else s4.payload
+        candidates=[{"ext":ext,"source_bytes":selected[prefix+ext][2]}
+            for ext in (".uasset",".uexp",".ubulk") if prefix+ext in selected]
+        doc={"class":cls,"source_package":path,"original_pak":"main" if selected is index else "split_s4","pak_files":candidates}
+        if prefix+".uasset" in selected and prefix+".uexp" in selected:
+            head=selected_reader(selected[prefix+".uasset"])
+            payload=selected_reader(selected[prefix+".uexp"])
             a=Catalog(head,payload)
             doc["exports"]=len(a.exports)
             doc["class_census"]=collections.Counter(a.class_name(e) for e in a.exports).most_common(35)
@@ -70,6 +74,15 @@ def run():
                     except Exception as error:row["source_error"]=str(error)
                     doc["objects"].append(row)
         print("FORTNITE_TREE_BLUEPRINT_SOURCE "+json.dumps(doc,sort_keys=True,default=str),flush=True)
+    for source in [
+        "FortniteGame/Content/Environments/Props/Shrubs/Meshes/Shrub_05",
+        "FortniteGame/Content/Athena/Environments/Blueprints/Athena_Tree_Large"
+    ]:
+        print("FORTNITE_TREE_CROSS_PAK_PACKAGE "+json.dumps({
+            "package":source,
+            "main":[ext for ext in (".uasset",".uexp",".ubulk") if source+ext in index],
+            "s4":[ext for ext in (".uasset",".uexp",".ubulk") if source+ext in s4_entries]
+        }),flush=True)
     Path("fortnite541_tree_blueprint_source.json").write_text(json.dumps(
         {"actor_classes":{k:v[:5] for k,v in byclass.items()},"blueprints":packages},indent=2))
 if __name__=="__main__":run()
