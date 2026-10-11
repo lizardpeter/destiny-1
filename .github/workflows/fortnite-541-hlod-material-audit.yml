@@ -1,0 +1,23 @@
+name: Fortnite 5.41 original HLOD materials source audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_hlod_material_probe.py
+      - .github/workflows/fortnite-541-hlod-material-audit.yml
+  workflow_dispatch:
+jobs:
+  material:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect original retail HLOD material and texture parameters
+        run: python3 tools/fortnite_541_hlod_material_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-hlod-material-metadata
+          path: fortnite541_hlod_material_metadata.json
+          if-no-files-found: ignore
+          retention-days: 3
