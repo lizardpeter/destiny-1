@@ -5,9 +5,24 @@ mod staticmesh_lod;
 mod extract;
 mod pak;
 mod poi_extract;
+mod poi_blueprint;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
+    if paths.len()==2 {
+        let header=fs::read(&paths[0]).map_err(|e|e.to_string())?;
+        let exports=fs::read(&paths[1]).map_err(|e|e.to_string())?;
+        let class="/Game/Building/ActorBlueprints/Wall/Factory_Wall#4::Factory_Wall_3_C";
+        let source=poi_blueprint::original_blueprint_static_mesh(&header,&exports,class)?
+            .ok_or("retail Factory_Wall_3 Blueprint did not serialize its original CDO mesh")?;
+        println!("FORTNITE_ORIGINAL_FACTORY_BUILDING_CDO_MESH source={:?}",source);
+        if source.mesh_package_path!=
+            "FortniteGame/Content/Environments/Sets/Factory/Meshes/Factory_Wall_1" {
+            return Err("original Factory_Wall_3 CDO mesh identity unexpectedly changed".into());
+        }
+        println!("FORTNITE_AUTHORED_BLUEPRINT_HIGH_DETAIL_VERIFIED class=Factory_Wall_3_C source=Factory_Wall_1");
+        return Ok(());
+    }
     if paths.len()!=8{
         return Err("Expected authored foundation.umap foundation.uexp ToiletFactory.umap .uexp HedgeMaze.umap .uexp".into());
     }

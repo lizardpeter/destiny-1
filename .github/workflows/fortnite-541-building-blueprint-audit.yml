@@ -1,0 +1,33 @@
+name: Fortnite 5.41 original full-detail building blueprint CDO
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_building_blueprint_probe.py
+      - 'tools/fortnite_541_poi_rust/**'
+      - .github/workflows/fortnite-541-building-blueprint-audit.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original full-resolution factory and roof Blueprint default meshes
+        run: python3 tools/fortnite_541_building_blueprint_probe.py
+      - name: Verify actual source Factory_Wall_3 CDO using identical production Rust decoder
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as retail
+          index=retail.load_index()
+          base="FortniteGame/Content/Building/ActorBlueprints/Wall/Factory_Wall_3"
+          for ext in (".uasset",".uexp"):
+              raw=retail.source_payload(index[base+ext])
+              Path("/tmp/fortnite541_factorywall_cdo"+ext).write_bytes(raw)
+              print("AUTHENTIC_FORTNITE_FACTORY_WALL_CDO",base+ext,len(raw),flush=True)
+          PY
+          cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- /tmp/fortnite541_factorywall_cdo.uasset /tmp/fortnite541_factorywall_cdo.uexp
