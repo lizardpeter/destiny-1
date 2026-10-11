@@ -3,6 +3,7 @@
 Retail SHA1 verified PAK payloads only. Emits metadata, not game assets.
 """
 import json,struct
+from pathlib import Path
 import fortnite_541_r2_material_probe as main
 import fortnite_541_skylight_cube_probe as split
 from fortnite_541_material_expression_probe import Catalog
@@ -81,7 +82,15 @@ def sky_materials(entries):
         exp=next((rec for key,rec in entries.items() if key.endswith(source+".uexp")),None)
         if hdr is None or exp is None:
             raise ValueError("source sky material instance absent "+source)
-        cat=Catalog(split.payload(hdr),split.payload(exp))
+        hbytes=split.payload(hdr)
+        ebytes=split.payload(exp)
+        # Reuse the exact SHA1-verified retail input for the identical
+        # production Rust reader. The original files live only in CI /tmp.
+        target=Path("/tmp/fortnite541_source_sky/FortniteGame/Content")/source
+        target.parent.mkdir(parents=True,exist_ok=True)
+        target.with_suffix(".uasset").write_bytes(hbytes)
+        target.with_suffix(".uexp").write_bytes(ebytes)
+        cat=Catalog(hbytes,ebytes)
         rows=[]
         for i,obj in enumerate(cat.exports,1):
             fields,at=cat.props(cat.export_data(obj))
