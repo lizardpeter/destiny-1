@@ -7,6 +7,7 @@ No generated approximations, static screenshots or guessed cloud UVs.
 import collections
 import json
 import struct
+from pathlib import Path
 import fortnite_541_skylight_cube_probe as s4
 from fortnite_541_material_expression_probe import Catalog
 
@@ -55,6 +56,25 @@ def main():
     s4.URL=S4
     s4.INDEX_SHA=HASH
     index=s4.source()
+    # Stage exact bytes for the separately compiled production Rust
+    # reader: only from authenticated original s4, never from public repos.
+    staged=[MASTER]+TEXTURES+MESHES+[
+        "Packages/Fortress_Sky/Materials/FinalCloudNormalAndHeightMap",
+        "Packages/Fortress_Sky/Textures/Galaxy_Background",
+        "Packages/Fortress_Sky/Textures/Galaxy_Background_Tiling",
+        "VisualThreatManager/StormVisuals/LargeClouds/T_StormCloudDetail01_M",
+    ]
+    root=Path("/tmp/fortnite541_source_sky/FortniteGame/Content")
+    for name in staged:
+        for ext in (".uasset",".uexp",".ubulk"):
+            paths=[(key,val) for key,val in index.items()
+                   if key.endswith(name+ext)]
+            if not paths:continue
+            if len(paths)!=1:
+                raise ValueError("ambiguous authenticated sky source "+name+ext)
+            dest=root/(name+ext)
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            dest.write_bytes(s4.payload(paths[0][1]))
     cat=package(index,MASTER)
     types=collections.Counter()
     expressions=[]
