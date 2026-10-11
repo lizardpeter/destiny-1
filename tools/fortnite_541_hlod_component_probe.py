@@ -119,6 +119,23 @@ def run():
                                 "after_position_u32":[struct.unpack_from("<I",cooked,j)[0]
                                     for j in range(pos_end,min(len(cooked)-4,pos_end+128),4)]
                             }
+                            num_texcoords=struct.unpack_from("<I",cooked,pos_end+2)[0]
+                            tangent_size,tangent_count=struct.unpack_from("<II",cooked,pos_end+18)
+                            tangent_end=pos_end+26+tangent_size*tangent_count
+                            uv_size,uv_count=struct.unpack_from("<II",cooked,tangent_end)
+                            uv_end=tangent_end+8+uv_size*uv_count
+                            mesh_asset["verified_tangent_uv_layout"]={
+                                "num_uv_channels":num_texcoords,
+                                "tangent_item_size":tangent_size,"tangent_count":tangent_count,
+                                "tangent_byte_end":tangent_end,
+                                "uv_item_size":uv_size,"uv_item_count":uv_count,
+                                "uv_byte_end":uv_end,
+                                "probe_regions":[{"offset":p,"head":cooked[p:p+100].hex(),
+                                    "ints":[struct.unpack_from("<I",cooked,j)[0]
+                                        for j in range(p,min(len(cooked)-4,p+60),4)]}
+                                    for p in [tangent_end,uv_end,uv_end+10,uv_end+20]
+                                ]
+                            }
                 mesh_asset["native_last_64"]=mesh_bytes[-64:].hex()
                 break
         break
