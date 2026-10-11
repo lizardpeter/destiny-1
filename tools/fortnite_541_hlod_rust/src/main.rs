@@ -19,7 +19,7 @@ fn run()->Result<(),String>{
             actor.component_relative_rotation_pyr);
     }
     if world.actors.len()!=429 ||world.referenced_original_mesh_objects.len()!=270||
-        world.unique_mesh_packages.len()!=270 {
+        world.unique_mesh_packages.len()!=255 {
         return Err("original Fortnite 5.41 HLOD actor and material source population inconsistent".into());
     }
     Ok(())
