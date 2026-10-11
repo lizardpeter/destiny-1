@@ -1,0 +1,31 @@
+name: SMG child J3D archive local handoff
+on:
+  push:
+    branches: [tools/smg-source-local-handoff-20261011]
+    paths: [.github/workflows/smg_child_archives_local_handoff.yml]
+permissions:
+  contents: read
+jobs:
+  fetch-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Download exact retail child archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smg-child-assets
+          for name in StrayTico ItemBubble Kuribo; do
+            curl --fail --silent --show-error --retry 3 --max-time 50 \
+              "https://r2.houseofkublai.com/super-mario-galaxy/DATA/files/ObjectData/${name}.arc" \
+              -o "/tmp/smg-child-assets/${name}.arc"
+            test -s "/tmp/smg-child-assets/${name}.arc"
+          done
+          sha256sum /tmp/smg-child-assets/*.arc > /tmp/smg-child-assets/SHA256SUMS
+          du -ah /tmp/smg-child-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smg-original-straytico-itembubble-kuribo
+          path: /tmp/smg-child-assets
+          retention-days: 1
+          compression-level: 0
