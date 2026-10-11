@@ -1,0 +1,18 @@
+name: Fortnite 5.41 original TODM world sun and fog placement
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_todm_placement_probe.py
+      - .github/workflows/fortnite-541-todm-placement.yml
+  workflow_dispatch:
+jobs:
+  original:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect authenticated original Athena TODM actor and world-space fog/light roots
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_todm_placement_probe.py
