@@ -13,46 +13,27 @@ KEYWORDS=("sun","sky","atmosphere","fog","cloud","light","day","dome")
 def vecs(cat,data):
     if len(data)<4:return {"bytes":len(data)}
     count=struct.unpack_from("<I",data)[0]
-    if count>128:raise ValueError("unbounded original sky material parameter count")
-    cursor=4
-    records=[]
-    for i in range(count):
-        if cursor>=len(data):break
-        try:
-            fields,used=cat.props(data[cursor:])
-        except Exception as err:
-            records.append([{"parser_error":str(err),"at":cursor,
-                             "remaining_head":data[cursor:cursor+64].hex()}])
-            break
-        if not used:raise ValueError("sky material parameter struct did not advance")
-        row=[]
-        for name,kind,metadata,raw in fields:
-            entry={"name":name,"kind":kind,"size":len(raw)}
-            if kind=="FloatProperty" and len(raw)==4:
-                entry["value"]=struct.unpack("<f",raw)[0]
-            elif kind=="NameProperty" and len(raw)==8:
-                entry["value"]=cat.fname(raw)
-            elif kind=="StructProperty":
-                if len(raw)==16:entry["values"]=list(struct.unpack("<ffff",raw))
-                else:
-                    try:
-                        nested,nused=cat.props(raw)
-                        entry["nested"]=[]
-                        for n,k,meta,p in nested:
-                            v={"name":n,"kind":k,"size":len(p)}
-                            if k=="NameProperty" and len(p)==8:v["name_value"]=cat.fname(p)
-                            elif k=="FloatProperty" and len(p)==4:v["float"]=struct.unpack("<f",p)[0]
-                            elif k=="IntProperty" and len(p)==4:v["int"]=struct.unpack("<i",p)[0]
-                            entry["nested"].append(v)
-                        entry["nested_consumed"]=nused
-                    except Exception:entry["raw_head"]=raw[:40].hex()
-            elif kind=="IntProperty" and len(raw)==4:
-                entry["value"]=struct.unpack("<i",raw)[0]
-            row.append(entry)
-        records.append(row)
-        cursor+=used
-    return {"count":count,"parsed":records,"consumed":cursor,"total":len(data),
-            "remaining_bytes":data[cursor:cursor+32].hex()}
+    if count>128:raise ValueError("unbounded sky parameter count")
+    # UE cooked struct fields may be stored as a tag stream without terminal
+    # None after the array. Add a synthetic terminator only for inspection.
+    marker=struct.pack("<II",cat.names.index("None"),0)
+    fields,used=cat.props(data[4:]+marker)
+    result=[]
+    for name,kind,metadata,raw in fields:
+        entry={"name":name,"kind":kind,"size":len(raw),"metadata":metadata}
+        if kind=="FloatProperty" and len(raw)==4:
+            entry["float"]=struct.unpack("<f",raw)[0]
+        elif kind=="NameProperty" and len(raw)==8:
+            entry["fname"]=cat.fname(raw)
+        elif kind=="StructProperty":
+            entry["head"]=raw[:128].hex()
+            if len(raw)==16:entry["vector"]=list(struct.unpack("<ffff",raw))
+        elif kind=="ArrayProperty":
+            entry["array_count"]=struct.unpack_from("<I",raw)[0] if len(raw)>=4 else None
+            entry["head"]=raw[:128].hex()
+        else:entry["head"]=raw[:64].hex()
+        result.append(entry)
+    return {"count":count,"tags":result,"consumed":used,"total":len(data)}
 
 def map_scene(index,root):
     header=main.source_payload(index[root+".umap"])
