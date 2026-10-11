@@ -177,9 +177,75 @@ pub fn from_source_root(root:&Path)->Result<Option<OriginalDaySky>,String>{
         scalar_params:scalars,vector_params:vectors,
     }))
 }
+/// Build a source-COLOR-ONLY daytime cube from actual authored material
+/// FLinearColor endpoints. This is a deliberately limited compatibility
+/// presentation until the original sky material shader is translated. It
+/// does NOT manufacture source clouds, stars, horizon scatter or sun direction.
+/// Outputs engine Y-up (+X,-X,+Y,-Y,+Z,-Z) sRGB cubemap faces.
+pub fn provisional_day_cubemap_rgba(
+    day:&OriginalDaySky,side:u32
+)->Result<[Vec<u8>;6],String>{
+    if !(4..=512).contains(&side){
+        return Err("source day SkyDome cube side outside 4..=512".into());
+    }
+    let side=side as usize;
+    fn ray(face:usize,u:f32,v:f32)->[f32;3]{
+        match face{
+            0=>[1.,-v,-u],1=>[-1.,-v,u],
+            2=>[u,1.,v],3=>[u,-1.,-v],
+            4=>[u,-v,1.],5=>[-u,-v,-1.],
+            _=>unreachable!("six cubemap faces"),
+        }
+    }
+    fn srgb(value:f32)->u8{
+        let v=value.max(0.);
+        let encoded=if v<=0.003_130_8{12.92*v}
+            else{1.055*v.powf(1./2.4)-0.055};
+        (encoded.clamp(0.,1.)*255.).round() as u8
+    }
+    Ok(std::array::from_fn(|face|{
+        let mut pixels=Vec::with_capacity(side*side*4);
+        for y in 0..side{
+            for x in 0..side{
+                let u=(x as f32+0.5)/side as f32*2.-1.;
+                let v=(y as f32+0.5)/side as f32*2.-1.;
+                let dir=ray(face,u,v);
+                let length=(dir.iter().map(|n|n*n).sum::<f32>()).sqrt();
+                // The original zenith and horizon colors are source-exact;
+                // this elevation-based mixing is a provisional presentation
+                // and is NOT a claim of M_SkyDome shader parity.
+                let elevation=(dir[1]/length).clamp(0.,1.);
+                for channel in 0..3{
+                    let linear=day.horizon_linear[channel]*(1.-elevation)+
+                        day.zenith_linear[channel]*elevation;
+                    pixels.push(srgb(linear));
+                }
+                pixels.push(255);
+            }
+        }
+        pixels
+    }))
+}
 #[cfg(test)]
 mod tests{
     use super::*;
+    #[test]fn real_daylight_source_color_cube_has_blue_horizon_and_darker_zenith(){
+        let day=OriginalDaySky{
+            horizon_linear:[0.078577,0.37912,0.9],
+            zenith_linear:[0.004,0.036159,0.08],
+            cloud_key_linear:[0.4,0.39,0.36],
+            cloud_shadow_linear:[0.040346,0.075151,0.15],
+            cloud_horizon_linear:[0.12,0.52376,1.2],
+            scalar_params:BTreeMap::new(),vector_params:BTreeMap::new(),
+        };
+        let cube=provisional_day_cubemap_rgba(&day,96).unwrap();
+        assert!(cube.iter().all(|c|c.len()==96*96*4));
+        let sky_top=&cube[2][((96/2)*96+96/2)*4..][..4];
+        let sky_horizon=&cube[0][((96/2)*96+96/2)*4..][..4];
+        assert!(sky_horizon[2]>sky_top[2]);
+        assert!(cube.iter().all(|c|c.chunks_exact(4).all(|px|px[3]==255)));
+        assert!(provisional_day_cubemap_rgba(&day,0).is_err());
+    }
     #[test]fn reject_missing_original_sky_package_without_synthetic_color(){
         let path=std::env::temp_dir().join("source_sky_missing_unmounted");
         assert!(from_source_root(&path).unwrap().is_none());
