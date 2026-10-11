@@ -29,10 +29,19 @@ pub struct SourceDetailedStaticPlacement {
     pub rotation_pyr_deg:[f32;3],
     pub scale_xyz:[f32;3],
 }
+#[derive(Debug,Clone,PartialEq)]
+pub struct SourceInheritedPoiMesh {
+    pub source_actor:String,
+    pub source_actor_class:String,
+    pub location_cm:[f32;3],
+    pub rotation_pyr_deg:[f32;3],
+    pub scale_xyz:[f32;3],
+}
 #[derive(Debug,Clone,Default)]
 pub struct SourceDetailedPoi {
     pub source_actors:usize,
     pub static_mesh_actors:Vec<SourceDetailedStaticPlacement>,
+    pub inherited_instances:Vec<SourceInheritedPoiMesh>,
     pub inherited_blueprint_components:usize,
     pub unique_mesh_packages:BTreeSet<String>,
 }
@@ -188,20 +197,27 @@ pub fn original_poi_direct_static_actors(
         result.source_actors+=1;
         let component_raw=cat.export_data(poi_umap,poi_uexp,comp)?;
         let component_props=properties::scan(&cat,component_raw)?;
-        let Some(mesh_ref)=object_ref(component_raw,&component_props,"StaticMesh")?
-            else{result.inherited_blueprint_components+=1;continue};
-        if mesh_ref==0{result.inherited_blueprint_components+=1;continue;}
-        let identity=cat.source_object_path(mesh_ref)?;
-        let package=match mesh_package(&identity){
-            Ok(pkg)=>pkg,
-            Err(_)=>{result.inherited_blueprint_components+=1;continue},
-        };
         let (location_cm,rotation_pyr_deg,scale_xyz)=
             transform(&cat,poi_umap,poi_uexp,comp)?;
+        let source_actor=cat.source_object_path((i+1) as i32)?;
+        let source_actor_class=cat.source_object_path(actor.class_index)?;
+        let selected=object_ref(component_raw,&component_props,"StaticMesh")?
+            .filter(|r|*r!=0)
+            .map(|r|cat.source_object_path(r))
+            .transpose()?;
+        let selected=selected.and_then(|identity|
+            mesh_package(&identity).ok().map(|package|(identity,package))
+        );
+        let Some((identity,package))=selected else{
+            result.inherited_blueprint_components+=1;
+            result.inherited_instances.push(SourceInheritedPoiMesh{
+                source_actor,source_actor_class,location_cm,rotation_pyr_deg,scale_xyz,
+            });
+            continue;
+        };
         result.unique_mesh_packages.insert(package.clone());
         result.static_mesh_actors.push(SourceDetailedStaticPlacement{
-            source_actor:cat.source_object_path((i+1) as i32)?,
-            source_actor_class:kind.to_owned(),
+            source_actor,source_actor_class,
             source_mesh_object:identity,source_mesh_package:package,
             location_cm,rotation_pyr_deg,scale_xyz,
         });
