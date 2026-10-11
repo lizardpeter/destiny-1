@@ -77,7 +77,13 @@ def main_fn():
     for ext,matches in packages.items():
         report[ext]=[{"path":k,"bytes":v[2],"sha1":v[4].hex()} for k,v in matches]
     if len(packages[".uasset"])!=1 or len(packages[".uexp"])!=1:
-        raise ValueError("original cubemap split source not found")
+        candidates=sorted([key for key in records if
+            any(q in key.lower() for q in ("athenaskylight","skydome","fortress_sky","textureshdr"))])
+        print("FORTNITE_S4_SKY_SOURCE_CANDIDATES "+json.dumps({
+            "matched":len(candidates),"paths":candidates[:100]
+        }),flush=True)
+        print("FORTNITE_S4_SOURCE_LOOKUP_FAILED "+json.dumps(report),flush=True)
+        return
     header=payload(packages[".uasset"][0][1])
     export=payload(packages[".uexp"][0][1])
     cat=Catalog(header,export)
