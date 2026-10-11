@@ -23,7 +23,27 @@ fn run()->Result<(),String>{
         println!("FORTNITE_AUTHORED_BLUEPRINT_HIGH_DETAIL_VERIFIED class=Factory_Wall_3_C source=Factory_Wall_1");
         return Ok(());
     }
-    if paths.len()!=8{
+    if paths.len()!=8 && paths.len()!=12{
+        return Err("Expected 8 original POI proof asset paths or 12 including actual Factory Wall and Floor meshes".into());
+    }
+    if paths.len()==12 {
+        for (p,e,kind) in [(8usize,9usize,"factory_wall"),(10,11,"floor_tile")] {
+            let h=fs::read(&paths[p]).map_err(|e|e.to_string())?;
+            let x=fs::read(&paths[e]).map_err(|e|e.to_string())?;
+            let c=uobject::inspect(&h)?;
+            let refs=c.exports.iter().enumerate().filter_map(|(i,ex)|
+                (c.export_class_name(ex)==Some("StaticMesh"))
+                    .then(||c.source_object_path((i+1) as i32))
+            ).collect::<Result<Vec<_>,_>>()?;
+            println!("FORTNITE_AUTHENTIC_{}_UOBJECT_NAMES {:?}",kind,refs);
+            if refs.len()!=1{return Err(format!("original {kind} source must have exactly one mesh export"));}
+            let actual=refs[0].rsplit("::").next().unwrap();
+            let lod=staticmesh_lod::decode_original_source_mesh(&c,&h,&x,actual)?;
+            println!("FORTNITE_SOURCE_FULL_DETAIL_{}_LOD0 vertices={} triangles={} sections={} uv_channels={}",
+                kind,lod.vertices.len(),lod.indices.len()/3,lod.sections.len(),lod.total_source_uv_channels);
+        }
+    }
+
         return Err("Expected authored foundation.umap foundation.uexp ToiletFactory.umap .uexp HedgeMaze.umap .uexp".into());
     }
     let bytes=paths.iter().map(|p|fs::read(p).map_err(|e|e.to_string()))
