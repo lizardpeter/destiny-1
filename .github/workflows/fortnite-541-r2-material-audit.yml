@@ -8,6 +8,7 @@ on:
       - tools/fortnite_541_r2_material_probe.py
       - tools/fortnite_541_material_expression_probe.py
       - tools/fortnite_541_shader_archive_probe.py
+      - 'tools/fortnite_541_shader_archive_rust/**'
       - .github/workflows/fortnite-541-r2-material-audit.yml
   pull_request:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - tools/fortnite_541_r2_material_probe.py
       - tools/fortnite_541_material_expression_probe.py
       - tools/fortnite_541_shader_archive_probe.py
+      - 'tools/fortnite_541_shader_archive_rust/**'
       - .github/workflows/fortnite-541-r2-material-audit.yml
   workflow_dispatch:
 jobs:
@@ -29,6 +31,23 @@ jobs:
         run: python3 tools/fortnite_541_material_expression_probe.py
       - name: Inspect original PCD3D SM5 compiled Fortnite shader archives
         run: python3 tools/fortnite_541_shader_archive_probe.py
+      - name: Rust unit tests of identical production UE4 shader archive decoder
+        run: cargo test --manifest-path tools/fortnite_541_shader_archive_rust/Cargo.toml
+      - name: Compile/run native decoder against SHA1-verified original global SM5 archive
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import fortnite_541_r2_material_probe as r2
+          path='FortniteGame/Content/ShaderArchive-Global-PCD3D_SM5.ushaderbytecode'
+          original=r2.load_index()[path]
+          data=r2.source_payload(original)
+          target=Path('/tmp/fortnite541_original_global_sm5.ushaderbytecode')
+          target.write_bytes(data)
+          print(f'SHA1_VERIFIED_TEMP_RETAIL_SM5 bytes={len(data)}',flush=True)
+          PY
+          cargo run --quiet --manifest-path tools/fortnite_541_shader_archive_rust/Cargo.toml -- /tmp/fortnite541_original_global_sm5.ushaderbytecode
       - name: Upload source metadata only
         if: always()
         uses: actions/upload-artifact@v4
