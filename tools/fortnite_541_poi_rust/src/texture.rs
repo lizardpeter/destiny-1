@@ -62,13 +62,19 @@ pub fn first_mip_bgra8<'a>(
     let mip_width=u32_at(cooked,88)?;
     let mip_height=u32_at(cooked,92)?;
     let mip_depth=u32_at(cooked,96)?;
+    let first_mip=u32_at(cooked,56)?;
+    let mip_count=u32_at(cooked,60)?;
+    let slices=u32_at(cooked,64)?;
     if width == 0 || height == 0 || width > 8192 || height > 8192 ||
-        width != mip_width || height != mip_height ||
+        mip_width==0||mip_height==0||
+        first_mip>13||mip_count==0||mip_count>16||slices!=1||
+        (width>>first_mip).max(1)!=mip_width ||
+        (height>>first_mip).max(1)!=mip_height ||
         depth != 1 || mip_depth != 1 {
-        return Err("source texture first-mip dimensions differ from platform header".into());
+        return Err("original BGRA8 first resident mip disagrees with source platform LOD".into());
     }
-    let expected=(width as usize).checked_mul(height as usize)
-        .and_then(|v|v.checked_mul(4)).ok_or("source mip dimensions overflow")?;
+    let expected=(mip_width as usize).checked_mul(mip_height as usize)
+        .and_then(|v|v.checked_mul(4)).ok_or("source resident mip dimensions overflow")?;
     if expected>MAX_MIP_BYTES || count!=expected || stored!=expected {
         return Err("source PF_B8G8R8A8 top mip byte count inconsistent".into());
     }
@@ -88,7 +94,7 @@ pub fn first_mip_bgra8<'a>(
     let bgra8=companion_ubulk.get(start..end)
         .ok_or("source first-mip bytes escape original .ubulk file")?;
     Ok(SourceTextureMip {
-        width,height,format:"PF_B8G8R8A8",source_bulk_offset:start,
+        width:mip_width,height:mip_height,format:"PF_B8G8R8A8",source_bulk_offset:start,
         source_bulk_flags:flags,bgra8,
     })
 }
@@ -201,13 +207,25 @@ pub fn first_mip_bc<'a>(
     let mip_width=u32_at(cooked,flags_offset+20)?;
     let mip_height=u32_at(cooked,flags_offset+24)?;
     let mip_depth=u32_at(cooked,flags_offset+28)?;
-    if width==0||height==0||width>8192||height>8192
-        ||width!=mip_width||height!=mip_height||depth!=1||mip_depth!=1{
-        return Err("original BC texture top mip extent is invalid".into());
+    // UE4 stores the source platform extent, first resident mip index,
+    // and resident mip extent separately. Retail sky cloud / galaxy textures
+    // use first mips 1-4, not the full 2048x2048 source platform extent.
+    // Require exact power-of-two downsampling, never infer dimensions from
+    // bulk length or promote lower mip content to full resolution.
+    let first_mip=u32_at(cooked,44+format_name_size)?;
+    let mip_count=u32_at(cooked,48+format_name_size)?;
+    let slices=u32_at(cooked,52+format_name_size)?;
+    if width==0||height==0||width>8192||height>8192||
+        mip_width==0||mip_height==0||
+        depth!=1||mip_depth!=1||slices!=1||
+        first_mip>13||mip_count==0||mip_count>16||
+        (width>>first_mip).max(1)!=mip_width ||
+        (height>>first_mip).max(1)!=mip_height{
+        return Err("original BC texture first resident mip extent/LOD disagrees with retail platform metadata".into());
     }
     let bsize=fmt.bytes_per_block();
-    let expected=(width.div_ceil(4) as usize)
-        .checked_mul(height.div_ceil(4) as usize)
+    let expected=(mip_width.div_ceil(4) as usize)
+        .checked_mul(mip_height.div_ceil(4) as usize)
         .and_then(|n|n.checked_mul(bsize))
         .ok_or("original BC texture mip bytes overflow")?;
     if expected>MAX_MIP_BYTES||size!=expected||count!=expected{
@@ -224,8 +242,72 @@ pub fn first_mip_bc<'a>(
     let blocks=companion_ubulk.get(start..end)
         .ok_or("original BC top mip does not fit authenticated external .ubulk")?;
     Ok(OriginalBcTopMip{
-        width,height,format:fmt,flags,source_bulk_offset:start,blocks,
+        width:mip_width,height:mip_height,format:fmt,flags,source_bulk_offset:start,blocks,
     })
+}
+
+/// Original UE4 PF_G8 single-channel grayscale top resident mip. Fortnite's
+/// T_StormCloudDetail01_M is source PF_G8 with a 256x256 first resident mip,
+/// although the source platform texture is 1024x1024 (first mip index 2).
+/// This is a genuine original texture channel, not a fabricated cloud mask.
+#[derive(Clone,Debug)]
+pub struct OriginalG8TopMip<'a>{
+    pub width:u32,
+    pub height:u32,
+    pub source_bulk_offset:usize,
+    pub flags:u32,
+    pub pixels:&'a[u8],
+}
+pub fn first_mip_g8<'a>(
+    cat:&PackageCatalog,header:&[u8],exports:&[u8],
+    bulk:&'a[u8],ex:&PackageExport,
+)->Result<OriginalG8TopMip<'a>,String>{
+    if cat.export_class_name(ex)!=Some("Texture2D"){
+        return Err("source PF_G8 object is not UTexture2D".into());
+    }
+    let source=cat.export_data(header,exports,ex)?;
+    let props=properties::scan(cat,source)?;
+    let raw=source.get(props.bytes_consumed..)
+        .ok_or("source PF_G8 cooked bytes missing")?;
+    let width=u32_at(raw,28)?;
+    let height=u32_at(raw,32)?;
+    let depth=u32_at(raw,36)?;
+    let name_size=u32_at(raw,40)? as usize;
+    if name_size!=6||raw.get(44..50)!=Some(b"PF_G8\0".as_slice()){
+        return Err("original cloud UTexture2D is not PF_G8".into());
+    }
+    let first=u32_at(raw,50)?;
+    let mips=u32_at(raw,54)?;
+    let slices=u32_at(raw,58)?;
+    let flags=u32_at(raw,62)?;
+    let size=u32_at(raw,66)? as usize;
+    let stored=u32_at(raw,70)? as usize;
+    let offset=i64_at(raw,74)?;
+    let mw=u32_at(raw,82)?;
+    let mh=u32_at(raw,86)?;
+    let md=u32_at(raw,90)?;
+    if width==0||height==0||width>8192||height>8192||
+       mw==0||mh==0||first>13||mips==0||mips>16||
+       (width>>first).max(1)!=mw||(height>>first).max(1)!=mh||
+       depth!=1||md!=1||slices!=1 {
+        return Err("original PF_G8 top resident mip/LOD metadata invalid".into());
+    }
+    let expected=(mw as usize).checked_mul(mh as usize)
+        .ok_or("original PF_G8 pixel count overflow")?;
+    if expected>MAX_MIP_BYTES||size!=expected||stored!=expected||flags!=0x0501{
+        return Err("source PF_G8 external bulk flags/byte count do not match authored mip".into());
+    }
+    let base=header.len().checked_add(exports.len())
+        .and_then(|n|n.checked_sub(4))
+        .ok_or("source PF_G8 package size invalid")? as i64;
+    let first=usize::try_from(base.checked_add(offset)
+        .ok_or("source PF_G8 bulk start overflow")?)
+        .map_err(|_|"source PF_G8 bulk start negative")?;
+    let end=first.checked_add(expected).ok_or("source PF_G8 mip end overflow")?;
+    let pixels=bulk.get(first..end)
+        .ok_or("source PF_G8 mip escapes authenticated retail bulk")?;
+    Ok(OriginalG8TopMip{width:mw,height:mh,
+        source_bulk_offset:first,flags,pixels})
 }
 
 #[cfg(test)]
