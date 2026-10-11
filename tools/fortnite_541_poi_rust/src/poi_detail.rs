@@ -145,12 +145,29 @@ fn original_streaming_bbox(source:&[u8],props:&properties::Properties)
 /// foundation floor. No guessed radius and no unrelated global culling.
 pub fn source_hlod_inside_poi_xy(world:&SourcePoiWorld,p:[f32;3])->bool{
     let Some((lo,hi))=world.streaming_bounds_local_cm else{return false};
+    // A pitched/rolled original FBox cannot be conservatively reduced to
+    // a floor-plane yaw-only rectangle. Retain retail HLOD instead of
+    // accidentally suppressing an unrelated source actor in that case.
+    if !p.iter().all(|n|n.is_finite()) ||
+        !world.rotation_pyr_deg.iter().all(|n|n.is_finite()) ||
+        world.rotation_pyr_deg[0].abs()>0.0001 ||
+        world.rotation_pyr_deg[2].abs()>0.0001 {
+        return false;
+    }
+    let [sx,sy,_sz]=world.scale_xyz;
+    if !sx.is_finite()||!sy.is_finite()||
+        sx.abs()<0.000001||sy.abs()<0.000001 {
+        return false;
+    }
     let yaw=world.rotation_pyr_deg[1].to_radians();
     let (sin,cos)=yaw.sin_cos();
     let dx=p[0]-world.location_cm[0];
     let dy=p[1]-world.location_cm[1];
-    let x=cos*dx+sin*dy;
-    let y=-sin*dx+cos*dy;
+    // Inverse original authored root transform, including nonunit or
+    // reflected axes. Comparing unscaled world XY against source-local
+    // StreamingBoundingBox otherwise hides HLODs outside the real region.
+    let x=(cos*dx+sin*dy)/sx;
+    let y=(-sin*dx+cos*dy)/sy;
     x>=lo[0] && x<=hi[0] && y>=lo[1] && y<=hi[1]
 }
 pub fn original_poi_foundation_placements(
@@ -323,6 +340,22 @@ mod tests{
         ).unwrap(),
         "FortniteGame/Content/Environments/Sets/Factory/Meshes/Tile");
         assert!(mesh_package("/Engine/Unsafe::Object").is_err());
+    }
+    #[test]fn source_authored_fbox_uses_inverse_world_scale_not_guessed_radius(){
+        let mut world=SourcePoiWorld{
+            original_foundation_actor:"source".into(),
+            source_world_asset:"world".into(),world_package:"pkg".into(),
+            location_cm:[0.;3],rotation_pyr_deg:[0.;3],
+            scale_xyz:[2.,0.5,1.],
+            streaming_bounds_local_cm:Some(([-200.,-200.,-10.],[200.,200.,100.])),
+        };
+        assert!(source_hlod_inside_poi_xy(&world,[300.,90.,0.]));
+        assert!(!source_hlod_inside_poi_xy(&world,[500.,0.,0.]));
+        assert!(!source_hlod_inside_poi_xy(&world,[0.,110.,0.]));
+        world.scale_xyz[0]=-2.;
+        assert!(source_hlod_inside_poi_xy(&world,[-300.,90.,0.]));
+        world.rotation_pyr_deg[0]=15.;
+        assert!(!source_hlod_inside_poi_xy(&world,[0.;3]));
     }
     #[test]fn correct_authored_world_assets(){
         assert_eq!(world_package(
