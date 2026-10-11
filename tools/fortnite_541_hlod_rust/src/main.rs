@@ -1,6 +1,7 @@
 mod uobject;
 mod properties;
 mod hlod;
+mod streaming_levels;
 mod cubemap_axis;
 mod staticmesh_lod;
 mod hlod_material;
@@ -12,6 +13,10 @@ fn run()->Result<(),String>{
     let umap=fs::read(&paths[0]).map_err(|e|format!("read source HLOD UMAP: {e}"))?;
     let uexp=fs::read(&paths[1]).map_err(|e|format!("read source HLOD UEXP: {e}"))?;
     let world=hlod::inspect_root_original_hlod(&umap,&uexp)?;
+    let levels=streaming_levels::original_root_streaming_levels(&umap,&uexp)?;
+    println!("FORTNITE_NATIVE_SOURCE_STREAMED_LEVELS count={} names={:?}",
+        levels.len(),levels.iter().map(|l|&l.source_world_asset).collect::<Vec<_>>());
+    if levels.len()!=16{return Err("verified Athena source root should have 16 streamed UWorld edges".into());}
     println!("FORTNITE_NATIVE_ORIGINAL_HLOD_WORLD actors={} mesh_objects={} unique_mesh_packages={} rotations_serialized={} scales_serialized={} world_loc_mismatches={}",
         world.actors.len(),world.referenced_original_mesh_objects.len(),
         world.unique_mesh_packages.len(),world.relative_rotation_serialized,
