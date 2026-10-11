@@ -70,6 +70,8 @@ def run():
                 if prefix+".uasset" in archive:
                     selected=archive;label=split_name
                     break
+        if label!="main":
+            s4.URL=f"https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0_{label}-WindowsClient.pak"
         selected_reader=r2.source_payload if selected is index else s4.payload
         candidates=[{"ext":ext,"source_bytes":selected[prefix+ext][2]}
             for ext in (".uasset",".uexp",".ubulk") if prefix+ext in selected]
