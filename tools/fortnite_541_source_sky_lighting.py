@@ -11,57 +11,40 @@ PREFIX="Packages/Fortress_Sky/SkyDome/MaterialInstances/SkyDomeBasic01/"
 ASSETS=["Morn_M_SkyDome_Inst_Basic01","Day_M_SkyDome_Inst_Basic01"]
 KEYWORDS=("sun","sky","atmosphere","fog","cloud","light","day","dome")
 def vecs(cat,data):
-    if len(data)<4:return {"bytes":len(data)}
+    if len(data)<4:raise ValueError("truncated source SkyDome parameter array")
     count=struct.unpack_from("<I",data)[0]
-    if count>128:raise ValueError("unbounded sky parameter count")
-    # UE cooked struct fields may be stored as a tag stream without terminal
-    # None after the array. Add a synthetic terminator only for inspection.
+    if count>128:raise ValueError("unbounded source SkyDome parameters")
     marker=struct.pack("<II",cat.names.index("None"),0)
     fields,used=cat.props(data[4:]+marker)
-    result=[]
-    for name,kind,metadata,raw in fields:
-        entry={"name":name,"kind":kind,"size":len(raw),"metadata":metadata}
-        if kind=="FloatProperty" and len(raw)==4:
-            entry["float"]=struct.unpack("<f",raw)[0]
-        elif kind=="NameProperty" and len(raw)==8:
-            entry["fname"]=cat.fname(raw)
-        elif kind=="StructProperty":
-            if len(raw)==16:
-                entry["vector"]=list(struct.unpack("<ffff",raw))
-            else:
-                entry["head"]=raw[:80].hex()
-                try:
-                    more,read=cat.props(raw+marker)
-                    entry["children"]=[]
-                    for n,k,md,child in more[:100]:
-                        ch={"name":n,"kind":k,"size":len(child),"metadata":md}
-                        if k=="FloatProperty" and len(child)==4:
-                            ch["float"]=struct.unpack("<f",child)[0]
-                        elif k=="NameProperty" and len(child)==8:
-                            ch["fname"]=cat.fname(child)
-                        elif k=="StructProperty":
-                            if len(child)==16:ch["vector"]=list(struct.unpack("<ffff",child))
-                            else:
-                                ch["head"]=child[:48].hex()
-                                try:
-                                    nested,nread=cat.props(child+marker)
-                                    ch["nested"]=[]
-                                    for cn,ck,cmd,cv in nested[:20]:
-                                        detail={"name":cn,"kind":ck,"size":len(cv),"metadata":cmd}
-                                        if ck=="NameProperty" and len(cv)==8:detail["fname"]=cat.fname(cv)
-                                        elif ck=="IntProperty" and len(cv)==4:detail["int"]=struct.unpack("<i",cv)[0]
-                                        elif ck=="FloatProperty" and len(cv)==4:detail["float"]=struct.unpack("<f",cv)[0]
-                                        ch["nested"].append(detail)
-                                except Exception as err:ch["nested_error"]=str(err)
-                        entry["children"].append(ch)
-                    entry["child_consumed"]=read
-                except Exception as err:entry["children_error"]=str(err)
-        elif kind=="ArrayProperty":
-            entry["array_count"]=struct.unpack_from("<I",raw)[0] if len(raw)>=4 else None
-            entry["head"]=raw[:128].hex()
-        else:entry["head"]=raw[:64].hex()
-        result.append(entry)
-    return {"count":count,"tags":result,"consumed":used,"total":len(data)}
+    if len(fields)!=1 or fields[0][1]!="StructProperty":
+        raise ValueError("source SkyDome array lacks UE4 StructProperty aggregate")
+    inner=fields[0][3]
+    cursor=0
+    parameters=[]
+    for i in range(count):
+        if cursor>=len(inner):
+            raise ValueError("source SkyDome parameter struct stream prematurely ended")
+        record,nbytes=cat.props(inner[cursor:]+marker)
+        if nbytes<=0:raise ValueError("source SkyDome parameter did not advance")
+        cursor+=nbytes
+        props={name:(kind,raw) for name,kind,metadata,raw in record}
+        pi=props.get("ParameterInfo")
+        if not pi or pi[0]!="StructProperty":
+            raise ValueError("SkyDome parameter missing typed ParameterInfo")
+        inner_fields,nread=cat.props(pi[1]+marker)
+        name_fields=[cat.fname(raw) for name,kind,meta,raw in inner_fields
+                     if name=="Name" and kind=="NameProperty" and len(raw)==8]
+        if len(name_fields)!=1:raise ValueError("source SkyDome parameter FName ambiguous")
+        v=props.get("ParameterValue")
+        if v is None:raise ValueError("original SkyDome parameter Value absent")
+        if v[0]=="FloatProperty" and len(v[1])==4:
+            value=struct.unpack("<f",v[1])[0]
+        elif v[0]=="StructProperty" and len(v[1])==16:
+            value=list(struct.unpack("<ffff",v[1]))
+        else:raise ValueError("source sky parameter contains unsupported typed value")
+        parameters.append({"name":name_fields[0],"value":value})
+    return {"count":count,"parameters":parameters,"source_bytes":len(inner),
+            "used_source_bytes":cursor,"outer_consumed":used}
 
 def map_scene(index,root):
     header=main.source_payload(index[root+".umap"])
