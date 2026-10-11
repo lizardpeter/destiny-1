@@ -1,0 +1,56 @@
+name: Fortnite 5.41 HLOD source geometry audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_hlod_component_probe.py
+      - tools/fortnite_541_hlod_variant_sweep.py
+      - 'tools/fortnite_541_hlod_rust/**'
+      - .github/workflows/fortnite-541-hlod-audit.yml
+  workflow_dispatch:
+jobs:
+  hlod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate original Fortnite 5.41 459 static mesh components
+        run: python3 tools/fortnite_541_hlod_component_probe.py
+      - name: Compile the exact production Rust HLOD decoder and test it against original R2 bytes
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import fortnite_541_r2_material_probe as r2
+          entries=r2.load_index()
+          for ext in ['.umap','.uexp']:
+              matches=[v for k,v in entries.items() if k.endswith('/Maps/Athena_Terrain'+ext)]
+              if len(matches)!=1:raise ValueError('source original Athena root not unique')
+              data=r2.source_payload(matches[0])
+              Path('/tmp/fortnite541_native_root'+ext).write_bytes(data)
+              print('FORTNITE_NATIVE_SOURCE_VERIFIED',ext,len(data),flush=True)
+          PY
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          import fortnite_541_r2_material_probe as r2
+          entries=r2.load_index()
+          original='FortniteGame/Content/Athena/Maps/Buildings/1x1/HLOD/Athena_REM_1x1_Shack_a_0_HLOD'
+          for ext in ['.uasset','.uexp']:
+              data=r2.source_payload(entries[original+ext])
+              Path('/tmp/fortnite541_original_hlod_mesh'+ext).write_bytes(data)
+              print('FORTNITE_ORIGINAL_MESH_SHA1_VERIFIED',ext,len(data),flush=True)
+          PY
+          cargo test --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml -- /tmp/fortnite541_native_root.umap /tmp/fortnite541_native_root.uexp /tmp/fortnite541_original_hlod_mesh.uasset /tmp/fortnite541_original_hlod_mesh.uexp
+      - name: Check native UStaticMesh LOD0 decoder against twelve diverse original HLOD assets
+        run: python3 tools/fortnite_541_hlod_variant_sweep.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fortnite-541-source-hlod-metadata
+          path: fortnite541_hlod_component_audit.json
+          if-no-files-found: ignore
+          retention-days: 3
