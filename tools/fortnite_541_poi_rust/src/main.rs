@@ -26,7 +26,7 @@ fn run()->Result<(),String>{
             source.horizon_linear,source.zenith_linear,
             source.cloud_key_linear,source.cloud_shadow_linear,
             source.scalar_params.len(),source.vector_params.len());
-        if source.scalar_params.len()!=12 || source.vector_params.len()!=7{
+        if source.scalar_params.len()!=14 || source.vector_params.len()!=7{
             return Err("native source SkyDome inherited material parameter closure changed".into());
         }
         return Ok(());
