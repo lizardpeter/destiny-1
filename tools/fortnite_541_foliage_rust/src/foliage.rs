@@ -93,7 +93,7 @@ pub fn inspect_original_foliage_level(
         let identity=catalog.source_object_path(i32::from_le_bytes(raw_ref.try_into().unwrap()))?;
         let package=identity.split("::").next().ok_or("foliage source mesh missing package")?;
         if !package.starts_with("/Game/")||package.len()>1024 ||
-            package.split('/').any(|part|part==".."||part=="."||part.is_empty()){
+            package.trim_start_matches('/').split('/').any(|part|part==".."||part=="."||part.is_empty()){
             return Err("untrusted original foliage package identity".into());
         }
         let mesh_package=format!("FortniteGame/Content/{}",&package[6..]);
