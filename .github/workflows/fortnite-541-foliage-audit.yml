@@ -1,0 +1,23 @@
+name: Original Fortnite Athena foliage audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_foliage_probe.py
+      - .github/workflows/fortnite-541-foliage-audit.yml
+  workflow_dispatch:
+jobs:
+  foliage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate original Fortnite Athena foliage maps and assets
+        run: python3 tools/fortnite_541_foliage_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authentic-fortnite-foliage-metadata
+          path: fortnite541_authored_foliage_audit.json
+          retention-days: 3
+          if-no-files-found: ignore
