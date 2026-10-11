@@ -9,7 +9,7 @@ import fortnite_541_r2_material_probe as main
 from fortnite_541_material_expression_probe import Catalog
 URL="https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0_s4-WindowsClient.pak"
 INDEX_SHA="96a67f9eae257051576e368fdb61a6fb78b2f56a"
-SUFFIX="/Packages/Fortress_Sky/TexturesHDR/T_AthenaSkylight"
+SUFFIX="Packages/Fortress_Sky/TexturesHDR/T_AthenaSkylight"
 KEY=main.KEY
 def size():
     out=subprocess.run(["curl","--fail","--silent","--show-error","--location","--head","--max-time","40",URL],capture_output=True,text=True,check=True).stdout
