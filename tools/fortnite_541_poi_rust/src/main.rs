@@ -9,6 +9,58 @@ mod poi_blueprint;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
+    if paths.len()==2 && paths[0]=="--audit-cdos" {
+        // The exact production native CDO decoder is run against *every*
+        // unique original class package supplied in a retail-authenticated
+        // manifest. This is CDO mesh reference resolution, not proof that
+        // the mesh's separate native LOD0 has been decoded.
+        let manifest=fs::read_to_string(&paths[1]).map_err(|e|e.to_string())?;
+        let mut actors=0usize;
+        let mut resolved=0usize;
+        let mut unresolved=Vec::<(usize,String,String)>::new();
+        let mut classes=0usize;
+        let mut resolved_classes=0usize;
+        let mut mesh_packages=std::collections::BTreeSet::new();
+        for (lineno,row) in manifest.lines().enumerate() {
+            let cols=row.split('\t').collect::<Vec<_>>();
+            if cols.len()!=3{return Err(format!(
+                "native CDO manifest row {} must have three TSV columns",lineno+1
+            ));}
+            let class=cols[0];
+            let n=cols[1].parse::<usize>().map_err(|e|e.to_string())?;
+            let base=cols[2];
+            actors+=n;
+            classes+=1;
+            let result=(||->Result<Option<poi_blueprint::AuthoredBlueprintMeshDefault>,String>{
+                if base.is_empty(){return Err("authenticated original CDO class package unavailable".into());}
+                let header=fs::read(format!("{base}.uasset"))
+                    .map_err(|e|format!("source CDO header: {e}"))?;
+                let exports=fs::read(format!("{base}.uexp"))
+                    .map_err(|e|format!("source CDO export: {e}"))?;
+                poi_blueprint::original_blueprint_static_mesh(&header,&exports,class)
+            })();
+            match result {
+                Ok(Some(original))=>{
+                    resolved+=n;
+                    resolved_classes+=1;
+                    mesh_packages.insert(original.mesh_package_path.clone());
+                    println!("FORTNITE_FACTORY_CDO_MESH class={class:?} actors={n} source={:?}",
+                        original.mesh_source_path);
+                },
+                Ok(None)=>{
+                    unresolved.push((n,class.into(),"source CDO has no direct StaticMesh".into()));
+                },
+                Err(error)=>unresolved.push((n,class.into(),error)),
+            }
+        }
+        unresolved.sort_by(|a,b|b.0.cmp(&a.0).then_with(||a.1.cmp(&b.1)));
+        println!("FORTNITE_FACTORY_NATIVE_CDO_SUMMARY classes={classes} resolved_classes={resolved_classes} inherited_actors={actors} resolved_actors={resolved} distinct_mesh_packages={} unresolved_actor_count={} unresolved_classes={}",
+            mesh_packages.len(),actors-resolved,unresolved.len());
+        for (n,class,error) in unresolved {
+            println!("FORTNITE_FACTORY_NATIVE_CDO_FRONTIER count={n} class={class:?} reason={error:?}");
+        }
+        return Ok(());
+    }
     if paths.len()==2 {
         let header=fs::read(&paths[0]).map_err(|e|e.to_string())?;
         let exports=fs::read(&paths[1]).map_err(|e|e.to_string())?;
