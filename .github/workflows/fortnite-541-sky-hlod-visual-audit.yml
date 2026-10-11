@@ -14,3 +14,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Decode source-authentic sky cubemap linear luminance and streamed sublevel identities
         run: python3 tools/fortnite_541_sky_hlod_visual_audit.py
+
+      - name: Compile production Rust streamed-level decoder against authenticated original map
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as r2
+          idx=r2.load_index()
+          sources=[
+              ("Athena/Maps/Athena_Terrain",".umap","/tmp/fortnite541_native_root.umap"),
+              ("Athena/Maps/Athena_Terrain",".uexp","/tmp/fortnite541_native_root.uexp"),
+              ("Athena/Maps/Buildings/1x1/HLOD/Athena_REM_1x1_Shack_a_0_HLOD",".uasset","/tmp/fortnite541_original_hlod_mesh.uasset"),
+              ("Athena/Maps/Buildings/1x1/HLOD/Athena_REM_1x1_Shack_a_0_HLOD",".uexp","/tmp/fortnite541_original_hlod_mesh.uexp")
+          ]
+          for package,ext,out in sources:
+              original="FortniteGame/Content/"+package+ext
+              source=r2.source_payload(idx[original])
+              Path(out).write_bytes(source)
+              print("FORTNITE_ORIGINAL_SKY_HLOD_RUST_VERIFIED",original,len(source),flush=True)
+          PY
+          cargo test --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml -- /tmp/fortnite541_native_root.umap /tmp/fortnite541_native_root.uexp /tmp/fortnite541_original_hlod_mesh.uasset /tmp/fortnite541_original_hlod_mesh.uexp
