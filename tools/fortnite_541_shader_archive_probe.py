@@ -49,7 +49,7 @@ def inspect_one(path,meta):
                 shaders.append((loc,csize,usize,frequency))
                 hashes.add(h)
             first_offsets=sorted(shaders,key=lambda x:x[0])
-            max_end=max(loc+csize for loc,csize,_ in shaders)
+            max_end=max(loc+csize for loc,csize,_,_ in shaders)
             contiguous=sum(
                 1 for a,b in zip(first_offsets,first_offsets[1:])
                 if a[0]+a[1]==b[0]
