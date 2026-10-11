@@ -1,0 +1,23 @@
+name: Fortnite 5.41 HLOD source geometry audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_hlod_component_probe.py
+      - .github/workflows/fortnite-541-hlod-audit.yml
+  workflow_dispatch:
+jobs:
+  hlod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate original Fortnite 5.41 459 static mesh components
+        run: python3 tools/fortnite_541_hlod_component_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fortnite-541-source-hlod-metadata
+          path: fortnite541_hlod_component_audit.json
+          if-no-files-found: ignore
+          retention-days: 3
