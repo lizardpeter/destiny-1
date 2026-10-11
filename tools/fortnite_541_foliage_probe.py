@@ -25,6 +25,11 @@ def run():
         "/Maps/Background/Athena_Background",
         "/Maps/Landscape/Athena_Terrain_LS_00",
         "/Maps/Landscape/Athena_Terrain_LS_01",
+        "/Maps/Landscape/Athena_Terrain_LS_02",
+        "/Maps/Landscape/Athena_Terrain_LS_03",
+        "/Maps/Landscape/Athena_Terrain_LS_04",
+        "/Maps/Landscape/Athena_Terrain_LS_05",
+        "/Maps/Streaming/Sublevel_X0Y0",
         "/Maps/Athena_Streaming_Grid",
     ]
     for suffix in report["foliage_related_umaps"][:7]:
