@@ -26,8 +26,36 @@ def vecs(cat,data):
         elif kind=="NameProperty" and len(raw)==8:
             entry["fname"]=cat.fname(raw)
         elif kind=="StructProperty":
-            entry["head"]=raw[:128].hex()
-            if len(raw)==16:entry["vector"]=list(struct.unpack("<ffff",raw))
+            if len(raw)==16:
+                entry["vector"]=list(struct.unpack("<ffff",raw))
+            else:
+                entry["head"]=raw[:80].hex()
+                try:
+                    more,read=cat.props(raw+marker)
+                    entry["children"]=[]
+                    for n,k,md,child in more[:100]:
+                        ch={"name":n,"kind":k,"size":len(child),"metadata":md}
+                        if k=="FloatProperty" and len(child)==4:
+                            ch["float"]=struct.unpack("<f",child)[0]
+                        elif k=="NameProperty" and len(child)==8:
+                            ch["fname"]=cat.fname(child)
+                        elif k=="StructProperty":
+                            if len(child)==16:ch["vector"]=list(struct.unpack("<ffff",child))
+                            else:
+                                ch["head"]=child[:48].hex()
+                                try:
+                                    nested,nread=cat.props(child+marker)
+                                    ch["nested"]=[]
+                                    for cn,ck,cmd,cv in nested[:20]:
+                                        detail={"name":cn,"kind":ck,"size":len(cv),"metadata":cmd}
+                                        if ck=="NameProperty" and len(cv)==8:detail["fname"]=cat.fname(cv)
+                                        elif ck=="IntProperty" and len(cv)==4:detail["int"]=struct.unpack("<i",cv)[0]
+                                        elif ck=="FloatProperty" and len(cv)==4:detail["float"]=struct.unpack("<f",cv)[0]
+                                        ch["nested"].append(detail)
+                                except Exception as err:ch["nested_error"]=str(err)
+                        entry["children"].append(ch)
+                    entry["child_consumed"]=read
+                except Exception as err:entry["children_error"]=str(err)
         elif kind=="ArrayProperty":
             entry["array_count"]=struct.unpack_from("<I",raw)[0] if len(raw)>=4 else None
             entry["head"]=raw[:128].hex()
