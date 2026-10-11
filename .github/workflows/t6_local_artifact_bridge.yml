@@ -1,0 +1,62 @@
+name: T6 local environment artifact bridge
+
+on:
+  push:
+    branches: [tools/t6-local-artifact-bridge-20261011]
+    paths: [.github/workflows/t6_local_artifact_bridge.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tools-and-assets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check architecture and asset availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Architecture $(uname -m)"
+          mkdir -p /tmp/t6-bridge
+          curl --fail --location --retry 3 --output /tmp/t6-bridge/mp_drone.ff \
+            https://r2.houseofkublai.com/bo2/zone/all/mp_drone.ff
+          stat -c 'R2 Drone source: %s bytes' /tmp/t6-bridge/mp_drone.ff
+          sha256sum /tmp/t6-bridge/mp_drone.ff | tee /tmp/t6-bridge/drone.sha256
+          file /tmp/t6-bridge/mp_drone.ff
+
+      - name: Package build-capable local Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$(rustup toolchain list | awk '$1 ~ /stable/ {print $1;exit}')"
+          if [ -z "$TOOLCHAIN" ]; then TOOLCHAIN="$(rustup toolchain list | awk 'NR==1{print $1}')"; fi
+          echo "Toolchain: $TOOLCHAIN"
+          RUSTROOT="$(rustc --print sysroot)"
+          cargo --version && rustc --version
+          mkdir -p /tmp/t6-toolchain/bin /tmp/t6-toolchain/lib
+          cp "$RUSTROOT/bin/rustc" "$RUSTROOT/bin/cargo" /tmp/t6-toolchain/bin/
+          cp -a "$RUSTROOT/lib/"* /tmp/t6-toolchain/lib/
+          tar -C /tmp -cJf /tmp/t6-bridge/rust-toolchain.tar.xz t6-toolchain
+          ls -lh /tmp/t6-bridge/rust-toolchain.tar.xz
+
+      - name: Make artifact output
+        run: |
+          mkdir -p /tmp/t6-artifact-assets /tmp/t6-artifact-toolchain
+          cp /tmp/t6-bridge/mp_drone.ff /tmp/t6-bridge/drone.sha256 /tmp/t6-artifact-assets/
+          cp /tmp/t6-bridge/rust-toolchain.tar.xz /tmp/t6-artifact-toolchain/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t6-drone-original-local-bridge
+          path: /tmp/t6-artifact-assets/
+          retention-days: 1
+          compression-level: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t6-rust-toolchain-local-bridge
+          path: /tmp/t6-artifact-toolchain/
+          retention-days: 1
+          compression-level: 0
