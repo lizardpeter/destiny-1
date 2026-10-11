@@ -112,6 +112,22 @@ def run():
                     if kind=="ArrayProperty":
                         field["head"]=blob[:128].hex()
                     props.append(field)
+            if cls in ("FoliageInstancedStaticMeshComponent","InstancedStaticMeshComponent"):
+                tail=raw[used:]
+                if len(tail)>=20:
+                    count=struct.unpack_from("<I",tail,16)[0]
+                    stride=struct.unpack_from("<I",tail,12)[0]
+                    if stride in (16,32,48,64,80) and count<200000:
+                        matrices=[]
+                        for off in (20,20+stride,20+(count//2)*stride,20+(count-1)*stride,20+count*stride):
+                            if off+64<=len(tail):
+                                matrices.append({"relative_byte":off,"16f":struct.unpack_from("<16f",tail,off),
+                                "16u32":struct.unpack_from("<16I",tail,off)})
+                        rows.append({"kind":"verified_native_instance_buffer_candidate",
+                            "class":cls,"object":owner,"header_u32":struct.unpack_from("<5I",tail),
+                            "instance_count":count,"stride":stride,
+                            "estimated_data_end":20+count*stride,
+                            "native_tail_bytes":len(tail),"sample":matrices})
             rows.append({"class":cls,"object":owner,
                 "total_bytes":len(raw),"native_tail_bytes":len(raw)-used,
                 "native_head":raw[used:used+160].hex(),
