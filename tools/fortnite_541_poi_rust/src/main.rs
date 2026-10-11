@@ -9,6 +9,74 @@ mod poi_blueprint;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
+    if paths.len()==2 && paths[0]=="--audit-meshes" {
+        // Decode the *actual native LOD0* from every source UStaticMesh
+        // identity needed by the original detailed Factory actor placements.
+        // Each row is the exact retail UObject path, placed instance count,
+        // and a SHA1-verified cached source UAsset/UExp pair.
+        let manifest=fs::read_to_string(&paths[1]).map_err(|e|e.to_string())?;
+        let mut actors=0usize;
+        let mut resolved=0usize;
+        let mut unique=0usize;
+        let mut decoded_unique=0usize;
+        let mut placed_triangles=0u64;
+        let mut failures=Vec::<(usize,String,String)>::new();
+        for (lineno,line) in manifest.lines().enumerate() {
+            let cols=line.split('\t').collect::<Vec<_>>();
+            if cols.len()!=3{return Err(format!(
+                "native LOD manifest row {} must contain identity, actors, cache prefix",
+                lineno+1
+            ));}
+            unique+=1;
+            let identity=cols[0];
+            let n=cols[1].parse::<usize>().map_err(|e|e.to_string())?;
+            let base=cols[2];
+            actors+=n;
+            let result=(||->Result<staticmesh_lod::OriginalStaticMeshLod,String>{
+                if base.is_empty(){return Err("original mesh source package missing from authenticated archive indexes".into());}
+                let h=fs::read(format!("{base}.uasset")).map_err(|e|e.to_string())?;
+                let x=fs::read(format!("{base}.uexp")).map_err(|e|e.to_string())?;
+                let cat=uobject::inspect(&h)?;
+                let export=identity.rsplit("::").next()
+                    .ok_or("original UObject mesh export missing")?;
+                let lod=staticmesh_lod::decode_original_source_mesh(&cat,&h,&x,export)?;
+                if lod.vertices.is_empty()||lod.sections.is_empty(){
+                    return Err("source native LOD has no drawable sections".into());
+                }
+                for section in &lod.sections{
+                    let start=section.first_index as usize;
+                    let end=start.checked_add((section.triangle_count as usize)
+                        .checked_mul(3).ok_or("source LOD triangle count overflow")?)
+                        .ok_or("source LOD section extent overflow")?;
+                    let indices=lod.indices.get(start..end)
+                        .ok_or("source LOD section index range invalid")?;
+                    if indices.is_empty()||indices.iter().any(|&i|
+                        i as usize>=lod.vertices.len()
+                    ){return Err("source LOD section vertex index outside original vertices".into());}
+                }
+                Ok(lod)
+            })();
+            match result {
+                Ok(lod)=>{
+                    decoded_unique+=1;
+                    resolved+=n;
+                    let tris=lod.sections.iter().map(|s|s.triangle_count as u64)
+                        .sum::<u64>();
+                    placed_triangles+=tris*n as u64;
+                    println!("FORTNITE_FACTORY_NATIVE_MESH identity={identity:?} actors={n} vertices={} triangles={} sections={} uv_channels={}",
+                        lod.vertices.len(),tris,lod.sections.len(),lod.total_source_uv_channels);
+                },
+                Err(error)=>failures.push((n,identity.into(),error)),
+            }
+        }
+        failures.sort_by(|a,b|b.0.cmp(&a.0).then_with(||a.1.cmp(&b.1)));
+        println!("FORTNITE_FACTORY_NATIVE_LOD0_SUMMARY mesh_object_identities={unique} decoded_identities={decoded_unique} referenced_actors={actors} native_lod0_decoded_actors={resolved} missing_actor_count={} placed_source_triangles={placed_triangles} failed_identities={}",
+            actors-resolved,failures.len());
+        for (n,identity,error) in failures{
+            println!("FORTNITE_FACTORY_NATIVE_LOD0_FRONTIER count={n} identity={identity:?} reason={error:?}");
+        }
+        return Ok(());
+    }
     if paths.len()==2 && paths[0]=="--audit-cdos" {
         // The exact production native CDO decoder is run against *every*
         // unique original class package supplied in a retail-authenticated
