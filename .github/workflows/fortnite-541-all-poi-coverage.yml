@@ -1,0 +1,18 @@
+name: Fortnite 5.41 original forty POI coverage census
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_all_poi_coverage.py
+      - .github/workflows/fortnite-541-all-poi-coverage.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure all source-authored POI package coverage across seven verified retail PAK indexes
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_all_poi_coverage.py
