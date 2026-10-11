@@ -1,0 +1,23 @@
+name: Fortnite 5.41 authored sky and light parameter closure
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_source_sky_lighting.py
+      - .github/workflows/fortnite-541-source-sky-lighting.yml
+      - 'tools/fortnite_541_poi_rust/**'
+  workflow_dispatch:
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect SHA1 authenticated sky dome params and original sun and fog actors
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_source_sky_lighting.py
+      - name: Compile production-native SkyDome Rust decoder and unit regression
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Verify real retail daytime inherited SkyDome scalar and vector colors
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-sky
