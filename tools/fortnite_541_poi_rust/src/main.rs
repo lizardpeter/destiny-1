@@ -6,9 +6,31 @@ mod extract;
 mod pak;
 mod poi_extract;
 mod poi_blueprint;
+mod sky_dome;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
+    if paths.len()==1 && paths[0]=="--audit-sky" {
+        let root=std::path::Path::new("/tmp/fortnite541_source_sky");
+        let source=sky_dome::from_source_root(root)?
+            .ok_or("original source daylight sky packages not staged")?;
+        if (source.horizon_linear[0]-0.078577).abs()>0.0001 ||
+            (source.horizon_linear[1]-0.37912).abs()>0.0001 ||
+            (source.horizon_linear[2]-0.9).abs()>0.0001 ||
+            (source.zenith_linear[0]-0.004).abs()>0.0001 ||
+            (source.zenith_linear[1]-0.036159).abs()>0.0001 ||
+            (source.zenith_linear[2]-0.08).abs()>0.0001 {
+            return Err("native original Day_M_SkyDome authored color mismatch".into());
+        }
+        println!("FORTNITE_NATIVE_AUTHENTIC_DAY_SKY source_M_SkyDome=true horizon={:?} zenith={:?} cloud_key={:?} cloud_shadow={:?} scalar_count={} vector_count={}",
+            source.horizon_linear,source.zenith_linear,
+            source.cloud_key_linear,source.cloud_shadow_linear,
+            source.scalar_params.len(),source.vector_params.len());
+        if source.scalar_params.len()!=12 || source.vector_params.len()!=7{
+            return Err("native source SkyDome inherited material parameter closure changed".into());
+        }
+        return Ok(());
+    }
     if paths.len()==2 && paths[0]=="--audit-meshes" {
         // Decode the *actual native LOD0* from every source UStaticMesh
         // identity needed by the original detailed Factory actor placements.
