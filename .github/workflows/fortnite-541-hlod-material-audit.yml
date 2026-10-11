@@ -1,0 +1,70 @@
+name: Fortnite 5.41 original HLOD materials source audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_hlod_material_probe.py
+      - 'tools/fortnite_541_hlod_rust/**'
+      - .github/workflows/fortnite-541-hlod-material-audit.yml
+  workflow_dispatch:
+jobs:
+  material:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect original retail HLOD material and texture parameters
+        run: python3 tools/fortnite_541_hlod_material_probe.py
+      - name: Compile exact production Rust material and BC texture decoders
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as r2
+          index=r2.load_index()
+          root="FortniteGame/Content/Athena/Maps/Athena_Terrain"
+          material="FortniteGame/Content/Athena/Maps/Buildings/1x1/HLOD/Athena_REM_1x1_Shack_a_0_HLOD"
+          for source,target in [
+              (root+".umap","/tmp/fortnite541_native_root.umap"),
+              (root+".uexp","/tmp/fortnite541_native_root.uexp"),
+              (material+".uasset","/tmp/fortnite541_material.uasset"),
+              (material+".uexp","/tmp/fortnite541_material.uexp"),
+              (material+".ubulk","/tmp/fortnite541_material.ubulk")]:
+              raw=r2.source_payload(index[source])
+              Path(target).write_bytes(raw)
+              print("FORTNITE_HLOD_SHA1_SOURCE_VERIFIED",source,len(raw),flush=True)
+          PY
+          cargo test --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_hlod_rust/Cargo.toml -- /tmp/fortnite541_native_root.umap /tmp/fortnite541_native_root.uexp /tmp/fortnite541_material.uasset /tmp/fortnite541_material.uexp SM_Athena_REM_1x1_Shack_a_0_Boardwalk_Archway#29 /tmp/fortnite541_material.ubulk
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,sys
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as r2
+          index=r2.load_index()
+          cases=[
+              ("Buildings/3x3/HLOD/Athena_RUR_3x3_House_c_1_HLOD","SM_Athena_RUR_3x3_House_c_1_SM_FORT_Floors_Generic_BasicTileBeams_C#657"),
+              ("Buildings/5x5/HLOD/Athena_SUB_5x5_House2_a_1_HLOD","SM_Athena_SUB_5x5_House2_a_1_S_FORT_Garden_End#6"),
+          ]
+          for ordinal,(rel,mesh) in enumerate(cases):
+              base="FortniteGame/Content/Athena/Maps/"+rel
+              files=[]
+              for suffix in (".uasset",".uexp",".ubulk"):
+                  path="/tmp/fortnite541_material_%s%s"%(ordinal,suffix)
+                  raw=r2.source_payload(index[base+suffix])
+                  Path(path).write_bytes(raw)
+                  files.append(path)
+              command=["tools/fortnite_541_hlod_rust/target/debug/fortnite-541-hlod-source-proof",
+                  "/tmp/fortnite541_native_root.umap","/tmp/fortnite541_native_root.uexp",
+                  files[0],files[1],mesh,files[2]]
+              subprocess.run(command,check=True)
+              print("FORTNITE_ADDITIONAL_SOURCE_HLOD_MATERIAL_VERIFIED",rel,flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-hlod-material-metadata
+          path: fortnite541_hlod_material_metadata.json
+          if-no-files-found: ignore
+          retention-days: 3
