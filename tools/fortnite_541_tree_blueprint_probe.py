@@ -51,13 +51,29 @@ def run():
         }),flush=True)
     import fortnite_541_skylight_cube_probe as s4
     s4_entries=s4.source()
+    split_indexes={"s4":s4_entries}
+    for suffix,expected in [
+        ("s2","42a45eee280ab70abbb5192b33a5945c119bd82c"),
+        ("s3","27376dab8f8a3488d0d2b5332a2a2da7d28fd73e"),
+    ]:
+        s4.URL=f"https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/pakchunk0_{suffix}-WindowsClient.pak"
+        s4.INDEX_SHA=expected
+        try:split_indexes[suffix]=s4.source()
+        except Exception as e:
+            print("FORTNITE_TREE_SPLIT_SOURCE_UNAVAILABLE "+json.dumps({"chunk":suffix,"error":str(e)}),flush=True)
     for cls,path in packages.items():
         prefix="FortniteGame/Content/"+path.removeprefix("/Game/")
-        selected=index if prefix+".uasset" in index else s4_entries
+        selected=index
+        label="main"
+        if prefix+".uasset" not in selected:
+            for split_name,archive in split_indexes.items():
+                if prefix+".uasset" in archive:
+                    selected=archive;label=split_name
+                    break
         selected_reader=r2.source_payload if selected is index else s4.payload
         candidates=[{"ext":ext,"source_bytes":selected[prefix+ext][2]}
             for ext in (".uasset",".uexp",".ubulk") if prefix+ext in selected]
-        doc={"class":cls,"source_package":path,"original_pak":"main" if selected is index else "split_s4","pak_files":candidates}
+        doc={"class":cls,"source_package":path,"original_pak":label,"pak_files":candidates}
         if prefix+".uasset" in selected and prefix+".uexp" in selected:
             head=selected_reader(selected[prefix+".uasset"])
             payload=selected_reader(selected[prefix+".uexp"])
@@ -81,7 +97,8 @@ def run():
         print("FORTNITE_TREE_CROSS_PAK_PACKAGE "+json.dumps({
             "package":source,
             "main":[ext for ext in (".uasset",".uexp",".ubulk") if source+ext in index],
-            "s4":[ext for ext in (".uasset",".uexp",".ubulk") if source+ext in s4_entries]
+            "split_chunks":{name:[ext for ext in (".uasset",".uexp",".ubulk") if source+ext in records]
+                for name,records in split_indexes.items()}
         }),flush=True)
     Path("fortnite541_tree_blueprint_source.json").write_text(json.dumps(
         {"actor_classes":{k:v[:5] for k,v in byclass.items()},"blueprints":packages},indent=2))
