@@ -98,11 +98,11 @@ def run():
                 rows.append({"class":cls,"object":owner,"error":str(e)});continue
             props=[]
             for name,kind,meta,blob in fields:
-                if cls=="InstancedFoliageActor" or kind=="ObjectProperty" or
+                if (cls=="InstancedFoliageActor" or kind=="ObjectProperty" or
                     name in ("PerInstanceSMData","InstanceReorderTable",
                              "PerInstanceSMCustomData","InstancingRandomSeed",
                              "StaticMesh","RelativeLocation","RelativeRotation",
-                             "RelativeScale3D","BodyInstance"):
+                             "RelativeScale3D","BodyInstance")):
                     field={"name":name,"kind":kind,"bytes":len(blob)}
                     if kind=="ObjectProperty" and len(blob)==4:
                         ref=struct.unpack("<i",blob)[0]
