@@ -102,7 +102,19 @@ def main_fn():
             item["properties"]=[{"name":n,"kind":k,"size":len(v),"meta":extra}
                 for n,k,extra,v in props]
             item["native_tail_len"]=ex["size"]-end
-            item["tail_first96"]=cat.export_data(ex)[end:end+96].hex()
+            native=cat.export_data(ex)[end:]
+            item["tail_first256"]=native[:256].hex()
+            item["tail_last48"]=native[-48:].hex()
+            item["source_lengths"]=[len(native),len(native)%16, len(native)-524288]
+            item["source_pf_dxt5_offset"]=native.find(b"PF_DXT5")
+            item["native_top_mip_size_0x60000_offsets"]=[
+                p for p in range(0,min(200,len(native)-4))
+                if native[p:p+4]==(393216).to_bytes(4,"little")
+            ]
+            item["recorded_u32_at_0_to_160"]=[
+                {"pos":p,"value":struct.unpack_from("<I",native,p)[0]}
+                for p in range(0,min(160,len(native)-4),4)
+            ]
         except Exception as error:
             item["error"]=str(error)
         report["exports"].append(item)
