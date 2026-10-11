@@ -1,0 +1,5 @@
+[package]
+name = "fortnite-541-sky-cube-proof"
+version = "0.1.0"
+edition = "2021"
+publish = false

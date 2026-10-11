@@ -1,0 +1,29 @@
+name: Fortnite 5.41 sky source audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_skylight_cube_probe.py
+      - 'tools/fortnite_541_sky_cube_rust/**'
+      - .github/workflows/fortnite-541-sky-audit.yml
+  workflow_dispatch:
+jobs:
+  sky:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original s4 archive and skylight package identities
+        run: python3 tools/fortnite_541_skylight_cube_probe.py
+      - name: Verify source TextureCube layout with independent Rust
+        run: |
+          cargo test --manifest-path tools/fortnite_541_sky_cube_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_sky_cube_rust/Cargo.toml -- /tmp/fortnite541_verified_s4_skylight_cooked.bin
+      - name: Upload metadata only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-athena-skylight-source-metadata
+          path: fortnite541_skylight_s4_source_audit.json
+          if-no-files-found: ignore
+          retention-days: 3

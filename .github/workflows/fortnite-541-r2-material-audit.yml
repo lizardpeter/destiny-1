@@ -6,6 +6,8 @@ on:
       - analysis/fortnite-541-r2-material-audit-20261010
     paths:
       - tools/fortnite_541_r2_material_probe.py
+      - tools/fortnite_541_sky_fog_probe.py
+      - tools/fortnite_541_skylight_cube_probe.py
       - tools/fortnite_541_material_expression_probe.py
       - tools/fortnite_541_shader_archive_probe.py
       - tools/fortnite_541_material_shader_link_probe.py
@@ -15,6 +17,8 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_r2_material_probe.py
+      - tools/fortnite_541_sky_fog_probe.py
+      - tools/fortnite_541_skylight_cube_probe.py
       - tools/fortnite_541_material_expression_probe.py
       - tools/fortnite_541_shader_archive_probe.py
       - tools/fortnite_541_material_shader_link_probe.py
@@ -52,6 +56,10 @@ jobs:
           print(f'SHA1_VERIFIED_TEMP_RETAIL_SM5 bytes={len(data)}',flush=True)
           PY
           cargo run --quiet --manifest-path tools/fortnite_541_shader_archive_rust/Cargo.toml -- /tmp/fortnite541_original_global_sm5.ushaderbytecode
+      - name: Probe real Fortnite Athena sky/fog/directional light actor source
+        run: python3 tools/fortnite_541_sky_fog_probe.py
+      - name: Recover original SHA1-verified Fortnite 5.41 s4 sky cubemap metadata
+        run: python3 tools/fortnite_541_skylight_cube_probe.py
       - name: Upload source metadata only
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,5 +70,7 @@ jobs:
             fortnite-541-material-expression-audit.json
             fortnite-541-retail-shader-archive-audit.json
             fortnite-541-material-shader-link-audit.json
+            fortnite541_sky_fog_actor_audit.json
+            fortnite541_skylight_s4_source_audit.json
           if-no-files-found: ignore
           retention-days: 3
