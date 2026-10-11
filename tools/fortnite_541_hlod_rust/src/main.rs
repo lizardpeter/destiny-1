@@ -1,6 +1,7 @@
 mod uobject;
 mod properties;
 mod hlod;
+mod cubemap_axis;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
