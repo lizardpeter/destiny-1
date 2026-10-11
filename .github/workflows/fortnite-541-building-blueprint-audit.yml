@@ -1,0 +1,16 @@
+name: Fortnite 5.41 original full-detail building blueprint CDO
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_building_blueprint_probe.py
+      - .github/workflows/fortnite-541-building-blueprint-audit.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original full-resolution factory and roof Blueprint default meshes
+        run: python3 tools/fortnite_541_building_blueprint_probe.py
