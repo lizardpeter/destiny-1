@@ -327,8 +327,6 @@ pub fn inspect_sampled_source_mip(
         .map_err(|e|format!("original sky texture header {package}: {e}"))?;
     let x=fs::read(base.with_extension("uexp"))
         .map_err(|e|format!("original sky texture exports {package}: {e}"))?;
-    let b=fs::read(base.with_extension("ubulk"))
-        .map_err(|e|format!("original sky external top mip {package}: {e}"))?;
     let cat=uobject::inspect(&h)?;
     let meshes=cat.exports.iter().filter(|ex|
         cat.export_class_name(ex)==Some("Texture2D") &&
@@ -339,6 +337,19 @@ pub fn inspect_sampled_source_mip(
         return Err(format!("original sky texture {original_object} has {} matching Texture2D exports",meshes.len()));
     }
     let ex=meshes[0];
+    // Actual sky stars use UE4 0x48 inline BC1 in the UTexture2D .uexp,
+    // not an external .ubulk. Never require a nonexistent source package.
+    if !base.with_extension("ubulk").is_file(){
+        let mip=crate::texture::first_mip_bc1_inline(&cat,&h,&x,ex)?;
+        return Ok(OriginalSkySourceMip{
+            original_object:original_object.into(),
+            width:mip.width,height:mip.height,
+            original_format:format!("{:?}-inline",mip.format),
+            source_bytes:mip.blocks.len(),
+        });
+    }
+    let b=fs::read(base.with_extension("ubulk"))
+        .map_err(|e|format!("original sky external top mip {package}: {e}"))?;
     // The source SkyDome mixes real BC1 galaxy textures, raw BGRA8
     // height/normal images and grayscale PF_G8 cloud-detail masks.
     // These are DISTINCT original formats, not reinterpretations of one
