@@ -2,6 +2,9 @@ mod uobject;
 mod properties;
 mod poi_detail;
 mod staticmesh_lod;
+mod extract;
+mod pak;
+mod poi_extract;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
