@@ -54,6 +54,25 @@ def run():
                             for i in range(0,min(len(value)-4,192),4)
                         ]
                         info["source_tail"]=value[-100:].hex()
+                        try:
+                            count=struct.unpack_from("<I",value,0)[0]
+                            struct_kind=cat.fname(value[28:36])
+                            declared=struct.unpack_from("<i",value,20)[0]
+                            p=53;decoded=[]
+                            for _ in range(count):
+                                struct_fields,used=cat.props(value[p:53+declared])
+                                decoded.append({"source_offset":p,"bytes":used,
+                                    "fields":[{"name":nm,"kind":tp,"meta":ex,
+                                        "raw_hex":rw[:64].hex(),
+                                        "ref":struct.unpack("<i",rw)[0] if tp=="ObjectProperty" and len(rw)==4 else None,
+                                        "path":cat.path(struct.unpack("<i",rw)[0]) if tp=="ObjectProperty" and len(rw)==4 and struct.unpack("<i",rw)[0] else None
+                                    } for nm,tp,ex,rw in struct_fields]})
+                                p+=used
+                            info["nested_structs"]={"array_count":count,
+                                "struct_type":struct_kind,"declared_bytes":declared,
+                                "records":decoded,"unused":53+declared-p}
+                        except Exception as e:
+                            info["nested_error"]=str(e)
                         info["source_raw_hex"]=value.hex() if field=="TextureParameterValues" else value[:200].hex()
                 elif kind in ("BoolProperty","NameProperty","FloatProperty"):
                     info["value"]=extra if kind=="BoolProperty" else (
