@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_detailed_poi_probe.py
+      - 'tools/fortnite_541_poi_rust/**'
       - .github/workflows/fortnite-541-detailed-poi.yml
   workflow_dispatch:
 jobs:
@@ -14,3 +15,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify and inspect actual streamed Fortnite 5.41 detailed POI meshes and actor transforms
         run: python3 tools/fortnite_541_detailed_poi_probe.py
+      - name: Compile production Rust high-detail POI decoder and verify exact island placements
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,"tools")
+          import fortnite_541_r2_material_probe as retail
+          records=retail.load_index()
+          for source,prefix in [
+              ("Athena/Maps/Athena_POI_Foundations","foundation"),
+              ("Athena/Maps/POI/Athena_POI_ToiletFactory_001","factory"),
+              ("Athena/Maps/POI/Athena_POI_HedgeMaze","hedge")]:
+              for suffix in (".umap",".uexp"):
+                  key="FortniteGame/Content/"+source+suffix
+                  raw=retail.source_payload(records[key])
+                  Path("/tmp/fortnite_"+prefix+suffix).write_bytes(raw)
+                  print("FORTNITE_FULL_DETAIL_ORIGINAL_SOURCE_SHA1",key,len(raw),flush=True)
+          PY
+          cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- /tmp/fortnite_foundation.umap /tmp/fortnite_foundation.uexp /tmp/fortnite_factory.umap /tmp/fortnite_factory.uexp /tmp/fortnite_hedge.umap /tmp/fortnite_hedge.uexp
