@@ -1,0 +1,9 @@
+[package]
+name="fortnite-541-full-detail-poi-proof"
+version="0.1.0"
+edition="2021"
+publish=false
+
+[dependencies]
+aes = "0.8"
+sha1 = "0.10"
