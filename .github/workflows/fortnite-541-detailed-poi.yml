@@ -1,0 +1,16 @@
+name: Fortnite 5.41 real detailed POI asset survey
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_detailed_poi_probe.py
+      - .github/workflows/fortnite-541-detailed-poi.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and inspect actual streamed Fortnite 5.41 detailed POI meshes and actor transforms
+        run: python3 tools/fortnite_541_detailed_poi_probe.py
