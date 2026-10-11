@@ -209,7 +209,7 @@ def audit_texture_mip(suffix,entries):
     width,height,depth=struct.unpack_from("<III",cooked,28)
     format_size=u32(cooked,40)
     if format_size not in [7,8,12]:raise ValueError("unrecognized authentic pixel format")
-    fmt=cooked[44:44+format_size].rstrip(b"\\0").decode()
+    fmt=cooked[44:44+format_size].rstrip(bytes([0])).decode()
     if fmt not in ["PF_DXT1","PF_DXT3","PF_DXT5","PF_BC4","PF_BC5","PF_B8G8R8A8"]:
         raise ValueError("unsupported original texture pixel format "+fmt)
     flags_at=44+format_size+12
