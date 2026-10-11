@@ -58,6 +58,11 @@ def root_streams():
             elif typ in ("ObjectProperty","ClassProperty") and len(payload)==4:
                 ref=struct.unpack("<i",payload)[0]
                 entry["value"]=cat.path(ref) if ref else None
+            elif typ=="SoftObjectProperty" and len(payload)>=12:
+                entry["path"]=cat.fname(payload[:8])
+                entry["subpath_length"]=struct.unpack_from("<i",payload,8)[0]
+                if 0<entry["subpath_length"]<1000:
+                    entry["subpath_bytes"]=payload[12:80].hex()
             elif typ=="StructProperty" and len(payload)==12:
                 entry["xyz"]=struct.unpack("<fff",payload)
             elif typ=="StrProperty":
