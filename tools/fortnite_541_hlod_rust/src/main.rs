@@ -3,10 +3,12 @@ mod properties;
 mod hlod;
 mod cubemap_axis;
 mod staticmesh_lod;
+mod hlod_material;
+mod texture;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
-    if paths.len()!=4 &&paths.len()!=5 {return Err("usage: fortnite-541-hlod-source-proof original.umap original.uexp original_mesh.uasset original_mesh.uexp [source_object_name]".into());}
+    if paths.len()!=4 &&paths.len()!=5 &&paths.len()!=6 {return Err("usage: fortnite-541-hlod-source-proof original.umap original.uexp original_mesh.uasset original_mesh.uexp [source_object_name]".into());}
     let umap=fs::read(&paths[0]).map_err(|e|format!("read source HLOD UMAP: {e}"))?;
     let uexp=fs::read(&paths[1]).map_err(|e|format!("read source HLOD UEXP: {e}"))?;
     let world=hlod::inspect_root_original_hlod(&umap,&uexp)?;
@@ -42,6 +44,31 @@ fn run()->Result<(),String>{
         (mesh.vertices.len()!=184 ||mesh.indices.len()!=372 ||
         mesh.sections.len()!=1 ||mesh.total_source_uv_channels!=2) {
         return Err("original Fortnite HLOD sample geometry inconsistent".into());
+    }
+    let slots=hlod_material::authored_static_mesh_diffuse_slots(
+        &cat,&source_header,&source_exp,
+        paths.get(4).map(String::as_str)
+            .unwrap_or("SM_Athena_REM_1x1_Shack_a_0_Boardwalk_Archway#29")
+    )?;
+    println!("FORTNITE_AUTHORED_HLOD_DIFFUSE_SLOTS count={} mapped={} identities={:?}",
+        slots.len(),slots.iter().filter(|v|v.diffuse_export_index.is_some()).count(),
+        slots.iter().map(|s|(&s.source_material_identity,&s.authored_diffuse_identity))
+            .collect::<Vec<_>>()
+    );
+    if let Some(source_bulk)=paths.get(5){
+        let bulk=fs::read(source_bulk)
+            .map_err(|e|format!("authenticated original texture bulk missing: {e}"))?;
+        for (slot_index,slot) in slots.iter().enumerate(){
+            let Some(export_idx)=slot.diffuse_export_index else{continue};
+            let mip=texture::first_mip_bc(
+                &cat,&source_header,&source_exp,&bulk,&cat.exports[export_idx],
+            )?;
+            println!("FORTNITE_ORIGINAL_HLOD_BC_DIFFUSE slot={} width={} height={} source_blocks={} format={:?} src_name={:?}",
+                slot_index,mip.width,mip.height,mip.blocks.len(),mip.format,
+                slot.authored_diffuse_identity
+            );
+            if mip.width<4 ||mip.height<4{return Err("original HLOD atlas source invalid".into());}
+        }
     }
     Ok(())
 }
