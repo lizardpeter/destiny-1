@@ -1,0 +1,23 @@
+name: Fortnite 5.41 Factory native Blueprint CDO closure
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_factory_cdo_batch.py
+      - tools/fortnite_541_poi_rust/src/main.rs
+      - .github/workflows/fortnite-541-factory-native-cdo.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage original SHA1 authenticated Toilet Factory CDO packages
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_factory_cdo_batch.py
+      - name: Compile native retail POI decoder and run 24 unit regressions
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Decode actual inherited factory CDO mesh identities across all source classes
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-cdos /tmp/fortnite541_factory_cdos.tsv
