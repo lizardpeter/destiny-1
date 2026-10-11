@@ -88,6 +88,38 @@ def main():
         "texture_nodes":texture_uses,
         "expression_edges":expressions
     },sort_keys=True),flush=True)
+    # Enumerate exact source master UTexture2D dependencies across ALL known
+    # authenticated retail PAK indexes, not just the sky s4 split.
+    from fortnite_541_all_poi_coverage import SPLITS
+    from fortnite_541_r2_material_probe import load_index as main_index
+    indexes={"main":main_index(),"s4":index}
+    for name,sha in SPLITS:
+        if name=="s4":continue
+        archive=("pakchunk1-WindowsClient.pak" if name=="chunk1"
+                 else f"pakchunk0_{name}-WindowsClient.pak")
+        s4.URL=("https://r2.houseofkublai.com/Fortnite/5.41/"
+                "FortniteGame/Content/Paks/"+archive)
+        s4.INDEX_SHA=sha
+        indexes[name]=s4.source()
+    dependencies=sorted({
+        ref["source"].split("::")[0].removeprefix("/Game/")
+        for record in texture_uses for ref in record["texture_refs"]
+        if ref.get("name")=="Texture" and ref.get("source","").startswith("/Game/")
+    })
+    for path in dependencies:
+        archives={}
+        for archive,records in indexes.items():
+            matching={}
+            for ext in (".uasset",".uexp",".ubulk"):
+                found=[key for key in records if key.endswith(path+ext)]
+                if len(found)>1:raise ValueError(f"duplicate original source {path}{ext}")
+                if found:matching[ext]=found[0]
+            if matching:archives[archive]=matching
+        print("FORTNITE_SKY_MASTER_TEXTURE_LOCATOR "+json.dumps({
+            "source":path,"retail_locations":archives},sort_keys=True),flush=True)
+    # Reset PAK source reader to s4 for the source resource contents below.
+    s4.URL=S4
+    s4.INDEX_SHA=HASH
     # Inspect the actual source package inventory, including texture
     # UBulk. No assumption that .uexp exists for cooked textures.
     for name in TEXTURES+MESHES:
