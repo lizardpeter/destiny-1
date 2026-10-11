@@ -52,7 +52,7 @@ def run():
                 if prop in ("StaticMesh","RootComponent","AttachParent","RelativeLocation",
                     "RelativeRotation","RelativeScale3D","ComponentToWorld",
                     "StaticMeshComponent","StaticMeshComponents","HLODStaticMesh",
-                    "ActorLabel","LODIndex","bVisible","bHiddenInGame","Mobility",
+                    "ActorLabel","LODIndex","bVisible","bHiddenInGame","Mobility","UniqueWorldLocation",
                     "OverrideMaterials","Tags","StaticMesh"):
                     item["properties"][prop]=parse_location(cat,tag_type,meta,raw)
                     if prop=="StaticMesh" and len(raw)==4:
@@ -63,7 +63,42 @@ def run():
             else:actors.append(item)
         except Exception as e:
             failures.append({"object":item["object"],"error":str(e)})
+    asset_names=[]
+    for name,count in refs.most_common():
+        if not name.startswith("/Game/"):continue
+        pkg=name.split("::",1)[0].replace("/Game/","FortniteGame/Content/",1)
+        asset_names.append({"source_package":pkg,"used_by":count,
+            "in_main_pak_uasset":pkg+".uasset" in entries,
+            "in_main_pak_uexp":pkg+".uexp" in entries,
+            "in_main_pak_ubulk":pkg+".ubulk" in entries})
+    mesh_asset=None
+    for obj in asset_names:
+        if not obj["in_main_pak_uasset"] or not obj["in_main_pak_uexp"]:continue
+        pkg=obj["source_package"]
+        ah=r2.source_payload(entries[pkg+".uasset"])
+        ae=r2.source_payload(entries[pkg+".uexp"])
+        ac=Catalog(ah,ae)
+        mesh_asset={"source_package":pkg,"header_bytes":len(ah),"export_bytes":len(ae),
+            "export_classes":[{"index":i,"class":ac.class_name(exp),"name":ac.value(i),
+                "serialized_bytes":exp["size"]} for i,exp in enumerate(ac.exports,1)][:12]}
+        for ex in ac.exports:
+            if ac.class_name(ex)=="StaticMesh":
+                payload=ac.export_data(ex)
+                props,end=ac.props(payload)
+                mesh_asset["static_mesh_properties"]=[
+                    {"name":n,"type":kind,"byte_count":len(raw)}
+                    for n,kind,extra,raw in props]
+                mesh_asset["native_render_payload_bytes"]=len(payload)-end
+                mesh_asset["native_first_256"]=payload[end:end+256].hex()
+                mesh_asset["native_last_64"]=payload[-64:].hex()
+                break
+        break
     out={"original_map":SUFFIX,"exports":len(cat.exports),
+         "referenced_hlod_packages":len(asset_names),
+         "referenced_mesh_packages_in_original_main_pak":sum(
+            1 for a in asset_names if a["in_main_pak_uasset"] and a["in_main_pak_uexp"]),
+         "sample_mesh_package_presence":asset_names[:16],
+         "verified_sample_mesh_package":mesh_asset,
          "classes":dict(counts),"static_mesh_components":len(meshes),
          "hlod_actors":sum(x["class"]=="FortHLODSMActor" for x in actors),
          "unique_static_mesh_refs":len(refs),
