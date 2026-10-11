@@ -1,0 +1,18 @@
+name: Fortnite 5.41 authored sky and light parameter closure
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_source_sky_lighting.py
+      - .github/workflows/fortnite-541-source-sky-lighting.yml
+  workflow_dispatch:
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect SHA1 authenticated sky dome params and original sun and fog actors
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_source_sky_lighting.py
