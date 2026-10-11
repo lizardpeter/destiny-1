@@ -44,8 +44,6 @@ fn run()->Result<(),String>{
         }
     }
 
-        return Err("Expected authored foundation.umap foundation.uexp ToiletFactory.umap .uexp HedgeMaze.umap .uexp".into());
-    }
     let bytes=paths.iter().map(|p|fs::read(p).map_err(|e|e.to_string()))
         .collect::<Result<Vec<_>,_>>()?;
     let levels=poi_detail::original_poi_foundation_placements(&bytes[0],&bytes[1])?;
