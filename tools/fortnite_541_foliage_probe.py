@@ -88,6 +88,7 @@ def run():
             cls=cat.class_name(ex)
             if cls not in ("FoliageInstancedStaticMeshComponent","InstancedStaticMeshComponent",
                 "InstancedFoliageActor","LevelStreamingAlwaysLoaded","LevelStreamingDynamic",
+                "LF_Athena_POI_80x80_C",
                 "StaticMeshComponent",
                 "Athena_Tree_Large_1_C","Athena_Prop_Plant_Shrub_01_C"):
                 continue
@@ -136,7 +137,7 @@ def run():
                 "native_head":raw[used:used+160].hex(),
                 "native_last":raw[-96:].hex(),
                 "props":props})
-        o={"map":suffix,"candidates":len(rows),"objects":rows[:35]}
+        o={"map":suffix,"candidates":len(rows),"objects":rows[:40]}
         print("FORTNITE_AUTHENTIC_FOLIAGE_NATIVE_SERIAL "+json.dumps(o),flush=True)
     roots=["Athena/Environments/Landscape/Foliage/Athena_SM_WavyGrass_TopologyColor",
            "Environments/Foliage/Meshes/S_WavyGrass_01"]
