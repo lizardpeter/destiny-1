@@ -1,10 +1,11 @@
 mod uobject;
 mod properties;
 mod poi_detail;
+mod staticmesh_lod;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
-    if paths.len()!=6{
+    if paths.len()!=8{
         return Err("Expected authored foundation.umap foundation.uexp ToiletFactory.umap .uexp HedgeMaze.umap .uexp".into());
     }
     let bytes=paths.iter().map(|p|fs::read(p).map_err(|e|e.to_string()))
@@ -42,6 +43,18 @@ fn run()->Result<(),String>{
         );
         println!("FORTNITE_SOURCE_POI_WORLD_TRANSFORM actor={} mesh={} rows={:?}",
             a.source_actor,a.source_mesh_object,rows);
+    }
+    let source_mesh_head=fs::read(&paths[6]).map_err(|e|e.to_string())?;
+    let source_mesh_exp=fs::read(&paths[7]).map_err(|e|e.to_string())?;
+    let meshcat=uobject::inspect(&source_mesh_head)?;
+    let lod=staticmesh_lod::decode_original_source_mesh(
+        &meshcat,&source_mesh_head,&source_mesh_exp,"S_Cave_Outer_Middle",
+    )?;
+    println!("FORTNITE_ORIGINAL_HIGH_DETAIL_MESH_LOD0 vertices={} triangles={} sections={} uv_channels={}",
+        lod.vertices.len(),lod.indices.len()/3,lod.sections.len(),
+        lod.total_source_uv_channels);
+    if lod.vertices.len()<24||lod.indices.len()<72 {
+        return Err("authenticated original high-detail mesh source decoded incomplete".into());
     }
     println!("FORTNITE_SOURCE_FULL_DETAIL_VALIDATED foundation={} factory_direct={} hedge_direct={}",
         levels.len(),factory.static_mesh_actors.len(),hedge.static_mesh_actors.len());
