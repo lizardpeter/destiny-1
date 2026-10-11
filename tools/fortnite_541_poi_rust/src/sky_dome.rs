@@ -307,8 +307,8 @@ pub struct OriginalSkySourceMip {
     pub original_object:String,
     pub width:u32,
     pub height:u32,
-    pub original_format:crate::texture::OriginalBcFormat,
-    pub source_block_bytes:usize,
+    pub original_format:String,
+    pub source_bytes:usize,
 }
 pub fn inspect_sampled_source_mip(
     root:&Path,original_object:&str,
@@ -330,19 +330,34 @@ pub fn inspect_sampled_source_mip(
     let b=fs::read(base.with_extension("ubulk"))
         .map_err(|e|format!("original sky external top mip {package}: {e}"))?;
     let cat=uobject::inspect(&h)?;
-    let mesh=cat.exports.iter().filter(|ex|
+    let meshes=cat.exports.iter().filter(|ex|
         cat.export_class_name(ex)==Some("Texture2D") &&
         cat.names.get(ex.object_name.name_index as usize)
             .is_some_and(|name|name==object)
     ).collect::<Vec<_>>();
-    if mesh.len()!=1{
-        return Err(format!("original sky texture {original_object} has {} matching Texture2D exports",mesh.len()));
+    if meshes.len()!=1{
+        return Err(format!("original sky texture {original_object} has {} matching Texture2D exports",meshes.len()));
     }
-    let mip=crate::texture::first_mip_bc(&cat,&h,&x,&b,mesh[0])?;
+    let ex=meshes[0];
+    // The source SkyDome mixes real BC1 galaxy textures, raw BGRA8
+    // height/normal images and grayscale PF_G8 cloud-detail masks.
+    // These are DISTINCT original formats, not reinterpretations of one
+    // guessed byte stride. Admit only a strict, source-validated decoder.
+    let (w,h,format,bytes)=match crate::texture::first_mip_bc(&cat,&h,&x,&b,ex){
+        Ok(mip)=>(mip.width,mip.height,format!("{:?}",mip.format),mip.blocks.len()),
+        Err(bc_err)=>match crate::texture::first_mip_bgra8(&cat,&h,&x,&b,ex){
+            Ok(mip)=>(mip.width,mip.height,mip.format.to_string(),mip.bgra8.len()),
+            Err(rgb_err)=>match crate::texture::first_mip_g8(&cat,&h,&x,&b,ex){
+                Ok(mip)=>(mip.width,mip.height,"PF_G8".to_string(),mip.pixels.len()),
+                Err(g8_err)=>return Err(format!(
+                    "no supported original cooked source format for {original_object}: BC: {bc_err}; BGRA: {rgb_err}; G8: {g8_err}"
+                )),
+            }
+        }
+    };
     Ok(OriginalSkySourceMip{
         original_object:original_object.into(),
-        width:mip.width,height:mip.height,
-        original_format:mip.format,source_block_bytes:mip.blocks.len(),
+        width:w,height:h,original_format:format,source_bytes:bytes,
     })
 }
 
