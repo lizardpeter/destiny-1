@@ -39,14 +39,14 @@ def inspect_one(path,meta):
     parsed={}
     version,num=struct.unpack_from("<II",prefix,0)
     if version==1 and 0<num<=200000:
-        rec_size=36
+        rec_size=37
         table_end=8+num*rec_size
         if table_end<=len(prefix):
             shaders=[]
             hashes=set()
             for i in range(num):
-                h,loc,csize,usize=struct.unpack_from("<20sQII",prefix,8+i*rec_size)
-                shaders.append((loc,csize,usize))
+                h,loc,csize,usize,frequency=struct.unpack_from("<20sQIIB",prefix,8+i*rec_size)
+                shaders.append((loc,csize,usize,frequency))
                 hashes.add(h)
             first_offsets=sorted(shaders,key=lambda x:x[0])
             max_end=max(loc+csize for loc,csize,_ in shaders)
@@ -57,16 +57,20 @@ def inspect_one(path,meta):
             parsed={
                 "version":version,"index_count":num,"entry_stride":rec_size,
                 "table_end":table_end,"unique_hashes":len(hashes),
-                "zero_offsets":sum(1 for loc,_,_ in shaders if loc==0),
-                "zero_sizes":sum(1 for _,c,_ in shaders if c==0),
-                "compressed_larger_than_original":sum(1 for _,c,u in shaders if c>u),
+                "zero_offsets":sum(1 for loc,_,_,_ in shaders if loc==0),
+                "zero_sizes":sum(1 for _,c,_,_ in shaders if c==0),
+                "compressed_larger_than_original":sum(1 for _,c,u,_ in shaders if c>u),
                 "max_code_stream_end":max_end,
                 "inferred_code_start":stored-max_end,
                 "contiguous_adjacent_codes":contiguous,
+                "frequency_counts":{str(k):sum(1 for _,_,_,f in shaders if f==k) for k in sorted(set(f for _,_,_,f in shaders))},
+                "lowest_offset":min(loc for loc,_,_,_ in shaders),
+                "max_compressed_shader":max(c for _,c,_,_ in shaders),
+                "max_uncompressed_shader":max(u for _,_,u,_ in shaders),
                 "first_sorted_entries":first_offsets[:5],
                 "table_tail_hex":prefix[table_end:table_end+64].hex(),
-                "plausible_strides":len(hashes)==num and max_end<=stored and
-                    sum(1 for loc,c,u in shaders if c>0 and u>0 and loc+c<=stored)==num,
+                "plausible_strides":len(hashes)==num and max_end<=stored and all(f<=6 for _,_,_,f in shaders) and
+                    sum(1 for loc,c,u,_ in shaders if c>0 and u>0 and loc+c<=stored)==num,
             }
     out={
         "path":path,"size":stored,"entry_sha1":digest.hex(),
