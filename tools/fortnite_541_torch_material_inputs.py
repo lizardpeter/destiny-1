@@ -17,11 +17,23 @@ IDENTITIES=(
 )
 def run():
     indexes={"main":retail.load_index()}
+    # Only the retail main, s2 and s4 archives contain the already
+    # source-proven torch/material packages; avoid gratuitously reading all
+    # other multi-gigabyte PAK end indexes and transient 10 MB R2 requests.
     for archive,sha in SPLITS:
-        pak="pakchunk1-WindowsClient.pak" if archive=="chunk1" else f"pakchunk0_{archive}-WindowsClient.pak"
+        if archive not in ("s2","s4"):continue
+        pak=f"pakchunk0_{archive}-WindowsClient.pak"
         split.URL="https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/"+pak
         split.INDEX_SHA=sha
-        indexes[archive]=split.source()
+        last_error=None
+        for attempt in range(3):
+            try:
+                indexes[archive]=split.source()
+                break
+            except Exception as error:
+                last_error=error
+        else:
+            raise RuntimeError(f"authenticated {archive} source index unavailable after retries: {last_error}")
     for original in IDENTITIES:
         loc=locate(original.split("::")[0],indexes)
         if not loc:raise ValueError("original flame/bloom source UMaterial absent: "+original)
