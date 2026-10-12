@@ -44,8 +44,19 @@ def run():
             if name in ("RelativeLocation","RelativeRotation","RelativeScale3D"):
                 if kind!="StructProperty" or len(raw)!=12:raise ValueError("authored transform malformed")
                 vecs[name]=list(struct.unpack("<fff",raw))
+        overrides=[]
+        for name,kind,meta,raw in props:
+            if name!="OverrideMaterials":continue
+            if kind!="ArrayProperty" or meta!=["ObjectProperty"] or len(raw)<4:
+                raise ValueError("original torch override materials changed source type")
+            count=struct.unpack_from("<I",raw)[0]
+            if count>32 or len(raw)!=4+4*count:
+                raise ValueError("original torch override material UObject array malformed")
+            overrides=[c.path(struct.unpack_from("<i",raw,4+4*j)[0])
+                       for j in range(count)]
         templates.append({"SCS":c.path(i),"component":c.path(tmpl_ref),
             "mesh":c.path(mesh),"source_transform":vecs,
+            "override_materials":overrides,
             "tagged_properties":[z[0] for z in props]})
     if len(templates)!=2:
         raise ValueError(f"expected two source SCS child StaticMesh templates, got {templates}")
