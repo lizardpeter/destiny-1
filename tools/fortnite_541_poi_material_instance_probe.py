@@ -24,6 +24,19 @@ def run():
         split.URL="https://r2.houseofkublai.com/Fortnite/5.41/FortniteGame/Content/Paks/"+path
         split.INDEX_SHA=sha
         indexes[archive]=split.source()
+    # Verify actual source file spelling for a numbered material slot found
+    # in the Toilet Factory mesh inventory, not an invented alternate name.
+    numbered="Environments/Props/Boxes/Materials/WoodenCrates_2"
+    places=[]
+    for archive,items in indexes.items():
+        candidates=(ROOT+numbered,numbered)
+        for key in candidates:
+            if key+".uasset" in items and key+".uexp" in items:
+                places.append({"archive":archive,"source_file":key})
+    print("FORTNITE_541_NUMBERED_MATERIAL_RETAIL_LOCATOR "+json.dumps({
+        "original_material_identity":"/Game/Environments/Props/Boxes/Materials/WoodenCrates#3::WoodenCrates#3",
+        "expected_numbered_package":numbered,"authenticated_source_locations":places
+    },sort_keys=True),flush=True)
     for source in PACKAGES:
         full=ROOT+source
         found=locate("/Game/"+source+"::"+source.rsplit("/",1)[-1],indexes)
