@@ -44,12 +44,28 @@ fn terminated(c:&PackageCatalog,raw:&[u8])->Result<Vec<u8>,String>{
 pub fn source_package(source:&str)->Result<String,String>{
     let rest=source.strip_prefix("/Game/").ok_or("original material identity not /Game/")?;
     let (package,object)=rest.split_once("::").ok_or("material lacks original UObject export")?;
-    if package.is_empty()||object.is_empty()||
-       package.split('/').any(|part|part.is_empty()||part=="."||part=="..")||
-       !package.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'/'||b==b'_'||b==b'-') {
+    if object.is_empty()||object.contains('/')||object.contains('\\') {
+        return Err("original material UObject export name unsafe".into());
+    }
+    // UE4 cooked FName WoodenCrates#3 resolves to the retail package
+    // filename WoodenCrates_2, but the UObject export remains numbered.
+    // The identical filename convention applies to original mesh/Blueprint
+    // packages, and is source-verified rather than filename guessing.
+    let filename=match package.rsplit_once('#'){
+        Some((path,raw)) if !raw.is_empty()&&raw.bytes().all(|b|b.is_ascii_digit())=>{
+            let n=raw.parse::<u32>().map_err(|_|"numbered material FName overflow")?;
+            if n==0{return Err("original material FName number cannot be zero".into());}
+            format!("{path}_{}",n-1)
+        },
+        Some(_)=>return Err("original numbered material FName malformed".into()),
+        None=>package.to_owned(),
+    };
+    if filename.is_empty()||filename.len()>1024||
+       filename.split('/').any(|part|part.is_empty()||part=="."||part=="..")||
+       !filename.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'/'||b==b'_'||b==b'-') {
        return Err("original material package identity unsafe".into());
     }
-    Ok(format!("FortniteGame/Content/{package}"))
+    Ok(format!("FortniteGame/Content/{filename}"))
 }
 pub fn inspect_instance(
     header:&[u8],exports:&[u8],original:&str,
@@ -156,6 +172,14 @@ mod tests{
         ).unwrap(),"FortniteGame/Content/Athena/Materials/M_Floor");
         assert!(source_package("/Game/../../unrelated::unrelated").is_err());
         assert!(source_package("/Script/Engine::Material").is_err());
+        assert_eq!(
+            source_package("/Game/Environments/Props/Boxes/Materials/WoodenCrates#3::WoodenCrates#3").unwrap(),
+            "FortniteGame/Content/Environments/Props/Boxes/Materials/WoodenCrates_2"
+        );
+        assert!(source_package("/Game/Props/WoodenCrates#0::WoodenCrates#0").is_err());
+        assert!(source_package("/Game/Props/WoodenCrates#abc::WoodenCrates#abc").is_err());
+        assert!(source_package("/Game/Props/WoodenCrates#4294967296::WoodenCrates").is_err());
+
     }
     #[test]fn explicit_source_diffuse_contract_only(){
         let m=OriginalMaterialInstance{
