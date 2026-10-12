@@ -6,7 +6,7 @@ Flame.OverrideMaterials[0] -> MI_Fire_Campfire_Mesh_Torch
 Bloom mesh.StaticMaterials -> M_FakeVolumeGlow
 """
 import json,collections,struct
-from fortnite_541_all_poi_coverage import SPLITS
+from fortnite_541_all_poi_coverage import SPLITS,checked_package,ROOT
 from fortnite_541_factory_native_mesh_batch import locate,read_source
 from fortnite_541_material_expression_probe import Catalog
 import fortnite_541_r2_material_probe as retail
@@ -35,9 +35,18 @@ def run():
         else:
             raise RuntimeError(f"authenticated {archive} source index unavailable after retries: {last_error}")
     for original in IDENTITIES:
-        loc=locate(original.split("::")[0],indexes)
-        if not loc:raise ValueError("original flame/bloom source UMaterial absent: "+original)
-        archive,base=loc
+        source_header=checked_package(original.split("::")[0],".uasset")
+        if source_header is None:raise ValueError("source material package invalid: "+original)
+        absbase=source_header[:-7]
+        found=[]
+        for archive,records in indexes.items():
+            candidates=(absbase,) if archive=="main" else (absbase.removeprefix(ROOT),absbase)
+            for candidate in candidates:
+                if candidate+".uasset" in records and candidate+".uexp" in records:
+                    found.append((archive,candidate))
+        if len(found)!=1:
+            raise ValueError(f"original flame/bloom material expected one source PAK, got {found}: {original}")
+        archive,base=found[0]
         c=Catalog(read_source(archive,base+".uasset",indexes),
                   read_source(archive,base+".uexp",indexes))
         census=collections.Counter(c.class_name(e) for e in c.exports)
