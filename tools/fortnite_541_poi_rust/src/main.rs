@@ -10,6 +10,7 @@ mod poi_extract;
 mod poi_blueprint;
 mod poi_lighting;
 mod poi_components;
+mod material_surface;
 mod sky_dome;
 mod cooked_expression_graph;
 mod texture;
@@ -89,6 +90,36 @@ fn run()->Result<(),String>{
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
+        return Ok(());
+    }
+    if paths.len()==1 && paths[0]=="--audit-original-bloom-shader" {
+        let path="/tmp/fortnite541_original_glow_material";
+        let h=fs::read(format!("{path}.uasset")).map_err(|e|e.to_string())?;
+        let x=fs::read(format!("{path}.uexp")).map_err(|e|e.to_string())?;
+        let shader=material_surface::inspect_original_cooked_material(
+            &h,&x,
+            "/Game/Packages/Fortress_Transylvania/Test_Assets/Materials/M_FakeVolumeGlow::M_FakeVolumeGlow"
+        )?;
+        if shader.blend_mode!="BLEND_Translucent"||
+            shader.shading_model!="MSM_Unlit"||
+            !shader.double_sided||
+            shader.original_emissive_expression.as_deref()!=
+                Some("MaterialExpressionVectorParameter#2")||
+            shader.world_position_offset_expression.as_deref()!=
+                Some("MaterialExpressionAdd#1"){
+            return Err(format!("source M_FakeVolumeGlow semantic roots changed: {shader:?}"));
+        }
+        let rgba=shader.emissive_linear_rgba
+            .ok_or("authenticated original M_FakeVolumeGlow direct surviving emissive literal absent")?;
+        let expected=[5.0,1.663336,0.45,0.035];
+        for i in 0..4{
+            if (rgba[i]-expected[i]).abs()>0.0001{
+                return Err(format!("original bloom HDR emissive parameter changed: {rgba:?}"));
+            }
+        }
+        println!("FORTNITE_541_AUTHENTIC_NATIVE_BLOOM_SHADER source_blend={:?} shading={:?} two_sided={} source_emissive_rgba={rgba:?} retained_root={:?} unresolved_cooked_out_world_offset={:?}",
+            shader.blend_mode,shader.shading_model,shader.double_sided,
+            shader.original_emissive_expression,shader.world_position_offset_expression);
         return Ok(());
     }
     if paths.len()==1 && paths[0]=="--audit-torch-child-components" {
