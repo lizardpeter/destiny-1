@@ -7,10 +7,28 @@ mod pak;
 mod poi_extract;
 mod poi_blueprint;
 mod sky_dome;
+mod cooked_expression_graph;
 mod texture;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
+    if paths.len()==1 && paths[0]=="--audit-sky-links" {
+        let root=std::path::Path::new("/tmp/fortnite541_source_sky");
+        let master=sky_dome::inspect_sky_master(root)?
+            .ok_or("original retail M_SkyDome shader master not staged")?;
+        if master.material_expression_count!=98 ||
+            master.named_expression_links!=33 ||
+            master.surviving_expression_links!=4 ||
+            master.stripped_expression_links!=29 ||
+            master.source_emissive_expression.as_deref()!=Some("MaterialExpressionMultiply#2") {
+            return Err(format!("unexpected retail SkyDome link counts {master:?}"));
+        }
+        println!("FORTNITE_541_NATIVE_COOKED_SKY_TOPOLOGY material_expressions={} expression_links={} connected_original={} editor_stripped={} emissive_producer={:?} absent_names={:?}",
+            master.material_expression_count,master.named_expression_links,
+            master.surviving_expression_links,master.stripped_expression_links,
+            master.source_emissive_expression,master.unresolved_source_expressions);
+        return Ok(());
+    }
     if paths.len()==1 && paths[0]=="--audit-sky" {
         let root=std::path::Path::new("/tmp/fortnite541_source_sky");
         let source=sky_dome::from_source_root(root)?
@@ -35,11 +53,19 @@ fn run()->Result<(),String>{
         if master.material_expression_count!=98 ||
             master.texture_sample_count!=8 ||
             master.source_texture_objects.len()!=5 ||
+            master.named_expression_links!=33 ||
+            master.surviving_expression_links!=4 ||
+            master.stripped_expression_links!=29 ||
+            master.source_emissive_expression.as_deref()!=Some("MaterialExpressionMultiply#2") ||
             !master.source_collection_parameters.iter().any(|n|
                 n=="SunAndMoonModelWorldPosition"
             ){
             return Err(format!("retail master graph changed: {master:?}"));
         }
+        println!("FORTNITE_AUTHENTIC_COOKED_SKY_SHADER_LINKS preserved={} resolved={} editor_stripped={} material_emissive={:?} absent_source_nodes={:?}",
+            master.named_expression_links,master.surviving_expression_links,
+            master.stripped_expression_links,master.source_emissive_expression,
+            master.unresolved_source_expressions);
         let mut decoded=0usize;
         for tex in &master.source_texture_objects {
             match sky_dome::inspect_sampled_source_mip(root,tex){

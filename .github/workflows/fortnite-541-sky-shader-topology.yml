@@ -1,0 +1,35 @@
+name: Fortnite 5.41 SkyDome original shader topology
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_sky_shader_topology.py
+      - tools/fortnite_541_sky_shader_hash_probe.py
+      - tools/fortnite_541_sky_retail_dxbc_frontier.py
+      - .github/workflows/fortnite-541-sky-shader-topology.yml
+      - 'tools/fortnite_541_poi_rust/src/cooked_expression_graph.rs'
+      - 'tools/fortnite_541_poi_rust/src/sky_dome.rs'
+      - 'tools/fortnite_541_poi_rust/src/main.rs'
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate and map exact original UE4 sky material shader links
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_sky_shader_topology.py
+      - name: Cross-check original SkyDome with authenticated compiled SM5 code hashes
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_sky_shader_hash_probe.py
+      - name: Decode 10 actual retail SkyDome compiled DXBC programs and stage resource ABI
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_sky_retail_dxbc_frontier.py
+      - name: Test native source cooked FExpressionInput name decoder
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Validate original source SkyDome emissive and 33 real cooked links
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-sky-links

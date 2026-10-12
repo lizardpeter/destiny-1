@@ -236,6 +236,15 @@ pub struct OriginalSkyMasterGraph{
     pub source_texture_objects:Vec<String>,
     pub material_functions:Vec<String>,
     pub source_collection_parameters:Vec<String>,
+    /// Actual authored links encoded by cooked ExpressionName FNames.
+    pub named_expression_links:usize,
+    pub surviving_expression_links:usize,
+    pub stripped_expression_links:usize,
+    /// Original sky emissive root requires this shader expression.
+    pub source_emissive_expression:Option<String>,
+    /// Authored shader nodes stripped from the cooked export table.
+    /// Their compiler bytecode, not fake nodes, is the correct next frontier.
+    pub unresolved_source_expressions:Vec<String>,
 }
 pub fn inspect_sky_master(root:&Path)->Result<Option<OriginalSkyMasterGraph>,String>{
     let base=root.join(PREFIX).join("Master/M_SkyDome");
@@ -248,6 +257,11 @@ pub fn inspect_sky_master(root:&Path)->Result<Option<OriginalSkyMasterGraph>,Str
     let h=fs::read(&header).map_err(|e|format!("original SkyDome master header: {e}"))?;
     let x=fs::read(&exports).map_err(|e|format!("original SkyDome master exports: {e}"))?;
     let cat=uobject::inspect(&h)?;
+    let topology=crate::cooked_expression_graph::
+        inspect_cooked_material_topology(&cat,&h,&x)?;
+    let source_emissive_expression=topology.links.iter()
+        .find(|p|p.consumer=="M_SkyDome" && p.source_port=="EmissiveColor")
+        .map(|p|p.target_expression_name.clone());
     let mut material_roots=0usize;
     let mut expressions=0usize;
     let mut samples=0usize;
@@ -296,6 +310,11 @@ pub fn inspect_sky_master(root:&Path)->Result<Option<OriginalSkyMasterGraph>,Str
         source_texture_objects:textures.into_iter().collect(),
         material_functions:functions.into_iter().collect(),
         source_collection_parameters:collections.into_iter().collect(),
+        named_expression_links:topology.links.len(),
+        surviving_expression_links:topology.connected_links(),
+        stripped_expression_links:topology.stripped_links(),
+        source_emissive_expression,
+        unresolved_source_expressions:topology.absent_expression_targets,
     }))
 }
 
