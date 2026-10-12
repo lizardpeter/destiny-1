@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Retail-authenticated Athena 5.41 material/weight layout parity frontier.
+
+Inspect original authored LandscapeLayerCoords, TextureCoordinate and
+TextureSample bindings and original landscape paint layer allocations.
+Source values, NOT a chosen replacement texture or arbitrary UV multiplier.
+"""
+import json,struct,collections
+from fortnite_541_material_expression_probe import audit_one,audit_landscape_paint_layers,audit_texture_mip,Catalog
+import fortnite_541_r2_material_probe as retail
+
+SOURCES=[
+ "/Environments/Landscape/Material/M_Athena_Terrain_Master",
+ "/Environments/Landscape/Material/M_Athena_Terrain_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Grass_01",
+ "/Environments/Landscape/MaterialFunctions/MF_Landscape_GrassDistanceBlend",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Rock_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Forest_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Gravel_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Mud_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Road_01",
+ "/Environments/Landscape/MaterialFunctions/Arid/MF_Athena_Arid_Sand",
+ "/Environments/Landscape/MaterialFunctions/MF_FarmGrass_Colors",
+ "/Environments/Landscape/MaterialFunctions/MF_LawnGrassColoration",
+]
+def compact(node):
+    attrs=node.get("authored_properties",[])
+    interesting=("MappingScale","MappingRotation","MappingPanU","MappingPanV",
+        "CoordinateIndex","UTiling","VTiling","ConstCoordinate","Texture",
+        "ParameterName","LayerName","Layer","TextureObject",
+        "BlendType","Layers","TextureCoordinate")
+    return {"class":node["type"],"object":node["object"],
+      "references":node.get("references",[]),
+      "input_links":node.get("inputs",[]),
+      "authored":[p for p in attrs if p["name"] in interesting]}
+def main():
+    idx=retail.load_index()
+    layer_totals=collections.Counter()
+    for section in range(6):
+        data=audit_landscape_paint_layers(section,idx)
+        layer_totals.update(data["layer_info_allocation_counts"])
+        print("ATHENA_541_VERIFIED_PAINT_SECTION "+
+              json.dumps(data,sort_keys=True),flush=True)
+    print("ATHENA_541_VERIFIED_PAINT_LAYERS "+json.dumps(
+         layer_totals,sort_keys=True),flush=True)
+    original="FortniteGame/Content/Athena/Environments/Landscape/Material/M_Athena_Terrain_Master"
+    c=Catalog(retail.source_payload(idx[original+".uasset"]),
+              retail.source_payload(idx[original+".uexp"]))
+    source_uv=[]
+    for i,ex in enumerate(c.exports,1):
+        cls=c.class_name(ex)
+        if cls not in ("MaterialExpressionTextureSampleParameter2D","MaterialExpressionLandscapeLayerCoords","MaterialExpressionTextureCoordinate"):
+            continue
+        fields,_=c.props(c.export_data(ex))
+        record=[]
+        for name,kind,meta,payload in fields:
+            if name not in ("ParameterName","Coordinates","Texture","MappingScale","MappingRotation","MappingPanU","MappingPanV","CoordinateIndex","UTiling","VTiling"):
+                continue
+            value=None
+            if kind=="StructProperty" and meta==["ExpressionInput"] and len(payload)==40:
+                ref=struct.unpack_from("<i",payload)[0]
+                value={"ref":ref,"source":c.path(ref),"expr_fname":c.fname(payload[32:40]),"raw40":payload.hex()}
+            elif kind=="NameProperty" and len(payload)==8:value=c.fname(payload)
+            elif kind=="FloatProperty" and len(payload)==4:value=struct.unpack("<f",payload)[0]
+            elif kind=="ObjectProperty" and len(payload)==4:value=c.path(struct.unpack("<i",payload)[0])
+            elif kind=="IntProperty" and len(payload)==4:value=struct.unpack("<i",payload)[0]
+            record.append({"field":name,"type":kind,"value":value})
+        source_uv.append({"source":c.value(i),"class":cls,"tagged":record})
+    print("ATHENA_541_AUTHENTIC_BIOME_SAMPLER_UV_CONNECTIONS "+
+        json.dumps(source_uv,sort_keys=True),flush=True)
+    for i,ex in enumerate(c.exports,1):
+        if c.class_name(ex)!="MaterialExpressionLandscapeLayerBlend":continue
+        props,_=c.props(c.export_data(ex))
+        for prop,typ,meta,raw in props:
+            if prop!="Layers":continue
+            count=struct.unpack_from("<I",raw)[0]
+            if typ!="ArrayProperty" or len(raw)!=53+379*count:raise ValueError("source layer array stride invalid")
+            values=[]
+            for j in range(count):
+                record=raw[53+379*j:53+379*(j+1)]
+                fields,used=c.props(record)
+                if used!=379:raise ValueError("source landscape layer record truncated")
+                get=lambda key:next(v for n,k,m,v in fields if n==key)
+                values.append({"layer":c.fname(get("LayerName")),"blend":c.fname(get("BlendType"))})
+            print("ATHENA_541_AUTHENTIC_LAYER_BLEND_TYPES "+json.dumps({"node":c.value(i),"layers":values},sort_keys=True),flush=True)
+    targets={
+      "Mud":"/Environments/Landscape/Textures/Arid/T_Athena_Arid_MudVariant_01",
+      "Gravel":"/Packages/DS_Fortnight/WhiteRockCustom_D",
+      "Road":"/Packages/DS_Fortnight/SM/Textures/T_Street_Road_D",
+      "Arid":"/Environments/Sets/Arid/Textures/T_desert_sand_base_C",
+    }
+    for layer,name in targets.items():
+        found=[(path,e) for path,e in idx.items() if path.endswith(name+".uasset") or path.endswith(name+".uexp") or path.endswith(name+".ubulk")]
+        print("ATHENA_541_AUTHENTIC_PAINT_SURFACE_TEXTURE "+json.dumps({"paint_layer":layer,"sample_source":name,"original_files":[{"name":p,"bytes":e[2],"method":e[3],"encrypted":bool(e[5])} for p,e in found]},sort_keys=True),flush=True)
+    mud_path="/Environments/Landscape/Textures/Arid/T_Athena_Arid_MudVariant_01"
+    proof=audit_texture_mip(mud_path,idx)
+    if not proof["source_mip_bounds_verified"]:
+        raise ValueError("original Mud diffuse source top mip is not SHA1-authenticated/valid")
+    print("ATHENA_541_REAL_MUD_SOURCE_TOP_MIP "+json.dumps(proof,sort_keys=True),flush=True)
+    orig=audit_one("/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Mud_01",idx)
+    matches=[node for node in orig["texture_samples"]
+        if any(p["name"]=="ParameterName" and p["value"]=="Mud"
+               for p in node["parameters"])
+        and any(v["name"]=="Texture" and v["path"]=="/Game/Athena"+mud_path+"::T_Athena_Arid_MudVariant_01"
+                for v in node["references"])]
+    if len(matches)!=1:
+        raise ValueError("source Mud MaterialExpressionTextureSampleParameter2D/Texture mismatch")
+    print("ATHENA_541_REAL_MUD_SHADER_BINDING "+json.dumps({
+        "source_function":orig["source_package_suffix"],"source_nodes":len(matches),
+        "source_texel_texture":matches[0]["references"]},sort_keys=True),flush=True)
+    for base in SOURCES:
+        graph=audit_one(base,idx)
+        nodes=graph["graph_links"]+graph["texture_samples"]
+        found=[compact(n) for n in nodes if any(
+            x in n["type"] for x in ("LandscapeLayer","TextureCoordinate",
+                "TextureSample","MaterialFunctionCall"))]
+        print("ATHENA_541_VERIFIED_TERRAIN_SOURCE_NODES "+json.dumps({
+          "source":base,"source_expression_count":graph["expression_count"],
+          "classes":graph["class_counts"],"nodes":found[:200],
+          "unresolved":graph["unresolved"][:12]
+        },sort_keys=True),flush=True)
+    print("ATHENA_541_TERRAIN_SOURCE_PROOF_COMPLETE "+json.dumps({
+        "material_sources":len(SOURCES),"paint_layers":dict(layer_totals)
+    },sort_keys=True),flush=True)
+if __name__=="__main__":main()
