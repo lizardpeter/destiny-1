@@ -9,6 +9,7 @@ mod pak;
 mod poi_extract;
 mod poi_blueprint;
 mod poi_lighting;
+mod poi_components;
 mod sky_dome;
 mod cooked_expression_graph;
 mod texture;
@@ -88,6 +89,57 @@ fn run()->Result<(),String>{
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
+        return Ok(());
+    }
+    if paths.len()==1 && paths[0]=="--audit-torch-child-components" {
+        let manifest=fs::read_to_string("/tmp/fortnite541_split_only_cdos.tsv")
+            .map_err(|e|e.to_string())?;
+        let entry=manifest.lines().find(|line|line.contains("BP_TRV_ALight_Torch_02"))
+            .ok_or("original torch CDO absent from source manifest")?;
+        let cols=entry.split('\t').collect::<Vec<_>>();
+        if cols.len()!=3{return Err("source torch class manifest malformed".into());}
+        let h=fs::read(format!("{}.uasset",cols[2])).map_err(|e|e.to_string())?;
+        let x=fs::read(format!("{}.uexp",cols[2])).map_err(|e|e.to_string())?;
+        let child=poi_components::original_blueprint_child_meshes(&h,&x,cols[0])?;
+        if child.len()!=2{return Err(format!("torch source child mesh count {}, expected 2",child.len()));}
+        let flame=child.iter().find(|c|c.source_component.ends_with("::Flame_GEN_VARIABLE"))
+            .ok_or("retail authored flame component absent")?;
+        let bloom=child.iter().find(|c|c.source_component.ends_with("::BloomPlane_GEN_VARIABLE"))
+            .ok_or("retail authored bloom component absent")?;
+        if flame.mesh_source_path!="/Game/Effects/Fort_Effects/Mesh/Husk/SM_HuskLobberProjFlame::SM_HuskLobberProjFlame" ||
+           bloom.mesh_source_path!="/Game/Packages/Fortress_Transylvania/Test_Assets/Meshes/SM_TRV_CandleBloom::SM_TRV_CandleBloom" ||
+           flame.override_materials!=vec![Some("/Game/Athena/Items/Traps/Campfire/Effects/MI_Fire_Campfire_Mesh_Torch::MI_Fire_Campfire_Mesh_Torch".into())]{
+            return Err(format!("source torch mesh/override identities differ: {child:?}"));
+        }
+        println!("FORTNITE_541_SOURCE_TORCH_CHILD_COMPONENTS {:?}",child);
+        let source=fs::read_to_string("/tmp/fortnite541_torch_child_meshes.tsv")
+            .map_err(|e|e.to_string())?;
+        let mut decoded=0usize;
+        let mut triangle_count=0usize;
+        for line in source.lines(){
+            let fields=line.split('\t').collect::<Vec<_>>();
+            if fields.len()!=3{return Err("source child LOD manifest row malformed".into());}
+            let identity=fields[0];
+            let h=fs::read(format!("{}.uasset",fields[2])).map_err(|e|e.to_string())?;
+            let x=fs::read(format!("{}.uexp",fields[2])).map_err(|e|e.to_string())?;
+            let cat=uobject::inspect(&h)?;
+            let object=identity.rsplit("::").next().ok_or("original mesh name absent")?;
+            let lod=staticmesh_lod::decode_original_source_mesh(&cat,&h,&x,object)?;
+            let slots=static_material::from_mesh_export(&cat,&h,&x,object)?;
+            for section in &lod.sections{
+                if section.material_slot as usize>=slots.len(){
+                    return Err(format!("source child {identity} material index not authored"));
+                }
+            }
+            let triangles=lod.sections.iter().map(|s|s.triangle_count as usize).sum::<usize>();
+            println!("FORTNITE_541_SOURCE_TORCH_CHILD_LOD identity={identity:?} vertices={} triangles={triangles} sections={} slot_sources={:?}",
+                lod.vertices.len(),lod.sections.len(),slots);
+            if triangles==0{return Err("original flame/bloom LOD has no triangles".into());}
+            triangle_count+=triangles;
+            decoded+=1;
+        }
+        println!("FORTNITE_541_SOURCE_TORCH_CHILD_SUMMARY decoded_meshes={decoded} source_triangles_per_torch={triangle_count} placed_actor_components={}",decoded*18);
+        if decoded!=2{return Err("original child native mesh LOD coverage incomplete".into());}
         return Ok(());
     }
     if paths.len()==1 && paths[0]=="--audit-split-poi-lights" {
