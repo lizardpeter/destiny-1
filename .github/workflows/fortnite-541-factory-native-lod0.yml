@@ -5,6 +5,7 @@ on:
     paths:
       - tools/fortnite_541_factory_native_mesh_batch.py
       - tools/fortnite_541_poi_material_slots_probe.py
+      - tools/fortnite_541_poi_rust/src/static_material.rs
       - tools/fortnite_541_poi_rust/src/main.rs
       - .github/workflows/fortnite-541-factory-native-lod0.yml
   workflow_dispatch:
@@ -34,3 +35,5 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python3 tools/fortnite_541_poi_material_slots_probe.py
+      - name: Decode native authored StaticMaterials and exact material section references
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-materials /tmp/fortnite541_factory_lod0.tsv
