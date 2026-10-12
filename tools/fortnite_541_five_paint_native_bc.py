@@ -41,7 +41,14 @@ def one(index,paint,original):
            and count==stored==expect and
            0<=original_bulk_offset and
            original_bulk_offset+expect<=len(payloads[".ubulk"]))
-    if not valid:raise ValueError(f"source {paint} BC image byte bounds invalid")
+    if not valid:raise ValueError(f"source {paint} BC image byte bounds invalid: "+json.dumps({
+        "header_dimensions": [width,height,depth],"mip_dimensions":[mw,mh,md],
+        "pixel_format":kind,"flags":hex(flags),"stored_bytes":stored,
+        "bulk_count":count,"expected_bc_bytes":expect,
+        "original_bulk_offset":original_bulk_offset,
+        "ubulk_bytes":len(payloads[".ubulk"]),
+        "signed_source_bulk_offset":signed
+    },sort_keys=True))
     return {"paint":paint,"source_texture":original,"width":width,
         "height":height,"pixel_format":kind,"first_mip_bytes":expect,
         "original_BC_top_mip_verified":valid,"source_bulk_bytes":len(payloads[".ubulk"])}
