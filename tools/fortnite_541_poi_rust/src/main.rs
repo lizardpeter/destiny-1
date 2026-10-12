@@ -108,6 +108,29 @@ fn run()->Result<(),String>{
             if param.texture_object!=expected {
                 return Err(format!("original {identity} {parameter} source identity differs: {}",param.texture_object));
             }
+            let package=material_instance::source_package(expected)?;
+            let base=std::path::Path::new(BASE).join(package);
+            let h=fs::read(base.with_extension("uasset")).map_err(|e|e.to_string())?;
+            let x=fs::read(base.with_extension("uexp")).map_err(|e|e.to_string())?;
+            let b=fs::read(base.with_extension("ubulk")).map_err(|e|e.to_string())?;
+            let catalog=uobject::inspect(&h)?;
+            let export_name=expected.rsplit("::").next().unwrap_or("");
+            let mut matching=catalog.exports.iter().enumerate().filter(|(i,ex)|
+                catalog.export_class_name(ex)==Some("Texture2D") &&
+                catalog.source_object_path((i+1) as i32).ok()
+                    .and_then(|p|p.rsplit("::").next().map(str::to_owned))
+                    .as_deref()==Some(export_name));
+            let (_,ex)=matching.next().ok_or("original retail diffuse source UTexture2D absent")?;
+            if matching.next().is_some(){return Err("duplicate original diffuse UObject".into());}
+            let (width,height,format,len)=
+                match texture::first_mip_bc(&catalog,&h,&x,&b,ex){
+                    Ok(m)=>(m.width,m.height,format!("{:?}",m.format),m.blocks.len()),
+                    Err(bc_error)=>match texture::first_mip_bgra8(&catalog,&h,&x,&b,ex){
+                        Ok(m)=>(m.width,m.height,"BGRA8".to_owned(),m.bgra8.len()),
+                        Err(raw_error)=>return Err(format!("original retail diffuse cannot decode: BC {bc_error}; BGRA {raw_error}"))
+                    }
+                };
+            println!("FORTNITE_NATIVE_SOURCE_POI_DIFFUSE identity={expected:?} width={width} height={height} format={format} source_mip_bytes={len}");
             println!("FORTNITE_SOURCE_NATIVE_MATERIAL_INSTANCE name={identity:?} parent={:?} source_texture_parameters={:?} selected_diffuse={expected:?}",
                 original.parent,original.textures);
         }
