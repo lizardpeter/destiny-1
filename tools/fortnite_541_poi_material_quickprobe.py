@@ -32,8 +32,26 @@ def run():
         tags=[]
         for name,kind,meta,raw in fields:
             if name in ("StaticMaterials","Materials","MaterialSlotName","SectionInfoMap"):
-                tags.append({"name":name,"kind":kind,"meta":meta,"bytes":len(raw),
-                    "head":raw[:110].hex()})
+                record={"name":name,"kind":kind,"meta":meta,"bytes":len(raw),
+                    "head":raw[:110].hex()}
+                if name=="StaticMaterials":
+                    count=struct.unpack_from("<I",raw)[0]
+                    # UE source array + nested StructProperty wrapper with
+                    # a source-specific serialized element structure.
+                    marker=struct.pack("<II",c.names.index("None"),0)
+                    entries,used=c.props(raw[4:]+marker)
+                    record["source_array_count"]=count
+                    record["source_inner_tags"]=[{"name":n,"kind":k,"meta":md,"len":len(v),"head":v[:64].hex()}
+                                                for n,k,md,v in entries]
+                    if entries and entries[0][1]=="StructProperty":
+                        inner=entries[0][3]
+                        nested,nused=c.props(inner+marker)
+                        record["slot_properties"]=[{"name":n,"kind":k,"meta":md,
+                            "len":len(v),
+                            "reference":c.path(struct.unpack("<i",v)[0]) if k=="ObjectProperty" and len(v)==4 else None,
+                            "value_name":c.fname(v) if k=="NameProperty" and len(v)==8 else None}
+                            for n,k,md,v in nested]
+                tags.append(record)
         found.append({"mesh":identity,"tags":tags,
             "all_tags":[f[0] for f in fields],
             "imports":[c.path(-i) for i in range(1,min(len(c.imports),60)+1)
