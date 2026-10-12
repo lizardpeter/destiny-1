@@ -97,6 +97,21 @@ static uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, int32_t* 
 static bool transport_started() { return true; }
 static bool transport_failed() { return false; }
 
+// ---- job steal outside the job system (eboot+0xFAAC0)
+// Threads that wait for the GPU (Graphics Heartbeat's frame-counter wait at 0x7DD1CA) spin
+// through 0xFB860, which tries to run a pending job via 0xFAAC0. That dereferences the
+// calling thread's job context (TLS slot read by 0xFC520), which only job-system threads
+// have (set by 0xFAD30). On a console the GPU is usually done before the wait starts; with
+// a slower GPU the heartbeat crashes there (shadPS4 users see the same 0xFAAF4 fault).
+// Without a context, report "no job run" so the caller sleeps and polls again.
+using StealFn = bool (*)();
+static StealFn g_steal_orig = nullptr;
+static void* (*g_job_context)() = nullptr;
+static bool steal_guard() {
+    if (!g_job_context()) return false;
+    return g_steal_orig();
+}
+
 // ---- engine logging (eboot+0xE4D70 gate, eboot+0xE4AA0 emit)
 // Release builds keep the log calls but the per-channel threshold table is absent, so every
 // message is dropped. With D1_GAME_LOG set, the gate always passes and the emit prints the
@@ -113,6 +128,9 @@ static void game_log_emit(uint32_t, const char* text) {
 
 void install_game_hooks() {
     const Module& exe = rt().modules[0];
+    g_job_context = reinterpret_cast<void* (*)()>(exe.base + 0xFC520);
+    g_steal_orig = reinterpret_cast<StealFn>(hook_function(exe.base + 0xFAAC0, reinterpret_cast<const void*>(&steal_guard)));
+    if (!g_steal_orig) log("hooks: job-steal guard FAILED");
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "prereq")) {
         g_prereq_orig = reinterpret_cast<PrereqFn>(hook_function(exe.base + 0x792ED0, reinterpret_cast<const void*>(&prereq_bypass)));
         log("hooks: bootflow prerequisite bypass %s", g_prereq_orig ? "on" : "FAILED");

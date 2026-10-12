@@ -38,6 +38,13 @@ inline int32_t sce_err(int posix_errno) { return int32_t(0x80020000u | uint32_t(
 // FreeBSD errno values the game sees (Linux values differ for some).
 int to_ps4_errno(int linux_errno);
 
+// GPU hooks (hle_gpu.cpp): guest memory the GPU can see, and write faults on pages it caches.
+void gpu_init();
+bool gpu_active();  // the real renderer is running
+void gpu_on_map(uint64_t addr, uint64_t size);
+void gpu_on_unmap(uint64_t addr, uint64_t size);
+bool gpu_on_fault(void* ucontext, void* addr);
+
 // Guest paths (/app0/..., /temp0/...) -> host paths.
 std::string host_path(const char* guest);
 

@@ -18,7 +18,14 @@
 #include <vector>
 
 #include "hle.h"
+#include "render_bridge.h"
 #include "runtime.h"
+
+#ifdef D1_RENDERER_SHADPS4
+static constexpr bool kHaveRenderer = true;
+#else
+static constexpr bool kHaveRenderer = false;
+#endif
 
 namespace d1 {
 
@@ -137,6 +144,12 @@ static int32_t sceKernelAddGpuExceptionEvent(Equeue* q, void* udata) {
 }
 HLE("sceKernelAddGpuExceptionEvent", sceKernelAddGpuExceptionEvent)
 
+// True once the real renderer (native/renderer/) is running; otherwise the null GPU below
+// handles command buffers.
+static bool g_gpu_real = false;
+static bool gpu_real() { return kHaveRenderer && g_gpu_real; }
+bool gpu_active() { return gpu_real(); }
+
 // ------------------------------------------------------------------ video out
 struct FlipStatus {
     uint64_t count, process_time, tsc;
@@ -145,12 +158,7 @@ struct FlipStatus {
     int32_t gc_queue_num, flip_pending_num, current_buffer;
     uint32_t reserved1;
 };
-struct BufferAttribute {
-    uint32_t pixel_format, tiling_mode, aspect_ratio, width, height, pitch_in_pixel;
-    uint64_t option;
-    uint32_t reserved0;
-    uint64_t reserved1;
-};
+using BufferAttribute = render::VoAttr;  // SceVideoOutBufferAttribute, 40 bytes
 static struct VideoOutPort {
     std::mutex m;
     FlipStatus status{0, 0, 0, -1, 0, 0, 0, 0, -1, 0};
@@ -170,8 +178,7 @@ static int32_t sceVideoOutClose(int32_t) { return SCE_OK; }
 HLE("sceVideoOutClose", sceVideoOutClose)
 static void sceVideoOutSetBufferAttribute(BufferAttribute* a, uint32_t fmt, uint32_t tiling, uint32_t aspect,
                                           uint32_t w, uint32_t h, uint32_t pitch) {
-    std::memset(a, 0, sizeof *a);
-    *a = {fmt, tiling, aspect, w, h, pitch, 0, 0, 0};
+    *a = {fmt, tiling, int32_t(aspect), w, h, pitch, 0, 0, 0};
 }
 HLE("sceVideoOutSetBufferAttribute", sceVideoOutSetBufferAttribute)
 static int32_t sceVideoOutRegisterBuffers(int32_t, int32_t start, void* const* addrs, int32_t num,
@@ -180,6 +187,7 @@ static int32_t sceVideoOutRegisterBuffers(int32_t, int32_t start, void* const* a
     for (int i = 0; i < num && start + i < 16; ++i) g_vo.buffers[start + i] = addrs[i];
     if (attr) g_vo.attr = *attr;
     g_vo.registered = std::max(g_vo.registered, start + num);
+    if (gpu_real() && attr) render::register_buffers(start, addrs, num, *attr);
     log("video out: %d buffers registered, %ux%u pitch %u format %#x tiling %u", num, g_vo.attr.width,
         g_vo.attr.height, g_vo.attr.pitch_in_pixel, g_vo.attr.pixel_format, g_vo.attr.tiling_mode);
     return 0;  // buffer set index
@@ -193,7 +201,10 @@ static int32_t sceVideoOutGetFlipStatus(int32_t, FlipStatus* s) {
     return SCE_OK;
 }
 HLE("sceVideoOutGetFlipStatus", sceVideoOutGetFlipStatus)
-static int32_t sceVideoOutIsFlipPending(int32_t) { return 0; }
+static int32_t sceVideoOutIsFlipPending(int32_t) {
+    std::lock_guard lk(g_vo.m);
+    return g_vo.status.flip_pending_num;
+}
 HLE("sceVideoOutIsFlipPending", sceVideoOutIsFlipPending)
 static int32_t sceVideoOutGetBufferLabelAddress(int32_t, uintptr_t* out) {
     *out = reinterpret_cast<uintptr_t>(g_vo.labels);
@@ -257,6 +268,8 @@ static void do_flip(int32_t index, int64_t arg) {
         s.tsc = __rdtsc();
         s.flip_arg = arg;
         s.current_buffer = index;
+        if (s.flip_pending_num > 0) --s.flip_pending_num;
+        if (s.gc_queue_num > 0) --s.gc_queue_num;
         if (g_vo.prev_index >= 0) g_vo.labels[g_vo.prev_index] = 0;
         g_vo.prev_index = index;
         qs = g_vo.flip_eqs;
@@ -266,6 +279,11 @@ static void do_flip(int32_t index, int64_t arg) {
     if (n == 1 || n == 10 || n == 100 || n % 1000 == 0) log("flip #%lu (buffer %d, arg %ld)", n, index, arg);
 }
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {
+    if (gpu_real()) {
+        { std::lock_guard lk(g_vo.m); ++g_vo.status.flip_pending_num; }
+        render::cpu_flip(index, arg);
+        return SCE_OK;
+    }
     do_flip(index, arg);
     return SCE_OK;
 }
@@ -366,19 +384,34 @@ static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb
 }
 
 static int32_t sceGnmSubmitCommandBuffers(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes,
-                                          uint32_t* const*, const uint32_t*) {
+                                          uint32_t* const* ccbs, const uint32_t* ccb_sizes) {
+    if (gpu_real()) {
+        render::submit(count, dcbs, dcb_sizes, ccbs, ccb_sizes);
+        return SCE_OK;
+    }
     return submit(count, dcbs, dcb_sizes);
 }
 HLE("sceGnmSubmitCommandBuffers", sceGnmSubmitCommandBuffers)
 static int32_t sceGnmSubmitAndFlipCommandBuffers(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes,
-                                                 uint32_t* const*, const uint32_t*, uint32_t, uint32_t buf,
-                                                 uint32_t mode, int64_t arg) {
+                                                 uint32_t* const* ccbs, const uint32_t* ccb_sizes, uint32_t,
+                                                 uint32_t buf, uint32_t mode, int64_t arg) {
+    if (gpu_real()) {
+        {
+            std::lock_guard lk(g_vo.m);
+            ++g_vo.status.flip_pending_num;
+            ++g_vo.status.gc_queue_num;
+        }
+        return render::submit_and_flip(count, dcbs, dcb_sizes, ccbs, ccb_sizes, buf, arg);
+    }
     submit(count, dcbs, dcb_sizes);
     do_flip(int32_t(buf), arg);
     return SCE_OK;
 }
 HLE("sceGnmSubmitAndFlipCommandBuffers", sceGnmSubmitAndFlipCommandBuffers)
-static int32_t sceGnmSubmitDone() { return SCE_OK; }
+static int32_t sceGnmSubmitDone() {
+    if (gpu_real()) render::submit_done();
+    return SCE_OK;
+}
 HLE("sceGnmSubmitDone", sceGnmSubmitDone)
 static int32_t sceGnmAddEqEvent(Equeue* q, uint64_t id, void* udata) {
     q->add({id, kFilterGraphics, 1, 0, 0, udata});
@@ -397,31 +430,77 @@ static void write_nop(uint32_t* p, uint32_t n) {
     std::memset(p + 1, 0, (n - 1) * 4);
 }
 static uint32_t sceGnmDrawInitDefaultHardwareState(uint32_t* cmd, uint32_t size) {
+    if (gpu_real()) return render::draw_init_default_hw_state(cmd, size);
     if (size < 0x100) return 0;
     write_nop(cmd, 0x100);
     return 0x100;
 }
 HLE("sceGnmDrawInitDefaultHardwareState", sceGnmDrawInitDefaultHardwareState)
-HLE("sceGnmDispatchInitDefaultHardwareState", sceGnmDrawInitDefaultHardwareState)
-static int32_t gnm_set_shader(uint32_t* cmd, uint32_t size, const uint32_t*, uint32_t) {
-    if (!cmd) return -1;
-    write_nop(cmd, size);
-    return SCE_OK;
+static uint32_t sceGnmDispatchInitDefaultHardwareState(uint32_t* cmd, uint32_t size) {
+    if (gpu_real()) return render::dispatch_init_default_hw_state(cmd, size);
+    if (size < 0x100) return 0;
+    write_nop(cmd, 0x100);
+    return 0x100;
 }
-HLE("sceGnmSetPsShader", gnm_set_shader)
-HLE("sceGnmSetVsShader", gnm_set_shader)
-HLE("sceGnmSetCsShader", gnm_set_shader)
-HLE("sceGnmSetEsShader", gnm_set_shader)
-HLE("sceGnmSetGsShader", gnm_set_shader)
-HLE("sceGnmSetHsShader", gnm_set_shader)
-HLE("sceGnmSetLsShader", gnm_set_shader)
-static int32_t sceGnmInsertWaitFlipDone(uint32_t* cmd, uint32_t size, int32_t, uint32_t) {
+HLE("sceGnmDispatchInitDefaultHardwareState", sceGnmDispatchInitDefaultHardwareState)
+
+// Shader-state builders: real register writes with the renderer, a NOP of the reserved size
+// for the null GPU.
+#define D1_SHADER_SETTER(NAME, CALL, ...)                                   \
+    static int32_t NAME(uint32_t* cmd, uint32_t size, const uint32_t* regs __VA_OPT__(, ) __VA_ARGS__) { \
+        if (gpu_real()) return CALL;                                        \
+        if (!cmd) return -1;                                                \
+        write_nop(cmd, size);                                               \
+        return SCE_OK;                                                      \
+    }
+D1_SHADER_SETTER(sceGnmSetPsShader, render::set_ps_shader(cmd, size, regs))
+D1_SHADER_SETTER(sceGnmSetCsShader, render::set_cs_shader(cmd, size, regs))
+D1_SHADER_SETTER(sceGnmSetGsShader, render::set_gs_shader(cmd, size, regs))
+D1_SHADER_SETTER(sceGnmSetVsShader, render::set_vs_shader(cmd, size, regs, mod), uint32_t mod)
+D1_SHADER_SETTER(sceGnmSetEsShader, render::set_es_shader(cmd, size, regs, mod), uint32_t mod)
+D1_SHADER_SETTER(sceGnmSetLsShader, render::set_ls_shader(cmd, size, regs, mod), uint32_t mod)
+D1_SHADER_SETTER(sceGnmSetHsShader, render::set_hs_shader(cmd, size, regs, param), uint32_t param)
+#undef D1_SHADER_SETTER
+HLE("sceGnmSetPsShader", sceGnmSetPsShader)
+HLE("sceGnmSetVsShader", sceGnmSetVsShader)
+HLE("sceGnmSetCsShader", sceGnmSetCsShader)
+HLE("sceGnmSetEsShader", sceGnmSetEsShader)
+HLE("sceGnmSetGsShader", sceGnmSetGsShader)
+HLE("sceGnmSetHsShader", sceGnmSetHsShader)
+HLE("sceGnmSetLsShader", sceGnmSetLsShader)
+static int32_t sceGnmInsertWaitFlipDone(uint32_t* cmd, uint32_t size, int32_t, uint32_t buf) {
+    if (gpu_real()) return render::insert_wait_flip_done(cmd, size, buf);
     write_nop(cmd, size);
     return SCE_OK;
 }
 HLE("sceGnmInsertWaitFlipDone", sceGnmInsertWaitFlipDone)
 
+void gpu_init() {
+    if (!kHaveRenderer) return;
+    render::Callbacks cb{};
+    cb.eop = signal_eop;
+    cb.flip = do_flip;
+    cb.labels = g_vo.labels;
+    if (uint64_t pp = rt().modules[0].proc_param) cb.sdk_version = uint32_t(*reinterpret_cast<const uint64_t*>(pp + 0x10));
+    g_gpu_real = render::init(cb);
+    if (!g_gpu_real) log("GPU: null GPU (nothing is drawn)");
+}
+
+void gpu_on_map(uint64_t addr, uint64_t size) {
+    if (gpu_real()) render::on_map(addr, size);
+}
+void gpu_on_unmap(uint64_t addr, uint64_t size) {
+    if (gpu_real()) render::on_unmap(addr, size);
+}
+bool gpu_on_fault(void* uc, void* addr) {
+    return gpu_real() && render::on_fault(uc, addr);
+}
+
 void print_gpu_summary() {
+    if (gpu_real()) {
+        render::print_summary();
+        return;
+    }
     log("null GPU: %lu packets, %lu flips", g_packets.load(), g_frames.load());
     for (int op = 0; op < 256; ++op)
         if (g_op_counts[op]) log("  PM4 op %#04x x%lu", op, g_op_counts[op]);

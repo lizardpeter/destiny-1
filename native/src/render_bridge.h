@@ -1,0 +1,63 @@
+// Interface between d1-native's firmware layer and the optional renderer
+// (native/renderer/, built with -DD1_RENDERER_SHADPS4=ON). Only plain types cross it, so
+// the renderer's headers never leak into the rest of the program.
+#pragma once
+#include <cstdint>
+
+namespace d1::render {
+
+// SceVideoOutBufferAttribute (40 bytes).
+struct VoAttr {
+    uint32_t pixel_format, tiling_mode;
+    int32_t aspect_ratio;
+    uint32_t width, height, pitch_in_pixel;
+    uint32_t option, reserved0;
+    uint64_t reserved1;
+};
+static_assert(sizeof(VoAttr) == 40);
+
+struct Callbacks {
+    void (*eop)();                             // GPU end-of-pipe interrupt
+    void (*flip)(int32_t index, int64_t arg);  // a frame left the GPU: update flip status/events
+    uint64_t* labels;                          // video out buffer labels (16 x u64)
+    uint32_t sdk_version;                      // from the eboot's process parameters
+};
+
+// Creates the Vulkan device, the command processor and the rasterizer. Returns false (and
+// logs why) when no Vulkan device is usable; the null GPU stays in charge then.
+bool init(const Callbacks& cb);
+bool active();
+
+void register_buffers(int32_t start, void* const* addrs, int32_t num, const VoAttr& attr);
+void submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes, uint32_t* const* ccbs,
+            const uint32_t* ccb_sizes);
+int32_t submit_and_flip(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes, uint32_t* const* ccbs,
+                        const uint32_t* ccb_sizes, uint32_t buf, int64_t arg);
+void cpu_flip(int32_t index, int64_t arg);
+void submit_done();
+
+// Guest memory visible to the GPU, and CPU writes to pages the GPU caches.
+void on_map(uint64_t addr, uint64_t size);
+void on_unmap(uint64_t addr, uint64_t size);
+bool on_fault(void* ucontext, void* addr);
+
+// libSceGnmDriver command builders that the game calls (they emit real PM4 packets).
+uint32_t draw_init_default_hw_state(uint32_t* cmd, uint32_t size);
+uint32_t dispatch_init_default_hw_state(uint32_t* cmd, uint32_t size);
+int32_t insert_wait_flip_done(uint32_t* cmd, uint32_t size, uint32_t buf);
+int32_t set_ps_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs);
+int32_t set_vs_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32_t modifier);
+int32_t set_cs_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs);
+int32_t set_es_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32_t modifier);
+int32_t set_gs_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs);
+int32_t set_hs_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32_t param);
+int32_t set_ls_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32_t modifier);
+
+void print_summary();
+
+}  // namespace d1::render
+
+namespace d1 {
+// Implemented by hle_kernel.cpp: bytes from addr to the end of its guest mapping (0 if unknown).
+uint64_t guest_region_extent(uint64_t addr);
+}  // namespace d1

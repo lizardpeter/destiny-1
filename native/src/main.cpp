@@ -121,6 +121,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     install_crash_handler();
+    gpu_init();
 
     pthread_attr_t a;
     pthread_attr_init(&a);

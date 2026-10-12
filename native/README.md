@@ -27,6 +27,9 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_ABORT_ON_UNIMPL=1` | stop at the first call to an unimplemented firmware function |
 | `D1_BYPASS=prereq,transport` | research hooks: report failed bootflow prerequisites as satisfied; report the DemonWare transport as started |
 | `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is always refused |
+| `D1_FRAMES=<dir>` | (renderer build) save displayed frames as PNG; `D1_FRAME_EVERY=<n>` sets the interval (default 60) |
+| `D1_RENDERER=0` | (renderer build) use the null GPU anyway |
+| `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level |
 
 ## How it works
 
@@ -37,10 +40,29 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | TLS | `src/runtime.cpp` | PS4 code reads its TCB with `mov r64, fs:[0]` (2,542 sites); the loader rewrites the prefix to GS and each guest thread gets its own TCB with the static TLS block below it |
 | guest frames | `src/runtime.cpp` | guest code walks frame-pointer chains (allocation call-stack capture); calls into the guest start from a terminal frame |
 | kernel | `src/hle_kernel.cpp`, `src/hle_pthread.cpp` | memory (direct memory is a sparse memfd so aliases share pages), time, files (`/app0` → `--app0`), modules, threads, mutex/cond/rwlock, semaphores, event flags |
-| null GPU | `src/hle_gpu.cpp` | event queues, video out (flip status/events, vblank), Gnm submit; walks PM4 command buffers performing only their memory effects (EOP/EOS fences, WRITE_DATA, DMA_DATA) and raises the EOP interrupt. Nothing is drawn yet. |
+| GPU | `src/hle_gpu.cpp` | event queues, video out (flip status/events, vblank), Gnm submit. Without the renderer a null GPU walks PM4 command buffers performing only their memory effects (EOP/EOS fences, WRITE_DATA, DMA_DATA) and raises the EOP interrupt. |
+| renderer (optional, temporary) | `renderer/`, `src/render_bridge.h` | shadPS4's command processor, shader recompiler and Vulkan rasterizer, headless; see below |
 | audio | `src/hle_audio.cpp` | paced silent audio out; AJM codec jobs complete with silence |
 | input / services / net | `src/hle_input.cpp`, `src/hle_services.cpp`, `src/hle_net.cpp` | one connected pad, user/system services, libSceLibcInternal subset, network reported as unavailable |
 | game hooks | `src/hooks.cpp` | eboot-specific patches (01.33 offsets only) |
+
+## Temporary renderer
+
+The default build draws nothing. To render, build with shadPS4's video core
+(an interim step; the long-term plan is a Rust/Vulkan renderer):
+
+```bash
+git clone --recursive https://github.com/shadps4-emu/shadPS4 /path/shadps4   # tested at e0a46675
+CC=clang CXX=clang++ cmake -S native -B build/native-r -G Ninja \
+    -DD1_RENDERER_SHADPS4=ON -DSHADPS4_DIR=/path/shadps4
+cmake --build build/native-r
+D1_FRAMES=./frames build/native-r/d1-native --eboot ... --app0 ... --data ...
+```
+
+Needs clang (C++23), the Vulkan loader and headers, glslangValidator, abseil and
+libpng. There is no window yet: frames are rendered offscreen and saved with
+`D1_FRAMES`. Any Vulkan 1.3 device works, including lavapipe. shadPS4 is
+GPL-2.0-or-later, so a binary built this way is too.
 
 The x86-64 host CPU must support AVX, BMI1, MOVBE and LZCNT (Haswell / Zen or
 newer); see `evidence/generated/d1_x86_portability.json`.
@@ -53,5 +75,9 @@ accepts Cross, and stops at `bootflow:platform_signin`: with no network on
 `error.no_ethernet_link`, with `D1_NET=link` on `error.transport_method_invalid`
 (DemonWare cannot reach Bungie's STUN servers).
 
-Licence note: this directory contains only new code. Porting shadPS4's renderer or
-other parts later would make the combined program GPL-2.0-or-later.
+With the renderer the game draws the Bungie logo, the animated title and its
+dialogs (see the renderer entry in `findings/LOG.md`).
+
+Licence note: `src/` contains only new code. `renderer/` builds shadPS4 sources
+from an external checkout and its glue follows shadPS4's Gnm driver, so binaries
+built with `D1_RENDERER_SHADPS4=ON` are GPL-2.0-or-later.

@@ -400,6 +400,8 @@ static void dump_ring() {
 }
 
 static void on_fault(int sig, siginfo_t* si, void* uc_) {
+    // Write to a page the renderer protects to track CPU changes: let it invalidate and retry.
+    if ((sig == SIGSEGV || sig == SIGBUS) && gpu_on_fault(uc_, si->si_addr)) return;
     auto* uc = static_cast<ucontext_t*>(uc_);
     uint64_t rip = uc->uc_mcontext.gregs[REG_RIP];
     uint64_t rbp = uc->uc_mcontext.gregs[REG_RBP];
@@ -464,7 +466,7 @@ void install_crash_handler() {
         sd.sa_flags = SA_SIGINFO | SA_RESTART;
         sigaction(SIGUSR2, &sd, nullptr);
     }
-    static uint8_t altstack[1 << 16];
+    static uint8_t altstack[1 << 20];
     stack_t ss{};
     ss.ss_sp = altstack;
     ss.ss_size = sizeof altstack;

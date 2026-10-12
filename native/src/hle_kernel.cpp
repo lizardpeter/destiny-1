@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "hle.h"
+#include "render_bridge.h"
 #include "runtime.h"
 
 namespace d1 {
@@ -124,6 +125,7 @@ static int32_t sceKernelMapDirectMemory(void** addr, uint64_t len, int prot, int
     *addr = p;
     Region r{len, prot, true, uint64_t(phys), {}};
     g_regions[reinterpret_cast<uint64_t>(p)] = r;
+    gpu_on_map(reinterpret_cast<uint64_t>(p), len);
     return SCE_OK;
 }
 HLE("sceKernelMapDirectMemory", sceKernelMapDirectMemory)
@@ -147,6 +149,7 @@ static int32_t sceKernelMapNamedFlexibleMemory(void** addr, uint64_t len, int pr
     Region r{len, prot, false, 0, {}};
     if (name) std::strncpy(r.name, name, 31);
     g_regions[reinterpret_cast<uint64_t>(p)] = r;
+    gpu_on_map(reinterpret_cast<uint64_t>(p), len);
     return SCE_OK;
 }
 HLE("sceKernelMapNamedFlexibleMemory", sceKernelMapNamedFlexibleMemory)
@@ -168,6 +171,7 @@ static int32_t sceKernelReserveVirtualRange(void** addr, uint64_t len, int flags
 HLE("sceKernelReserveVirtualRange", sceKernelReserveVirtualRange)
 
 static int32_t sceKernelMunmap(void* addr, uint64_t len) {
+    gpu_on_unmap(reinterpret_cast<uint64_t>(addr), len);
     std::lock_guard lk(g_mem_mutex);
     g_regions.erase(reinterpret_cast<uint64_t>(addr));
     return munmap(addr, len) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
@@ -190,6 +194,12 @@ static const std::pair<const uint64_t, Region>* region_of(uint64_t a) {
     if (it == g_regions.begin()) return nullptr;
     --it;
     return a < it->first + it->second.size ? &*it : nullptr;
+}
+
+uint64_t guest_region_extent(uint64_t addr) {
+    std::lock_guard lk(g_mem_mutex);
+    auto* r = region_of(addr);
+    return r ? r->first + r->second.size - addr : 0;
 }
 
 static int32_t sceKernelQueryMemoryProtection(void* addr, void** start, void** end, int* prot) {
@@ -343,8 +353,28 @@ static int32_t sceKernelOpen(const char* path, int flags, uint16_t mode) {
 HLE("sceKernelOpen", sceKernelOpen)
 static int32_t sceKernelClose(int fd) { return close(fd) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno)); }
 HLE("sceKernelClose", sceKernelClose)
+// A kernel read into a page the GPU has write-protected (to notice CPU writes) fails with
+// EFAULT instead of faulting. Touch the destination so the fault handler unprotects it,
+// then retry.
+static void touch_for_write(void* b, uint64_t n) {
+    auto* p = static_cast<volatile uint8_t*>(b);
+    for (uint64_t off = 0; off < n; off += 0x1000) p[off] = p[off];
+    if (n) p[n - 1] = p[n - 1];
+}
+template <class F>
+static ssize_t retry_efault(void* b, uint64_t n, F&& io) {
+    ssize_t r = io();
+    for (int i = 0; i < 4 && r < 0 && errno == EFAULT; ++i) {
+        touch_for_write(b, n);
+        r = io();
+    }
+    return r;
+}
 static int64_t sceKernelRead(int fd, void* b, uint64_t n) {
-    ssize_t r = read(fd, b, n);
+    // read() can copy part of the data before it hits a protected page and then return a
+    // short count, so unprotect the whole destination first.
+    if (gpu_active()) touch_for_write(b, n);
+    ssize_t r = retry_efault(b, n, [&] { return read(fd, b, n); });
     return r < 0 ? sce_err(to_ps4_errno(errno)) : r;
 }
 HLE("sceKernelRead", sceKernelRead)
@@ -354,7 +384,8 @@ static int64_t sceKernelWrite(int fd, const void* b, uint64_t n) {
 }
 HLE("sceKernelWrite", sceKernelWrite)
 static int64_t sceKernelPread(int fd, void* b, uint64_t n, int64_t off) {
-    ssize_t r = pread(fd, b, n, off);
+    if (gpu_active()) touch_for_write(b, n);
+    ssize_t r = retry_efault(b, n, [&] { return pread(fd, b, n, off); });
     return r < 0 ? sce_err(to_ps4_errno(errno)) : r;
 }
 HLE("sceKernelPread", sceKernelPread)

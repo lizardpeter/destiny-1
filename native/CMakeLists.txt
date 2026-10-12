@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(d1_native CXX)
+project(d1_native C CXX)
 
 if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   message(FATAL_ERROR "d1-native runs the game's x86-64 code directly; it needs an x86-64 host")
@@ -39,3 +39,12 @@ add_executable(d1-native
 target_include_directories(d1-native PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(d1-native PRIVATE Threads::Threads)
 target_compile_options(d1-native PRIVATE -Wall -Wno-unused-function -fno-omit-frame-pointer)
+
+option(D1_RENDERER_SHADPS4 "Build the temporary shadPS4-based renderer (needs SHADPS4_DIR)" OFF)
+if(D1_RENDERER_SHADPS4)
+  add_subdirectory(renderer)
+  target_link_libraries(d1-native PRIVATE d1_shad_video)
+  target_compile_definitions(d1-native PRIVATE D1_RENDERER_SHADPS4=1)
+else()
+  target_sources(d1-native PRIVATE src/render_null.cpp)
+endif()

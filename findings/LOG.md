@@ -533,3 +533,44 @@ remote activity host (`c_investment_bap_message_client_to_bap_get_activity_host_
 `..._activity_host_to_world_server_response`). The client does contain offline /
 host-migration session code (`Creating offline host migration session`), so
 whether it can host a world locally is the next question to answer.
+
+## 2026-10-12 — First rendered frames: temporary renderer in d1-native
+
+`native/renderer/` builds shadPS4's `video_core` and `shader_recompiler` (from an
+external checkout, tested at `e0a46675`) into d1-native with
+`-DD1_RENDERER_SHADPS4=ON -DSHADPS4_DIR=...`. It is a stop-gap until the planned
+Rust/Vulkan renderer; it makes the combined binary GPL-2.0-or-later, and none of
+shadPS4's source is copied into this repository apart from the Gnm command
+builders and flip patching in `renderer/glue/d1_renderer.cpp`.
+
+What d1-native supplies in place of shadPS4's emulator core
+(`renderer/glue/core_glue.cpp`, `renderer/shim/`):
+
+- Guest memory: the guest runs natively, so guest addresses are host addresses.
+  Direct/flexible mappings are reported to the rasterizer (`MapMemory` +
+  `RegisterMemory`); GPU writes back to guest memory go through `/proc/self/mem`
+  so they do not trip write tracking.
+- CPU write tracking: the rasterizer write-protects pages it caches; d1-native's
+  SIGSEGV handler hands such faults to it first. Kernel reads into protected pages
+  would fail with EFAULT, so `sceKernelRead`/`Pread` touch the destination first.
+- Flips: the game's last DCB of a frame ends in a 64-dword `prepareFlip` NOP
+  (`0xC03E1000`), which is patched into a label write plus a flip marker; the
+  command processor raises GfxFlip in stream order, d1-native updates flip status
+  and events, and optionally saves the frame (`D1_FRAMES=<dir>`,
+  `D1_FRAME_EVERY=<n>`).
+- Headless Vulkan: a window-system-"Headless" instance, no swapchain. Tested on
+  lavapipe (llvmpipe, Vulkan 1.4) in the container.
+
+One game-side fix was needed: `eboot+0xFAAF4` again, now in the Graphics
+Heartbeat's wait for the GPU frame counter (`0x7DD1CA`). While waiting, the
+heartbeat calls `0xFB860` → `0xFAAC0` to run a pending job, which dereferences the
+thread's job context (TLS slot read by `0xFC520`, set only for job-system threads
+by `0xFAD30`, whose only writer is `0xFC540`). The heartbeat is not a job thread,
+so the path crashes whenever the GPU is behind. A guard hook on `0xFAAC0` returns
+"no job run" when the context is null; the caller then sleeps 300 µs and polls
+again. This is very likely the same crash shadPS4 users report for 01.29/01.33.
+
+Result on lavapipe (software rendering, ~13 frames/s): the Bungie logo, the
+animated DESTINY title, and — without network — the "ATTENTION / No internet
+connection detected … canary" dialog (`error.no_ethernet_link`), all rendered
+correctly at 1920×1080 by the game's own shaders.
