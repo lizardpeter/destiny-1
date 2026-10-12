@@ -50,7 +50,15 @@ def run():
             for key in variants:
                 if key+".umap" in index and key+".uexp" in index:
                     found.append({"archive":archive,"source_package":key})
-        census.append({**world,"authenticated_source_pairs":found})
+        records=[]
+        for ext in (".umap",".uexp"):
+            original=ix.get(package+ext)
+            if original is None:continue
+            records.append({"extension":ext,"bytes":original[2],
+                            "compression_method":original[3],
+                            "encrypted":bool(original[5])})
+        census.append({**world,"authenticated_source_pairs":found,
+                       "main_archive_source_records":records})
     # Inspect genuine source world exports for authored light/fog components
     # and non-landscape scene objects before admitting them to the renderer.
     from collections import Counter
@@ -74,6 +82,21 @@ def run():
             "original_render_lighting_candidates":candidates[:100],
             "all_candidates_count":len(candidates),
         },sort_keys=True),flush=True)
+    if len(worlds)!=16 or any(
+        len(w["main_archive_source_records"])!=2 or
+        any(r["compression_method"]!=0 or r["encrypted"] or r["bytes"]>64*1024*1024
+            for r in w["main_archive_source_records"])
+        for w in census
+    ):
+        raise ValueError("original root streaming world 16/16 source files not admissible by native authenticated extractor")
+    print("FORTNITE_541_FULL_ROOT_STREAM_SOURCE_ADMISSION "+json.dumps({
+        "source_worlds":len(worlds),
+        "original_source_files":sum(len(w["main_archive_source_records"]) for w in census),
+        "all_main_pak_uncompressed_unencrypted":True,
+        "total_uncompressed_bytes":sum(
+            r["bytes"] for w in census for r in w["main_archive_source_records"]
+        ),
+    },sort_keys=True),flush=True)
     print("FORTNITE_AUTHORED_ROOT_WORLD_ARCHIVE_CENSUS "+json.dumps({
         "root":base,"source_stream_count":len(worlds),
         "available_streams":sum(bool(w["authenticated_source_pairs"]) for w in census),
