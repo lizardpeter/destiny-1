@@ -103,9 +103,12 @@ pub fn inspect_static_materials(
         let material_interface=if material_id==0{None}
             else{
                 let identity=catalog.source_object_path(material_id)?;
-                if !identity.starts_with("/Game/") &&
-                   !identity.starts_with("/Engine/") {
-                    return Err(format!("source material object outside known UE roots: {identity}"));
+                // Source HLOD UStaticMesh may export a package-local
+                // UMaterial rather than importing a /Game/ path.
+                // Preserve that actual local UObject identity. It is NOT an
+                // external source package and cannot be fetched by name.
+                if identity.is_empty()||identity.contains("../")||identity.contains('\\'){
+                    return Err(format!("invalid original source material UObject: {identity}"));
                 }
                 Some(identity)
             };
