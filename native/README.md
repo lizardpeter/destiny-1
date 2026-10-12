@@ -25,6 +25,7 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_AUTOPRESS=<s>` | tap Cross for 100 ms every `<s>` seconds (no host input yet) |
 | `D1_WATCHDOG=<s>` | after `<s>` seconds dump every guest thread's call stack, call counts and GPU stats, then exit |
 | `D1_ABORT_ON_UNIMPL=1` | stop at the first call to an unimplemented firmware function |
+| `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is always refused |
 
 ## How it works
 
@@ -47,7 +48,9 @@ newer); see `evidence/generated/d1_x86_portability.json`.
 
 See the 2026-10-12 entries in `findings/LOG.md`. The game boots through its full
 start-up, runs its frame loop headless at about 30 fps, reaches the title screen,
-accepts Cross, and stops at `bootflow:platform_signin` because there is no network.
+accepts Cross, and stops at `bootflow:platform_signin`: with no network on
+`error.no_ethernet_link`, with `D1_NET=link` on `error.transport_method_invalid`
+(DemonWare cannot reach Bungie's STUN servers).
 
 Licence note: this directory contains only new code. Porting shadPS4's renderer or
 other parts later would make the combined program GPL-2.0-or-later.

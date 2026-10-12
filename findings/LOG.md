@@ -476,3 +476,16 @@ platform_signin -> cleanup (kick_to_bootflow_start) -> start          (loop)
 DemonWare 48 (`D:\bungie\external_libraries\DemonWare\48\...`) is the transport
 library; `sku_manager` reports sku_type 2 `north_america_digital`, base content
 version `56578-1-3407992`.
+
+### Second gate: Bungie STUN during platform_signin
+
+With `D1_NET=link` (interface up, real host UDP sockets, local PSN user
+reported signed in, DNS refused) the ethernet prerequisite passes and
+`bootflow:platform_signin` instead runs DemonWare's NAT discovery. It resolves
+`stun1`–`stun8` under `signon.deadorbit.net` and `signon.gravityshavings.net`
+(Bungie domains), cannot, logs `External STUN client failed`, and leaves with
+`error.transport_method_invalid` → cleanup → `bootflow:start`. Every later
+bootflow state (account_signin, bap_signin, investment_signin, profile_setup,
+prepare_for_orbit) is reached only after this one, so reaching orbit needs
+either a local stand-in for Bungie's sign-on / DemonWare / BAP services or a
+client-side bypass of those states.
