@@ -16,6 +16,7 @@ PACKAGES=[
     "Environments/Props/Industrial/Materials/MI_ShippingContainer_01",
     "Packages/DS_Fortnite_Terrain_NoLOD/Materials/M_Terrain_Cave",
     "Packages/DS_Fortnite_Terrain_NoLOD/Materials/M_Terrain_Cliff_White",
+    "Packages/Fortress_Floors_Generic/SM/Materials/MI_Fort_Floors_Generic_TilesClean",
 ]
 def run():
     indexes={"main":main.load_index()}
