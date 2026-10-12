@@ -86,4 +86,40 @@ def run():
             "material":source,"archive":archive,"source_classes":[cat.class_name(e) for e in cat.exports],
             "exported_materials":result
         },sort_keys=True),flush=True)
+        # Exactly the source parameter values selected by the native
+        # material parser: no filename-based texture substitution.
+        for entry in result:
+            for param in entry["fields"]:
+                if param["name"]!="TextureParameterValues":continue
+                source_params=param.get("original_texture_parameters",[])
+                for tex in source_params:
+                    info=tex.get("info",[])
+                    label=next((i["value"] for i in info if i["name"]=="Name"),None)
+                    if label not in ("Diffuse","CliffTexture","Base Tiling Texture"):
+                        continue
+                    identity=tex.get("texture")
+                    if not identity or not identity.startswith("/Game/"):
+                        continue
+                    original=identity.removeprefix("/Game/").split("::")[0]
+                    base_path=ROOT+original
+                    target_location=locate("/Game/"+original+"::"+original.rsplit("/",1)[-1],indexes)
+                    if not target_location:
+                        print("FORTNITE_SOURCE_MATERIAL_DIFFUSE_ABSENT "+json.dumps({
+                            "param":label,"texture":identity}),flush=True)
+                        continue
+                    source_archive,source_base=target_location
+                    out=Path("/tmp/fortnite541_source_materials/FortniteGame/Content")/original
+                    out.parent.mkdir(parents=True,exist_ok=True)
+                    saved=[]
+                    for ext in (".uasset",".uexp",".ubulk"):
+                        candidate=source_base+ext
+                        potential=indexes[source_archive]
+                        if candidate not in potential:continue
+                        binary=read_source(source_archive,candidate,indexes)
+                        out.with_suffix(ext).write_bytes(binary)
+                        saved.append({"ext":ext,"bytes":len(binary)})
+                    print("FORTNITE_SOURCE_MATERIAL_AUTHENTIC_DIFFUSE "+json.dumps({
+                        "param":label,"texture":identity,"archive":source_archive,
+                        "verified_files":saved
+                    },sort_keys=True),flush=True)
 if __name__=="__main__":run()
