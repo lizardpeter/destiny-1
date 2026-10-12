@@ -56,6 +56,7 @@ def main():
     source.URL=S4_URL
     source.INDEX_SHA=S4_HASH
     ix=source.source()
+    print("FORTNITE_UE4_SKY_INPUT_LINK_CANDIDATES begin",flush=True)
     for package in PACKAGES:
         cat=read(ix,package)
         if cat is None:
@@ -79,8 +80,21 @@ def main():
                     offsets=[{"offset":pos,**target}
                       for pos in range(0,min(len(raw),48),4)
                       if (target:=ref(cat,raw,pos)) is not None]
+                    # Cooked UE4 shader inputs commonly have a null
+                    # Expression pointer. Original ExpressionName FName,
+                    # however, survives serialization at offset 32.
+                    # Decode it, but validate later against actual exports.
+                    logical=None
+                    if len(raw)>=40:
+                        fi,number=struct.unpack_from("<II",raw,32)
+                        if fi < len(cat.names):
+                            base=cat.names[fi]
+                            target=base if number==0 else f"{base}#{number}"
+                            logical={"name_index":fi,"number":number,
+                                     "expression_name":target}
                     links.append({"name":name,"type":meta[0],"size":len(raw),
-                                  "u32":u32words(raw,48),"references":offsets})
+                                  "u32":u32words(raw,48),"references":offsets,
+                                  "cooked_expression_name":logical})
                 elif kind in ("ObjectProperty","ClassProperty") and len(raw)==4:
                     target=ref(cat,raw)
                     if target and name not in ("Material",):
@@ -95,6 +109,23 @@ def main():
                 graph.append(entry)
             else:
                 roots.append(entry)
+        known={o["object"].split("::")[-1]:o["object"] for o in graph}
+        src_edges=[]
+        unmatched=[]
+        for node in graph+roots:
+            for link in node["expression_inputs"]:
+                item=link["cooked_expression_name"]
+                if not item:continue
+                identifier=item["expression_name"]
+                if identifier in known:
+                    src_edges.append({"consumer":node["object"],"port":link["name"],
+                                      "producer":known[identifier]})
+                elif identifier and not identifier.startswith("None"):
+                    unmatched.append({"consumer":node["object"],"port":link["name"],
+                                      "target":identifier})
+        print("FORTNITE_SKY_AUTHORED_NAMED_EDGES "+json.dumps({
+            "package":package,"matched":len(src_edges),"unresolved":len(unmatched),
+            "edges":src_edges,"missing":unmatched[:80]},sort_keys=True),flush=True)
         print("FORTNITE_SKY_GRAPH_TOPOLOGY "+json.dumps({
             "package":package,"exports":len(cat.exports),
             "expression_count":len(graph),
