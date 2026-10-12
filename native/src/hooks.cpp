@@ -173,6 +173,12 @@ void install_game_hooks() {
         replace_function(exe.base + 0x239B70, reinterpret_cast<const void*>(&flag_true));
         log("hooks: editor world controller selected");
     }
+    // With a replacement backend: the content manifest is signed with Bungie's key, checked
+    // only when the byte at 0x18DC974 is set (0x2B0980). Our backend cannot sign, so clear it.
+    if (getenv("D1_BACKEND")) {
+        *reinterpret_cast<volatile uint8_t*>(exe.base + 0x18DC974) = 0;
+        log("hooks: content manifest signature check off (D1_BACKEND)");
+    }
     if (const char* f = getenv("D1_GAME_LOG")) {
         g_log_filter = (std::strcmp(f, "1") == 0) ? nullptr : f;
         replace_function(exe.base + 0xE4D70, reinterpret_cast<const void*>(&game_log_enabled));

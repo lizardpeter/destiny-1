@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cstring>
 #include <map>
+#include <set>
 #include <mutex>
 
 #include "hle.h"
@@ -341,9 +342,36 @@ static int host_oflags(int f) {
     return h;
 }
 
+static bool file_log() {
+    static const bool on = getenv("D1_FILE_LOG") != nullptr;
+    return on;
+}
+// D1_FILE_LOG=2 also logs reads: the first read of each 1 MiB window of each file.
+static int file_log_level() {
+    static const int lv = getenv("D1_FILE_LOG") ? atoi(getenv("D1_FILE_LOG")) : 0;
+    return lv;
+}
+static std::mutex g_fdpath_mutex;
+static std::map<int, std::pair<std::string, std::set<uint64_t>>> g_fdpath;
+static void note_open(int fd, const char* path) {
+    if (file_log_level() < 2 || fd < 0) return;
+    std::lock_guard lk(g_fdpath_mutex);
+    g_fdpath[fd] = {path, {}};
+}
+static void note_read(int fd, int64_t off, uint64_t n) {
+    if (file_log_level() < 2) return;
+    std::lock_guard lk(g_fdpath_mutex);
+    auto it = g_fdpath.find(fd);
+    if (it == g_fdpath.end()) return;
+    for (uint64_t w = uint64_t(off) >> 20; w <= (uint64_t(off) + (n ? n - 1 : 0)) >> 20; ++w)
+        if (it->second.second.insert(w).second)
+            log("read %s @%#lx +%#lx", it->second.first.c_str(), off, n);
+}
 static int32_t sceKernelOpen(const char* path, int flags, uint16_t mode) {
     std::string hp = host_path(path);
     int fd = open(hp.c_str(), host_oflags(flags), mode ? mode : 0644);
+    if (file_log()) log("open %s (flags %#x) -> %d", path, flags, fd);
+    note_open(fd, path);
     if (fd < 0) {
         log("sceKernelOpen(%s -> %s) failed: %s", path, hp.c_str(), strerror(errno));
         return sce_err(to_ps4_errno(errno));
@@ -371,6 +399,7 @@ static ssize_t retry_efault(void* b, uint64_t n, F&& io) {
     return r;
 }
 static int64_t sceKernelRead(int fd, void* b, uint64_t n) {
+    if (file_log_level() >= 2) note_read(fd, lseek(fd, 0, SEEK_CUR), n);
     // read() can copy part of the data before it hits a protected page and then return a
     // short count, so unprotect the whole destination first.
     if (gpu_active()) touch_for_write(b, n);
@@ -384,6 +413,7 @@ static int64_t sceKernelWrite(int fd, const void* b, uint64_t n) {
 }
 HLE("sceKernelWrite", sceKernelWrite)
 static int64_t sceKernelPread(int fd, void* b, uint64_t n, int64_t off) {
+    note_read(fd, off, n);
     if (gpu_active()) touch_for_write(b, n);
     ssize_t r = retry_efault(b, n, [&] { return pread(fd, b, n, off); });
     return r < 0 ? sce_err(to_ps4_errno(errno)) : r;
@@ -431,6 +461,7 @@ static void fill_stat(const struct stat& s, Ps4Stat* o) {
     o->atim = s.st_atim; o->mtim = s.st_mtim; o->ctim = s.st_ctim; o->birthtim = s.st_mtim;
 }
 static int32_t sceKernelStat(const char* p, Ps4Stat* o) {
+    if (file_log()) log("stat %s", p);
     struct stat s;
     if (stat(host_path(p).c_str(), &s) != 0) return sce_err(to_ps4_errno(errno));
     fill_stat(s, o);

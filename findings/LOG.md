@@ -668,3 +668,39 @@ input is sampled every 1 ms.
 Note: one of ~10 runs with stdout piped through a timestamper never started the
 bootflow (main loop ran, no state changes). Not reproduced since; watch for a
 start-up race.
+
+## 2026-10-12 — Replacement backend: sign-on, content manifest, package registration
+
+`backend/` (Rust, `d1-backend`) answers the online services; d1-native routes them
+to it (`D1_BACKEND`). The bootflow now runs, with our own server only, through
+`account_signin`, `content_check` and `package_registration` to `bap_signin`.
+
+- **PSN token**: JSON with `scope` and an `id_token` (JWT-shaped, unchecked); used by
+  DemonWare's `bdAuthPS4::handleGetAccessTokenReply` (`0x122C070`).
+- **Sign-on** (`POST /SignOn?platform=orbis&build=56578.17.04.12.1251.evil`):
+  protobuf both ways. Bungie messages are "schematized": a generic decoder
+  (`0xA2020`/`0xA17D0`) driven by tables of 23-byte field records
+  `{u32 field, u8 kind|type, u8 pad, s8 flag offset, u32 size, u32 max count, u64
+  nested schema/default}` (kind: 0x00 required, 0x10 optional, 0x20 repeated, 0x30
+  custom callback; type 0 varint, 2 fixed32, 4 bytes, 5 string, 6 message). Schemas
+  can be dumped automatically. Response (`0x1910CC0`): field 1 type (0 success,
+  1 denied/offline, 2 queued, 3 offline), 2 success {session keys, security token,
+  expiry, next server IPv4/port}, 4 client_config {cookie, social id, engine config
+  stream}, 5 silo id, 6 content version, 12 server clock, 13 environment.
+- **Engine configuration** rides in client_config field 3: `u32 0x123456`, then
+  `{u32 id, value}` pairs ending with id 0, applied by a 40 KB switch (`0x1033F80`)
+  into the "Engine Configuration" global. Id 100 = content manifest URL, 101 =
+  expected manifest GUID, 102 = URL suffix.
+- **Content manifest** (`0x2B0980`, schema `0x1911470`): signature-checked only
+  when the byte at `0x18DC974` is set; d1-native clears it with `D1_BACKEND`.
+  Field 3 lists the patchable packages that `package_registration` (`0x79E740`)
+  registers; registration (`0xD6300`) verifies each package header's own RSA
+  signature and requires header u16 `0x04` == entry field 3 (package id) and header
+  u64 `0x08` == entry field 4, so the backend reads both from the package files.
+  With 405 packages (newest generation of each id, English) registration passes.
+- Packages are staged locally as sparse files holding only header and tables
+  (registration reads 0x140 bytes of each); full files are fetched as the game
+  reads them (`D1_FILE_LOG=2` logs the first read of every MiB).
+
+Next gate: `bootflow:bap_signin` — the BAP protocol (address from the sign-on
+response; nothing has connected to it yet).

@@ -1,4 +1,5 @@
 // libSceLibcInternal subset (used by libSceFios2.prx) and system/user services.
+#include <atomic>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -100,4 +101,49 @@ HLE("sceSystemServiceHideSplashScreen", sceSystemServiceHideSplashScreen)
 static int32_t sceSystemServiceReceiveEvent(void*) { return int32_t(0x80A10003); }  // no event
 HLE("sceSystemServiceReceiveEvent", sceSystemServiceReceiveEvent)
 
+}  // namespace d1
+
+// ------------------------------------------------------------------ message dialogs
+// libSceMsgDialog: the message is logged; user messages are answered at once with the
+// first button, progress bars stay open until the game closes them.
+namespace d1 {
+struct MsgDialogResult { uint32_t mode; int32_t result; uint32_t button_id; uint8_t reserved[32]; };
+static std::atomic<int32_t> g_msg_status{0};  // 0 none, 1 initialized, 2 running, 3 finished
+static uint32_t g_msg_mode = 0;
+static int32_t sceMsgDialogInitialize() { g_msg_status = 1; return SCE_OK; }
+HLE("sceMsgDialogInitialize", sceMsgDialogInitialize)
+static int32_t sceMsgDialogOpen(const uint8_t* param) {
+    if (!param) return int32_t(0x80B80006);
+    g_msg_mode = *reinterpret_cast<const uint32_t*>(param + 56);
+    const char* text = nullptr;
+    if (g_msg_mode == 1) {
+        if (auto* user = *reinterpret_cast<const uint8_t* const*>(param + 64)) text = *reinterpret_cast<const char* const*>(user + 8);
+    } else if (g_msg_mode == 2) {
+        if (auto* bar = *reinterpret_cast<const uint8_t* const*>(param + 72)) text = *reinterpret_cast<const char* const*>(bar + 8);
+    } else if (g_msg_mode == 3) {
+        if (auto* sys = *reinterpret_cast<const uint8_t* const*>(param + 80))
+            log("message dialog (system message %u)", *reinterpret_cast<const uint32_t*>(sys));
+    }
+    if (text) log("message dialog (mode %u): %s", g_msg_mode, text);
+    g_msg_status = g_msg_mode == 2 ? 2 : 3;
+    return SCE_OK;
+}
+HLE("sceMsgDialogOpen", sceMsgDialogOpen)
+static int32_t sceMsgDialogUpdateStatus() { return g_msg_status; }
+HLE("sceMsgDialogUpdateStatus", sceMsgDialogUpdateStatus)
+static int32_t sceMsgDialogGetStatus() { return g_msg_status; }
+HLE("sceMsgDialogGetStatus", sceMsgDialogGetStatus)
+static int32_t sceMsgDialogGetResult(MsgDialogResult* r) {
+    if (r) { std::memset(r, 0, sizeof *r); r->mode = g_msg_mode; r->result = 0; r->button_id = 1; }
+    return SCE_OK;
+}
+HLE("sceMsgDialogGetResult", sceMsgDialogGetResult)
+static int32_t sceMsgDialogClose() { g_msg_status = 3; return SCE_OK; }
+HLE("sceMsgDialogClose", sceMsgDialogClose)
+static int32_t sceMsgDialogTerminate() { g_msg_status = 0; return SCE_OK; }
+HLE("sceMsgDialogTerminate", sceMsgDialogTerminate)
+static int32_t sceMsgDialogProgressBarSetValue(int32_t, uint32_t) { return SCE_OK; }
+HLE("sceMsgDialogProgressBarSetValue", sceMsgDialogProgressBarSetValue)
+static int32_t sceMsgDialogProgressBarSetMsg(int32_t, const char* m) { if (m) log("message dialog progress: %s", m); return SCE_OK; }
+HLE("sceMsgDialogProgressBarSetMsg", sceMsgDialogProgressBarSetMsg)
 }  // namespace d1
