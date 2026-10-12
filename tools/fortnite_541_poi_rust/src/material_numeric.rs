@@ -120,6 +120,23 @@ pub fn inspect_original_numeric_parameters(
         original:original.to_owned(),scalars,vectors
     })
 }
+/// Fetch only a cache-resident original retail UMaterialInstanceConstant.
+/// Caller owns SHA1-verified PAK extraction and parent traversal.
+pub fn from_source_root(
+    root:&std::path::Path,original:&str,
+)->Result<Option<OriginalNumericMaterialParameters>,String>{
+    let package=crate::material_instance::source_package(original)?;
+    let base=root.join(package);
+    let header=base.with_extension("uasset");
+    let exported=base.with_extension("uexp");
+    if !header.is_file() && !exported.is_file(){return Ok(None);}
+    if header.is_file()!=exported.is_file(){
+        return Err(format!("partial original MIC scalar/vector cache: {}",base.display()));
+    }
+    let h=std::fs::read(header).map_err(|e|e.to_string())?;
+    let x=std::fs::read(exported).map_err(|e|e.to_string())?;
+    inspect_original_numeric_parameters(&h,&x,original).map(Some)
+}
 #[cfg(test)]
 mod tests{
     use super::*;
