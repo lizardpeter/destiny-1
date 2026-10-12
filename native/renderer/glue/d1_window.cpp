@@ -59,8 +59,9 @@ void poll_input() {
         {SDL_SCANCODE_TAB, kOptions},   {SDL_SCANCODE_T, kTouchPad},       {SDL_SCANCODE_UP, kUp},
         {SDL_SCANCODE_DOWN, kDown},     {SDL_SCANCODE_LEFT, kLeft},        {SDL_SCANCODE_RIGHT, kRight},
     };
+    const bool alt = k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT];  // Alt+Enter is the fullscreen toggle
     for (auto& [sc, bit] : keys)
-        if (k[sc]) s.buttons |= bit;
+        if (k[sc] && !(alt && sc == SDL_SCANCODE_RETURN)) s.buttons |= bit;
     auto stick = [&](SDL_Scancode neg, SDL_Scancode pos) -> u8 {
         return k[neg] && !k[pos] ? 0x00 : k[pos] && !k[neg] ? 0xFF : 0x80;
     };
@@ -111,7 +112,7 @@ void open_first_controller() {
 }  // namespace
 
 namespace window {
-Frontend::WindowSDL* open() {
+Frontend::WindowSDL* open(int width, int height, bool fullscreen) {
     if (const char* v = std::getenv("D1_WINDOW"); v && v[0] == '0') return nullptr;
     if (!std::getenv("DISPLAY") && !std::getenv("WAYLAND_DISPLAY")) return nullptr;
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -119,8 +120,10 @@ Frontend::WindowSDL* open() {
         d1::log("window: SDL_Init failed: %s", SDL_GetError());
         return nullptr;
     }
-    g_window = SDL_CreateWindow("Destiny (d1-native)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720,
-                                SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    g_window = SDL_CreateWindow("Destiny (d1-native)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                width > 0 ? width : 1280, height > 0 ? height : 720,
+                                SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
+                                    (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!g_window) {
         d1::log("window: SDL_CreateWindow failed: %s", SDL_GetError());
         return nullptr;
@@ -179,6 +182,15 @@ void run_window_loop() {
                 return;
             case SDL_WINDOWEVENT:
                 if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) update_drawable_size();
+                break;
+            case SDL_KEYDOWN:
+                if (!e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||
+                                      (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)))) {
+                    const bool fs = SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+                    SDL_SetWindowFullscreen(g_window, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                    update_drawable_size();
+                    d1::log("window: %s, %dx%d", fs ? "windowed" : "fullscreen", g_info.GetWidth(), g_info.GetHeight());
+                }
                 break;
             case SDL_CONTROLLERDEVICEADDED:
                 open_first_controller();

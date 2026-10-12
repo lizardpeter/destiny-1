@@ -332,13 +332,17 @@ bool init(const Callbacks& cb) {
     try {
         g->liverpool = std::make_unique<Liverpool>();
         static Frontend::WindowSDL headless;  // window system "Headless": no surface, offscreen only
-        g->window = window::open();
+        if (cb.present_mode) EmulatorSettings.present_mode = cb.present_mode;
+        g->window = window::open(cb.window_width, cb.window_height, cb.fullscreen);
         g->instance = std::make_unique<Vulkan::Instance>(g->window ? *g->window : headless, EmulatorSettings.GetGpuId(),
                                                          EmulatorSettings.IsVkValidationEnabled(), false);
         g->scheduler = std::make_unique<Vulkan::Scheduler>(*g->instance);
         g->runtime = std::make_unique<Vulkan::Runtime>(*g->instance, *g->scheduler);
         g->rasterizer = std::make_unique<Vulkan::Rasterizer>(*g->instance, *g->scheduler, *g->runtime, g->liverpool.get());
-        if (g->window) g->swapchain = std::make_unique<Vulkan::Swapchain>(*g->instance, *g->window);
+        if (g->window) {
+            g->swapchain = std::make_unique<Vulkan::Swapchain>(*g->instance, *g->window);
+            d1::log("renderer: present mode %s", EmulatorSettings.GetPresentMode().c_str());
+        }
     } catch (const std::exception& e) {
         d1::log("renderer: Vulkan initialisation failed (%s); using the null GPU", e.what());
         delete g;

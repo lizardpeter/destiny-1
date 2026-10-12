@@ -4,6 +4,7 @@
 #include "sdl_window.h"
 
 namespace d1::render::window {
-// Opens the game window unless D1_WINDOW=0 or no display is available.
-Frontend::WindowSDL* open();
+// Opens the game window unless D1_WINDOW=0 or no display is available. F11 or Alt+Enter
+// toggles borderless fullscreen.
+Frontend::WindowSDL* open(int width, int height, bool fullscreen);
 }  // namespace d1::render::window

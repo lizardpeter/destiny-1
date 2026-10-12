@@ -35,6 +35,8 @@ add_executable(d1-native
   src/hle_net.cpp
   src/hle_http.cpp
   src/hooks.cpp
+  src/settings.cpp
+  src/discord.cpp
   ${IMPORT_NAMES})
 target_include_directories(d1-native PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(d1-native PRIVATE Threads::Threads)

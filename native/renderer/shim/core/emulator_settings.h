@@ -25,11 +25,13 @@ public:
     bool IsHdrAllowed() const { return false; }
     bool IsDirectMemoryAccessEnabled() const { return false; }
     u32 GetReadbacksMode() const { return GpuReadbacksMode::Disabled; }
-    // D1_PRESENT=Mailbox (default, low latency, no tearing) | Immediate (lowest, tears) | Fifo (vsync)
+    // From the vsync setting: Fifo (on) | Mailbox (off, no tearing) | Immediate (off-tearing).
+    // D1_PRESENT still overrides with a raw mode name.
     std::string GetPresentMode() const {
-        const char* v = std::getenv("D1_PRESENT");
-        return v ? v : "Mailbox";
+        if (const char* v = std::getenv("D1_PRESENT")) return v;
+        return present_mode;
     }
+    std::string present_mode = "Mailbox";
     bool IsVkValidationSyncEnabled() const { return false; }
     bool IsVkValidationGpuEnabled() const { return false; }
     bool IsVkValidationEnabled() const { return Env("D1_VK_VALIDATION"); }

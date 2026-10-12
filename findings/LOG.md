@@ -704,3 +704,19 @@ to it (`D1_BACKEND`). The bootflow now runs, with our own server only, through
 
 Next gate: `bootflow:bap_signin` — the BAP protocol (address from the sign-on
 response; nothing has connected to it yet).
+
+## 2026-10-12 — settings file, v-sync and Discord presence
+
+- `<data>/d1-native.cfg` (settings.cpp) holds window size, fullscreen, v-sync, fps and Discord
+  options; env vars override. V-sync maps to the swapchain present mode: on = Fifo,
+  off = Mailbox (default), off-tearing = Immediate. F11 / Alt+Enter toggle borderless
+  fullscreen. Verified under Xvfb: 1600x900 window, fullscreen start (1920x1080 drawable),
+  F11 back to windowed, present mode logged.
+- Render resolution: reporting 3840x2160 from `sceVideoOutGetResolutionStatus` still gets
+  1920x1080 video-out buffers and render targets, so the output scales to the window and the
+  internal resolution needs a patch in the engine's render-target setup (to find).
+- Discord Rich Presence speaks Discord's local IPC protocol directly (handshake op 0, then
+  SET_ACTIVITY op 1 frames on `discord-ipc-N`) from a worker thread; no SDK. Activity text
+  comes from the world-controller state machine (hook on the transition step 0x783AC0,
+  state at obj+0x1B0, names at 0x1945340). Verified against a fake IPC server: handshake,
+  then "At the title screen" → "Signing in" as the bootflow advanced. Needs an application id.

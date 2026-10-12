@@ -21,6 +21,10 @@ struct Callbacks {
     void (*flip)(int32_t index, int64_t arg);  // a frame left the GPU: update flip status/events
     uint64_t* labels;                          // video out buffer labels (16 x u64)
     uint32_t sdk_version;                      // from the eboot's process parameters
+    // display options (settings.h)
+    int window_width, window_height;           // initial window size in pixels
+    bool fullscreen;                           // borderless fullscreen on the current display
+    const char* present_mode;                  // Vulkan present mode: "Fifo", "Mailbox" or "Immediate"
 };
 
 // Creates the Vulkan device, the command processor and the rasterizer. Returns false (and

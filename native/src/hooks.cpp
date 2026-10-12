@@ -5,12 +5,14 @@
 // eboot offsets documented in findings/LOG.md; they are only valid for the 01.33 build.
 #include <sys/mman.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
 #include "hle.h"
 #include "runtime.h"
+#include "settings.h"
 
 namespace d1 {
 
@@ -124,17 +126,33 @@ static bool flag_true() { return true; }
 // +0x38 integer target fps. The main loop (0x594460) sleeps until the next period and the
 // frame-time getters (0x593890 seconds, 0x5938B0 fps) derive from +0x08, so changing the
 // period changes pacing and the per-frame time step together. Title-screen timing is
-// wall-clock based at 30 and 60 fps (findings/LOG.md). D1_FPS=<n> sets the target.
+// wall-clock based at 30 and 60 fps (findings/LOG.md). The `fps` setting (or D1_FPS) sets the target.
 using TimeInitFn = void (*)(void*);
 static TimeInitFn g_time_init_orig = nullptr;
 static void time_init_hook(void* cfg) {
     g_time_init_orig(cfg);
-    static const int fps = atoi(getenv("D1_FPS"));
+    static const int fps = settings().fps;
     auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08);
     if (!tc || fps <= 0) return;
     *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
     *reinterpret_cast<int32_t*>(tc + 0x38) = fps;
     log("hooks: frame rate target %d fps (period %d us)", fps, 1000000 / fps);
+}
+
+// ---- current world-controller state (eboot+0x783AC0, the state manager's transition step)
+// The state manager keeps its current state index at +0x1B0; names at 0x1945340 (37).
+using StateStepFn = void (*)(void*);
+static StateStepFn g_state_step_orig = nullptr;
+static std::atomic<int> g_state{-1};
+static void state_step_hook(void* sm) {
+    g_state_step_orig(sm);
+    g_state.store(*reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0), std::memory_order_relaxed);
+}
+const char* game_state() {
+    int s = g_state.load(std::memory_order_relaxed);
+    if (s < 0 || s >= 37) return nullptr;
+    auto* names = reinterpret_cast<const char* const*>(rt().modules[0].base + 0x1945340);
+    return names[s];
 }
 
 // ---- engine logging (eboot+0xE4D70 gate, eboot+0xE4AA0 emit)
@@ -165,7 +183,8 @@ void install_game_hooks() {
         replace_function(exe.base + 0x2EBD40, reinterpret_cast<const void*>(&transport_failed));
         log("hooks: DemonWare transport reported as started");
     }
-    if (getenv("D1_FPS")) {
+    g_state_step_orig = reinterpret_cast<StateStepFn>(hook_function(exe.base + 0x783AC0, reinterpret_cast<const void*>(&state_step_hook)));
+    if (settings().fps > 0) {
         g_time_init_orig = reinterpret_cast<TimeInitFn>(hook_function(exe.base + 0x593F00, reinterpret_cast<const void*>(&time_init_hook)));
         if (!g_time_init_orig) log("hooks: frame-rate hook FAILED");
     }

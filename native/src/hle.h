@@ -50,6 +50,9 @@ bool gpu_on_fault(void* ucontext, void* addr);
 const char* backend_host();
 bool backend_route(const char* host, uint32_t* addr_be);
 
+// Current world-controller state name (e.g. "bootflow:start"), or null (hooks.cpp).
+const char* game_state();
+
 // Guest paths (/app0/..., /temp0/...) -> host paths.
 std::string host_path(const char* guest);
 

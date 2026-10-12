@@ -18,6 +18,25 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
     --app0 /path/app0 --data ./d1-data
 ```
 
+### Settings
+
+On first run d1-native writes `<data>/d1-native.cfg` (or the file given with `--config`)
+with commented defaults. Environment variables override it:
+
+| setting | env | values |
+|---|---|---|
+| `window_width`, `window_height` | `D1_WINDOW_SIZE=1920x1080` | window size in pixels (default 1280x720); the picture is scaled to fit, letterboxed |
+| `fullscreen` | `D1_FULLSCREEN=1` | borderless fullscreen; F11 or Alt+Enter toggles while running |
+| `vsync` | `D1_VSYNC` | `off` (default: Mailbox, newest frame, no tearing), `on` (Fifo), `off-tearing` (Immediate, lowest latency) |
+| `fps` | `D1_FPS` | frame-rate target for the game's own limiter; 0 keeps its 30 fps |
+| `discord`, `discord_app_id` | `D1_DISCORD=0`, `D1_DISCORD_APP_ID` | Discord Rich Presence over Discord's local IPC socket; needs the Discord desktop app and an application id |
+
+The game draws its render targets at 1080p whatever display resolution it is told about, so
+the window size is the output resolution; changing the internal resolution needs an
+engine-side patch (not done yet).
+
+### Environment
+
 | env | effect |
 |---|---|
 | `D1_TRACE=1` | log every firmware call with its first three arguments |
@@ -31,8 +50,7 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_FRAMES=<dir>` | (renderer build) save displayed frames as PNG; `D1_FRAME_EVERY=<n>` sets the interval (default 60) |
 | `D1_RENDERER=0` | (renderer build) use the null GPU anyway |
 | `D1_WINDOW=0` | (renderer build) no window: offscreen rendering only |
-| `D1_FPS=<n>` | frame-rate target (the game's own limiter; default 30) |
-| `D1_PRESENT=Mailbox\|Immediate\|Fifo` | (renderer build) swapchain present mode, default Mailbox |
+| `D1_PRESENT=Mailbox\|Immediate\|Fifo` | (renderer build) raw swapchain present mode, overrides `vsync` |
 | `D1_PEEK=off,*off` / `D1_POKE=secs:off+delta=value;…` | research aids: dump / write eboot-relative memory (`*` dereferences a pointer) |
 | `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level |
 

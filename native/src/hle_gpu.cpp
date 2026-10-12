@@ -20,6 +20,7 @@
 #include "hle.h"
 #include "render_bridge.h"
 #include "runtime.h"
+#include "settings.h"
 
 #ifdef D1_RENDERER_SHADPS4
 static constexpr bool kHaveRenderer = true;
@@ -249,6 +250,8 @@ HLE("sceVideoOutAddVblankEvent", sceVideoOutAddVblankEvent)
 struct ResolutionStatus { int32_t full_w, full_h, pane_w, pane_h; uint64_t refresh; float screen_size; uint16_t flags; uint16_t reserved0; uint32_t reserved1[3]; };
 static int32_t sceVideoOutGetResolutionStatus(int32_t, ResolutionStatus* r) {
     std::memset(r, 0, sizeof *r);
+    // The game sizes its render targets for 1080p whatever is reported here (tried 4K); output
+    // resolution is the window's, internal resolution needs an engine-side change.
     r->full_w = r->pane_w = 1920;
     r->full_h = r->pane_h = 1080;
     r->refresh = 3;  // 59.94 Hz
@@ -487,6 +490,11 @@ void gpu_init() {
     cb.flip = do_flip;
     cb.labels = g_vo.labels;
     if (uint64_t pp = rt().modules[0].proc_param) cb.sdk_version = uint32_t(*reinterpret_cast<const uint64_t*>(pp + 0x10));
+    const Settings& st = settings();
+    cb.window_width = st.window_width;
+    cb.window_height = st.window_height;
+    cb.fullscreen = st.fullscreen;
+    cb.present_mode = st.vsync == "on" ? "Fifo" : st.vsync == "off-tearing" ? "Immediate" : "Mailbox";
     g_gpu_real = render::init(cb);
     if (!g_gpu_real) log("GPU: null GPU (nothing is drawn)");
 }

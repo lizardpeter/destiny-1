@@ -15,7 +15,9 @@
 #include <thread>
 
 #include "hle.h"
+#include "discord.h"
 #include "render_bridge.h"
+#include "settings.h"
 #include "runtime.h"
 
 namespace d1 {
@@ -93,21 +95,23 @@ void* main_thread(void*) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::string eboot, sce_module, app0, data = "./d1-data";
+    std::string eboot, sce_module, app0, data = "./d1-data", config;
     for (int i = 1; i + 1 < argc; i += 2) {
         std::string k = argv[i], v = argv[i + 1];
         if (k == "--eboot") eboot = v;
         else if (k == "--sce-module") sce_module = v;
         else if (k == "--app0") app0 = v;
         else if (k == "--data") data = v;
+        else if (k == "--config") config = v;
     }
     if (eboot.empty()) {
-        std::fprintf(stderr, "usage: %s --eboot eboot.bin [--sce-module dir] [--app0 dir] [--data dir]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s --eboot eboot.bin [--sce-module dir] [--app0 dir] [--data dir] [--config file]\n", argv[0]);
         return 2;
     }
     rt().app0 = app0;
     rt().data_root = data;
     mkdir(data.c_str(), 0755);
+    load_settings(data, config);
     try {
         rt().modules.push_back(load_module(eboot, kExeBase));
         uint64_t base = kModBase;
@@ -124,6 +128,7 @@ int main(int argc, char** argv) {
     }
     install_crash_handler();
     gpu_init();
+    discord_start();
 
     pthread_attr_t a;
     pthread_attr_init(&a);
