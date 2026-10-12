@@ -1,0 +1,27 @@
+name: Fortnite 5.41 gameplay source point light activation audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_gameplay_light_contract.py
+      - tools/fortnite_541_unresolved_blueprint_components.py
+      - .github/workflows/fortnite-541-gameplay-light-contract.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect original 64 retail gameplay PointLight components before lighting admission
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_gameplay_light_contract.py
+      - name: Locate original daylight manager and fog actor transform in authenticated Athena worlds
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_todm_placement_probe.py
+      - name: Audit missing original shrub and building Blueprint component hierarchies
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_unresolved_blueprint_components.py
