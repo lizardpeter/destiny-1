@@ -5,6 +5,7 @@ on:
     paths:
       - tools/fortnite_541_sky_shader_topology.py
       - tools/fortnite_541_sky_shader_hash_probe.py
+      - tools/fortnite_541_sky_retail_dxbc_frontier.py
       - .github/workflows/fortnite-541-sky-shader-topology.yml
       - 'tools/fortnite_541_poi_rust/src/cooked_expression_graph.rs'
       - 'tools/fortnite_541_poi_rust/src/sky_dome.rs'
@@ -24,6 +25,10 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python3 tools/fortnite_541_sky_shader_hash_probe.py
+      - name: Decode 10 actual retail SkyDome compiled DXBC programs and stage resource ABI
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_sky_retail_dxbc_frontier.py
       - name: Test native source cooked FExpressionInput name decoder
         run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
       - name: Validate original source SkyDome emissive and 33 real cooked links
