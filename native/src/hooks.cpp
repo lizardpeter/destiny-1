@@ -119,6 +119,24 @@ static bool steal_guard() {
 // (research: does the editor controller load a world without online services?).
 static bool flag_true() { return true; }
 
+// ---- frame rate (eboot+0x593F00 builds "time control config globals", pointer at 0x26BCD08)
+// Config fields (µs): +0x08 frame period (33366 = 29.97 fps), +0x28 vblank period,
+// +0x38 integer target fps. The main loop (0x594460) sleeps until the next period and the
+// frame-time getters (0x593890 seconds, 0x5938B0 fps) derive from +0x08, so changing the
+// period changes pacing and the per-frame time step together. Title-screen timing is
+// wall-clock based at 30 and 60 fps (findings/LOG.md). D1_FPS=<n> sets the target.
+using TimeInitFn = void (*)(void*);
+static TimeInitFn g_time_init_orig = nullptr;
+static void time_init_hook(void* cfg) {
+    g_time_init_orig(cfg);
+    static const int fps = atoi(getenv("D1_FPS"));
+    auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08);
+    if (!tc || fps <= 0) return;
+    *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
+    *reinterpret_cast<int32_t*>(tc + 0x38) = fps;
+    log("hooks: frame rate target %d fps (period %d us)", fps, 1000000 / fps);
+}
+
 // ---- engine logging (eboot+0xE4D70 gate, eboot+0xE4AA0 emit)
 // Release builds keep the log calls but the per-channel threshold table is absent, so every
 // message is dropped. With D1_GAME_LOG set, the gate always passes and the emit prints the
@@ -146,6 +164,10 @@ void install_game_hooks() {
         replace_function(exe.base + 0x2EB340, reinterpret_cast<const void*>(&transport_started));
         replace_function(exe.base + 0x2EBD40, reinterpret_cast<const void*>(&transport_failed));
         log("hooks: DemonWare transport reported as started");
+    }
+    if (getenv("D1_FPS")) {
+        g_time_init_orig = reinterpret_cast<TimeInitFn>(hook_function(exe.base + 0x593F00, reinterpret_cast<const void*>(&time_init_hook)));
+        if (!g_time_init_orig) log("hooks: frame-rate hook FAILED");
     }
     if (const char* w = getenv("D1_WORLD_CONTROLLER"); w && std::strcmp(w, "editor") == 0) {
         replace_function(exe.base + 0x239B70, reinterpret_cast<const void*>(&flag_true));

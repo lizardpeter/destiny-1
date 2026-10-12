@@ -31,6 +31,9 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_FRAMES=<dir>` | (renderer build) save displayed frames as PNG; `D1_FRAME_EVERY=<n>` sets the interval (default 60) |
 | `D1_RENDERER=0` | (renderer build) use the null GPU anyway |
 | `D1_WINDOW=0` | (renderer build) no window: offscreen rendering only |
+| `D1_FPS=<n>` | frame-rate target (the game's own limiter; default 30) |
+| `D1_PRESENT=Mailbox\|Immediate\|Fifo` | (renderer build) swapchain present mode, default Mailbox |
+| `D1_PEEK=off,*off` / `D1_POKE=secs:off+delta=value;…` | research aids: dump / write eboot-relative memory (`*` dereferences a pointer) |
 | `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level |
 
 ## How it works

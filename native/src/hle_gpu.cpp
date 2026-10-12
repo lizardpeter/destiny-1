@@ -193,7 +193,11 @@ static int32_t sceVideoOutRegisterBuffers(int32_t, int32_t start, void* const* a
     return 0;  // buffer set index
 }
 HLE("sceVideoOutRegisterBuffers", sceVideoOutRegisterBuffers)
-static int32_t sceVideoOutSetFlipRate(int32_t, int32_t) { return SCE_OK; }
+static int32_t sceVideoOutSetFlipRate(int32_t, int32_t rate) {
+    static int last = -1;
+    if (rate != last) { log("video out: flip rate %d (%s)", rate, rate == 0 ? "60 Hz" : rate == 1 ? "30 Hz" : "20 Hz"); last = rate; }
+    return SCE_OK;
+}
 HLE("sceVideoOutSetFlipRate", sceVideoOutSetFlipRate)
 static int32_t sceVideoOutGetFlipStatus(int32_t, FlipStatus* s) {
     std::lock_guard lk(g_vo.m);
@@ -222,8 +226,9 @@ HLE("sceVideoOutAddFlipEvent", sceVideoOutAddFlipEvent)
 static void vblank_thread() {
     using namespace std::chrono;
     auto next = steady_clock::now();
+    static const int hz = [] { const char* v = getenv("D1_VBLANK_HZ"); return v ? std::max(1, atoi(v)) : 60; }();
     while (true) {
-        next += microseconds(16667);
+        next += microseconds(1000000 / hz);
         std::this_thread::sleep_until(next);
         uint64_t c = ++g_vo.vblank_count;
         std::vector<Equeue*> qs;

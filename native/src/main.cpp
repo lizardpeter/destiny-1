@@ -134,10 +134,50 @@ int main(int argc, char** argv) {
         std::thread([secs = unsigned(atoi(w))] {
             sleep(secs);
             log("watchdog: dumping guest threads");
+            // D1_PEEK=off[,off...]: eboot offsets; "*off" dereferences a pointer first. Dumps 64 bytes.
+            if (const char* pk = getenv("D1_PEEK")) {
+                std::string list = pk;
+                for (size_t p = 0; p < list.size();) {
+                    size_t e = list.find(',', p);
+                    std::string item = list.substr(p, e == std::string::npos ? std::string::npos : e - p);
+                    p = e == std::string::npos ? list.size() : e + 1;
+                    bool deref = !item.empty() && item[0] == '*';
+                    uint64_t a = rt().modules[0].base + std::strtoull(item.c_str() + (deref ? 1 : 0), nullptr, 16);
+                    if (deref) a = *reinterpret_cast<uint64_t*>(a);
+                    const auto* q = reinterpret_cast<const uint32_t*>(a);
+                    log("peek %s @%#lx: %08x %08x %08x %08x %08x %08x %08x %08x  %08x %08x %08x %08x %08x %08x %08x %08x",
+                        item.c_str(), a, q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15]);
+                }
+            }
             dump_all_threads();
             print_import_summary();
             print_gpu_summary();
             _exit(0);
+        }).detach();
+    }
+    // D1_POKE=secs:off+delta=value[;...]: after <secs>, write a 32-bit value at eboot offset
+    // (prefix '*' to dereference a pointer at off first). Research aid.
+    if (const char* pk = getenv("D1_POKE")) {
+        std::thread([spec = std::string(pk)] {
+            const char* p = spec.c_str();
+            char* end;
+            unsigned secs = unsigned(std::strtoul(p, &end, 10));
+            sleep(secs);
+            std::string rest = *end == ':' ? end + 1 : "";
+            for (size_t q = 0; q < rest.size();) {
+                size_t e = rest.find(';', q);
+                std::string it = rest.substr(q, e == std::string::npos ? std::string::npos : e - q);
+                q = e == std::string::npos ? rest.size() : e + 1;
+                bool deref = !it.empty() && it[0] == '*';
+                const char* c = it.c_str() + (deref ? 1 : 0);
+                uint64_t off = std::strtoull(c, &end, 16), delta = 0;
+                if (*end == '+') delta = std::strtoull(end + 1, &end, 16);
+                uint32_t val = uint32_t(std::strtoul(*end == '=' ? end + 1 : "0", nullptr, 0));
+                uint64_t a = rt().modules[0].base + off;
+                if (deref) a = *reinterpret_cast<uint64_t*>(a);
+                *reinterpret_cast<volatile uint32_t*>(a + delta) = val;
+                log("poke %s: %#lx <- %#x", it.c_str(), a + delta, val);
+            }
         }).detach();
     }
     if (render::window_active()) {  // the window's event loop owns the main thread

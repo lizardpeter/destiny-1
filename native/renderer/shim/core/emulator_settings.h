@@ -25,7 +25,11 @@ public:
     bool IsHdrAllowed() const { return false; }
     bool IsDirectMemoryAccessEnabled() const { return false; }
     u32 GetReadbacksMode() const { return GpuReadbacksMode::Disabled; }
-    std::string GetPresentMode() const { return "Fifo"; }
+    // D1_PRESENT=Mailbox (default, low latency, no tearing) | Immediate (lowest, tears) | Fifo (vsync)
+    std::string GetPresentMode() const {
+        const char* v = std::getenv("D1_PRESENT");
+        return v ? v : "Mailbox";
+    }
     bool IsVkValidationSyncEnabled() const { return false; }
     bool IsVkValidationGpuEnabled() const { return false; }
     bool IsVkValidationEnabled() const { return Env("D1_VK_VALIDATION"); }

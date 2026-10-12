@@ -645,3 +645,26 @@ start-up, reservations, authoritative bookkeeping and rewards — which is messa
 handling rather than world simulation. How much game logic hides inside (2)
 (mission progression, objective state) is the next thing to measure, by decoding
 the activity host message payloads.
+
+### Frame rate unlock
+
+The 30 fps cap is the game's own limiter, not the flip rate or vblank (raising the
+emulated vblank to 120 Hz changed nothing). `0x593F00` builds the "time control
+config globals" (pointer `0x26BCD08`, 0x48 bytes) from a config of float seconds:
+`+0x08` frame period µs (33366 = 29.97 fps), `+0x10` 15000, `+0x18`…`+0x30`
+vblank-derived periods (16683 µs = 59.94 Hz), `+0x38` integer target fps (30).
+The main loop (`0x594460`) waits for the next period; `0x593890` (frame time in
+seconds) and `0x5938B0` (fps) derive from `+0x08` and feed `0x591710`.
+
+`D1_FPS=<n>` (hook on `0x593F00`) rewrites `+0x08` and `+0x38`. Measured with the
+null GPU: 60 → 64 flips/s, 120 → 127, 240 → 251 (30 s runs including start-up).
+The intro screen lasts 6.9 s at both 30 and 60 fps, so UI timing is wall-clock
+based. Whether in-world simulation (movement, physics, animation) stays correct
+needs testing in a world.
+
+Low latency (renderer build): Mailbox presentation by default (`D1_PRESENT`), and
+input is sampled every 1 ms.
+
+Note: one of ~10 runs with stdout piped through a timestamper never started the
+bootflow (main loop ran, no state changes). Not reproduced since; watch for a
+start-up race.

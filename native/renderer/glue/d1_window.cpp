@@ -195,7 +195,7 @@ void run_window_loop() {
             }
         }
         poll_input();
-        SDL_Delay(4);
+        SDL_Delay(1);  // input is at most ~1 ms old when the game reads the pad
     }
 }
 
