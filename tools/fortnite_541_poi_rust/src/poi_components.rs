@@ -67,6 +67,19 @@ pub fn original_blueprint_child_meshes(
     let (i,_)=cls.next().ok_or("source BlueprintGeneratedClass export not found")?;
     if cls.next().is_some(){return Err("source Blueprint class duplicated".into());}
     let cls_ref=(i+1) as i32;
+    let cdo_name=format!("Default__{class_name}");
+    let mut cdo=cat.exports.iter().enumerate().filter(|(i,ex)|
+        cat.resolve_package_name((i+1) as i32)==Some(cdo_name.as_str()) &&
+        cat.export_class_name(ex)==Some(class_name));
+    let (_,cdo_export)=cdo.next().ok_or("source SCS owning class CDO missing")?;
+    if cdo.next().is_some(){return Err("source SCS class CDO duplicated".into());}
+    let cdo_data=cat.export_data(header,uexp,cdo_export)?;
+    let cdo_props=properties::scan(&cat,cdo_data)?;
+    let root_ref=object(&cdo_props,cdo_data,"RootComponent")?
+        .ok_or("source SCS Blueprint CDO RootComponent absent")?;
+    if root_ref<=0{return Err("source SCS CDO root is not an owned component".into());}
+    let root_name=cat.resolve_package_name(root_ref)
+        .ok_or("source SCS CDO root FName missing")?.to_owned();
     let prefix=format!("{class_name}::");
     let mut output=Vec::new();
     for (index,node) in cat.exports.iter().enumerate(){
@@ -84,12 +97,33 @@ pub fn original_blueprint_child_meshes(
            template.outer_index!=cls_ref{
             return Err("source SCS child component ownership/class incorrect".into());
         }
-        // Non-root SCS attachment requires explicit parent chain closure.
-        // Only source components with the implicit root transform are
-        // admitted until that hierarchy is represented in universal IR.
-        if props.fields.iter().any(|p|
-            p.name=="ParentComponentOrVariableName"||
-            p.name=="ParentComponentOwnerClassName"){
+        // The original castle torch Flame/Bloom SCS nodes explicitly
+        // attach to the native CDO root StaticMeshComponent0. Following
+        // that root object is exact; attaching to an unknown SCS parent
+        // without its own transform chain is not.
+        let mut parent=props.fields.iter().filter(|p|
+            p.name=="ParentComponentOrVariableName");
+        if let Some(name)=parent.next(){
+            if parent.next().is_some()||name.kind!="NameProperty"||
+                name.payload.len()!=8{
+                return Err("original SCS parent FName malformed".into());
+            }
+            let b=&data[name.payload.clone()];
+            let id=u32::from_le_bytes(b[..4].try_into().unwrap()) as usize;
+            let number=u32::from_le_bytes(b[4..8].try_into().unwrap());
+            let original=cat.names.get(id).ok_or("original SCS parent FName absent")?;
+            let parent_name=if number==0{original.to_owned()}
+                else{format!("{original}#{number}")};
+            if parent_name!=root_name{continue;}
+            let mut native=props.fields.iter().filter(|p|
+                p.name=="bIsParentComponentNative");
+            let flag=native.next().ok_or("original SCS parent root native flag absent")?;
+            if native.next().is_some()||flag.kind!="BoolProperty"||
+                flag.metadata.first().map(String::as_str)!=Some("bool_value=1"){
+                continue;
+            }
+        }
+        if props.fields.iter().any(|p|p.name=="ParentComponentOwnerClassName"){
             continue;
         }
         let bytes=cat.export_data(header,uexp,template)?;
