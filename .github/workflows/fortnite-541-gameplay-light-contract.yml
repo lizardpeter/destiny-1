@@ -16,3 +16,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: '1'
         run: python3 tools/fortnite_541_gameplay_light_contract.py
+      - name: Locate original daylight manager and fog actor transform in authenticated Athena worlds
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_todm_placement_probe.py
