@@ -372,6 +372,41 @@ pub fn first_mip_g8<'a>(
         source_bulk_offset:first,flags,pixels})
 }
 
+/// Convert original signed XY BC5 decoded RG channels into the tangent
+/// normal RGB convention consumed by the shared PBR renderer. The original
+/// red and green channels are retained byte-for-byte; only positive Z is
+/// mathematically reconstructed from the source signed vector.
+pub fn reconstruct_source_bc5_normal_z(rgba:&mut [u8])->Result<(),String>{
+    if rgba.len()%4!=0{return Err("source BC5 normal RGBA extent malformed".into());}
+    for texel in rgba.chunks_exact_mut(4){
+        let x=texel[0] as f32*(2./255.)-1.;
+        let y=texel[1] as f32*(2./255.)-1.;
+        let z=(1.-x*x-y*y).max(0.).sqrt();
+        texel[2]=((z*0.5+0.5)*255.).round().clamp(0.,255.) as u8;
+        texel[3]=255;
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod source_bc5_normal_tests{
+    use super::*;
+    #[test]fn native_bc5_xy_midpoint_recovers_outward_tangent_normal(){
+        let mut pixels=vec![128,128,0,0,255,128,0,255];
+        reconstruct_source_bc5_normal_z(&mut pixels).unwrap();
+        assert_eq!(pixels[0..2],[128,128]);
+        assert_eq!(pixels[2],255);
+        assert_eq!(pixels[3],255);
+        // Source X tangent at +1 leaves no positive Z height.
+        assert_eq!(pixels[4..6],[255,128]);
+        assert_eq!(pixels[6],128);
+        assert_eq!(pixels[7],255);
+    }
+    #[test]fn invalid_bc5_normal_span_fails_closed(){
+        let mut bytes=[0u8;3];
+        assert!(reconstruct_source_bc5_normal_z(&mut bytes).is_err());
+    }
+}
+
 #[cfg(test)]
 mod bc_mip_tests{
     use super::*;

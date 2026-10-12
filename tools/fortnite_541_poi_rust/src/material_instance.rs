@@ -163,6 +163,17 @@ pub fn source_diffuse_input(
         material.textures.iter().find(|t|t.name==*name)
     )
 }
+/// Source-authored tangent-space normal input, not a filename suffix guess.
+/// The native original shipping container and cave MICs use precisely these
+/// FMaterialParameterInfo names; actual PF_BC5 format is checked on decode.
+pub fn source_normal_input(
+    material:&OriginalMaterialInstance,
+)->Option<&OriginalTextureParameter>{
+    ["Normals","CliffNormal"].iter().find_map(|name|
+        material.textures.iter().find(|t|t.name==*name)
+    )
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -190,5 +201,6 @@ mod tests{
             ]
         };
         assert_eq!(source_diffuse_input(&m).unwrap().texture_object,"retail diffuse");
+        assert_eq!(source_normal_input(&m).unwrap().texture_object,"normal");
     }
 }
