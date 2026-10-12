@@ -1,0 +1,18 @@
+name: Fortnite 5.41 original torch material shader blend contract
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_torch_emissive_blend_contract.py
+      - .github/workflows/fortnite-541-torch-emissive-contract.yml
+  workflow_dispatch:
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read original source Flame parent and Bloom UMaterial emissive/blend inputs
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_torch_emissive_blend_contract.py
