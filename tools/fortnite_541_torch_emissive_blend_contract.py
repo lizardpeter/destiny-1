@@ -81,6 +81,14 @@ def run():
             dest=Path("/tmp/fortnite541_original_glow_material")
             dest.with_suffix(".uasset").write_bytes(header)
             dest.with_suffix(".uexp").write_bytes(payload)
+        if archive=="main" and source.endswith("::MI_Fire_Campfire_Mesh_Torch"):
+            dest=Path("/tmp/fortnite541_original_flame_torch_mic")
+            dest.with_suffix(".uasset").write_bytes(header)
+            dest.with_suffix(".uexp").write_bytes(payload)
+        if archive=="main" and source.endswith("::M_Fire_Campfire_Mesh"):
+            dest=Path("/tmp/fortnite541_original_flame_parent_mic")
+            dest.with_suffix(".uasset").write_bytes(header)
+            dest.with_suffix(".uexp").write_bytes(payload)
         c=Catalog(header,payload)
         exports=[]
         for i,ex in enumerate(c.exports,1):

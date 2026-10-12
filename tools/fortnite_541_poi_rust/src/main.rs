@@ -11,6 +11,7 @@ mod poi_blueprint;
 mod poi_lighting;
 mod poi_components;
 mod material_surface;
+mod material_numeric;
 mod sky_dome;
 mod cooked_expression_graph;
 mod texture;
@@ -90,6 +91,26 @@ fn run()->Result<(),String>{
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
+        return Ok(());
+    }
+    if paths.len()==1 && paths[0]=="--audit-original-torch-mic-numerics" {
+        let sources=[
+            ("/tmp/fortnite541_original_flame_torch_mic",
+                "/Game/Athena/Items/Traps/Campfire/Effects/MI_Fire_Campfire_Mesh_Torch::MI_Fire_Campfire_Mesh_Torch",
+                8usize,0usize),
+            ("/tmp/fortnite541_original_flame_parent_mic",
+                "/Game/Athena/Items/Traps/Campfire/Effects/M_Fire_Campfire_Mesh::M_Fire_Campfire_Mesh",
+                7usize,1usize)
+        ];
+        for (base,original,expected_scalars,expected_vectors) in sources{
+            let h=fs::read(format!("{base}.uasset")).map_err(|e|e.to_string())?;
+            let x=fs::read(format!("{base}.uexp")).map_err(|e|e.to_string())?;
+            let got=material_numeric::inspect_original_numeric_parameters(&h,&x,original)?;
+            if got.scalars.len()!=expected_scalars||got.vectors.len()!=expected_vectors {
+                return Err(format!("original flame numeric source parameters wrong count: {got:?}"));
+            }
+            println!("FORTNITE_541_AUTHENTIC_FLAME_NUMERICS {:?}",got);
+        }
         return Ok(());
     }
     if paths.len()==1 && paths[0]=="--audit-original-bloom-shader" {
