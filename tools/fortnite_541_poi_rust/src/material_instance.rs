@@ -55,9 +55,13 @@ pub fn inspect_instance(
     header:&[u8],exports:&[u8],original:&str,
 )->Result<OriginalMaterialInstance,String>{
     let catalog=uobject::inspect(header)?;
+    let source_export_name=original.rsplit("::").next()
+        .ok_or("original material instance source export name missing")?;
     let mut matches=catalog.exports.iter().enumerate().filter(|(i,e)|
         catalog.export_class_name(e)==Some("MaterialInstanceConstant") &&
-        catalog.source_object_path((i+1) as i32).as_deref()==Ok(original)
+        catalog.source_object_path((i+1) as i32).ok()
+            .and_then(|p|p.rsplit("::").next().map(str::to_owned))
+            .as_deref()==Some(source_export_name)
     );
     let (_,material)=matches.next().ok_or("original material object is not MaterialInstanceConstant")?;
     if matches.next().is_some(){return Err("duplicate retail MaterialInstance UObject export".into());}
