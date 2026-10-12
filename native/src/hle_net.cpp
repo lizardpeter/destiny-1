@@ -3,10 +3,15 @@
 //
 // D1_NET=offline (default) reports no network link, which stops the bootflow at
 // platform_signin. D1_NET=link reports a connected interface and gives the game real
-// host sockets, so later sign-in stages run and show what they need. DNS lookups are
-// always refused: nothing reaches Bungie's or Sony's servers.
+// host sockets, so later sign-in stages run and show what they need.
+//
+// D1_BACKEND=<host or IP> names a replacement backend server (same machine for now,
+// another machine later) and implies D1_NET=link. Hostnames of Bungie's, DemonWare's and
+// Sony's services resolve to that server; every other name is refused. Without
+// D1_BACKEND all lookups are refused. Nothing ever reaches the real services.
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/epoll.h>
@@ -25,8 +30,61 @@
 namespace d1 {
 
 static bool net_link() {
-    static const bool link = [] { const char* v = getenv("D1_NET"); return v && std::strcmp(v, "link") == 0; }();
+    static const bool link = [] {
+        const char* v = getenv("D1_NET");
+        return (v && std::strcmp(v, "link") == 0) || getenv("D1_BACKEND") != nullptr;
+    }();
     return link;
+}
+
+// ------------------------------------------------------------------ backend routing
+static const char* const kBackendDomains[] = {
+    "deadorbit.net", "gravityshavings.net", "bungie.net", "bungie.com",   // Bungie
+    "demonware.net",                                                     // DemonWare (STUN)
+    "playstation.net", "sonyentertainmentnetwork.com",                   // PSN auth
+};
+
+static bool is_backend_name(const std::string& host) {
+    for (const char* d : kBackendDomains) {
+        const size_t n = std::strlen(d);
+        if (host.size() >= n && host.compare(host.size() - n, n, d) == 0 &&
+            (host.size() == n || host[host.size() - n - 1] == '.'))
+            return true;
+    }
+    return false;
+}
+
+const char* backend_host() {
+    static const char* h = getenv("D1_BACKEND");
+    return h && *h ? h : nullptr;
+}
+
+// IPv4 address of the D1_BACKEND server (network byte order), resolved once.
+static bool backend_addr(uint32_t* out) {
+    static const uint32_t addr = []() -> uint32_t {
+        const char* h = backend_host();
+        if (!h) return 0;
+        addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_INET;
+        if (getaddrinfo(h, nullptr, &hints, &res) != 0 || !res) {
+            log("net: cannot resolve D1_BACKEND '%s'", h);
+            return 0;
+        }
+        uint32_t a = reinterpret_cast<sockaddr_in*>(res->ai_addr)->sin_addr.s_addr;
+        freeaddrinfo(res);
+        char ip[32];
+        inet_ntop(AF_INET, &a, ip, sizeof ip);
+        log("net: backend server %s (%s)", h, ip);
+        return a;
+    }();
+    if (!addr) return false;
+    *out = addr;
+    return true;
+}
+
+bool backend_route(const char* host, uint32_t* addr_be) {
+    if (!host || !is_backend_name(host)) return false;
+    return backend_addr(addr_be);
 }
 
 // ------------------------------------------------------------------ errors
@@ -175,6 +233,16 @@ static int32_t sceNetSend(int fd, const void* b, uint64_t n, int flags) {
 HLE("sceNetSend", sceNetSend)
 static int32_t sceNetSendto(int fd, const void* b, uint64_t n, int flags, const void* a, uint32_t) {
     sockaddr_in h = to_host(a);
+    if (a) {  // log each new UDP destination once (protocol discovery)
+        static std::mutex m;
+        static std::map<uint64_t, int> seen;
+        std::lock_guard lk(m);
+        if (seen[(uint64_t(h.sin_addr.s_addr) << 16) | h.sin_port]++ == 0) {
+            char ip[32];
+            inet_ntop(AF_INET, &h.sin_addr, ip, sizeof ip);
+            log("net: first udp send to %s:%u (%lu bytes)", ip, ntohs(h.sin_port), n);
+        }
+    }
     ssize_t r = sendto(fd, b, n, MSG_NOSIGNAL, a ? reinterpret_cast<sockaddr*>(&h) : nullptr, a ? sizeof h : 0);
     return r < 0 ? net_fail(errno) : int32_t(r);
 }
@@ -274,16 +342,25 @@ static int32_t sceNetEpollWait(int ep, NetEpollEvent* evs, int max, int timeout_
 }
 HLE("sceNetEpollWait", sceNetEpollWait)
 
-// ------------------------------------------------------------------ DNS: always refused
+// ------------------------------------------------------------------ DNS: backend names only
 static int32_t sceNetResolverCreate(const char*, int, int) { return 1; }
 HLE("sceNetResolverCreate", sceNetResolverCreate)
 static int32_t sceNetResolverDestroy(int) { return SCE_OK; }
 HLE("sceNetResolverDestroy", sceNetResolverDestroy)
 static int32_t sceNetResolverAbort(int, int) { return SCE_OK; }
 HLE("sceNetResolverAbort", sceNetResolverAbort)
-static int32_t sceNetResolverStartNtoa(int, const char* host, void*, int, int, int) {
+static int32_t sceNetResolverStartNtoa(int, const char* host, uint32_t* addr, int, int, int) {
+    uint32_t a;
+    if (backend_route(host, &a)) {
+        static std::mutex m;
+        static std::map<std::string, int> seen;
+        std::lock_guard lk(m);
+        if (seen[host]++ == 0) log("net: %s -> backend", host);
+        if (addr) *addr = a;
+        return SCE_OK;
+    }
     static std::atomic<int> logged{0};
-    if (logged++ < 20) log("net: DNS lookup of '%s' refused (no external network in the prototype)", host ? host : "?");
+    if (logged++ < 20) log("net: DNS lookup of '%s' refused (not a backend name, or no D1_BACKEND)", host ? host : "?");
     return int32_t(0x804101E1);
 }
 HLE("sceNetResolverStartNtoa", sceNetResolverStartNtoa)

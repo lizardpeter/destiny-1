@@ -45,6 +45,11 @@ void gpu_on_map(uint64_t addr, uint64_t size);
 void gpu_on_unmap(uint64_t addr, uint64_t size);
 bool gpu_on_fault(void* ucontext, void* addr);
 
+// Backend routing (hle_net.cpp): D1_BACKEND server, and whether a hostname belongs to the
+// services it replaces (then *addr_be is the server's IPv4 address).
+const char* backend_host();
+bool backend_route(const char* host, uint32_t* addr_be);
+
 // Guest paths (/app0/..., /temp0/...) -> host paths.
 std::string host_path(const char* guest);
 

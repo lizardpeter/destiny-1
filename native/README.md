@@ -26,7 +26,8 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_WATCHDOG=<s>` | after `<s>` seconds dump every guest thread's call stack, call counts and GPU stats, then exit |
 | `D1_ABORT_ON_UNIMPL=1` | stop at the first call to an unimplemented firmware function |
 | `D1_BYPASS=prereq,transport` | research hooks: report failed bootflow prerequisites as satisfied; report the DemonWare transport as started |
-| `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is always refused |
+| `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is refused |
+| `D1_BACKEND=<host>` | replacement backend server (implies `D1_NET=link`): Bungie, DemonWare and PSN hostnames resolve to it, all others are refused; HTTP(S) requests to those services go to it as plain HTTP on `D1_BACKEND_HTTP_PORT` (default 8080) with the original `Host` header |
 | `D1_FRAMES=<dir>` | (renderer build) save displayed frames as PNG; `D1_FRAME_EVERY=<n>` sets the interval (default 60) |
 | `D1_RENDERER=0` | (renderer build) use the null GPU anyway |
 | `D1_WINDOW=0` | (renderer build) no window: offscreen rendering only |

@@ -582,3 +582,28 @@ flipped video-out buffer through a Vulkan swapchain, letterboxed. Keyboard and
 SDL game controllers feed `scePadRead`/`scePadReadState`. Checked under Xvfb with
 injected key presses: title screen ("PRESS ⊗ TO PLAY") → Enter → platform_signin →
 no-network dialog → Enter → back to the title.
+
+### Backend routing (`D1_BACKEND`)
+
+Decision: the online services are to be replaced by a backend server of our own,
+run on the same machine for testing and on another machine later, never the real
+services. d1-native now takes the server's address from `D1_BACKEND`:
+
+- DNS: names under `deadorbit.net`, `gravityshavings.net`, `bungie.net`,
+  `bungie.com`, `demonware.net`, `playstation.net` and
+  `sonyentertainmentnetwork.com` resolve to the backend; everything else is
+  refused. The eboot's own host list: `signon.{deadorbit,gravityshavings}.net`,
+  `stun1-8.signon.{deadorbit,gravityshavings}.net`, `stun.{us,eu,jp,au}.demonware.net`,
+  `dm-partnernet.upload.deadorbit.net`, `www.bungie.net`, `help.bungie.net`,
+  `auth.api.%s.ac.playstation.net/2.0/oauth/token`.
+- HTTP(S) through libSceHttp is sent as plain HTTP/1.1 to the backend
+  (`D1_BACKEND_HTTP_PORT`, default 8080) with the original `Host` header and an
+  `X-D1-Original-URL` header; the response is returned to the game as is.
+  Since libSceHttp is HLE, TLS never comes into it.
+
+First request received by a probe server (with `D1_BYPASS=prereq,transport`):
+`POST https://auth.api.sp-int.ac.playstation.net/2.0/oauth/token`, form-encoded
+`grant_type=authorization_code`, the game's PSN client id/secret, the
+authorization code from `sceNpAuthGetAuthorizationCode`, scope
+`openid,openid:duid,psn:s2s`. With an error answer the game retries every ~9 s.
+This is the first thing the backend must answer (an OAuth token response).
