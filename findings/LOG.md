@@ -383,3 +383,39 @@ using a scratch-only DLL; no DLL or shader bytes were committed.
 - Not covered by this census: operand-level limits (export/render-target
   formats, image formats, MIMG modifiers) and the fetch shaders Gnm generates at
   run time; the 49 families are a sample of the game, not every package.
+
+
+## 2026-10-12 — CPU side of a recompilation: x86-64 portability census
+
+`tools/eboot/d1_x86_portability_census.py` -> `evidence/generated/d1_x86_portability.json`.
+
+The PS4 CPU (AMD Jaguar) is x86-64, so the game's machine code can run
+natively on a PC; a recompilation is relinking plus patching the places where
+console and host differ. Function ranges come from each module's
+`.eh_frame_hdr` FDE table (exact starts and lengths), minus the clang jump
+tables that the PS4 toolchain places inside `.text`.
+
+- **Functions:** eboot 54,533 (18.4 MB of code), libc.prx 1,999,
+  libSceFios2.prx 649 — 57,181 in total. (The earlier prologue-scan estimate
+  of ~38k missed frame-pointer-less leaf functions.)
+- **AMD-only instructions:** no SSE4a (EXTRQ / INSERTQ / MOVNTSS / MOVNTSD)
+  anywhere, so nothing faults on Intel hosts.
+- **Precision differences:** 1,789 VRSQRTPS and 315 VRCPPS (all eboot). They run
+  everywhere but give different low bits on Intel than on the PS4; shadPS4
+  rewrites exactly these two to AMD-accurate sequences on Intel hosts.
+- **TLS:** 2,542 `mov r64, fs:[0]` thread-control-block loads in the eboot; no
+  other FS-relative operands. A recompile must redirect these (shadPS4 patches
+  the same idiom).
+- **No direct system calls** in game code (the earlier linear-sweep hits were in
+  `.rodata`): every OS interaction goes through the imported firmware functions.
+- **Timing / CPU identification:** 1,199 RDTSC + 1 RDTSCP (must agree with
+  whatever `sceKernelGetTscFrequency` reports), 4 CPUID in one detection routine
+  at `0xF12082`. 169 `int 0x41` and 180 `int3` sit on assert/debug-break paths.
+- **Host CPU baseline:** ~565k VEX-encoded (AVX-128) instructions, BMI1
+  (BEXTR register form ×2,492, ANDN, BLSI, BLSR, TZCNT), MOVBE ×255, LZCNT, POPCNT.
+  No F16C, AES, CLMUL, and none of the instructions Jaguar lacks (AVX2, FMA3,
+  FMA4, XOP, TBM) — that zero also shows the sweep stayed in real code. In host
+  terms the code needs an Intel Haswell / AMD Zen class CPU or newer.
+- **Indirect control flow:** 16,625 indirect calls and 2,677 indirect jumps.
+  Irrelevant for an x86-64→x86-64 relink; they are the hard part only if the
+  code were lifted to C or another architecture.
