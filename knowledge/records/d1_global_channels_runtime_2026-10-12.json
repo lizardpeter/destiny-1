@@ -1,0 +1,204 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "d1_global_channels_runtime_2026_10_12",
+  "title": "Destiny 1 global channel runtime path and channel names",
+  "updated_utc": "2026-10-12T14:30:00Z",
+  "scope": {
+    "game": "Destiny 1",
+    "platform": "PS4",
+    "title_id": "CUSA00219",
+    "version": "01.33"
+  },
+  "nodes": [
+    {
+      "id": "fn:01.33:0x80AA80",
+      "kind": "function",
+      "status": "PROVEN",
+      "label": "frame_setup",
+      "attrs": {
+        "writes": "ctx+0x13F0 = renderer+0x18958"
+      }
+    },
+    {
+      "id": "fn:01.33:0x8162D0",
+      "kind": "function",
+      "status": "PROVEN",
+      "label": "global_channels_copy_to_renderer"
+    },
+    {
+      "id": "fn:01.33:0x8154E0",
+      "kind": "function",
+      "status": "PROVEN",
+      "label": "global_channels_load_defaults"
+    },
+    {
+      "id": "fn:01.33:0x816170",
+      "kind": "function",
+      "status": "PROVEN",
+      "label": "global_channel_set"
+    },
+    {
+      "id": "fn:01.33:0x816240",
+      "kind": "function",
+      "status": "PROVEN",
+      "label": "global_channel_find"
+    },
+    {
+      "id": "class:01.33:c_sun_manager",
+      "kind": "rtti_class",
+      "status": "PROVEN",
+      "label": "c_sun_manager",
+      "attrs": {
+        "typeinfo": "0x1949590",
+        "vtable": "0x1949560",
+        "base": "c_game_system_interface",
+        "instance": "function-local static 0x29600A0"
+      }
+    },
+    {
+      "id": "tag:80AE4005",
+      "kind": "global_channel_defaults_tag",
+      "status": "PROVEN",
+      "label": "GlobalChannelDefaults (100 channels)"
+    },
+    {
+      "id": "hash:fnv1_32",
+      "kind": "hash_function",
+      "status": "PROVEN",
+      "label": "FNV-1 32 channel StringHash"
+    },
+    {
+      "id": "name:candidate:sea_hero_receive",
+      "kind": "channel_name_candidate",
+      "status": "REJECTED",
+      "label": "sea_hero_receive"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "subject": "fn:01.33:0x8162D0",
+      "predicate": "fills",
+      "object": "fn:01.33:0x80AA80",
+      "status": "PROVEN",
+      "assertion_ids": [
+        "a1"
+      ]
+    },
+    {
+      "id": "e2",
+      "subject": "fn:01.33:0x8154E0",
+      "predicate": "loads",
+      "object": "tag:80AE4005",
+      "status": "STRONGLY_SUPPORTED",
+      "assertion_ids": [
+        "a3"
+      ]
+    },
+    {
+      "id": "e3",
+      "subject": "class:01.33:c_sun_manager",
+      "predicate": "writes_channels_via",
+      "object": "fn:01.33:0x816170",
+      "status": "PROVEN",
+      "assertion_ids": [
+        "a1"
+      ]
+    },
+    {
+      "id": "e4",
+      "subject": "fn:01.33:0x816240",
+      "predicate": "keys_by",
+      "object": "hash:fnv1_32",
+      "status": "PROVEN",
+      "assertion_ids": [
+        "a2"
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "a1",
+      "status": "PROVEN",
+      "claim": "RoI TFX opcode 0x4B reads renderer+0x18958, a per-frame copy of the global channel store g_26f1fc0.",
+      "source_ids": [
+        "s3"
+      ]
+    },
+    {
+      "id": "a2",
+      "status": "PROVEN",
+      "claim": "Global channel names are hashed with FNV-1 32; 0x5C579DFA = fnv1('sun_light_direction').",
+      "source_ids": [
+        "s1",
+        "s3"
+      ]
+    },
+    {
+      "id": "a3",
+      "status": "STRONGLY_SUPPORTED",
+      "claim": "In tag 80AE4005, 0x11 = sun_color, 0x30 = sun_transmission_color, 0x60 = lighting_cinematic_override (dictionary preimages).",
+      "source_ids": [
+        "s1",
+        "s2"
+      ]
+    },
+    {
+      "id": "a4",
+      "status": "REJECTED",
+      "claim": "sea_hero_receive and tonemap_cosmodrome_indoor are channel names.",
+      "source_ids": [
+        "s1"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "s1",
+      "kind": "generated_evidence",
+      "locator": "evidence/generated/d1_global_channel_names.json"
+    },
+    {
+      "id": "s2",
+      "kind": "generated_evidence",
+      "locator": "evidence/generated/d1_current_global_channel_defaults_decoded.json"
+    },
+    {
+      "id": "s3",
+      "kind": "decompile",
+      "locator": "reconstruction/evil/shared/engine/source/engine/graphics/decompiled/",
+      "details": {
+        "executable_sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833"
+      }
+    }
+  ],
+  "rejections": [
+    {
+      "id": "r1",
+      "candidate_node": "name:candidate:sea_hero_receive",
+      "rejected_as": "name of hash 056007C7",
+      "reason": "Dictionary collision; sun_glow_color matches the same hash and fits the channel's neighbours. tonemap_cosmodrome_indoor (CBF32782) rejected the same way.",
+      "assertion_ids": [
+        "a4"
+      ]
+    }
+  ],
+  "frontiers": [
+    {
+      "id": "f1",
+      "question": "What is the name of global channel 0x28 (hash 1191B30B)?",
+      "next_proof": "Find the hash constant in code (static initializers near other channel users) or extend the dictionary search.",
+      "related_nodes": [
+        "tag:80AE4005"
+      ]
+    },
+    {
+      "id": "f2",
+      "question": "Which code writes sun_color, sun_transmission_color and lighting_cinematic_override at runtime?",
+      "next_proof": "Decompile the per-frame passes 0x815600 and 0x815790 and trace their sources.",
+      "related_nodes": [
+        "fn:01.33:0x816170"
+      ]
+    }
+  ]
+}

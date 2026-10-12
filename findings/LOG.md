@@ -259,3 +259,45 @@ No retail executable bytes are committed. The immediate next evidence target is
 any already-decrypted D1 PS4 executable from a known build; 01.29 is sufficient
 to begin code-side function recovery while 01.33 remains the canonical final
 target.
+
+
+## 2026-10-12 — Global channel source of TFX opcode 0x4B closed; channel names recovered
+
+Executable side (CUSA00219 01.33, angr decompiles under
+`reconstruction/.../engine/graphics/decompiled/`):
+
+- `frame_setup` 0x80AA80 points render-context `ctx+0x13F0` (the table RoI TFX
+  opcode 0x4B indexes) at `renderer+0x18958`.
+- `global_channels_copy_to_renderer` 0x8162D0, called each frame from
+  `renderer_frame_prepare` 0x7ECBC0, fills that array from the global channel
+  store `g_26f1fc0` (vec4 x count `g_26f1fc8`, 0x1000-byte heap
+  "Extracted global channel data", allocated by 0x815420).
+- Defaults come from the GlobalChannelDefaults tag (`g_26f1ff0`, loaded by
+  0x8154E0): +0x08 hash array, +0x18 vec4 defaults — the same layout already
+  closed by `tools/d1_global_channel_defaults_decode.py` for tag `80AE4005`.
+- Accessors: `global_channel_get` 0x816100, `global_channel_set` 0x816170
+  (honours override bits `g_26f1fcc`), `global_channel_find` 0x816240 (hash ->
+  index, linear search of the tag's hash array).
+- Runtime writers found so far: `c_sun_manager` (RTTI typeinfo 0x1949590,
+  vtable 0x1949560, base `c_game_system_interface`). Slot 2 (0x8B1F10) resolves
+  eight channel indices by hash; non-virtual updates 0x8B2020 (directions),
+  0x8B23F0 (intensity fade by kind-2 volumes) and 0x8B2850 (shadow mode) run
+  every frame from `lighting_frame_update` 0x7EBFC0.
+
+Hash function: `0x5C579DFA` (a c_sun_manager key) is FNV-1 32 of
+`sun_light_direction`, a string present verbatim in the binary. Dictionary
+preimages then name 52 of the 100 channels in tag `80AE4005`
+(`evidence/generated/d1_global_channel_names.json`,
+`tools/d1_global_channel_names.py`). For the 0x4B frontier:
+
+| index | hash | name | status |
+|---|---|---|---|
+| 0x11 | 90745795 | sun_color | STRONGLY_SUPPORTED |
+| 0x28 | 1191B30B | — | UNKNOWN |
+| 0x30 | E9EE5E9C | sun_transmission_color | STRONGLY_SUPPORTED |
+| 0x60 | 0AD675E2 | lighting_cinematic_override | STRONGLY_SUPPORTED |
+
+Not yet closed: who writes `sun_color`, `sun_transmission_color` and
+`lighting_cinematic_override` at runtime (candidates: the per-frame passes
+0x815600 / 0x815790, which blend from tag/volume data). Index 0x28 stays
+unnamed.
