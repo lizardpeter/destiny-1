@@ -83,6 +83,15 @@ def main():
                 get=lambda key:next(v for n,k,m,v in fields if n==key)
                 values.append({"layer":c.fname(get("LayerName")),"blend":c.fname(get("BlendType"))})
             print("ATHENA_541_AUTHENTIC_LAYER_BLEND_TYPES "+json.dumps({"node":c.value(i),"layers":values},sort_keys=True),flush=True)
+    targets={
+      "Mud":"/Environments/Landscape/Textures/Arid/T_Athena_Arid_MudVariant_01",
+      "Gravel":"/Packages/DS_Fortnight/WhiteRockCustom_D",
+      "Road":"/Packages/DS_Fortnight/SM/Textures/T_Street_Road_D",
+      "Arid":"/Environments/Sets/Arid/Textures/T_desert_sand_base_C",
+    }
+    for layer,name in targets.items():
+        found=[(path,e) for path,e in idx.items() if path.endswith(name+".uasset") or path.endswith(name+".uexp") or path.endswith(name+".ubulk")]
+        print("ATHENA_541_AUTHENTIC_PAINT_SURFACE_TEXTURE "+json.dumps({"paint_layer":layer,"sample_source":name,"original_files":[{"name":p,"bytes":e[2],"method":e[3],"encrypted":bool(e[5])} for p,e in found]},sort_keys=True),flush=True)
     for base in SOURCES:
         graph=audit_one(base,idx)
         nodes=graph["graph_links"]+graph["texture_samples"]
