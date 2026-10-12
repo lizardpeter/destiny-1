@@ -8,6 +8,7 @@ mod extract;
 mod pak;
 mod poi_extract;
 mod poi_blueprint;
+mod poi_lighting;
 mod sky_dome;
 mod cooked_expression_graph;
 mod texture;
@@ -87,6 +88,44 @@ fn run()->Result<(),String>{
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
+        return Ok(());
+    }
+    if paths.len()==1 && paths[0]=="--audit-split-poi-lights" {
+        let original=fs::read_to_string("/tmp/fortnite541_split_only_cdos.tsv")
+            .map_err(|e|e.to_string())?;
+        let mut expected=0usize;
+        let mut discovered=0usize;
+        for line in original.lines(){
+            let cols=line.split('\t').collect::<Vec<_>>();
+            if cols.len()!=3{return Err("original light CDO source manifest malformed".into());}
+            let class=cols[0];
+            let count=cols[1].parse::<usize>().map_err(|e|e.to_string())?;
+            let stem=cols[2];
+            let header=fs::read(format!("{stem}.uasset")).map_err(|e|e.to_string())?;
+            let exports=fs::read(format!("{stem}.uexp")).map_err(|e|e.to_string())?;
+            let lights=poi_lighting::original_blueprint_point_lights(
+                &header,&exports,class
+            )?;
+            println!("FORTNITE_AUTHENTIC_SPLIT_BLUEPRINT_POINT_LIGHT class={class:?} actor_count={count} authored_components={:?}",lights);
+            if class.contains("BP_TRV_ALight_Torch_02::"){
+                if count!=18||lights.len()!=1{
+                    return Err(format!("actual original castle torch expected 18 actors and one pointlight template; found {count} and {}",lights.len()));
+                }
+                let torch=&lights[0];
+                if (torch.attenuation_radius_cm-400.).abs()>0.001||
+                   (torch.source_intensity-3.).abs()>0.001||
+                   (torch.relative_location_cm[0]+24.9733).abs()>0.001||
+                   (torch.relative_location_cm[1]-2.0611725).abs()>0.001||
+                   (torch.relative_location_cm[2]-63.787743).abs()>0.001||
+                   (torch.color_linear[0]-1.).abs()>0.0001 {
+                    return Err(format!("original Torch PointLight source color/transform/intensity changed: {torch:?}"));
+                }
+                expected+=18;
+            }
+            discovered+=lights.len()*count;
+        }
+        println!("FORTNITE_541_AUTHORED_BLUEPRINT_LOCAL_LIGHT_SUMMARY true_torch_actor_lights={expected} source_light_instances={discovered}");
+        if expected!=18{return Err("original 18 castle torches did not source-verify".into());}
         return Ok(());
     }
     if paths.len()==1 && paths[0]=="--audit-material-instances" {
