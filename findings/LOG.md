@@ -335,3 +335,51 @@ direct call sites**.
 - `call_sites` counts direct calls into PLT stubs only; submit/flip are called
   through pointers and show 0. The eboot total (31,219) matches the
   independent capstone call index exactly.
+
+
+## 2026-10-12 — GPU side of a recompilation: PM4 packets and GCN shaders vs. shadPS4
+
+shadPS4 checkout `e0a46675` (2026-10-11).
+
+### PM4 command packets (`tools/eboot/d1_pm4_emitters.py` -> `evidence/generated/d1_pm4_emitters.json`)
+
+The statically linked Gnm builders sit in `0xF7C000–0xF88000` (draw/dispatch
+command buffer) and `0x1005800–0x1005B00` (constant-engine buffer), and are
+called from Bungie's renderer around `0x7DF000–0x7E3000`. They write
+**25 distinct type-3 opcodes**; every one has a handler in shadPS4's Liverpool
+command processor.
+
+- `SET_PREDICATION` is only logged as unimplemented by shadPS4, but its two
+  builders (`0xF809F0`, `0xF80A80`) have no direct callers.
+- No indirect draws/dispatches, no `INDIRECT_BUFFER` (submission goes through
+  `sceGnmSubmitCommandBuffers`), no async compute queue: dispatches go on the
+  graphics ring (`DISPATCH_DIRECT` with the compute shader-type bit).
+- Sub-modes checked by hand: `WRITE_DATA` always uses dst_sel 2 (memory) with
+  `wr_one_addr = 0`, both supported. `DMA_DATA` uses caller-chosen src_sel with
+  dst_sel memory or GDS; shadPS4 handles every pair except GDS→GDS. The
+  fence helper at `0xF80AE0` fills memory from immediate data (src_sel DATA).
+- Explicit `EVENT_WRITE` types seen at call sites: 0x2C, 0x2E, 0x31 (cache
+  flush/partial-flush events; logged and ignored by shadPS4). Draw builders
+  append EVENT_WRITE 0x35.
+
+### GCN shaders (`tools/eboot/d1_gcn_isa_census.py` -> `evidence/generated/d1_gcn_isa_census.json`)
+
+Corpus: every native shader payload (FileEntry type 1, subtypes 8, 9, 11, 12,
+all ending in an `OrbShdr` footer) in the 49 package families the repository
+already references — 14,849 entries, **13,692 unique shaders**, 2,525,868
+instructions. Stages: 9,046 pixel, 4,545 vertex, 49 hull, 34 local, 18 domain.
+Blocks were decoded with the project's Oodle 3 pipeline (exact raw-length rule)
+using a scratch-only DLL; no DLL or shader bytes were committed.
+
+- Decoding is exact for all 13,692 shaders: each consumes its OrbShdr code
+  length and ends in `S_ENDPGM`. The decoder agrees instruction-for-instruction
+  (170/170) with the two independent gfx700 disassemblies already in
+  `evidence/generated/`.
+- **129 distinct opcodes; all 129 are translated by shadPS4** (names and
+  aliases taken from its own opcode tables, e.g. `V_CMP_LG_I32` = `V_CMP_NE_I32`).
+- Heaviest use: V_MUL_F32, V_MAC_F32, V_MOV_B32, S_WAITCNT, V_INTERP_P1/P2,
+  IMAGE_SAMPLE. Less common but present: DS_SWIZZLE_B32 (453 shaders),
+  V_READLANE/V_WRITELANE (241), cube-map ops (1,260), tessellation stages.
+- Not covered by this census: operand-level limits (export/render-target
+  formats, image formats, MIMG modifiers) and the fetch shaders Gnm generates at
+  run time; the 49 families are a sample of the game, not every package.

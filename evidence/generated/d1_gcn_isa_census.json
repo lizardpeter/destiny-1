@@ -1,0 +1,1212 @@
+{
+ "schema": "d1_gcn_isa_census/v1",
+ "unique_shaders": 13692,
+ "clean_decodes": 13692,
+ "stages": {
+  "PixelShader": 9046,
+  "VertexShader": 4545,
+  "HullShader": 49,
+  "LocalShader": 34,
+  "DomainShader": 18
+ },
+ "instructions_total": 2525868,
+ "distinct_opcodes": 129,
+ "missing_in_shadps4": {
+  "distinct_opcodes": 0,
+  "instructions": 0,
+  "shaders_affected": 0
+ },
+ "opcodes": [
+  {
+   "opcode": "V_MUL_F32",
+   "encodings": {
+    "VOP2": 347264,
+    "VOP3": 44033
+   },
+   "instructions": 391297,
+   "shaders": 13439,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAC_F32",
+   "encodings": {
+    "VOP2": 342531
+   },
+   "instructions": 342531,
+   "shaders": 12865,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MOV_B32",
+   "encodings": {
+    "VOP1": 185557
+   },
+   "instructions": 185557,
+   "shaders": 13523,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_WAITCNT",
+   "encodings": {
+    "SOPP": 138773
+   },
+   "instructions": 138773,
+   "shaders": 13683,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_INTERP_P1_F32",
+   "encodings": {
+    "VINTRP": 105295
+   },
+   "instructions": 105295,
+   "shaders": 8671,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_INTERP_P2_F32",
+   "encodings": {
+    "VINTRP": 105295
+   },
+   "instructions": 105295,
+   "shaders": 8671,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_ADD_F32",
+   "encodings": {
+    "VOP3": 14911,
+    "VOP2": 77297
+   },
+   "instructions": 92208,
+   "shaders": 12368,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAD_F32",
+   "encodings": {
+    "VOP3": 82635
+   },
+   "instructions": 82635,
+   "shaders": 10870,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_SUB_F32",
+   "encodings": {
+    "VOP2": 73401
+   },
+   "instructions": 73401,
+   "shaders": 10930,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_BUFFER_LOAD_DWORDX4",
+   "encodings": {
+    "SMRD": 68586
+   },
+   "instructions": 68586,
+   "shaders": 11699,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CNDMASK_B32",
+   "encodings": {
+    "VOP3": 9769,
+    "VOP2": 55733
+   },
+   "instructions": 65502,
+   "shaders": 6129,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MUL_LEGACY_F32",
+   "encodings": {
+    "VOP2": 63475,
+    "VOP3": 115
+   },
+   "instructions": 63590,
+   "shaders": 8734,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_LOAD_DWORDX4",
+   "encodings": {
+    "SMRD": 56388
+   },
+   "instructions": 56388,
+   "shaders": 13254,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_SAMPLE",
+   "encodings": {
+    "MIMG": 48819
+   },
+   "instructions": 48819,
+   "shaders": 8688,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_BUFFER_LOAD_DWORD",
+   "encodings": {
+    "SMRD": 42898
+   },
+   "instructions": 42898,
+   "shaders": 11510,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_EQ_I32",
+   "encodings": {
+    "VOPC": 40600
+   },
+   "instructions": 40600,
+   "shaders": 2645,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "EXP",
+   "encodings": {
+    "EXP": 40266
+   },
+   "instructions": 40266,
+   "shaders": 13609,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_LOAD_DWORDX8",
+   "encodings": {
+    "SMRD": 39155
+   },
+   "instructions": 39155,
+   "shaders": 7893,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_MOV_B32",
+   "encodings": {
+    "SOP1": 37093
+   },
+   "instructions": 37093,
+   "shaders": 13692,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_BUFFER_LOAD_DWORDX2",
+   "encodings": {
+    "SMRD": 36633
+   },
+   "instructions": 36633,
+   "shaders": 11320,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAX_F32",
+   "encodings": {
+    "VOP3": 24630,
+    "VOP2": 9958
+   },
+   "instructions": 34588,
+   "shaders": 6797,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAC_LEGACY_F32",
+   "encodings": {
+    "VOP2": 31410
+   },
+   "instructions": 31410,
+   "shaders": 7242,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_SUBREV_F32",
+   "encodings": {
+    "VOP2": 28178,
+    "VOP3": 449
+   },
+   "instructions": 28627,
+   "shaders": 6476,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CVT_PKRTZ_F16_F32",
+   "encodings": {
+    "VOP2": 26833
+   },
+   "instructions": 26833,
+   "shaders": 9040,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_MOV_B64",
+   "encodings": {
+    "SOP1": 25714
+   },
+   "instructions": 25714,
+   "shaders": 9270,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MADMK_F32",
+   "encodings": {
+    "VOP2": 22600
+   },
+   "instructions": 22600,
+   "shaders": 5352,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_FRACT_F32",
+   "encodings": {
+    "VOP1": 15658,
+    "VOP3": 4708
+   },
+   "instructions": 20366,
+   "shaders": 4130,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MADAK_F32",
+   "encodings": {
+    "VOP2": 19831
+   },
+   "instructions": 19831,
+   "shaders": 4692,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_RSQ_CLAMP_F32",
+   "encodings": {
+    "VOP1": 15738
+   },
+   "instructions": 15738,
+   "shaders": 7245,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_RCP_F32",
+   "encodings": {
+    "VOP3": 1595,
+    "VOP1": 13365
+   },
+   "instructions": 14960,
+   "shaders": 6726,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_ENDPGM",
+   "encodings": {
+    "SOPP": 13692
+   },
+   "instructions": 13692,
+   "shaders": 13692,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_EXP_F32",
+   "encodings": {
+    "VOP1": 11715,
+    "VOP3": 795
+   },
+   "instructions": 12510,
+   "shaders": 3957,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_GT_F32",
+   "encodings": {
+    "VOPC": 8631,
+    "VOP3": 3551
+   },
+   "instructions": 12182,
+   "shaders": 5492,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_LOG_F32",
+   "encodings": {
+    "VOP1": 11611,
+    "VOP3": 168
+   },
+   "instructions": 11779,
+   "shaders": 3873,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAD_LEGACY_F32",
+   "encodings": {
+    "VOP3": 11707
+   },
+   "instructions": 11707,
+   "shaders": 2171,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_SQRT_F32",
+   "encodings": {
+    "VOP1": 11686,
+    "VOP3": 2
+   },
+   "instructions": 11688,
+   "shaders": 7263,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_WQM_B64",
+   "encodings": {
+    "SOP1": 9747
+   },
+   "instructions": 9747,
+   "shaders": 8709,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CVT_I32_F32",
+   "encodings": {
+    "VOP1": 9292
+   },
+   "instructions": 9292,
+   "shaders": 5596,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_ANDN2_B64",
+   "encodings": {
+    "SOP2": 7930
+   },
+   "instructions": 7930,
+   "shaders": 3091,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_CBRANCH_EXECZ",
+   "encodings": {
+    "SOPP": 7822
+   },
+   "instructions": 7822,
+   "shaders": 2208,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_READLANE_B32",
+   "encodings": {
+    "VOP2": 7520
+   },
+   "instructions": 7520,
+   "shaders": 241,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_LSHLREV_B32",
+   "encodings": {
+    "VOP2": 6738
+   },
+   "instructions": 6738,
+   "shaders": 3271,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "TBUFFER_LOAD_FORMAT_XYZW",
+   "encodings": {
+    "MTBUF": 5913
+   },
+   "instructions": 5913,
+   "shaders": 962,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_LT_F32",
+   "encodings": {
+    "VOPC": 1736,
+    "VOP3": 3769
+   },
+   "instructions": 5505,
+   "shaders": 3782,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_LE_F32",
+   "encodings": {
+    "VOPC": 4887,
+    "VOP3": 77
+   },
+   "instructions": 4964,
+   "shaders": 2210,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_AND_SAVEEXEC_B64",
+   "encodings": {
+    "SOP1": 4895
+   },
+   "instructions": 4895,
+   "shaders": 2416,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_WRITELANE_B32",
+   "encodings": {
+    "VOP2": 4804
+   },
+   "instructions": 4804,
+   "shaders": 241,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_RNDNE_F32",
+   "encodings": {
+    "VOP1": 4696
+   },
+   "instructions": 4696,
+   "shaders": 3626,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_ADD_I32",
+   "encodings": {
+    "VOP2": 4678
+   },
+   "instructions": 4678,
+   "shaders": 1109,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_SWAPPC_B64",
+   "encodings": {
+    "SOP1": 4563
+   },
+   "instructions": 4563,
+   "shaders": 4563,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_AND_B32",
+   "encodings": {
+    "VOP2": 4520
+   },
+   "instructions": 4520,
+   "shaders": 3194,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_OR_B32",
+   "encodings": {
+    "VOP2": 4511
+   },
+   "instructions": 4511,
+   "shaders": 3185,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_COS_F32",
+   "encodings": {
+    "VOP1": 4491,
+    "VOP3": 12
+   },
+   "instructions": 4503,
+   "shaders": 3185,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_FLOOR_F32",
+   "encodings": {
+    "VOP1": 3683,
+    "VOP3": 4
+   },
+   "instructions": 3687,
+   "shaders": 1718,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "DS_SWIZZLE_B32",
+   "encodings": {
+    "DS": 3656
+   },
+   "instructions": 3656,
+   "shaders": 453,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_LOAD_MIP",
+   "encodings": {
+    "MIMG": 3629
+   },
+   "instructions": 3629,
+   "shaders": 3030,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MIN_F32",
+   "encodings": {
+    "VOP2": 1635,
+    "VOP3": 1921
+   },
+   "instructions": 3556,
+   "shaders": 2313,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_AND_B64",
+   "encodings": {
+    "SOP2": 3509
+   },
+   "instructions": 3509,
+   "shaders": 1882,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_SIN_F32",
+   "encodings": {
+    "VOP1": 3313
+   },
+   "instructions": 3313,
+   "shaders": 3096,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CVT_F32_I32",
+   "encodings": {
+    "VOP1": 3098
+   },
+   "instructions": 3098,
+   "shaders": 2861,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_OR_B64",
+   "encodings": {
+    "SOP2": 3010
+   },
+   "instructions": 3010,
+   "shaders": 2695,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_SAMPLE_LZ",
+   "encodings": {
+    "MIMG": 2906
+   },
+   "instructions": 2906,
+   "shaders": 1079,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_SUB_I32",
+   "encodings": {
+    "VOP2": 2689
+   },
+   "instructions": 2689,
+   "shaders": 2676,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_GET_LOD",
+   "encodings": {
+    "MIMG": 1329
+   },
+   "instructions": 1329,
+   "shaders": 1260,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_SAMPLE_L",
+   "encodings": {
+    "MIMG": 1329
+   },
+   "instructions": 1329,
+   "shaders": 1260,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CUBEID_F32",
+   "encodings": {
+    "VOP3": 1327
+   },
+   "instructions": 1327,
+   "shaders": 1260,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CUBEMA_F32",
+   "encodings": {
+    "VOP3": 1327
+   },
+   "instructions": 1327,
+   "shaders": 1260,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CUBESC_F32",
+   "encodings": {
+    "VOP3": 1327
+   },
+   "instructions": 1327,
+   "shaders": 1260,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CUBETC_F32",
+   "encodings": {
+    "VOP3": 1327
+   },
+   "instructions": 1327,
+   "shaders": 1260,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "DS_WRITE2_B32",
+   "encodings": {
+    "DS": 1148
+   },
+   "instructions": 1148,
+   "shaders": 82,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_NOP",
+   "encodings": {
+    "SOPP": 1133
+   },
+   "instructions": 1133,
+   "shaders": 952,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MUL_LO_U32",
+   "encodings": {
+    "VOP3": 1036
+   },
+   "instructions": 1036,
+   "shaders": 348,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "DS_READ2_B32",
+   "encodings": {
+    "DS": 981
+   },
+   "instructions": 981,
+   "shaders": 67,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_NLT_F32",
+   "encodings": {
+    "VOPC": 916
+   },
+   "instructions": 916,
+   "shaders": 916,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_CBRANCH_SCC0",
+   "encodings": {
+    "SOPP": 897
+   },
+   "instructions": 897,
+   "shaders": 817,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CVT_F32_U32",
+   "encodings": {
+    "VOP1": 736
+   },
+   "instructions": 736,
+   "shaders": 366,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_GE_F32",
+   "encodings": {
+    "VOP3": 448,
+    "VOPC": 206
+   },
+   "instructions": 654,
+   "shaders": 382,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MUL_I32_I24",
+   "encodings": {
+    "VOP3": 325,
+    "VOP2": 98
+   },
+   "instructions": 423,
+   "shaders": 67,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_LG_I32/V_CMP_NE_I32",
+   "encodings": {
+    "VOPC": 344,
+    "VOP3": 16
+   },
+   "instructions": 360,
+   "shaders": 360,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "DS_READ_B32",
+   "encodings": {
+    "DS": 342
+   },
+   "instructions": 342,
+   "shaders": 67,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CVT_U32_F32",
+   "encodings": {
+    "VOP1": 314
+   },
+   "instructions": 314,
+   "shaders": 314,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_RSQ_F32",
+   "encodings": {
+    "VOP1": 272
+   },
+   "instructions": 272,
+   "shaders": 266,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "BUFFER_STORE_DWORD",
+   "encodings": {
+    "MUBUF": 232
+   },
+   "instructions": 232,
+   "shaders": 51,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_MOVK_I32",
+   "encodings": {
+    "SOPK": 212
+   },
+   "instructions": 212,
+   "shaders": 124,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_BRANCH",
+   "encodings": {
+    "SOPP": 193
+   },
+   "instructions": 193,
+   "shaders": 147,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_BFE_U32",
+   "encodings": {
+    "VOP3": 168
+   },
+   "instructions": 168,
+   "shaders": 49,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_READFIRSTLANE_B32",
+   "encodings": {
+    "VOP1": 155
+   },
+   "instructions": 155,
+   "shaders": 139,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_NEQ_F32",
+   "encodings": {
+    "VOPC": 132,
+    "VOP3": 8
+   },
+   "instructions": 140,
+   "shaders": 123,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_LSHL_B32",
+   "encodings": {
+    "SOP2": 137
+   },
+   "instructions": 137,
+   "shaders": 137,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_CBRANCH_VCCZ",
+   "encodings": {
+    "SOPP": 130
+   },
+   "instructions": 130,
+   "shaders": 89,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "DS_WRITE_B32",
+   "encodings": {
+    "DS": 105
+   },
+   "instructions": 105,
+   "shaders": 46,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_GT_I32",
+   "encodings": {
+    "VOPC": 105
+   },
+   "instructions": 105,
+   "shaders": 105,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_NGT_F32",
+   "encodings": {
+    "VOPC": 98,
+    "VOP3": 4
+   },
+   "instructions": 102,
+   "shaders": 95,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_EQ_F32",
+   "encodings": {
+    "VOPC": 72,
+    "VOP3": 5
+   },
+   "instructions": 77,
+   "shaders": 72,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MUL_LO_I32",
+   "encodings": {
+    "VOP3": 74
+   },
+   "instructions": 74,
+   "shaders": 44,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_SAMPLE_D",
+   "encodings": {
+    "MIMG": 66
+   },
+   "instructions": 66,
+   "shaders": 66,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_CLASS_F32",
+   "encodings": {
+    "VOP3": 52
+   },
+   "instructions": 52,
+   "shaders": 13,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_ADDK_I32",
+   "encodings": {
+    "SOPK": 46
+   },
+   "instructions": 46,
+   "shaders": 39,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_CBRANCH_VCCNZ",
+   "encodings": {
+    "SOPP": 46
+   },
+   "instructions": 46,
+   "shaders": 39,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "BUFFER_LOAD_DWORD",
+   "encodings": {
+    "MUBUF": 40
+   },
+   "instructions": 40,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_BARRIER",
+   "encodings": {
+    "SOPP": 29
+   },
+   "instructions": 29,
+   "shaders": 29,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAD_U32_U24",
+   "encodings": {
+    "VOP3": 29
+   },
+   "instructions": 29,
+   "shaders": 29,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_GET_RESINFO",
+   "encodings": {
+    "MIMG": 17
+   },
+   "instructions": 17,
+   "shaders": 17,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_LSHL_B64",
+   "encodings": {
+    "VOP3": 15
+   },
+   "instructions": 15,
+   "shaders": 15,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAX_I32",
+   "encodings": {
+    "VOP2": 11
+   },
+   "instructions": 11,
+   "shaders": 11,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_LSHRREV_B32",
+   "encodings": {
+    "VOP2": 10
+   },
+   "instructions": 10,
+   "shaders": 4,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAX_LEGACY_F32",
+   "encodings": {
+    "VOP3": 8
+   },
+   "instructions": 8,
+   "shaders": 8,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_NAND_B64",
+   "encodings": {
+    "SOP2": 7
+   },
+   "instructions": 7,
+   "shaders": 3,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_GATHER4_LZ",
+   "encodings": {
+    "MIMG": 6
+   },
+   "instructions": 6,
+   "shaders": 3,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_AND_B32",
+   "encodings": {
+    "SOP2": 6
+   },
+   "instructions": 6,
+   "shaders": 6,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_CBRANCH_EXECNZ",
+   "encodings": {
+    "SOPP": 6
+   },
+   "instructions": 6,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CEIL_F32",
+   "encodings": {
+    "VOP1": 6
+   },
+   "instructions": 6,
+   "shaders": 5,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMPX_EQ_I32",
+   "encodings": {
+    "VOP3": 6
+   },
+   "instructions": 6,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMPX_LT_U32",
+   "encodings": {
+    "VOP3": 6
+   },
+   "instructions": 6,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_INTERP_MOV_F32",
+   "encodings": {
+    "VINTRP": 6
+   },
+   "instructions": 6,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MOVRELS_B32",
+   "encodings": {
+    "VOP1": 6
+   },
+   "instructions": 6,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_SAMPLE_LZ_O",
+   "encodings": {
+    "MIMG": 4
+   },
+   "instructions": 4,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "S_XOR_B64",
+   "encodings": {
+    "SOP2": 4
+   },
+   "instructions": 4,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "TBUFFER_LOAD_FORMAT_XYZ",
+   "encodings": {
+    "MTBUF": 4
+   },
+   "instructions": 4,
+   "shaders": 4,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_LT_I32",
+   "encodings": {
+    "VOP3": 4
+   },
+   "instructions": 4,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MAD_I32_I24",
+   "encodings": {
+    "VOP3": 4
+   },
+   "instructions": 4,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_NLE_F32",
+   "encodings": {
+    "VOPC": 3
+   },
+   "instructions": 3,
+   "shaders": 3,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_TRUNC_F32",
+   "encodings": {
+    "VOP1": 3
+   },
+   "instructions": 3,
+   "shaders": 3,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "IMAGE_GATHER4_LZ_O",
+   "encodings": {
+    "MIMG": 2
+   },
+   "instructions": 2,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_GE_U32",
+   "encodings": {
+    "VOPC": 2
+   },
+   "instructions": 2,
+   "shaders": 2,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CVT_PKNORM_U16_F32",
+   "encodings": {
+    "VOP2": 2
+   },
+   "instructions": 2,
+   "shaders": 1,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_CMP_NGE_F32",
+   "encodings": {
+    "VOPC": 1
+   },
+   "instructions": 1,
+   "shaders": 1,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MIN3_F32",
+   "encodings": {
+    "VOP3": 1
+   },
+   "instructions": 1,
+   "shaders": 1,
+   "shadps4": "translated"
+  },
+  {
+   "opcode": "V_MUL_HI_U32",
+   "encodings": {
+    "VOP3": 1
+   },
+   "instructions": 1,
+   "shaders": 1,
+   "shadps4": "translated"
+  }
+ ],
+ "shaders_with_missing_opcodes": [],
+ "decode_problems": {},
+ "notes": [
+  "Opcode names and translation coverage come from the shadPS4 checkout given on the command line.",
+  "A shader with a missing opcode fails translation in shadPS4 (info.translation_failed).",
+  "Operand-level gaps (unsupported image formats, SDWA/DPP, export formats) are not counted here."
+ ]
+}
