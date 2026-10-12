@@ -108,7 +108,7 @@ def run():
                 for tex in source_params:
                     info=tex.get("info",[])
                     label=next((i["value"] for i in info if i["name"]=="Name"),None)
-                    if label not in ("Diffuse","CliffTexture","Base Tiling Texture"):
+                    if label not in ("Diffuse","CliffTexture","Base Tiling Texture","Normals","CliffNormal"):
                         continue
                     identity=tex.get("texture")
                     if not identity or not identity.startswith("/Game/"):
@@ -131,6 +131,24 @@ def run():
                         binary=read_source(source_archive,candidate,indexes)
                         out.with_suffix(ext).write_bytes(binary)
                         saved.append({"ext":ext,"bytes":len(binary)})
+                    if label in ("Normals","CliffNormal"):
+                        original_h=(out.with_suffix(".uasset")).read_bytes()
+                        original_x=(out.with_suffix(".uexp")).read_bytes()
+                        tc=Catalog(original_h,original_x)
+                        exs=[e for e in tc.exports if tc.class_name(e)=="Texture2D"]
+                        if len(exs)!=1:raise ValueError("original native normal package must have one Texture2D export")
+                        raw=tc.export_data(exs[0])
+                        attrs,pos=tc.props(raw)
+                        native=raw[pos:]
+                        if len(native)<56:raise ValueError("original normal source platform header absent")
+                        width,height,depth,fmt_length=struct.unpack_from("<IIII",native,28)
+                        fmt=native[44:44+fmt_length].rstrip(b"\\0").decode("ascii")
+                        print("FORTNITE_SOURCE_AUTHORED_NORMAL_FORMAT "+json.dumps({
+                            "material":source,"parameter":label,"texture":identity,
+                            "archive":source_archive,"platform_width":width,
+                            "platform_height":height,"platform_depth":depth,
+                            "format":fmt,"cooked_native_length":len(native)
+                        },sort_keys=True),flush=True)
                     print("FORTNITE_SOURCE_MATERIAL_AUTHENTIC_DIFFUSE "+json.dumps({
                         "param":label,"texture":identity,"archive":source_archive,
                         "verified_files":saved
