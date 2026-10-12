@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_torch_child_meshes.py
+      - tools/fortnite_541_poi_rust/src/poi_components.rs
+      - tools/fortnite_541_poi_rust/src/main.rs
       - .github/workflows/fortnite-541-torch-child-meshes.yml
   workflow_dispatch:
 jobs:
@@ -22,3 +24,5 @@ jobs:
         run: python3 tools/fortnite_541_torch_child_meshes.py
       - name: Test production native source CDO, geometry and material readers
         run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Require exact original child source components, overrides, and native LOD geometry
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-torch-child-components
