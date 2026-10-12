@@ -1,0 +1,18 @@
+name: Fortnite 5.41 original five-painted-landscape source BC proof
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_five_paint_native_bc.py
+      - .github/workflows/fortnite-541-five-paint-bc.yml
+  workflow_dispatch:
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source Gravel Road Arid native BC top mip and SHA1 retail PAK entries
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_five_paint_native_bc.py
