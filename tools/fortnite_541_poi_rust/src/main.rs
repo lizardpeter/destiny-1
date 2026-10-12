@@ -12,6 +12,23 @@ mod texture;
 use std::{env,fs};
 fn run()->Result<(),String>{
     let paths=env::args().skip(1).collect::<Vec<_>>();
+    if paths.len()==1 && paths[0]=="--audit-sky-links" {
+        let root=std::path::Path::new("/tmp/fortnite541_source_sky");
+        let master=sky_dome::inspect_sky_master(root)?
+            .ok_or("original retail M_SkyDome shader master not staged")?;
+        if master.material_expression_count!=98 ||
+            master.named_expression_links!=33 ||
+            master.surviving_expression_links!=4 ||
+            master.stripped_expression_links!=29 ||
+            master.source_emissive_expression.as_deref()!=Some("MaterialExpressionMultiply#2") {
+            return Err(format!("unexpected retail SkyDome link counts {master:?}"));
+        }
+        println!("FORTNITE_541_NATIVE_COOKED_SKY_TOPOLOGY material_expressions={} expression_links={} connected_original={} editor_stripped={} emissive_producer={:?} absent_names={:?}",
+            master.material_expression_count,master.named_expression_links,
+            master.surviving_expression_links,master.stripped_expression_links,
+            master.source_emissive_expression,master.unresolved_source_expressions);
+        return Ok(());
+    }
     if paths.len()==1 && paths[0]=="--audit-sky" {
         let root=std::path::Path::new("/tmp/fortnite541_source_sky");
         let source=sky_dome::from_source_root(root)?
