@@ -3,6 +3,7 @@ mod properties;
 mod poi_detail;
 mod staticmesh_lod;
 mod static_material;
+mod material_instance;
 mod extract;
 mod pak;
 mod poi_extract;
@@ -86,6 +87,30 @@ fn run()->Result<(),String>{
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
+        return Ok(());
+    }
+    if paths.len()==1 && paths[0]=="--audit-material-instances" {
+        const BASE:&str="/tmp/fortnite541_source_materials";
+        let examples=[
+            ("/Game/Environments/Props/Industrial/Materials/MI_ShippingContainer_01::MI_ShippingContainer_01",
+            "Diffuse","/Game/Environments/Props/Industrial/Textures/Prop_ShippingContainer_01_D::Prop_ShippingContainer_01_D"),
+            ("/Game/Packages/DS_Fortnite_Terrain_NoLOD/Materials/M_Terrain_Cave::M_Terrain_Cave",
+            "CliffTexture","/Game/Packages/DS_Fortnite_Terrain_NoLOD/Textures/T_Cave_Underground_Interior_Wall_D::T_Cave_Underground_Interior_Wall_D"),
+            ("/Game/Packages/DS_Fortnite_Terrain_NoLOD/Materials/M_Terrain_Cliff_White::M_Terrain_Cliff_White",
+            "CliffTexture","/Game/Packages/DS_Fortnite_Terrain_NoLOD/Textures/T_Cave_Exterior_Wall_D::T_Cave_Exterior_Wall_D"),
+        ];
+        for (identity,parameter,expected) in examples{
+            let original=material_instance::from_source_root(
+                std::path::Path::new(BASE),identity
+            )?.ok_or("source material instance not staged from authenticated source")?;
+            let param=original.textures.iter().find(|p|p.name==parameter)
+                .ok_or("original retail parameter absent")?;
+            if param.texture_object!=expected {
+                return Err(format!("original {identity} {parameter} source identity differs: {}",param.texture_object));
+            }
+            println!("FORTNITE_SOURCE_NATIVE_MATERIAL_INSTANCE name={identity:?} parent={:?} source_texture_parameters={:?} selected_diffuse={expected:?}",
+                original.parent,original.textures);
+        }
         return Ok(());
     }
     if paths.len()==2 && paths[0]=="--audit-materials" {
