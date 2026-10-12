@@ -112,6 +112,13 @@ static bool steal_guard() {
     return g_steal_orig();
 }
 
+// ---- world controller selection (eboot+0x52C020 -> 0x751EE0)
+// Modes: 0 SWC, 1 DWC, 2 EWC (c_editor_world_controller), 3 OWC (c_online_world_controller),
+// 4 AHWC (activity host; not built into the retail client). Retail picks EWC when the flag
+// read by 0x239B70 is set, else OWC. D1_WORLD_CONTROLLER=editor forces that flag
+// (research: does the editor controller load a world without online services?).
+static bool flag_true() { return true; }
+
 // ---- engine logging (eboot+0xE4D70 gate, eboot+0xE4AA0 emit)
 // Release builds keep the log calls but the per-channel threshold table is absent, so every
 // message is dropped. With D1_GAME_LOG set, the gate always passes and the emit prints the
@@ -139,6 +146,10 @@ void install_game_hooks() {
         replace_function(exe.base + 0x2EB340, reinterpret_cast<const void*>(&transport_started));
         replace_function(exe.base + 0x2EBD40, reinterpret_cast<const void*>(&transport_failed));
         log("hooks: DemonWare transport reported as started");
+    }
+    if (const char* w = getenv("D1_WORLD_CONTROLLER"); w && std::strcmp(w, "editor") == 0) {
+        replace_function(exe.base + 0x239B70, reinterpret_cast<const void*>(&flag_true));
+        log("hooks: editor world controller selected");
     }
     if (const char* f = getenv("D1_GAME_LOG")) {
         g_log_filter = (std::strcmp(f, "1") == 0) ? nullptr : f;

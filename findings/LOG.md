@@ -607,3 +607,41 @@ First request received by a probe server (with `D1_BYPASS=prereq,transport`):
 authorization code from `sceNpAuthGetAuthorizationCode`, scope
 `openid,openid:duid,psn:s2s`. With an error answer the game retries every ~9 s.
 This is the first thing the backend must answer (an OAuth token response).
+
+### Activity host: what the client contains (first pass)
+
+- World-controller modes (`0x751EE0` → `0x78F660`, names at `0x19458E0`):
+  `SWC`, `DWC`, `EWC` (`c_editor_world_controller`), `OWC`
+  (`c_online_world_controller`), `AHWC` (activity host). The retail client builds
+  only the EWC and OWC objects (`0x78F570`: slots 2 and 3); AHWC has a name and a
+  slot but **no implementation in the client** — the activity host's own logic
+  ships only on Bungie's servers. The status line "ACTIVITY HOST RUNNING OUT OF
+  PROCESS (AHWC)" (`0xAE681D`) is debug text for that mode.
+- Mode choice at start-up (`0x52C020`): a stripped override (`0x1CF60` → −1), then
+  EWC if the start-up flag read by `0x239B70` is set, otherwise OWC. Forcing EWC
+  (`D1_WORLD_CONTROLLER=editor`) runs the main loop but never starts the bootflow
+  or video; the editor controller presumably waits for tool commands. Not a
+  shortcut to offline play.
+- The command line parser (`0x1730`) still accepts `/init:<file>.txt`, `/user:`
+  and `/machine_name:`, but `console_execute_commands_from_buffer not supported in
+  release` (`0x6E95F0`) — init files cannot run console commands in this build.
+- What the client simulates itself: AI actors, path finding, perception, the
+  AI spawn system, squads and encounters (`ai: actor executor update job`,
+  `c_ai_spawn_system`, `encounter manager`), player spawning, physics, entity
+  authority hand-off between peers (`simulation_queue_entity_claim_authority`,
+  `authority-over-domain`). It loads activities by name from registered maps
+  (`0x7A3B70`: "could not find a registered Orbit or bootstrap map").
+- What goes through the activity host: the 50+ `client_to_activity_host_*`,
+  `activity_host_to_client_*`, `bap_to_activity_host_*` and `*_world_server_*`
+  message types — session/reservation management, activity start-up
+  ("activity host startup request/response"), authoritative counts
+  ("critical squad … alive count client vs auth"), and the world server's item,
+  kill, progression and talent-grid records.
+
+Working conclusion: the combat simulation is client-side, so a local backend does
+not need to run the game world. It needs to (1) answer the services (sign-on, BAP,
+investment) and (2) implement the activity host's *protocol role* — session
+start-up, reservations, authoritative bookkeeping and rewards — which is message
+handling rather than world simulation. How much game logic hides inside (2)
+(mission progression, objective state) is the next thing to measure, by decoding
+the activity host message payloads.
