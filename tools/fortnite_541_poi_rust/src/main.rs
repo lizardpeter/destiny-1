@@ -131,6 +131,36 @@ fn run()->Result<(),String>{
                     }
                 };
             println!("FORTNITE_NATIVE_SOURCE_POI_DIFFUSE identity={expected:?} width={width} height={height} format={format} source_mip_bytes={len}");
+            // The exact same original MIC has authored normal input names
+            // and references. Admit only verified native PF_BC5 sources.
+            if let Some(normal)=material_instance::source_normal_input(&original){
+                let package=material_instance::source_package(&normal.texture_object)?;
+                let base=std::path::Path::new(BASE).join(package);
+                let h=fs::read(base.with_extension("uasset")).map_err(|e|e.to_string())?;
+                let x=fs::read(base.with_extension("uexp")).map_err(|e|e.to_string())?;
+                let b=fs::read(base.with_extension("ubulk")).map_err(|e|e.to_string())?;
+                let cat=uobject::inspect(&h)?;
+                let name=normal.texture_object.rsplit("::").next().unwrap_or("");
+                let ex=cat.exports.iter().enumerate().find(|(i,ex)|
+                    cat.export_class_name(ex)==Some("Texture2D") &&
+                    cat.source_object_path((i+1) as i32).ok()
+                        .and_then(|p|p.rsplit("::").next().map(str::to_owned))
+                        .as_deref()==Some(name)
+                ).map(|(_,ex)|ex).ok_or("source normal Texture2D not present")?;
+                let mip=texture::first_mip_bc(&cat,&h,&x,&b,ex)?;
+                if mip.format!=texture::OriginalBcFormat::Bc5{
+                    return Err(format!(
+                        "source normal {name} unexpected format {:?}",mip.format
+                    ));
+                }
+                let mut test=[128,128,0,0];
+                texture::reconstruct_source_bc5_normal_z(&mut test)?;
+                if test[2]!=255||test[3]!=255{
+                    return Err("native BC5 positive Z contract mismatch".into());
+                }
+                println!("FORTNITE_SOURCE_NATIVE_BC5_NORMAL material={identity:?} normal_source={:?} width={} height={} source_blocks={} sampler_parameter={:?}",
+                    normal.texture_object,mip.width,mip.height,mip.blocks.len(),normal.name);
+            }
             println!("FORTNITE_SOURCE_NATIVE_MATERIAL_INSTANCE name={identity:?} parent={:?} source_texture_parameters={:?} selected_diffuse={expected:?}",
                 original.parent,original.textures);
         }
