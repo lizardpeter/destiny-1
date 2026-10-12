@@ -30,11 +30,30 @@ def run():
         if not stem:continue
         native,cat=read_native(identity,stem)
         count=u32(native,34)
+        if count is not None and 64<count<=512 and len(native)>=38+4*count+5:
+            references=list(struct.unpack_from("<"+"i"*count,native,38))
+            obj_sockets={
+                "read":len(references),
+                "min":min(references),"max":max(references),
+                "unique":len(set(references)),
+                "non_positive":[r for r in references if r<=0][:10],
+                "lod_count_after_sockets":u32(native,38+4*count),
+                "next_strip_bytes":native[42+4*count:44+4*count].hex(),
+                "socket_export_class_samples":[
+                    cat.class_name(cat.exports[j-1]) if 0<j<=len(cat.exports)
+                    else "<invalid ref>" for j in references[:10]
+                ],
+                "socket_references_last":references[-10:],
+                "source_export_count":len(cat.exports),
+            }
+        else:
+            obj_sockets=None
         obj={"name":identity,"actors":int(n),
              "native_bytes":len(native),"first64":native[:64].hex(),
              "at_offsets":{str(p):u32(native,p) for p in (6,10,14,18,26,30,34,38,42,46,50,54)},
              "socket_count":count,"source_flags":[native[0],native[1],list(native[2:6])],
-             "source_names":[name for name in cat.names if "Socket" in name][:12]}
+             "source_names":[name for name in cat.names if "Socket" in name][:12],
+             "authored_large_socket_list":obj_sockets}
         rows.append(obj)
     unusual=[o for o in rows if o["socket_count"] is None or o["socket_count"]>64]
     normal=[o for o in rows if o["socket_count"] is not None and o["socket_count"]<=64]
