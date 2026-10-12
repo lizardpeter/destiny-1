@@ -5,6 +5,9 @@ on:
     paths:
       - tools/fortnite_541_sky_shader_topology.py
       - .github/workflows/fortnite-541-sky-shader-topology.yml
+      - 'tools/fortnite_541_poi_rust/src/cooked_expression_graph.rs'
+      - 'tools/fortnite_541_poi_rust/src/sky_dome.rs'
+      - 'tools/fortnite_541_poi_rust/src/main.rs'
   workflow_dispatch:
 jobs:
   audit:
@@ -16,3 +19,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python3 tools/fortnite_541_sky_shader_topology.py
+      - name: Test native source cooked FExpressionInput name decoder
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Validate original source SkyDome emissive and 33 real cooked links
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-sky-links
