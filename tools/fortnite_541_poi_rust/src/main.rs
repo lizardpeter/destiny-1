@@ -291,6 +291,13 @@ fn run()->Result<(),String>{
             }
         }
         failures.sort_by(|a,b|b.0.cmp(&a.0).then_with(||a.1.cmp(&b.1)));
+        if unique!=248 || actors!=1332 || decoded_unique!=248 ||
+            resolved!=1332 || !failures.is_empty(){
+            return Err(format!(
+                "original full-detail Factory native mesh source is not fully decoded: {decoded_unique}/{unique} identities, {resolved}/{actors} actor references, {} failures {:?}",
+                failures.len(),failures.iter().take(5).collect::<Vec<_>>()
+            ));
+        }
         println!("FORTNITE_FACTORY_NATIVE_LOD0_SUMMARY mesh_object_identities={unique} decoded_identities={decoded_unique} referenced_actors={actors} native_lod0_decoded_actors={resolved} missing_actor_count={} placed_source_triangles={placed_triangles} failed_identities={}",
             actors-resolved,failures.len());
         for (n,identity,error) in failures{

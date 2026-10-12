@@ -95,8 +95,20 @@ pub fn decode_cooked_static_mesh_lod0(
     let _nav=rd.i32()?;
     rd.bytes(16)?; // source LightingGuid
     let sockets=rd.u32()? as usize;
-    if sockets>64{return Err("unbounded UE4 mesh socket references".into());}
-    for _ in 0..sockets{rd.i32()?;}
+    // The authentic 5.41 HotRod and StationWagon StaticMeshes each serialize
+    // 320 UStaticMeshSocket references. Our previous <=64 guard incorrectly
+    // rejected both source meshes, leaving real map actors unresolved.
+    // Retain a hard cap and require the entire source array to fit before
+    // reading the subsequent original LOD count.
+    if sockets>512{return Err("unbounded UE4 mesh socket references".into());}
+    let socket_bytes=sockets.checked_mul(4)
+        .ok_or("source UE4 socket list byte count overflow")?;
+    let socket_refs=rd.bytes(socket_bytes)?;
+    if sockets>64 && socket_refs.chunks_exact(4).any(|raw|
+        i32::from_le_bytes(raw.try_into().unwrap())<=0
+    ){
+        return Err("large original UE4 socket array contains non-export references".into());
+    }
     let lod_count=rd.u32()? as usize;
     if lod_count==0||lod_count>8{return Err("invalid original StaticMesh LOD count".into());}
     let flags_global=rd.u8()?;
@@ -273,6 +285,29 @@ pub fn decode_original_source_mesh(
 #[cfg(test)]
 mod tests{
     use super::*;
+    #[test]fn original_320_socket_variant_stays_bounded_and_preserves_lod_cursor(){
+        let mut header=320u32.to_le_bytes().to_vec();
+        for object in 4i32..324{
+            header.extend_from_slice(&object.to_le_bytes());
+        }
+        header.extend_from_slice(&3u32.to_le_bytes()); // real next LOD field
+        let mut rd=Reader::at(&header,0).unwrap();
+        let count=rd.u32().unwrap() as usize;
+        assert_eq!(count,320);
+        let refs=rd.bytes(count*4).unwrap();
+        assert_eq!(i32::from_le_bytes(refs[0..4].try_into().unwrap()),4);
+        assert_eq!(i32::from_le_bytes(refs[1276..1280].try_into().unwrap()),323);
+        assert_eq!(rd.u32().unwrap(),3);
+        assert_eq!(rd.p,header.len());
+    }
+    #[test]fn reject_truncated_large_original_socket_arrays(){
+        let mut raw=vec![0u8;100];
+        raw[34..38].copy_from_slice(&320u32.to_le_bytes());
+        // A declared 320-reference array cannot be read from 100 bytes.
+        let mut rd=Reader::at(&raw,34).unwrap();
+        let count=rd.u32().unwrap() as usize;
+        assert!(rd.bytes(count*4).is_err());
+    }
     #[test]fn half_precision_uv_values(){
         assert_eq!(half(0x3c00),1.);
         assert_eq!(half(0xbc00),-1.);

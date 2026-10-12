@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_factory_native_mesh_batch.py
+      - tools/fortnite_541_mesh_native_prelude_probe.py
       - tools/fortnite_541_poi_material_slots_probe.py
       - tools/fortnite_541_poi_rust/src/static_material.rs
       - tools/fortnite_541_poi_rust/src/main.rs
@@ -29,6 +30,10 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python3 tools/fortnite_541_factory_native_mesh_batch.py
+      - name: Inspect exact original UE4 StaticMesh prelude/socket variants
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_mesh_native_prelude_probe.py
       - name: Decode the real original native LOD0 for all source mesh actor references
         run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-meshes /tmp/fortnite541_factory_lod0.tsv
       - name: Audit authored original POI StaticMesh material slot identity and references
