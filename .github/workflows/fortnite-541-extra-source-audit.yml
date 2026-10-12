@@ -1,0 +1,19 @@
+name: Fortnite 5.41 original source archives and foliage references
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_r2_archive_discovery.py
+      - tools/fortnite_541_original_poi_world_probe.py
+      - .github/workflows/fortnite-541-extra-source-audit.yml
+  workflow_dispatch:
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect authenticated original Athena POI foundations and tile world managers
+        run: python3 tools/fortnite_541_original_poi_world_probe.py
+      - name: Authenticate and scan R2 original Fortnite 5.41 archive contents
+        run: python3 tools/fortnite_541_r2_archive_discovery.py
