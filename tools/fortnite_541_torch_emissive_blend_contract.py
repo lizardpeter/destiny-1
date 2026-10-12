@@ -6,6 +6,7 @@ TwoSided, EmissiveColor expression FName, surviving material parameters
 and cooked expression-node counts from the original SHA1 source bytes.
 """
 import json,struct
+from pathlib import Path
 from fortnite_541_material_expression_probe import Catalog
 import fortnite_541_r2_material_probe as main
 import fortnite_541_skylight_cube_probe as s4
@@ -76,6 +77,10 @@ def run():
         else:
             header=s4.payload(index[base+".uasset"])
             payload=s4.payload(index[base+".uexp"])
+        if archive=="s4" and "M_FakeVolumeGlow" in source:
+            dest=Path("/tmp/fortnite541_original_glow_material")
+            dest.with_suffix(".uasset").write_bytes(header)
+            dest.with_suffix(".uexp").write_bytes(payload)
         c=Catalog(header,payload)
         exports=[]
         for i,ex in enumerate(c.exports,1):
