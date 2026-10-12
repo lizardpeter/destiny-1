@@ -33,13 +33,13 @@ struct Args {
     /// TCP port of the post-sign-on service.
     #[arg(long, env = "D1B_BAP_PORT", default_value_t = 7400)]
     bap_port: u16,
-    /// The game's package list (`packages.txt`, one .pkg name per line); the content
-    /// manifest registers these packages.
+    /// Package list (one .pkg name per line). Optional: by default every .pkg in
+    /// --packages-dir is used. The content manifest registers these packages.
     #[arg(long, env = "D1B_PACKAGES")]
     packages: Option<std::path::PathBuf>,
-    /// Directory with the package files (headers are read from them).
-    #[arg(long, env = "D1B_PACKAGES_DIR", default_value = ".")]
-    packages_dir: std::path::PathBuf,
+    /// Directory with the package files, normally `<game dir>/packages` (only read).
+    #[arg(long, env = "D1B_PACKAGES_DIR")]
+    packages_dir: Option<std::path::PathBuf>,
 }
 
 /// State shared by all handlers.
@@ -66,11 +66,17 @@ async fn main() {
         bap_port: args.bap_port,
         content_version: "56578-1-3407992".into(),
         manifest_url: "http://cdn.signon.deadorbit.net/content/manifest".into(),
-        packages: args
-            .packages
-            .as_ref()
-            .map(|p| content::load_packages(&std::fs::read_to_string(p).expect("read packages list"), &args.packages_dir))
-            .unwrap_or_default(),
+        packages: match (&args.packages, &args.packages_dir) {
+            (_, None) => Vec::new(),
+            (Some(list), Some(dir)) => content::load_packages(&std::fs::read_to_string(list).expect("read packages list"), dir),
+            (None, Some(dir)) => {
+                let names: Vec<String> = std::fs::read_dir(dir)
+                    .expect("read packages dir")
+                    .filter_map(|e| e.ok()?.file_name().into_string().ok())
+                    .collect();
+                content::load_packages(&names.join("\n"), dir)
+            }
+        },
     });
     info!("{} patchable packages in the content manifest", st.packages.len());
     let bap = tokio::net::TcpListener::bind(format!("{}:{}", args.bind, args.bap_port)).await.expect("bind bap");

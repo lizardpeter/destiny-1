@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -104,9 +106,24 @@ int main(int argc, char** argv) {
         else if (k == "--data") data = v;
         else if (k == "--config") config = v;
     }
+    // A game directory alone is enough: eboot.bin and sce_module/ are taken from it.
+    if (!app0.empty()) {
+        if (eboot.empty()) eboot = app0 + "/eboot.bin";
+        if (sce_module.empty() && access((app0 + "/sce_module").c_str(), F_OK) == 0) sce_module = app0 + "/sce_module";
+    }
     if (eboot.empty()) {
-        std::fprintf(stderr, "usage: %s --eboot eboot.bin [--sce-module dir] [--app0 dir] [--data dir] [--config file]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s --app0 <game dir> [--data dir] [--config file] [--eboot file] [--sce-module dir]\n", argv[0]);
         return 2;
+    }
+    // The game directory is never written to; the data folder must live outside it.
+    if (!app0.empty()) {
+        char a[PATH_MAX], d[PATH_MAX];
+        mkdir(data.c_str(), 0755);
+        if (realpath(app0.c_str(), a) && realpath(data.c_str(), d) &&
+            (std::string(d) + "/").rfind(std::string(a) + "/", 0) == 0) {
+            std::fprintf(stderr, "the data folder (%s) must be outside the game directory (%s)\n", d, a);
+            return 2;
+        }
     }
     rt().app0 = app0;
     rt().data_root = data;

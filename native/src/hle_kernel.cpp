@@ -14,6 +14,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <string_view>
 #include <mutex>
 
 #include "hle.h"
@@ -50,6 +51,17 @@ std::string host_path(const char* guest) {
             return dir + g.substr(strlen(mount));
         }
     return r.data_root + "/unmapped" + g;
+}
+
+// The game directory (/app0) is read-only: nothing the game does may change the installed
+// files. Writes there fail with EROFS, as on the console; everything the game writes goes to
+// the data folder.
+static bool read_only_path(const char* guest) {
+    return guest && std::string_view(guest).rfind("/app0", 0) == 0;
+}
+static int32_t refuse_write(const char* op, const char* guest) {
+    log("%s %s refused: the game directory is read-only", op, guest);
+    return sce_err(30);  // EROFS
 }
 
 // ------------------------------------------------------------------ memory
@@ -368,6 +380,8 @@ static void note_read(int fd, int64_t off, uint64_t n) {
             log("read %s @%#lx +%#lx", it->second.first.c_str(), off, n);
 }
 static int32_t sceKernelOpen(const char* path, int flags, uint16_t mode) {
+    if (read_only_path(path) && ((flags & 3) != 0 || (flags & (0x8 | 0x200 | 0x400))))
+        return refuse_write("open for writing", path);
     std::string hp = host_path(path);
     int fd = open(hp.c_str(), host_oflags(flags), mode ? mode : 0644);
     if (file_log()) log("open %s (flags %#x) -> %d", path, flags, fd);
@@ -434,6 +448,7 @@ HLE("sceKernelFsync", sceKernelFsync)
 static int32_t sceKernelFtruncate(int fd, int64_t l) { return ftruncate(fd, l) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno)); }
 HLE("sceKernelFtruncate", sceKernelFtruncate)
 static int32_t sceKernelTruncate(const char* p, int64_t l) {
+    if (read_only_path(p)) return refuse_write("truncate", p);
     return truncate(host_path(p).c_str(), l) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
 }
 HLE("sceKernelTruncate", sceKernelTruncate)
@@ -483,18 +498,28 @@ static int ps4_fstat(int fd, Ps4Stat* o) {
 }
 HLE("fstat", ps4_fstat)
 static int32_t sceKernelMkdir(const char* p, uint16_t mode) {
+    if (read_only_path(p)) return refuse_write("mkdir", p);
     return mkdir(host_path(p).c_str(), mode ? mode : 0755) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
 }
 HLE("sceKernelMkdir", sceKernelMkdir)
-static int32_t sceKernelRmdir(const char* p) { return rmdir(host_path(p).c_str()) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno)); }
+static int32_t sceKernelRmdir(const char* p) {
+    if (read_only_path(p)) return refuse_write("rmdir", p);
+    return rmdir(host_path(p).c_str()) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
+}
 HLE("sceKernelRmdir", sceKernelRmdir)
-static int32_t sceKernelUnlink(const char* p) { return unlink(host_path(p).c_str()) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno)); }
+static int32_t sceKernelUnlink(const char* p) {
+    if (read_only_path(p)) return refuse_write("unlink", p);
+    return unlink(host_path(p).c_str()) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
+}
 HLE("sceKernelUnlink", sceKernelUnlink)
 static int32_t sceKernelRename(const char* a, const char* b) {
+    if (read_only_path(a) || read_only_path(b)) return refuse_write("rename", a);
     return rename(host_path(a).c_str(), host_path(b).c_str()) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
 }
 HLE("sceKernelRename", sceKernelRename)
-static int32_t sceKernelChmod(const char* p, uint16_t m) { chmod(host_path(p).c_str(), m); return SCE_OK; }
+static int32_t sceKernelChmod(const char* p, uint16_t m) {
+    if (read_only_path(p)) return refuse_write("chmod", p);
+    chmod(host_path(p).c_str(), m); return SCE_OK; }
 HLE("sceKernelChmod", sceKernelChmod)
 static int32_t sceKernelUtimes(const char*, const void*) { return SCE_OK; }
 HLE("sceKernelUtimes", sceKernelUtimes)

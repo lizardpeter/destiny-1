@@ -16,7 +16,7 @@ struct Settings {
     int fps = 0;
     // Discord Rich Presence
     bool discord = true;
-    std::string discord_app_id;
+    std::string discord_app_id = "1559335126528426075";  // the "Destiny" Discord application
 };
 
 void load_settings(const std::string& data_root, const std::string& explicit_path);

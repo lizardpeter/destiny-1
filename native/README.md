@@ -13,10 +13,23 @@ No game files are in this repository. You need your own decrypted 01.33 eboot,
 ## Build and run (Linux x86-64)
 
 ```bash
+# game (add the renderer options below to see anything)
 cmake -S native -B build/native && cmake --build build/native -j
-build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
-    --app0 /path/app0 --data ./d1-data
+# replacement backend (Rust)
+cargo build --release --manifest-path backend/Cargo.toml
+# both together
+native/run.sh /path/to/CUSA00219 [data dir]
 ```
+
+The game directory is the installed 01.33 game: decrypted `eboot.bin`, `sce_module/` and
+`packages/`. **It is only read.** Writes under `/app0` are refused (EROFS, as on the
+console) and the data folder must lie outside it; saves, caches, crash reports, logs and
+`d1-native.cfg` go to the data folder (default `~/.local/share/d1-native`). Marking the
+game directory read-only on disk as well is fine.
+
+`run.sh` starts `d1-backend` (pointed at `<game>/packages`) and then
+`d1-native --app0 <game> --data <data dir>`; `eboot.bin` and `sce_module/` are found in the
+game directory unless `--eboot` / `--sce-module` say otherwise.
 
 ### Settings
 
@@ -79,7 +92,7 @@ git clone --recursive https://github.com/shadps4-emu/shadPS4 /path/shadps4   # t
 CC=clang CXX=clang++ cmake -S native -B build/native-r -G Ninja \
     -DD1_RENDERER_SHADPS4=ON -DSHADPS4_DIR=/path/shadps4
 cmake --build build/native-r
-D1_FRAMES=./frames build/native-r/d1-native --eboot ... --app0 ... --data ...
+D1_NATIVE_BIN=build/native-r/d1-native native/run.sh /path/to/CUSA00219
 ```
 
 Needs clang (C++23), the Vulkan loader and headers, glslangValidator, abseil,

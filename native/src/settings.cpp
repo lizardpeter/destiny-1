@@ -34,7 +34,7 @@ fps = 0                        # [D1_FPS]
 
 # Discord Rich Presence (needs the Discord desktop app running).
 discord = true                 # [D1_DISCORD=0]
-discord_app_id =               # [D1_DISCORD_APP_ID]
+discord_app_id = 1559335126528426075   # [D1_DISCORD_APP_ID]
 )";
 
 static bool truthy(const std::string& v) { return v == "1" || v == "true" || v == "on" || v == "yes"; }
