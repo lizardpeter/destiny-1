@@ -25,6 +25,7 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_AUTOPRESS=<s>` | tap Cross for 100 ms every `<s>` seconds (no host input yet) |
 | `D1_WATCHDOG=<s>` | after `<s>` seconds dump every guest thread's call stack, call counts and GPU stats, then exit |
 | `D1_ABORT_ON_UNIMPL=1` | stop at the first call to an unimplemented firmware function |
+| `D1_BYPASS=prereq,transport` | research hooks: report failed bootflow prerequisites as satisfied; report the DemonWare transport as started |
 | `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is always refused |
 
 ## How it works

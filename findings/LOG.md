@@ -489,3 +489,47 @@ bootflow state (account_signin, bap_signin, investment_signin, profile_setup,
 prepare_for_orbit) is reached only after this one, so reaching orbit needs
 either a local stand-in for Bungie's sign-on / DemonWare / BAP services or a
 client-side bypass of those states.
+
+### Bypass investigation: world_controller state machine and the first three gates
+
+`world_controller:state_manager` states (name table `0x1945340`, 37 entries):
+bootflow:media_check, bootload, intro_screen_display, start, platform_signin,
+platform_account_warnings, enumerate_content_rights, account_signin, eula, upsell,
+email, confirm_account_transfer, content_check, content_install,
+insufficient_content_space, illegal_dlc_media, queuing, package_registration,
+bap_signin, investment_signin, profile_setup, prepare_for_orbit;
+character:signin, character:prologue; cleanup; setup:orbit_loading, orbit,
+activity_session_creation, matchmaking, activity_host_setup,
+prologue_intro_loading, orbit_outro, activity_world_transition;
+activity:initial_slice_set_loading, physics_join, in_world, watch_video.
+
+- State-change reasons: 284-entry table built at start-up (`0x785650`), base
+  `0x26CAF40`, stride 16 (`0x783960` maps index → name). `error.no_ethernet_link`
+  = 143, `error.transport_method_invalid` = 144.
+- Prerequisites: each state has a 38-bit prerequisite mask (`state+8`);
+  `0x792CD0` walks it and calls `0x792ED0(state, n, ctx, &reason)` → 0 satisfied,
+  1 pending, 2 failed (failure → `0x783EE0(cleanup, reason)`). ENUM(6) is the
+  ethernet-link prerequisite (`0x7927B0`).
+- platform_signin's own update (`0x79F310`) requires the DemonWare network start
+  object (`g_2F66F68`, status 2 = started; `0x2EB340` / `0x2EBD40`) and the
+  platform user's online flags; otherwise it requests cleanup with
+  `transport_method_invalid` via `0x784E50`.
+
+With `D1_BYPASS=prereq,transport` and `D1_NET=link`:
+
+```
+platform_signin -> platform_account_warnings -> enumerate_content_rights -> account_signin
+  networking:signon: _retrieving_platform_token
+  POST https://auth.api.sp-int.ac.playstation.net:443/2.0/oauth/token   (not sent)
+  retrieveSCEAccessToken returned result code 715 -> signon _error
+account_signin -> cleanup (error.bungie_server_connection) -> start
+```
+
+account_signin is the Bungie sign-on service (`c_signon_service_client`): it needs a
+PSN OAuth token, then a sign-on request to Bungie. The states after it
+(bap_signin, investment_signin, profile_setup) load the account, characters and
+inventory from Bungie's BAP / investment services, and activities run against a
+remote activity host (`c_investment_bap_message_client_to_bap_get_activity_host_proxy_request`,
+`..._activity_host_to_world_server_response`). The client does contain offline /
+host-migration session code (`Creating offline host migration session`), so
+whether it can host a world locally is the next question to answer.
