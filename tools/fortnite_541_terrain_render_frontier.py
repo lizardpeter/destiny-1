@@ -15,6 +15,10 @@ SOURCES=[
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Grass_01",
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Rock_01",
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Forest_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Gravel_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Mud_01",
+ "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Road_01",
+ "/Environments/Landscape/MaterialFunctions/Arid/MF_Athena_Arid_Sand",
  "/Environments/Landscape/MaterialFunctions/MF_FarmGrass_Colors",
  "/Environments/Landscape/MaterialFunctions/MF_LawnGrassColoration",
 ]
