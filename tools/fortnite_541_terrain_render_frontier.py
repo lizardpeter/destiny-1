@@ -6,7 +6,7 @@ TextureSample bindings and original landscape paint layer allocations.
 Source values, NOT a chosen replacement texture or arbitrary UV multiplier.
 """
 import json,struct,collections
-from fortnite_541_material_expression_probe import audit_one,audit_landscape_paint_layers
+from fortnite_541_material_expression_probe import audit_one,audit_landscape_paint_layers,Catalog
 import fortnite_541_r2_material_probe as retail
 
 SOURCES=[
@@ -38,6 +38,31 @@ def main():
               json.dumps(data,sort_keys=True),flush=True)
     print("ATHENA_541_VERIFIED_PAINT_LAYERS "+json.dumps(
          layer_totals,sort_keys=True),flush=True)
+    original="FortniteGame/Content/Athena/Environments/Landscape/Material/M_Athena_Terrain_Master"
+    c=Catalog(retail.source_payload(idx[original+".uasset"]),
+              retail.source_payload(idx[original+".uexp"]))
+    source_uv=[]
+    for i,ex in enumerate(c.exports,1):
+        cls=c.class_name(ex)
+        if cls not in ("MaterialExpressionTextureSampleParameter2D","MaterialExpressionLandscapeLayerCoords","MaterialExpressionTextureCoordinate"):
+            continue
+        fields,_=c.props(c.export_data(ex))
+        record=[]
+        for name,kind,meta,payload in fields:
+            if name not in ("ParameterName","Coordinates","Texture","MappingScale","MappingRotation","MappingPanU","MappingPanV","CoordinateIndex","UTiling","VTiling"):
+                continue
+            value=None
+            if kind=="StructProperty" and meta==["ExpressionInput"] and len(payload)==40:
+                ref=struct.unpack_from("<i",payload)[0]
+                value=c.path(ref)
+            elif kind=="NameProperty" and len(payload)==8:value=c.fname(payload)
+            elif kind=="FloatProperty" and len(payload)==4:value=struct.unpack("<f",payload)[0]
+            elif kind=="ObjectProperty" and len(payload)==4:value=c.path(struct.unpack("<i",payload)[0])
+            elif kind=="IntProperty" and len(payload)==4:value=struct.unpack("<i",payload)[0]
+            record.append({"field":name,"type":kind,"value":value})
+        source_uv.append({"source":c.value(i),"class":cls,"tagged":record})
+    print("ATHENA_541_AUTHENTIC_BIOME_SAMPLER_UV_CONNECTIONS "+
+        json.dumps(source_uv,sort_keys=True),flush=True)
     for base in SOURCES:
         graph=audit_one(base,idx)
         nodes=graph["graph_links"]+graph["texture_samples"]
