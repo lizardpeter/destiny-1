@@ -78,8 +78,9 @@ pub fn inspect_original_cooked_material(
         // as a literal source-known emissive program. Missing arithmetic
         // nodes, material functions or texture samplers must remain uncompiled.
         for (i,ex) in cat.exports.iter().enumerate(){
+            let actual=cat.source_object_path((i+1) as i32)?;
             if cat.export_class_name(ex)!=Some("MaterialExpressionVectorParameter")||
-                cat.resolve_package_name((i+1) as i32)!=Some(target.as_str()){
+               actual.rsplit("::").next()!=Some(target.as_str()){
                 continue;
             }
             if emissive_linear_rgba.is_some(){
