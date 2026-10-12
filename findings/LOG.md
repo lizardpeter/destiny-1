@@ -574,3 +574,11 @@ Result on lavapipe (software rendering, ~13 frames/s): the Bungie logo, the
 animated DESTINY title, and — without network — the "ATTENTION / No internet
 connection detected … canary" dialog (`error.no_ethernet_link`), all rendered
 correctly at 1920×1080 by the game's own shaders.
+
+### Window and input
+
+The renderer build now opens an SDL2 window (X11/Wayland) and presents each
+flipped video-out buffer through a Vulkan swapchain, letterboxed. Keyboard and
+SDL game controllers feed `scePadRead`/`scePadReadState`. Checked under Xvfb with
+injected key presses: title screen ("PRESS ⊗ TO PLAY") → Enter → platform_signin →
+no-network dialog → Enter → back to the title.

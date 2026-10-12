@@ -28,9 +28,11 @@
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
+#include "video_core/renderer_vulkan/vk_swapchain.h"
 #include "video_core/texture_cache/texture_cache.h"
 
 #include "../../src/render_bridge.h"
+#include "d1_window.h"
 
 namespace d1 {
 void log(const char* fmt, ...);
@@ -51,6 +53,8 @@ struct State {
     std::unique_ptr<Vulkan::Scheduler> scheduler;
     std::unique_ptr<Vulkan::Runtime> runtime;
     std::unique_ptr<Vulkan::Rasterizer> rasterizer;
+    Frontend::WindowSDL* window{};  // null: offscreen only
+    std::unique_ptr<Vulkan::Swapchain> swapchain;
     std::mutex submit_mutex;
     bool send_init_packet{true};
     BufferAttributeGroup group{};
@@ -141,9 +145,84 @@ void capture(s32 index) {
             vk::to_string(image.info.pixel_format).c_str());
 }
 
+// Blit the displayed buffer into the window, letterboxed. Runs on the GPU thread.
+void present(s32 index) {
+    if (!g->swapchain || index < 0 || !g->vo_buffers[index]) return;
+    auto& sc = *g->swapchain;
+    const u32 ww = u32(g->window->GetWidth()), wh = u32(g->window->GetHeight());
+    if (ww == 0 || wh == 0) return;
+    if (ww != sc.GetWidth() || wh != sc.GetHeight()) sc.Recreate(ww, wh);
+    if (!sc.AcquireNextImage()) {
+        sc.Recreate(ww, wh);
+        if (!sc.AcquireNextImage()) return;
+    }
+    auto& tc = g->rasterizer->GetTextureCache();
+    auto desc = VideoCore::TextureCache::ImageDesc{g->group, g->vo_buffers[index]};
+    const auto id = tc.FindImage(desc);
+    tc.UpdateImage(id);
+    auto& image = tc.GetImage(id);
+    const s32 iw = s32(image.info.size.width), ih = s32(image.info.size.height);
+
+    g->scheduler->EndRendering();
+    g->runtime->Transit(&image, vk::ImageLayout::eTransferSrcOptimal, vk::PipelineStageFlagBits2::eBlit,
+                        vk::AccessFlagBits2::eTransferRead);
+    g->runtime->FlushBarriers();
+    const auto cmdbuf = g->scheduler->CommandBuffer();
+    const vk::ImageSubresourceRange range{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+    const vk::ImageMemoryBarrier2 to_dst{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .srcAccessMask = vk::AccessFlagBits2::eNone,
+        .dstStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eTransferDstOptimal,
+        .image = sc.Image(),
+        .subresourceRange = range,
+    };
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_dst});
+    const vk::ClearColorValue black{std::array<float, 4>{0.f, 0.f, 0.f, 1.f}};
+    cmdbuf.clearColorImage(sc.Image(), vk::ImageLayout::eTransferDstOptimal, black, range);
+    // fit the game image into the window, keeping its aspect ratio
+    s32 dw = s32(ww), dh = s32(int64_t(ww) * ih / iw);
+    if (dh > s32(wh)) dh = s32(wh), dw = s32(int64_t(wh) * iw / ih);
+    const s32 dx = (s32(ww) - dw) / 2, dy = (s32(wh) - dh) / 2;
+    const vk::ImageBlit blit{
+        .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .srcOffsets = std::array{vk::Offset3D{0, 0, 0}, vk::Offset3D{iw, ih, 1}},
+        .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .dstOffsets = std::array{vk::Offset3D{dx, dy, 0}, vk::Offset3D{dx + dw, dy + dh, 1}},
+    };
+    const vk::MemoryBarrier2 clear_done{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+    };
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &clear_done});
+    cmdbuf.blitImage(image.GetImage(), vk::ImageLayout::eTransferSrcOptimal, sc.Image(),
+                     vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
+    const vk::ImageMemoryBarrier2 to_present{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .dstAccessMask = vk::AccessFlagBits2::eNone,
+        .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+        .newLayout = vk::ImageLayout::ePresentSrcKHR,
+        .image = sc.Image(),
+        .subresourceRange = range,
+    };
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_present});
+    Vulkan::SubmitInfo info{};
+    info.AddWait(sc.GetImageAcquiredSemaphore());
+    info.AddSignal(sc.GetPresentReadySemaphore());
+    g->scheduler->Flush(info);
+    sc.Present();
+}
+
 void flip_on_gpu(s32 index, s64 arg) {
     ++g->flips;
     capture(index);
+    present(index);
     g->cb.flip(index, arg);
 }
 
@@ -253,11 +332,13 @@ bool init(const Callbacks& cb) {
     try {
         g->liverpool = std::make_unique<Liverpool>();
         static Frontend::WindowSDL headless;  // window system "Headless": no surface, offscreen only
-        g->instance = std::make_unique<Vulkan::Instance>(headless, EmulatorSettings.GetGpuId(),
+        g->window = window::open();
+        g->instance = std::make_unique<Vulkan::Instance>(g->window ? *g->window : headless, EmulatorSettings.GetGpuId(),
                                                          EmulatorSettings.IsVkValidationEnabled(), false);
         g->scheduler = std::make_unique<Vulkan::Scheduler>(*g->instance);
         g->runtime = std::make_unique<Vulkan::Runtime>(*g->instance, *g->scheduler);
         g->rasterizer = std::make_unique<Vulkan::Rasterizer>(*g->instance, *g->scheduler, *g->runtime, g->liverpool.get());
+        if (g->window) g->swapchain = std::make_unique<Vulkan::Swapchain>(*g->instance, *g->window);
     } catch (const std::exception& e) {
         d1::log("renderer: Vulkan initialisation failed (%s); using the null GPU", e.what());
         delete g;

@@ -25,4 +25,7 @@ int32_t set_gs_shader(uint32_t*, uint32_t, const uint32_t*) { return -1; }
 int32_t set_hs_shader(uint32_t*, uint32_t, const uint32_t*, uint32_t) { return -1; }
 int32_t set_ls_shader(uint32_t*, uint32_t, const uint32_t*, uint32_t) { return -1; }
 void print_summary() {}
+bool window_active() { return false; }
+bool read_pad(PadState&) { return false; }
+void run_window_loop() {}
 }  // namespace d1::render

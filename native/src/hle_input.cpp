@@ -1,10 +1,12 @@
-// libScePad: one always-connected DualShock 4 with neutral input (host input comes later).
+// libScePad: one always-connected DualShock 4. Input comes from the renderer's window
+// (keyboard / controller) when there is one, plus D1_AUTOPRESS for headless tests.
 #include <time.h>
 
 #include <cstdlib>
 #include <cstring>
 
 #include "hle.h"
+#include "render_bridge.h"
 
 namespace d1 {
 
@@ -57,6 +59,12 @@ static void fill(PadData* d) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     d->timestamp = uint64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
     d->buttons = scripted_buttons(d->timestamp);
+    render::PadState p;
+    if (render::read_pad(p)) {  // window input (renderer build)
+        d->buttons |= p.buttons;
+        d->lx = p.lx, d->ly = p.ly, d->rx = p.rx, d->ry = p.ry;
+        d->l2 = p.l2, d->r2 = p.r2;
+    }
 }
 
 static int32_t scePadInit() { return SCE_OK; }

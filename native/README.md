@@ -29,6 +29,7 @@ build/native/d1-native --eboot /path/eboot.bin --sce-module /path/sce_module \
 | `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is always refused |
 | `D1_FRAMES=<dir>` | (renderer build) save displayed frames as PNG; `D1_FRAME_EVERY=<n>` sets the interval (default 60) |
 | `D1_RENDERER=0` | (renderer build) use the null GPU anyway |
+| `D1_WINDOW=0` | (renderer build) no window: offscreen rendering only |
 | `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level |
 
 ## How it works
@@ -59,9 +60,23 @@ cmake --build build/native-r
 D1_FRAMES=./frames build/native-r/d1-native --eboot ... --app0 ... --data ...
 ```
 
-Needs clang (C++23), the Vulkan loader and headers, glslangValidator, abseil and
-libpng. There is no window yet: frames are rendered offscreen and saved with
-`D1_FRAMES`. Any Vulkan 1.3 device works, including lavapipe. shadPS4 is
+Needs clang (C++23), the Vulkan loader and headers, glslangValidator, abseil,
+libpng and SDL2. With a display (X11 or Wayland) the game opens in a resizable
+window; without one (or with `D1_WINDOW=0`) it renders offscreen, and
+`D1_FRAMES` saves frames either way.
+
+| input | PS4 button |
+|---|---|
+| Enter / Space | Cross |
+| Esc / Backspace | Circle |
+| R / F | Square / Triangle |
+| Q / E, Z / X | L1 / R1, L2 / R2 |
+| Left Shift / C | L3 / R3 |
+| arrows | D-pad |
+| WASD / IJKL | left / right stick |
+| Tab / T | Options / touch pad |
+
+Game controllers work through SDL's controller mapping (hot-plug supported). Any Vulkan 1.3 device works, including lavapipe. shadPS4 is
 GPL-2.0-or-later, so a binary built this way is too.
 
 The x86-64 host CPU must support AVX, BMI1, MOVBE and LZCNT (Haswell / Zen or

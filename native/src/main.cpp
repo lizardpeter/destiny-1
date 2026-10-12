@@ -12,8 +12,10 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include "hle.h"
+#include "render_bridge.h"
 #include "runtime.h"
 
 namespace d1 {
@@ -129,10 +131,18 @@ int main(int argc, char** argv) {
     pthread_t t;
     pthread_create(&t, &a, main_thread, nullptr);
     if (const char* w = getenv("D1_WATCHDOG")) {  // seconds: dump every guest thread, then exit
-        sleep(unsigned(atoi(w)));
-        log("watchdog: dumping guest threads");
-        dump_all_threads();
-        print_import_summary();
+        std::thread([secs = unsigned(atoi(w))] {
+            sleep(secs);
+            log("watchdog: dumping guest threads");
+            dump_all_threads();
+            print_import_summary();
+            print_gpu_summary();
+            _exit(0);
+        }).detach();
+    }
+    if (render::window_active()) {  // the window's event loop owns the main thread
+        render::run_window_loop();
+        log("window closed");
         print_gpu_summary();
         _exit(0);
     }

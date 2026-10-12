@@ -55,6 +55,16 @@ int32_t set_ls_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32
 
 void print_summary();
 
+// Window and input (renderer build with a display). The pad state uses ScePadData's
+// button bits and 0..255 stick axes (0x80 = centre).
+struct PadState {
+    uint32_t buttons;
+    uint8_t lx, ly, rx, ry, l2, r2;
+};
+bool window_active();
+bool read_pad(PadState& out);  // false when there is no window: caller keeps its own input
+void run_window_loop();        // main thread; returns when the window is closed
+
 }  // namespace d1::render
 
 namespace d1 {

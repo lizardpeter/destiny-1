@@ -55,10 +55,12 @@ add_custom_target(d1_host_shaders DEPENDS ${HS_HEADERS})
 file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/sources.txt REL_SOURCES)
 list(TRANSFORM REL_SOURCES PREPEND ${S}/)
 find_package(PNG REQUIRED)
+find_package(SDL2 REQUIRED)
 add_library(d1_shad_video STATIC ${REL_SOURCES}
   ${CMAKE_CURRENT_SOURCE_DIR}/glue/glue_common.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/glue/core_glue.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_renderer.cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_renderer.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_window.cpp)
 add_dependencies(d1_shad_video d1_host_shaders)
 target_compile_features(d1_shad_video PRIVATE cxx_std_23)
 # shims first so they override emulator-core headers
@@ -68,4 +70,4 @@ target_include_directories(d1_shad_video PRIVATE
   ${X}/half/include ${X}/ext-boost ${X}/tracy/public)
 target_compile_definitions(d1_shad_video PRIVATE BOOST_ASIO_STANDALONE)
 target_compile_options(d1_shad_video PRIVATE -w -fno-strict-aliasing)
-target_link_libraries(d1_shad_video PUBLIC sirit fmt::fmt d1_xxhash Zydis Vulkan::Vulkan absl::flat_hash_map PNG::PNG)
+target_link_libraries(d1_shad_video PUBLIC sirit fmt::fmt d1_xxhash Zydis Vulkan::Vulkan absl::flat_hash_map PNG::PNG SDL2::SDL2)
