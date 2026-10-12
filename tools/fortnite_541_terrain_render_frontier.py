@@ -13,6 +13,7 @@ SOURCES=[
  "/Environments/Landscape/Material/M_Athena_Terrain_Master",
  "/Environments/Landscape/Material/M_Athena_Terrain_01",
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Grass_01",
+ "/Environments/Landscape/MaterialFunctions/MF_Landscape_GrassDistanceBlend",
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Rock_01",
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Forest_01",
  "/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Gravel_01",
