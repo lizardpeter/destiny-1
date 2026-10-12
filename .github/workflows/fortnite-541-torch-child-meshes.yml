@@ -1,0 +1,24 @@
+name: Fortnite 5.41 torch SCS child source geometry proof
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_torch_child_meshes.py
+      - .github/workflows/fortnite-541-torch-child-meshes.yml
+  workflow_dispatch:
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract authentic retail split Blueprint class CDOs
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_split_only_blueprint_cdos.py
+      - name: Stage original SCS child flame and bloom source mesh packages
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_torch_child_meshes.py
+      - name: Test production native source CDO, geometry and material readers
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
