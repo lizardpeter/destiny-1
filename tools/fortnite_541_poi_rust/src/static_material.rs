@@ -28,7 +28,7 @@ fn exact_field<'a>(
     if hits.next().is_some()||p.kind!=kind||p.payload.len()!=width{
         return Err(format!("original FStaticMaterial {field} duplicated or wrong tagged type"));
     }
-    bytes.get(p.payload.clone()).ok_or("original FStaticMaterial field out of bounds")
+    bytes.get(p.payload.clone()).ok_or_else(||"original FStaticMaterial field out of bounds".into())
 }
 fn with_none_terminator(
     catalog:&PackageCatalog,raw:&[u8],
