@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_gameplay_light_contract.py
+      - tools/fortnite_541_unresolved_blueprint_components.py
       - .github/workflows/fortnite-541-gameplay-light-contract.yml
   workflow_dispatch:
 jobs:
@@ -20,3 +21,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: '1'
         run: python3 tools/fortnite_541_todm_placement_probe.py
+      - name: Audit missing original shrub and building Blueprint component hierarchies
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_unresolved_blueprint_components.py
