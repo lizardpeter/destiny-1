@@ -419,3 +419,60 @@ tables that the PS4 toolchain places inside `.text`.
 - **Indirect control flow:** 16,625 indirect calls and 2,677 indirect jumps.
   Irrelevant for an x86-64→x86-64 relink; they are the hard part only if the
   code were lifted to C or another architecture.
+
+
+## 2026-10-12 — Native prototype boots Destiny 1 to the title screen (`native/`)
+
+`native/` is a new Linux x86-64 program (`d1-native`) that runs the original
+01.33 eboot and the two game-shipped modules as native code: an ELF-SCE loader
+and linker, host implementations of the firmware functions it needs, and a null
+GPU. Details in `native/README.md`.
+
+What happens on a run (60–90 s, headless, no network):
+
+1. Linking: 3,292 imports resolve to the game modules, 262+ to host code, the rest
+   to logging stubs that return 0. 2,542 `fs:[0]` TCB loads are retargeted to GS.
+2. `libSceFios2.prx` and `libc.prx` module_start succeed; the eboot entry runs.
+3. Start-up creates the engine's threads (job ×4, async_job ×4, Graphics
+   Heartbeat, Wwise `AK::EventManager`/`AK::IOThread`, voice, file I/O, NP),
+   initialises audio, video out and Gnm, reads `sku_config.txt`, opens
+   `ps4_client_bootstrap_unp4_0`, `ps4_ui_startup_unp4_0` and
+   `ps4_ui_bootflow_unp4_0`, and hides the boot splash.
+4. The frame loop runs at ~31 flips/s; each frame submits ~54 auto-index draws
+   (≈1.4 k PM4 packets) — the title screen.
+5. With Cross pressed the bootflow advances and stops at the online gate.
+
+Two crashes were fixed on the way:
+
+- `eboot+0x5D479`: an allocation-tracking call-stack capture walks eight saved-rbp
+  frames; guest calls now start from a self-referencing terminal frame.
+- `eboot+0xFAAF4` in **Graphics Heartbeat** — the same offset reported by shadPS4
+  users (2026-09-26 entry). The heartbeat waits for a GPU frame counter; while
+  waiting it tries to steal a job (`0xFB860` → `0xFAAC0`), which dereferences a
+  per-thread job-system context (TLS offset −0x1068 + 0x58, set only on job
+  threads by `0xFAD30`). It is only reached when GPU end-of-pipe interrupts never
+  arrive; with EOP fences and interrupts delivered the wait completes and the
+  path is not taken.
+
+### Engine logging recovered
+
+Release builds keep every log call but have no threshold table, so all messages
+are dropped. `0xE4D70(channel, level)` is the gate (threshold defaults to 5) and
+`0xE4AA0(message_id, text)` the emitter; hooking both (`D1_GAME_LOG=1`) prints
+the engine's own log. The `world_controller:state_manager` states are named by
+the table at `0x1945340` (bootflow:media_check … bootflow:prepare_for_orbit,
+character:signin, character:prologue, …).
+
+Observed bootflow with no network:
+
+```
+bootflow:media_check -> bootload -> intro_screen_display -> start   (title, waits for Cross)
+start -> platform_signin
+  demonware: sceNetCtlGetInfo failed (80412104); create socket failed
+  Prerequisite ENUM(6) failed for reason 'error.no_ethernet_link'
+platform_signin -> cleanup (kick_to_bootflow_start) -> start          (loop)
+```
+
+DemonWare 48 (`D:\bungie\external_libraries\DemonWare\48\...`) is the transport
+library; `sku_manager` reports sku_type 2 `north_america_digital`, base content
+version `56578-1-3407992`.
