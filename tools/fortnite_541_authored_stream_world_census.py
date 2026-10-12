@@ -51,6 +51,29 @@ def run():
                 if key+".umap" in index and key+".uexp" in index:
                     found.append({"archive":archive,"source_package":key})
         census.append({**world,"authenticated_source_pairs":found})
+    # Inspect genuine source world exports for authored light/fog components
+    # and non-landscape scene objects before admitting them to the renderer.
+    from collections import Counter
+    for world in census:
+        key=world["source_path"]
+        if any(z in key for z in ("/Landscape/","Athena_Streaming_Grid")):
+            continue
+        umap=ix.get(key+".umap");uexp=ix.get(key+".uexp")
+        if umap is None or uexp is None:continue
+        cat=Catalog(main.source_payload(umap),main.source_payload(uexp))
+        counter=Counter(cat.class_name(ex) for ex in cat.exports)
+        candidates=[]
+        for i,ex in enumerate(cat.exports,1):
+            kind=cat.class_name(ex)
+            if any(z in kind.lower() for z in ("light","fog","sky","sun","timeofday",
+                                               "foliage","staticmesh","atmosphere")):
+                candidates.append({"class":kind,"object":cat.path(i)})
+        print("FORTNITE_541_AUTHENTIC_STREAM_SCENE_CONTENTS "+json.dumps({
+            "world":world["asset"],"source_exports":len(cat.exports),
+            "class_census":counter.most_common(30),
+            "original_render_lighting_candidates":candidates[:100],
+            "all_candidates_count":len(candidates),
+        },sort_keys=True),flush=True)
     print("FORTNITE_AUTHORED_ROOT_WORLD_ARCHIVE_CENSUS "+json.dumps({
         "root":base,"source_stream_count":len(worlds),
         "available_streams":sum(bool(w["authenticated_source_pairs"]) for w in census),
