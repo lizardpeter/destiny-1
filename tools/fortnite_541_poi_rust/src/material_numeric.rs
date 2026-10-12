@@ -107,7 +107,7 @@ pub fn inspect_original_numeric_parameters(
     let mut vectors=Vec::new();
     for (name,encoded,kind) in numeric_fields(&c,&p,bytes,"VectorParameterValues")?{
         if kind!="StructProperty"||encoded.len()!=16{
-            return Err(format!("source VectorParameterValue {name} not LinearColor".into()));
+            return Err(format!("source VectorParameterValue {name} not LinearColor"));
         }
         let linear_rgba=std::array::from_fn(|i|
             f32::from_le_bytes(encoded[4*i..4*i+4].try_into().unwrap()));
