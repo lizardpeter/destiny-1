@@ -101,7 +101,7 @@ def main():
     matches=[node for node in orig["texture_samples"]
         if any(p["name"]=="ParameterName" and p["value"]=="Mud"
                for p in node["parameters"])
-        and any(v["name"]=="Texture" and v["path"]=="/Game"+mud_path+"::T_Athena_Arid_MudVariant_01"
+        and any(v["name"]=="Texture" and v["path"]=="/Game/Athena"+mud_path+"::T_Athena_Arid_MudVariant_01"
                 for v in node["references"])]
     if len(matches)!=1:
         raise ValueError("source Mud MaterialExpressionTextureSampleParameter2D/Texture mismatch")
