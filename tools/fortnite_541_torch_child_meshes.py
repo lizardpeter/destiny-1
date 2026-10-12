@@ -39,6 +39,14 @@ def run():
         mesh=ref(c,template,"StaticMesh")
         if not mesh:continue
         props=fields(c,template)
+        nodefields=fields(c,ex)
+        parent_info=[]
+        for pname,pkind,meta,raw in nodefields:
+            if pname in ("ParentComponentOrVariableName","ParentComponentOwnerClassName",
+                         "InternalVariableName","bIsParentComponentNative"):
+                parent_info.append({"name":pname,"kind":pkind,"meta":meta,
+                    "source_name":c.fname(raw) if pkind=="NameProperty" and len(raw)==8 else None,
+                    "len":len(raw)})
         vecs={}
         for name,kind,meta,raw in props:
             if name in ("RelativeLocation","RelativeRotation","RelativeScale3D"):
@@ -56,7 +64,7 @@ def run():
                        for j in range(count)]
         templates.append({"SCS":c.path(i),"component":c.path(tmpl_ref),
             "mesh":c.path(mesh),"source_transform":vecs,
-            "override_materials":overrides,
+            "override_materials":overrides,"source_attachment_fields":parent_info,
             "tagged_properties":[z[0] for z in props]})
     if len(templates)!=2:
         raise ValueError(f"expected two source SCS child StaticMesh templates, got {templates}")
