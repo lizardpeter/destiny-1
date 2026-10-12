@@ -1,0 +1,31 @@
+name: Fortnite 5.41 recovered Blueprint mesh native LOD0 proof
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_split_only_native_mesh_lods.py
+      - tools/fortnite_541_poi_rust/src/main.rs
+      - .github/workflows/fortnite-541-split-source-mesh-lods.yml
+  workflow_dispatch:
+jobs:
+  source-native-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage seven authentic split-only Blueprint CDO classes
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_split_only_blueprint_cdos.py
+      - name: Unit-test strict native UE4 CDO and mesh/source material decoders
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Resolve source exact CDO mesh identities and placements
+        run: |
+          set -o pipefail
+          cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-cdos /tmp/fortnite541_split_only_cdos.tsv | tee /tmp/fortnite541_split_only_mesh_cdo.log
+      - name: Stage six source exact UStaticMesh retail native data packages
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_split_only_native_mesh_lods.py
+      - name: Require true source LOD0 decode and original section MaterialIndex closure on all 36 newly placeable actors
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-split-source-meshes /tmp/fortnite541_split_only_mesh_lods.tsv
