@@ -47,6 +47,33 @@ def run():
                 if k=="ArrayProperty" and len(v)>=4:
                     item["count"]=struct.unpack_from("<I",v)[0]
                     item["prefix"]=v[:125].hex()
+                    if n=="TextureParameterValues":
+                        none=struct.pack("<II",cat.names.index("None"),0)
+                        wrapper,_=cat.props(v[4:]+none)
+                        if len(wrapper)!=1 or wrapper[0][1]!="StructProperty":
+                            raise ValueError("retail material texture parameter aggregate changed")
+                        inner=wrapper[0][3]
+                        cursor=0
+                        decoded=[]
+                        for j in range(item["count"]):
+                            tagged,used=cat.props(inner[cursor:])
+                            if used<=0:raise ValueError("original texture parameter struct failed to advance")
+                            cursor+=used
+                            param={}
+                            for pn,pk,pmeta,praw in tagged:
+                                if pn=="ParameterInfo" and pk=="StructProperty":
+                                    info,_=cat.props(praw)
+                                    param["info"]=[{"name":nn,"kind":nk,
+                                        "value":cat.fname(nraw) if nk=="NameProperty" and len(nraw)==8 else None}
+                                        for nn,nk,nmeta,nraw in info]
+                                elif pn=="ParameterValue" and pk=="ObjectProperty" and len(praw)==4:
+                                    ref=struct.unpack("<i",praw)[0]
+                                    param["texture"]=cat.path(ref) if ref else None
+                                else:param[pn]={"kind":pk,"size":len(praw)}
+                            decoded.append(param)
+                        item["original_texture_parameters"]=decoded
+                        item["source_bytes_used"]=cursor
+                        item["source_bytes_total"]=len(inner)
                 rows.append(item)
             result.append({"name":cat.value(i),"class":typ,"fields":rows})
         print("FORTNITE_SOURCE_MATERIAL_PROBE "+json.dumps({
