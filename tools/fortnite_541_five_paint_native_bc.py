@@ -29,6 +29,7 @@ def one(index,paint,original):
     name_length=u32(cooked,40)
     if name_length not in (7,8,12):raise ValueError("original source BC format FString length unexpected")
     kind=cooked[44:44+name_length].rstrip(bytes([0])).decode("ascii")
+    first_mip,mip_count,slices=struct.unpack_from("<III",cooked,44+name_length)
     offset=44+name_length+12
     flags,stored,count=struct.unpack_from("<III",cooked,offset)
     signed=struct.unpack_from("<q",cooked,offset+12)[0]
@@ -37,20 +38,24 @@ def one(index,paint,original):
     per_block={"PF_DXT1":8,"PF_DXT3":16,"PF_DXT5":16,"PF_BC4":8,"PF_BC5":16}
     if kind not in per_block:raise ValueError(f"source {paint} format {kind} not supported by native BC decoder")
     expect=((mw+3)//4)*((mh+3)//4)*per_block[kind]
-    valid=(flags==0x501 and width==mw and height==mh and depth==md==1
+    valid=(flags==0x501 and first_mip<=13 and mip_count in range(1,17)
+           and slices==1
+           and (width>>first_mip)==mw and (height>>first_mip)==mh and depth==md==1
            and count==stored==expect and
            0<=original_bulk_offset and
            original_bulk_offset+expect<=len(payloads[".ubulk"]))
     if not valid:raise ValueError(f"source {paint} BC image byte bounds invalid: "+json.dumps({
         "header_dimensions": [width,height,depth],"mip_dimensions":[mw,mh,md],
-        "pixel_format":kind,"flags":hex(flags),"stored_bytes":stored,
+        "pixel_format":kind,"flags":hex(flags),
+        "first_resident_mip":first_mip,"mip_count":mip_count,"slices":slices,"stored_bytes":stored,
         "bulk_count":count,"expected_bc_bytes":expect,
         "original_bulk_offset":original_bulk_offset,
         "ubulk_bytes":len(payloads[".ubulk"]),
         "signed_source_bulk_offset":signed
     },sort_keys=True))
     return {"paint":paint,"source_texture":original,"width":width,
-        "height":height,"pixel_format":kind,"first_mip_bytes":expect,
+        "height":height,"resident_width":mw,"resident_height":mh,
+        "first_resident_mip":first_mip,"pixel_format":kind,"first_mip_bytes":expect,
         "original_BC_top_mip_verified":valid,"source_bulk_bytes":len(payloads[".ubulk"])}
 def main():
     sha=dict(SPLITS)["s3"]
