@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - tools/fortnite_541_castle_torch_light_source.py
+      - tools/fortnite_541_poi_rust/src/poi_lighting.rs
+      - tools/fortnite_541_poi_rust/src/main.rs
       - .github/workflows/fortnite-541-castle-torch-light.yml
   workflow_dispatch:
 jobs:
@@ -20,3 +22,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: '1'
         run: python3 tools/fortnite_541_castle_torch_light_source.py
+      - name: Unit-test strict original Blueprint point-light tagged reader
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Validate 18 actual original castle torch light templates in native Rust source decoder
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-split-poi-lights
