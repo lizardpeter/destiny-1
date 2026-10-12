@@ -6,6 +6,7 @@ UObject in StaticMaterials, find original MIC UTexture2D parameters, and
 record their source identities for the universal renderer.
 """
 import json,struct
+from pathlib import Path
 from fortnite_541_factory_native_mesh_batch import locate,read_source
 from fortnite_541_all_poi_coverage import SPLITS,ROOT
 import fortnite_541_r2_material_probe as main
@@ -30,8 +31,13 @@ def run():
             print("FORTNITE_SOURCE_MATERIAL_PROBE "+json.dumps({"material":source,"present":False}),flush=True)
             continue
         archive,base=found
-        cat=Catalog(read_source(archive,base+".uasset",indexes),
-                    read_source(archive,base+".uexp",indexes))
+        original_header=read_source(archive,base+".uasset",indexes)
+        original_export=read_source(archive,base+".uexp",indexes)
+        target=Path("/tmp/fortnite541_source_materials/FortniteGame/Content")/source
+        target.parent.mkdir(parents=True,exist_ok=True)
+        target.with_suffix(".uasset").write_bytes(original_header)
+        target.with_suffix(".uexp").write_bytes(original_export)
+        cat=Catalog(original_header,original_export)
         result=[]
         for i,ex in enumerate(cat.exports,1):
             typ=cat.class_name(ex)
