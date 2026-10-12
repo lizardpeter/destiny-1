@@ -1,0 +1,18 @@
+name: Fortnite 5.41 remaining landscape paint albedo package census
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_additional_landscape_paint_splits.py
+      - .github/workflows/fortnite-541-landscape-extra-splits.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate source Gravel Road Arid diffuse albedos in SHA1-verified seven retail PAK indexes
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_additional_landscape_paint_splits.py
