@@ -1,0 +1,1413 @@
+{
+  "schema": "d1_global_channel_names/v1",
+  "hash": "FNV-1 32 (basis 0x811C9DC5, prime 0x01000193, multiply then xor)",
+  "hash_evidence": "0x5C579DFA == fnv1('sun_light_direction'); constant used by c_sun_manager::resolve_channels 0x8B1F10 via find_global_channel 0x816240",
+  "source_defaults": "evidence/generated/d1_current_global_channel_defaults_decoded.json",
+  "source_tag_hash": "80AE4005",
+  "channel_count": 100,
+  "named_count": 52,
+  "names_not_in_this_tag": [],
+  "rejected_preimages": {
+    "sea_hero_receive": "collides with sun_glow_color (0x056007C7)",
+    "tonemap_cosmodrome_indoor": "nonsensical combination; index 61 left unnamed"
+  },
+  "tfx_4b_frontier": [
+    {
+      "index": 17,
+      "index_hex": "0x11",
+      "string_hash": "90745795",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "sun_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "default (1,1,1,1); next to sun_intensity"
+    },
+    {
+      "index": 40,
+      "index_hex": "0x28",
+      "string_hash": "1191B30B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 48,
+      "index_hex": "0x30",
+      "string_hash": "E9EE5E9C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sun_transmission_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "paired with sun_transmission_intensity"
+    },
+    {
+      "index": 96,
+      "index_hex": "0x60",
+      "string_hash": "0AD675E2",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "lighting_cinematic_override",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "default (1,0,0,0)"
+    }
+  ],
+  "channels": [
+    {
+      "index": 0,
+      "index_hex": "0x00",
+      "string_hash": "056007C7",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "sun_glow_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "default (1,1,1,1); next to sun_glow_intensity"
+    },
+    {
+      "index": 1,
+      "index_hex": "0x01",
+      "string_hash": "4AA1BEF5",
+      "default_vec4": [
+        50.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 2,
+      "index_hex": "0x02",
+      "string_hash": "9859DAF1",
+      "default_vec4": [
+        0.02500000037252903,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "sun_glow_intensity",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 3,
+      "index_hex": "0x03",
+      "string_hash": "F853533C",
+      "default_vec4": [
+        0.5,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "inscatter_intensity",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 4,
+      "index_hex": "0x04",
+      "string_hash": "ED4BB08A",
+      "default_vec4": [
+        5.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "fog_density",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 5,
+      "index_hex": "0x05",
+      "string_hash": "9E769ED2",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 6,
+      "index_hex": "0x06",
+      "string_hash": "49FBBCE1",
+      "default_vec4": [
+        30000.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 7,
+      "index_hex": "0x07",
+      "string_hash": "94D8ECDC",
+      "default_vec4": [
+        1.850000023841858,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "fog_height_falloff",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 8,
+      "index_hex": "0x08",
+      "string_hash": "BD2C7FE8",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "fog_start_height",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 9,
+      "index_hex": "0x09",
+      "string_hash": "9EC7A5E8",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 10,
+      "index_hex": "0x0A",
+      "string_hash": "B630810B",
+      "default_vec4": [
+        0.05000000074505806,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 11,
+      "index_hex": "0x0B",
+      "string_hash": "3EEACB23",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 12,
+      "index_hex": "0x0C",
+      "string_hash": "7E92EB31",
+      "default_vec4": [
+        100.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 13,
+      "index_hex": "0x0D",
+      "string_hash": "9F4CB78F",
+      "default_vec4": [
+        10.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 14,
+      "index_hex": "0x0E",
+      "string_hash": "5800C6F4",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 15,
+      "index_hex": "0x0F",
+      "string_hash": "5800C6F7",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 16,
+      "index_hex": "0x10",
+      "string_hash": "5800C6F6",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 17,
+      "index_hex": "0x11",
+      "string_hash": "90745795",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "sun_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "default (1,1,1,1); next to sun_intensity"
+    },
+    {
+      "index": 18,
+      "index_hex": "0x12",
+      "string_hash": "615E07A3",
+      "default_vec4": [
+        10.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sun_intensity",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "c_sun_manager +0x20; default 10"
+    },
+    {
+      "index": 19,
+      "index_hex": "0x13",
+      "string_hash": "CCEADF9A",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sun_shadow_intensity",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "c_sun_manager +0x24; default 1"
+    },
+    {
+      "index": 20,
+      "index_hex": "0x14",
+      "string_hash": "7C7F9077",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "up_ambient_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "paired with up_ambient_intensity"
+    },
+    {
+      "index": 21,
+      "index_hex": "0x15",
+      "string_hash": "52717901",
+      "default_vec4": [
+        0.10000000149011612,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "up_ambient_intensity",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 22,
+      "index_hex": "0x16",
+      "string_hash": "F20B0FF3",
+      "default_vec4": [
+        0.5,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 23,
+      "index_hex": "0x17",
+      "string_hash": "603EF86C",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "down_ambient_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "paired with down_ambient_intensity"
+    },
+    {
+      "index": 24,
+      "index_hex": "0x18",
+      "string_hash": "CD02F312",
+      "default_vec4": [
+        0.15000000596046448,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "down_ambient_intensity",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 25,
+      "index_hex": "0x19",
+      "string_hash": "74FC62C4",
+      "default_vec4": [
+        0.5,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 26,
+      "index_hex": "0x1A",
+      "string_hash": "E43477BE",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 27,
+      "index_hex": "0x1B",
+      "string_hash": "98552BE8",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 28,
+      "index_hex": "0x1C",
+      "string_hash": "38D8C873",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 29,
+      "index_hex": "0x1D",
+      "string_hash": "E283FBE0",
+      "default_vec4": [
+        90.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 30,
+      "index_hex": "0x1E",
+      "string_hash": "5F3B8491",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 31,
+      "index_hex": "0x1F",
+      "string_hash": "62E4542E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 32,
+      "index_hex": "0x20",
+      "string_hash": "79F2E305",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 33,
+      "index_hex": "0x21",
+      "string_hash": "949768CF",
+      "default_vec4": [
+        49500.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 34,
+      "index_hex": "0x22",
+      "string_hash": "2C53817D",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_01",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 35,
+      "index_hex": "0x23",
+      "string_hash": "2C53817E",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_02",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 36,
+      "index_hex": "0x24",
+      "string_hash": "2C53817F",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_03",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 37,
+      "index_hex": "0x25",
+      "string_hash": "2C538178",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_04",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 38,
+      "index_hex": "0x26",
+      "string_hash": "2C538179",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_05",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 39,
+      "index_hex": "0x27",
+      "string_hash": "2C53817A",
+      "default_vec4": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_06",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 40,
+      "index_hex": "0x28",
+      "string_hash": "1191B30B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 41,
+      "index_hex": "0x29",
+      "string_hash": "20A0AD8E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 42,
+      "index_hex": "0x2A",
+      "string_hash": "2C53817B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_07",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 43,
+      "index_hex": "0x2B",
+      "string_hash": "2C538174",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_08",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 44,
+      "index_hex": "0x2C",
+      "string_hash": "2C538175",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_09",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 45,
+      "index_hex": "0x2D",
+      "string_hash": "2D5382EF",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_10",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 46,
+      "index_hex": "0x2E",
+      "string_hash": "2D5382EE",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_11",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 47,
+      "index_hex": "0x2F",
+      "string_hash": "2D5382ED",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_12",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 48,
+      "index_hex": "0x30",
+      "string_hash": "E9EE5E9C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sun_transmission_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "paired with sun_transmission_intensity"
+    },
+    {
+      "index": 49,
+      "index_hex": "0x31",
+      "string_hash": "FE279F22",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sun_transmission_intensity",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 50,
+      "index_hex": "0x32",
+      "string_hash": "3C112DD3",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 51,
+      "index_hex": "0x33",
+      "string_hash": "3C112DD0",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 52,
+      "index_hex": "0x34",
+      "string_hash": "D9A2D8A3",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_color_override",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 53,
+      "index_hex": "0x35",
+      "string_hash": "5C579DFA",
+      "default_vec4": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "name": "sun_light_direction",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "string present in binary; c_sun_manager +0x8"
+    },
+    {
+      "index": 54,
+      "index_hex": "0x36",
+      "string_hash": "C09AC1A6",
+      "default_vec4": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "name": "sun_atmosphere_direction",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "c_sun_manager +0xC"
+    },
+    {
+      "index": 55,
+      "index_hex": "0x37",
+      "string_hash": "6E22B25E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "name": "sun_ambient_direction",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "c_sun_manager +0x10; written as scale * -sun_light_direction.xy"
+    },
+    {
+      "index": 56,
+      "index_hex": "0x38",
+      "string_hash": "CF620DD4",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 57,
+      "index_hex": "0x39",
+      "string_hash": "38DCFCDA",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 58,
+      "index_hex": "0x3A",
+      "string_hash": "CDE25113",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 59,
+      "index_hex": "0x3B",
+      "string_hash": "3F9BF6CD",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 60,
+      "index_hex": "0x3C",
+      "string_hash": "E16B6B6B",
+      "default_vec4": [
+        100000.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 61,
+      "index_hex": "0x3D",
+      "string_hash": "CBF32782",
+      "default_vec4": [
+        50.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 62,
+      "index_hex": "0x3E",
+      "string_hash": "CD265A98",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "skybox_sun_color",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "paired with skybox_sun_intensity"
+    },
+    {
+      "index": 63,
+      "index_hex": "0x3F",
+      "string_hash": "3EA1FBBE",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "skybox_sun_intensity",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 64,
+      "index_hex": "0x40",
+      "string_hash": "7E708D99",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 65,
+      "index_hex": "0x41",
+      "string_hash": "D8E51195",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 66,
+      "index_hex": "0x42",
+      "string_hash": "FF5E4E71",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 67,
+      "index_hex": "0x43",
+      "string_hash": "10CF852C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 68,
+      "index_hex": "0x44",
+      "string_hash": "05AA1AD2",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 69,
+      "index_hex": "0x45",
+      "string_hash": "F07113DB",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 70,
+      "index_hex": "0x46",
+      "string_hash": "2D5382EC",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_13",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 71,
+      "index_hex": "0x47",
+      "string_hash": "2D5382EB",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_14",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 72,
+      "index_hex": "0x48",
+      "string_hash": "2D5382EA",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_15",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 73,
+      "index_hex": "0x49",
+      "string_hash": "2D5382E9",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_16",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 74,
+      "index_hex": "0x4A",
+      "string_hash": "2D5382E8",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_17",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 75,
+      "index_hex": "0x4B",
+      "string_hash": "2D5382E7",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_18",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 76,
+      "index_hex": "0x4C",
+      "string_hash": "4FC38ABB",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "ao_ambient_weight",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "adjacent to ao_sun_weight"
+    },
+    {
+      "index": 77,
+      "index_hex": "0x4D",
+      "string_hash": "03B0B095",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "ao_sun_weight",
+      "name_status": "STRONGLY_SUPPORTED"
+    },
+    {
+      "index": 78,
+      "index_hex": "0x4E",
+      "string_hash": "BEBDF937",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "ao_character_bias",
+      "name_status": "HYPOTHESIS",
+      "note": "c_sun_manager +0x28 zeroes it under a renderer flag; role fit unclear"
+    },
+    {
+      "index": 79,
+      "index_hex": "0x4F",
+      "string_hash": "2D5382E6",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_19",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 80,
+      "index_hex": "0x50",
+      "string_hash": "2E538442",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_20",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 81,
+      "index_hex": "0x51",
+      "string_hash": "2E538443",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_21",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 82,
+      "index_hex": "0x52",
+      "string_hash": "2E538440",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_22",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 83,
+      "index_hex": "0x53",
+      "string_hash": "2E538441",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_23",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 84,
+      "index_hex": "0x54",
+      "string_hash": "2E538446",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "sky_colour_tint_24",
+      "name_status": "HYPOTHESIS",
+      "note": "two-digit suffixes 01..24 match indices 34-39,42-47,70-75,79-84; British spelling differs from the other *_color channels"
+    },
+    {
+      "index": 85,
+      "index_hex": "0x55",
+      "string_hash": "7C61F53B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 86,
+      "index_hex": "0x56",
+      "string_hash": "7BC51142",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "character_lighting_scale",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "default 1"
+    },
+    {
+      "index": 87,
+      "index_hex": "0x57",
+      "string_hash": "ECA86879",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 88,
+      "index_hex": "0x58",
+      "string_hash": "ECA8687A",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 89,
+      "index_hex": "0x59",
+      "string_hash": "ECA8687B",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 90,
+      "index_hex": "0x5A",
+      "string_hash": "ECA8687C",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 91,
+      "index_hex": "0x5B",
+      "string_hash": "ECA8687D",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 92,
+      "index_hex": "0x5C",
+      "string_hash": "ECA8687E",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 93,
+      "index_hex": "0x5D",
+      "string_hash": "ECA8687F",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 94,
+      "index_hex": "0x5E",
+      "string_hash": "ECA86870",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 95,
+      "index_hex": "0x5F",
+      "string_hash": "F2DB92ED",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 96,
+      "index_hex": "0x60",
+      "string_hash": "0AD675E2",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "lighting_cinematic_override",
+      "name_status": "STRONGLY_SUPPORTED",
+      "note": "default (1,0,0,0)"
+    },
+    {
+      "index": 97,
+      "index_hex": "0x61",
+      "string_hash": "E6AEB9EC",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": null,
+      "name_status": "UNKNOWN"
+    },
+    {
+      "index": 98,
+      "index_hex": "0x62",
+      "string_hash": "ED15B1C4",
+      "default_vec4": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "snow_ao_scale",
+      "name_status": "HYPOTHESIS"
+    },
+    {
+      "index": 99,
+      "index_hex": "0x63",
+      "string_hash": "B9FABF51",
+      "default_vec4": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "snow_ao_bias",
+      "name_status": "HYPOTHESIS"
+    }
+  ],
+  "proof_boundary": "Names are 32-bit hash preimages from a dictionary search, not recovered strings, except sun_light_direction. Index order is per-tag data, so these indices hold only for tag 80AE4005"
+}

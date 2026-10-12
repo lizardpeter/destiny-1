@@ -1,0 +1,941 @@
+{
+ "schema": "d1_pm4_emitters/v1",
+ "gnm_windows": [
+  "0xf60000",
+  "0xf70000",
+  "0xf80000",
+  "0xf90000"
+ ],
+ "opcodes": [
+  {
+   "opcode": "AcquireMem",
+   "builders": 2,
+   "called_builders": 2,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "DispatchDirect",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "DmaData",
+   "builders": 2,
+   "called_builders": 2,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "DrawIndex2",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "DrawIndexAuto",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "DumpConstRam",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "EventWrite",
+   "builders": 5,
+   "called_builders": 5,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "EventWriteEop",
+   "builders": 2,
+   "called_builders": 2,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "EventWriteEos",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "IncrementCeCounter",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "IncrementDeCounter",
+   "builders": 1,
+   "called_builders": 0,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "IndexBase",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "IndexBufferSize",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "IndexType",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "Nop",
+   "builders": 11,
+   "called_builders": 11,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "NumInstances",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "SetContextReg",
+   "builders": 31,
+   "called_builders": 30,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "SetPredication",
+   "builders": 2,
+   "called_builders": 0,
+   "shadps4": "warn_only"
+  },
+  {
+   "opcode": "SetShReg",
+   "builders": 5,
+   "called_builders": 5,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "SetUconfigReg",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "WaitOnCeCounter",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "WaitOnDeCounterDiff",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "WaitRegMem",
+   "builders": 2,
+   "called_builders": 2,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "WriteConstRam",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  },
+  {
+   "opcode": "WriteData",
+   "builders": 1,
+   "called_builders": 1,
+   "shadps4": "handled"
+  }
+ ],
+ "builders": [
+  {
+   "function": "0xf7e740",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 8,
+   "caller_sample": [
+    "0x7de571",
+    "0x7e034b",
+    "0x7e049b",
+    "0x7e257f",
+    "0x7e26ac",
+    "0x7e28c8"
+   ]
+  },
+  {
+   "function": "0xf7e7c0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 20,
+   "caller_sample": [
+    "0x7de527",
+    "0x7de53b",
+    "0x7de54f",
+    "0x7de563",
+    "0x7e030e",
+    "0x7e031e"
+   ]
+  },
+  {
+   "function": "0xf7e840",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7e0f3f",
+    "0x7e10a5",
+    "0x7e282d",
+    "0x7e2976"
+   ]
+  },
+  {
+   "function": "0xf7e8d0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7df8eb",
+    "0x7dfa28",
+    "0x7e20cd",
+    "0x7e21bf"
+   ]
+  },
+  {
+   "function": "0xf7e950",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 9,
+   "caller_sample": [
+    "0x7dfa4b",
+    "0x7e02eb",
+    "0x7e04f2",
+    "0x7e0f2d",
+    "0x7e1093",
+    "0x7e2516"
+   ]
+  },
+  {
+   "function": "0xf7e9b0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7e0f51",
+    "0x7e10b7",
+    "0x7e2814",
+    "0x7e2985"
+   ]
+  },
+  {
+   "function": "0xf7ea20",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7df8a4"
+   ]
+  },
+  {
+   "function": "0xf7ea80",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7ddf27",
+    "0x7de775"
+   ]
+  },
+  {
+   "function": "0xf7eaf0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7e28be"
+   ]
+  },
+  {
+   "function": "0xf7eb50",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7e2839"
+   ]
+  },
+  {
+   "function": "0xf7ebb0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 3,
+   "caller_sample": [
+    "0x7ddd8a",
+    "0x7dfc20",
+    "0xf8f5d0"
+   ]
+  },
+  {
+   "function": "0xf7ec30",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 3,
+   "caller_sample": [
+    "0x7dde2b",
+    "0x7dfcaf",
+    "0xf8f65c"
+   ]
+  },
+  {
+   "function": "0xf7ecb0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8f670"
+   ]
+  },
+  {
+   "function": "0xf7ed40",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7e1cea"
+   ]
+  },
+  {
+   "function": "0xf7edb0",
+   "opcodes": [
+    "Nop",
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8f1c3"
+   ]
+  },
+  {
+   "function": "0xf7eec0",
+   "opcodes": [
+    "Nop",
+    "SetContextReg"
+   ],
+   "direct_callers": 8,
+   "caller_sample": [
+    "0x7dc44a",
+    "0x7ddb0c",
+    "0x7df89c",
+    "0x7dfa60",
+    "0x7dfeb0",
+    "0x7dff0d"
+   ]
+  },
+  {
+   "function": "0xf7f010",
+   "opcodes": [
+    "WriteData"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8e5ea",
+    "0xf8e7f1"
+   ]
+  },
+  {
+   "function": "0xf7f0f0",
+   "opcodes": [
+    "DmaData"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8f424",
+    "0xf8f456"
+   ]
+  },
+  {
+   "function": "0xf7f1e0",
+   "opcodes": [
+    "SetUconfigReg"
+   ],
+   "direct_callers": 13,
+   "caller_sample": [
+    "0x7df948",
+    "0x7e012e",
+    "0x7e0a4b",
+    "0x7e0c62",
+    "0x7e1604",
+    "0x7e1749"
+   ]
+  },
+  {
+   "function": "0xf7f260",
+   "opcodes": [
+    "DrawIndexAuto",
+    "EventWrite",
+    "Nop"
+   ],
+   "direct_callers": 11,
+   "caller_sample": [
+    "0x7df96a",
+    "0x7e0150",
+    "0x7e0a6d",
+    "0x7e0c84",
+    "0x7e1774",
+    "0x7e1812"
+   ]
+  },
+  {
+   "function": "0xf7f320",
+   "opcodes": [
+    "DrawIndex2",
+    "EventWrite",
+    "Nop"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7e1669",
+    "0x7e1903"
+   ]
+  },
+  {
+   "function": "0xf7f4a0",
+   "opcodes": [
+    "DispatchDirect",
+    "EventWrite",
+    "Nop"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7e07da"
+   ]
+  },
+  {
+   "function": "0xf7f5a0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8e29d"
+   ]
+  },
+  {
+   "function": "0xf7f790",
+   "opcodes": [
+    "IndexType"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7dc454",
+    "0x7ddf63",
+    "0x7deeaf",
+    "0x7e18af"
+   ]
+  },
+  {
+   "function": "0xf7f7e0",
+   "opcodes": [
+    "IndexBase"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7dc475",
+    "0x7ddf84",
+    "0x7e163a",
+    "0x7e18d5"
+   ]
+  },
+  {
+   "function": "0xf7f840",
+   "opcodes": [
+    "IndexBufferSize"
+   ],
+   "direct_callers": 5,
+   "caller_sample": [
+    "0x7dc45e",
+    "0x7ddf6d",
+    "0x7deee4",
+    "0x7e1620",
+    "0x7e18c9"
+   ]
+  },
+  {
+   "function": "0xf7f890",
+   "opcodes": [
+    "NumInstances"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7e16c9",
+    "0x7e1734"
+   ]
+  },
+  {
+   "function": "0xf7fa90",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7de197",
+    "0x7de89e"
+   ]
+  },
+  {
+   "function": "0xf7fcd0",
+   "opcodes": [
+    "EventWrite"
+   ],
+   "direct_callers": 3,
+   "caller_sample": [
+    "0x7df891",
+    "0x7e1eea",
+    "0x7e20bb"
+   ]
+  },
+  {
+   "function": "0xf7fd40",
+   "opcodes": [
+    "AcquireMem"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7df7f9",
+    "0x7e20ae"
+   ]
+  },
+  {
+   "function": "0xf7fe20",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 6,
+   "caller_sample": [
+    "0x7dc4c1",
+    "0x7de154",
+    "0x7de179",
+    "0x7de881",
+    "0x7e24cf",
+    "0x7e27a0"
+   ]
+  },
+  {
+   "function": "0xf7feb0",
+   "opcodes": [
+    "Nop"
+   ],
+   "direct_callers": 17,
+   "caller_sample": [
+    "0x7dcf0a",
+    "0x7de9a9",
+    "0x7df667",
+    "0x7df98e",
+    "0x7e0174",
+    "0x7e03bc"
+   ]
+  },
+  {
+   "function": "0xf7ffe0",
+   "opcodes": [
+    "Nop",
+    "SetShReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8da2b"
+   ]
+  },
+  {
+   "function": "0xf80080",
+   "opcodes": [
+    "Nop",
+    "SetShReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8de6e"
+   ]
+  },
+  {
+   "function": "0xf80150",
+   "opcodes": [
+    "Nop",
+    "SetShReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8d9bd"
+   ]
+  },
+  {
+   "function": "0xf80210",
+   "opcodes": [
+    "SetShReg"
+   ],
+   "direct_callers": 11,
+   "caller_sample": [
+    "0xf8db33",
+    "0xf8dbb7",
+    "0xf8dc3b",
+    "0xf8dcbf",
+    "0xf8dd43",
+    "0xf8ddc7"
+   ]
+  },
+  {
+   "function": "0xf802a0",
+   "opcodes": [
+    "SetShReg"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8da9c",
+    "0xf8dad9"
+   ]
+  },
+  {
+   "function": "0xf80340",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7ddcd7",
+    "0x7de432",
+    "0x7dfbc1",
+    "0xf8f557"
+   ]
+  },
+  {
+   "function": "0xf80440",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 3,
+   "caller_sample": [
+    "0x7ddd05",
+    "0x7dfbd6",
+    "0xf8f58d"
+   ]
+  },
+  {
+   "function": "0xf804f0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7e55fc",
+    "0xf8f578"
+   ]
+  },
+  {
+   "function": "0xf80550",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7df8dc",
+    "0x7dfa3c",
+    "0x7e2898",
+    "0x7e2961"
+   ]
+  },
+  {
+   "function": "0xf805c0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 0,
+   "caller_sample": []
+  },
+  {
+   "function": "0xf80640",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7de617",
+    "0x7e2e77"
+   ]
+  },
+  {
+   "function": "0xf806d0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7dc4d1",
+    "0x7e2aa5"
+   ]
+  },
+  {
+   "function": "0xf80730",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7dc46b",
+    "0x7ddf7a",
+    "0x7deed2",
+    "0x7e18bd"
+   ]
+  },
+  {
+   "function": "0xf80790",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 3,
+   "caller_sample": [
+    "0x7de605",
+    "0x7de6b5",
+    "0x7e2e68"
+   ]
+  },
+  {
+   "function": "0xf80830",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7de6f7"
+   ]
+  },
+  {
+   "function": "0xf808a0",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7de6d5"
+   ]
+  },
+  {
+   "function": "0xf80910",
+   "opcodes": [
+    "SetContextReg"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7de6e8"
+   ]
+  },
+  {
+   "function": "0xf809f0",
+   "opcodes": [
+    "SetPredication"
+   ],
+   "direct_callers": 0,
+   "caller_sample": []
+  },
+  {
+   "function": "0xf80a80",
+   "opcodes": [
+    "SetPredication"
+   ],
+   "direct_callers": 0,
+   "caller_sample": []
+  },
+  {
+   "function": "0xf80ae0",
+   "opcodes": [
+    "DmaData",
+    "EventWrite",
+    "WaitRegMem"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7e1366",
+    "0x7e13ba"
+   ]
+  },
+  {
+   "function": "0xf80c90",
+   "opcodes": [
+    "EventWriteEop"
+   ],
+   "direct_callers": 8,
+   "caller_sample": [
+    "0x7db4fa",
+    "0x7dd594",
+    "0x7df9c5",
+    "0x7e01aa",
+    "0x7e03f2",
+    "0x7e1faa"
+   ]
+  },
+  {
+   "function": "0xf80d70",
+   "opcodes": [
+    "EventWriteEop"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7dce94"
+   ]
+  },
+  {
+   "function": "0xf80e00",
+   "opcodes": [
+    "WaitRegMem"
+   ],
+   "direct_callers": 6,
+   "caller_sample": [
+    "0x7df9e0",
+    "0x7e01c5",
+    "0x7e040d",
+    "0x7e083f",
+    "0x7e1fc5",
+    "0x7e21ad"
+   ]
+  },
+  {
+   "function": "0xf80f10",
+   "opcodes": [
+    "AcquireMem"
+   ],
+   "direct_callers": 4,
+   "caller_sample": [
+    "0x7e01d9",
+    "0x7e0853",
+    "0xf8e5fe",
+    "0xf8e805"
+   ]
+  },
+  {
+   "function": "0xf80fe0",
+   "opcodes": [
+    "WaitOnCeCounter"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8e60f",
+    "0xf8e816"
+   ]
+  },
+  {
+   "function": "0xf81030",
+   "opcodes": [
+    "IncrementDeCounter"
+   ],
+   "direct_callers": 0,
+   "caller_sample": []
+  },
+  {
+   "function": "0xf81090",
+   "opcodes": [
+    "EventWriteEos"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0x7e0824"
+   ]
+  },
+  {
+   "function": "0xf81130",
+   "opcodes": [
+    "Nop"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8e634",
+    "0xf8e83b"
+   ]
+  },
+  {
+   "function": "0xf81220",
+   "opcodes": [
+    "Nop"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0x7dcf74",
+    "0x7dd59d"
+   ]
+  },
+  {
+   "function": "0x10058b0",
+   "opcodes": [
+    "IncrementCeCounter"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8e617",
+    "0xf8e81e"
+   ]
+  },
+  {
+   "function": "0x1005910",
+   "opcodes": [
+    "WaitOnDeCounterDiff"
+   ],
+   "direct_callers": 2,
+   "caller_sample": [
+    "0xf8dfad",
+    "0xf8e6cd"
+   ]
+  },
+  {
+   "function": "0x1005960",
+   "opcodes": [
+    "DumpConstRam"
+   ],
+   "direct_callers": 7,
+   "caller_sample": [
+    "0xf8c8a9",
+    "0xf8c9d7",
+    "0xf8cb05",
+    "0xf8cc33",
+    "0xf8cd62",
+    "0xf8ce90"
+   ]
+  },
+  {
+   "function": "0x1005a00",
+   "opcodes": [
+    "WriteConstRam"
+   ],
+   "direct_callers": 1,
+   "caller_sample": [
+    "0xf8d7cd"
+   ]
+  }
+ ],
+ "notes": [
+  "Opcodes are recovered from immediate header constants; packets whose opcode is computed at run time would be missed.",
+  "direct_callers counts E8 calls only; builders reached through pointers or tail jumps show 0.",
+  "shadps4 status is per opcode. Sub-mode asserts inside a handled opcode (e.g. DMA_DATA src/dst combinations) are checked separately in findings/LOG.md."
+ ]
+}

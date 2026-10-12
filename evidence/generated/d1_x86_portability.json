@@ -1,0 +1,376 @@
+{
+ "schema": "d1_x86_portability/v1",
+ "modules": [
+  {
+   "file": "eboot.bin",
+   "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833",
+   "text_bytes": 26035092,
+   "functions": 54533,
+   "function_bytes": 18389898,
+   "jump_tables": 1233,
+   "jump_table_bytes": 76856,
+   "method": "per-function ranges from .eh_frame_hdr minus in-text jump tables",
+   "decoded_bytes": 18332729,
+   "undecodable_bytes": 741,
+   "counts": {
+    "approx:vrcpps": 315,
+    "approx:vrsqrtps": 1789,
+    "fs_tcb": 2542,
+    "indirect:call": 15772,
+    "indirect:jmp": 2548,
+    "isa:avx (vex-encoded)": 555868,
+    "isa:bmi1:andn": 172,
+    "isa:bmi1:bextr": 2376,
+    "isa:bmi1:blsi": 7,
+    "isa:bmi1:blsr": 6,
+    "isa:bmi1:tzcnt": 5,
+    "isa:lzcnt": 28,
+    "isa:movbe": 245,
+    "isa:popcnt": 143,
+    "system:cpuid": 4,
+    "system:hlt": 3,
+    "system:int": 169,
+    "system:int3": 180,
+    "system:rdtsc": 1199,
+    "system:rdtscp": 1,
+    "system:ud2": 16
+   },
+   "samples": {
+    "isa:bmi1:bextr": [
+     "0x27e2: bextr rdx, rdi, rax",
+     "0x2cd2: bextr ecx, eax, r8d",
+     "0x2cea: bextr edi, eax, r9d",
+     "0x2d08: bextr eax, ecx, r8d",
+     "0x2d20: bextr edi, ecx, r9d"
+    ],
+    "indirect:call": [
+     "0x303c: call rax",
+     "0x30be: call qword ptr [r13 + 0x40]",
+     "0x30d2: call qword ptr [r13 + 0x40]",
+     "0x30e6: call qword ptr [r13 + 0x40]",
+     "0x3116: call qword ptr [r13 + 0x40]"
+    ],
+    "indirect:jmp": [
+     "0x6b39: jmp rax",
+     "0x6e60: jmp rax",
+     "0xa94c: jmp rax",
+     "0xa959: jmp rcx",
+     "0xa96d: jmp rax"
+    ],
+    "isa:bmi1:andn": [
+     "0x30eab: andn eax, ecx, eax",
+     "0x3d6dc: andn ebx, ecx, ebx",
+     "0x3db12: andn ecx, ebx, edi",
+     "0x9e6e7: andn r15d, eax, r14d",
+     "0xb5d26: andn ecx, esi, r8d"
+    ],
+    "fs_tcb": [
+     "0x68640: mov rax, qword ptr fs:[0]",
+     "0x694e6: mov rax, qword ptr fs:[0]",
+     "0x79a38: mov rax, qword ptr fs:[0]",
+     "0xe9fa3: mov rax, qword ptr fs:[0]",
+     "0xed071: mov rax, qword ptr fs:[0]"
+    ],
+    "isa:movbe": [
+     "0x69d80: movbe edx, dword ptr [rsi + 4]",
+     "0x69d87: movbe r8d, dword ptr [rsi + 8]",
+     "0x69d90: movbe eax, dword ptr [rsi]",
+     "0x69e3f: movbe eax, dword ptr [rdi]",
+     "0x69e48: movbe eax, dword ptr [rdi]"
+    ],
+    "approx:vrsqrtps": [
+     "0x72a10: vrsqrtps xmm5, xmm5",
+     "0x9050b: vrsqrtps xmm3, xmm1",
+     "0x9060b: vrsqrtps xmm3, xmm1",
+     "0x9092e: vrsqrtps xmm7, xmm0",
+     "0x91127: vrsqrtps xmm5, xmm5"
+    ],
+    "isa:bmi1:blsr": [
+     "0x901f9: blsr eax, edi",
+     "0xb6bb0: blsr rcx, rsi",
+     "0xf7bb50: blsr rax, rbx",
+     "0xf870a6: blsr eax, edi",
+     "0x126ca69: blsr eax, r12d"
+    ],
+    "isa:bmi1:blsi": [
+     "0xb5ce5: blsi eax, edx",
+     "0xb5d54: blsi eax, eax",
+     "0xb5e03: blsi ecx, ecx",
+     "0xb64cbf: blsi esi, ecx",
+     "0xc2faff: blsi ebx, eax"
+    ],
+    "system:ud2": [
+     "0xc0a26: ud2 ",
+     "0x17b2c4: ud2 ",
+     "0x318827: ud2 ",
+     "0x9a4199: ud2 ",
+     "0xb40799: ud2 "
+    ],
+    "system:int3": [
+     "0x2132e0: int3 ",
+     "0x213323: int3 ",
+     "0x213366: int3 ",
+     "0x2133bf: int3 ",
+     "0x2133fd: int3 "
+    ],
+    "approx:vrcpps": [
+     "0x21a089: vrcpps xmm6, xmm5",
+     "0x5f38d0: vrcpps xmm3, xmm0",
+     "0x5f39ca: vrcpps xmm1, xmm2",
+     "0x881fa2: vrcpps xmm0, xmm0",
+     "0xc2ec8c: vrcpps xmm2, xmm6"
+    ],
+    "system:int": [
+     "0x2abd1d: int 0x41",
+     "0x2abd21: int 0x41",
+     "0x2eb13f: int 0x41",
+     "0x2eb143: int 0x41",
+     "0x2eb28e: int 0x41"
+    ],
+    "isa:popcnt": [
+     "0x7c4d02: popcnt edx, eax",
+     "0x950711: popcnt ecx, ecx",
+     "0x950d75: popcnt ecx, ecx",
+     "0xc7a7d5: popcnt edx, eax",
+     "0xc7a7fe: popcnt eax, edx"
+    ],
+    "system:rdtsc": [
+     "0x84d812: rdtsc ",
+     "0x84d87b: rdtsc ",
+     "0x84d8e8: rdtsc ",
+     "0x84d94f: rdtsc ",
+     "0x8538e9: rdtsc "
+    ],
+    "system:rdtscp": [
+     "0xc390c0: rdtscp "
+    ],
+    "isa:lzcnt": [
+     "0xe96d46: lzcnt esi, esi",
+     "0xe96d59: lzcnt eax, r9d",
+     "0xe96e5c: lzcnt ecx, ecx",
+     "0xe96e6e: lzcnt edx, esi",
+     "0xe96eb3: lzcnt esi, ecx"
+    ],
+    "isa:bmi1:tzcnt": [
+     "0xe96f02: tzcnt esi, r8d",
+     "0xe96f18: tzcnt r9d, edx",
+     "0x1222d78: tzcnt rcx, rsi",
+     "0x12237e0: tzcnt ecx, edx",
+     "0x12237f2: tzcnt ecx, ecx"
+    ],
+    "system:cpuid": [
+     "0xf12082: cpuid ",
+     "0xf12092: cpuid ",
+     "0xf1209e: cpuid ",
+     "0xf120ac: cpuid "
+    ],
+    "system:hlt": [
+     "0xfe07ed: hlt ",
+     "0xfe07f0: hlt ",
+     "0xfe080d: hlt "
+    ]
+   }
+  },
+  {
+   "file": "libSceFios2.prx",
+   "sha256": "0fea0b2ddfca34c785aa534453dac183b733a62723f4d353fda7fa1bbb4b25d5",
+   "text_bytes": 294992,
+   "functions": 649,
+   "function_bytes": 219036,
+   "jump_tables": 25,
+   "jump_table_bytes": 2752,
+   "method": "per-function ranges from .eh_frame_hdr minus in-text jump tables",
+   "decoded_bytes": 216696,
+   "undecodable_bytes": 0,
+   "counts": {
+    "indirect:call": 100,
+    "indirect:jmp": 27,
+    "isa:avx (vex-encoded)": 352,
+    "isa:bmi1:andn": 36,
+    "isa:bmi1:bextr": 58,
+    "isa:movbe": 10,
+    "system:ud2": 52
+   },
+   "samples": {
+    "isa:bmi1:andn": [
+     "0xbf0: andn r12, r13, r12",
+     "0xbf5: andn rbx, r13, rbx",
+     "0x16fe1: andn r15d, eax, r15d",
+     "0x17024: andn r15d, eax, r15d",
+     "0x1a7e9: andn ecx, r15d, r13d"
+    ],
+    "isa:bmi1:bextr": [
+     "0xfe1: bextr esi, dword ptr [rbx], eax",
+     "0x878e: bextr ecx, eax, ecx",
+     "0x87b9: bextr ecx, ecx, eax",
+     "0x87dd: bextr ecx, ecx, eax",
+     "0x9117: bextr edx, ebx, ecx"
+    ],
+    "indirect:jmp": [
+     "0x703c: jmp rax",
+     "0x72cc: jmp rax",
+     "0x7577: jmp rcx",
+     "0x7d37: jmp rax",
+     "0x85d4: jmp rax"
+    ],
+    "indirect:call": [
+     "0x8da4: call r15",
+     "0xff8a: call rax",
+     "0xfffa: call rax",
+     "0x1006a: call rax",
+     "0x100da: call rax"
+    ],
+    "system:ud2": [
+     "0x1bc9c: ud2 ",
+     "0x2b40f: ud2 ",
+     "0x2b573: ud2 ",
+     "0x2b5cc: ud2 ",
+     "0x2b732: ud2 "
+    ],
+    "isa:movbe": [
+     "0x21982: movbe dword ptr [rdi], eax",
+     "0x21989: movbe dword ptr [rdi + 4], eax",
+     "0x21991: movbe dword ptr [rdi + 8], ecx",
+     "0x21999: movbe dword ptr [rdi + 0xc], edx",
+     "0x219a1: movbe dword ptr [rdi + 0x10], ecx"
+    ]
+   }
+  },
+  {
+   "file": "libc.prx",
+   "sha256": "c464526471be636de799780112d7f2f91e57164e75a8d53d1117d480d6203937",
+   "text_bytes": 736764,
+   "functions": 1999,
+   "function_bytes": 505115,
+   "jump_tables": 62,
+   "jump_table_bytes": 6068,
+   "method": "per-function ranges from .eh_frame_hdr minus in-text jump tables",
+   "decoded_bytes": 500364,
+   "undecodable_bytes": 51,
+   "counts": {
+    "indirect:call": 753,
+    "indirect:jmp": 102,
+    "isa:avx (vex-encoded)": 8616,
+    "isa:bmi1:andn": 28,
+    "isa:bmi1:bextr": 58,
+    "isa:bmi1:blsi": 3,
+    "isa:bmi1:blsr": 8,
+    "isa:bmi1:tzcnt": 10,
+    "isa:lzcnt": 35,
+    "system:hlt": 5,
+    "system:ud2": 21
+   },
+   "samples": {
+    "indirect:jmp": [
+     "0x560: jmp qword ptr [rip + 0xb44f2]",
+     "0x570: jmp qword ptr [rip + 0xb44ea]",
+     "0x580: jmp qword ptr [rip + 0xb44e2]",
+     "0x590: jmp qword ptr [rip + 0xb44da]",
+     "0x5a7: jmp rax"
+    ],
+    "indirect:call": [
+     "0x8c1: call rcx",
+     "0x924: call qword ptr [rip + 0xb4136]",
+     "0x9569: call rbx",
+     "0x959b: call r12",
+     "0x961e: call r12"
+    ],
+    "isa:bmi1:blsr": [
+     "0x12e5: blsr rcx, rax",
+     "0x22a0: blsr rcx, rax",
+     "0x8387: blsr rax, rsi",
+     "0x9174: blsr rcx, r9",
+     "0x484ee: blsr eax, ecx"
+    ],
+    "system:ud2": [
+     "0x1cb5: ud2 ",
+     "0x1f3f: ud2 ",
+     "0x258c: ud2 ",
+     "0x42cb: ud2 ",
+     "0x42fe: ud2 "
+    ],
+    "isa:bmi1:blsi": [
+     "0x34cc: blsi eax, eax",
+     "0x36b6: blsi edx, eax",
+     "0x37b4: blsi esi, r8d"
+    ],
+    "isa:bmi1:bextr": [
+     "0x3511: bextr ecx, eax, r10d",
+     "0x3700: bextr ecx, edx, r9d",
+     "0x37fc: bextr ecx, esi, r10d",
+     "0x8b69: bextr rcx, rax, rcx",
+     "0x109de: bextr rcx, rax, rdx"
+    ],
+    "isa:bmi1:andn": [
+     "0x3619: andn eax, esi, r8d",
+     "0x383c: andn ecx, esi, r8d",
+     "0x314ae: andn edx, esi, dword ptr [rbp - 0x24]",
+     "0x314c5: andn edx, esi, dword ptr [rbp - 0xc]",
+     "0x3150c: andn edx, edi, dword ptr [rbp - 0x24]"
+    ],
+    "system:hlt": [
+     "0x20670: hlt ",
+     "0x20680: hlt ",
+     "0x20690: hlt ",
+     "0x206a0: hlt ",
+     "0x206b0: hlt "
+    ],
+    "isa:lzcnt": [
+     "0x4387d: lzcnt rcx, r8",
+     "0x43896: lzcnt rcx, rsi",
+     "0x4393c: lzcnt rcx, rdi",
+     "0x43abb: lzcnt ecx, r9d",
+     "0x43ada: lzcnt ecx, edx"
+    ],
+    "isa:bmi1:tzcnt": [
+     "0x442e3: tzcnt ecx, ecx",
+     "0x4436f: tzcnt rcx, rax",
+     "0x45514: tzcnt eax, edi",
+     "0x45526: tzcnt eax, edi",
+     "0x45535: tzcnt rax, rdi"
+    ]
+   }
+  }
+ ],
+ "shadps4_patched_mnemonics": [
+  "cmp",
+  "extrq",
+  "insertq",
+  "mov",
+  "movntsd",
+  "movntss",
+  "rcpps",
+  "rsqrtps",
+  "vrcpps",
+  "vrsqrtps",
+  "xor"
+ ],
+ "total": {
+  "approx:vrcpps": 315,
+  "approx:vrsqrtps": 1789,
+  "fs_tcb": 2542,
+  "indirect:call": 16625,
+  "indirect:jmp": 2677,
+  "isa:avx (vex-encoded)": 564836,
+  "isa:bmi1:andn": 236,
+  "isa:bmi1:bextr": 2492,
+  "isa:bmi1:blsi": 10,
+  "isa:bmi1:blsr": 14,
+  "isa:bmi1:tzcnt": 15,
+  "isa:lzcnt": 63,
+  "isa:movbe": 255,
+  "isa:popcnt": 143,
+  "system:cpuid": 4,
+  "system:hlt": 8,
+  "system:int": 169,
+  "system:int3": 180,
+  "system:rdtsc": 1199,
+  "system:rdtscp": 1,
+  "system:ud2": 89
+ },
+ "notes": [
+  "Linear sweep: bytes inside code that are really data can decode as instructions; the 'not on Jaguar' rows act as a canary for that.",
+  "fs_tcb is the PS4 TLS/TCB idiom shadPS4 rewrites; fs_other are other FS-relative operands.",
+  "approx instructions run on any x86 host but give different low bits on Intel than on the PS4's AMD CPU."
+ ]
+}
