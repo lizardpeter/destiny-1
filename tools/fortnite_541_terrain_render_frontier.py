@@ -6,7 +6,7 @@ TextureSample bindings and original landscape paint layer allocations.
 Source values, NOT a chosen replacement texture or arbitrary UV multiplier.
 """
 import json,struct,collections
-from fortnite_541_material_expression_probe import audit_one,audit_landscape_paint_layers,Catalog
+from fortnite_541_material_expression_probe import audit_one,audit_landscape_paint_layers,audit_texture_mip,Catalog
 import fortnite_541_r2_material_probe as retail
 
 SOURCES=[
@@ -92,6 +92,22 @@ def main():
     for layer,name in targets.items():
         found=[(path,e) for path,e in idx.items() if path.endswith(name+".uasset") or path.endswith(name+".uexp") or path.endswith(name+".ubulk")]
         print("ATHENA_541_AUTHENTIC_PAINT_SURFACE_TEXTURE "+json.dumps({"paint_layer":layer,"sample_source":name,"original_files":[{"name":p,"bytes":e[2],"method":e[3],"encrypted":bool(e[5])} for p,e in found]},sort_keys=True),flush=True)
+    mud_path="/Environments/Landscape/Textures/Arid/T_Athena_Arid_MudVariant_01"
+    proof=audit_texture_mip(mud_path,idx)
+    if not proof["source_mip_bounds_verified"]:
+        raise ValueError("original Mud diffuse source top mip is not SHA1-authenticated/valid")
+    print("ATHENA_541_REAL_MUD_SOURCE_TOP_MIP "+json.dumps(proof,sort_keys=True),flush=True)
+    orig=audit_one("/Environments/Landscape/MaterialFunctions/Standard/MF_Athena_Mud_01",idx)
+    matches=[node for node in orig["texture_samples"]
+        if any(p["name"]=="ParameterName" and p["value"]=="Mud"
+               for p in node["parameters"])
+        and any(v["name"]=="Texture" and v["path"]=="/Game"+mud_path+"::T_Athena_Arid_MudVariant_01"
+                for v in node["references"])]
+    if len(matches)!=1:
+        raise ValueError("source Mud MaterialExpressionTextureSampleParameter2D/Texture mismatch")
+    print("ATHENA_541_REAL_MUD_SHADER_BINDING "+json.dumps({
+        "source_function":orig["source_package_suffix"],"source_nodes":len(matches),
+        "source_texel_texture":matches[0]["references"]},sort_keys=True),flush=True)
     for base in SOURCES:
         graph=audit_one(base,idx)
         nodes=graph["graph_links"]+graph["texture_samples"]
