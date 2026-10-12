@@ -1,0 +1,22 @@
+name: Fortnite 5.41 native split-chunk Blueprint CDO closure
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_split_only_blueprint_cdos.py
+      - .github/workflows/fortnite-541-split-blueprint-cdos.yml
+  workflow_dispatch:
+jobs:
+  retail-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract exact missing POI UBlueprintGeneratedClass CDOs from original s2, s3 and s4 PAKs
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_split_only_blueprint_cdos.py
+      - name: Run native UE4 source parser unit tests
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Resolve actual UStaticMesh inheritance of split-only CDOs with production Rust parser
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-cdos /tmp/fortnite541_split_only_cdos.tsv
