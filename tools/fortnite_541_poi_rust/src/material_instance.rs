@@ -124,8 +124,20 @@ pub fn inspect_instance(
             let ref_id=i32::from_le_bytes(value.try_into().unwrap());
             if ref_id!=0{
                 let texture=catalog.source_object_path(ref_id)?;
-                if !texture.starts_with("/Game/"){
-                    return Err(format!("texture parameter {name} has non-game object {texture}"));
+                // An original UE4 MaterialInstanceConstant may use the
+                // Engine-provided default normal (FlatNormal), white or
+                // black textures while its *diffuse* is a valid /Game/
+                // asset. Rejecting that legitimate /Engine reference used
+                // to discard the ENTIRE otherwise-valid material instance
+                // and leave its diffuse source completely gray.
+                // Preserve source identity; source_package intentionally
+                // refuses /Engine assets because they are not in the game's
+                // authenticated Fortnite PAK material cache.
+                if !texture.starts_with("/Game/") &&
+                    !texture.starts_with("/Engine/"){
+                    return Err(format!(
+                        "texture parameter {name} has unsupported source root {texture}"
+                    ));
                 }
                 textures.push(OriginalTextureParameter{
                     name,texture_object:texture
@@ -191,6 +203,29 @@ mod tests{
         assert!(source_package("/Game/Props/WoodenCrates#abc::WoodenCrates#abc").is_err());
         assert!(source_package("/Game/Props/WoodenCrates#4294967296::WoodenCrates").is_err());
 
+    }
+    #[test]fn original_engine_flat_normal_does_not_shadow_authored_diffuse(){
+        let material=OriginalMaterialInstance{
+            source_object:"/Game/SomeMaterial::SomeMaterial".into(),
+            parent:None,
+            textures:vec![
+                OriginalTextureParameter{
+                    name:"Normals".into(),
+                    texture_object:"/Engine/EngineMaterials/FlatNormal::FlatNormal".into(),
+                },
+                OriginalTextureParameter{
+                    name:"Diffuse".into(),
+                    texture_object:"/Game/Props/Cliff_D::Cliff_D".into(),
+                },
+            ],
+        };
+        assert_eq!(
+            source_diffuse_input(&material).unwrap().texture_object,
+            "/Game/Props/Cliff_D::Cliff_D"
+        );
+        assert!(source_package(
+            &source_normal_input(&material).unwrap().texture_object
+        ).is_err(),"/Engine/ defaults are not retail source PAK assets");
     }
     #[test]fn explicit_source_diffuse_contract_only(){
         let m=OriginalMaterialInstance{
