@@ -230,6 +230,48 @@ fn run()->Result<(),String>{
         }
         return Ok(());
     }
+    if paths.len()==2 && paths[0]=="--audit-split-source-meshes" {
+        let original=fs::read_to_string(&paths[1]).map_err(|e|e.to_string())?;
+        let mut decoded=0usize;
+        let mut placed=0usize;
+        let mut triangles=0u64;
+        let mut sections=0usize;
+        for line in original.lines(){
+            let cols=line.split('\t').collect::<Vec<_>>();
+            if cols.len()!=3{return Err("source split mesh manifest invalid".into());}
+            let identity=cols[0];
+            let actor_count=cols[1].parse::<usize>().map_err(|e|e.to_string())?;
+            let stem=cols[2];
+            let header=fs::read(format!("{stem}.uasset")).map_err(|e|e.to_string())?;
+            let exports=fs::read(format!("{stem}.uexp")).map_err(|e|e.to_string())?;
+            let catalog=uobject::inspect(&header)?;
+            let name=identity.rsplit("::").next().ok_or("original split mesh name absent")?;
+            let lod=staticmesh_lod::decode_original_source_mesh(
+                &catalog,&header,&exports,name
+            )?;
+            let slots=static_material::from_mesh_export(
+                &catalog,&header,&exports,name
+            )?;
+            if lod.vertices.is_empty()||lod.sections.is_empty()||slots.is_empty(){
+                return Err(format!("authentic split source mesh empty: {identity}"));
+            }
+            for sec in &lod.sections{
+                if sec.material_slot as usize>=slots.len(){
+                    return Err(format!("original split source section MaterialIndex out of bounds: {identity}"));
+                }
+            }
+            let t=lod.sections.iter().map(|s|s.triangle_count as u64).sum::<u64>();
+            println!("FORTNITE_541_NEW_SPLIT_POI_NATIVE_LOD identity={identity:?} actors={actor_count} verts={} triangles={t} sections={} materials={} uv_channels={}",
+                lod.vertices.len(),lod.sections.len(),slots.len(),lod.total_source_uv_channels);
+            placed+=actor_count;
+            triangles+=t*actor_count as u64;
+            sections+=lod.sections.len();
+            decoded+=1;
+        }
+        println!("FORTNITE_541_NEW_SPLIT_POI_NATIVE_LOD_SUMMARY decoded_meshes={decoded} newly_placeable_actors={placed} total_source_triangles={triangles} sections={sections}");
+        if decoded!=6||placed!=36{return Err("split-only source CDO meshes remain incomplete".into());}
+        return Ok(());
+    }
     if paths.len()==2 && paths[0]=="--audit-meshes" {
         // Decode the *actual native LOD0* from every source UStaticMesh
         // identity needed by the original detailed Factory actor placements.
