@@ -301,3 +301,37 @@ Not yet closed: who writes `sun_color`, `sun_transmission_color` and
 `lighting_cinematic_override` at runtime (candidates: the per-frame passes
 0x815600 / 0x815790, which blend from tag/volume data). Index 0x28 stays
 unnamed.
+
+
+## 2026-10-12 — Recompilation boundary: firmware import surface vs. shadPS4
+
+`tools/eboot/d1_import_surface.py` -> `evidence/generated/d1_import_surface.json`
+(shadPS4 checkout `e0a46675`, 2026-10-11).
+
+Game-shipped code to recompile: `eboot.bin` plus two decrypted modules from
+`sce_module/` — `libc.prx` (exports `libc`) and `libSceFios2.prx` (exports
+`libSceFios2`). 165 eboot imports and 8 libc imports resolve to these and need
+no reimplementation.
+
+Firmware surface (unique library+NID across all three): **557 imports, 19,710
+direct call sites**.
+
+| status vs shadPS4 | imports | call sites |
+|---|---|---|
+| implemented | 444 | 19,376 |
+| trivial body (stub or one-line accessor; heuristic) | 72 | 196 |
+| not registered | 41 | 138 |
+
+- libkernel dominates: 221 imports, ~18,500 call sites (mostly pthread mutex /
+  cond). All but 7 are registered in shadPS4.
+- Not registered: PSN social extras (Facebook SNS + dialog, in-game messaging,
+  GameCustomDataDialog, coredump) and 13 `libSceLibcInternal` C functions used
+  by `libSceFios2.prx` (printf, vsnprintf, time functions) — the latter map
+  directly onto host libc.
+- Graphics: only 15 `libSceGnmDriver` imports (shader-stage setters,
+  default-state init, submit/flip). Command buffers are built by Gnm code
+  statically linked into the eboot, so a recompilation needs a PM4 + GCN
+  shader translator (shadPS4's `video_core` is the reference), not more HLE.
+- `call_sites` counts direct calls into PLT stubs only; submit/flip are called
+  through pointers and show 0. The eboot total (31,219) matches the
+  independent capstone call index exactly.
