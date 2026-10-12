@@ -1,0 +1,22 @@
+name: Fortnite 5.41 original castle torch light component proof
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_castle_torch_light_source.py
+      - .github/workflows/fortnite-541-castle-torch-light.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage authenticated original s4 castle torch CDO among split-only classes
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_split_only_blueprint_cdos.py
+      - name: Audit original torch actor light and component templates
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_castle_torch_light_source.py
