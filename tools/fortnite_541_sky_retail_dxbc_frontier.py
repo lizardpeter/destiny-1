@@ -26,6 +26,37 @@ def ascii_at(blob,pos):
     if pos<0 or pos>=len(blob):return None
     m=re.match(rb"[\x20-\x7e]{1,127}\x00",blob[pos:pos+128])
     return m.group(0)[:-1].decode("ascii") if m else None
+def shex_token_census(code):
+    # SM4/SM5 tokenized instruction stream: two u32 header tokens,
+    # instructions include their original encoded dword length in
+    # opcode_token[24:30]. Never execute or disassemble guessed words.
+    if len(code)<8 or len(code)%4:
+        raise ValueError("original SHEX instruction payload not DWORD-aligned")
+    version,total=struct.unpack_from("<II",code)
+    if total!=len(code)//4:
+        raise ValueError(f"original SHEX token count {total} vs {len(code)//4}")
+    words=struct.unpack("<"+"I"*total,code)
+    pos=2
+    opcodes=collections.Counter()
+    declarations=[]
+    while pos<total:
+        token=words[pos]
+        op=token&0x7ff
+        count=(token>>24)&0x7f
+        if count==0 or pos+count>total:
+            raise ValueError(f"invalid real DXBC token instruction length {count} at {pos}")
+        opcodes[op]+=1
+        if len(declarations)<45:
+            declarations.append({"token_word":pos,"opcode":op,"dwords":count,
+                "header":hex(token),
+                "first_payload_words":[hex(w) for w in words[pos+1:min(pos+5,pos+count)]]})
+        pos+=count
+    if pos!=total:raise ValueError("original DXBC instruction stream not closed")
+    return {"version_token":hex(version),"declared_dwords":total,
+        "instruction_count":sum(opcodes.values()),
+        "opcode_histogram":{str(k):v for k,v in sorted(opcodes.items())},
+        "first_instructions":declarations}
+
 def shader_container(blob):
     start=blob.find(b"DXBC")
     if start<0 or start+32>len(blob):return None
@@ -63,6 +94,8 @@ def shader_container(blob):
             output["resource_bindings"]=bindings
             output["source_constant_buffers"]=cb_count
             output["source_resource_binding_count"]=resources
+        if tag=="SHEX":
+            output["source_tokenized_code"]=shex_token_census(chunk)
         chunks.append(output)
     return {"dxbc_offset_in_original_code":start,"total_size":length,
             "original_UE4_parameter_prefix_bytes":start,"chunks":chunks}
