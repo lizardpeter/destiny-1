@@ -54,7 +54,7 @@ def main():
             value=None
             if kind=="StructProperty" and meta==["ExpressionInput"] and len(payload)==40:
                 ref=struct.unpack_from("<i",payload)[0]
-                value=c.path(ref)
+                value={"ref":ref,"source":c.path(ref),"expr_fname":c.fname(payload[32:40]),"raw40":payload.hex()}
             elif kind=="NameProperty" and len(payload)==8:value=c.fname(payload)
             elif kind=="FloatProperty" and len(payload)==4:value=struct.unpack("<f",payload)[0]
             elif kind=="ObjectProperty" and len(payload)==4:value=c.path(struct.unpack("<i",payload)[0])
