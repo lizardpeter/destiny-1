@@ -164,6 +164,21 @@ fn run()->Result<(),String>{
             println!("FORTNITE_SOURCE_NATIVE_MATERIAL_INSTANCE name={identity:?} parent={:?} source_texture_parameters={:?} selected_diffuse={expected:?}",
                 original.parent,original.textures);
         }
+        let original=material_instance::from_source_root(
+            std::path::Path::new(BASE),
+            "/Game/Packages/Fortress_Floors_Generic/SM/Materials/MI_Fort_Floors_Generic_TilesClean::MI_Fort_Floors_Generic_TilesClean"
+        )?.ok_or("authenticated source TilesClean MaterialInstanceConstant absent")?;
+        let normal=material_instance::source_normal_input(&original)
+            .ok_or("original TilesClean lacks source normal parameter")?;
+        if normal.name!="Normals"||
+           normal.texture_object!="/Engine/EngineMaterials/FlatNormal::FlatNormal" {
+            return Err(format!(
+                "source UE4 Engine FlatNormal identity changed: {:?}",
+                normal.texture_object
+            ));
+        }
+        println!("FORTNITE_541_NATIVE_ENGINE_DEFAULT_TEXTURE preserved_other_source_parameters={} source_normal_object={:?}",
+            original.textures.len(),normal.texture_object);
         return Ok(());
     }
     if paths.len()==2 && paths[0]=="--audit-materials" {
