@@ -1,0 +1,18 @@
+name: Fortnite 5.41 authored root UWorld stream closure
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_authored_stream_world_census.py
+      - .github/workflows/fortnite-541-authored-stream-world-census.yml
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact retail UWorld streaming dependencies across all original PAK indexes
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 tools/fortnite_541_authored_stream_world_census.py
