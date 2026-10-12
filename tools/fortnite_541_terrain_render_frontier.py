@@ -67,6 +67,21 @@ def main():
         source_uv.append({"source":c.value(i),"class":cls,"tagged":record})
     print("ATHENA_541_AUTHENTIC_BIOME_SAMPLER_UV_CONNECTIONS "+
         json.dumps(source_uv,sort_keys=True),flush=True)
+    for i,ex in enumerate(c.exports,1):
+        if c.class_name(ex)!="MaterialExpressionLandscapeLayerBlend":continue
+        props,_=c.props(c.export_data(ex))
+        for prop,typ,meta,raw in props:
+            if prop!="Layers":continue
+            count=struct.unpack_from("<I",raw)[0]
+            if typ!="ArrayProperty" or len(raw)!=53+379*count:raise ValueError("source layer array stride invalid")
+            values=[]
+            for j in range(count):
+                record=raw[53+379*j:53+379*(j+1)]
+                fields,used=c.props(record)
+                if used!=379:raise ValueError("source landscape layer record truncated")
+                get=lambda key:next(v for n,k,m,v in fields if n==key)
+                values.append({"layer":c.fname(get("LayerName")),"blend":c.fname(get("BlendType"))})
+            print("ATHENA_541_AUTHENTIC_LAYER_BLEND_TYPES "+json.dumps({"node":c.value(i),"layers":values},sort_keys=True),flush=True)
     for base in SOURCES:
         graph=audit_one(base,idx)
         nodes=graph["graph_links"]+graph["texture_samples"]
