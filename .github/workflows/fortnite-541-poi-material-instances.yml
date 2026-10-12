@@ -1,0 +1,24 @@
+name: Fortnite original POI material-instance source shader contract
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/fortnite_541_poi_material_instance_probe.py
+      - 'tools/fortnite_541_poi_rust/src/material_instance.rs'
+      - 'tools/fortnite_541_poi_rust/src/main.rs'
+      - .github/workflows/fortnite-541-poi-material-instances.yml
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate source Factory cave, cliff and shipping container material references
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 tools/fortnite_541_poi_material_instance_probe.py
+      - name: Compile production-native original material parser with Rust unit tests
+        run: cargo test --manifest-path tools/fortnite_541_poi_rust/Cargo.toml
+      - name: Verify all three exact original diffuse texture parameter references
+        run: cargo run --quiet --manifest-path tools/fortnite_541_poi_rust/Cargo.toml -- --audit-material-instances

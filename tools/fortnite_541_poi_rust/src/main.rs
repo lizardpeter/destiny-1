@@ -2,6 +2,8 @@ mod uobject;
 mod properties;
 mod poi_detail;
 mod staticmesh_lod;
+mod static_material;
+mod material_instance;
 mod extract;
 mod pak;
 mod poi_extract;
@@ -85,6 +87,102 @@ fn run()->Result<(),String>{
             master.material_expression_count,master.texture_sample_count,
             master.source_texture_objects.len(),decoded,
             master.material_functions.len(),master.source_collection_parameters);
+        return Ok(());
+    }
+    if paths.len()==1 && paths[0]=="--audit-material-instances" {
+        const BASE:&str="/tmp/fortnite541_source_materials";
+        let examples=[
+            ("/Game/Environments/Props/Industrial/Materials/MI_ShippingContainer_01::MI_ShippingContainer_01",
+            "Diffuse","/Game/Environments/Props/Industrial/Textures/Prop_ShippingContainer_01_D::Prop_ShippingContainer_01_D"),
+            ("/Game/Packages/DS_Fortnite_Terrain_NoLOD/Materials/M_Terrain_Cave::M_Terrain_Cave",
+            "CliffTexture","/Game/Packages/DS_Fortnite_Terrain_NoLOD/Textures/T_Cave_Underground_Interior_Wall_D::T_Cave_Underground_Interior_Wall_D"),
+            ("/Game/Packages/DS_Fortnite_Terrain_NoLOD/Materials/M_Terrain_Cliff_White::M_Terrain_Cliff_White",
+            "CliffTexture","/Game/Packages/DS_Fortnite_Terrain_NoLOD/Textures/T_Cave_Exterior_Wall_D::T_Cave_Exterior_Wall_D"),
+        ];
+        for (identity,parameter,expected) in examples{
+            let original=material_instance::from_source_root(
+                std::path::Path::new(BASE),identity
+            )?.ok_or("source material instance not staged from authenticated source")?;
+            let param=original.textures.iter().find(|p|p.name==parameter)
+                .ok_or("original retail parameter absent")?;
+            if param.texture_object!=expected {
+                return Err(format!("original {identity} {parameter} source identity differs: {}",param.texture_object));
+            }
+            let package=material_instance::source_package(expected)?;
+            let base=std::path::Path::new(BASE).join(package);
+            let h=fs::read(base.with_extension("uasset")).map_err(|e|e.to_string())?;
+            let x=fs::read(base.with_extension("uexp")).map_err(|e|e.to_string())?;
+            let b=fs::read(base.with_extension("ubulk")).map_err(|e|e.to_string())?;
+            let catalog=uobject::inspect(&h)?;
+            let export_name=expected.rsplit("::").next().unwrap_or("");
+            let mut matching=catalog.exports.iter().enumerate().filter(|(i,ex)|
+                catalog.export_class_name(ex)==Some("Texture2D") &&
+                catalog.source_object_path((i+1) as i32).ok()
+                    .and_then(|p|p.rsplit("::").next().map(str::to_owned))
+                    .as_deref()==Some(export_name));
+            let (_,ex)=matching.next().ok_or("original retail diffuse source UTexture2D absent")?;
+            if matching.next().is_some(){return Err("duplicate original diffuse UObject".into());}
+            let (width,height,format,len)=
+                match texture::first_mip_bc(&catalog,&h,&x,&b,ex){
+                    Ok(m)=>(m.width,m.height,format!("{:?}",m.format),m.blocks.len()),
+                    Err(bc_error)=>match texture::first_mip_bgra8(&catalog,&h,&x,&b,ex){
+                        Ok(m)=>(m.width,m.height,"BGRA8".to_owned(),m.bgra8.len()),
+                        Err(raw_error)=>return Err(format!("original retail diffuse cannot decode: BC {bc_error}; BGRA {raw_error}"))
+                    }
+                };
+            println!("FORTNITE_NATIVE_SOURCE_POI_DIFFUSE identity={expected:?} width={width} height={height} format={format} source_mip_bytes={len}");
+            println!("FORTNITE_SOURCE_NATIVE_MATERIAL_INSTANCE name={identity:?} parent={:?} source_texture_parameters={:?} selected_diffuse={expected:?}",
+                original.parent,original.textures);
+        }
+        return Ok(());
+    }
+    if paths.len()==2 && paths[0]=="--audit-materials" {
+        let source=fs::read_to_string(&paths[1]).map_err(|e|e.to_string())?;
+        let mut material_slots=0usize;
+        let mut decoded=0usize;
+        let mut failures=Vec::new();
+        let mut references=std::collections::BTreeMap::<String,usize>::new();
+        let mut sections=0usize;
+        for row in source.lines(){
+            let columns=row.split('\t').collect::<Vec<_>>();
+            if columns.len()!=3{return Err("bad original source mesh manifest columns".into());}
+            let identity=columns[0];
+            let base=columns[2];
+            if base.is_empty(){continue;}
+            let result=(||->Result<(usize,usize),String>{
+                let h=fs::read(format!("{base}.uasset")).map_err(|e|e.to_string())?;
+                let x=fs::read(format!("{base}.uexp")).map_err(|e|e.to_string())?;
+                let cat=uobject::inspect(&h)?;
+                let export=identity.rsplit("::").next()
+                    .ok_or("original mesh object missing")?;
+                let slots=static_material::from_mesh_export(&cat,&h,&x,export)?;
+                let lod=staticmesh_lod::decode_original_source_mesh(&cat,&h,&x,export)?;
+                for sec in &lod.sections{
+                    let mat=slots.get(sec.material_slot as usize)
+                        .ok_or("original LOD section MaterialIndex exceeds source StaticMaterials array")?;
+                    if let Some(name)=&mat.material_interface{
+                        *references.entry(name.clone()).or_default()+=1;
+                    }
+                }
+                Ok((slots.len(),lod.sections.len()))
+            })();
+            match result{
+                Ok((m,s))=>{material_slots+=m;sections+=s;decoded+=1;},
+                Err(error)=>failures.push((identity.to_string(),error)),
+            }
+        }
+        println!("FORTNITE_NATIVE_AUTHORED_MATERIAL_SLOT_SUMMARY decoded_lod_materials={} static_material_slots={} section_material_bindings={} distinct_material_sources={} failures={} source_materials={:?}",
+            decoded,material_slots,sections,references.len(),failures.len(),
+            references.iter().take(25).collect::<Vec<_>>());
+        for (identity,error) in &failures{
+            println!("FORTNITE_NATIVE_AUTHORED_MATERIAL_SLOT_FRONTIER identity={identity:?} reason={error:?}");
+        }
+        // The original 248 factory meshes have two known native vehicle
+        // LOD exceptions; MATERIAL IDENTITY decoding of those two should
+        // still work, so report independently from native geometry decode.
+        if decoded<240{
+            return Err(format!("unexpected loss of retail material section binding: {decoded}"));
+        }
         return Ok(());
     }
     if paths.len()==2 && paths[0]=="--audit-meshes" {
