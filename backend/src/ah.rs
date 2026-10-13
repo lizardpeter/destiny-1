@@ -237,6 +237,14 @@ impl Host {
     /// Host startup request (activity host manager request kind 3), after the kind byte:
     /// a bitstream starting u32, u16 activity index (+0x8000), u16 insertion point (+0x8000).
     pub fn on_startup(&mut self, p: &[u8]) {
+        // two length-prefixed blobs: u16 BE length @0 + data @2 (8 bytes: ?, activity index,
+        // insertion point, ...), u16 BE length @0x202 + data (~1600 bytes, not yet decoded)
+        for at in [0usize, 0x202] {
+            if let Some(l) = p.get(at..at + 2).map(|b| u16::from_be_bytes([b[0], b[1]]) as usize) {
+                let d = p.get(at + 2..(at + 2 + l).min(p.len())).unwrap_or(&[]);
+                info!("activity host: startup blob @{at:#x} ({l} bytes): {}", crate::pb::hex(&d[..d.len().min(64)]));
+            }
+        }
         if p.len() >= 8 {
             let index = u16::from_be_bytes([p[4], p[5]]) as i32 - 0x8000;
             let insertion = u16::from_be_bytes([p[6], p[7]]) as i32 - 0x8000;

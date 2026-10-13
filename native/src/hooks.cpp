@@ -97,6 +97,26 @@ static D1_SYSV uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, i
     return r;
 }
 
+// ---- initial slice-set loading task 9 (eboot+0x7965A0): waits for the local player's unit
+// and the current activity-mode reference (resource 0x10, byte +0x1AC). Returns 1 while
+// waiting, 2 when done. D1_BYPASS=spawn (research) completes it once the local player has
+// a unit (player table DAT_0273EB80 +0xC0), to see what follows.
+using TaskFn = D1_SYSV uint32_t (*)(void*);
+static TaskFn g_task9_orig = nullptr;
+static D1_SYSV uint32_t task9_bypass(void* h) {
+    uint32_t r = g_task9_orig(h);
+    if (r == 1) {
+        const Module& exe = rt().modules[0];
+        auto* players = *reinterpret_cast<uint8_t**>(exe.base + 0x273EB80);
+        if (players && *reinterpret_cast<int32_t*>(players + 0xC0) != -1) {
+            static bool logged = false;
+            if (!logged) { logged = true; log("bypass: slice-set loading task 9 forced complete (player has a unit)"); }
+            return 2;
+        }
+    }
+    return r;
+}
+
 // ---- DemonWare transport status (eboot+0x2EB340 "started", eboot+0x2EBD40 "failed")
 // Both wrap the status of the DemonWare network-start object at g_2F66F68 (status 2 = started).
 // D1_BYPASS=transport reports the transport as started so platform_signin can proceed.
@@ -302,6 +322,10 @@ void install_game_hooks() {
             std::memcpy(p, patch, 5);
             log("hooks: global resources load locally (localres)");
         }
+    }
+    if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "spawn")) {
+        g_task9_orig = reinterpret_cast<TaskFn>(hook_function(exe.base + 0x7965A0, reinterpret_cast<const void*>(&task9_bypass)));
+        log("hooks: slice-set loading task 9 bypass %s", g_task9_orig ? "on" : "FAILED");
     }
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "transport")) {
         replace_function(exe.base + 0x2EB340, reinterpret_cast<const void*>(&transport_started));
