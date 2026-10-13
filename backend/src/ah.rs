@@ -71,6 +71,66 @@ const ENTITY_INDEX_WORDS: usize = 384;
 /// stay with the host.
 const CLIENT_INDEX_WORDS: std::ops::Range<usize> = 256..384;
 
+/// Host -> client message: activity membership (type 11, 0x29D130), 0x5038 bytes:
+/// ```text
+/// @0 u32, @4 u32 (update id; a change resets the client's +0x64B4)
+/// @8 players[20], 0x250 each: identity {machine[8], player[8], account, character,
+///    fireteam} (optional), state (optional), @0x248 i8 slot index (optional)
+/// @0x2E48 optional fireteam block
+/// @0x5028 / @0x502C / @0x5030 optional u20 masks; @0x502C = valid player slots
+/// ```
+/// The client finds itself by machine id among the valid slots (0x2A5520) and then marks
+/// itself established (+0x131 bit 0).
+pub const HOST_MEMBERSHIP: u32 = 11;
+const TYPE_MEMBERSHIP: &str = "0x808009ed";
+
+/// Membership with the given players (identity blocks) in slots 0.., all valid.
+pub fn membership(players: &[Value]) -> Vec<u8> {
+    let slots: Vec<Option<Value>> = players
+        .iter()
+        .enumerate()
+        .map(|(i, id)| Some(Value::Struct(vec![Some(id.clone()), None, Some(Value::Int(i as i64))])))
+        .collect();
+    let mask = (1i64 << players.len()) - 1;
+    let v = Value::Struct(vec![
+        Some(Value::Int(1)),
+        Some(Value::Int(1)),
+        Some(Value::Array(slots)),
+        None,
+        Some(Value::Int(mask)),
+        Some(Value::Int(mask)),
+        Some(Value::Int(0)),
+    ]);
+    let mut w = BitWriter::default();
+    invest::encode(&mut w, TYPE_MEMBERSHIP, &v);
+    w.finish()
+}
+
+/// Host -> client message: instance state (type 1, 0x1018990 -> instance +0x50B0 via
+/// 0x2A2C60), 0x6B0 bytes (0x80800B8F): bool valid @0, bool @1, bool @2, i64 @8, i32 @0x10,
+/// char[64] @0x14, i32 @0x54, u32 @0x58, u32 @0x5C, details @0x60. The activity manager
+/// waits for "instantiation" (0x2998F0) until valid is set and @1 is clear.
+pub const HOST_INSTANCE: u32 = 1;
+/// Scenario of the new-character prologue (activity 0x6E0DAE89, index 164).
+pub const PROLOGUE_SCENARIO: &str = "act_cosmo_m0_highway";
+const TYPE_INSTANCE: &str = "0x80800e76";
+
+/// Details (0x80800CC5 @0x60): ..., @0x628 char[40] activity (scenario) name: the named tag
+/// the client loads (e.g. "act_cosmo_m0_highway"; looked up across package named tables by
+/// 0xD8970). The prologue loader reads it through 0x29A5E0 / 0x75F040.
+pub fn instance(activity_name: &str) -> Vec<u8> {
+    let name: Vec<Option<Value>> = activity_name.bytes().take(39).map(|c| Some(Value::Int(c as i64))).collect();
+    let mut details = vec![None; 10];
+    details.push(Some(Value::Struct(vec![Some(Value::Array(name))])));
+    let mut fields = vec![Some(Value::Bool(true)), Some(Value::Bool(false)), Some(Value::Bool(false))];
+    fields.resize(9, None);
+    fields.push(Some(Value::Struct(details)));
+    let state = Value::Struct(fields);
+    let mut w = BitWriter::default();
+    invest::encode(&mut w, TYPE_INSTANCE, &Value::Struct(vec![Some(state)]));
+    w.finish()
+}
+
 /// Per-connection activity host state.
 #[derive(Default)]
 pub struct Host {
@@ -84,7 +144,16 @@ impl Host {
             CLIENT_JOIN_REQUEST => {
                 let identity = join_identity(m.data);
                 info!("activity host: join request {}", invest::show(&identity));
-                vec![(HOST_JOIN_RESULT, join_result(&identity)), (HOST_ENTITY_INDICES, entity_indices())]
+                let player = match &identity {
+                    Value::Struct(f) => f.get(2).cloned().flatten(),
+                    _ => None,
+                };
+                vec![
+                    (HOST_JOIN_RESULT, join_result(&identity)),
+                    (HOST_ENTITY_INDICES, entity_indices()),
+                    (HOST_MEMBERSHIP, membership(player.as_slice())),
+                    (HOST_INSTANCE, instance(PROLOGUE_SCENARIO)),
+                ]
             }
             t => {
                 // Periodic messages (e.g. 15) are logged once.
@@ -135,5 +204,18 @@ mod tests {
         assert_eq!(ident[1], Some(Value::Int(0x4D31_4148_0000_0001)));
         assert_eq!(f[1], Some(Value::Int(0)));
         assert_eq!(&bytes[..4], &649274874u32.to_be_bytes());
+    }
+}
+
+#[cfg(test)]
+mod instance_tests {
+    use super::*;
+
+    #[test]
+    fn instance_name_roundtrip() {
+        let bytes = instance("act_cosmo_m0_highway");
+        let v = invest::decode(&mut BitReader::new(&bytes), TYPE_INSTANCE);
+        let s = invest::show(&v);
+        assert!(s.contains("\"act_cosmo_m0_highway\""), "{s}");
     }
 }
