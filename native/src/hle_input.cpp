@@ -41,12 +41,24 @@ struct PadInfo {
 
 static constexpr int32_t kPadHandle = 1;
 
-// D1_AUTOPRESS=<seconds>: tap Cross (0x4000) for 100 ms every N seconds (headless testing).
+// D1_AUTOPRESS=<seconds>[:<buttons>]: hold a button for a third of every N-second period
+// (headless testing; long enough to be seen at the low frame rates of software rendering).
+// Buttons cycle through the letters given (x Cross, o Circle, t Triangle, s Square); the
+// default is Cross only.
 static uint32_t scripted_buttons(uint64_t now_us) {
     static const char* env = getenv("D1_AUTOPRESS");
     if (!env) return 0;
-    uint64_t period = uint64_t(atof(env) * 1e6);
-    return period && (now_us % period) < 100000 ? 0x4000u : 0u;
+    const uint64_t period = uint64_t(atof(env) * 1e6);
+    if (!period || (now_us % period) >= period / 3) return 0;
+    const char* seq = strchr(env, ':');
+    seq = seq && seq[1] ? seq + 1 : "x";
+    const char c = seq[(now_us / period) % strlen(seq)];
+    switch (c) {
+        case 'o': return 0x2000u;
+        case 't': return 0x1000u;
+        case 's': return 0x8000u;
+        default: return 0x4000u;
+    }
 }
 
 static void fill(PadData* d) {
