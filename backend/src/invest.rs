@@ -467,6 +467,11 @@ fn character_list() -> Value {
 /// 0x80801807), the active character
 /// 2560 (0x80801714 +0x53C0, type 0x8080165B). All false = nothing done yet, which is what
 /// lets the prologue (first mission) start: it requires flags 836 and 2838 to be false.
+/// Account-wide overrides for scope-0 flags (master flag index, state 1 false / 2 true).
+/// 836 false gates the prologue; 0x1A3 / 0x1B8 are the alternatives of an activity
+/// purchase prerequisite (world transition, 0x5505C0: "unpurchased prerequisites").
+const PROFILE_FLAG_OVERRIDES: &[(i64, i64)] = &[(836, 1), (0x1A3, 2), (0x1B8, 2)];
+
 fn unlock_flags(n: usize) -> Value {
     Value::Array((0..n).map(|_| Some(Value::Int(1))).collect())
 }
@@ -519,7 +524,10 @@ pub fn profile_baseline() -> FamilyUpdate {
     profile[10] = Some(unlock_flags(3100));
     // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
     // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
-    let ov = vec![Some(Struct(vec![Some(Int(836)), Some(Int(1))]))];
+    let ov: Vec<Option<Value>> = PROFILE_FLAG_OVERRIDES
+        .iter()
+        .map(|&(flag, state)| Some(Struct(vec![Some(Int(flag)), Some(Int(state))])))
+        .collect();
     profile[12] = Some(Struct(vec![None, Some(Struct(vec![Some(Int(ov.len() as i64)), Some(Array(ov))])),
                                    Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))]))]));
     // +0x5428 (0x80801807): {i64, 512 more flags}

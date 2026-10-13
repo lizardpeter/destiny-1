@@ -111,16 +111,25 @@ pub fn membership(players: &[Value]) -> Vec<u8> {
 /// char[64] @0x14, i32 @0x54, u32 @0x58, u32 @0x5C, details @0x60. The activity manager
 /// waits for "instantiation" (0x2998F0) until valid is set and @1 is clear.
 pub const HOST_INSTANCE: u32 = 1;
-/// Scenario of the new-character prologue (activity 0x6E0DAE89, index 164).
-pub const PROLOGUE_SCENARIO: &str = "act_cosmo_m0_highway";
+/// Scenario (named tag) to load for an activity index. Only the new-character prologue is
+/// known so far; the activity definitions in content hold the rest.
+pub fn scenario_for(activity_index: i32) -> Option<&'static str> {
+    match activity_index {
+        164 => Some("act_cosmo_m0_highway"), // prologue, activity 0x6E0DAE89
+        _ => None,
+    }
+}
 const TYPE_INSTANCE: &str = "0x80800e76";
 
 /// Details (0x80800CC5 @0x60): ..., @0x628 char[40] activity (scenario) name: the named tag
 /// the client loads (e.g. "act_cosmo_m0_highway"; looked up across package named tables by
 /// 0xD8970). The prologue loader reads it through 0x29A5E0 / 0x75F040.
-pub fn instance(activity_name: &str) -> Vec<u8> {
+pub fn instance(activity_name: &str, activity_index: i32, insertion_point: i32) -> Vec<u8> {
     let name: Vec<Option<Value>> = activity_name.bytes().take(39).map(|c| Some(Value::Int(c as i64))).collect();
+    // @0x620 u16 activity index (read back by 0x78DF40), @0x622 u16 insertion point
     let mut details = vec![None; 10];
+    details[7] = Some(Value::Int(activity_index as i64));
+    details[8] = Some(Value::Int(insertion_point as i64));
     details.push(Some(Value::Struct(vec![Some(Value::Array(name))])));
     let mut fields = vec![Some(Value::Bool(true)), Some(Value::Bool(false)), Some(Value::Bool(false))];
     fields.resize(9, None);
@@ -135,9 +144,22 @@ pub fn instance(activity_name: &str) -> Vec<u8> {
 #[derive(Default)]
 pub struct Host {
     logged: std::collections::HashSet<u32>,
+    /// From the host startup request: activity index and insertion point.
+    activity: Option<(i32, i32)>,
 }
 
 impl Host {
+    /// Host startup request (activity host manager request kind 3), after the kind byte:
+    /// a bitstream starting u32, u16 activity index (+0x8000), u16 insertion point (+0x8000).
+    pub fn on_startup(&mut self, p: &[u8]) {
+        if p.len() >= 8 {
+            let index = u16::from_be_bytes([p[4], p[5]]) as i32 - 0x8000;
+            let insertion = u16::from_be_bytes([p[6], p[7]]) as i32 - 0x8000;
+            info!("activity host: startup for activity index {index}, insertion point {insertion}");
+            self.activity = Some((index, insertion));
+        }
+    }
+
     /// Handle one client message; returns host messages to send back (type, data).
     pub fn on_client(&mut self, m: &ClientMessage) -> Vec<(u32, Vec<u8>)> {
         match m.ty {
@@ -152,7 +174,7 @@ impl Host {
                     (HOST_JOIN_RESULT, join_result(&identity)),
                     (HOST_ENTITY_INDICES, entity_indices()),
                     (HOST_MEMBERSHIP, membership(player.as_slice())),
-                    (HOST_INSTANCE, instance(PROLOGUE_SCENARIO)),
+                    (HOST_INSTANCE, self.instance()),
                 ]
             }
             t => {
@@ -164,6 +186,17 @@ impl Host {
                 Vec::new()
             }
         }
+    }
+}
+
+impl Host {
+    fn instance(&self) -> Vec<u8> {
+        let (index, insertion) = self.activity.unwrap_or((-1, -1));
+        let name = scenario_for(index).unwrap_or_else(|| {
+            warn!("activity host: no scenario known for activity index {index}");
+            ""
+        });
+        instance(name, index, insertion)
     }
 }
 
@@ -213,7 +246,7 @@ mod instance_tests {
 
     #[test]
     fn instance_name_roundtrip() {
-        let bytes = instance("act_cosmo_m0_highway");
+        let bytes = instance("act_cosmo_m0_highway", 164, -1);
         let v = invest::decode(&mut BitReader::new(&bytes), TYPE_INSTANCE);
         let s = invest::show(&v);
         assert!(s.contains("\"act_cosmo_m0_highway\""), "{s}");

@@ -345,6 +345,9 @@ async fn session(mut sock: TcpStream, role: Role) -> std::io::Result<()> {
                 let k = payload.first().copied().unwrap_or(0);
                 info!("bap[AH]: activity host manager request kind {k} (seq {sequence}, {} bytes): {}", payload.len(),
                       pb::hex(&payload[..payload.len().min(96)]));
+                if k == 3 {
+                    ah_state.on_startup(&payload[1..]);
+                }
                 let mut body = vec![0u8; 0x89];
                 body[0] = 2;
                 body[1..9].copy_from_slice(&AH_HOST_ID.to_be_bytes());
