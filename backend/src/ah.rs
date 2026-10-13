@@ -18,6 +18,7 @@
 //! (type -> handler, payload type).
 
 use crate::invest::{self, BitReader, BitWriter, Value};
+use tracing::{info, warn};
 
 /// Client -> host message: join request (type 3). Starts with the identity block.
 pub const CLIENT_JOIN_REQUEST: u32 = 3;
@@ -58,6 +59,52 @@ pub fn host_payload(host_id: u64, ty: u32, data: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&(data.len() as u32).to_be_bytes());
     out.extend_from_slice(data);
     out
+}
+
+/// Host -> client message: entity indices granted to the client (type 0, handler 0x1018800):
+/// 384 u32 words, a bitmask OR-ed into the client's set (+0x5EA8); sets the "have entity
+/// indices" flag (+0x64AA) the activity manager waits for after joining.
+pub const HOST_ENTITY_INDICES: u32 = 0;
+const TYPE_ENTITY_INDICES: &str = "0x80800d64";
+const ENTITY_INDEX_WORDS: usize = 384;
+/// Words of the entity index space granted to the client (indices 8192..12287); the rest
+/// stay with the host.
+const CLIENT_INDEX_WORDS: std::ops::Range<usize> = 256..384;
+
+/// Per-connection activity host state.
+#[derive(Default)]
+pub struct Host {
+    logged: std::collections::HashSet<u32>,
+}
+
+impl Host {
+    /// Handle one client message; returns host messages to send back (type, data).
+    pub fn on_client(&mut self, m: &ClientMessage) -> Vec<(u32, Vec<u8>)> {
+        match m.ty {
+            CLIENT_JOIN_REQUEST => {
+                let identity = join_identity(m.data);
+                info!("activity host: join request {}", invest::show(&identity));
+                vec![(HOST_JOIN_RESULT, join_result(&identity)), (HOST_ENTITY_INDICES, entity_indices())]
+            }
+            t => {
+                // Periodic messages (e.g. 15) are logged once.
+                if self.logged.insert(t) || m.data.len() > 1 {
+                    warn!("activity host: client message type {t} ({} bytes, unhandled): {}", m.data.len(),
+                          crate::pb::hex(&m.data[..m.data.len().min(256)]));
+                }
+                Vec::new()
+            }
+        }
+    }
+}
+
+pub fn entity_indices() -> Vec<u8> {
+    let words = (0..ENTITY_INDEX_WORDS)
+        .map(|i| Some(Value::Int(if CLIENT_INDEX_WORDS.contains(&i) { 0xFFFF_FFFF } else { 0 })))
+        .collect();
+    let mut w = BitWriter::default();
+    invest::encode(&mut w, TYPE_ENTITY_INDICES, &Value::Struct(vec![Some(Value::Array(words))]));
+    w.finish()
 }
 
 /// The identity block at the start of a join request.

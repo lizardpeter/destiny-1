@@ -265,6 +265,7 @@ async fn send(sock: &mut TcpStream, chan: &mut Option<Channel>, msg: &[u8]) -> s
 async fn session(mut sock: TcpStream, role: Role) -> std::io::Result<()> {
     let mut chan: Option<Channel> = None;
     let mut notify_seq: u32 = 0;
+    let mut ah_state = ah::Host::default();
     loop {
         let env = read_envelope(&mut sock).await?;
         let body = if env.kind == 1 {
@@ -354,18 +355,11 @@ async fn session(mut sock: TcpStream, role: Role) -> std::io::Result<()> {
                     warn!("bap[AH]: malformed activity message {}", pb::hex(&payload[..payload.len().min(64)]));
                     continue;
                 };
-                match m.ty {
-                    ah::CLIENT_JOIN_REQUEST => {
-                        let identity = ah::join_identity(m.data);
-                        info!("bap[AH]: join request {}", invest::show(&identity));
-                        let data = ah::join_result(&identity);
-                        notify_seq += 1;
-                        let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ah::HOST_JOIN_RESULT, &data));
-                        send(&mut sock, &mut chan, &msg).await?;
-                        info!("bap[AH]: sent join result ({} bytes)", data.len());
-                    }
-                    t => warn!("bap[AH]: client activity message type {t} ({} bytes, unhandled): {}", m.data.len(),
-                               pb::hex(&m.data[..m.data.len().min(256)])),
+                for (ty, data) in ah_state.on_client(&m) {
+                    notify_seq += 1;
+                    let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ty, &data));
+                    send(&mut sock, &mut chan, &msg).await?;
+                    info!("bap[AH]: sent activity message type {ty} ({} bytes)", data.len());
                 }
             }
             42 => {
