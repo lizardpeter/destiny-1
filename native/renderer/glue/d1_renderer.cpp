@@ -3,8 +3,6 @@
 // video-out flips, and (optionally) saves displayed frames as PNG files.
 //
 // The Gnm command builders below follow shadPS4's libSceGnmDriver (GPL-2.0-or-later).
-#include <png.h>
-#include <sys/stat.h>
 
 #include <atomic>
 #include <cstdio>
@@ -31,7 +29,11 @@
 #include "video_core/renderer_vulkan/vk_swapchain.h"
 #include "video_core/texture_cache/texture_cache.h"
 
+#include "../../src/os.h"
 #include "../../src/render_bridge.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBIW_WINDOWS_UTF8
+#include "stb_image_write.h"
 #include "d1_window.h"
 
 namespace d1 {
@@ -70,23 +72,10 @@ State* g = nullptr;
 
 // ------------------------------------------------------------- frame capture
 void write_png(const std::string& path, const u8* rgba, u32 w, u32 h, vk::Format fmt) {
-    FILE* f = std::fopen(path.c_str(), "wb");
-    if (!f) return;
-    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-    png_infop info = png_create_info_struct(png);
-    if (setjmp(png_jmpbuf(png))) {
-        png_destroy_write_struct(&png, &info);
-        std::fclose(f);
-        return;
-    }
-    png_init_io(png, f);
-    png_set_compression_level(png, 3);
-    png_set_IHDR(png, info, w, h, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
-                 PNG_FILTER_TYPE_DEFAULT);
-    png_write_info(png, info);
-    std::vector<u8> row(w * 3);
+    std::vector<u8> rgb(size_t(w) * h * 3);
     for (u32 y = 0; y < h; ++y) {
         const u8* s = rgba + size_t(y) * w * 4;
+        u8* row = rgb.data() + size_t(y) * w * 3;
         for (u32 x = 0; x < w; ++x, s += 4) {
             u8 r, gch, b;
             switch (fmt) {
@@ -108,11 +97,9 @@ void write_png(const std::string& path, const u8* rgba, u32 w, u32 h, vk::Format
             }
             row[x * 3] = r, row[x * 3 + 1] = gch, row[x * 3 + 2] = b;
         }
-        png_write_row(png, row.data());
     }
-    png_write_end(png, nullptr);
-    png_destroy_write_struct(&png, &info);
-    std::fclose(f);
+    stbi_write_png_compression_level = 3;
+    stbi_write_png(path.c_str(), int(w), int(h), 3, rgb.data(), int(w * 3));
 }
 
 // Runs on the GPU thread, in order with the command stream.
@@ -326,7 +313,7 @@ bool init(const Callbacks& cb) {
     g->sdk_version = cb.sdk_version;
     if (const char* d = std::getenv("D1_FRAMES")) {
         g->frames_dir = d;
-        mkdir(d, 0755);
+        d1::os::make_dirs(d);
     }
     if (const char* e = std::getenv("D1_FRAME_EVERY")) g->frame_every = std::max(1L, std::atol(e));
     try {

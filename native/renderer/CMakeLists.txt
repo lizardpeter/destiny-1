@@ -8,8 +8,15 @@ endif()
 set(S ${SHADPS4_DIR})
 set(X ${SHADPS4_DIR}/externals)
 
-find_package(Vulkan REQUIRED)
-find_package(absl REQUIRED)
+# Vulkan is loaded at run time (vulkan-1.dll / libvulkan.so.1); only headers are needed.
+if(WIN32)
+  set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+  set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${X}/abseil-cpp ${CMAKE_CURRENT_BINARY_DIR}/abseil EXCLUDE_FROM_ALL)
+else()
+  find_package(Vulkan REQUIRED)
+  find_package(absl REQUIRED)
+endif()
 find_program(GLSLANG glslangValidator REQUIRED)
 
 # third-party pieces
@@ -54,7 +61,6 @@ add_custom_target(d1_host_shaders DEPENDS ${HS_HEADERS})
 
 file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/sources.txt REL_SOURCES)
 list(TRANSFORM REL_SOURCES PREPEND ${S}/)
-find_package(PNG REQUIRED)
 find_package(SDL2 REQUIRED)
 add_library(d1_shad_video STATIC ${REL_SOURCES}
   ${CMAKE_CURRENT_SOURCE_DIR}/glue/glue_common.cpp
@@ -67,7 +73,12 @@ target_compile_features(d1_shad_video PRIVATE cxx_std_23)
 target_include_directories(d1_shad_video PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/shim ${S}/src ${S} ${CMAKE_CURRENT_BINARY_DIR}/hs
   ${X}/vulkan-headers/include ${X}/vma/include ${X}/robin-map/include ${X}/magic_enum/include
-  ${X}/half/include ${X}/ext-boost ${X}/tracy/public)
+  ${X}/half/include ${X}/ext-boost ${X}/tracy/public ${X}/stb)
 target_compile_definitions(d1_shad_video PRIVATE BOOST_ASIO_STANDALONE)
 target_compile_options(d1_shad_video PRIVATE -w -fno-strict-aliasing)
-target_link_libraries(d1_shad_video PUBLIC sirit fmt::fmt d1_xxhash Zydis Vulkan::Vulkan absl::flat_hash_map PNG::PNG SDL2::SDL2)
+target_link_libraries(d1_shad_video PUBLIC sirit fmt::fmt d1_xxhash Zydis absl::flat_hash_map)
+if(WIN32)
+  target_link_libraries(d1_shad_video PUBLIC SDL2::SDL2-static)  # no SDL2.dll next to the exe
+else()
+  target_link_libraries(d1_shad_video PUBLIC Vulkan::Vulkan SDL2::SDL2)
+endif()

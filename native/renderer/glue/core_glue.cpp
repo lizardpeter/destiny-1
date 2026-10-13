@@ -1,11 +1,9 @@
 // d1-native implementations of the shadPS4 emulator-core services that video_core calls:
 // guest memory (the guest runs natively, so guest addresses are host addresses), fault
 // dispatch, debug-state hooks and a few kernel queries.
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <x86intrin.h>
 
+#include <chrono>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -21,6 +19,7 @@
 #include "core/signals.h"
 #include "video_core/renderdoc.h"
 
+#include "../../src/os.h"
 #include "../../src/render_bridge.h"
 
 // ---------------------------------------------------------------- address space
@@ -31,11 +30,11 @@ AddressSpace::AddressSpace() = default;
 AddressSpace::~AddressSpace() = default;
 
 void AddressSpace::Protect(VAddr addr, u64 size, MemoryPermission perms) {
-    int prot = PROT_NONE;
-    if (True(perms & MemoryPermission::Read)) prot |= PROT_READ;
-    if (True(perms & MemoryPermission::Write)) prot |= PROT_WRITE;
-    if (True(perms & MemoryPermission::Execute)) prot |= PROT_EXEC;
-    mprotect(reinterpret_cast<void*>(addr), size, prot);
+    int prot = 0;
+    if (True(perms & MemoryPermission::Read)) prot |= d1::os::kRead;
+    if (True(perms & MemoryPermission::Write)) prot |= d1::os::kWrite;
+    if (True(perms & MemoryPermission::Execute)) prot |= d1::os::kExec;
+    d1::os::protect(reinterpret_cast<void*>(addr), size, prot);
 }
 
 boost::icl::interval_set<VAddr> AddressSpace::GetUsableRegions() {
@@ -57,12 +56,10 @@ void MemoryManager::CopySparseMemory(VAddr src, u8* dst, u64 size) {
     std::memcpy(dst, reinterpret_cast<const void*>(src), size);
 }
 
-// GPU-side writes into guest memory must not trip the CPU write tracking, so they go
-// through /proc/self/mem, which ignores page protection.
+// GPU-side writes into guest memory must not trip the CPU write tracking, so they bypass
+// page protection (/proc/self/mem on Linux, WriteProcessMemory on Windows).
 bool MemoryManager::TryWriteBacking(void* address, const void* data, u64 size) {
-    static int fd = open("/proc/self/mem", O_RDWR | O_CLOEXEC);
-    if (fd < 0) return false;
-    return pwrite(fd, data, size, reinterpret_cast<off_t>(address)) == static_cast<ssize_t>(size);
+    return d1::os::write_backing(address, data, size);
 }
 
 // ---------------------------------------------------------------- signals
@@ -116,13 +113,12 @@ u64 PS4_SYSV_ABI sceKernelReadTsc() {
 }
 u64 PS4_SYSV_ABI sceKernelGetTscFrequency() {
     static const u64 freq = [] {
-        timespec a, b;
-        clock_gettime(CLOCK_MONOTONIC, &a);
+        const auto a = std::chrono::steady_clock::now();
         const u64 t0 = __rdtsc();
-        usleep(20000);
-        clock_gettime(CLOCK_MONOTONIC, &b);
+        d1::os::sleep_us(20000);
+        const auto b = std::chrono::steady_clock::now();
         const u64 t1 = __rdtsc();
-        const double s = (b.tv_sec - a.tv_sec) + (b.tv_nsec - a.tv_nsec) * 1e-9;
+        const double s = std::chrono::duration<double>(b - a).count();
         return static_cast<u64>((t1 - t0) / s);
     }();
     return freq;

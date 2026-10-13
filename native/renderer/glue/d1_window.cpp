@@ -114,7 +114,9 @@ void open_first_controller() {
 namespace window {
 Frontend::WindowSDL* open(int width, int height, bool fullscreen) {
     if (const char* v = std::getenv("D1_WINDOW"); v && v[0] == '0') return nullptr;
+#ifndef _WIN32
     if (!std::getenv("DISPLAY") && !std::getenv("WAYLAND_DISPLAY")) return nullptr;
+#endif
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         d1::log("window: SDL_Init failed: %s", SDL_GetError());
@@ -142,6 +144,12 @@ Frontend::WindowSDL* open(int width, int height, bool fullscreen) {
         g_info.info.render_surface = reinterpret_cast<void*>(wm.info.x11.window);
         break;
 #endif
+#ifdef SDL_VIDEO_DRIVER_WINDOWS
+    case SDL_SYSWM_WINDOWS:
+        g_info.info.type = Frontend::WindowSystemType::Windows;
+        g_info.info.render_surface = wm.info.win.window;
+        break;
+#endif
 #ifdef SDL_VIDEO_DRIVER_WAYLAND
     case SDL_SYSWM_WAYLAND:
         g_info.info.type = Frontend::WindowSystemType::Wayland;
@@ -155,7 +163,10 @@ Frontend::WindowSDL* open(int width, int height, bool fullscreen) {
     }
     update_drawable_size();
     open_first_controller();
-    d1::log("window: %s, %dx%d", g_info.info.type == Frontend::WindowSystemType::X11 ? "X11" : "Wayland",
+    d1::log("window: %s, %dx%d",
+            g_info.info.type == Frontend::WindowSystemType::Windows ? "Windows"
+            : g_info.info.type == Frontend::WindowSystemType::X11   ? "X11"
+                                                                    : "Wayland",
             g_info.GetWidth(), g_info.GetHeight());
     return &g_info;
 }
