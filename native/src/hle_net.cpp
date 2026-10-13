@@ -269,8 +269,6 @@ static int32_t sceNetSendto(int fd, const void* b, uint64_t n, int flags, const 
     return r < 0 ? net_fail(net::error()) : int32_t(r);
 }
 HLE("sceNetSendto", sceNetSendto)
-static int32_t sceNetSendmsg(int, const void*, int) { return net_fail(EOPNOTSUPP); }
-HLE("sceNetSendmsg", sceNetSendmsg)
 // MSG_DONTWAIT (0x80): fail with EAGAIN instead of blocking (Winsock has no such flag).
 static bool would_block(int fd, int flags) {
     if (!(flags & 0x80)) return false;
@@ -487,6 +485,54 @@ static int64_t px_recvfrom(int fd, void* b, uint64_t n, int flags, void* a, uint
     return int64_t(r);
 }
 HLE("recvfrom", px_recvfrom)
+// FreeBSD struct msghdr / iovec (amd64): name, namelen, iov, iovlen, control, controllen, flags.
+struct GuestIovec { uint8_t* base; uint64_t len; };
+struct GuestMsghdr {
+    void* name;
+    uint32_t namelen, pad0;
+    GuestIovec* iov;
+    int32_t iovlen, pad1;
+    void* control;
+    uint32_t controllen;
+    int32_t flags;
+};
+static int64_t px_sendmsg(int fd, const GuestMsghdr* m, int flags) {
+    std::string buf;
+    for (int i = 0; i < m->iovlen; ++i) buf.append(reinterpret_cast<const char*>(m->iov[i].base), m->iov[i].len);
+    if (m->name) return px_sendto(fd, buf.data(), buf.size(), flags, m->name, m->namelen);
+    return px_send(fd, buf.data(), buf.size(), flags);
+}
+HLE("sendmsg", px_sendmsg)
+static int64_t px_recvmsg(int fd, GuestMsghdr* m, int flags) {
+    uint64_t total = 0;
+    for (int i = 0; i < m->iovlen; ++i) total += m->iov[i].len;
+    std::string buf(total, '\0');
+    uint32_t alen = m->namelen;
+    const int64_t r = m->name ? px_recvfrom(fd, buf.data(), total, flags, m->name, &alen) : px_recv(fd, buf.data(), total, flags);
+    if (r <= 0) return r;
+    uint64_t off = 0;
+    for (int i = 0; i < m->iovlen && off < uint64_t(r); ++i) {
+        const uint64_t n = std::min<uint64_t>(m->iov[i].len, uint64_t(r) - off);
+        std::memcpy(m->iov[i].base, buf.data() + off, n);
+        off += n;
+    }
+    if (m->name) m->namelen = alen;
+    m->controllen = 0;
+    m->flags = 0;
+    return r;
+}
+HLE("recvmsg", px_recvmsg)
+// sceNet flavours (the BAP endpoint flushes with sceNetSendmsg): SCE error codes.
+static int32_t sceNetSendmsg(int fd, const GuestMsghdr* m, int flags) {
+    const int64_t r = px_sendmsg(fd, m, flags);
+    return r < 0 ? net_fail(errno == 35 ? EAGAIN : EIO) : int32_t(r);
+}
+HLE("sceNetSendmsg", sceNetSendmsg)
+static int32_t sceNetRecvmsg(int fd, GuestMsghdr* m, int flags) {
+    const int64_t r = px_recvmsg(fd, m, flags);
+    return r < 0 ? net_fail(errno == 35 ? EAGAIN : EIO) : int32_t(r);
+}
+HLE("sceNetRecvmsg", sceNetRecvmsg)
 static int px_setsockopt(int fd, int level, int opt, const void* val, uint32_t len) {
     const int32_t r = sceNetSetsockopt(fd, level, opt, val, len);
     if (r == SCE_OK) return 0;
