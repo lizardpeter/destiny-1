@@ -169,8 +169,8 @@ HLE("sceHttpSetRequestContentLength", sceHttpSetRequestContentLength)
 
 // Blocking HTTP/1.1 exchange with the backend; the whole response is buffered.
 static bool exchange(uint32_t addr, uint16_t port, const std::string& req, HttpObj& r) {
-    int fd = int(socket(AF_INET, SOCK_STREAM, 0));
-    if (fd < 0) return false;
+    const net::sock fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == net::kInvalid) return false;
     net::set_timeouts(fd, 30);
     sockaddr_in sa{};
     sa.sin_family = AF_INET;

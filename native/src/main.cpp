@@ -123,7 +123,7 @@ static bool file_exists(const std::string& p) { return access(p.c_str(), F_OK) =
 // True once something accepts TCP connections on 127.0.0.1:port.
 static bool wait_for_port(uint16_t port, int seconds) {
     for (int i = 0; i < seconds * 10; ++i) {
-        int s = int(socket(AF_INET, SOCK_STREAM, 0));
+        const net::sock s = socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{};
         a.sin_family = AF_INET;
         a.sin_port = htons(port);

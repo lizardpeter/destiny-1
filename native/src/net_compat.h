@@ -16,7 +16,9 @@
 #endif
 using socklen_t = int;
 namespace d1::net {
-inline int close(int s) { return closesocket(SOCKET(s)); }
+using sock = SOCKET;  // host socket handle
+constexpr sock kInvalid = INVALID_SOCKET;
+inline int close(sock s) { return closesocket(s); }
 // Last socket error as a POSIX errno value.
 inline int error() {
     switch (WSAGetLastError()) {
@@ -41,14 +43,14 @@ inline int error() {
     default: return EIO;
     }
 }
-inline bool set_nonblocking(int s, bool on) {
+inline bool set_nonblocking(sock s, bool on) {
     u_long v = on;
-    return ioctlsocket(SOCKET(s), FIONBIO, &v) == 0;
+    return ioctlsocket(s, FIONBIO, &v) == 0;
 }
-inline void set_timeouts(int s, int seconds) {
+inline void set_timeouts(sock s, int seconds) {
     DWORD ms = DWORD(seconds) * 1000;
-    setsockopt(SOCKET(s), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
-    setsockopt(SOCKET(s), SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
 }
 inline int poll(pollfd* fds, unsigned n, int timeout_ms) { return WSAPoll(fds, n, timeout_ms); }
 }  // namespace d1::net
@@ -65,7 +67,9 @@ inline int poll(pollfd* fds, unsigned n, int timeout_ms) { return WSAPoll(fds, n
 
 #include <cerrno>
 namespace d1::net {
-inline int close(int s) { return ::close(s); }
+using sock = int;  // host socket handle
+constexpr sock kInvalid = -1;
+inline int close(sock s) { return ::close(s); }
 inline int error() { return errno; }
 inline bool set_nonblocking(int s, bool on) {
     int fl = fcntl(s, F_GETFL);
