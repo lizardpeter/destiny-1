@@ -169,6 +169,25 @@ static D1_SYSV void game_log_emit(uint32_t, const char* text) {
     log("[game] %.*s", int(n), text);
 }
 
+// ---- engine heap allocation (eboot+0x1009CB0: heap, size, allocation id, halt_on_oom)
+// D1_ALLOC_LOG=<MiB>: log allocations of at least that size with the caller chain.
+using HeapAllocFn = D1_SYSV void* (*)(void*, uint64_t, uint32_t, char);
+static HeapAllocFn g_heap_alloc_orig = nullptr;
+static uint64_t g_alloc_log_min = 0;
+static D1_SYSV void* heap_alloc_hook(void* heap, uint64_t size, uint32_t id, char halt) {
+    if (size >= g_alloc_log_min) {
+        auto* fp = static_cast<uint64_t*>(__builtin_frame_address(0));
+        std::string chain;
+        for (int d = 0; d < 6 && fp && !(reinterpret_cast<uint64_t>(fp) & 7); ++d) {
+            chain += " <- " + describe_addr(fp[1]);
+            if (reinterpret_cast<uint64_t*>(fp[0]) <= fp) break;
+            fp = reinterpret_cast<uint64_t*>(fp[0]);
+        }
+        log("alloc: %llu bytes (id %u) on heap %p%s", (unsigned long long)size, id, heap, chain.c_str());
+    }
+    return g_heap_alloc_orig(heap, size, id, halt);
+}
+
 void install_game_hooks() {
     const Module& exe = rt().modules[0];
     g_job_context = reinterpret_cast<JobContextFn>(exe.base + 0xFC520);
@@ -197,6 +216,12 @@ void install_game_hooks() {
     if (getenv("D1_BACKEND")) {
         *reinterpret_cast<volatile uint8_t*>(exe.base + 0x18DC974) = 0;
         log("hooks: content manifest signature check off (D1_BACKEND)");
+    }
+    if (const char* a = getenv("D1_ALLOC_LOG")) {
+        g_alloc_log_min = std::strtoull(a, nullptr, 10) << 20;
+        g_heap_alloc_orig = reinterpret_cast<HeapAllocFn>(
+            hook_function(exe.base + 0x1009CB0, reinterpret_cast<const void*>(&heap_alloc_hook)));
+        log("hooks: allocation log (>= %s MiB) %s", a, g_heap_alloc_orig ? "on" : "FAILED");
     }
     if (const char* f = getenv("D1_GAME_LOG")) {
         g_log_filter = (std::strcmp(f, "1") == 0) ? nullptr : f;
