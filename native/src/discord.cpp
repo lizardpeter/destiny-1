@@ -209,7 +209,7 @@ void worker(std::string app_id) {
         }
         std::string details = describe(game_state());
         std::string activity = "{\"details\":\"" + json_escape(details) +
-                               "\",\"state\":\"PS4 01.33 on d1-native\",\"timestamps\":{\"start\":" +
+                               "\",\"state\":\"Custom Native PC Dev Build 1.33\",\"timestamps\":{\"start\":" +
                                std::to_string(started) +
                                "},\"assets\":{\"large_image\":\"destiny\",\"large_text\":\"Destiny\"}}";
         if (activity == last) continue;
