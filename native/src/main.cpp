@@ -150,15 +150,18 @@ int main(int argc, char** argv) {
     if (eboot.empty()) eboot = app0 + "/eboot.bin";
     if (sce_module.empty() && file_exists(app0 + "/sce_module")) sce_module = app0 + "/sce_module";
     if (!file_exists(eboot)) {
-        log("game not found: %s is missing.\n"
-            "Put the installed game (CUSA00219 01.33: eboot.bin, sce_module, packages) in %s,\n"
-            "or set game_dir in %s.", eboot.c_str(), app0.c_str(), settings_path().c_str());
+        const std::string msg = "Game files not found: " + eboot + " is missing.\n\n"
+                                "Put the installed game (CUSA00219 version 01.33: eboot.bin, sce_module, "
+                                "packages) in\n" + app0 + "\n\nor set game_dir in\n" + settings_path();
+        log("%s", msg.c_str());
+        os::error_box(msg);
         return 2;
     }
     // The game directory is never written to; the data folder must live outside it.
     os::make_dirs(data);
     if (canonical(data).rfind(canonical(app0), 0) == 0) {
         log("the data folder (%s) must be outside the game folder (%s)", data.c_str(), app0.c_str());
+        os::error_box("The data folder (" + data + ") must be outside the game folder (" + app0 + ").");
         return 2;
     }
     rt().app0 = app0;
@@ -196,6 +199,8 @@ int main(int argc, char** argv) {
         install_game_hooks();
     } catch (const std::exception& e) {
         log("load failed: %s", e.what());
+        os::error_box(std::string("Could not load the game: ") + e.what() +
+                      "\n\neboot.bin must be the decrypted 01.33 executable. Details are in d1-native.log.");
         return 1;
     }
     install_crash_handler();

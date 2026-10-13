@@ -45,6 +45,9 @@ std::string exe_dir();  // folder of the running executable, no trailing separat
 bool is_dir(const std::string& path);
 void make_dirs(const std::string& path);
 
+// ---- user-facing errors: a message box on Windows (a console window may close at once)
+void error_box(const std::string& text);
+
 // ---- processes: start a helper (the backend) that dies with us
 bool spawn_child(const std::string& exe, const std::string& args, const std::string& log_file);
 

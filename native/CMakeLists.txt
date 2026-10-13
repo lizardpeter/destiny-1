@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(d1_native C CXX)
+if(WIN32)
+  enable_language(RC)  # application manifest (UTF-8 code page)
+endif()
 
 if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   message(FATAL_ERROR "d1-native runs the game's x86-64 code directly; it needs an x86-64 host")
@@ -39,7 +42,7 @@ add_executable(d1-native
   src/discord.cpp
   ${IMPORT_NAMES})
 if(WIN32)
-  target_sources(d1-native PRIVATE src/os_win.cpp)
+  target_sources(d1-native PRIVATE src/os_win.cpp win/d1-native.rc)
   # One self-contained .exe: C/C++ runtime and winpthreads linked in statically.
   target_link_libraries(d1-native PRIVATE ws2_32 winmm -static)
   target_compile_definitions(d1-native PRIVATE _FILE_OFFSET_BITS=64 _WIN32_WINNT=0x0A00 WINVER=0x0A00)

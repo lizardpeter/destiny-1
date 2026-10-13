@@ -99,6 +99,8 @@ void make_dirs(const std::string& path) {
         if (i == path.size() || path[i] == '/') mkdir(path.substr(0, i).c_str(), 0755);
 }
 
+void error_box(const std::string&) {}  // the terminal shows the log
+
 bool spawn_child(const std::string& exe, const std::string& args, const std::string& log_file) {
     pid_t pid = fork();
     if (pid < 0) return false;

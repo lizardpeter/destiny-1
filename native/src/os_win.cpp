@@ -332,6 +332,10 @@ void make_dirs(const std::string& path) {
             CreateDirectoryW(widen(path.substr(0, i)).c_str(), nullptr);
 }
 
+void error_box(const std::string& text) {
+    MessageBoxW(nullptr, widen(text).c_str(), L"Destiny (d1-native)", MB_OK | MB_ICONERROR);
+}
+
 // ------------------------------------------------------------------ processes
 // The child joins a job object that is closed (killing it) when this process exits.
 bool spawn_child(const std::string& exe, const std::string& args, const std::string& log_file) {
