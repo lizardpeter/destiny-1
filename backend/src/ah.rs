@@ -80,9 +80,39 @@ const CLIENT_INDEX_WORDS: std::ops::Range<usize> = 256..384;
 /// @0x5028 / @0x502C / @0x5030 optional u20 masks; @0x502C = valid player slots
 /// ```
 /// The client finds itself by machine id among the valid slots (0x2A5520) and then marks
-/// itself established (+0x131 bit 0).
+/// itself established (+0x131 bit 0). The membership also carries the host-tabulated region
+/// table (@0x2E48) the slice-set manager needs before switching into a region.
 pub const HOST_MEMBERSHIP: u32 = 11;
 const TYPE_MEMBERSHIP: &str = "0x808009ed";
+
+/// Host-tabulated region table (membership @0x2E48, 0x80800BD7): 40 entries of 0xD8
+/// (0x80800C6F), a -1 id ends the list (0x778D60):
+/// ```text
+/// @0 i32 region (slice-set slot: bubble * 8 + set), @4 i2, @8 {i8, i2 @9, i5 @0xA slot, bool},
+/// @0x20 u20, @0x28 {i8, u20, @0x38 i8[20] per-player transition token, string, i64}
+/// ```
+/// A region is ready for a player once its entry carries the player's current slice-set
+/// transition token (1 for the initial transition) in that player's byte.
+fn region_table(regions: &[i64], players: usize) -> Value {
+    use Value::*;
+    let tokens: Vec<Option<Value>> = (0..players).map(|_| Some(Int(1))).collect();
+    let mut entries: Vec<Option<Value>> = regions
+        .iter()
+        .map(|&id| {
+            Some(Struct(vec![
+                Some(Int(id)),
+                Some(Int(0)),
+                Some(Struct(vec![Some(Int(0)), Some(Int(1)), Some(Int(0)), Some(Bool(false))])),
+                Some(Int(0)),
+                Some(Struct(vec![Some(Int(0)), Some(Int(0)), Some(Array(tokens.clone()))])),
+            ]))
+        })
+        .collect();
+    while entries.len() < 40 {
+        entries.push(Some(Struct(vec![Some(Int(-1))])));
+    }
+    Struct(vec![Some(Array(entries))])
+}
 
 /// Membership with the given players (identity blocks) in slots 0.., all valid.
 pub fn membership(players: &[Value]) -> Vec<u8> {
@@ -96,12 +126,15 @@ pub fn membership(players: &[Value]) -> Vec<u8> {
         Some(Value::Int(1)),
         Some(Value::Int(1)),
         Some(Value::Array(slots)),
-        None,
+        Some(region_table(&[0], players.len())),
         Some(Value::Int(mask)),
         Some(Value::Int(mask)),
         Some(Value::Int(0)),
     ]);
+    // Decoded as an update of the client's current membership (0x2C9AE0): one "present"
+    // bit, then the usual engine-type encoding (0x101EB30).
     let mut w = BitWriter::default();
+    w.bit(true);
     invest::encode(&mut w, TYPE_MEMBERSHIP, &v);
     w.finish()
 }
@@ -143,10 +176,11 @@ pub fn instance(activity_name: &str, checksum: u32, bubbles: u32, activity_index
     details[8] = Some(Value::Int(insertion_point as i64));
     details.push(Some(Value::Struct(vec![Some(Value::Array(name))])));
     let mut fields = vec![Some(Value::Bool(true)), Some(Value::Bool(false)), Some(Value::Bool(false))];
-    // @0x10 bubble count, @0x14 per-bubble state (-1 = default, 0x2A0D20)
+    // @0x10 bubble count, @0x14 per-bubble state: index of the slice set to load in that
+    // bubble (0 = its first; -1 = none, leaving the bubble slot empty; 0x2A0D20)
     fields.push(Some(Value::Int(0))); // @8
     fields.push(Some(Value::Int(bubbles as i64)));
-    fields.push(Some(Value::Array((0..bubbles).map(|_| Some(Value::Int(-1))).collect())));
+    fields.push(Some(Value::Array((0..bubbles).map(|_| Some(Value::Int(0))).collect())));
     fields.resize(8, None);
     fields.push(Some(Value::Int(checksum as i64))); // @0x5C
     fields.push(Some(Value::Struct(details)));
@@ -156,15 +190,36 @@ pub fn instance(activity_name: &str, checksum: u32, bubbles: u32, activity_index
     w.finish()
 }
 
+/// Host -> client message: sync token (type 27, 0x10193E0, payload 0x80800D31 {i32}); the
+/// client stores it (+0x64AC) and echoes it in its type 28. Sent periodically as the host's
+/// keep-alive: the client drops the host after 20 s without receiving anything (0x75FB20,
+/// connection +0x1EF8 last-received time).
+pub const HOST_SYNC_TOKEN: u32 = 27;
+const TYPE_SYNC_TOKEN: &str = "0x80800d31";
+pub const KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Per-connection activity host state.
 #[derive(Default)]
 pub struct Host {
     logged: std::collections::HashSet<u32>,
     /// From the host startup request: activity index and insertion point.
     activity: Option<(i32, i32)>,
+    joined: bool,
+    sync_token: i64,
 }
 
 impl Host {
+    /// Periodic host message once the client has joined.
+    pub fn keepalive(&mut self) -> Option<(u32, Vec<u8>)> {
+        if !self.joined {
+            return None;
+        }
+        self.sync_token += 1;
+        let mut w = BitWriter::default();
+        invest::encode(&mut w, TYPE_SYNC_TOKEN, &Value::Struct(vec![Some(Value::Int(self.sync_token))]));
+        Some((HOST_SYNC_TOKEN, w.finish()))
+    }
+
     /// Host startup request (activity host manager request kind 3), after the kind byte:
     /// a bitstream starting u32, u16 activity index (+0x8000), u16 insertion point (+0x8000).
     pub fn on_startup(&mut self, p: &[u8]) {
@@ -182,6 +237,7 @@ impl Host {
             CLIENT_JOIN_REQUEST => {
                 let identity = join_identity(m.data);
                 info!("activity host: join request {}", invest::show(&identity));
+                self.joined = true;
                 let player = match &identity {
                     Value::Struct(f) => f.get(2).cloned().flatten(),
                     _ => None,

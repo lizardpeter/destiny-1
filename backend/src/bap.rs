@@ -137,7 +137,7 @@ struct Envelope {
     body: Vec<u8>,
 }
 
-async fn read_envelope(sock: &mut TcpStream) -> std::io::Result<Envelope> {
+async fn read_envelope(sock: &mut (impl AsyncReadExt + Unpin)) -> std::io::Result<Envelope> {
     let mut h = [0u8; 6];
     sock.read_exact(&mut h).await?;
     if h[0] != 1 {
@@ -254,7 +254,7 @@ fn hello_payload(nonce: &[u8; 12], key: &[u8; 16]) -> Vec<u8> {
 }
 
 /// Send a message: encrypted once the channel is keyed.
-async fn send(sock: &mut TcpStream, chan: &mut Option<Channel>, msg: &[u8]) -> std::io::Result<()> {
+async fn send(sock: &mut (impl AsyncWriteExt + Unpin), chan: &mut Option<Channel>, msg: &[u8]) -> std::io::Result<()> {
     let out = match chan.as_mut() {
         Some(c) => c.seal(msg),
         None => plain(msg),
@@ -262,12 +262,41 @@ async fn send(sock: &mut TcpStream, chan: &mut Option<Channel>, msg: &[u8]) -> s
     sock.write_all(&out).await
 }
 
-async fn session(mut sock: TcpStream, role: Role) -> std::io::Result<()> {
+async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
     let mut chan: Option<Channel> = None;
     let mut notify_seq: u32 = 0;
     let mut ah_state = ah::Host::default();
+    // Envelopes are read in their own task (read_exact is not cancel-safe) so the loop can
+    // also wake for periodic host messages.
+    let (mut rd, mut sock) = sock.into_split();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<std::io::Result<Envelope>>(64);
+    tokio::spawn(async move {
+        loop {
+            let r = read_envelope(&mut rd).await;
+            let end = r.is_err();
+            if tx.send(r).await.is_err() || end {
+                break;
+            }
+        }
+    });
+    let mut tick = tokio::time::interval(ah::KEEPALIVE_INTERVAL);
     loop {
-        let env = read_envelope(&mut sock).await?;
+        let env = tokio::select! {
+            r = rx.recv() => match r {
+                Some(r) => r?,
+                None => return Ok(()),
+            },
+            _ = tick.tick() => {
+                if role == Role::ActivityHost && chan.is_some() {
+                    if let Some((ty, data)) = ah_state.keepalive() {
+                        notify_seq += 1;
+                        let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ty, &data));
+                        send(&mut sock, &mut chan, &msg).await?;
+                    }
+                }
+                continue;
+            }
+        };
         let body = if env.kind == 1 {
             match chan.as_mut().and_then(|c| c.open(&env.body)) {
                 Some(b) => b,
