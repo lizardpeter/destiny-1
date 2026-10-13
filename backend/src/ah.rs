@@ -115,11 +115,25 @@ fn region_table(regions: &[i64], players: usize) -> Value {
 }
 
 /// Membership with the given players (identity blocks) in slots 0.., all valid.
-pub fn membership(players: &[Value]) -> Vec<u8> {
+/// A player in the activity, as given in its join request (0x80800E98 members 2 and 3).
+#[derive(Clone)]
+pub struct Player {
+    /// {machine[8], player[8], account, character, fireteam} (0x80800C2D)
+    pub identity: Value,
+    /// {i8, session id, i64, i64, i64, fireteam id @0xA0, i32, i32, machine[8]} (0x80800B1F);
+    /// the world controller finds a player's fireteam here (0x75F210)
+    pub properties: Option<Value>,
+}
+
+pub fn membership(players: &[Player]) -> Vec<u8> {
     let slots: Vec<Option<Value>> = players
         .iter()
         .enumerate()
-        .map(|(i, id)| Some(Value::Struct(vec![Some(id.clone()), None, Some(Value::Int(i as i64))])))
+        .map(|(i, p)| {
+            // slot state 0x80800C56: {properties, ?, ?, ?} (all optional)
+            let state = p.properties.clone().map(|pr| Value::Struct(vec![Some(pr)]));
+            Some(Value::Struct(vec![Some(p.identity.clone()), state, Some(Value::Int(i as i64))]))
+        })
         .collect();
     let mask = (1i64 << players.len()) - 1;
     let v = Value::Struct(vec![
@@ -239,7 +253,10 @@ impl Host {
                 info!("activity host: join request {}", invest::show(&identity));
                 self.joined = true;
                 let player = match &identity {
-                    Value::Struct(f) => f.get(2).cloned().flatten(),
+                    Value::Struct(f) => f.get(2).cloned().flatten().map(|id| Player {
+                        identity: id,
+                        properties: f.get(3).cloned().flatten(),
+                    }),
                     _ => None,
                 };
                 vec![

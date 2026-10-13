@@ -83,6 +83,10 @@ using PrereqFn = D1_SYSV uint32_t (*)(void*, uint32_t, void*, int32_t*);
 static PrereqFn g_prereq_orig = nullptr;
 static D1_SYSV uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, int32_t* reason) {
     uint32_t r = g_prereq_orig(state, prereq, ctx, reason);
+    // 1 = still waiting: log which prerequisite a state is stuck on (once per change)
+    // (no thread_local here: game threads run with the guest's TLS)
+    static std::atomic<uint32_t> last_waiting{~0u};
+    if (r == 1 && last_waiting.exchange(prereq) != prereq) log("prerequisite %u waiting", prereq);
     if (r == 2) {
         static int logged[64];
         if (prereq < 64 && logged[prereq]++ < 3)
@@ -228,6 +232,9 @@ static StepTrace g_step_traces[] = {
     {0x79FDE0, "prepare_for_orbit", 0x30, nullptr},
     {0x7A1AF0, "character_signin", 0x40, nullptr},
     {0x7A1470, "character_prologue", 0x30, nullptr},
+    // activity:initial_slice_set_loading (update 0x7969A0): completed-task mask at +0x1A8,
+    // done when it equals the required mask at +0x198 (0x7FF, 11 tasks set up by 0x7958C0)
+    {0x7969A0, "initial_slice_set_loading", 0x1A8, nullptr},
 };
 template <int I>
 static D1_SYSV void step_trace_hook(void* h) {
@@ -324,7 +331,8 @@ void install_game_hooks() {
         if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "profile")) g_profile_bypass = true;
         const void* step_hooks[] = {reinterpret_cast<const void*>(&step_trace_hook<0>),
                                     reinterpret_cast<const void*>(&step_trace_hook<1>),
-                                    reinterpret_cast<const void*>(&step_trace_hook<2>)};
+                                    reinterpret_cast<const void*>(&step_trace_hook<2>),
+                                    reinterpret_cast<const void*>(&step_trace_hook<3>)};
         static_assert(sizeof(step_hooks) / sizeof(step_hooks[0]) == sizeof(g_step_traces) / sizeof(g_step_traces[0]));
         for (size_t i = 0; i < sizeof(g_step_traces) / sizeof(g_step_traces[0]); ++i)
             g_step_traces[i].orig = reinterpret_cast<HandlerUpdateFn>(hook_function(exe.base + g_step_traces[i].off, step_hooks[i]));
