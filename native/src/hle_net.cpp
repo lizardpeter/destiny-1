@@ -9,21 +9,16 @@
 // another machine later) and implies D1_NET=link. Hostnames of Bungie's, DemonWare's and
 // Sony's services resolve to that server; every other name is refused. Without
 // D1_BACKEND all lookups are refused. Nothing ever reaches the real services.
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "net_compat.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "hle.h"
 
@@ -194,17 +189,17 @@ static int32_t sceNetSocket(const char* name, int family, int type, int proto) {
         return net_fail(ENETDOWN);
     }
     int ht = (type == 1 || type == 10) ? SOCK_STREAM : SOCK_DGRAM;  // 6/10 = P2P variants
-    int fd = socket(AF_INET, ht, 0);
-    if (fd < 0) return net_fail(errno);
+    int fd = int(socket(AF_INET, ht, 0));
+    if (fd < 0) return net_fail(net::error());
     log("net: socket(%s, %s) -> %d", name ? name : "?", ht == SOCK_STREAM ? "tcp" : "udp", fd);
     return fd;
 }
 HLE("sceNetSocket", sceNetSocket)
-static int32_t sceNetSocketClose(int fd) { return close(fd) == 0 ? SCE_OK : net_fail(errno); }
+static int32_t sceNetSocketClose(int fd) { return net::close(fd) == 0 ? SCE_OK : net_fail(net::error()); }
 HLE("sceNetSocketClose", sceNetSocketClose)
 static int32_t sceNetBind(int fd, const void* a, uint32_t) {
     sockaddr_in h = to_host(a);
-    return bind(fd, reinterpret_cast<sockaddr*>(&h), sizeof h) == 0 ? SCE_OK : net_fail(errno);
+    return bind(fd, reinterpret_cast<sockaddr*>(&h), sizeof h) == 0 ? SCE_OK : net_fail(net::error());
 }
 HLE("sceNetBind", sceNetBind)
 static int32_t sceNetConnect(int fd, const void* a, uint32_t) {
@@ -212,23 +207,25 @@ static int32_t sceNetConnect(int fd, const void* a, uint32_t) {
     char ip[32];
     inet_ntop(AF_INET, &h.sin_addr, ip, sizeof ip);
     log("net: connect(%d, %s:%u)", fd, ip, ntohs(h.sin_port));
-    return connect(fd, reinterpret_cast<sockaddr*>(&h), sizeof h) == 0 ? SCE_OK : net_fail(errno);
+    if (connect(fd, reinterpret_cast<sockaddr*>(&h), sizeof h) == 0) return SCE_OK;
+    int e = net::error();
+    return net_fail(e == EAGAIN ? EINPROGRESS : e);  // Winsock reports a pending connect as "would block"
 }
 HLE("sceNetConnect", sceNetConnect)
-static int32_t sceNetListen(int fd, int backlog) { return listen(fd, backlog) == 0 ? SCE_OK : net_fail(errno); }
+static int32_t sceNetListen(int fd, int backlog) { return listen(fd, backlog) == 0 ? SCE_OK : net_fail(net::error()); }
 HLE("sceNetListen", sceNetListen)
 static int32_t sceNetAccept(int fd, void* a, uint32_t* len) {
     sockaddr_in h{};
     socklen_t l = sizeof h;
-    int r = accept(fd, reinterpret_cast<sockaddr*>(&h), &l);
-    if (r < 0) return net_fail(errno);
+    int r = int(accept(fd, reinterpret_cast<sockaddr*>(&h), &l));
+    if (r < 0) return net_fail(net::error());
     to_guest(h, a, len);
     return r;
 }
 HLE("sceNetAccept", sceNetAccept)
 static int32_t sceNetSend(int fd, const void* b, uint64_t n, int flags) {
-    ssize_t r = send(fd, b, n, MSG_NOSIGNAL);
-    return r < 0 ? net_fail(errno) : int32_t(r);
+    auto r = send(fd, static_cast<const char*>(b), int(n), MSG_NOSIGNAL);
+    return r < 0 ? net_fail(net::error()) : int32_t(r);
 }
 HLE("sceNetSend", sceNetSend)
 static int32_t sceNetSendto(int fd, const void* b, uint64_t n, int flags, const void* a, uint32_t) {
@@ -240,48 +237,58 @@ static int32_t sceNetSendto(int fd, const void* b, uint64_t n, int flags, const 
         if (seen[(uint64_t(h.sin_addr.s_addr) << 16) | h.sin_port]++ == 0) {
             char ip[32];
             inet_ntop(AF_INET, &h.sin_addr, ip, sizeof ip);
-            log("net: first udp send to %s:%u (%lu bytes)", ip, ntohs(h.sin_port), n);
+            log("net: first udp send to %s:%u (%llu bytes)", ip, ntohs(h.sin_port), (unsigned long long)n);
         }
     }
-    ssize_t r = sendto(fd, b, n, MSG_NOSIGNAL, a ? reinterpret_cast<sockaddr*>(&h) : nullptr, a ? sizeof h : 0);
-    return r < 0 ? net_fail(errno) : int32_t(r);
+    auto r = sendto(fd, static_cast<const char*>(b), int(n), MSG_NOSIGNAL, a ? reinterpret_cast<sockaddr*>(&h) : nullptr,
+                    a ? sizeof h : 0);
+    return r < 0 ? net_fail(net::error()) : int32_t(r);
 }
 HLE("sceNetSendto", sceNetSendto)
 static int32_t sceNetSendmsg(int, const void*, int) { return net_fail(EOPNOTSUPP); }
 HLE("sceNetSendmsg", sceNetSendmsg)
+// MSG_DONTWAIT (0x80): fail with EAGAIN instead of blocking (Winsock has no such flag).
+static bool would_block(int fd, int flags) {
+    if (!(flags & 0x80)) return false;
+    pollfd p{decltype(pollfd::fd)(fd), POLLIN, 0};
+    return net::poll(&p, 1, 0) == 0;
+}
 static int32_t sceNetRecv(int fd, void* b, uint64_t n, int flags) {
-    ssize_t r = recv(fd, b, n, (flags & 0x80) ? MSG_DONTWAIT : 0);
-    return r < 0 ? net_fail(errno) : int32_t(r);
+    if (would_block(fd, flags)) return net_fail(EAGAIN);
+    auto r = recv(fd, static_cast<char*>(b), int(n), 0);
+    return r < 0 ? net_fail(net::error()) : int32_t(r);
 }
 HLE("sceNetRecv", sceNetRecv)
 static int32_t sceNetRecvfrom(int fd, void* b, uint64_t n, int flags, void* a, uint32_t* len) {
     sockaddr_in h{};
     socklen_t l = sizeof h;
-    ssize_t r = recvfrom(fd, b, n, (flags & 0x80) ? MSG_DONTWAIT : 0, reinterpret_cast<sockaddr*>(&h), &l);
-    if (r < 0) return net_fail(errno);
+    if (would_block(fd, flags)) return net_fail(EAGAIN);
+    auto r = recvfrom(fd, static_cast<char*>(b), int(n), 0, reinterpret_cast<sockaddr*>(&h), &l);
+    if (r < 0) return net_fail(net::error());
     to_guest(h, a, len);
     return int32_t(r);
 }
 HLE("sceNetRecvfrom", sceNetRecvfrom)
 
 static int32_t sceNetSetsockopt(int fd, int level, int opt, const void* val, uint32_t len) {
+    auto set = [&](int lvl, int o, int v) {
+        return setsockopt(fd, lvl, o, reinterpret_cast<const char*>(&v), sizeof v) == 0 ? SCE_OK : net_fail(net::error());
+    };
     if (level == 0xFFFF) {
         int v = (val && len >= 4) ? *static_cast<const int*>(val) : 0;
         switch (opt) {
-        case 0x0004: return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &v, 4) == 0 ? SCE_OK : net_fail(errno);
-        case 0x0200: return setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &v, 4) == 0 ? SCE_OK : net_fail(errno);
-        case 0x0020: return setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &v, 4) == 0 ? SCE_OK : net_fail(errno);
-        case 0x1001: return setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &v, 4) == 0 ? SCE_OK : net_fail(errno);
-        case 0x1002: return setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &v, 4) == 0 ? SCE_OK : net_fail(errno);
-        case 0x1200: {  // SO_NBIO
-            int fl = fcntl(fd, F_GETFL);
-            fcntl(fd, F_SETFL, v ? (fl | O_NONBLOCK) : (fl & ~O_NONBLOCK));
-            return SCE_OK;
-        }
+        case 0x0004: return set(SOL_SOCKET, SO_REUSEADDR, v);
+#ifdef SO_REUSEPORT
+        case 0x0200: return set(SOL_SOCKET, SO_REUSEPORT, v);
+#endif
+        case 0x0020: return set(SOL_SOCKET, SO_BROADCAST, v);
+        case 0x1001: return set(SOL_SOCKET, SO_SNDBUF, v);
+        case 0x1002: return set(SOL_SOCKET, SO_RCVBUF, v);
+        case 0x1200: net::set_nonblocking(fd, v); return SCE_OK;  // SO_NBIO
         default: return SCE_OK;  // console-only options (P2P, crypto, policy)
         }
     }
-    if (level == 6 && opt == 1) return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, val, len) == 0 ? SCE_OK : net_fail(errno);
+    if (level == 6 && opt == 1 && val && len >= 4) return set(IPPROTO_TCP, TCP_NODELAY, *static_cast<const int*>(val));
     return SCE_OK;
 }
 HLE("sceNetSetsockopt", sceNetSetsockopt)
@@ -289,7 +296,11 @@ static int32_t sceNetGetsockopt(int fd, int level, int opt, void* val, uint32_t*
     if (level == 0xFFFF && opt == 0x1007) {  // SO_ERROR
         int e = 0;
         socklen_t l = sizeof e;
-        getsockopt(fd, SOL_SOCKET, SO_ERROR, &e, &l);
+        getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&e), &l);
+#if D1_WINDOWS
+        WSASetLastError(e);
+        e = e ? net::error() : 0;
+#endif
         *static_cast<int*>(val) = to_ps4_errno(e);
         if (len) *len = 4;
         return SCE_OK;
@@ -301,7 +312,7 @@ HLE("sceNetGetsockopt", sceNetGetsockopt)
 static int32_t sceNetGetsockname(int fd, void* a, uint32_t* len) {
     sockaddr_in h{};
     socklen_t l = sizeof h;
-    if (getsockname(fd, reinterpret_cast<sockaddr*>(&h), &l) != 0) return net_fail(errno);
+    if (getsockname(fd, reinterpret_cast<sockaddr*>(&h), &l) != 0) return net_fail(net::error());
     to_guest(h, a, len);
     return SCE_OK;
 }
@@ -309,36 +320,65 @@ HLE("sceNetGetsockname", sceNetGetsockname)
 static int32_t sceNetGetSockInfo(int, void*, int, int) { return net_fail(EOPNOTSUPP); }
 HLE("sceNetGetSockInfo", sceNetGetSockInfo)
 
-// epoll: SCE event bits IN 0x1, OUT 0x2, ERR 0x8, HUP 0x10
+// epoll, implemented with poll() on both systems: an "epoll" is a set of watched sockets.
+// SCE event bits: IN 0x1, OUT 0x2, ERR 0x8, HUP 0x10.
 struct NetEpollEvent { uint32_t events, reserved; uint64_t ident; uint64_t data; };
-static uint32_t ep_to_host(uint32_t e) { return (e & 1 ? EPOLLIN : 0) | (e & 2 ? EPOLLOUT : 0) | (e & 8 ? EPOLLERR : 0) | (e & 0x10 ? EPOLLHUP : 0); }
-static uint32_t ep_to_guest(uint32_t e) { return (e & EPOLLIN ? 1 : 0) | (e & EPOLLOUT ? 2 : 0) | (e & EPOLLERR ? 8 : 0) | (e & EPOLLHUP ? 0x10 : 0); }
-static int32_t sceNetEpollCreate(const char*, int) { int r = epoll_create1(0); return r < 0 ? net_fail(errno) : r; }
+struct Epoll { std::map<int, NetEpollEvent> watched; };
+static std::mutex g_ep_mutex;
+static std::map<int, Epoll> g_eps;
+static int g_next_ep = 0x30000000;
+static int32_t sceNetEpollCreate(const char*, int) {
+    std::lock_guard lk(g_ep_mutex);
+    int id = g_next_ep++;
+    g_eps[id];
+    return id;
+}
 HLE("sceNetEpollCreate", sceNetEpollCreate)
-static int32_t sceNetEpollDestroy(int ep) { close(ep); return SCE_OK; }
+static int32_t sceNetEpollDestroy(int ep) {
+    std::lock_guard lk(g_ep_mutex);
+    g_eps.erase(ep);
+    return SCE_OK;
+}
 HLE("sceNetEpollDestroy", sceNetEpollDestroy)
 static int32_t sceNetEpollControl(int ep, int op, int fd, NetEpollEvent* ev) {
-    epoll_event h{};
-    if (ev) { h.events = ep_to_host(ev->events); h.data.u64 = ev->data; }
-    int hop = op == 1 ? EPOLL_CTL_ADD : op == 2 ? EPOLL_CTL_MOD : EPOLL_CTL_DEL;
-    if (hop != EPOLL_CTL_DEL) h.data.u64 = (uint64_t(uint32_t(fd)) << 32) ^ (ev ? (ev->data & 0xFFFFFFFF) : 0);
-    static std::mutex mu;
-    static std::map<int64_t, uint64_t>* data = new std::map<int64_t, uint64_t>();
-    { std::lock_guard lk(mu); if (ev) (*data)[(int64_t(ep) << 32) | uint32_t(fd)] = ev->data; }
-    h.data.fd = fd;
-    return epoll_ctl(ep, hop, fd, &h) == 0 ? SCE_OK : net_fail(errno);
+    std::lock_guard lk(g_ep_mutex);
+    auto it = g_eps.find(ep);
+    if (it == g_eps.end()) return net_fail(EBADF);
+    if (op == 3) it->second.watched.erase(fd);  // DEL
+    else if (ev) it->second.watched[fd] = *ev;
+    return SCE_OK;
 }
 HLE("sceNetEpollControl", sceNetEpollControl)
 static int32_t sceNetEpollWait(int ep, NetEpollEvent* evs, int max, int timeout_us) {
-    epoll_event h[64];
-    int n = epoll_wait(ep, h, std::min(max, 64), timeout_us < 0 ? -1 : timeout_us / 1000);
-    if (n < 0) return net_fail(errno);
-    for (int i = 0; i < n; ++i) {
-        evs[i] = {};
-        evs[i].events = ep_to_guest(h[i].events);
-        evs[i].ident = uint64_t(h[i].data.fd);
+    std::vector<pollfd> fds;
+    std::vector<uint64_t> data;
+    {
+        std::lock_guard lk(g_ep_mutex);
+        auto it = g_eps.find(ep);
+        if (it == g_eps.end()) return net_fail(EBADF);
+        for (auto& [fd, e] : it->second.watched) {
+            short want = short((e.events & 1 ? POLLIN : 0) | (e.events & 2 ? POLLOUT : 0));
+            fds.push_back({decltype(pollfd::fd)(fd), want, 0});
+            data.push_back(e.data);
+        }
     }
-    return n;
+    if (fds.empty()) {
+        if (timeout_us > 0) os::sleep_us(uint64_t(timeout_us));
+        return 0;
+    }
+    int n = net::poll(fds.data(), unsigned(fds.size()), timeout_us < 0 ? -1 : (timeout_us + 999) / 1000);
+    if (n < 0) return net_fail(net::error());
+    int out = 0;
+    for (size_t i = 0; i < fds.size() && out < max; ++i) {
+        const short r = fds[i].revents;
+        if (!r) continue;
+        evs[out] = {};
+        evs[out].events = (r & POLLIN ? 1 : 0) | (r & POLLOUT ? 2 : 0) | (r & POLLERR ? 8 : 0) | (r & POLLHUP ? 0x10 : 0);
+        evs[out].ident = uint64_t(fds[i].fd);
+        evs[out].data = data[i];
+        ++out;
+    }
+    return out;
 }
 HLE("sceNetEpollWait", sceNetEpollWait)
 
@@ -421,15 +461,17 @@ HLE("sceNpCheckPlus", sceNpCheckPlus)
 static int32_t sceNpGetGamePresenceStatus(const NpOnlineId*, int32_t* status) { *status = 1; return SCE_OK; }
 HLE("sceNpGetGamePresenceStatus", sceNpGetGamePresenceStatus)
 
-using NpStateCallback = void (*)(int32_t user, int32_t state, void* userdata);
+using NpStateCallback = D1_SYSV void (*)(int32_t user, int32_t state, void* userdata);  // game code
 static NpStateCallback g_np_cb = nullptr;
 static void* g_np_cb_data = nullptr;
 static std::atomic<bool> g_np_cb_pending{false};
+// Returns 0: the game's NP toolkit (eboot+0xFA7E10) treats anything else as failure, and its
+// thread then quits before the main thread waits for it (the intermittent start-up hang).
 static int32_t sceNpRegisterStateCallback(NpStateCallback cb, void* ud) {
     g_np_cb = cb;
     g_np_cb_data = ud;
     g_np_cb_pending = true;
-    return 1;
+    return SCE_OK;
 }
 HLE("sceNpRegisterStateCallback", sceNpRegisterStateCallback)
 static int32_t sceNpCheckCallback() {

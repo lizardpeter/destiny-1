@@ -1,11 +1,19 @@
-// User settings: <data>/d1-native.cfg (created with defaults on first run), overridden by
-// environment variables for quick experiments.
+// User settings: d1-native.cfg next to the executable (created with defaults on first run),
+// overridden by environment variables for quick experiments.
 #pragma once
 #include <string>
 
 namespace d1 {
 
 struct Settings {
+    // game files: the installed 01.33 game (eboot.bin, sce_module/, packages/), only ever
+    // read. Relative paths are relative to the executable's folder.
+    std::string game_dir = "game";
+    // backend: "local" starts d1-backend from the executable's folder; "off" plays without
+    // one; anything else is the host name or address of a backend server.
+    std::string backend = "local";
+    // research hooks needed to get past sign-in for now (see README)
+    std::string bypass = "prereq,transport";
     // window
     int window_width = 1280;
     int window_height = 720;
@@ -19,7 +27,7 @@ struct Settings {
     std::string discord_app_id = "1559335126528426075";  // the "Destiny" Discord application
 };
 
-void load_settings(const std::string& data_root, const std::string& explicit_path);
+void load_settings(const std::string& path);
 const Settings& settings();
 std::string settings_path();
 

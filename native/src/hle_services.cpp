@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <string>
+#include <algorithm>
 
 #include "hle.h"
 #include "runtime.h"
@@ -20,29 +22,142 @@ static void* li_memcpy(void* d, const void* s, size_t n) { return std::memcpy(d,
 HLE("memcpy", li_memcpy)
 static void* li_memset(void* d, int c, size_t n) { return std::memset(d, c, n); }
 HLE("memset", li_memset)
-static int li_vsnprintf(char* b, size_t n, const char* f, va_list ap) { return std::vsnprintf(b, n, f, ap); }
-HLE("vsnprintf", li_vsnprintf)
-static int li_vprintf(const char* f, va_list ap) { return std::vfprintf(stderr, f, ap); }
-HLE("vprintf", li_vprintf)
-static int li_printf(const char* f, ...) {
-    va_list ap;
-    va_start(ap, f);
-    int r = std::vfprintf(stderr, f, ap);
-    va_end(ap);
-    return r;
+// printf family. The game's va_list is the System V one (a pointer to this structure),
+// which the Windows C library cannot read, so arguments are pulled out here and each
+// conversion is formatted on its own.
+struct SysvVaList { uint32_t gp_offset, fp_offset; uint8_t* overflow; uint8_t* reg_save; };
+static uint64_t va_gp(SysvVaList* ap) {
+    uint64_t v;
+    if (ap->gp_offset < 48) { std::memcpy(&v, ap->reg_save + ap->gp_offset, 8); ap->gp_offset += 8; }
+    else { std::memcpy(&v, ap->overflow, 8); ap->overflow += 8; }
+    return v;
 }
-HLE("printf", li_printf)
+static double va_fp(SysvVaList* ap) {
+    double v;
+    if (ap->fp_offset < 176) { std::memcpy(&v, ap->reg_save + ap->fp_offset, 8); ap->fp_offset += 16; }
+    else { std::memcpy(&v, ap->overflow, 8); ap->overflow += 8; }
+    return v;
+}
+static std::string format_sysv(const char* f, SysvVaList* ap) {
+    std::string out;
+    char tmp[512];
+    while (*f) {
+        if (*f != '%') { out += *f++; continue; }
+        if (f[1] == '%') { out += '%'; f += 2; continue; }
+        std::string spec = "%";
+        ++f;
+        while (*f && std::strchr("-+ #0", *f)) spec += *f++;
+        auto number = [&] {
+            if (*f == '*') { spec += std::to_string(int(va_gp(ap))); ++f; }
+            else while (*f >= '0' && *f <= '9') spec += *f++;
+        };
+        number();
+        if (*f == '.') { spec += *f++; number(); }
+        int len = 0;  // 0 int, 1 64-bit, -1 short/char
+        while (*f && std::strchr("hlLqjzt", *f)) {
+            if (*f == 'h') len = -1; else len = 1;
+            ++f;
+        }
+        const char c = *f ? *f++ : 0;
+        if (!c) break;
+        if (std::strchr("diouxXc", c)) {
+            const uint64_t v = va_gp(ap);
+            if (c == 'c') { spec += 'c'; std::snprintf(tmp, sizeof tmp, spec.c_str(), int(v)); }
+            else if (len == 1) { spec += "ll"; spec += c; std::snprintf(tmp, sizeof tmp, spec.c_str(), (long long)v); }
+            else { spec += c; std::snprintf(tmp, sizeof tmp, spec.c_str(), int(v)); }
+        } else if (std::strchr("eEfFgGaA", c)) {
+            spec += c;
+            std::snprintf(tmp, sizeof tmp, spec.c_str(), va_fp(ap));
+        } else if (c == 's') {
+            const char* str = reinterpret_cast<const char*>(va_gp(ap));
+            spec += 's';
+            std::snprintf(tmp, sizeof tmp, spec.c_str(), str ? str : "(null)");
+        } else if (c == 'p') {
+            std::snprintf(tmp, sizeof tmp, "0x%llx", (unsigned long long)va_gp(ap));
+        } else if (c == 'n') {
+            va_gp(ap);
+            tmp[0] = 0;
+        } else {
+            tmp[0] = 0;
+        }
+        out += tmp;
+    }
+    return out;
+}
+static int li_vsnprintf(char* b, size_t n, const char* f, SysvVaList* ap) {
+    std::string s = format_sysv(f, ap);
+    if (n) {
+        size_t k = std::min(n - 1, s.size());
+        std::memcpy(b, s.data(), k);
+        b[k] = 0;
+    }
+    return int(s.size());
+}
+HLE("vsnprintf", li_vsnprintf)
+static int li_vprintf(const char* f, SysvVaList* ap) {
+    std::string s = format_sysv(f, ap);
+    std::fputs(s.c_str(), stderr);
+    return int(s.size());
+}
+HLE("vprintf", li_vprintf)
+// Variadic: declared with every register a System V caller can use, then read as a va_list.
+static D1_SYSV int li_printf(const char* f, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5,
+                             double x0, double x1, double x2, double x3, double x4, double x5, double x6, double x7) {
+    uint64_t save[22] = {reinterpret_cast<uint64_t>(f), a1, a2, a3, a4, a5};
+    const double xs[8] = {x0, x1, x2, x3, x4, x5, x6, x7};
+    for (int i = 0; i < 8; ++i) std::memcpy(&save[6 + 2 * i], &xs[i], 8);
+    SysvVaList ap{8, 48, static_cast<uint8_t*>(__builtin_frame_address(0)) + 16, reinterpret_cast<uint8_t*>(save)};
+    return li_vprintf(f, &ap);
+}
+HLE_SYSV("printf", li_printf)
 static int li_fflush(void*) { std::fflush(stderr); return 0; }
 HLE("fflush", li_fflush)
 static int64_t li_time(int64_t* t) { int64_t v = std::time(nullptr); if (t) *t = v; return v; }
 HLE("time", li_time)
-static struct tm* li_gmtime(const int64_t* t) { time_t v = *t; return std::gmtime(&v); }
-HLE("gmtime", li_gmtime)
-static int li_gmtime_s(struct tm* out, const int64_t* t) { time_t v = *t; return gmtime_r(&v, out) ? 0 : 22; }
+// FreeBSD struct tm: nine ints, then tm_gmtoff (long) and tm_zone (char*).
+struct GuestTm { int32_t sec, min, hour, mday, mon, year, wday, yday, isdst, pad; int64_t gmtoff; const char* zone; };
+static void to_guest_tm(const struct tm& h, GuestTm* g) {
+    *g = {h.tm_sec, h.tm_min, h.tm_hour, h.tm_mday, h.tm_mon, h.tm_year, h.tm_wday, h.tm_yday, h.tm_isdst, 0, 0, "UTC"};
+}
+static struct tm from_guest_tm(const GuestTm* g) {
+    struct tm h{};
+    h.tm_sec = g->sec; h.tm_min = g->min; h.tm_hour = g->hour; h.tm_mday = g->mday; h.tm_mon = g->mon;
+    h.tm_year = g->year; h.tm_wday = g->wday; h.tm_yday = g->yday; h.tm_isdst = g->isdst;
+    return h;
+}
+static thread_local GuestTm t_tm;
+static int li_gmtime_s(GuestTm* out, const int64_t* t) {
+    time_t v = time_t(*t);
+    struct tm h;
+#if D1_WINDOWS
+    if (gmtime_s(&h, &v) != 0) return 22;
+#else
+    if (!gmtime_r(&v, &h)) return 22;
+#endif
+    to_guest_tm(h, out);
+    return 0;
+}
 HLE("gmtime_s", li_gmtime_s)
-static struct tm* li_localtime(const int64_t* t) { time_t v = *t; return std::localtime(&v); }
+static GuestTm* li_gmtime(const int64_t* t) { return li_gmtime_s(&t_tm, t) == 0 ? &t_tm : nullptr; }
+HLE("gmtime", li_gmtime)
+static GuestTm* li_localtime(const int64_t* t) {
+    time_t v = time_t(*t);
+    struct tm h;
+#if D1_WINDOWS
+    if (localtime_s(&h, &v) != 0) return nullptr;
+#else
+    if (!localtime_r(&v, &h)) return nullptr;
+#endif
+    to_guest_tm(h, &t_tm);
+    return &t_tm;
+}
 HLE("localtime", li_localtime)
-static int64_t li_mktime(struct tm* t) { return std::mktime(t); }
+static int64_t li_mktime(GuestTm* t) {
+    struct tm h = from_guest_tm(t);
+    int64_t r = std::mktime(&h);
+    to_guest_tm(h, t);
+    return r;
+}
 HLE("mktime", li_mktime)
 static void li_cxa_finalize(void*) {}
 HLE("__cxa_finalize", li_cxa_finalize)

@@ -1,6 +1,6 @@
 #include "loader.h"
+#include "os.h"
 
-#include <sys/mman.h>
 
 #include <cstring>
 #include <fstream>
@@ -71,8 +71,7 @@ Module load_module(const std::string& path, uint64_t base) {
     m.size = (top + 0xFFFF) & ~uint64_t(0xFFFF);
 
     void* want = reinterpret_cast<void*>(base);
-    void* got = mmap(want, m.size, PROT_READ | PROT_WRITE | PROT_EXEC,
-                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+    void* got = os::alloc(base, m.size, os::kRead | os::kWrite | os::kExec, false);
     if (got != want) throw std::runtime_error(m.name + ": cannot map at requested base");
 
     size_t dyn_off = 0, dyn_size = 0, dlib = 0;

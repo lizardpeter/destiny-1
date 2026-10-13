@@ -3,11 +3,7 @@
 // port D1_BACKEND_HTTP_PORT (default 8080), with the original Host header, so the backend
 // sees which service was addressed. TLS is never used: libSceHttp is ours, so the game
 // cannot tell. Every other request fails as a DNS error, like a console with no route out.
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include "net_compat.h"
 
 #include <atomic>
 #include <cctype>
@@ -173,28 +169,26 @@ HLE("sceHttpSetRequestContentLength", sceHttpSetRequestContentLength)
 
 // Blocking HTTP/1.1 exchange with the backend; the whole response is buffered.
 static bool exchange(uint32_t addr, uint16_t port, const std::string& req, HttpObj& r) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    int fd = int(socket(AF_INET, SOCK_STREAM, 0));
     if (fd < 0) return false;
-    timeval tv{30, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+    net::set_timeouts(fd, 30);
     sockaddr_in sa{};
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
     sa.sin_addr.s_addr = addr;
     if (connect(fd, reinterpret_cast<sockaddr*>(&sa), sizeof sa) != 0) {
-        close(fd);
+        net::close(fd);
         return false;
     }
     for (size_t off = 0; off < req.size();) {
-        ssize_t n = send(fd, req.data() + off, req.size() - off, MSG_NOSIGNAL);
-        if (n <= 0) { close(fd); return false; }
+        auto n = send(fd, req.data() + off, int(req.size() - off), MSG_NOSIGNAL);
+        if (n <= 0) { net::close(fd); return false; }
         off += size_t(n);
     }
     std::string raw;
     char buf[16384];
-    for (ssize_t n; (n = recv(fd, buf, sizeof buf, 0)) > 0;) raw.append(buf, size_t(n));
-    close(fd);
+    for (int n; (n = int(recv(fd, buf, sizeof buf, 0))) > 0;) raw.append(buf, size_t(n));
+    net::close(fd);
     size_t hdr_end = raw.find("\r\n\r\n");
     if (hdr_end == std::string::npos || raw.compare(0, 5, "HTTP/") != 0) return false;
     r.status = std::atoi(raw.c_str() + raw.find(' ') + 1);

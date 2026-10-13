@@ -38,9 +38,21 @@ add_executable(d1-native
   src/settings.cpp
   src/discord.cpp
   ${IMPORT_NAMES})
+if(WIN32)
+  target_sources(d1-native PRIVATE src/os_win.cpp)
+  # One self-contained .exe: C/C++ runtime and winpthreads linked in statically.
+  target_link_libraries(d1-native PRIVATE ws2_32 winmm -static)
+  target_compile_definitions(d1-native PRIVATE _FILE_OFFSET_BITS=64 _WIN32_WINNT=0x0A00 WINVER=0x0A00)
+else()
+  target_sources(d1-native PRIVATE src/os_posix.cpp)
+endif()
 target_include_directories(d1-native PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(d1-native PRIVATE Threads::Threads)
 target_compile_options(d1-native PRIVATE -Wall -Wno-unused-function -fno-omit-frame-pointer)
+if(NOT WIN32)
+  # Logs print 64-bit values with %llx (correct on both systems; uint64_t is unsigned long here).
+  target_compile_options(d1-native PRIVATE -Wno-format)
+endif()
 
 option(D1_RENDERER_SHADPS4 "Build the temporary shadPS4-based renderer (needs SHADPS4_DIR)" OFF)
 if(D1_RENDERER_SHADPS4)

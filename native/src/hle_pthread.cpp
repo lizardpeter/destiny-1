@@ -7,11 +7,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <utility>
 
 #include "hle.h"
 #include "runtime.h"
@@ -106,7 +108,9 @@ static Cond* get_cond(Cond** p) {
             auto* c = new Cond;
             pthread_condattr_t a;
             pthread_condattr_init(&a);
+#if !D1_WINDOWS
             pthread_condattr_setclock(&a, CLOCK_MONOTONIC);
+#endif
             pthread_cond_init(&c->c, &a);
             *p = c;
         }
@@ -125,7 +129,11 @@ static int32_t scePthreadCondWait(Cond** c, Mutex** m) { return sce(pthread_cond
 HLE("scePthreadCondWait", scePthreadCondWait)
 static int32_t scePthreadCondTimedwait(Cond** c, Mutex** m, uint32_t usec) {
     timespec ts;
+#if D1_WINDOWS
+    clock_gettime(CLOCK_REALTIME, &ts);  // winpthreads waits against the real-time clock
+#else
     clock_gettime(CLOCK_MONOTONIC, &ts);
+#endif
     uint64_t ns = uint64_t(ts.tv_nsec) + uint64_t(usec) * 1000;
     ts.tv_sec += ns / 1000000000;
     ts.tv_nsec = ns % 1000000000;
@@ -217,15 +225,19 @@ static int32_t scePthreadAttrSetaffinity(ThreadAttr** a, uint64_t m) { (*a)->aff
 HLE("scePthreadAttrSetaffinity", scePthreadAttrSetaffinity)
 
 void register_guest_thread(const char* name);
+// scePthreadExit returns to the thread's start without unwinding the game's frames (they
+// have no host unwind information; Windows would crash walking them).
+static thread_local uint64_t t_exit_sp = 0;
 static void* thread_trampoline(void* p) {
     auto* t = static_cast<Thread*>(p);
     t_self = t;
     register_guest_thread(t->name.c_str());
     t->tcb = tls_create_thread_block();
     tls_set_current(t->tcb);
-    if (!t->name.empty()) pthread_setname_np(pthread_self(), t->name.substr(0, 15).c_str());
-    t->ret = reinterpret_cast<void*>(d1_call_guest(reinterpret_cast<const void*>(t->entry),
-                                                   reinterpret_cast<uint64_t>(t->arg), 0, 0));
+    if (!t->name.empty()) os::set_thread_name(t->name.c_str());
+    t->ret = reinterpret_cast<void*>(d1_call_guest_exitable(reinterpret_cast<const void*>(t->entry),
+                                                            reinterpret_cast<uint64_t>(t->arg), &t_exit_sp));
+    t_exit_sp = 0;
     return t->ret;
 }
 
@@ -262,7 +274,11 @@ static int32_t scePthreadJoin(Thread* t, void** ret) {
 HLE("scePthreadJoin", scePthreadJoin)
 static int32_t scePthreadDetach(Thread* t) { return sce(pthread_detach(t->host)); }
 HLE("scePthreadDetach", scePthreadDetach)
-[[noreturn]] static void scePthreadExit(void* v) { pthread_exit(v); }
+[[noreturn]] static void scePthreadExit(void* v) {
+    if (t_exit_sp) d1_guest_exit(t_exit_sp, reinterpret_cast<uint64_t>(v));
+    pthread_exit(v);
+    __builtin_unreachable();
+}
 HLE("scePthreadExit", scePthreadExit)
 static int32_t scePthreadCancel(Thread* t) { return sce(pthread_cancel(t->host)); }
 HLE("scePthreadCancel", scePthreadCancel)
@@ -293,22 +309,51 @@ static int32_t scePthreadRename(Thread* t, const char* n) {
 HLE("scePthreadRename", scePthreadRename)
 
 // ------------------------------------------------------------------ keys / once
-static int32_t scePthreadKeyCreate(uint32_t* key, void (*dtor)(void*)) {
-    pthread_key_t k;
-    int r = pthread_key_create(&k, dtor);
-    *key = k;
-    return sce(r);
+// Destructors are game functions (System V); the host calls them through one small host
+// function per key that knows which game function to call.
+using GuestDtor = D1_SYSV void (*)(void*);
+static constexpr size_t kMaxKeys = 512;
+static GuestDtor g_key_dtors[kMaxKeys];
+template <size_t K> static void key_dtor(void* v) { if (g_key_dtors[K]) g_key_dtors[K](v); }
+template <size_t... K> static constexpr auto make_key_dtors(std::index_sequence<K...>) {
+    return std::array<void (*)(void*), sizeof...(K)>{&key_dtor<K>...};
+}
+static constexpr auto kKeyDtors = make_key_dtors(std::make_index_sequence<kMaxKeys>{});
+
+// Guest key K is backed by host key g_host_keys[K], created with key_dtor<K>.
+static pthread_key_t g_host_keys[kMaxKeys];
+static std::atomic<bool> g_key_used[kMaxKeys];
+static int32_t scePthreadKeyCreate(uint32_t* key, GuestDtor dtor) {
+    for (size_t k = 0; k < kMaxKeys; ++k) {
+        bool expected = false;
+        if (!g_key_used[k].compare_exchange_strong(expected, true)) continue;
+        g_key_dtors[k] = dtor;
+        int r = pthread_key_create(&g_host_keys[k], dtor ? kKeyDtors[k] : nullptr);
+        if (r) { g_key_used[k] = false; return sce(r); }
+        *key = uint32_t(k);
+        return SCE_OK;
+    }
+    return sce_err(35);  // EAGAIN: out of keys
 }
 HLE("scePthreadKeyCreate", scePthreadKeyCreate)
-static int32_t scePthreadKeyDelete(uint32_t k) { return sce(pthread_key_delete(k)); }
+static int32_t scePthreadKeyDelete(uint32_t k) {
+    if (k >= kMaxKeys || !g_key_used[k]) return sce_err(22);
+    pthread_key_delete(g_host_keys[k]);
+    g_key_dtors[k] = nullptr;
+    g_key_used[k] = false;
+    return SCE_OK;
+}
 HLE("scePthreadKeyDelete", scePthreadKeyDelete)
-static void* scePthreadGetspecific(uint32_t k) { return pthread_getspecific(k); }
+static void* scePthreadGetspecific(uint32_t k) { return k < kMaxKeys ? pthread_getspecific(g_host_keys[k]) : nullptr; }
 HLE("scePthreadGetspecific", scePthreadGetspecific)
-static int32_t scePthreadSetspecific(uint32_t k, const void* v) { return sce(pthread_setspecific(k, v)); }
+static int32_t scePthreadSetspecific(uint32_t k, const void* v) {
+    if (k >= kMaxKeys || !g_key_used[k]) return sce_err(22);
+    return sce(pthread_setspecific(g_host_keys[k], v));
+}
 HLE("scePthreadSetspecific", scePthreadSetspecific)
 
 struct Once { std::atomic<int32_t> state; int32_t pad; void* mutex; };
-static int32_t scePthreadOnce(Once* o, void (*fn)()) {
+static int32_t scePthreadOnce(Once* o, D1_SYSV void (*fn)()) {
     static std::recursive_mutex mu;
     if (o->state.load() == 2) return SCE_OK;
     std::lock_guard lk(mu);

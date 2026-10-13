@@ -1,12 +1,17 @@
 // Linker, import thunks, call tracing, TLS and crash reporting.
 #include "runtime.h"
 
+#include "os.h"
+#if D1_WINDOWS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <asm/prctl.h>
 #include <pthread.h>
 #include <signal.h>
-#include <sys/mman.h>
 #include <sys/syscall.h>
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 
 #include <algorithm>
@@ -25,10 +30,23 @@ namespace d1 {
 
 // ------------------------------------------------------------------ logging
 static std::mutex g_log_mutex;
+static FILE* g_log_file = nullptr;
+void log_to_file(const std::string& path) {
+    std::lock_guard lk(g_log_mutex);
+    g_log_file = std::fopen(path.c_str(), "w");
+}
 void log(const char* fmt, ...) {
     std::lock_guard lk(g_log_mutex);
     va_list ap;
     va_start(ap, fmt);
+    if (g_log_file) {
+        va_list cp;
+        va_copy(cp, ap);
+        std::vfprintf(g_log_file, fmt, cp);
+        va_end(cp);
+        std::fputc('\n', g_log_file);
+        std::fflush(g_log_file);
+    }
     std::vfprintf(stderr, fmt, ap);
     va_end(ap);
     std::fputc('\n', stderr);
@@ -53,11 +71,11 @@ std::string describe_addr(uint64_t a) {
     for (auto& m : rt().modules)
         if (m.contains(a)) {
             char b[160];
-            std::snprintf(b, sizeof b, "%s+0x%lx", m.name.c_str(), (unsigned long)(a - m.base));
+            std::snprintf(b, sizeof b, "%s+0x%llx", m.name.c_str(), (unsigned long long)(a - m.base));
             return b;
         }
     char b[32];
-    std::snprintf(b, sizeof b, "0x%lx", (unsigned long)a);
+    std::snprintf(b, sizeof b, "0x%llx", (unsigned long long)a);
     return b;
 }
 
@@ -78,16 +96,17 @@ static TraceRec g_ring[kRing];
 static bool g_trace_all = false;
 static bool g_abort_on_unimpl = false;
 
-static uint32_t gettid32() { return uint32_t(syscall(SYS_gettid)); }
+static uint32_t gettid32() { return os::thread_id(); }
 
-extern "C" void d1_log_call(uint64_t idx, uint64_t* regs) {
+// Called from d1_import_entry with the System V convention.
+extern "C" D1_SYSV void d1_log_call(uint64_t idx, uint64_t* regs) {
     // regs: rdi, rsi, rdx, rcx, r8, r9
     ImportInfo* ii = g_imports[idx];
     uint64_t n = ii->calls.fetch_add(1);
     uint64_t s = g_seq.fetch_add(1);
     g_ring[s % kRing] = {s, uint32_t(idx), gettid32(), regs[0], regs[1], regs[2]};
     if (g_trace_all || (!ii->target && n < 3))
-        log("[%u] %s %s(%#lx, %#lx, %#lx)%s", gettid32(), ii->target ? "call" : "UNIMPL",
+        log("[%u] %s %s(%#llx, %#llx, %#llx)%s", gettid32(), ii->target ? "call" : "UNIMPL",
             ii->name.c_str(), regs[0], regs[1], regs[2], ii->target ? "" : " -> 0");
     if (!ii->target && g_abort_on_unimpl) {
         log("aborting on first unimplemented import %s (%s)", ii->name.c_str(), ii->library.c_str());
@@ -101,7 +120,6 @@ extern "C" void d1_import_entry();
 asm(R"(
     .text
     .globl d1_import_entry
-    .type d1_import_entry, @function
 d1_import_entry:
     push %rbp
     mov %rsp, %rbp
@@ -158,9 +176,8 @@ static constexpr size_t kThunkArea = 4 << 20;
 
 static void* make_thunk(uint64_t idx, void* target) {
     if (!g_thunk_mem) {
-        g_thunk_mem = static_cast<uint8_t*>(mmap(nullptr, kThunkArea, PROT_READ | PROT_WRITE | PROT_EXEC,
-                                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
-        if (g_thunk_mem == MAP_FAILED) throw std::runtime_error("thunk mmap failed");
+        g_thunk_mem = static_cast<uint8_t*>(os::alloc(0, kThunkArea, os::kRead | os::kWrite | os::kExec, false));
+        if (!g_thunk_mem) throw std::runtime_error("cannot allocate import thunks");
     }
     uint8_t* p = g_thunk_mem + g_thunk_used;
     // mov r11, imm64 ; mov r10, imm64 ; jmp [rip+0] ; dq d1_import_entry
@@ -189,7 +206,6 @@ d1_root_frame:
     .quad 0
     .text
     .globl d1_call_guest
-    .type d1_call_guest, @function
 d1_call_guest:
     push %rbp
     push %rbx
@@ -207,16 +223,72 @@ d1_call_guest:
     ret
 )");
 
+// Thread entry that scePthreadExit can leave early: d1_call_guest_exitable saves its stack
+// pointer in *slot; d1_guest_exit(saved, value) returns from it with `value`, skipping the
+// game's frames instead of unwinding them (they have no host unwind information).
+asm(R"(
+    .text
+    .globl d1_call_guest_exitable
+d1_call_guest_exitable:
+    push %rbp
+    push %rbx
+    push %r12
+    push %r13
+    push %r14
+    push %r15
+    mov %rsp, (%rdx)
+    mov %rsp, %rbx
+    and $-16, %rsp
+    lea d1_root_frame(%rip), %rbp
+    mov %rdi, %rax
+    mov %rsi, %rdi
+    call *%rax
+    mov %rbx, %rsp
+1:
+    pop %r15
+    pop %r14
+    pop %r13
+    pop %r12
+    pop %rbx
+    pop %rbp
+    ret
+    .globl d1_guest_exit
+d1_guest_exit:
+    mov %rdi, %rsp
+    mov %rsi, %rax
+    jmp 1b
+)");
+
 // ------------------------------------------------------------------ TLS
 // PS4 (FreeBSD amd64, TLS variant II): fs:[0] is the TCB self-pointer and the main
 // executable's static TLS block sits immediately below the TCB. Guest code reads the
-// TCB with `mov r64, fs:[0]`; the loader rewrites that prefix to GS so glibc keeps FS.
+// TCB with `mov r64, fs:[0]`. On Linux the loader rewrites that prefix to GS (glibc keeps
+// FS) and GS points at the TCB. On Windows GS is the thread environment block, so the
+// instruction becomes `mov r64, gs:[TlsSlots + 8*slot]`, a TlsAlloc slot holding the TCB:
+// same length, no call, no stack use.
 struct Tcb {
     Tcb* self;
     void* dtv;
     uint64_t reserved[30];
 };
 static uint64_t g_static_tls_size = 0;
+static void* aligned_alloc64(size_t n) {
+#if D1_WINDOWS
+    return _aligned_malloc(n, 64);
+#else
+    return aligned_alloc(64, (n + 63) & ~size_t(63));
+#endif
+}
+#if D1_WINDOWS
+static DWORD g_tls_slot = TLS_OUT_OF_INDEXES;
+static uint32_t tls_slot_disp() {  // gs-relative offset of the slot in the TEB
+    if (g_tls_slot == TLS_OUT_OF_INDEXES) {
+        g_tls_slot = TlsAlloc();
+        if (g_tls_slot >= 64) throw std::runtime_error("no low TLS slot free for the guest TCB");
+    }
+    return 0x1480 + g_tls_slot * 8;
+}
+#endif
 static thread_local std::map<int, void*>* t_dtv = nullptr;
 static thread_local Tcb* t_tcb = nullptr;
 
@@ -224,7 +296,7 @@ void* tls_create_thread_block() {
     const Module& exe = rt().modules[0];
     const uint64_t align = std::max<uint64_t>(exe.tls_align, 16);
     g_static_tls_size = (exe.tls_memsz + align - 1) & ~(align - 1);
-    uint8_t* blk = static_cast<uint8_t*>(aligned_alloc(64, g_static_tls_size + sizeof(Tcb) + 64));
+    uint8_t* blk = static_cast<uint8_t*>(aligned_alloc64(g_static_tls_size + sizeof(Tcb) + 64));
     std::memset(blk, 0, g_static_tls_size + sizeof(Tcb) + 64);
     uint8_t* tls = blk + 64;
     Tcb* tcb = reinterpret_cast<Tcb*>(tls + g_static_tls_size);
@@ -234,8 +306,12 @@ void* tls_create_thread_block() {
 }
 
 void tls_set_current(void* tcb) {
+#if D1_WINDOWS
+    TlsSetValue(g_tls_slot, tcb);
+#else
     if (syscall(SYS_arch_prctl, ARCH_SET_GS, reinterpret_cast<uint64_t>(tcb)) != 0)
         throw std::runtime_error("arch_prctl(ARCH_SET_GS) failed");
+#endif
     t_tcb = static_cast<Tcb*>(tcb);
 }
 
@@ -250,11 +326,11 @@ static void* tls_get_addr(TlsIndex* ti) {
     if (!slot) {
         for (auto& m : rt().modules)
             if (m.tls_modid == int(ti->modid)) {
-                slot = aligned_alloc(64, (m.tls_memsz + 63) & ~uint64_t(63));
+                slot = aligned_alloc64(m.tls_memsz);
                 std::memset(slot, 0, m.tls_memsz);
                 if (m.tls_filesz) std::memcpy(slot, reinterpret_cast<void*>(m.tls_init), m.tls_filesz);
             }
-        if (!slot) { log("__tls_get_addr: unknown module id %lu", ti->modid); return nullptr; }
+        if (!slot) { log("__tls_get_addr: unknown module id %llu", (unsigned long long)ti->modid); return nullptr; }
     }
     return static_cast<uint8_t*>(slot) + ti->offset;
 }
@@ -269,6 +345,10 @@ static size_t patch_fs_tcb(Module& m) {
         if (p[i] == 0x64 && (p[i + 1] == 0x48 || p[i + 1] == 0x4C) && p[i + 2] == 0x8B &&
             (p[i + 3] & 0xC7) == 0x04 && p[i + 4] == 0x25 && !p[i + 5] && !p[i + 6] && !p[i + 7] && !p[i + 8]) {
             p[i] = 0x65;  // FS -> GS
+#if D1_WINDOWS
+            const uint32_t disp = tls_slot_disp();
+            std::memcpy(p + i + 5, &disp, 4);
+#endif
             ++n;
         }
     }
@@ -318,7 +398,7 @@ void link_all() {
                 continue;
             case 1: case 6: case 7: break;  // 64, GLOB_DAT, JUMP_SLOT
             default:
-                log("%s: unsupported relocation type %u at +%#lx", m.name.c_str(), r.type, r.offset);
+                log("%s: unsupported relocation type %u at +%#llx", m.name.c_str(), r.type, r.offset);
                 continue;
             }
             const auto& s = m.syms[r.sym];
@@ -378,7 +458,7 @@ void link_all() {
     }
     for (auto& m : mods) {
         size_t p = patch_fs_tcb(m);
-        log("%-18s base %#lx size %#lx entry %s init %s tls(mod %d, %#lx bytes) fs:[0] patched %zu",
+        log("%-18s base %#llx size %#llx entry %s init %s tls(mod %d, %#llx bytes) fs:[0] patched %zu",
             m.name.c_str(), m.base, m.size, m.entry ? describe_addr(m.entry).c_str() : "-",
             m.init ? describe_addr(m.init).c_str() : "-", m.tls_modid, m.tls_memsz, p);
     }
@@ -390,15 +470,103 @@ void link_all() {
 static void dump_ring() {
     uint64_t s = g_seq.load();
     uint64_t from = s > 48 ? s - 48 : 0;
-    log("last %lu import calls:", s - from);
+    log("last %llu import calls:", s - from);
     for (uint64_t i = from; i < s; ++i) {
         auto& r = g_ring[i % kRing];
         if (r.seq != i) continue;
-        log("  #%lu [%u] %s%s(%#lx, %#lx, %#lx)", r.seq, r.tid, g_imports[r.idx]->target ? "" : "UNIMPL ",
+        log("  #%llu [%u] %s%s(%#llx, %#llx, %#llx)", r.seq, r.tid, g_imports[r.idx]->target ? "" : "UNIMPL ",
             g_imports[r.idx]->name.c_str(), r.a0, r.a1, r.a2);
     }
 }
 
+#if D1_WINDOWS
+// Windows: a vectored handler sees faults first. Write faults on pages the renderer
+// tracks are resumed; anything else from the CPU (access violation, illegal instruction,
+// ...) is a crash: report it like the Linux signal handler and exit. Software exceptions
+// (C++ throw) pass through untouched.
+static std::mutex g_threads_mutex;
+struct GuestThread { uint32_t tid; HANDLE handle; std::string name; };
+static std::vector<GuestThread> g_threads;
+
+void register_guest_thread(const char* name) {
+    HANDLE h = nullptr;
+    DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &h, 0, FALSE, DUPLICATE_SAME_ACCESS);
+    std::lock_guard lk(g_threads_mutex);
+    g_threads.push_back({gettid32(), h, name ? name : "?"});
+}
+
+static void walk(uint64_t rip, uint64_t rbp) {
+    log("  at %s", describe_addr(rip).c_str());
+    for (int d = 0; d < 16 && rbp && !(rbp & 7); ++d) {
+        uint64_t* f = reinterpret_cast<uint64_t*>(rbp);
+        if (IsBadReadPtr(f, 16)) break;
+        log("  <- %s", describe_addr(f[1]).c_str());
+        if (f[0] <= rbp) break;
+        rbp = f[0];
+    }
+}
+
+static const char* exception_name(DWORD c) {
+    switch (c) {
+    case EXCEPTION_ACCESS_VIOLATION: return "access violation";
+    case EXCEPTION_ILLEGAL_INSTRUCTION: return "illegal instruction";
+    case EXCEPTION_PRIV_INSTRUCTION: return "privileged instruction";
+    case EXCEPTION_INT_DIVIDE_BY_ZERO: return "integer divide by zero";
+    case EXCEPTION_INT_OVERFLOW: return "integer overflow";
+    case EXCEPTION_STACK_OVERFLOW: return "stack overflow";
+    case EXCEPTION_BREAKPOINT: return "breakpoint";
+    case EXCEPTION_IN_PAGE_ERROR: return "in-page error";
+    case EXCEPTION_DATATYPE_MISALIGNMENT: return "misaligned access";
+    default: return nullptr;
+    }
+}
+
+static LONG CALLBACK on_exception(EXCEPTION_POINTERS* ep) {
+    const DWORD code = ep->ExceptionRecord->ExceptionCode;
+    void* addr = code == EXCEPTION_ACCESS_VIOLATION
+                     ? reinterpret_cast<void*>(ep->ExceptionRecord->ExceptionInformation[1]) : nullptr;
+    if (code == EXCEPTION_ACCESS_VIOLATION && gpu_on_fault(ep, addr)) return EXCEPTION_CONTINUE_EXECUTION;
+    const char* what = exception_name(code);
+    if (!what) return EXCEPTION_CONTINUE_SEARCH;
+    const CONTEXT* c = ep->ContextRecord;
+    log("\n=== %s at %s (fault address %p) thread %u ===", what, describe_addr(c->Rip).c_str(), addr, gettid32());
+    const uint64_t regs[16] = {c->R8, c->R9, c->R10, c->R11, c->R12, c->R13, c->R14, c->R15,
+                               c->Rdi, c->Rsi, c->Rbp, c->Rbx, c->Rdx, c->Rax, c->Rcx, c->Rsp};
+    static const char* R[] = {"r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "rdi", "rsi", "rbp", "rbx",
+                              "rdx", "rax", "rcx", "rsp"};
+    for (int i = 0; i < 16; i += 4)
+        log("%s=%#llx  %s=%#llx  %s=%#llx  %s=%#llx", R[i], (unsigned long long)regs[i], R[i + 1],
+            (unsigned long long)regs[i + 1], R[i + 2], (unsigned long long)regs[i + 2], R[i + 3],
+            (unsigned long long)regs[i + 3]);
+    log("guest call stack (frame pointers):");
+    walk(c->Rip, c->Rbp);
+    dump_ring();
+    std::fflush(nullptr);
+    TerminateProcess(GetCurrentProcess(), 128 + 11);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+void dump_all_threads() {
+    std::vector<GuestThread> ts;
+    { std::lock_guard lk(g_threads_mutex); ts = g_threads; }
+    for (auto& t : ts) {
+        log("--- %s (%u)", t.name.c_str(), t.tid);
+        if (SuspendThread(t.handle) == DWORD(-1)) continue;
+        CONTEXT c{};
+        c.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+        if (GetThreadContext(t.handle, &c)) walk(c.Rip, c.Rbp);
+        ResumeThread(t.handle);
+    }
+    dump_ring();
+}
+
+void install_crash_handler() {
+    AddVectoredExceptionHandler(1, on_exception);
+    g_trace_all = getenv("D1_TRACE") != nullptr;
+    g_abort_on_unimpl = getenv("D1_ABORT_ON_UNIMPL") != nullptr;
+}
+
+#else
 static void on_fault(int sig, siginfo_t* si, void* uc_) {
     // Write to a page the renderer protects to track CPU changes: let it invalidate and retry.
     if ((sig == SIGSEGV || sig == SIGBUS) && gpu_on_fault(uc_, si->si_addr)) return;
@@ -479,12 +647,14 @@ void install_crash_handler() {
     g_abort_on_unimpl = getenv("D1_ABORT_ON_UNIMPL") != nullptr;
 }
 
+#endif
+
 void print_import_summary() {
     log("import call counts (top 40):");
     std::vector<ImportInfo*> v(g_imports.begin(), g_imports.end());
     std::sort(v.begin(), v.end(), [](auto* a, auto* b) { return a->calls > b->calls; });
     for (size_t i = 0; i < v.size() && i < 40 && v[i]->calls; ++i)
-        log("  %8lu  %s%s", v[i]->calls.load(), v[i]->target ? "" : "UNIMPL ", v[i]->name.c_str());
+        log("  %8llu  %s%s", (unsigned long long)v[i]->calls.load(), v[i]->target ? "" : "UNIMPL ", v[i]->name.c_str());
 }
 
 }  // namespace d1

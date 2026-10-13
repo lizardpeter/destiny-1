@@ -5,7 +5,6 @@
 // and raises the end-of-pipe interrupt. Nothing is drawn. This lets the game's frame
 // pacing (which waits on GPU fences and flip events) run headless until a real renderer
 // replaces it.
-#include <sys/mman.h>
 #include <time.h>
 #include <x86intrin.h>
 
@@ -284,7 +283,7 @@ static void do_flip(int32_t index, int64_t arg) {
     }
     for (auto* q : qs) q->trigger(6, kFilterVideoOut, 6 | (uint64_t(arg) << 16), true);
     uint64_t n = ++g_frames;
-    if (n == 1 || n == 10 || n == 100 || n % 1000 == 0) log("flip #%lu (buffer %d, arg %ld)", n, index, arg);
+    if (n == 1 || n == 10 || n == 100 || n % 1000 == 0) log("flip #%llu (buffer %d, arg %lld)", n, index, arg);
 }
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {
     if (gpu_real()) {
@@ -324,7 +323,7 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
         if (type == 2) { ++i; continue; }
         uint32_t count = ((h >> 16) & 0x3FFF) + 1;  // body dwords
         if (type == 0) { i += 1 + count; continue; }
-        if (type != 3) { log("null GPU: bad PM4 header %#x at dword %lu", h, i); return; }
+        if (type != 3) { log("null GPU: bad PM4 header %#x at dword %llu", h, i); return; }
         uint32_t op = (h >> 8) & 0xFF;
         const uint32_t* b = p + i + 1;
         ++g_op_counts[op];
@@ -514,9 +513,9 @@ void print_gpu_summary() {
         render::print_summary();
         return;
     }
-    log("null GPU: %lu packets, %lu flips", g_packets.load(), g_frames.load());
+    log("null GPU: %llu packets, %llu flips", g_packets.load(), g_frames.load());
     for (int op = 0; op < 256; ++op)
-        if (g_op_counts[op]) log("  PM4 op %#04x x%lu", op, g_op_counts[op]);
+        if (g_op_counts[op]) log("  PM4 op %#04x x%llu", op, g_op_counts[op]);
 }
 
 }  // namespace d1

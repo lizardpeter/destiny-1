@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "loader.h"
+#include "os.h"
 
 namespace d1 {
 
@@ -21,7 +22,11 @@ void tls_set_current(void* tcb);
 void tls_destroy_thread_block(void* tcb);
 
 // Call guest code fn(a0, a1, a2) from a terminal frame-pointer frame.
-extern "C" uint64_t d1_call_guest(const void* fn, uint64_t a0, uint64_t a1, uint64_t a2);
+extern "C" D1_SYSV uint64_t d1_call_guest(const void* fn, uint64_t a0, uint64_t a1, uint64_t a2);
+
+// Run a guest thread's entry fn(arg); d1_guest_exit(*slot, value) makes it return value.
+extern "C" D1_SYSV uint64_t d1_call_guest_exitable(const void* fn, uint64_t arg, uint64_t* slot);
+extern "C" D1_SYSV [[noreturn]] void d1_guest_exit(uint64_t saved_sp, uint64_t value);
 
 // Resolve an address to "module+0xoff".
 std::string describe_addr(uint64_t a);

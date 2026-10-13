@@ -1,14 +1,19 @@
 // libkernel: memory, time, files, process/module information.
 #include <dirent.h>
 #include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 #include <x86intrin.h>
+
+#include "os.h"
+#if D1_WINDOWS
+#include "posix_win.h"
+#else
+#include <sys/resource.h>
+#endif
 
 #include <atomic>
 #include <cstring>
@@ -65,49 +70,41 @@ static int32_t refuse_write(const char* op, const char* guest) {
 }
 
 // ------------------------------------------------------------------ memory
-// Direct memory is backed by one sparse memfd so that two mappings of the same
-// "physical" range alias, as on the console (CPU and GPU views of one buffer).
+// Direct memory is one "physical" backing store (os::phys_*) so that two mappings of the
+// same range alias, as on the console (CPU and GPU views of one buffer).
 static std::mutex g_mem_mutex;
-static int g_dmem_fd = -1;
+static bool g_dmem = false;
 static constexpr uint64_t kDirectMemSize = 0x150000000ull;  // 5.25 GiB, retail game budget
 static uint64_t g_dmem_next = 0;
 struct Region { uint64_t size; int prot; bool direct; uint64_t phys; char name[32]; };
 static std::map<uint64_t, Region> g_regions;  // start -> region
-static constexpr uint64_t kUserVaBase = 0x200000000ull;
 static uint64_t g_va_next = 0x400000000ull;
 
 static int host_prot(int p) {
     int h = 0;
-    if (p & 1) h |= PROT_READ;
-    if (p & 2) h |= PROT_WRITE;
-    if (p & 4) h |= PROT_EXEC;
-    if (p & 0x30) h |= PROT_READ | PROT_WRITE;  // GPU read/write: CPU view must stay accessible
+    if (p & 1) h |= os::kRead;
+    if (p & 2) h |= os::kWrite;
+    if (p & 4) h |= os::kExec;
+    if (p & 0x30) h |= os::kRead | os::kWrite;  // GPU read/write: CPU view must stay accessible
     return h;
 }
 
 static void dmem_init() {
-    if (g_dmem_fd >= 0) return;
-    g_dmem_fd = memfd_create("d1-direct-memory", 0);
-    ftruncate(g_dmem_fd, kDirectMemSize);
+    if (!g_dmem) g_dmem = os::phys_create(kDirectMemSize);
 }
 
 static uint64_t pick_va(uint64_t want, uint64_t len, uint64_t align) {
     if (want) return want;
-    align = std::max<uint64_t>(align, 0x4000);
+    const uint64_t g = os::granularity();
+    align = std::max<uint64_t>(align, g);
     uint64_t a = (g_va_next + align - 1) & ~(align - 1);
-    g_va_next = a + ((len + 0xFFFF) & ~uint64_t(0xFFFF));
+    g_va_next = a + ((len + g - 1) & ~(g - 1));
     return a;
 }
 
-static void* do_map(uint64_t want, uint64_t len, int prot, bool fixed, int fd, uint64_t off, uint64_t align) {
+static void* do_map(uint64_t want, uint64_t len, int prot, bool fixed, bool direct, uint64_t off, uint64_t align) {
     uint64_t va = pick_va(want, len, align);
-    int fl = (fd >= 0 ? MAP_SHARED : MAP_PRIVATE | MAP_ANONYMOUS);
-    fl |= fixed ? MAP_FIXED : MAP_FIXED_NOREPLACE;
-    void* p = mmap(reinterpret_cast<void*>(va), len, host_prot(prot), fl, fd, off);
-    if (p == MAP_FAILED && !fixed) {  // hint taken: let the host choose
-        p = mmap(nullptr, len, host_prot(prot), (fd >= 0 ? MAP_SHARED : MAP_PRIVATE | MAP_ANONYMOUS), fd, off);
-    }
-    return p == MAP_FAILED ? nullptr : p;
+    return direct ? os::phys_map(va, len, off, host_prot(prot), fixed) : os::alloc(va, len, host_prot(prot), fixed);
 }
 
 static uint64_t sceKernelGetDirectMemorySize() { return kDirectMemSize; }
@@ -133,7 +130,7 @@ static int32_t sceKernelMapDirectMemory(void** addr, uint64_t len, int prot, int
     std::lock_guard lk(g_mem_mutex);
     dmem_init();
     bool fixed = flags & 0x10;
-    void* p = do_map(reinterpret_cast<uint64_t>(*addr), len, prot, fixed, g_dmem_fd, uint64_t(phys), align);
+    void* p = do_map(reinterpret_cast<uint64_t>(*addr), len, prot, fixed, true, uint64_t(phys), align);
     if (!p) return sce_err(12);
     *addr = p;
     Region r{len, prot, true, uint64_t(phys), {}};
@@ -156,7 +153,7 @@ HLE("sceKernelMapNamedDirectMemory", sceKernelMapNamedDirectMemory)
 
 static int32_t sceKernelMapNamedFlexibleMemory(void** addr, uint64_t len, int prot, int flags, const char* name) {
     std::lock_guard lk(g_mem_mutex);
-    void* p = do_map(reinterpret_cast<uint64_t>(*addr), len, prot, flags & 0x10, -1, 0, 0x4000);
+    void* p = do_map(reinterpret_cast<uint64_t>(*addr), len, prot, flags & 0x10, false, 0, 0x4000);
     if (!p) return sce_err(12);
     *addr = p;
     Region r{len, prot, false, 0, {}};
@@ -175,9 +172,8 @@ HLE("sceKernelMapFlexibleMemory", sceKernelMapFlexibleMemory)
 static int32_t sceKernelReserveVirtualRange(void** addr, uint64_t len, int flags, uint64_t align) {
     std::lock_guard lk(g_mem_mutex);
     uint64_t va = pick_va(reinterpret_cast<uint64_t>(*addr), len, align);
-    void* p = mmap(reinterpret_cast<void*>(va), len, PROT_NONE,
-                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | ((flags & 0x10) ? MAP_FIXED : MAP_FIXED_NOREPLACE), -1, 0);
-    if (p == MAP_FAILED) return sce_err(12);
+    void* p = os::reserve(va, len, flags & 0x10);
+    if (!p) return sce_err(12);
     *addr = p;
     return SCE_OK;
 }
@@ -187,12 +183,12 @@ static int32_t sceKernelMunmap(void* addr, uint64_t len) {
     gpu_on_unmap(reinterpret_cast<uint64_t>(addr), len);
     std::lock_guard lk(g_mem_mutex);
     g_regions.erase(reinterpret_cast<uint64_t>(addr));
-    return munmap(addr, len) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
+    return os::release(addr, len) ? SCE_OK : sce_err(22);
 }
 HLE("sceKernelMunmap", sceKernelMunmap)
 
 static int32_t sceKernelMprotect(void* addr, uint64_t len, int prot) {
-    return mprotect(addr, len, host_prot(prot)) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
+    return os::protect(addr, len, host_prot(prot)) ? SCE_OK : sce_err(22);
 }
 HLE("sceKernelMprotect", sceKernelMprotect)
 
@@ -261,20 +257,21 @@ static int32_t sceKernelVirtualQuery(const void* addr, int flags, VirtualQueryIn
 }
 HLE("sceKernelVirtualQuery", sceKernelVirtualQuery)
 
-// FreeBSD mmap flags -> Linux
+// FreeBSD mmap: anonymous memory, or a private copy of a file's contents.
+static int64_t ps4_pread_all(int fd, void* b, uint64_t n, int64_t off);
 static void* ps4_mmap(void* addr, uint64_t len, int prot, int flags, int fd, int64_t off) {
-    int hf = 0;
-    if (flags & 0x1) hf |= MAP_SHARED;
-    if (flags & 0x2) hf |= MAP_PRIVATE;
-    if (flags & 0x10) hf |= MAP_FIXED;
-    if (flags & 0x1000) hf |= MAP_ANONYMOUS;
-    if (!(hf & (MAP_SHARED | MAP_PRIVATE))) hf |= MAP_PRIVATE;
-    void* p = mmap(addr, len, host_prot(prot), hf, (flags & 0x1000) ? -1 : fd, off);
-    if (p == MAP_FAILED) errno = to_ps4_errno(errno);
+    const bool anon = flags & 0x1000, fixed = flags & 0x10;
+    std::lock_guard lk(g_mem_mutex);
+    void* p = os::alloc(reinterpret_cast<uint64_t>(addr), len, anon ? host_prot(prot) : os::kRead | os::kWrite, fixed);
+    if (!p) { errno = 12; return reinterpret_cast<void*>(-1); }
+    if (!anon) {
+        ps4_pread_all(fd, p, len, off);
+        os::protect(p, len, host_prot(prot));
+    }
     return p;
 }
 HLE("mmap", ps4_mmap)
-static int ps4_munmap(void* a, uint64_t l) { return munmap(a, l); }
+static int ps4_munmap(void* a, uint64_t l) { return os::release(a, l) ? 0 : -1; }
 HLE("munmap", ps4_munmap)
 static int ps4_msync(void* a, uint64_t l, int f) { return 0; }
 HLE("msync", ps4_msync)
@@ -288,8 +285,7 @@ static uint64_t sceKernelGetTscFrequency() {
         timespec a, b;
         clock_gettime(CLOCK_MONOTONIC, &a);
         uint64_t t0 = __rdtsc();
-        timespec d{0, 50'000'000};
-        nanosleep(&d, nullptr);
+        os::sleep_us(50000);
         uint64_t t1 = __rdtsc();
         clock_gettime(CLOCK_MONOTONIC, &b);
         double s = (b.tv_sec - a.tv_sec) + (b.tv_nsec - a.tv_nsec) * 1e-9;
@@ -312,11 +308,18 @@ static clockid_t host_clock(int id) {
     default: return CLOCK_MONOTONIC;
     }
 }
-static int32_t sceKernelClockGettime(int id, timespec* ts) {
-    return clock_gettime(host_clock(id), ts) == 0 ? SCE_OK : sce_err(22);
+static int guest_clock(int id, GuestTimespec* out) {
+    timespec t;
+    if (clock_gettime(host_clock(id), &t) != 0) return -1;
+    out->tv_sec = t.tv_sec;
+    out->tv_nsec = t.tv_nsec;
+    return 0;
+}
+static int32_t sceKernelClockGettime(int id, GuestTimespec* ts) {
+    return guest_clock(id, ts) == 0 ? SCE_OK : sce_err(22);
 }
 HLE("sceKernelClockGettime", sceKernelClockGettime)
-static int ps4_clock_gettime(int id, timespec* ts) { return clock_gettime(host_clock(id), ts); }
+static int ps4_clock_gettime(int id, GuestTimespec* ts) { return guest_clock(id, ts); }
 HLE("clock_gettime", ps4_clock_gettime)
 
 static timespec g_start = [] { timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t; }();
@@ -326,32 +329,62 @@ static uint64_t sceKernelGetProcessTime() {
     return uint64_t((t.tv_sec - g_start.tv_sec) * 1000000ll + (t.tv_nsec - g_start.tv_nsec) / 1000);
 }
 HLE("sceKernelGetProcessTime", sceKernelGetProcessTime)
-static int32_t sceKernelGettimeofday(timeval* tv) { gettimeofday(tv, nullptr); return SCE_OK; }
+static void guest_timeofday(GuestTimeval* out) {
+    timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    out->tv_sec = t.tv_sec;
+    out->tv_usec = t.tv_nsec / 1000;
+}
+static int32_t sceKernelGettimeofday(GuestTimeval* tv) { guest_timeofday(tv); return SCE_OK; }
 HLE("sceKernelGettimeofday", sceKernelGettimeofday)
-static int ps4_gettimeofday(timeval* tv, void*) { return gettimeofday(tv, nullptr); }
+static int ps4_gettimeofday(GuestTimeval* tv, void*) { guest_timeofday(tv); return 0; }
 HLE("gettimeofday", ps4_gettimeofday)
 static int32_t sceKernelGettimezone(int32_t* tz) { if (tz) tz[0] = tz[1] = 0; return SCE_OK; }
 HLE("sceKernelGettimezone", sceKernelGettimezone)
-static int32_t sceKernelUsleep(uint32_t us) { usleep(us); return SCE_OK; }
+static int32_t sceKernelUsleep(uint32_t us) { os::sleep_us(us); return SCE_OK; }
 HLE("sceKernelUsleep", sceKernelUsleep)
-static int ps4_usleep(uint32_t us) { return usleep(us); }
+static int ps4_usleep(uint32_t us) { os::sleep_us(us); return 0; }
 HLE("usleep", ps4_usleep)
-static int32_t sceKernelSleep(uint32_t s) { sleep(s); return SCE_OK; }
+static int32_t sceKernelSleep(uint32_t s) { os::sleep_us(uint64_t(s) * 1000000); return SCE_OK; }
 HLE("sceKernelSleep", sceKernelSleep)
-static int ps4_nanosleep(const timespec* a, timespec* b) { return nanosleep(a, b); }
+static int ps4_nanosleep(const GuestTimespec* a, GuestTimespec* b) {
+    os::sleep_us(uint64_t(a->tv_sec) * 1000000 + uint64_t(a->tv_nsec) / 1000);
+    if (b) *b = {0, 0};
+    return 0;
+}
 HLE("nanosleep", ps4_nanosleep)
 
 // ------------------------------------------------------------------ files
 static int host_oflags(int f) {
     int h = f & 3;  // O_RDONLY/O_WRONLY/O_RDWR
-    if (f & 0x4) h |= O_NONBLOCK;
     if (f & 0x8) h |= O_APPEND;
-    if (f & 0x80) h |= O_SYNC;
     if (f & 0x200) h |= O_CREAT;
     if (f & 0x400) h |= O_TRUNC;
     if (f & 0x800) h |= O_EXCL;
-    if (f & 0x20000) h |= O_DIRECTORY;
+#if D1_WINDOWS
+    h |= O_BINARY | O_NOINHERIT;  // no newline translation
+#else
+    if (f & 0x4) h |= O_NONBLOCK;
+    if (f & 0x80) h |= O_SYNC;
+    h |= O_CLOEXEC;
+#endif
     return h;
+}
+
+// Directories get pseudo descriptors (Windows cannot open() a directory); getdirentries
+// lists them through opendir().
+struct DirHandle { std::string path; DIR* d = nullptr; };
+static std::mutex g_dir_mutex;
+static std::map<int, DirHandle> g_dir_fds;
+static int g_next_dir_fd = 0x40000000;
+static bool is_dir_fd(int fd) {
+    std::lock_guard lk(g_dir_mutex);
+    return g_dir_fds.count(fd) != 0;
+}
+static std::string dir_fd_path(int fd) {
+    std::lock_guard lk(g_dir_mutex);
+    auto it = g_dir_fds.find(fd);
+    return it == g_dir_fds.end() ? std::string() : it->second.path;
 }
 
 static bool file_log() {
@@ -377,12 +410,19 @@ static void note_read(int fd, int64_t off, uint64_t n) {
     if (it == g_fdpath.end()) return;
     for (uint64_t w = uint64_t(off) >> 20; w <= (uint64_t(off) + (n ? n - 1 : 0)) >> 20; ++w)
         if (it->second.second.insert(w).second)
-            log("read %s @%#lx +%#lx", it->second.first.c_str(), off, n);
+            log("read %s @%#llx +%#llx", it->second.first.c_str(), off, n);
 }
 static int32_t sceKernelOpen(const char* path, int flags, uint16_t mode) {
     if (read_only_path(path) && ((flags & 3) != 0 || (flags & (0x8 | 0x200 | 0x400))))
         return refuse_write("open for writing", path);
     std::string hp = host_path(path);
+    if (os::is_dir(hp)) {
+        std::lock_guard lk(g_dir_mutex);
+        int fd = g_next_dir_fd++;
+        g_dir_fds[fd] = {hp, nullptr};
+        if (file_log()) log("open %s (directory) -> %d", path, fd);
+        return fd;
+    }
     int fd = open(hp.c_str(), host_oflags(flags), mode ? mode : 0644);
     if (file_log()) log("open %s (flags %#x) -> %d", path, flags, fd);
     note_open(fd, path);
@@ -393,7 +433,17 @@ static int32_t sceKernelOpen(const char* path, int flags, uint16_t mode) {
     return fd;
 }
 HLE("sceKernelOpen", sceKernelOpen)
-static int32_t sceKernelClose(int fd) { return close(fd) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno)); }
+static int32_t sceKernelClose(int fd) {
+    {
+        std::lock_guard lk(g_dir_mutex);
+        if (auto it = g_dir_fds.find(fd); it != g_dir_fds.end()) {
+            if (it->second.d) closedir(it->second.d);
+            g_dir_fds.erase(it);
+            return SCE_OK;
+        }
+    }
+    return close(fd) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
+}
 HLE("sceKernelClose", sceKernelClose)
 // A kernel read into a page the GPU has write-protected (to notice CPU writes) fails with
 // EFAULT instead of faulting. Touch the destination so the fault handler unprotects it,
@@ -433,13 +483,23 @@ static int64_t sceKernelPread(int fd, void* b, uint64_t n, int64_t off) {
     return r < 0 ? sce_err(to_ps4_errno(errno)) : r;
 }
 HLE("sceKernelPread", sceKernelPread)
+static int64_t ps4_pread_all(int fd, void* b, uint64_t n, int64_t off) {
+    uint64_t done = 0;
+    while (done < n) {
+        ssize_t r = pread(fd, static_cast<char*>(b) + done, n - done, off + int64_t(done));
+        if (r <= 0) break;
+        done += uint64_t(r);
+    }
+    return int64_t(done);
+}
 static int64_t sceKernelPwrite(int fd, const void* b, uint64_t n, int64_t off) {
     ssize_t r = pwrite(fd, b, n, off);
     return r < 0 ? sce_err(to_ps4_errno(errno)) : r;
 }
 HLE("sceKernelPwrite", sceKernelPwrite)
 static int64_t sceKernelLseek(int fd, int64_t off, int whence) {
-    off_t r = lseek(fd, off, whence);
+    if (is_dir_fd(fd)) return 0;
+    int64_t r = lseek(fd, off, whence);
     return r < 0 ? sce_err(to_ps4_errno(errno)) : r;
 }
 HLE("sceKernelLseek", sceKernelLseek)
@@ -458,11 +518,11 @@ struct Ps4Stat {
     uint32_t dev, ino;
     uint16_t mode, nlink;
     uint32_t uid, gid, rdev;
-    timespec atim, mtim, ctim;
+    GuestTimespec atim, mtim, ctim;
     int64_t size, blocks;
     uint32_t blksize, flags, gen;
     int32_t lspare;
-    timespec birthtim;
+    GuestTimespec birthtim;
 };
 static void fill_stat(const struct stat& s, Ps4Stat* o) {
     std::memset(o, 0, sizeof *o);
@@ -471,9 +531,22 @@ static void fill_stat(const struct stat& s, Ps4Stat* o) {
     o->mode = uint16_t(s.st_mode);
     o->nlink = uint16_t(s.st_nlink);
     o->size = s.st_size;
-    o->blocks = s.st_blocks;
+    o->blocks = (s.st_size + 511) / 512;
     o->blksize = 0x10000;
-    o->atim = s.st_atim; o->mtim = s.st_mtim; o->ctim = s.st_ctim; o->birthtim = s.st_mtim;
+#if D1_WINDOWS
+    o->atim = {int64_t(s.st_atime), 0};
+    o->mtim = {int64_t(s.st_mtime), 0};
+    o->ctim = {int64_t(s.st_ctime), 0};
+#else
+    o->atim = {s.st_atim.tv_sec, s.st_atim.tv_nsec};
+    o->mtim = {s.st_mtim.tv_sec, s.st_mtim.tv_nsec};
+    o->ctim = {s.st_ctim.tv_sec, s.st_ctim.tv_nsec};
+#endif
+    o->birthtim = o->mtim;
+}
+static int fd_stat(int fd, struct stat* s) {
+    if (is_dir_fd(fd)) return stat(dir_fd_path(fd).c_str(), s);
+    return fstat(fd, s);
 }
 static int32_t sceKernelStat(const char* p, Ps4Stat* o) {
     if (file_log()) log("stat %s", p);
@@ -485,14 +558,14 @@ static int32_t sceKernelStat(const char* p, Ps4Stat* o) {
 HLE("sceKernelStat", sceKernelStat)
 static int32_t sceKernelFstat(int fd, Ps4Stat* o) {
     struct stat s;
-    if (fstat(fd, &s) != 0) return sce_err(to_ps4_errno(errno));
+    if (fd_stat(fd, &s) != 0) return sce_err(to_ps4_errno(errno));
     fill_stat(s, o);
     return SCE_OK;
 }
 HLE("sceKernelFstat", sceKernelFstat)
 static int ps4_fstat(int fd, Ps4Stat* o) {
     struct stat s;
-    if (fstat(fd, &s) != 0) return -1;
+    if (fd_stat(fd, &s) != 0) return -1;
     fill_stat(s, o);
     return 0;
 }
@@ -526,12 +599,12 @@ HLE("sceKernelUtimes", sceKernelUtimes)
 
 // FreeBSD struct dirent: u32 fileno, u16 reclen, u8 type, u8 namlen, char name[256]
 static int32_t sceKernelGetdirentries(int fd, char* buf, int nbytes, int64_t* basep) {
-    static std::mutex mu;
-    static std::map<int, DIR*> dirs;
-    std::lock_guard lk(mu);
-    DIR*& d = dirs[fd];
+    std::lock_guard lk(g_dir_mutex);
+    auto it = g_dir_fds.find(fd);
+    if (it == g_dir_fds.end()) return sce_err(20);  // ENOTDIR
+    DIR*& d = it->second.d;
     if (!d) {
-        d = fdopendir(dup(fd));
+        d = opendir(it->second.path.c_str());
         if (!d) return sce_err(to_ps4_errno(errno));
     }
     int used = 0;
@@ -544,9 +617,14 @@ static int32_t sceKernelGetdirentries(int fd, char* buf, int nbytes, int64_t* ba
         if (used + reclen > nbytes) { seekdir(d, pos); break; }
         char* o = buf + used;
         uint32_t ino = uint32_t(e->d_ino);
+#if D1_WINDOWS
+        const char type = os::is_dir(it->second.path + "/" + e->d_name) ? 4 : 8;  // DT_DIR / DT_REG
+#else
+        const char type = char(e->d_type);
+#endif
         std::memcpy(o, &ino, 4);
         std::memcpy(o + 4, &reclen, 2);
-        o[6] = char(e->d_type);
+        o[6] = type;
         o[7] = char(nl);
         std::memcpy(o + 8, e->d_name, nl + 1);
         used += reclen;
@@ -589,7 +667,18 @@ static int32_t sceKernelDebugRaiseException(uint32_t code, uint32_t arg) {
 HLE("sceKernelDebugRaiseException", sceKernelDebugRaiseException)
 HLE("sceKernelDebugRaiseExceptionOnReleaseMode", sceKernelDebugRaiseException)
 
-static int ps4_getrusage(int who, rusage* r) { return getrusage(who, r); }
+// FreeBSD struct rusage: two timevals and 14 longs (144 bytes).
+static int ps4_getrusage(int who, uint8_t* r) {
+    std::memset(r, 0, 144);
+#if !D1_WINDOWS
+    rusage u;
+    if (getrusage(who, &u) != 0) return -1;
+    GuestTimeval t[2] = {{u.ru_utime.tv_sec, u.ru_utime.tv_usec}, {u.ru_stime.tv_sec, u.ru_stime.tv_usec}};
+    std::memcpy(r, t, sizeof t);
+    std::memcpy(r + 32, &u.ru_maxrss, 14 * 8);
+#endif
+    return 0;
+}
 HLE("getrusage", ps4_getrusage)
 
 // sceKernelRtldSetApplicationHeapAPI: libc hands its allocator table to libkernel.

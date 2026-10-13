@@ -1,20 +1,29 @@
-// d1-native: run Destiny 1's PS4 code natively on an x86-64 Linux host.
+// d1-native: run Destiny 1's PS4 code natively on an x86-64 Windows or Linux host.
 //
-//   d1-native --eboot eboot.bin --sce-module sce_module/ --app0 <game dir> [--data <dir>]
+// Everything lives in the executable's folder:
+//   d1-native(.exe), d1-backend(.exe)   the game runtime and the replacement backend
+//   d1-native.cfg                       settings (written with defaults on first run)
+//   d1-native.log, backend.log          logs of the last run
+//   data/                               everything the game writes (saves, caches, ...)
+//   game/                               the installed game, unless game_dir points elsewhere
+// Options (all optional): --game <dir> --data <dir> --config <file> --eboot <file> --sce-module <dir>
 //
 // Loads eboot.bin and the game-shipped modules, links their imports (game modules,
 // host implementations, or logging stubs), starts the modules, and jumps to the
 // game's entry point on a thread with a PS4 thread control block installed.
 #include <pthread.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
+#include <cctype>
+#include <chrono>
 #include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <string>
 #include <thread>
+
+#include "os.h"
 
 #include "hle.h"
 #include "discord.h"
@@ -48,7 +57,7 @@ struct EntryParams {
 };
 EntryParams g_params{};
 
-extern "C" void d1_program_exit() {
+extern "C" D1_SYSV void d1_program_exit() {
     log("guest exit function called");
     print_import_summary();
     _exit(0);
@@ -96,39 +105,85 @@ void* main_thread(void*) {
 
 }  // namespace
 
+static std::string join(const std::string& dir, const std::string& p) {
+    const bool absolute = !p.empty() && (p[0] == '/' || p[0] == '\\' || (p.size() > 1 && p[1] == ':'));
+    return absolute ? p : dir + "/" + p;
+}
+static void set_env(const char* k, const std::string& v) {
+#if D1_WINDOWS
+    _putenv_s(k, v.c_str());
+#else
+    setenv(k, v.c_str(), 1);
+#endif
+}
+static bool file_exists(const std::string& p) { return access(p.c_str(), F_OK) == 0; }
+
+// Lower-cased, '/'-separated full path, for the "data folder inside the game folder" check.
+static std::string canonical(std::string p) {
+#if D1_WINDOWS
+    char b[4096];
+    if (_fullpath(b, p.c_str(), sizeof b)) p = b;
+    for (auto& c : p) c = c == '\\' ? '/' : char(std::tolower(static_cast<unsigned char>(c)));
+#else
+    char b[PATH_MAX];
+    if (realpath(p.c_str(), b)) p = b;
+#endif
+    return p + "/";
+}
+
 int main(int argc, char** argv) {
-    std::string eboot, sce_module, app0, data = "./d1-data", config;
+    os::init();
+    const std::string folder = os::exe_dir();
+    std::string eboot, sce_module, app0, data = folder + "/data", config = folder + "/d1-native.cfg";
     for (int i = 1; i + 1 < argc; i += 2) {
         std::string k = argv[i], v = argv[i + 1];
         if (k == "--eboot") eboot = v;
         else if (k == "--sce-module") sce_module = v;
-        else if (k == "--app0") app0 = v;
+        else if (k == "--game" || k == "--app0") app0 = v;
         else if (k == "--data") data = v;
         else if (k == "--config") config = v;
     }
-    // A game directory alone is enough: eboot.bin and sce_module/ are taken from it.
-    if (!app0.empty()) {
-        if (eboot.empty()) eboot = app0 + "/eboot.bin";
-        if (sce_module.empty() && access((app0 + "/sce_module").c_str(), F_OK) == 0) sce_module = app0 + "/sce_module";
-    }
-    if (eboot.empty()) {
-        std::fprintf(stderr, "usage: %s --app0 <game dir> [--data dir] [--config file] [--eboot file] [--sce-module dir]\n", argv[0]);
+    log_to_file(folder + "/d1-native.log");
+    load_settings(config);
+    const Settings& st = settings();
+    if (app0.empty()) app0 = join(folder, st.game_dir);
+    if (eboot.empty()) eboot = app0 + "/eboot.bin";
+    if (sce_module.empty() && file_exists(app0 + "/sce_module")) sce_module = app0 + "/sce_module";
+    if (!file_exists(eboot)) {
+        log("game not found: %s is missing.\n"
+            "Put the installed game (CUSA00219 01.33: eboot.bin, sce_module, packages) in %s,\n"
+            "or set game_dir in %s.", eboot.c_str(), app0.c_str(), settings_path().c_str());
         return 2;
     }
     // The game directory is never written to; the data folder must live outside it.
-    if (!app0.empty()) {
-        char a[PATH_MAX], d[PATH_MAX];
-        mkdir(data.c_str(), 0755);
-        if (realpath(app0.c_str(), a) && realpath(data.c_str(), d) &&
-            (std::string(d) + "/").rfind(std::string(a) + "/", 0) == 0) {
-            std::fprintf(stderr, "the data folder (%s) must be outside the game directory (%s)\n", d, a);
-            return 2;
-        }
+    os::make_dirs(data);
+    if (canonical(data).rfind(canonical(app0), 0) == 0) {
+        log("the data folder (%s) must be outside the game folder (%s)", data.c_str(), app0.c_str());
+        return 2;
     }
     rt().app0 = app0;
     rt().data_root = data;
-    mkdir(data.c_str(), 0755);
-    load_settings(data, config);
+
+    // Backend: start ours from this folder, use a remote one, or none.
+    if (st.backend == "local") {
+#if D1_WINDOWS
+        const std::string backend_exe = folder + "/d1-backend.exe";
+#else
+        const std::string backend_exe = folder + "/d1-backend";
+#endif
+        if (file_exists(backend_exe) &&
+            os::spawn_child(backend_exe, "--packages-dir \"" + app0 + "/packages\"", folder + "/backend.log")) {
+            log("backend: started %s", backend_exe.c_str());
+            set_env("D1_BACKEND", "127.0.0.1");
+            os::sleep_us(300000);  // let it open its ports
+        } else {
+            log("backend: %s not found or not started; playing offline", backend_exe.c_str());
+        }
+    } else if (st.backend != "off" && !st.backend.empty()) {
+        set_env("D1_BACKEND", st.backend);
+    }
+    if (!getenv("D1_BYPASS") && getenv("D1_BACKEND") && !st.bypass.empty()) set_env("D1_BYPASS", st.bypass);
+
     try {
         rt().modules.push_back(load_module(eboot, kExeBase));
         uint64_t base = kModBase;
@@ -140,7 +195,7 @@ int main(int argc, char** argv) {
         link_all();
         install_game_hooks();
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "load failed: %s\n", e.what());
+        log("load failed: %s", e.what());
         return 1;
     }
     install_crash_handler();
@@ -154,7 +209,7 @@ int main(int argc, char** argv) {
     pthread_create(&t, &a, main_thread, nullptr);
     if (const char* w = getenv("D1_WATCHDOG")) {  // seconds: dump every guest thread, then exit
         std::thread([secs = unsigned(atoi(w))] {
-            sleep(secs);
+            std::this_thread::sleep_for(std::chrono::seconds(secs));
             log("watchdog: dumping guest threads");
             // D1_PEEK=off[,off...]: eboot offsets; "*off" dereferences a pointer first. Dumps 64 bytes.
             if (const char* pk = getenv("D1_PEEK")) {
@@ -167,7 +222,7 @@ int main(int argc, char** argv) {
                     uint64_t a = rt().modules[0].base + std::strtoull(item.c_str() + (deref ? 1 : 0), nullptr, 16);
                     if (deref) a = *reinterpret_cast<uint64_t*>(a);
                     const auto* q = reinterpret_cast<const uint32_t*>(a);
-                    log("peek %s @%#lx: %08x %08x %08x %08x %08x %08x %08x %08x  %08x %08x %08x %08x %08x %08x %08x %08x",
+                    log("peek %s @%#llx: %08x %08x %08x %08x %08x %08x %08x %08x  %08x %08x %08x %08x %08x %08x %08x %08x",
                         item.c_str(), a, q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15]);
                 }
             }
@@ -184,7 +239,7 @@ int main(int argc, char** argv) {
             const char* p = spec.c_str();
             char* end;
             unsigned secs = unsigned(std::strtoul(p, &end, 10));
-            sleep(secs);
+            std::this_thread::sleep_for(std::chrono::seconds(secs));
             std::string rest = *end == ':' ? end + 1 : "";
             for (size_t q = 0; q < rest.size();) {
                 size_t e = rest.find(';', q);
@@ -198,7 +253,7 @@ int main(int argc, char** argv) {
                 uint64_t a = rt().modules[0].base + off;
                 if (deref) a = *reinterpret_cast<uint64_t*>(a);
                 *reinterpret_cast<volatile uint32_t*>(a + delta) = val;
-                log("poke %s: %#lx <- %#x", it.c_str(), a + delta, val);
+                log("poke %s: %#llx <- %#x", it.c_str(), a + delta, val);
             }
         }).detach();
     }

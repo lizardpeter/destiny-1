@@ -1,10 +1,9 @@
 // Game-specific hooks into Destiny 1 (CUSA00219 01.33 eboot) code.
 //
 // A hook overwrites the first 14 bytes of a guest function with `jmp [rip+0]; dq host_fn`,
-// so calls go straight to a host function with the same System V signature. Addresses are
+// so calls go straight to a host function with the same System V signature (declared
+// D1_SYSV, which matters on Windows). Addresses are
 // eboot offsets documented in findings/LOG.md; they are only valid for the 01.33 build.
-#include <sys/mman.h>
-
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -32,10 +31,10 @@ static size_t g_near_used = 0;
 static uint8_t* near_alloc(size_t n) {
     if (!g_near) {
         const Module& exe = rt().modules[0];
-        void* want = reinterpret_cast<void*>(exe.base + exe.size + 0x100000);
-        g_near = static_cast<uint8_t*>(mmap(want, 1 << 20, PROT_READ | PROT_WRITE | PROT_EXEC,
-                                            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0));
-        if (g_near == MAP_FAILED) { g_near = nullptr; return nullptr; }
+        void* want = reinterpret_cast<void*>((exe.base + exe.size + 0x100000 + 0xFFFF) & ~uint64_t(0xFFFF));
+        g_near = static_cast<uint8_t*>(os::alloc(reinterpret_cast<uint64_t>(want), 1 << 20,
+                                                 os::kRead | os::kWrite | os::kExec, false));
+        if (g_near != want) { g_near = nullptr; return nullptr; }
     }
     uint8_t* p = g_near + g_near_used;
     g_near_used += (n + 15) & ~size_t(15);
@@ -79,9 +78,9 @@ static void* hook_function(uint64_t guest, const void* host) {
 // ---- bootflow prerequisite bypass (eboot+0x792ED0)
 // int check_prerequisite(state*, int prereq, ctx*, int* reason): 0 satisfied, 1 pending, 2 failed.
 // With D1_BYPASS=prereq a failed prerequisite is logged and reported as satisfied.
-using PrereqFn = uint32_t (*)(void*, uint32_t, void*, int32_t*);
+using PrereqFn = D1_SYSV uint32_t (*)(void*, uint32_t, void*, int32_t*);
 static PrereqFn g_prereq_orig = nullptr;
-static uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, int32_t* reason) {
+static D1_SYSV uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, int32_t* reason) {
     uint32_t r = g_prereq_orig(state, prereq, ctx, reason);
     if (r == 2) {
         static int logged[64];
@@ -96,8 +95,8 @@ static uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, int32_t* 
 // ---- DemonWare transport status (eboot+0x2EB340 "started", eboot+0x2EBD40 "failed")
 // Both wrap the status of the DemonWare network-start object at g_2F66F68 (status 2 = started).
 // D1_BYPASS=transport reports the transport as started so platform_signin can proceed.
-static bool transport_started() { return true; }
-static bool transport_failed() { return false; }
+static D1_SYSV bool transport_started() { return true; }
+static D1_SYSV bool transport_failed() { return false; }
 
 // ---- job steal outside the job system (eboot+0xFAAC0)
 // Threads that wait for the GPU (Graphics Heartbeat's frame-counter wait at 0x7DD1CA) spin
@@ -106,10 +105,11 @@ static bool transport_failed() { return false; }
 // have (set by 0xFAD30). On a console the GPU is usually done before the wait starts; with
 // a slower GPU the heartbeat crashes there (shadPS4 users see the same 0xFAAF4 fault).
 // Without a context, report "no job run" so the caller sleeps and polls again.
-using StealFn = bool (*)();
+using StealFn = D1_SYSV bool (*)();
 static StealFn g_steal_orig = nullptr;
-static void* (*g_job_context)() = nullptr;
-static bool steal_guard() {
+using JobContextFn = D1_SYSV void* (*)();
+static JobContextFn g_job_context = nullptr;
+static D1_SYSV bool steal_guard() {
     if (!g_job_context()) return false;
     return g_steal_orig();
 }
@@ -119,7 +119,7 @@ static bool steal_guard() {
 // 4 AHWC (activity host; not built into the retail client). Retail picks EWC when the flag
 // read by 0x239B70 is set, else OWC. D1_WORLD_CONTROLLER=editor forces that flag
 // (research: does the editor controller load a world without online services?).
-static bool flag_true() { return true; }
+static D1_SYSV bool flag_true() { return true; }
 
 // ---- frame rate (eboot+0x593F00 builds "time control config globals", pointer at 0x26BCD08)
 // Config fields (µs): +0x08 frame period (33366 = 29.97 fps), +0x28 vblank period,
@@ -127,9 +127,9 @@ static bool flag_true() { return true; }
 // frame-time getters (0x593890 seconds, 0x5938B0 fps) derive from +0x08, so changing the
 // period changes pacing and the per-frame time step together. Title-screen timing is
 // wall-clock based at 30 and 60 fps (findings/LOG.md). The `fps` setting (or D1_FPS) sets the target.
-using TimeInitFn = void (*)(void*);
+using TimeInitFn = D1_SYSV void (*)(void*);
 static TimeInitFn g_time_init_orig = nullptr;
-static void time_init_hook(void* cfg) {
+static D1_SYSV void time_init_hook(void* cfg) {
     g_time_init_orig(cfg);
     static const int fps = settings().fps;
     auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08);
@@ -141,10 +141,10 @@ static void time_init_hook(void* cfg) {
 
 // ---- current world-controller state (eboot+0x783AC0, the state manager's transition step)
 // The state manager keeps its current state index at +0x1B0; names at 0x1945340 (37).
-using StateStepFn = void (*)(void*);
+using StateStepFn = D1_SYSV void (*)(void*);
 static StateStepFn g_state_step_orig = nullptr;
 static std::atomic<int> g_state{-1};
-static void state_step_hook(void* sm) {
+static D1_SYSV void state_step_hook(void* sm) {
     g_state_step_orig(sm);
     g_state.store(*reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0), std::memory_order_relaxed);
 }
@@ -160,8 +160,8 @@ const char* game_state() {
 // message is dropped. With D1_GAME_LOG set, the gate always passes and the emit prints the
 // already-formatted text. D1_GAME_LOG=<substring> keeps only matching lines.
 static const char* g_log_filter = nullptr;
-static bool game_log_enabled(int channel, int level) { return true; }
-static void game_log_emit(uint32_t, const char* text) {
+static D1_SYSV bool game_log_enabled(int channel, int level) { return true; }
+static D1_SYSV void game_log_emit(uint32_t, const char* text) {
     if (!text) return;
     if (g_log_filter && *g_log_filter && !std::strstr(text, g_log_filter)) return;
     size_t n = strnlen(text, 320);
@@ -171,7 +171,7 @@ static void game_log_emit(uint32_t, const char* text) {
 
 void install_game_hooks() {
     const Module& exe = rt().modules[0];
-    g_job_context = reinterpret_cast<void* (*)()>(exe.base + 0xFC520);
+    g_job_context = reinterpret_cast<JobContextFn>(exe.base + 0xFC520);
     g_steal_orig = reinterpret_cast<StealFn>(hook_function(exe.base + 0xFAAC0, reinterpret_cast<const void*>(&steal_guard)));
     if (!g_steal_orig) log("hooks: job-steal guard FAILED");
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "prereq")) {
