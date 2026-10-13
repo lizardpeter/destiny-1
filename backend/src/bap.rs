@@ -32,7 +32,7 @@
 //! header + payload; the envelope length includes the tag. Types 0x19 and 0x1E always go
 //! in the clear.
 
-use crate::{invest, pb, signon};
+use crate::{ah, invest, pb, signon};
 use aes_gcm::{aead::AeadInPlace, Aes128Gcm, KeyInit};
 use cbc::cipher::{BlockEncryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
@@ -60,6 +60,10 @@ pub const MSG_CLIENT_CONFIG_REQUEST: u16 = 18;
 pub const MSG_QUEUEZ_UPDATE_NOTIFICATION: u16 = 123;
 pub const MSG_QUEUEZ_REGISTER_REQUEST: u16 = 121;
 pub const MSG_REGISTER_RELAY_CLIENT_REQUEST: u16 = 302;
+/// bap_to_client_notification: activity host messages as the client receives them (push
+/// policy 0x565440). Notification 100 (activity_host_to_client) is the AH-side form, which
+/// the client would only relay onward to the service named in its header.
+pub const MSG_BAP_TO_CLIENT: u16 = 9;
 pub const STATUS_OK: u16 = 200;
 
 /// Message type ids (vtable slot 0 of each c_investment_bap_message_* class; slot 1 is the
@@ -97,12 +101,30 @@ fn name(kind: u16) -> &'static str {
     }
 }
 
+/// TCP port of the activity host (a second BAP endpoint).
+pub const AH_PORT: u16 = 7500;
+/// Identifier of our (single) activity host instance.
+pub const AH_HOST_ID: u64 = 0x4D31_4148_0000_0001;
+
 pub async fn serve(listener: TcpListener) {
+    serve_role(listener, Role::Primary).await
+}
+pub async fn serve_ah(listener: TcpListener) {
+    serve_role(listener, Role::ActivityHost).await
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Role {
+    Primary,
+    ActivityHost,
+}
+
+async fn serve_role(listener: TcpListener, role: Role) {
     loop {
         let Ok((sock, peer)) = listener.accept().await else { continue };
         tokio::spawn(async move {
-            info!("bap: connection from {peer}");
-            match session(sock).await {
+            info!("bap: {role:?} connection from {peer}");
+            match session(sock, role).await {
                 Ok(()) => info!("bap: {peer} closed"),
                 Err(e) => info!("bap: {peer} ended: {e}"),
             }
@@ -240,7 +262,7 @@ async fn send(sock: &mut TcpStream, chan: &mut Option<Channel>, msg: &[u8]) -> s
     sock.write_all(&out).await
 }
 
-async fn session(mut sock: TcpStream) -> std::io::Result<()> {
+async fn session(mut sock: TcpStream, role: Role) -> std::io::Result<()> {
     let mut chan: Option<Channel> = None;
     let mut notify_seq: u32 = 0;
     loop {
@@ -310,10 +332,41 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                 // block the queue; the client then times out creating the activity client.
                 warn!("bap: activity host proxy requested (seq {sequence}): no activity host yet");
                 let mut body = Vec::with_capacity(16);
-                body.extend_from_slice(&1u64.to_be_bytes());
-                body.extend_from_slice(&u32::from_le_bytes([127, 0, 0, 1]).to_be_bytes());
-                body.extend_from_slice(&7500u32.to_be_bytes());
+                body.extend_from_slice(payload.get(..8).unwrap_or(&[0; 8]));  // the requested id
+                body.extend_from_slice(&[127, 0, 0, 1]);  // IPv4, network order
+                body.extend_from_slice(&u32::from(AH_PORT).to_be_bytes());
                 send(&mut sock, &mut chan, &response(17, sequence, STATUS_OK, &body)).await?;
+            }
+            6 if role == Role::ActivityHost => {
+                // activity host manager request (0x55BD10): u8 kind (3 = host startup
+                // 0xE0C bytes, 1 = 0x100E bytes), padded to 0x100F. Response 7 (0x55C0A0):
+                // exactly 0x89 bytes, u8 kind (must be 2), u64 BE id, 0x80 bytes.
+                let k = payload.first().copied().unwrap_or(0);
+                info!("bap[AH]: activity host manager request kind {k} (seq {sequence}, {} bytes): {}", payload.len(),
+                      pb::hex(&payload[..payload.len().min(96)]));
+                let mut body = vec![0u8; 0x89];
+                body[0] = 2;
+                body[1..9].copy_from_slice(&AH_HOST_ID.to_be_bytes());
+                send(&mut sock, &mut chan, &response(7, sequence, STATUS_OK, &body)).await?;
+            }
+            8 if role == Role::ActivityHost => {
+                let Some(m) = ah::parse_client(payload) else {
+                    warn!("bap[AH]: malformed activity message {}", pb::hex(&payload[..payload.len().min(64)]));
+                    continue;
+                };
+                match m.ty {
+                    ah::CLIENT_JOIN_REQUEST => {
+                        let identity = ah::join_identity(m.data);
+                        info!("bap[AH]: join request {}", invest::show(&identity));
+                        let data = ah::join_result(&identity);
+                        notify_seq += 1;
+                        let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ah::HOST_JOIN_RESULT, &data));
+                        send(&mut sock, &mut chan, &msg).await?;
+                        info!("bap[AH]: sent join result ({} bytes)", data.len());
+                    }
+                    t => warn!("bap[AH]: client activity message type {t} ({} bytes, unhandled): {}", m.data.len(),
+                               pb::hex(&m.data[..m.data.len().min(256)])),
+                }
             }
             42 => {
                 // matchmaking configuration (0x59A780): request {1 kind, 2, 3 nonce, 11
@@ -422,7 +475,7 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                     info!("bap: pushed family {} baseline ({} bytes)", invest::FAMILY_PROFILE, n.len());
                 }
             }
-            _ => warn!("bap: {enc}message {} ({kind}) seq {sequence} ({} bytes, unhandled): {}\n{}", name(kind), payload.len(),
+            _ => warn!("bap[{role:?}]: {enc}message {} ({kind}) seq {sequence} ({} bytes, unhandled): {}\n{}", name(kind), payload.len(),
                        pb::hex(&payload[..payload.len().min(256)]), pb::dump(payload, 2)),
         }
     }

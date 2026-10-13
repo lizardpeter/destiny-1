@@ -6,6 +6,7 @@
 //! It never talks to the real services.
 
 mod account;
+mod ah;
 mod bap;
 mod content;
 mod invest;
@@ -91,6 +92,11 @@ async fn main() {
     tokio::spawn(bap::serve(bap));
     let bap_udp = tokio::net::UdpSocket::bind(format!("{}:{}", args.bind, args.bap_port)).await.expect("bind bap udp");
     tokio::spawn(bap::serve_udp(bap_udp));
+    // Activity host: the client reaches it with a second BAP connection ("FAH"), at the
+    // address the get-activity-host-proxy reply names.
+    let ah = tokio::net::TcpListener::bind(format!("{}:{}", args.bind, bap::AH_PORT)).await.expect("bind activity host");
+    info!("d1-backend activity host on {}:{}", args.bind, bap::AH_PORT);
+    tokio::spawn(bap::serve_ah(ah));
 
     let app = Router::new()
         .route("/2.0/oauth/token", any(psn::oauth_token))
