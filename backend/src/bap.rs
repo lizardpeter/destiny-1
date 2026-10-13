@@ -53,6 +53,8 @@ pub const MSG_UNSUBSCRIBE_REQUEST: u16 = 14;
 pub const MSG_WORLD_SERVER_REQUEST: u16 = 10;
 pub const MSG_WORLD_SERVER_RESPONSE: u16 = 11;
 pub const MSG_ECHO_REQUEST: u16 = 250;
+pub const MSG_UPDATE_PURCHASED_OFFERS_REQUEST: u16 = 21;
+pub const MSG_USER_MESSAGE_REQUEST: u16 = 32;
 pub const MSG_QUEUEZ_UPDATE_NOTIFICATION: u16 = 123;
 pub const MSG_QUEUEZ_REGISTER_REQUEST: u16 = 121;
 pub const MSG_REGISTER_RELAY_CLIENT_REQUEST: u16 = 302;
@@ -74,6 +76,7 @@ fn name(kind: u16) -> &'static str {
         23 => "account_id_translation_request",
         25 => "secure_hello_request",
         29 => "server_challenge_response",
+        32 => "user_message_request",
         30 => "channel_startup_request",
         33 => "user_message_response",
         34 => "update_matchmaking_skill_request",
@@ -285,12 +288,24 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                 let reply = response(kind + 1, sequence, STATUS_OK, &[]);
                 send(&mut sock, &mut chan, &reply).await?;
             }
+            MSG_UPDATE_PURCHASED_OFFERS_REQUEST => {
+                // protobuf (request 0x55CBF0); response schema 0x15BA140: 1 repeated int
+                info!("bap: update_purchased_offers_request (seq {sequence})\n{}", pb::dump(payload, 2));
+                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &[])).await?;
+            }
+            MSG_USER_MESSAGE_REQUEST => {
+                // response schema 0x15BA560: 1/2/3 optional strings, 4 required int
+                let body = pb::Msg::new().int(4, 0).into_bytes();
+                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &body)).await?;
+            }
             MSG_WORLD_SERVER_REQUEST => {
                 let req = invest::parse_request(payload);
                 info!("bap: world server request {:#x} (seq {sequence}): {}{}", req.id,
                       req.body.as_ref().map(invest::show).unwrap_or_else(|| format!("(unknown message) {}", pb::hex(payload))),
                       req.extra.as_ref().map(|e| format!(" extra {}", pb::hex(e))).unwrap_or_default());
-                let body = invest::respond(&req);
+                let Some(body) = invest::respond(&req) else {
+                    continue;
+                };
                 send(&mut sock, &mut chan, &response(MSG_WORLD_SERVER_RESPONSE, sequence, STATUS_OK, &body)).await?;
                 if req.id == 0xce {
                     // After the account summary, push the account profile family (4), which

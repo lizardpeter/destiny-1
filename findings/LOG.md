@@ -769,3 +769,39 @@ response; nothing has connected to it yet).
   server's first message.
 - Research tools: D1_COUNT=<offsets> counts calls to game functions; D1_FILE_LOG=3 logs
   every read; d1-native waits for the backend's port before booting.
+
+## 2026-10-13: BAP authentication, investment sign-in, profile setup
+
+- **Secure hello (0x19 -> 0x1A)**: payload `u32 BE L | IV[16] | AES-128-CBC/PKCS#7 | HMAC-SHA256[32]`,
+  MAC over `[0, L-28)` (length prefix included). AES key = sign-on success field 2, HMAC key =
+  field 3 (0xB34F70). Plaintext = 12-byte nonce + 16-byte channel key (0x6CF80).
+- **Channel**: AES-128-GCM (libtomcrypt; 0x6CD20 encrypt, 0x6CE20 decrypt), no AAD, 16-byte tag,
+  nonce per direction incremented little-endian after each message. The client flips byte 11 of
+  its *send* nonce. Kind-1 envelope = tag + ciphertext.
+- **Message ids** come from vtable slot 0 of each `c_investment_bap_message_*` class (slot 1 =
+  header class). 121 queuez_register, 302 register_relay_client, 12/14 (un)subscribe and 250
+  echo all take empty responses (`id + 1`).
+- **Response matching (0xB30960)**: a response is matched only against the *oldest* outstanding
+  request in each send queue. One unanswered message (e.g. 32 user_message or 21
+  purchased_offers) blocks every later reply in that queue. Answer everything, in order.
+- **World server messages (10/11)**: MSB-first bitstream `u16 id | struct | has_extra (u16 len +
+  bytes)`. The structs are serialized from the engine's runtime type descriptors (reader
+  0x101EB30, kind handlers 0x19131B0). backend/data/investment_schema.json is a dump of the
+  message table, the family slot table and every reachable type, taken from the running
+  client with gdb.
+- **Sign-in**:
+  - 0x1F7 response: {status, account id (must be non-zero, kept in the account slot), i32,
+    i32, family-5 root object whose soid must be 0x7FFFFFFFFFFFFFFF}.
+  - 0xCE {family, root} subscribes; its response's extra blob is a queuez update (same format
+    as notification 123) carrying the family baseline. Family 3 = account summary
+    (0x80801951 + up to 10 character summaries 0x80801954).
+  - Family 4 (profile, 0x80801803) is pushed as notification 123 once the client has moved it
+    to replication state 2. investment_signin waits for it (account slot ready flag, 0x586970).
+- **Queuez update**: `u32 BE count | per family: u32 type, u64 root, i32 version, u8 flags
+  (bit 0 baseline), u32 n | per object: u32 type hash, u64 soid, u32 len, bitstream`. The first
+  member of each object must be its soid.
+- **profile_setup**: brightness / screen bounds / third screen. Each finishes with a
+  "completed" event (0x7A02E0). `D1_BYPASS=profile` completes them for headless tests.
+- **Renderer**: shadPS4 lacked V_CMP_CLASS with a quiet-NaN-only mask. Fixed by
+  native/renderer/patches, which are applied to copies in the build tree.
+- **Status**: reaches bootflow:prepare_for_orbit with a stable BAP connection.

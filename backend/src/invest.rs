@@ -457,10 +457,13 @@ pub const FAMILY5_ROOT_SOID: i64 = i64::MAX;
 /// account slot (0x586A10) and needs it non-zero.
 pub const ACCOUNT_ID: i64 = 0x4D31_0000_0000_0001;
 
-/// Build the response payload for a world server request.
-pub fn respond(req: &Request) -> Vec<u8> {
+/// Build the response payload for a world server request (None: no response). Every
+/// request needs an answer, in order: the client matches a response only against the oldest
+/// outstanding request of each send queue (0xB30960), so one unanswered message blocks the
+/// rest of its queue.
+pub fn respond(req: &Request) -> Option<Vec<u8>> {
     use Value::*;
-    match req.id {
+    Some(match req.id {
         // investment sign-in: {status {i8, i32}, i64, i32, i32, family-5 root object}
         0x1f7 => response(0x1f7, &Struct(vec![None, Some(Int(ACCOUNT_ID)), Some(Int(0)), Some(Int(0)),
                                                Some(Struct(vec![Some(Int(FAMILY5_ROOT_SOID))]))])),
@@ -477,7 +480,7 @@ pub fn respond(req: &Request) -> Vec<u8> {
             response_with_extra(0xce, &Struct(vec![]), update.as_deref())
         }
         id => empty_response(id),
-    }
+    })
 }
 
 #[cfg(test)]

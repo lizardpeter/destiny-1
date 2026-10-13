@@ -208,6 +208,20 @@ static D1_SYSV void invest_update_hook(void* h) {
     if (step[0] != a || step[1] != b) log("bootflow: investment_signin step %d.%d -> %d.%d", a, b, step[0], step[1]);
 }
 
+// profile_setup (eboot+0x7A01C0): step at +0x38 (0 brightness, 2 screen bounds, 4 ..., 7 done)
+static HandlerUpdateFn g_profile_update_orig = nullptr;
+// Screens: 0 brightness (UI 0x16), 2 screen bounds (0x15), 4 (0x17); each finishes with a
+// "completed" event (0x7A02E0: 0x23/0x22/0x24) moving 1->2, 3->4, 5->6. D1_BYPASS=profile
+// completes them at once (headless testing).
+static bool g_profile_bypass = false;
+static D1_SYSV void profile_update_hook(void* h) {
+    auto* step = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + 0x38);
+    if (g_profile_bypass && (*step == 1 || *step == 3 || *step == 5)) ++*step;
+    const int32_t a = *step;
+    g_profile_update_orig(h);
+    if (*step != a) log("bootflow: profile_setup step %d -> %d", a, *step);
+}
+
 // ---- call counters (research): D1_COUNT=off,off,... (eboot offsets, hex). Each function
 // start jumps to a stub that does `lock inc qword [counter]` and continues in the original.
 // Counts are printed by the watchdog (print_call_counts).
@@ -291,7 +305,11 @@ void install_game_hooks() {
             hook_function(exe.base + 0x799A70, reinterpret_cast<const void*>(&bap_update_hook)));
         g_invest_update_orig = reinterpret_cast<HandlerUpdateFn>(
             hook_function(exe.base + 0x79DA10, reinterpret_cast<const void*>(&invest_update_hook)));
-        log("hooks: bootflow trace %s", g_bap_update_orig && g_invest_update_orig ? "on" : "FAILED");
+        if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "profile")) g_profile_bypass = true;
+        g_profile_update_orig = reinterpret_cast<HandlerUpdateFn>(
+            hook_function(exe.base + 0x7A01C0, reinterpret_cast<const void*>(&profile_update_hook)));
+        log("hooks: bootflow trace %s",
+            g_bap_update_orig && g_invest_update_orig && g_profile_update_orig ? "on" : "FAILED");
     }
     if (const char* c = getenv("D1_COUNT")) install_call_counters(c);
     if (const char* a = getenv("D1_ALLOC_LOG")) {
