@@ -1,5 +1,6 @@
 #include "settings.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,6 +22,9 @@ static const char* kDefaultFile = R"(# d1-native settings. Environment variables
 # The installed game (CUSA00219 01.33: eboot.bin, sce_module, packages). Only ever read.
 # A path relative to this folder, or a full path such as D:/Games/CUSA00219.
 game_dir = game                # [D1_GAME_DIR]
+
+# Your name in the game (PSN online id): 3-16 letters, digits, - or _.
+name = Guardian                # [D1_NAME]
 
 # Backend: local (start d1-backend from this folder), off, or a server's host name / IP.
 backend = local                # [D1_BACKEND]
@@ -46,6 +50,9 @@ fps = 0                        # [D1_FPS]
 discord = true                 # [D1_DISCORD=0]
 discord_app_id = 1559335126528426075   # [D1_DISCORD_APP_ID]
 
+# Copy the game's own log messages into d1-native.log (useful when reporting problems).
+game_log = true                # [D1_GAME_LOG]
+
 # Research hooks that get the boot past sign-in checks the backend cannot answer yet.
 bypass = prereq,transport      # [D1_BYPASS]
 )";
@@ -65,6 +72,8 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "fps") s.fps = std::atoi(v.c_str());
     else if (key == "discord") s.discord = truthy(v);
     else if (key == "discord_app_id") s.discord_app_id = v;
+    else if (key == "name") s.name = v;
+    else if (key == "game_log") s.game_log = truthy(v);
     else log("settings: unknown key '%s'", key.c_str());
 }
 
@@ -99,6 +108,16 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_OVERLAY")) s.overlay = truthy(v);
     if (const char* v = getenv("D1_DISCORD")) s.discord = truthy(v);
     if (const char* v = getenv("D1_DISCORD_APP_ID")) s.discord_app_id = v;
+    if (const char* v = getenv("D1_NAME")) s.name = v;
+    {
+        bool ok = s.name.size() >= 3 && s.name.size() <= 16;
+        for (char c : s.name) ok &= std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
+        if (!ok) {
+            log("settings: name '%s' is not a valid online id (3-16 of A-Z a-z 0-9 - _); using Guardian", s.name.c_str());
+            s.name = "Guardian";
+        }
+    }
+    log("settings: name %s", s.name.c_str());
     log("settings: %s (game %s, backend %s, window %dx%d%s, vsync %s, fps %s, discord %s)", g_path.c_str(), s.game_dir.c_str(), s.backend.c_str(), s.window_width,
         s.window_height, s.fullscreen ? " fullscreen" : "", s.vsync.c_str(),
         s.fps ? std::to_string(s.fps).c_str() : "game default",

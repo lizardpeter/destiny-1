@@ -300,6 +300,38 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                     None => warn!("bap: no data for family {family} root {root:#x}"),
                 }
             }
+            // matchmaking skill/core, friends update, party invite / check, clan: protobuf
+            // responses with only optional fields; an empty one is valid. (Any request left
+            // unanswered blocks every later response in its queue.)
+            16 => {
+                // get activity host proxy: request u64 BE (0x563CF0); response 16 bytes
+                // (0x563EF0): u64 BE id, u32 BE, u32 BE (the activity host's address).
+                // No activity host exists yet: point at port 7500 so the request does not
+                // block the queue; the client then times out creating the activity client.
+                warn!("bap: activity host proxy requested (seq {sequence}): no activity host yet");
+                let mut body = Vec::with_capacity(16);
+                body.extend_from_slice(&1u64.to_be_bytes());
+                body.extend_from_slice(&u32::from_le_bytes([127, 0, 0, 1]).to_be_bytes());
+                body.extend_from_slice(&7500u32.to_be_bytes());
+                send(&mut sock, &mut chan, &response(17, sequence, STATUS_OK, &body)).await?;
+            }
+            42 => {
+                // matchmaking configuration (0x59A780): request {1 kind, 2, 3 nonce, 11
+                // {activity hash, content hash}}. Response schema 0x19421B0: 1, 2 nonce,
+                // 3 matches, 4 configuration; the client needs field 4 present (0x59B0E0)
+                // and the nonce echoed.
+                let f = pb::parse(payload).unwrap_or_default();
+                let get = |n: u32| f.iter().find_map(|(k, v)| match (k, v) { (k, pb::Val::Varint(x)) if *k == n => Some(*x), _ => None });
+                let nonce = get(3).unwrap_or(0);
+                let body = pb::Msg::new().uint(1, get(1).unwrap_or(0)).uint(2, nonce).msg(4, pb::Msg::new()).into_bytes();
+                info!("bap: matchmaking configuration (seq {sequence}, nonce {nonce:#x})");
+                send(&mut sock, &mut chan, &response(43, sequence, STATUS_OK, &body)).await?;
+            }
+            34 | 36 | 38 | 40 | 44 => {
+                info!("bap: {} (seq {sequence}, {} bytes) -> ok\n{}", name(kind), payload.len(), pb::dump(payload, 2));
+                let resp_kind = if kind == 36 { 37 } else { kind + 1 };
+                send(&mut sock, &mut chan, &response(resp_kind, sequence, STATUS_OK, &[])).await?;
+            }
             MSG_QUEUEZ_REGISTER_REQUEST | MSG_UNSUBSCRIBE_REQUEST
             | MSG_REGISTER_RELAY_CLIENT_REQUEST | MSG_ECHO_REQUEST => {
                 // Responses with no payload (codec 0x1F70 on both sides).
@@ -308,9 +340,30 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                 send(&mut sock, &mut chan, &reply).await?;
             }
             MSG_UPDATE_PURCHASED_OFFERS_REQUEST => {
-                // protobuf (request 0x55CBF0); response schema 0x15BA140: 1 repeated int
-                info!("bap: update_purchased_offers_request (seq {sequence})\n{}", pb::dump(payload, 2));
-                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &[])).await?;
+                // protobuf request (0x55CBF0): 2 = packed offer keys the console found locally
+                // (0xE0000002 = paid base game), 3 = PSN token JSON. Response schema
+                // 0x15BA140: 1 = repeated offer keys owned. BAP is the ownership authority:
+                // an empty list leaves the game in trial mode (Earth only), so grant what
+                // the console reports.
+                let mut offers = Vec::new();
+                for (f, v) in pb::parse(payload).unwrap_or_default() {
+                    match (f, v) {
+                        (2, pb::Val::Bytes(b)) => {
+                            let mut r = &b[..];
+                            while let Some(x) = pb::read_varint(&mut r) {
+                                offers.push(x);
+                            }
+                        }
+                        (2, pb::Val::Varint(x)) => offers.push(x),
+                        _ => {}
+                    }
+                }
+                info!("bap: update_purchased_offers (seq {sequence}): granting {:x?}", offers);
+                let mut m = pb::Msg::new();
+                for o in &offers {
+                    m = m.uint(1, *o);
+                }
+                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &m.into_bytes())).await?;
             }
             MSG_ACCOUNT_ID_TRANSLATION_REQUEST => {
                 // bitstream (0x55B220): u16 count, u8 from type, u8 to type, `count` ids of the

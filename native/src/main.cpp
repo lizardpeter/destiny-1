@@ -209,6 +209,7 @@ int main(int argc, char** argv) {
         set_env("D1_BACKEND", st.backend);
     }
     if (!getenv("D1_BYPASS") && getenv("D1_BACKEND") && !st.bypass.empty()) set_env("D1_BYPASS", st.bypass);
+    if (!getenv("D1_GAME_LOG") && st.game_log) set_env("D1_GAME_LOG", "1");
 
     try {
         rt().modules.push_back(load_module(eboot, kExeBase));

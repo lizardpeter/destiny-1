@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "hle.h"
+#include "settings.h"
 #include "runtime.h"
 
 namespace d1 {
@@ -188,7 +189,7 @@ static int32_t sceUserServiceGetLoginUserIdList(int32_t* l) {
 }
 HLE("sceUserServiceGetLoginUserIdList", sceUserServiceGetLoginUserIdList)
 static int32_t sceUserServiceGetUserName(int32_t, char* buf, size_t n) {
-    std::snprintf(buf, n, "%s", "Guardian");
+    std::snprintf(buf, n, "%s", settings().name.c_str());
     return SCE_OK;
 }
 HLE("sceUserServiceGetUserName", sceUserServiceGetUserName)
@@ -276,8 +277,11 @@ static int32_t sceAppContentGetAddcontInfoList(uint32_t, void* list, uint32_t nu
     return SCE_OK;
 }
 HLE("sceAppContentGetAddcontInfoList", sceAppContentGetAddcontInfoList)
-static int32_t sceAppContentAppParamGetInt(uint32_t, int32_t* value) {
-    if (value) *value = 0;
+// Param 0 is the SKU flag: 1 = trial, 3 = full game. The game reads anything but 3 as the
+// trial (0x296990): "TRIAL MODE" banner, Earth only, no "full sku" offer 0xE0000001.
+// Params 1-4 are the title's USER_DEFINED_PARAM values (0 for this title).
+static int32_t sceAppContentAppParamGetInt(uint32_t id, int32_t* value) {
+    if (value) *value = id == 0 ? 3 : 0;
     return SCE_OK;
 }
 HLE("sceAppContentAppParamGetInt", sceAppContentAppParamGetInt)

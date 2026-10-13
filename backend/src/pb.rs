@@ -63,6 +63,20 @@ pub enum Val {
     Fixed32(u32),
 }
 
+/// Read one varint from the front of `b`.
+pub fn read_varint(b: &mut &[u8]) -> Option<u64> {
+    let mut v = 0u64;
+    for i in 0..10 {
+        let (&c, rest) = b.split_first()?;
+        *b = rest;
+        v |= u64::from(c & 0x7f) << (7 * i);
+        if c & 0x80 == 0 {
+            return Some(v);
+        }
+    }
+    None
+}
+
 pub fn parse(mut b: &[u8]) -> Option<Vec<(u32, Val)>> {
     fn rv(b: &mut &[u8]) -> Option<u64> {
         let mut v = 0u64;

@@ -24,6 +24,7 @@
 #include "os.h"
 
 #include "hle.h"
+#include "settings.h"
 
 namespace d1 {
 
@@ -678,13 +679,12 @@ HLE("sceNetResolverStartNtoa", sceNetResolverStartNtoa)
 // ------------------------------------------------------------------ PSN: local signed-in user
 struct NpOnlineId { char data[16]; int8_t term; int8_t dummy[3]; };
 struct NpId { NpOnlineId handle; uint8_t opt[8]; uint8_t reserved[8]; };
-static const char* kOnlineId = "D1NativeGuardian";
 
 static int32_t sceNpGetState(int32_t, int32_t* state) { *state = net_link() ? 2 : 1; return SCE_OK; }
 HLE("sceNpGetState", sceNpGetState)
 static int32_t sceNpGetOnlineId(int32_t, NpOnlineId* id) {
     std::memset(id, 0, sizeof *id);
-    std::strncpy(id->data, kOnlineId, 16);
+    std::strncpy(id->data, settings().name.c_str(), 16);
     return SCE_OK;
 }
 HLE("sceNpGetOnlineId", sceNpGetOnlineId)

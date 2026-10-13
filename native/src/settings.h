@@ -9,6 +9,9 @@ struct Settings {
     // game files: the installed 01.33 game (eboot.bin, sce_module/, packages/), only ever
     // read. Relative paths are relative to the executable's folder.
     std::string game_dir = "game";
+    // the player's name: the PSN online id and console user name the game sees (3-16 of
+    // A-Z a-z 0-9 - _)
+    std::string name = "Guardian";
     // backend: "local" starts d1-backend from the executable's folder; "off" plays without
     // one; anything else is the host name or address of a backend server.
     std::string backend = "local";
@@ -27,6 +30,8 @@ struct Settings {
     // Discord Rich Presence
     bool discord = true;
     std::string discord_app_id = "1559335126528426075";  // the "Destiny" Discord application
+    // copy the game's own log messages into d1-native.log
+    bool game_log = true;
 };
 
 void load_settings(const std::string& path);

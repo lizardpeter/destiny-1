@@ -461,6 +461,16 @@ fn character_list() -> Value {
     Struct(vec![Some(Int(ids.len() as i64)), Some(Array(ids.iter().map(|&i| Some(Int(i))).collect()))])
 }
 
+/// Unlock flags, 2 bits each in memory: 0 unknown, 1 false, 2 true. The game's unlock
+/// expressions (0x28E590) fail on unknown flags, so a new player needs every flag defined:
+/// the profile carries 3100 (0x808018C7 +0x383C, type 0x80800300) and 512 more (+0x5428,
+/// 0x80801807), the active character
+/// 2560 (0x80801714 +0x53C0, type 0x8080165B). All false = nothing done yet, which is what
+/// lets the prologue (first mission) start: it requires flags 836 and 2838 to be false.
+fn unlock_flags(n: usize) -> Value {
+    Value::Array((0..n).map(|_| Some(Value::Int(1))).collect())
+}
+
 /// Character summary 0x80801954 / active character 0x80801714 both start
 /// {soid, {race, gender, class}, appearance}.
 fn character_head(ch: &crate::account::Character) -> Value {
@@ -504,10 +514,39 @@ pub const TYPE_ACTIVE_CHARACTER: &str = "0x80801743";
 pub fn profile_baseline() -> FamilyUpdate {
     use Value::*;
     let active = characters().last().cloned();
-    let profile = Struct(vec![Some(Int(ACCOUNT_ID)), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))]);
+    let mut profile: Vec<Option<Value>> = vec![Some(Int(ACCOUNT_ID)), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))];
+    profile.resize(15, None);
+    profile[10] = Some(unlock_flags(3100));
+    // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
+    // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
+    let ov = vec![Some(Struct(vec![Some(Int(836)), Some(Int(1))]))];
+    profile[12] = Some(Struct(vec![None, Some(Struct(vec![Some(Int(ov.len() as i64)), Some(Array(ov))])),
+                                   Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))]))]));
+    // +0x5428 (0x80801807): {i64, 512 more flags}
+    profile[14] = Some(Struct(vec![None, Some(unlock_flags(512))]));
+    let profile = Struct(profile);
     let mut objects = vec![Object { ty: TYPE_PROFILE, soid: ACCOUNT_ID, value: Struct(vec![Some(profile)]) }];
     if let Some(ch) = active {
-        objects.push(Object { ty: TYPE_ACTIVE_CHARACTER, soid: ch.id, value: Struct(vec![Some(character_head(&ch))]) });
+        let mut c = match character_head(&ch) {
+            Struct(f) => f,
+            _ => vec![],
+        };
+        c.resize(16, None);
+        // character flags; slot 673 = flag 2838, set on a new character: the prologue
+        // (first mission) needs it true and flag 836 false
+        let mut flags = unlock_flags(2560);
+        if let Array(f) = &mut flags {
+            f[673] = Some(Int(2));
+        }
+        c[11] = Some(flags);
+        // +0x6FD0 (0x808018BB) +0x84: up to 20 {flag, state} overrides for flags kept
+        // nowhere else (scope 0 in the master flag table, vtable +0x2B8; applied by
+        // 0x28BC60). Flag 836 is one of those and gates the prologue.
+        let overrides = vec![Some(Struct(vec![Some(Int(836)), Some(Int(1))]))];
+        let mut st = vec![None; 6];
+        st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));
+        c[15] = Some(Struct(st));
+        objects.push(Object { ty: TYPE_ACTIVE_CHARACTER, soid: ch.id, value: Struct(vec![Some(Struct(c))]) });
     }
     FamilyUpdate { family: FAMILY_PROFILE, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
 }
