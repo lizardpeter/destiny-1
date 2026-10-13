@@ -10,26 +10,59 @@ replaces the PS4 firmware with host code. Decompiled functions from
 No game files are in this repository. You need your own decrypted 01.33 eboot,
 `sce_module/` and the `/app0` tree (packages etc.).
 
-## Build and run (Linux x86-64)
+## Build and run
 
-```bash
-# game (add the renderer options below to see anything)
-cmake -S native -B build/native && cmake --build build/native -j
-# replacement backend (Rust)
-cargo build --release --manifest-path backend/Cargo.toml
-# both together
-native/run.sh /path/to/CUSA00219 [data dir]
+d1-native builds for **Windows** (x86-64, Windows 10 2004+ / 11) and **Linux** (x86-64).
+Either way everything lives in the executable's folder:
+
+```
+d1-native(.exe)   the game runtime        d1-native.cfg   settings (written on first run)
+d1-backend(.exe)  the replacement server  d1-native.log   log of the last run, backend.log
+game/             the installed game      data/           everything the game writes
 ```
 
-The game directory is the installed 01.33 game: decrypted `eboot.bin`, `sce_module/` and
-`packages/`. **It is only read.** Writes under `/app0` are refused (EROFS, as on the
-console) and the data folder must lie outside it; saves, caches, crash reports, logs and
-`d1-native.cfg` go to the data folder (default `~/.local/share/d1-native`). Marking the
-game directory read-only on disk as well is fine.
+Put the installed 01.33 game (decrypted `eboot.bin`, `sce_module/`, `packages/`) in `game/`,
+or point `game_dir` in `d1-native.cfg` at it, and start `d1-native`. It starts `d1-backend`
+from the same folder by itself (`backend = local`). **The game folder is only read**: writes
+under `/app0` are refused (EROFS, as on the console) and `data/` must lie outside it.
 
-`run.sh` starts `d1-backend` (pointed at `<game>/packages`) and then
-`d1-native --app0 <game> --data <data dir>`; `eboot.bin` and `sce_module/` are found in the
-game directory unless `--eboot` / `--sce-module` say otherwise.
+### Windows (cross-compiled from Linux with llvm-mingw)
+
+```bash
+# llvm-mingw: https://github.com/mstorsjo/llvm-mingw (ucrt build); SDL2 mingw devel package
+cmake -S native -B build/win -G Ninja -DCMAKE_TOOLCHAIN_FILE=native/cmake/windows-llvm-mingw.cmake \
+      -DLLVM_MINGW=/opt/llvm-mingw -DD1_RENDERER_SHADPS4=ON -DSHADPS4_DIR=/path/shadps4 \
+      -DCMAKE_PREFIX_PATH=/opt/SDL2-2.32.10/x86_64-w64-mingw32
+cmake --build build/win
+# backend
+CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER=/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang \
+RUSTFLAGS="-C target-feature=+crt-static" \
+  cargo build --release --target x86_64-pc-windows-gnullvm --manifest-path backend/Cargo.toml
+```
+
+Both executables depend only on DLLs that ship with Windows (UCRT, Winsock, ...); SDL2
+and the C++ runtime are linked in. Vulkan is loaded at run time from the GPU driver.
+
+How the Windows port works (`src/os_win.cpp`, `src/os.h`):
+- **Calling convention**: the game's code is System V (FreeBSD). Every host function it
+  calls is registered through a System V entry point (`HLE()`/`D1_SYSV`), and every game
+  function the host calls is typed `D1_SYSV`; the compiler converts.
+- **Thread-local storage**: `mov r64, fs:[0]` (read the TCB) is rewritten in place to
+  `mov r64, gs:[TEB TlsSlots + 8*slot]`, a `TlsAlloc` slot that holds the TCB.
+- **Guest memory**: one placeholder reservation for the guest range (VirtualAlloc2 /
+  MapViewOfFile3), so mappings land at exact addresses; direct memory is a pagefile-backed
+  section mapped as aliasing views.
+- **Faults**: a vectored exception handler serves the renderer's write tracking and crash
+  reports. `scePthreadExit` returns to the thread's start without unwinding game frames.
+
+### Linux
+
+```bash
+cmake -S native -B build/native && cmake --build build/native -j     # null GPU
+cargo build --release --manifest-path backend/Cargo.toml
+cp backend/target/release/d1-backend build/native/
+build/native/d1-native            # or: --game /path/to/CUSA00219 --data ./data
+```
 
 ### Settings
 

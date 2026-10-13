@@ -495,11 +495,20 @@ void register_guest_thread(const char* name) {
     g_threads.push_back({gettid32(), h, name ? name : "?"});
 }
 
+// IsBadReadPtr would fault and be caught by our own vectored handler; ask the memory
+// manager instead.
+static bool readable(const void* p, size_t n) {
+    MEMORY_BASIC_INFORMATION mi;
+    if (!VirtualQuery(p, &mi, sizeof mi) || mi.State != MEM_COMMIT) return false;
+    if (mi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
+    return static_cast<const uint8_t*>(p) + n <= static_cast<const uint8_t*>(mi.BaseAddress) + mi.RegionSize;
+}
+
 static void walk(uint64_t rip, uint64_t rbp) {
     log("  at %s", describe_addr(rip).c_str());
     for (int d = 0; d < 16 && rbp && !(rbp & 7); ++d) {
         uint64_t* f = reinterpret_cast<uint64_t*>(rbp);
-        if (IsBadReadPtr(f, 16)) break;
+        if (!readable(f, 16)) break;
         log("  <- %s", describe_addr(f[1]).c_str());
         if (f[0] <= rbp) break;
         rbp = f[0];

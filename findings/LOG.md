@@ -720,3 +720,20 @@ response; nothing has connected to it yet).
   comes from the world-controller state machine (hook on the transition step 0x783AC0,
   state at obj+0x1B0, names at 0x1945340). Verified against a fake IPC server: handshake,
   then "At the title screen" → "Signing in" as the bootflow advanced. Needs an application id.
+
+## 2026-10-12 — Windows build
+
+- d1-native, the temporary renderer and d1-backend cross-compile for Windows (llvm-mingw;
+  Rust x86_64-pc-windows-gnullvm). Verified under Wine (+ lavapipe): boots to
+  `bootflow:bap_signin`, renders the Bungie logo and Signing In screen, starts its own
+  backend from its folder. Details in native/README.md.
+- Single-folder layout: d1-native.cfg / logs / data/ / game/ next to the executable.
+- Start-up hang root cause: `sceNpRegisterStateCallback` returned 1; the NP toolkit
+  (0xFA7E10) treats non-zero as failure, its thread (0xF90B30) tears down and signals the
+  main thread, which waits forever if it had not started waiting yet. Returns 0 now.
+- ENGINE OOM in content_check root cause: `sceAppContentGetAddcontInfoList` (called by
+  0xBBE60 as count-then-fill) was a logging stub that never wrote the count, so the add-on
+  count was stack garbage (once 862 million entries x 0x18 = 19 GB, heap id 45). Implemented
+  with the other AppContent / PlayGo / DiscMap calls that return results through pointers.
+- LLVM's `__builtin_setjmp` restores a wrong frame pointer with the Win64 frame layout;
+  thread exit uses a small assembly entry/exit pair instead (`d1_call_guest_exitable`).
